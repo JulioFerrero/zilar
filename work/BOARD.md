@@ -1678,3 +1678,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1666](T-1666-phone-select-delete-copy.md) | Phone select mode: Delete and Copy beside Forward | 2026-10-16 |
 | [T-1667](T-1667-phone-reply-quote-jump.md) | Phone: tap a reply quote to jump to the quoted message | 2026-10-16 |
 | [T-1614](T-1614-scheduled-ai-jobs-plan.md) | Plan: scheduled AI jobs (prompt routines) | 2026-10-16 |
+| [T-1668](T-1668-phone-people-prefix-search.md) | Phone: chat-list search finds people by name prefix | 2026-10-16 |

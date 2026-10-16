@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
 import { MessageSearchList } from '@/components/chat/message-search-list';
+import { PeopleListSection } from '@/components/contacts/people-list-section';
 import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -102,7 +103,9 @@ export function ChatSearchResults({
           onOpenRequests={onOpenRequests}
           submitRequest={submitRequest}
         />
-      ) : null}
+      ) : (
+        <PeopleListSection api={contactsApi} text={search} />
+      )}
       {chatMatches.length > 0 ? (
         <View className="px-2">
           <Text className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">

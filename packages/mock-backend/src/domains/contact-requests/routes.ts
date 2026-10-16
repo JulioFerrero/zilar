@@ -4,7 +4,7 @@
 // side already asked answers 200 `{ request, incoming: true }`; a new one
 // answers 201 `{ request }`.
 
-import type { ContactRequestPerson, ContactRequestView } from '@zilar/api-contract';
+import type { ContactRequestPerson, ContactRequestView, HandleProfile } from '@zilar/api-contract';
 import { currentUser } from '../../data/people';
 import {
   conflict,
@@ -51,6 +51,14 @@ export function handleContactRequests(
     request.method === 'GET'
   ) {
     return byHandle(data, decodeURIComponent(second));
+  }
+  if (
+    head === 'users' &&
+    first === 'search' &&
+    request.segments.length === 2 &&
+    request.method === 'GET'
+  ) {
+    return searchPeople(data, request.query.get('q') ?? '');
   }
   return undefined;
 }
@@ -113,6 +121,47 @@ function byHandle(data: MockData, handle: string): Response {
     return notFound('No user with that username');
   }
   return jsonResponse(profile);
+}
+
+// The server searches from 3 characters on and caps the answer at 10.
+const USER_SEARCH_MIN_LENGTH = 3;
+const USER_SEARCH_LIMIT = 10;
+
+/** Trims, strips one leading `@` and lowercases, like the server's search. */
+function normalizeUserSearchQuery(raw: string): string {
+  const trimmed = raw.trim();
+  const withoutAt = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+  return withoutAt.toLowerCase();
+}
+
+/**
+ * `GET /users/search?q=` (T-1668): up to 10 seeded people whose handle or name
+ * starts with the normalised query. Each entry is built the way `byHandle`
+ * builds its profile, so the relation and the shape match.
+ */
+function searchPeople(data: MockData, raw: string): Response {
+  const q = normalizeUserSearchQuery(raw);
+  if (q.length < USER_SEARCH_MIN_LENGTH) {
+    return jsonResponse({ entries: [] });
+  }
+  const entries: HandleProfile[] = [];
+  for (const person of data.people) {
+    if (person.id === currentUser.id || person.handle === undefined) {
+      continue;
+    }
+    if (!person.handle.toLowerCase().startsWith(q) && !person.name.toLowerCase().startsWith(q)) {
+      continue;
+    }
+    const profile = handleProfile(data, person.handle);
+    if (profile === null) {
+      continue;
+    }
+    entries.push(profile);
+    if (entries.length >= USER_SEARCH_LIMIT) {
+      break;
+    }
+  }
+  return jsonResponse({ entries });
 }
 
 function contactRequestList(data: MockData): {

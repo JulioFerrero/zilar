@@ -97,3 +97,16 @@ pnpm gate
 - `apps/mobile/src/components/chat/chat-thread.tsx`
 - `apps/mobile/src/components/chat/reply-quote.tsx`
 - `work/T-1667-phone-reply-quote-jump.md`
+
+## Review (written by Claude)
+
+**Approved and merged.** This is parity gap 3, second half.
+
+- **Pre-review:** clean; 1 nit, fixed in one round.
+- **The change:**
+  - `ChatJumpProvider` from `chat-thread` gives the quote `screen.jumpTo`, or nothing in select mode;
+  - the quote is a `Pressable` with web's label, and it forwards a long hold to the bubble menu with the shared `LONG_PRESS_MS`.
+  - The nit fixed: the shared `LONG_PRESS_MS` delay (`delayLongPress`).
+- **Emulator QA** (mock build of main, 2026-10-16): with the quoted message off-screen, a tap on the quote scrolled to it, and a long hold on the quote opened the message menu.
+- **Follow-up, recorded:** a reply quote inside a **sticker** bubble sits outside `MessageMenuProvider` (`message-bubble.tsx:224-233`), so a long hold there doesn't open the menu. It's a corner case for `message-bubble.tsx`'s next split.
+- **Lead slip:** this Review missed T-1667's own commit (the edit failed on a changed file), so it rides T-1668's review commit.

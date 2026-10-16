@@ -74,6 +74,8 @@ export interface BlockedPerson {
 
 export interface ContactsApi {
   lookupByHandle(handle: string): Promise<HandleProfile>;
+  /** The people prefix search (`GET /users/search`), up to 10 matches, T-1668. */
+  searchUsers(q: string): Promise<HandleProfile[]>;
   sendContactRequest(handle: string): Promise<CreatedContactRequest>;
   listContactRequests(): Promise<ContactRequestList>;
   acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }>;
@@ -135,6 +137,8 @@ export function createContactsApi(
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
     lookupByHandle: (handle) => runApi(client.contactRequests.byHandle({ params: { handle } })),
+    searchUsers: (q) =>
+      runApi(client.contactRequests.search({ query: { q } })).then((body) => [...body.entries]),
     sendContactRequest: (handle) => runApi(client.contactRequests.create({ payload: { handle } })),
     listContactRequests: () =>
       runApi(client.contactRequests.list()).then((body) => ({
