@@ -5,6 +5,7 @@ import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
+import { addGroupAi } from '../groups/ais';
 import { emitTopicAi } from '../groups/events';
 import { deleteRoutinesForAiInTopic } from '../routines/service';
 import { deleteToolsForAiInTopicEffect } from '../tools/service';
@@ -63,7 +64,16 @@ export async function addTopicAi(
     }),
   );
   if (!groupRow) {
-    throw new HttpError(400, 'invalid_request', 'The AI must be in the group first');
+    // T-1769: the one-step add. A missing group membership is created first by
+    // `addGroupAi`, which applies the group rule (owner or admin) and its own
+    // refusals. A plain member who may add to the topic cannot add to the group.
+    await addGroupAi(deps.db, deps.adminClient, {
+      groupId: topic.groupId,
+      actorId: input.actorId,
+      aiId: input.aiId,
+      domain: deps.domain,
+      logger: deps.logger,
+    });
   }
   if (ai.status !== 'active') {
     throw new HttpError(400, 'invalid_request', 'Only an active AI can be added to a topic');

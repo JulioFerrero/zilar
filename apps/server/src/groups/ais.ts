@@ -99,12 +99,43 @@ export async function addGroupAi(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
+            // T-1769: take the per-group join lock before counting, so two
+            // concurrent adds cannot each pass the pre-check above and exceed
+            // the cap. The locked count below is the authority.
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-join:' + input.groupId}))`;
+            // T-1769: recheck inside the lock, mirroring `addGroupMembers`. A
+            // racing add of the same AI has already written the row, so this
+            // call is a logical no-op: it must answer 200 instead of counting
+            // the AI twice and failing 400 at a full group.
+            const [lockedExisting] = yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+              WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
+            if (lockedExisting) {
+              return;
+            }
+            const [memberCount] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM group_members WHERE group_id = ${input.groupId}`;
+            const [aiCount] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM group_ais WHERE group_id = ${input.groupId}`;
+            if (
+              Number(memberCount?.total ?? 0) + Number(aiCount?.total ?? 0) + 1 >
+              MAX_GROUP_MEMBERS
+            ) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'invalid_request',
+                  `A group has at most ${MAX_GROUP_MEMBERS} members`,
+                ),
+              );
+            }
             yield* Effect.tryPromise({
               try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member'),
               catch: (error) => error,
             });
-            // Two concurrent adds both pass the check above: the loser lands here
-            // and still answers 200, keeping the add idempotent.
+            // The lock above serializes concurrent adds, so the loser sees the
+            // winner's row in the recheck and returns before this insert; the
+            // `ON CONFLICT` keeps the add idempotent if that recheck ever races
+            // the insert inside the same lock.
             yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
               VALUES (${input.groupId}, ${input.aiId}, ${input.actorId})
               ON CONFLICT (group_id, ai_id) DO NOTHING`;

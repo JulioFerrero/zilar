@@ -530,7 +530,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **T-1764 (S2) and T-1766 are live (`b188fe043`, about 22:52 UTC).** Health OK.
             - **The general cards pass** (Julio 10-17: "jack-of-all-trades"; "both in parallel"; live test OK in a new topic "cards test" as @claude_test):
               - **T-1767 is merged and held** (the group seams).
-                - **Running:** the web groups T-1770 (data), T-1771 (charts), T-1772 (progress) and T-1773 (content + place), and the phone T-1775 (data).
+                - **Merged and held:** T-1770 (web data), T-1772 (web progress) and T-1775 (phone data), each checked in Cosmos against the board.
+                - **Running:** T-1771 (web charts), T-1773 (web content) and T-1776 (phone progress).
+                - **Emulator check of `zilar://dev/blocks` before the APK:** T-1756, T-1775 and the later phone twins.
                 - **Next:** the phone twins of charts, progress and content, after each web twin merges, since they reuse its chat-core helper.
               - **T-1768 (running):** the shared card guide, `fmt` date helpers and `tool.save` card reports.
                 - **Hold its merge** until the web group renderers merge.

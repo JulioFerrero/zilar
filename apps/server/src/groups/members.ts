@@ -64,6 +64,9 @@ export async function addGroupMembers(
         `A group has at most ${MAX_GROUP_MEMBERS} members`,
       );
     }
+    // The rows actually written: two adds that race serialize on the lock
+    // below, so the loser sees the winner's rows and writes only the rest.
+    let added: string[] = toAdd;
     try {
       await runSql(
         db,
@@ -71,7 +74,32 @@ export async function addGroupMembers(
           const sql = yield* SqlClient.SqlClient;
           yield* sql.withTransaction(
             Effect.gen(function* () {
-              for (const userId of toAdd) {
+              // T-1769: take the per-group join lock before counting, so two
+              // concurrent adds cannot each pass the pre-check above and exceed
+              // the cap. The locked count below is the authority.
+              yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-join:' + input.groupId}))`;
+              const current = yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+                WHERE group_id = ${input.groupId}`;
+              const currentIds = new Set(current.map((row) => row.userId));
+              added = toAdd.filter((id) => !currentIds.has(id));
+              if (added.length === 0) {
+                return;
+              }
+              const [aiCount] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+                FROM group_ais WHERE group_id = ${input.groupId}`;
+              if (
+                currentIds.size + Number(aiCount?.total ?? 0) + added.length >
+                MAX_GROUP_MEMBERS
+              ) {
+                return yield* Effect.fail(
+                  new HttpError(
+                    400,
+                    'invalid_request',
+                    `A group has at most ${MAX_GROUP_MEMBERS} members`,
+                  ),
+                );
+              }
+              for (const userId of added) {
                 yield* Effect.tryPromise({
                   try: () =>
                     adminClient.setAffiliation(
@@ -83,7 +111,7 @@ export async function addGroupMembers(
                 });
               }
               yield* sql`INSERT INTO group_members ${sql.insert(
-                toAdd.map((userId) => ({
+                added.map((userId) => ({
                   group_id: input.groupId,
                   user_id: userId,
                   role: 'member',
@@ -103,10 +131,10 @@ export async function addGroupMembers(
     // while the members are already in the group, and every retry stops at the
     // `toAdd` filter above, so the topic rows would never be written.
     try {
-      await addToPublicTopics(db, input.groupId, toAdd);
+      await addToPublicTopics(db, input.groupId, added);
     } catch (error) {
       input.logger.warn(
-        { err: error, groupId: input.groupId, userIds: toAdd },
+        { err: error, groupId: input.groupId, userIds: added },
         'could not add the new members to the public topics',
       );
     }

@@ -4,6 +4,7 @@ import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import type { ServerDatabase } from '../db/client';
 import { HttpError, xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
+import { addGroupMembers } from '../groups/members';
 import { topicRoleHolderIds } from '../roles/service';
 import {
   canManageTopic,
@@ -129,12 +130,21 @@ export async function addTopicMember(
   targetUserId: string,
 ): Promise<TopicRow> {
   const topic = await requireManagedTopic(deps.db, topicId, actorId);
-  if (topic.visibility !== 'private') {
-    throw new HttpError(400, 'not_private', 'Only private topics have members');
+  if (topic.isGeneral) {
+    throw new HttpError(400, 'is_general', 'Everyone in the group is in General');
   }
   const membership = await getGroupMembership(deps.db, topic.groupId, targetUserId);
   if (!membership) {
-    throw new HttpError(400, 'invalid_request', 'Topic members must be group members');
+    // T-1769: the one-step add. A target outside the group joins it first;
+    // `addGroupMembers` applies the group rule (owner or admin) and the contact
+    // check. A plain member who may manage the topic cannot add to the group.
+    await addGroupMembers(deps.db, deps.adminClient, {
+      groupId: topic.groupId,
+      actorId,
+      userIds: [targetUserId],
+      domain: deps.domain,
+      logger: deps.logger,
+    });
   }
   await runSql(
     deps.db,
