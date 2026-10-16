@@ -303,6 +303,21 @@ describe('selectTestFiles', () => {
   it('ignores a non-code file', () => {
     expect(selectTestFiles(['packages/a/readme.md'], testFiles)).toEqual([]);
   });
+
+  it('adds the boot-guard test when a server source file changes', () => {
+    const allTests = [...testFiles, 'apps/server/src/actions/args-example.test.ts'];
+    expect(selectTestFiles(['apps/server/src/tools/x.ts'], allTests)).toEqual([
+      'apps/server/src/actions/args-example.test.ts',
+    ]);
+  });
+
+  it('does not add the boot-guard test for a change outside the server source', () => {
+    const allTests = [...testFiles, 'apps/server/src/actions/args-example.test.ts'];
+    expect(selectTestFiles(['packages/a/src/service.ts'], allTests)).toEqual([
+      'packages/a/src/service.effect.test.ts',
+      'packages/a/src/service.test.ts',
+    ]);
+  });
 });
 
 describe('gateSteps', () => {

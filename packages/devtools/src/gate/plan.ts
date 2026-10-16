@@ -3,8 +3,9 @@
 // just the changed files unless `--full`; tests run only for the packages whose
 // files changed, always with the worker cap. By default
 // only the nearest tests run: the changed test files themselves plus, for each
-// changed source file, the tests sitting in the same folder. `--full` keeps the
-// older behaviour of letting Vitest pull in every test that imports the change.
+// changed source file, the tests sitting in the same folder. A few boot guards
+// (see BOOT_GUARD_TESTS) always run too. `--full` keeps the older behaviour of
+// letting Vitest pull in every test that imports the change.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -59,6 +60,24 @@ export function isTestFile(file: string): boolean {
   return TEST_FILE.test(file);
 }
 
+export interface BootGuardTest {
+  /** A changed non-test file under this prefix triggers the guard. */
+  when: string;
+  /** The test that must run when the guard triggers, if it is on disk. */
+  test: string;
+}
+
+// Tests that prove a package still boots. The nearest-test search misses them
+// when the change is in a different folder: T-1704 changed only
+// `apps/server/src/tools/routine-adapters.ts`, the gate ran just the `tools/`
+// tests, and the over-long adapter description (over
+// ADAPTER_DESCRIPTION_MAX_LENGTH in `actions/registry.ts`) reached prod, where
+// the server threw AdapterRegistryError at start and stayed down ~26 minutes
+// (2026-10-16). Each guard always runs when a source under its prefix changes.
+export const BOOT_GUARD_TESTS: BootGuardTest[] = [
+  { when: 'apps/server/src/', test: 'apps/server/src/actions/args-example.test.ts' },
+];
+
 function dirOf(file: string): string {
   const slash = file.lastIndexOf('/');
   return slash < 0 ? '' : file.slice(0, slash);
@@ -103,6 +122,14 @@ export function selectTestFiles(
     const named = siblings.filter((testFile) => baseOf(testFile).startsWith(`${name}.`));
     for (const testFile of named.length > 0 ? named : siblings) {
       selected.add(testFile);
+    }
+  }
+  for (const guard of BOOT_GUARD_TESTS) {
+    const sourceChanged = changedFiles.some(
+      (file) => !isTestFile(file) && file.startsWith(guard.when),
+    );
+    if (sourceChanged && testFiles.includes(guard.test) && exists(guard.test)) {
+      selected.add(guard.test);
     }
   }
   return [...selected].sort();
