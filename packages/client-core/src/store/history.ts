@@ -267,8 +267,22 @@ export const openAtMessage = (
 ): Effect.Effect<UiMessage, Error> =>
   Effect.gen(function* () {
     const { k } = ctx;
-    const find = (): UiMessage | undefined =>
-      k.listFor(ctx.get(), chatId).find((item) => k.sameMessage(item.id, messageId));
+    // T-1739: an AI's question card is re-keyed on the server to the message's
+    // archive id (`rekeyQuestionMessage`), and the created row is keyed by the
+    // id it was stored under (the id the stanza carried). A `messagesByChat` row
+    // never carries `archiveId`; the only place the client sees that archive id
+    // is the server chat preview, as the chat's `lastMessage.archiveId` (T-1214,
+    // `previewMessageOf`) beside the origin id the row is linked to. So resolve
+    // the requested id through the preview, then match the row by the ledger's
+    // aliases, and the jump lands on the card instead of paging all the way up.
+    const find = (): UiMessage | undefined => {
+      const state = ctx.get();
+      const preview = state.chats.find((entry) => entry.id === chatId)?.lastMessage;
+      const wanted = preview?.archiveId === messageId ? preview.id : messageId;
+      return k
+        .listFor(state, chatId)
+        .find((item) => k.sameMessage(item.id, wanted) || k.sameMessage(item.id, messageId));
+    };
     ctx.get().openChat(chatId);
     const chat = ctx.get().chats.find((entry) => entry.id === chatId);
     const current = ctx.core;

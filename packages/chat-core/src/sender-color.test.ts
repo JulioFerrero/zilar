@@ -28,13 +28,13 @@ describe('senderColor', () => {
 describe('replyQuoteContent', () => {
   it('treats our own wire reply as own without a loaded target', () => {
     const content = replyQuoteContent({ id: 'm1', senderName: 'You', text: 'hi' }, undefined, 'me');
-    expect(content.own).toBe(true);
-    expect(content.senderName).toBe('You');
+    expect(content?.own).toBe(true);
+    expect(content?.senderName).toBe('You');
   });
 
   it('still falls back to Message for an unknown sender without a loaded target', () => {
     const content = replyQuoteContent({ id: 'm2', senderName: '', text: 'hi' }, undefined, 'me');
-    expect(content.own).toBe(false);
-    expect(content.senderName).toBe('Message');
+    expect(content?.own).toBe(false);
+    expect(content?.senderName).toBe('Message');
   });
 });

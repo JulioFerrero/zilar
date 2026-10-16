@@ -29,7 +29,7 @@ export function stickerOf(message: {
  */
 function ProgressCardSurface({ data }: { data: Progress }) {
   return (
-    <View className="rounded-[12px] p-2.5" style={bubbleStyle('incoming', false)}>
+    <View className="min-w-[240px] rounded-[12px] p-2.5" style={bubbleStyle('incoming', false)}>
       <ProgressCard data={data} />
     </View>
   );

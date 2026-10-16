@@ -264,13 +264,14 @@ export interface ReplyQuoteContent {
  * history: the wire reply (`{ id, to?, text? }`) carries no name, so the name
  * and the excerpt come from the target when it is loaded. Without a loaded
  * target the wire fallback is used, and the name falls back to "Message" so the
- * line is never empty.
+ * line is never empty. `undefined` when there is nothing at all to show: no
+ * loaded target, no wire text and no name (T-1739).
  */
 export function replyQuoteContent(
   quote: ReplyRef,
   referenced: UiMessage | undefined,
   currentUserId: string,
-): ReplyQuoteContent {
+): ReplyQuoteContent | undefined {
   // The wire reply carries no sender id, so a reply to one of our own messages
   // keeps the composer's "You" name (`replyRef`); trust it as own when the
   // replied-to message is not in the loaded history.
@@ -279,6 +280,11 @@ export function replyQuoteContent(
     (referenced === undefined && quote.senderName === 'You');
   const name = own ? 'You' : (referenced?.senderName ?? quote.senderName);
   const text = nonEmpty(referenced?.text) ?? nonEmpty(quote.text) ?? replyQuoteLabel(referenced);
+  // An unknown sender that the wire did not name either has no quote to draw:
+  // hide it instead of showing an empty "Message" line.
+  if (referenced === undefined && text === undefined && name === '') {
+    return undefined;
+  }
   return {
     senderName: name === '' ? 'Message' : name,
     senderId: referenced?.senderId ?? quote.senderId ?? quote.id,

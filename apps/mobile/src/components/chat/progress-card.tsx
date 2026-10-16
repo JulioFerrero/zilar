@@ -99,6 +99,7 @@ export function ProgressCard({ data }: { data: Progress }) {
     };
   }, [ticking]);
 
+  const live = isLive(data.state);
   const elapsed = elapsedFor(data, now);
   const steps = data.steps ?? [];
   const expandable = steps.length > 0;
@@ -131,9 +132,12 @@ export function ProgressCard({ data }: { data: Progress }) {
   const header = (
     <>
       <StateIcon state={data.state} reduceMotion={reduceMotion} />
-      <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] font-semibold text-foreground">
+      <Text numberOfLines={2} className="min-w-0 shrink text-[15px] font-semibold text-foreground">
         {data.title ?? data.stage}
       </Text>
+      {/* A `flex-1` spacer (basis 0) pushes the timer and the key to the right
+          without shrinking the title, which now sizes by its full text width. */}
+      <View className="flex-1" />
       {elapsed === undefined ? null : (
         <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
           {formatClock(elapsed)}
@@ -142,53 +146,86 @@ export function ProgressCard({ data }: { data: Progress }) {
     </>
   );
 
-  return (
-    <View className="min-w-[220px] gap-1.5 py-0.5">
-      {/* T-1422: the Stop button sits at the right of the collapsed line; the
-          expand control and the button are siblings. */}
-      <View className="flex-row items-center gap-2">
-        {expandable ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded }}
-            onPress={() => setExpanded((open) => !open)}
-            className="min-w-0 flex-1 flex-row items-center gap-2"
-          >
-            {header}
-          </Pressable>
-        ) : (
-          <View className="min-w-0 flex-1 flex-row items-center gap-2">{header}</View>
+  const stopKey = stoppable ? (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={stopping ? 'Stopping' : 'Stop task'}
+      disabled={stopping}
+      onPress={stop}
+      className="shrink-0 flex-row items-center gap-1 rounded-full px-2 py-0.5"
+    >
+      <Square size={14} color={MUTED_FOREGROUND} aria-hidden />
+      <Text className="text-[12px] font-medium text-muted-foreground">
+        {stopping ? 'Stopping…' : 'Stop'}
+      </Text>
+    </Pressable>
+  ) : null;
+
+  const stepList = (
+    <View className="gap-1.5">
+      {steps.map((step) => (
+        <View key={step.id} className="flex-row items-center gap-2">
+          <StepIcon state={step.state} reduceMotion={reduceMotion} />
+          <Text className="min-w-0 flex-1 text-[14px] text-foreground">{step.label}</Text>
+        </View>
+      ))}
+      {data.summary ? (
+        <Text className="text-[13px] leading-4 text-muted-foreground">{data.summary}</Text>
+      ) : null}
+    </View>
+  );
+
+  // T-1739: a finished card is one pressable line, as the board draws it: the
+  // state icon, the full title, the duration and a chevron. The press opens the
+  // full steps for the viewer's own AI, and expands them otherwise.
+  const ownedTask = ownedAi !== null && taskId !== undefined ? { taskId, ai: ownedAi } : undefined;
+  if (!live) {
+    const pressable = ownedTask !== undefined || expandable;
+    return (
+      <View className="self-stretch gap-1.5 py-0.5">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={ownedTask === undefined ? 'Show steps' : 'View steps'}
+          disabled={!pressable}
+          onPress={() => {
+            if (ownedTask === undefined) {
+              setExpanded((open) => !open);
+            } else {
+              setStepsOpen(true);
+            }
+          }}
+          className="flex-row items-center gap-2"
+        >
+          {header}
+          {pressable ? <ChevronRight size={16} color={MUTED_FOREGROUND} aria-hidden /> : null}
+        </Pressable>
+        {expandable && expanded ? stepList : null}
+        {ownedTask === undefined ? null : (
+          <StepsSheet
+            visible={stepsOpen}
+            onClose={() => setStepsOpen(false)}
+            taskId={ownedTask.taskId}
+            card={data}
+            aiName={ownedTask.ai.name}
+            aiAvatarUrl={ownedTask.ai.avatarUrl}
+          />
         )}
-        {stoppable ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={stopping ? 'Stopping' : 'Stop task'}
-            disabled={stopping}
-            onPress={stop}
-            className="shrink-0 flex-row items-center gap-1 rounded-full px-2 py-0.5"
-          >
-            <Square size={14} color={MUTED_FOREGROUND} aria-hidden />
-            <Text className="text-[12px] font-medium text-muted-foreground">
-              {stopping ? 'Stopping…' : 'Stop'}
-            </Text>
-          </Pressable>
-        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <View className="self-stretch gap-1.5 py-0.5">
+      {/* T-1422: the Stop button sits at the right of the line; the steps stay
+          under it, as the board draws a working card. */}
+      <View className="flex-row items-center gap-2">
+        {header}
+        {stopKey}
       </View>
 
       {expandable ? (
-        expanded ? (
-          <View className="gap-1.5">
-            {steps.map((step) => (
-              <View key={step.id} className="flex-row items-center gap-2">
-                <StepIcon state={step.state} reduceMotion={reduceMotion} />
-                <Text className="min-w-0 flex-1 text-[14px] text-foreground">{step.label}</Text>
-              </View>
-            ))}
-            {data.summary ? (
-              <Text className="text-[13px] leading-4 text-muted-foreground">{data.summary}</Text>
-            ) : null}
-          </View>
-        ) : null
+        stepList
       ) : (
         <>
           {data.title ? (
@@ -199,31 +236,6 @@ export function ProgressCard({ data }: { data: Progress }) {
           ) : null}
         </>
       )}
-
-      {/* T-1562: a finished card of the viewer's own AI opens the full steps. */}
-      {taskId !== undefined && !isLive(data.state) && ownedAi !== null ? (
-        <>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="View steps"
-            onPress={() => setStepsOpen(true)}
-            className="flex-row items-center gap-1.5 border-t border-divider pt-2"
-          >
-            <Text className="min-w-0 flex-1 text-[13px] font-medium text-foreground">
-              View steps
-            </Text>
-            <ChevronRight size={14} color={MUTED_FOREGROUND} aria-hidden />
-          </Pressable>
-          <StepsSheet
-            visible={stepsOpen}
-            onClose={() => setStepsOpen(false)}
-            taskId={taskId}
-            card={data}
-            aiName={ownedAi.name}
-            aiAvatarUrl={ownedAi.avatarUrl}
-          />
-        </>
-      ) : null}
     </View>
   );
 }

@@ -20,7 +20,8 @@ import {
   type HistoryState,
 } from './history';
 import { loadPreviews } from './previews';
-import { ANA, TEAM, dm, team, testCtx } from './test-ctx';
+import { previewMessageOf } from './row-helpers';
+import { ANA, ME, TEAM, dm, team, testCtx } from './test-ctx';
 
 /** `count` messages from Ana, `ana-0` the oldest, one minute apart. */
 function anaHistory(count: number): ChatMessage[] {
@@ -343,6 +344,43 @@ describe('openAtMessage (core)', () => {
 
     expect(error.message).toBe('message_not_found');
     expect(loadHistory).not.toHaveBeenCalled();
+  });
+
+  it('finds a loaded message by the archive id its chat preview carries', async () => {
+    // T-1739: an AI question card is re-keyed on the server to the message's
+    // archive id, and the row is keyed by the stanza id it was stored under.
+    // The archive id only reaches the client on the chat preview
+    // (`previewMessageOf` -> `lastMessage.archiveId`), beside the origin id the
+    // stanza links to. Build row and preview through their real writers.
+    const archiveId = '1792170770205830';
+    const { ctx } = historyCtx({ state: { status: 'offline' } });
+    const card = ctx.k.toUiMessage(
+      {
+        id: 'stanza-7',
+        originId: 'origin-1',
+        chatJid: ANA,
+        fromJid: ANA,
+        fromResolved: true,
+        timestamp: new Date(Date.UTC(2026, 9, 16, 6)),
+        outgoing: false,
+        body: 'Which iOS should I test on?',
+      },
+      ME,
+    );
+    const preview = previewMessageOf(ANA, {
+      id: 'origin-1',
+      text: 'Which iOS should I test on?',
+      at: '2026-10-16T06:00:00.000Z',
+      archiveId,
+    });
+    ctx.set({
+      messagesByChat: { [ANA]: [card] },
+      chats: [{ ...dm, ...(preview === undefined ? {} : { lastMessage: preview }) }],
+    });
+
+    const found = await Effect.runPromise(openAtMessage(ctx, ANA, archiveId));
+
+    expect(found.id).toBe('stanza-7');
   });
 });
 

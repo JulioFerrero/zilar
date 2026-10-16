@@ -31,6 +31,9 @@ export function ReplyQuote({ message }: { message: UiMessage }) {
     return null;
   }
   const content = replyQuoteContent(reply, referenced, currentUserId);
+  if (content === undefined) {
+    return null;
+  }
   const color = content.own ? ACCENT : senderColor(content.senderId);
   const block = (
     <>
