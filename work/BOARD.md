@@ -1708,3 +1708,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1696](T-1696-split-admin-client.md) | Split the ejabberd admin client's parsers and transport | 2026-10-16 |
 | [T-1699](T-1699-split-ai-memory-section.md) | Split the memory logic out of the phone AI memory section | 2026-10-16 |
 | [T-1700](T-1700-split-guarded-fetch.md) | Split the pinned request out of web-tools/guarded-fetch.ts | 2026-10-16 |
+| [T-1695](T-1695-split-web-push.md) | Split the badge code out of the web push.ts | 2026-10-16 |
