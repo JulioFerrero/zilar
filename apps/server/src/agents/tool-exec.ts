@@ -1,6 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
 import { classifyFailure } from './failure-class';
 import { REQUEST_ACTION_TOOL } from './tools';
+import { stripTaskTitle } from './tools/parse';
 import { QUIET_TOOLS, stageForToolCall } from './tool-guide';
 import {
   BUDGET_EXCEEDED_REPLY,
@@ -101,7 +102,7 @@ export async function runLoopRound(input: {
   executeAdvertised?: ExecuteToolCall;
   logger: { warn: (fields: Record<string, unknown>, message: string) => void };
   secrets: string[];
-  reportProgress?: (stage: string) => Promise<string | null>;
+  reportProgress?: (stage: string, title?: string) => Promise<string | null>;
   progressPosted?: boolean;
   actionOf?: (tool: string, argsJson: string) => string | undefined;
   /** T-1426: the turn's session log. One `tool_call` and one `tool_result`
@@ -139,8 +140,12 @@ export async function runLoopRound(input: {
     const first = input.result.toolCalls.find((call) => !QUIET_TOOLS.has(call.name));
     if (first !== undefined) {
       const stage = stageForToolCall(first.name, input.actionOf?.(first.name, first.argsJson));
+      // T-1745: the first call of the round may carry the model's own task
+      // title. It names the card only; it is never logged and never reaches
+      // a tool (parse.ts strips it before the decode).
+      const title = taskTitleOfCall(first.argsJson);
       try {
-        await input.reportProgress(stage);
+        await input.reportProgress(stage, title);
         progressPosted = true;
       } catch (error) {
         input.logger.warn(
@@ -176,10 +181,11 @@ export async function runLoopRound(input: {
       if (outcome === undefined || call === undefined) {
         continue;
       }
+      const loggedArgs = stripTaskTitle(call.argsJson);
       input.log.append('tool_call', {
         tool: outcome.tool,
-        args: redactAndTruncate(call.argsJson, input.secrets),
-        args_bytes: byteLength(call.argsJson),
+        args: redactAndTruncate(loggedArgs, input.secrets),
+        args_bytes: byteLength(loggedArgs),
       });
       input.log.append(
         'tool_result',
@@ -254,4 +260,35 @@ export function actionOfCall(tool: string, argsJson: string): string | undefined
     return undefined;
   }
   return undefined;
+}
+
+// T-1745: reads the model's optional `task_title` out of one call's arguments,
+// the way `actionOfCall` reads `request_action`'s action. It is cleaned to one
+// plain line of at most 40 characters; a blank or unparsable title is dropped.
+export const TASK_TITLE_MAX_LENGTH = 40;
+
+export function taskTitleOfCall(argsJson: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argsJson);
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const raw = (parsed as { task_title?: unknown }).task_title;
+  return typeof raw === 'string' ? sanitizeTaskTitle(raw) : undefined;
+}
+
+function sanitizeTaskTitle(raw: string): string | undefined {
+  let out = '';
+  for (const char of raw.replace(/\s+/g, ' ').trim()) {
+    const code = char.codePointAt(0) ?? 32;
+    if (code >= 32 && code !== 127) {
+      out += char;
+    }
+  }
+  const clean = out.trim();
+  return clean === '' ? undefined : clean.slice(0, TASK_TITLE_MAX_LENGTH);
 }

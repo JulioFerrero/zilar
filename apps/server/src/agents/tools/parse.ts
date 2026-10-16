@@ -56,6 +56,38 @@ export function safeToolName(name: string): string {
   return out;
 }
 
+// T-1745: `task_title` is not a tool argument — it only names the work card.
+// It is dropped from the parsed object before the strict decode so no tool
+// ever sees it, and from the raw string the session log keeps.
+const TASK_TITLE_KEY = 'task_title';
+
+function withoutTaskTitle(parsed: unknown): unknown {
+  if (
+    parsed === null ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    !(TASK_TITLE_KEY in parsed)
+  ) {
+    return parsed;
+  }
+  const copy: Record<string, unknown> = { ...(parsed as Record<string, unknown>) };
+  delete copy[TASK_TITLE_KEY];
+  return copy;
+}
+
+/** Drops a top-level `task_title` from a raw arguments JSON string, for the
+ * session log. Returns the input unchanged when there is nothing to drop. */
+export function stripTaskTitle(argsJson: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argsJson.trim() === '' ? '{}' : argsJson);
+  } catch {
+    return argsJson;
+  }
+  const stripped = withoutTaskTitle(parsed);
+  return stripped === parsed ? argsJson : JSON.stringify(stripped);
+}
+
 // Validates one raw tool call's `arguments` (a JSON string) with Effect
 // Schema. Unknown tool names and invalid arguments are never executed; the
 // caller reports `invalid: <reason>` back to the model. Reasons carry no
@@ -85,6 +117,7 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
   } catch {
     return { ok: false, reason: 'arguments are not valid JSON' };
   }
+  parsedJson = withoutTaskTitle(parsedJson);
   if (toolName === REVERT_PERSONA_TOOL) {
     const parsed = decodeToolArguments(RevertPersonaArgsSchema, parsedJson);
     if (!parsed.ok) {

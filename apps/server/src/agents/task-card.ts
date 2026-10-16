@@ -18,6 +18,8 @@ export interface TaskCard {
   /** ISO 8601 with `Z`, set when the card starts. */
   startedAt: string;
   summary: string | null;
+  /** T-1745: true once the model has named the card; later titles are ignored. */
+  named: boolean;
 }
 
 /** The title a card shows when its turn has no stage text. */
@@ -44,7 +46,24 @@ export function startTaskCard(stage: string, startedAt: string): TaskCard {
     state: 'working',
     startedAt,
     summary: null,
+    named: false,
   };
+}
+
+/** T-1745: gives the card the model's own 2-4 word name, once. The stage the
+ * card opened with becomes its first step, because the title no longer repeats
+ * it (T-1727 skipped that step only while the title matched). A blank name, or a
+ * card already named, is left unchanged. */
+export function nameTaskCard(card: TaskCard, title: string): TaskCard {
+  const clean = title.trim();
+  if (clean === '' || card.named) {
+    return card;
+  }
+  const steps: ProgressStep[] =
+    card.steps.length === 0 && card.stage.trim() !== ''
+      ? [{ id: stepId(1), label: card.stage, state: 'doing' }]
+      : card.steps.map((step) => ({ ...step }));
+  return { ...card, title: clean, steps, named: true };
 }
 
 /** Appends a step: the previous in-progress step becomes `done` and the new

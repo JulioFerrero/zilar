@@ -12,6 +12,7 @@ import {
 import {
   addTaskCardStep,
   finishTaskCard,
+  nameTaskCard,
   startTaskCard,
   taskCardPayload,
   taskCardSummary,
@@ -84,7 +85,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     aiJid: string,
     log?: TurnLog,
   ): {
-    reportProgress: (stage: string) => Promise<string | null>;
+    reportProgress: (stage: string, title?: string) => Promise<string | null>;
     finishProgress: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
   } {
     const taskId = log?.taskId;
@@ -97,6 +98,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     // `catch` blocks did.
     const reportProgressEffect = Effect.fnUntraced(function* (
       stage: string,
+      title?: string,
     ): Effect.fn.Return<string | null> {
       if (!sessionIsLive(session)) {
         return null;
@@ -107,10 +109,13 @@ export function createLiveSession(ctx: LiveSessionContext) {
       // T-1426: one session-log status row per reported stage. The label is a
       // fixed `TOOL_STAGE_*` text, never model or tool output.
       log?.append('status', { stage });
-      const nextCard =
+      const opened =
         card === null
           ? startTaskCard(stage, new Date().toISOString())
           : addTaskCardStep(card, stage);
+      // T-1745: the model may name the card on its first call. The name is set
+      // once; the fixed stage the card opened with becomes its first step.
+      const nextCard = title === undefined ? opened : nameTaskCard(opened, title);
       card = nextCard;
       // Every correction carries the full payload, so a throttled update is
       // never lost: the next one (or the final one) brings it along.
@@ -190,8 +195,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
     });
 
     return {
-      reportProgress: (stage: string): Promise<string | null> =>
-        Effect.runPromise(reportProgressEffect(stage)),
+      reportProgress: (stage: string, title?: string): Promise<string | null> =>
+        Effect.runPromise(reportProgressEffect(stage, title)),
       finishProgress: (state: 'done' | 'failed' | 'stopped'): Promise<void> =>
         Effect.runPromise(finishProgressEffect(state)),
     };

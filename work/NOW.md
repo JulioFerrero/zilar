@@ -450,6 +450,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1740: the phone group routines actions, plus cookies;
           - T-1741: group admins on web and phone (server `changeRole` allowed for groups).
         - **After them:** deploy, then a v0.2.5 APK (ask), then ask Julio to test.
+        - **About 18:50 UTC:**
+          - T-1737 and T-1738 are live (`de3db96cf`, 0 errors);
+          - T-1739, T-1740, T-1741, T-1743 and T-1744 are merged (held);
+          - T-1745 (the AI names the work card, Julio's choice) is in review.
+          - **Open:** the "waiting for you" jump is only fixed when the question is the chat's last message (T-1739). The worker says live rows may already be keyed by the stanza-id, so the real cause needs a runtime check (emulator at night, or Julio's phone on v0.2.5).
+        - **Julio, about 18:10 UTC: "we can use as many workers we like"**, so up to 8 workers even while he's up.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

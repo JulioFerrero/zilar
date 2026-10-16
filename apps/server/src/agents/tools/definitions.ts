@@ -23,6 +23,43 @@ export interface ChatToolDefinition {
   };
 }
 
+// T-1745: every tool the model gets offers one optional `task_title`, sent only
+// on the first call of a task. It names the work card and is stripped before any
+// tool runs (`tools/parse.ts`), so no tool ever sees it. One helper keeps the
+// description and the cap in a single place.
+export const TASK_TITLE_PARAM = 'task_title';
+export const TASK_TITLE_MAX_LENGTH = 40;
+
+const TASK_TITLE_DESCRIPTION =
+  'Only on your first tool call of a task: 2-4 plain words naming the whole job, ' +
+  'e.g. "Check the prices".';
+
+function withTaskTitle(tool: ChatToolDefinition): ChatToolDefinition {
+  const parameters = tool.function.parameters;
+  const properties = parameters.properties;
+  const merged: Record<string, unknown> =
+    properties !== null && typeof properties === 'object'
+      ? { ...(properties as Record<string, unknown>) }
+      : {};
+  merged[TASK_TITLE_PARAM] = {
+    type: 'string',
+    maxLength: TASK_TITLE_MAX_LENGTH,
+    description: TASK_TITLE_DESCRIPTION,
+  };
+  return {
+    ...tool,
+    function: {
+      ...tool.function,
+      parameters: { ...parameters, properties: merged },
+    },
+  };
+}
+
+/** Adds the optional `task_title` property to every tool the model gets. */
+function withTaskTitles(tools: ChatToolDefinition[]): ChatToolDefinition[] {
+  return tools.map(withTaskTitle);
+}
+
 // The `tools` array the DM turn sends with `tool_choice: "auto"`. Only in
 // turns the gateway already runs: the owner's DMs.
 export const PERSONA_TOOLS: ChatToolDefinition[] = [
@@ -277,7 +314,7 @@ export function buildTools(
     actions.length === 0
       ? [...PERSONA_TOOLS, ...MEMORY_TOOLS]
       : [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
-  return opts?.desk === true ? [...base, ...deskToolDefinitions()] : base;
+  return withTaskTitles(opts?.desk === true ? [...base, ...deskToolDefinitions()] : base);
 }
 
 // The tools array for one group turn: always the three memory tools (T-0444),
@@ -303,5 +340,7 @@ export function buildGroupTools(
       : [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
   const withAskPeople =
     opts?.askPeople === true ? [...withDelegation, ASK_PEOPLE_TOOL_DEF] : withDelegation;
-  return opts?.desk === true ? [...withAskPeople, ...deskToolDefinitions()] : withAskPeople;
+  return withTaskTitles(
+    opts?.desk === true ? [...withAskPeople, ...deskToolDefinitions()] : withAskPeople,
+  );
 }

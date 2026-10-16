@@ -3,6 +3,7 @@ import {
   addTaskCardStep,
   failTaskCard,
   finishTaskCard,
+  nameTaskCard,
   startTaskCard,
   taskCardPayload,
   taskCardSummary,
@@ -32,11 +33,28 @@ describe('startTaskCard', () => {
       state: 'working',
       startedAt: STARTED_AT,
       summary: null,
+      named: false,
     });
   });
 
   it('falls back to the fixed title when there is no stage text', () => {
     expect(startTaskCard('   ', STARTED_AT).title).toBe(TASK_CARD_DEFAULT_TITLE);
+  });
+});
+
+describe('nameTaskCard (T-1745)', () => {
+  it('names the card once and keeps the stage as a step', () => {
+    const card = startTaskCard('Reading files', STARTED_AT);
+    const named = nameTaskCard(card, 'Check the prices');
+
+    expect(named.title).toBe('Check the prices');
+    expect(named.steps).toEqual([{ id: 'step-1', label: 'Reading files', state: 'doing' }]);
+    expect(named.named).toBe(true);
+
+    // A later title in the same turn is ignored.
+    const again = nameTaskCard(named, 'Something else');
+    expect(again).toBe(named);
+    expect(again.title).toBe('Check the prices');
   });
 });
 

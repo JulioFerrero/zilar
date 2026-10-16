@@ -98,11 +98,13 @@ export interface DmTurnDeps {
   /** T-0106: `Date.now` seam for the wall-clock cap. Defaults to Date.now. */
   nowMs?: () => number;
   /** T-0106: posts one live progress message at the first tool round and
-   * updates it at each round. Resolves with the progress message id when
-   * one was posted (corrections target it); null when no progress message
-   * exists (not posted yet, or posting failed). Best effort: a throw or a
-   * null never fails the turn. */
-  reportProgress?: (stage: string) => Promise<string | null>;
+   * updates it at each round. T-1745: the optional second argument is the
+   * model's own 2-4 word task title, when it sent one on that round's first
+   * call. Resolves with the progress message id when one was posted
+   * (corrections target it); null when no progress message exists (not posted
+   * yet, or posting failed). Best effort: a throw or a null never fails the
+   * turn. */
+  reportProgress?: (stage: string, title?: string) => Promise<string | null>;
   /** T-1414: sends the turn's final task-card correction (`state: done`,
    * `failed` or `stopped`, with `elapsed_ms` and `summary`). Replaces T-0106's
    * `clearProgress`: the card is left in place, never retracted. Best effort:
