@@ -1,7 +1,7 @@
 /**
- * Emoji data for the mobile emoji panel (T-0175, split out by T-1665): a
+ * Shared emoji data (T-1673, moved from the phone's `lib/emoji-table.ts`): a
  * dependency-free list of common emoji grouped by category (plain Unicode
- * strings, no images). `emoji-data.ts` re-exports these names.
+ * strings, no images), used by both the web and phone emoji pickers.
  */
 
 export type EmojiCategoryId =
@@ -89,6 +89,9 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '🥺',
     '🫠',
     '💀',
+    '😢',
+    '😡',
+    '😳',
   ],
   people: [
     '👋',
@@ -149,6 +152,7 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '💝',
     '💟',
     '♥️',
+    '🫶',
   ],
   animals: [
     '🐶',
@@ -181,6 +185,10 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '🦄',
     '🐝',
     '🦋',
+    '🌸',
+    '🌻',
+    '🌹',
+    '🌵',
   ],
   food: [
     '🍎',
@@ -214,6 +222,10 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '🍻',
     '🥂',
     '🍾',
+    '🍣',
+    '🍰',
+    '🍺',
+    '🍷',
   ],
   activities: [
     '⚽',
@@ -245,6 +257,10 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '🎉',
     '🎊',
     '🎯',
+    '🎂',
+    '🧩',
+    '🎸',
+    '🎤',
   ],
   travel: [
     '🚗',
@@ -277,6 +293,12 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '✨',
     '⭐',
     '🌟',
+    '🌈',
+    '☀️',
+    '🌙',
+    '⚡',
+    '❄️',
+    '🌊',
   ],
   objects: [
     '⌚',
@@ -313,6 +335,11 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '📎',
     '🔗',
     '📅',
+    '🔒',
+    '✂️',
+    '⚙️',
+    '🔔',
+    '🔕',
   ],
   symbols: [
     '0️⃣',
@@ -347,5 +374,9 @@ export const EMOJI_BY_CATEGORY: Record<EmojiCategoryId, readonly string[]> = {
     '⚠️',
     '❓',
     '❗',
+    '🚫',
+    '♻️',
+    '💤',
+    '💥',
   ],
 };

@@ -1,7 +1,8 @@
-// T-1660: the searchable, lowercase name of every glyph in the phone's
-// `EMOJI_BY_CATEGORY` table. Each value is the canonical name plus a few
-// space-separated keywords, so the Emoji tab can filter by name the way the web
-// tab does. Keep the names lowercase: searchEmoji lowercases the query first.
+// T-1660: the searchable, lowercase name of every glyph in the shared
+// `EMOJI_BY_CATEGORY` table (`packages/chat-core/src/emoji-table.ts`). Each
+// value is the canonical name plus a few space-separated keywords, so the Emoji
+// tab can filter by name. Keep the names lowercase: searchEmoji lowercases the
+// query first.
 
 export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '😀': 'grinning face smile happy',
@@ -59,6 +60,9 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '🥺': 'pleading face please beg',
   '🫠': 'melting face melt',
   '💀': 'skull dead',
+  '😢': 'crying face cry sad',
+  '😡': 'enraged face angry mad',
+  '😳': 'flushed face embarrassed',
   '👋': 'waving hand',
   '🤚': 'raised back of hand',
   '🖐': 'hand with fingers splayed',
@@ -115,6 +119,7 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '💝': 'heart with ribbon',
   '💟': 'heart decoration',
   '♥️': 'heart suit',
+  '🫶': 'heart hands love',
   '🐶': 'dog face',
   '🐱': 'cat face',
   '🐭': 'mouse face',
@@ -145,6 +150,10 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '🦄': 'unicorn',
   '🐝': 'honeybee bee',
   '🦋': 'butterfly',
+  '🌸': 'cherry blossom flower',
+  '🌻': 'sunflower flower',
+  '🌹': 'rose flower',
+  '🌵': 'cactus plant',
   '🍎': 'red apple',
   '🍐': 'pear',
   '🍊': 'tangerine orange',
@@ -176,6 +185,10 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '🍻': 'clinking beer mugs cheers beer',
   '🥂': 'clinking glasses cheers toast',
   '🍾': 'bottle with popping cork champagne',
+  '🍣': 'sushi',
+  '🍰': 'shortcake cake dessert',
+  '🍺': 'beer mug drink',
+  '🍷': 'wine glass drink',
   '⚽': 'soccer ball',
   '🏀': 'basketball',
   '🏈': 'american football',
@@ -205,6 +218,10 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '🎉': 'party popper celebrate tada',
   '🎊': 'confetti ball celebrate',
   '🎯': 'bullseye direct hit target dart',
+  '🎂': 'birthday cake celebration',
+  '🧩': 'puzzle piece',
+  '🎸': 'guitar music',
+  '🎤': 'microphone sing',
   '🚗': 'automobile car',
   '🚕': 'taxi',
   '🚙': 'sport utility vehicle',
@@ -235,6 +252,12 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '✨': 'sparkles sparkle magic',
   '⭐': 'star',
   '🌟': 'glowing star',
+  '🌈': 'rainbow',
+  '☀️': 'sun sunny',
+  '🌙': 'crescent moon night',
+  '⚡': 'high voltage lightning zap',
+  '❄️': 'snowflake snow cold',
+  '🌊': 'water wave ocean',
   '⌚': 'watch',
   '📱': 'mobile phone',
   '💻': 'laptop',
@@ -269,6 +292,11 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '📎': 'paperclip attach',
   '🔗': 'link chain',
   '📅': 'calendar date',
+  '🔒': 'locked lock',
+  '✂️': 'scissors cut',
+  '⚙️': 'gear settings',
+  '🔔': 'bell notification',
+  '🔕': 'bell with slash silent mute',
   '0️⃣': 'keycap 0 zero',
   '1️⃣': 'keycap 1 one',
   '2️⃣': 'keycap 2 two',
@@ -301,6 +329,10 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '⚠️': 'warning caution',
   '❓': 'question mark question',
   '❗': 'exclamation mark exclamation',
+  '🚫': 'prohibited no forbidden',
+  '♻️': 'recycling symbol recycle',
+  '💤': 'zzz sleep',
+  '💥': 'collision boom explosion',
 };
 
 /**

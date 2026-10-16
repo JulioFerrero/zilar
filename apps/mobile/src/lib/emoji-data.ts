@@ -1,13 +1,13 @@
 /**
  * Emoji helpers for the mobile emoji panel (T-0175): the pure helpers the panel
  * and the composer use (caret insertion, recents). The glyph table lives in
- * `emoji-table.ts` (T-1665) and is re-exported here.
+ * `@zilar/chat-core` and is re-exported here.
  */
 
 import { Effect } from 'effect';
 
-export { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES } from './emoji-table';
-export type { EmojiCategory, EmojiCategoryId } from './emoji-table';
+export { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES } from '@zilar/chat-core';
+export type { EmojiCategory, EmojiCategoryId } from '@zilar/chat-core';
 
 /** The composer's caret: the TextInput `onSelectionChange` selection. */
 export interface CaretSelection {

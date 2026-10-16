@@ -1,22 +1,19 @@
+import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, EMOJI_NAMES, searchEmoji } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
 import { SearchField } from '@/components/ui/search-field';
-import { EMOJI, EMOJI_CATEGORIES, type EmojiEntry } from './emoji';
+
+/** Every glyph of every category, in category order; the search corpus. */
+const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 
 /**
- * WUX-26: the Emoji tab of the sticker panel. A search box filters the local
- * list by name (e.g. "heart" finds ❤️), and when the box is empty the glyphs
- * are grouped under one header per category.
+ * WUX-26: the Emoji tab of the sticker panel. A search box filters the shared
+ * glyph table by name (e.g. "heart" finds ❤️), and when the box is empty the
+ * glyphs are grouped under one header per category.
  */
 export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
   const [query, setQuery] = useState('');
-  const trimmed = query.trim().toLowerCase();
-  const results = useMemo(
-    () =>
-      trimmed === ''
-        ? undefined
-        : EMOJI.filter((entry) => entry.name.includes(trimmed) || entry.emoji === trimmed),
-    [trimmed],
-  );
+  const searching = query.trim() !== '';
+  const results = useMemo(() => searchEmoji(query, ALL_EMOJI), [query]);
 
   return (
     <div className="flex flex-col">
@@ -29,16 +26,16 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
         />
       </div>
       <div className="max-h-[260px] overflow-y-auto p-2" role="group" aria-label="Emoji">
-        {results !== undefined ? (
+        {searching ? (
           results.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-muted-foreground">No emoji found.</p>
           ) : (
-            <EmojiGrid entries={results} onEmoji={onEmoji} />
+            <EmojiGrid glyphs={results} onEmoji={onEmoji} />
           )
         ) : (
           EMOJI_CATEGORIES.map((category) => {
-            const entries = EMOJI.filter((entry) => entry.category === category.id);
-            if (entries.length === 0) {
+            const glyphs = EMOJI_BY_CATEGORY[category.id];
+            if (glyphs.length === 0) {
               return null;
             }
             return (
@@ -46,7 +43,7 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
                 <p className="px-1 pt-1 pb-1.5 text-[12px] font-semibold text-subtle-foreground">
                   {category.label}
                 </p>
-                <EmojiGrid entries={entries} onEmoji={onEmoji} />
+                <EmojiGrid glyphs={glyphs} onEmoji={onEmoji} />
               </section>
             );
           })
@@ -56,27 +53,36 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
   );
 }
 
+/** The button label and title: the first two words of the glyph's name. */
+function emojiLabel(glyph: string): string {
+  const name = EMOJI_NAMES[glyph] ?? glyph;
+  return name.split(' ').slice(0, 2).join(' ');
+}
+
 function EmojiGrid({
-  entries,
+  glyphs,
   onEmoji,
 }: {
-  entries: readonly EmojiEntry[];
+  glyphs: readonly string[];
   onEmoji: (emoji: string) => void;
 }) {
   return (
     <div className="grid grid-cols-6 gap-1">
-      {entries.map((entry) => (
-        <button
-          key={entry.emoji}
-          type="button"
-          aria-label={`Insert ${entry.emoji} (${entry.name})`}
-          title={entry.name}
-          onClick={() => onEmoji(entry.emoji)}
-          className="flex h-[48px] items-center justify-center rounded-[8px] text-[26px] hover:bg-surface-raised"
-        >
-          {entry.emoji}
-        </button>
-      ))}
+      {glyphs.map((glyph) => {
+        const label = emojiLabel(glyph);
+        return (
+          <button
+            key={glyph}
+            type="button"
+            aria-label={`Insert ${glyph} (${label})`}
+            title={label}
+            onClick={() => onEmoji(glyph)}
+            className="flex h-[48px] items-center justify-center rounded-[8px] text-[26px] hover:bg-surface-raised"
+          >
+            {glyph}
+          </button>
+        );
+      })}
     </div>
   );
 }
