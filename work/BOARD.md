@@ -1758,3 +1758,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1735](T-1735-site-swap.md) | new landing replaces apps/site (Next.js static export) | 2026-10-16 |
 | [T-1746](T-1746-tool-routines-first.md) | AIs schedule saved-tool routines for fixed data jobs | 2026-10-16 |
 | [T-1748](T-1748-release-version-in-bundle.md) | release APKs embed the tag's version for the updater | 2026-10-16 |
+| [T-1747](T-1747-message-blocks-plan.md) | plan: message blocks (25 native blocks, web + phone) | 2026-10-16 |

@@ -474,6 +474,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - **The cause:** `android-release.yml` passes the version only to prebuild, so the APK's `assets/app.config` says 0.1.0 with no versionCode (checked in the v0.2.5 APK).
           - **T-1748 is running.** Julio OK'd tagging **v0.2.6** once it merges.
           - **Then:** verify `assets/app.config` in the APK, and tell Julio to install it by hand once.
+          - **About 20:35 UTC:** T-1748 is merged and pushed (`7f2961c30`), and **v0.2.6 is tagged and building.**
+        - **New ask: group and topic flow** ("non intuitive… I don't see what people are in what topic, I cant add AIS or people"):
+          - **Julio's case:** @Deepseek is in no topic list of Financial, so the mention was silent. The phone topic sheet can't add AIs; only web has `TopicAisSection`.
+          - **The model today:** `group_members`, `group_ais`, per-topic `topic_ais`, and `topic_members` for private topics. An AI has to join the group, then each topic.
+          - **Julio chose "Per topic, one step":** Add inside a topic shows people and AIs together, and adding an AI also adds it to the group.
+          - **Canvas:** https://claude.ai/artifact/UT7nHBowuCSmev1xLBdMxA (8 boards: the header people stack, the "isn't in Financial · Add" line, the @ list with who's here, the In this topic sheet and panel, Add people or AIs, the group screen with who's in each topic). It's waiting for Julio's rounds; the files are in `.git/zilar-canvas/topics/`.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
