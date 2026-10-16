@@ -140,3 +140,34 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       - run: pnpm build
+
+  # Deploy checks (T-1644, audit OPS-12): run every deploy test that works offline
+  # and render the four compose files, so a broken compose or install script fails
+  # CI before it reaches a server. `admin-password-log` is left out: it builds and
+  # runs containers, so it needs a Docker daemon and network. `scheduled-backups`
+  # is left out too: it already fails on a stale doc assertion.
+  deploy:
+    name: Deploy checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # push-deploy resolves tsx and storage-safety resolves prettier from the
+      # repo's own node_modules, so the workspace must be installed first.
+      - run: pnpm install --frozen-lockfile
+
+      - run: sh deploy/tests/connection-resilience.test.sh
+      - run: sh deploy/tests/host-setup.test.sh
+      - run: sh deploy/tests/install.test.sh
+      - run: sh deploy/tests/push-component-host.test.sh
+      - run: sh deploy/tests/push-deploy.test.sh
+      - run: sh deploy/tests/storage-safety.test.sh
+      - run: sh deploy/tests/compose-config.sh

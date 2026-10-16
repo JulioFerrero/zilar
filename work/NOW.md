@@ -200,7 +200,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **smart wake:** T-1621 (plan), T-1631 (`decideWake`), T-1633 (wired);
       - **size splits:** T-1622, T-1627, T-1628, T-1634, T-1635, T-1636, T-1637;
       - **scheduled AI jobs:** T-1638 (migration 0067, prompt routines), T-1639 (a Stop is not a failure), T-1640 (the guide says to use the person's zone).
-    - **Smart wake is live once deployed (T-1633).** A person's message wakes the AI without a picked mention when:
+    - **Verified live at 02:30 and 02:37 (local):**
+      - **Smart wake:** "what is 17 times 23?" with no `@` got "@Claude Test 391." from @Deepseek in 10 s, with a single mention (T-1633 and T-1625 are live).
+      - **The computer price job, by hand:** @Deepseek's computer fetched BTC 82,301.63 (Yahoo, cross-checked with Coinbase), gold spot about 4,152 USD/oz (Swissquote) and the S&P 500 at 7,744.06 (Yahoo) in 26 s, with the sources. This is the morning-prices job; scheduling it is the T-1638+ chain.
+    - **Smart wake is live (T-1633).** A person's message wakes the AI without a picked mention when:
       - it addresses the AI by name (start, `@Name`, or `Name,`);
       - it's a question in a room with exactly one AI;
       - it's a question within 2 minutes of the AI's own reply.
