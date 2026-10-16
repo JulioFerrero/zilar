@@ -34,8 +34,9 @@ export interface AuthClientOptions {
 
 /**
  * Better Auth's React client configured for React Native: bearer tokens instead
- * of cookies, since native fetch has no persistent cookie jar. The token comes
- * from secure storage and every `set-auth-token` response updates it.
+ * of cookies. React Native's fetch keeps a cookie jar, so the client omits
+ * credentials on every call; the token comes from secure storage and every
+ * `set-auth-token` response updates it.
  */
 export function createZilarAuthClient(options: AuthClientOptions) {
   return createAuthClient({

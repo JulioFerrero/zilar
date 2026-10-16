@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { ChevronLeft } from 'lucide-react-native';
+import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,18 +11,23 @@ import {
   type RoutinesSectionState,
 } from '@/components/ais/routines-section';
 import { ToolsSectionContent, sectionStateOf } from '@/components/ais/tools-section';
+import { useRoutineActions } from '@/components/ais/use-routine-actions';
 import { useToolsApi } from '@/components/ais/use-tools-api';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
+import { mayManageRoles } from '@/lib/roles';
 import { ToolsApiError, type Routine, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+import { useChatStore } from '@/store/chat-store-provider';
 
 /**
  * The Tools and routines page of Group info (T-1573), after `Phone.dc.html`
- * and the web group panel: the group-scoped tools and routines, read only.
- * The rows and the loading/error/empty states are the AI screen's own
- * `ToolsSectionContent` / `RoutinesSectionContent`.
+ * and the web group panel: the group-scoped tools and routines. The routines
+ * are read only for a member, but a manager gets the AI page's own
+ * Pause/Resume/Delete actions (T-1740), hidden when the API would refuse them
+ * (`canManage`, like web's group panel). The rows and the loading/error/empty
+ * states are the AI screen's own `ToolsSectionContent` / `RoutinesSectionContent`.
  */
 
 /** A 404 or an unparseable response: the list reads as empty, not an error. */
@@ -41,9 +47,12 @@ const loadGroupRoutines = (api: ToolsApi, groupId: string) =>
   );
 
 /** The routines body state; the tools side uses `sectionStateOf`. */
-function routinesStateOf(load: AsyncResult.AsyncResult<Routine[], unknown>): RoutinesSectionState {
+function routinesStateOf(
+  load: AsyncResult.AsyncResult<Routine[], unknown>,
+  routines: Routine[],
+): RoutinesSectionState {
   if (AsyncResult.isSuccess(load)) {
-    return { status: 'ready', routines: load.value, message: '' };
+    return { status: 'ready', routines, message: '' };
   }
   if (AsyncResult.isFailure(load)) {
     return { status: 'error', routines: [], message: ROUTINES_LOAD_FAILED_MESSAGE };
@@ -59,6 +68,27 @@ export function ToolsPage({ groupId, onBack }: { groupId: string; onBack: () => 
     [api, groupId],
   );
 
+  // A manager acts on the group's routines, like web's group panel; everyone
+  // else reads the list and the server would refuse a write anyway.
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  const members = useChatStore((state) => state.groupDetail(groupId)?.members);
+  const canManage = mayManageRoles(
+    members?.find((member) => member.userId === currentUserId)?.role,
+  );
+
+  // The actions edit the loaded list in place; a Retry reloads it and drops
+  // the local edits (the query result changes, so the override is cleared).
+  const loadedRoutines = AsyncResult.isSuccess(routinesLoad) ? routinesLoad.value : undefined;
+  const [editedRoutines, setEditedRoutines] = useState<Routine[] | null>(null);
+  const [seenLoad, setSeenLoad] = useState(routinesLoad);
+  if (seenLoad !== routinesLoad) {
+    setSeenLoad(routinesLoad);
+    setEditedRoutines(null);
+  }
+  const routines = editedRoutines ?? loadedRoutines ?? [];
+
+  const actions = useRoutineActions({ api, routines, onRoutines: setEditedRoutines });
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="h-14 flex-row items-center gap-2 px-3">
@@ -73,7 +103,12 @@ export function ToolsPage({ groupId, onBack }: { groupId: string; onBack: () => 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="gap-3 px-4 pt-1">
           <ToolsSectionContent state={sectionStateOf(toolsLoad, [])} onRetry={reloadTools} />
-          <RoutinesSectionContent state={routinesStateOf(routinesLoad)} onRetry={reloadRoutines} />
+          <RoutinesSectionContent
+            state={routinesStateOf(routinesLoad, routines)}
+            onRetry={reloadRoutines}
+            actions={canManage ? actions : undefined}
+            action={canManage ? actions.action : null}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

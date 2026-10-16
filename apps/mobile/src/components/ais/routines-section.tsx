@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Effect } from 'effect';
 
+import {
+  useRoutineActions,
+  type RoutineActionMessage,
+  type RoutineRowActions,
+} from '@/components/ais/use-routine-actions';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -15,50 +20,25 @@ import {
 import { interruptFiber } from '@/lib/effect/timers';
 import { ToolsApiError, type AiToolsApi, type Routine, type ToolsApi } from '@/lib/tools-api';
 
+// T-1740: the action logic moved to `use-routine-actions.ts`; re-exported for
+// `settings/routines.tsx`, which maps failures through the same fixed lines.
+export {
+  routineActionMessage,
+  type RoutineAction,
+  type RoutineActionMessage,
+} from '@/components/ais/use-routine-actions';
+
 /** Fixed user-facing line when the routines list fails to load. */
 export const ROUTINES_LOAD_FAILED_MESSAGE = 'Could not load the routines. Try again.';
 
 export const ROUTINES_EMPTY_MESSAGE =
   'No routines here yet. Ask the AI in the chat to schedule one.';
 
-/** The hint under the list when the server says the routine needs re-approval. */
-export const ROUTINE_NEEDS_APPROVAL_MESSAGE =
-  'This routine needs re-approval. Ask the AI to schedule it again.';
-
-/** The error under the list when the server refuses the change. */
-export const ROUTINE_FORBIDDEN_MESSAGE = 'You may not change this routine.';
-
-/** The error under the list for any other action failure. Never server text. */
-export const ROUTINE_UPDATE_FAILED_MESSAGE = 'Could not update the routine. Try again.';
-
 export type RoutinesSectionState = {
   status: 'loading' | 'ready' | 'error';
   routines: Routine[];
   message: string;
 };
-
-export type RoutineActionMessage = {
-  kind: 'hint' | 'error';
-  text: string;
-};
-
-export type RoutineAction = 'pause' | 'resume' | 'delete';
-
-/**
- * Maps an action failure to the fixed user-facing message (T-0212, like
- * web's `mutate` in `RoutinesSection.tsx` but never the server text): a
- * `needs_approval` answer is a hint, 403/404 is the forbidden line, and
- * anything else (including network errors) is the generic line.
- */
-export function routineActionMessage(error: unknown): RoutineActionMessage {
-  if (error instanceof ToolsApiError && error.code === 'needs_approval') {
-    return { kind: 'hint', text: ROUTINE_NEEDS_APPROVAL_MESSAGE };
-  }
-  if (error instanceof ToolsApiError && (error.status === 403 || error.status === 404)) {
-    return { kind: 'error', text: ROUTINE_FORBIDDEN_MESSAGE };
-  }
-  return { kind: 'error', text: ROUTINE_UPDATE_FAILED_MESSAGE };
-}
 
 /**
  * Loads one AI's routines. A 404 or an unparseable response reads as an
@@ -77,62 +57,6 @@ export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
 /** Promise form of `loadAiRoutinesEffect`: any other failure throws. */
 export const loadAiRoutines = (api: ToolsApi, aiId: string): Promise<Routine[]> =>
   Effect.runPromise(loadAiRoutinesEffect(api, aiId));
-
-export type RoutineActionOutcome = {
-  routines: Routine[];
-  action: RoutineActionMessage | null;
-};
-
-/**
- * Runs one routine action and folds it into the list: pause/resume swaps
- * the row for the routine the server returned, delete removes the row, and
- * a failure keeps the list with the fixed message. A new call clears the
- * previous message (success carries `action: null`).
- */
-export const applyRoutineActionEffect = (
-  api: AiToolsApi,
-  routines: Routine[],
-  id: string,
-  action: RoutineAction,
-): Effect.Effect<RoutineActionOutcome> =>
-  (action === 'delete'
-    ? Effect.tryPromise({ try: () => api.deleteRoutine(id), catch: (cause) => cause }).pipe(
-        Effect.map((): RoutineActionOutcome => ({
-          routines: routines.filter((routine) => routine.id !== id),
-          action: null,
-        })),
-      )
-    : Effect.tryPromise({
-        try: () => (action === 'pause' ? api.pauseRoutine(id) : api.resumeRoutine(id)),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.map((updated): RoutineActionOutcome => ({
-          routines: routines.map((routine) => (routine.id === id ? updated : routine)),
-          action: null,
-        })),
-      )
-  ).pipe(
-    Effect.catch((error) => Effect.succeed({ routines, action: routineActionMessage(error) })),
-  );
-
-/** Promise form of `applyRoutineActionEffect`. It never rejects: a failure is the outcome's message. */
-export const applyRoutineAction = (
-  api: AiToolsApi,
-  routines: Routine[],
-  id: string,
-  action: RoutineAction,
-): Promise<RoutineActionOutcome> =>
-  Effect.runPromise(applyRoutineActionEffect(api, routines, id, action));
-
-export type RoutineRowActions = {
-  busyId: string | null;
-  confirmingId: string | null;
-  onPause: (id: string) => void;
-  onResume: (id: string) => void;
-  onAskDelete: (id: string) => void;
-  onConfirmDelete: (id: string) => void;
-  onCancelDelete: () => void;
-};
 
 function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineRowActions }) {
   const explanation = pausedReasonText(routine.pausedReason, routine.status);
@@ -275,9 +199,6 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
     message: '',
   });
   const [reloadTick, setReloadTick] = useState(0);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [action, setAction] = useState<RoutineActionMessage | null>(null);
 
   useEffect(() => {
     // Unmount or a new aiId interrupts the load, so a late answer never lands.
@@ -297,51 +218,11 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
     };
   }, [api, aiId, reloadTick]);
 
-  const routinesRef = useRef(state.routines);
-  // The running action folds into the latest list through the ref: the
-  // closure's `state` would go stale while the call is in flight.
-  useEffect(() => {
-    routinesRef.current = state.routines;
-  }, [state.routines]);
-
-  const runningRef = useRef(false);
-
-  const run = (id: string, routineAction: RoutineAction): void => {
-    if (runningRef.current) return;
-    runningRef.current = true;
-    setBusyId(id);
-    setAction(null);
-    Effect.runFork(
-      applyRoutineActionEffect(api, routinesRef.current, id, routineAction).pipe(
-        Effect.flatMap((outcome) =>
-          Effect.sync(() => {
-            setState((current) => ({ ...current, routines: outcome.routines }));
-            setAction(outcome.action);
-            setConfirmingId(null);
-          }),
-        ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            runningRef.current = false;
-            setBusyId(null);
-          }),
-        ),
-      ),
-    );
-  };
-
-  const actions: RoutineRowActions = {
-    busyId,
-    confirmingId,
-    onPause: (id) => run(id, 'pause'),
-    onResume: (id) => run(id, 'resume'),
-    onAskDelete: (id) => {
-      setAction(null);
-      setConfirmingId(id);
-    },
-    onConfirmDelete: (id) => run(id, 'delete'),
-    onCancelDelete: () => setConfirmingId(null),
-  };
+  const actions = useRoutineActions({
+    api,
+    routines: state.routines,
+    onRoutines: (routines) => setState((current) => ({ ...current, routines })),
+  });
 
   return (
     <View accessibilityLabel="Routines" className="gap-1">
@@ -350,7 +231,7 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
         state={state}
         onRetry={() => setReloadTick((tick) => tick + 1)}
         actions={actions}
-        action={action}
+        action={actions.action}
       />
     </View>
   );

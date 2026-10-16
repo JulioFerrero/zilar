@@ -163,8 +163,8 @@ const InviteCheckSchema = struct({
 
 /**
  * Checks an invite link without leaking anything about its creator. The route
- * is public: no token, and the `fetch` init stays bare, so it stays outside the
- * bearer client.
+ * is public: no token, and the `fetch` init omits credentials, so it stays
+ * outside the bearer client.
  */
 export async function checkInvite(
   apiUrl: string,
@@ -174,6 +174,7 @@ export async function checkInvite(
   let response: Response;
   try {
     response = await fetchImpl(`${apiUrl}/api/invites/${encodeURIComponent(code)}`, {
+      credentials: 'omit',
       headers: { accept: 'application/json' },
     });
   } catch {

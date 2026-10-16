@@ -71,6 +71,7 @@ describe('checkInvite', () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ valid: true })) as unknown as typeof fetch;
     await expect(checkInvite('http://server.test', 'code 1', fetchImpl)).resolves.toBe(true);
     expect(fetchImpl).toHaveBeenCalledWith('http://server.test/api/invites/code%201', {
+      credentials: 'omit',
       headers: { accept: 'application/json' },
     });
   });

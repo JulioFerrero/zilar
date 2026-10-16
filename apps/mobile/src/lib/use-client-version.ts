@@ -25,7 +25,7 @@ const fetchMinClientProtocol = (): Promise<string | undefined> =>
   runMobile(
     Effect.gen(function* () {
       const response = yield* Effect.tryPromise({
-        try: () => fetch(`${API_URL}/health`, { method: 'GET' }),
+        try: () => fetch(`${API_URL}/health`, { method: 'GET', credentials: 'omit' }),
         catch: () => undefined,
       });
       if (!response.ok) {

@@ -157,6 +157,7 @@ export function useGroupPicture(
         try: async () => {
           const response = await fetch(groupAvatarSlot(groupId), {
             method: 'DELETE',
+            credentials: 'omit',
             headers: { authorization: `Bearer ${bearer}` },
           });
           if (!response.ok) {

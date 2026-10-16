@@ -1747,3 +1747,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1732](T-1732-site-next-keys-computer.md) | provider band and pinned terminal on the new landing | 2026-10-16 |
 | [T-1737](T-1737-routine-actions-fixes.md) | routines: tool form without hosts, ids, delete by id, one card | 2026-10-16 |
 | [T-1738](T-1738-ai-turn-behaviour.md) | AI turns: no post after routine OK; typed answer closes question | 2026-10-16 |
+| [T-1740](T-1740-phone-group-routines.md) | phone group page manages routines; last fetches omit cookies | 2026-10-16 |

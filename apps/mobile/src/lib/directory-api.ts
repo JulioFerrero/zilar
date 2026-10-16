@@ -143,6 +143,7 @@ const requestEffect = Effect.fnUntraced(function* (
     try: (signal) =>
       fetchImpl(`${apiUrl}${path}`, {
         ...init,
+        credentials: 'omit',
         signal,
         headers: {
           accept: 'application/json',
