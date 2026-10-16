@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import type { ChatStoreState } from '@/store/store';
 import { ChatListItem } from '../ChatListItem';
 import { EmptyState } from '../EmptyState';
-import { GroupHeaderRow } from '../TopicRow';
+import { GroupHeaderRow } from './GroupHeaderRow';
 import { MessageSearchResults } from '../MessageSearchResults';
 import { PeopleSearchResult } from '../PeopleSearchResult';
 import { ChatListSkeleton } from '../Skeleton';

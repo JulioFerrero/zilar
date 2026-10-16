@@ -1680,3 +1680,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1614](T-1614-scheduled-ai-jobs-plan.md) | Plan: scheduled AI jobs (prompt routines) | 2026-10-16 |
 | [T-1668](T-1668-phone-people-prefix-search.md) | Phone: chat-list search finds people by name prefix | 2026-10-16 |
 | [T-1670](T-1670-selection-bar-fit.md) | Phone select bar: icon keys so the count fits | 2026-10-16 |
+| [T-1671](T-1671-split-topic-row.md) | Split GroupHeaderRow out of the web TopicRow | 2026-10-16 |
