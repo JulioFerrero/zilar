@@ -254,9 +254,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1665 (the phone picker lacked 🔥 🎉 😭 👀 ✅ ❌ 💯 ✨; 31 common emoji added with names, and the table split under 400 lines);
         - T-1666 (select mode: Delete and Copy beside Forward, with web's rules);
         - T-1667 (tap a reply quote to jump to the quoted message).
+      - **Merged and checked on the emulator (second QA pass, 03:57 local):**
+        - T-1668: "mar" shows People: Marta @marta, Marco @marco, above Chats;
+        - T-1669: the emoji/GIF sheet rises above the keyboard, so results show while typing;
+        - T-1670: the select bar reads "✕ 2 selected 🗑 ⧉ Forward".
+      - **Also merged:** T-1614 (the scheduled-jobs plan doc, after two auto rounds); T-1671 (split of web `TopicRow.tsx`, 398 → 218).
       - **Running:**
-        - T-1668 (chat-list search finds people by name or @username prefix, like web; in a fix round for web's 300 ms debounce);
-        - T-1669 and T-1670 (the two QA fixes below).
+        - T-1672 (mock: a seed person's @handle resolves to their seed id, with relation "contact");
+        - T-1673 (one emoji table for web and phone, about 328 glyphs);
+        - T-1674 (split of the phone `message-bubble.tsx`, plus the sticker reply-quote long hold).
       - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):
         - ✅ T-1659: back cancels an armed reply and stays in the chat.
         - ✅ T-1660/T-1665: "fire" → 🚒 🔥, and a tap inserts it.

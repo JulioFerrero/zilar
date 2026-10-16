@@ -1,5 +1,5 @@
 import { canDeleteMessage, canEditMessage, isBigEmoji } from '@zilar/chat-core';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
@@ -15,13 +15,7 @@ import {
   type MessageBubbleProps,
   StickerBubble,
 } from '@/components/chat/message-bubble-content';
-import {
-  appActiveSource,
-  BubbleTail,
-  GENERATING_FOREGROUND,
-  LONG_PRESS_MS,
-  SWAP_MS,
-} from '@/components/chat/message-bubble-decor';
+import { appActiveSource, BubbleTail, LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
 import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
@@ -30,8 +24,8 @@ import { SwipeToReply } from '@/components/chat/swipe-to-reply';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle } from '@/lib/depth';
+import { useBubbleReveal } from '@/components/chat/use-bubble-reveal';
 import { messageAccessibilityLabel } from '@/lib/message-a11y';
-import { useSmoothText } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -110,37 +104,14 @@ function MessageBubbleImpl({
   const react = onReact ?? (() => {});
   const metaColor = outgoing ? colors.outgoingMeta : MUTED_FOREGROUND;
   const hasText = message.text !== undefined && message.text.length > 0;
-  const beyondDraft = revealTurnId !== undefined && !draft;
-  const animate = draft || beyondDraft;
-  const { text, done } = useSmoothText(message.text ?? '', {
-    animate,
-    initial: 'full',
-    reducedMotion: reduceMotion,
-    active: appActiveSource,
+  const { text, generating, everLive, textColor, swap } = useBubbleReveal({
+    message,
+    outgoing,
+    draft,
+    revealTurnId,
+    reduceMotion,
+    appActiveSource,
   });
-  const generating = draft || (beyondDraft && !done);
-  // A bubble that was ever written live keeps the recessed shell and fades the
-  // incoming look in over it, so the swap has no jump.
-  const everLive = !outgoing && (draft || revealTurnId !== undefined);
-  const textColor = outgoing ? '#0a0a0a' : generating ? GENERATING_FOREGROUND : '#ededed';
-  const [swap] = useState(() => new Animated.Value(generating ? 0 : 1));
-  const wasGenerating = useRef(generating);
-  useEffect(() => {
-    if (wasGenerating.current && !generating) {
-      if (reduceMotion) {
-        swap.setValue(1);
-      } else {
-        Animated.timing(swap, {
-          toValue: 1,
-          duration: SWAP_MS,
-          useNativeDriver: true,
-        }).start();
-      }
-    } else if (!wasGenerating.current && generating) {
-      swap.setValue(0);
-    }
-    wasGenerating.current = generating;
-  }, [generating, reduceMotion, swap]);
   const bigEmoji =
     hasText &&
     message.replyTo === undefined &&
@@ -222,15 +193,17 @@ function MessageBubbleImpl({
         className="relative"
       >
         {sticker !== undefined ? (
-          <StickerBubble
-            sticker={sticker}
-            message={message}
-            outgoing={outgoing}
-            showSenderName={showSenderName}
-            failed={failedSticker}
-            onRetry={onRetrySticker}
-            onLongPress={openMenu}
-          />
+          <MessageMenuProvider openMenu={openMenu}>
+            <StickerBubble
+              sticker={sticker}
+              message={message}
+              outgoing={outgoing}
+              showSenderName={showSenderName}
+              failed={failedSticker}
+              onRetry={onRetrySticker}
+              onLongPress={openMenu}
+            />
+          </MessageMenuProvider>
         ) : standaloneCard ? (
           <Pressable
             onLongPress={generating ? undefined : openMenu}

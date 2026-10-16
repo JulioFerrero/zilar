@@ -1682,3 +1682,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1670](T-1670-selection-bar-fit.md) | Phone select bar: icon keys so the count fits | 2026-10-16 |
 | [T-1671](T-1671-split-topic-row.md) | Split GroupHeaderRow out of the web TopicRow | 2026-10-16 |
 | [T-1669](T-1669-emoji-sheet-keyboard.md) | Phone emoji sheet rises above the keyboard | 2026-10-16 |
+| [T-1674](T-1674-split-message-bubble.md) | Split the phone bubble's reveal hook; sticker quote long hold | 2026-10-16 |
