@@ -5,7 +5,7 @@ import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
-import { runToolLoop } from './dm-tool-turn';
+import { runToolLoop } from './tool-rounds';
 import { buildHandoffLine, findHandoffIndex } from './handoff';
 import { stripLeadingMention } from './reply-mention';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
