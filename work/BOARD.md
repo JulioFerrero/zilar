@@ -1686,3 +1686,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1673](T-1673-shared-emoji-table.md) | One emoji table for web and phone in chat-core | 2026-10-16 |
 | [T-1676](T-1676-channel-manage-noun.md) | Phone: channel manage errors say channel | 2026-10-16 |
 | [T-1675](T-1675-split-web-composer.md) | Split the web composer's recording lifecycle into a hook | 2026-10-16 |
+| [T-1677](T-1677-phone-new-message-contacts.md) | Phone: New message lists contacts with a filter | 2026-10-16 |
