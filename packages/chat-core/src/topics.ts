@@ -48,3 +48,15 @@ export function sortTopics(topics: readonly ChatSummary[]): ChatSummary[] {
     return chatSortTime(right) - chatSortTime(left) || left.title.localeCompare(right.title);
   });
 }
+
+/**
+ * T-1764: whether the user is in a topic. General is everyone's topic; any
+ * other topic lists its people in `memberIds`. Older servers omit that list,
+ * which reads as "not joined" — hiding is safer than leaking.
+ */
+export function isTopicJoined(
+  topic: { isGeneral: boolean; memberIds?: readonly string[] },
+  userId: string,
+): boolean {
+  return topic.isGeneral || (topic.memberIds ?? []).includes(userId);
+}

@@ -162,7 +162,12 @@ export const TopicOwner = mutableStruct({
 
 export type TopicOwner = typeof TopicOwner.Type;
 
-export const TopicAi = mutableStruct({ id: Schema.String, name: Schema.String });
+export const TopicAi = mutableStruct({
+  id: Schema.String,
+  name: Schema.String,
+  /** T-1764: the AI's picture; omitted when it has none. */
+  avatarUrl: Schema.optional(Schema.String),
+});
 
 export type TopicAi = typeof TopicAi.Type;
 
@@ -220,6 +225,9 @@ export const Topic = mutableStruct({
    * servers. */
   doneAt: Schema.optional(Schema.NullOr(Schema.String)),
   memberCount: Schema.Number,
+  /** T-1764: the people in this topic (General: the whole group; any other
+   * topic: its `topic_members` plus role holders). Absent on older servers. */
+  memberIds: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   ais: Schema.mutable(Schema.Array(TopicAi)),
   roles: Schema.optional(Schema.mutable(Schema.Array(TopicRole))),
   approverRole: Schema.optional(Schema.NullOr(ApproverRole)),

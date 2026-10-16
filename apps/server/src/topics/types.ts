@@ -65,6 +65,11 @@ export interface TopicView {
    * that predate the field still typecheck. */
   doneAt?: string | null;
   memberCount: number;
+  /** T-1764: the people in this topic (General: the whole group; any other
+   * topic: its `topic_members` plus role holders), sorted. Always set by
+   * `buildTopicView`; optional only so older hand-built fixtures still
+   * typecheck, the same pattern `doneAt?` uses. */
+  memberIds?: string[];
   /** AIs added to this topic (never private names). */
   ais: TopicAiView[];
   /** T-0116: roles with access to this topic (empty for public topics). */
@@ -79,4 +84,6 @@ export interface TopicView {
 export interface TopicAiView {
   id: string;
   name: string;
+  /** T-1764: the AI's picture; omitted when it has none. */
+  avatarUrl?: string;
 }

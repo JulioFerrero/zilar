@@ -4,6 +4,7 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRoleRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -99,12 +100,13 @@ function buildTopicView(
   mucDomain: string,
   parts: {
     memberCount: number;
+    memberIds: string[];
     owner: TopicOwnerView | null;
     aiList: TopicAiView[];
     roleInfo: Awaited<ReturnType<typeof rolesOfTopic>>;
   },
 ): TopicView {
-  const { memberCount, owner, aiList, roleInfo } = parts;
+  const { memberCount, memberIds, owner, aiList, roleInfo } = parts;
   return {
     id: topic.id,
     groupId: topic.groupId,
@@ -121,6 +123,7 @@ function buildTopicView(
     archived: topic.archivedAt !== null,
     doneAt: topic.doneAt?.toISOString() ?? null,
     memberCount,
+    memberIds,
     ais: aiList,
     roles: roleInfo.roles,
     approverRole: roleInfo.approverRole,
@@ -132,17 +135,30 @@ export async function toTopicView(
   topic: TopicRow,
   mucDomain: string,
 ): Promise<TopicView> {
-  const [memberCount, owner, aiList, roleInfo] = await Promise.all([
-    countTopicMembers(db, topic),
-    resolveOwnerName(db, topic),
-    listTopicAis(db, topic.id),
-    rolesOfTopic(db, topic.id, topic.groupId),
-  ]);
-  return buildTopicView(topic, mucDomain, { memberCount, owner, aiList, roleInfo });
+  // T-1764: both paths share the one membership and avatar rule.
+  return (await toTopicViews(db, [topic], mucDomain))[0]!;
 }
 
-// The AIs added to one topic, sorted by name. Rows exist only for
-// non-General topics; General membership is `group_ais`.
+// T-1764: the avatar urls of a set of AIs, in one query for the whole set, so
+// a read attaches each picture without a query per AI.
+async function aiAvatarUrls(
+  db: ServerDatabase,
+  aiIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = await avatarIdsByOwner(db, 'ai', [...aiIds]);
+  return new Map([...ids].map(([aiId, avatarId]) => [aiId, avatarUrlFor(avatarId)]));
+}
+
+// Attaches `avatarUrl` to each AI that has a picture, from the map above.
+function withAiAvatars(ais: TopicAiView[], urls: Map<string, string>): TopicAiView[] {
+  return ais.map((ai) => {
+    const url = urls.get(ai.id);
+    return url === undefined ? ai : { ...ai, avatarUrl: url };
+  });
+}
+
+// The AIs added to one topic, sorted by name and carrying their pictures.
+// Rows exist only for non-General topics; General membership is `group_ais`.
 export async function listTopicAis(db: ServerDatabase, topicId: string): Promise<TopicAiView[]> {
   const rows = await runSql(
     db,
@@ -154,14 +170,23 @@ export async function listTopicAis(db: ServerDatabase, topicId: string): Promise
         WHERE ta.topic_id = ${topicId}`;
     }),
   );
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const ais = [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return withAiAvatars(
+    ais,
+    await aiAvatarUrls(
+      db,
+      ais.map((ai) => ai.id),
+    ),
+  );
 }
 
 interface TopicViewParts {
-  memberCounts: Map<string, number>;
+  memberIds: Map<string, string[]>;
   owners: Map<string, TopicOwnerView | null>;
   ais: Map<string, TopicAiView[]>;
   roles: Map<string, Awaited<ReturnType<typeof rolesOfTopic>>>;
+  /** T-1764: the group's AI count, so General's `memberCount` can add it. */
+  groupAiCounts: Map<string, number>;
 }
 
 function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
@@ -261,20 +286,26 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
   const holdersByRole = groupBy(holderRows, (row) => row.roleId);
   const directByTopic = groupBy(directRows, (row) => row.topicId);
   const aisByTopic = groupBy(aiRows, (row) => row.topicId);
+  // T-1764: every AI of every topic in one picture lookup, so each `ais` row
+  // can carry its `avatarUrl`.
+  const aiPictures = await aiAvatarUrls(
+    db,
+    aiRows.map((row) => row.id),
+  );
   const groupAiCounts = new Map(groupAiRows.map((row) => [row.groupId, Number(row.total)]));
   const userNames = new Map(userRows.map((row) => [row.id, row.name]));
   const aiNames = new Map(aiOwnerRows.map((row) => [row.id, row.name]));
   const approverByTopic = new Map(approverRows.map((row) => [row.id, row.approverRoleId]));
 
   const parts: TopicViewParts = {
-    memberCounts: new Map(),
+    memberIds: new Map(),
     owners: new Map(),
     ais: new Map(),
     roles: new Map(),
+    groupAiCounts,
   };
   for (const topic of rows) {
     const groupMembers = membersByGroup.get(topic.groupId) ?? new Set<string>();
-    const groupAiCount = groupAiCounts.get(topic.groupId) ?? 0;
     const groupRoles = rolesByGroup.get(topic.groupId) ?? [];
     const wanted = new Set((roleIdsByTopic.get(topic.id) ?? []).map((row) => row.roleId));
     const attached = groupRoles.filter((role) => wanted.has(role.id));
@@ -293,7 +324,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     });
 
     if (topic.isGeneral) {
-      parts.memberCounts.set(topic.id, groupMembers.size + groupAiCount);
+      parts.memberIds.set(topic.id, [...groupMembers].sort());
     } else {
       const ids = new Set((directByTopic.get(topic.id) ?? []).map((row) => row.userId));
       for (const role of attached) {
@@ -301,7 +332,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
           ids.add(row.userId);
         }
       }
-      parts.memberCounts.set(topic.id, ids.size + (aisByTopic.get(topic.id)?.length ?? 0));
+      parts.memberIds.set(topic.id, [...ids].sort());
     }
 
     let owner: TopicOwnerView | null = null;
@@ -316,9 +347,12 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
 
     parts.ais.set(
       topic.id,
-      (aisByTopic.get(topic.id) ?? [])
-        .map((row) => ({ id: row.id, name: row.name }))
-        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+      withAiAvatars(
+        (aisByTopic.get(topic.id) ?? [])
+          .map((row) => ({ id: row.id, name: row.name }))
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+        aiPictures,
+      ),
     );
   }
   return parts;
@@ -333,14 +367,20 @@ export async function toTopicViews(
     return [];
   }
   const parts = await loadTopicViewParts(db, rows);
-  const views = rows.map((topic) =>
-    buildTopicView(topic, mucDomain, {
-      memberCount: parts.memberCounts.get(topic.id) ?? 0,
+  const views = rows.map((topic) => {
+    const memberIds = parts.memberIds.get(topic.id) ?? [];
+    // T-1764: `memberCount` is the people plus the AIs (General: the group's).
+    const aiCount = topic.isGeneral
+      ? (parts.groupAiCounts.get(topic.groupId) ?? 0)
+      : (parts.ais.get(topic.id)?.length ?? 0);
+    return buildTopicView(topic, mucDomain, {
+      memberCount: memberIds.length + aiCount,
+      memberIds,
       owner: parts.owners.get(topic.id) ?? null,
       aiList: parts.ais.get(topic.id) ?? [],
       roleInfo: parts.roles.get(topic.id) ?? { roles: [], approverRole: null },
-    }),
-  );
+    });
+  });
   views.sort((a, b) => {
     if (a.isGeneral !== b.isGeneral) {
       return a.isGeneral ? -1 : 1;

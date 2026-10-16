@@ -26,6 +26,8 @@ export type { TopicKind, TopicStatus, TopicVisibility, TopicOwner };
 export interface TopicAi {
   id: string;
   name: string;
+  /** T-1764: the AI's picture, absent when it has none. */
+  avatarUrl?: string;
 }
 
 export interface Topic {
@@ -43,6 +45,10 @@ export interface Topic {
   isGeneral: boolean;
   archived: boolean;
   memberCount: number;
+  // T-1764: the people in this topic (General: the whole group; any other:
+  // its direct members plus role holders). Optional for the same reason as
+  // `roles`: hand-built test fixtures and older servers may omit it.
+  memberIds?: string[];
   ais: TopicAi[];
   // T-0116: roles with access and the approver role. Absent on payloads from
   // an older server (treated as none); never stale, the store replaces them
