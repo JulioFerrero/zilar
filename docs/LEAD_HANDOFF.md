@@ -19,6 +19,11 @@ Standing decisions: release v0.1.13 is live at https://chat.zilar.app (merges re
 - A PACKET READY line means the pre-review finished. It is only current if `state.packetReadyForHead` equals the worktree HEAD. Deleting `PREREVIEW.md` makes the autopilot print a spurious "PRE-REVIEW STALLED" line: ignore it.
 - Fix round to an idle worker: write a prompt file with numbered findings, one commit each, exact test names, "keep status review"; `lead reply T-XXXX <file>`. Never reply while the worker turn is running (it interrupts).
 - Merge: write the Review in the task file (status `merged`), commit it, then `lead merge T-XXXX --summary "..."`; it rebases and runs `pnpm gate`, and refuses on red. The subject `T-XXXX: summary` must be at most 72 characters, and a modified `work/NOW.md` rides along in the same commit (T-1420). On a rebase conflict follow `docs/LEAD_LOOP.md` ("When a rebase conflicts"): the lead starts the rebase, the worker resolves the files, the lead continues. The registry files `apps/mobile/src/lib/settings-items.ts` and `components/chat/new-chat-button.tsx` conflict most; `settings-items.ts` has `merge=union`, which can leave a row outside the array, so the gate must pass after any rebase.
+- **One deploy per batch (T-1712, 2026-10-16).** Every push to main that touches a watch path redeploys the whole stack and restarts the server, until the stack split (`docs/deploy/zero-downtime-plan.md` Phase 2).
+  - Merge with `lead merge T-X --summary "…" --hold`: it merges locally and doesn't push.
+  - Then run `lead push` once for the whole batch, at most every 30 minutes.
+  - `lead batch merge` already pushes only once, at the end.
+  - Ask Julio before a push while he is testing an AI.
 - **The lead's merge runner (2026-10-08).** Merges take 6-20 minutes, so the lead does not run them by hand. A small zsh loop runs one line of a queue file at a time:
   - `spec T-X` copies a spec into `work/`, commits and pushes;
   - `launch T-X` runs the spec check, then `lead launch`, then waits 20 s;
