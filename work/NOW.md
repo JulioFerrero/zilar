@@ -529,8 +529,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - After it deploys, Julio asks Deepseek to update `market-prices` to the board's shape.
                 - **T-1764 (S2) and T-1766 are live (`b188fe043`, about 22:52 UTC).** Health OK.
             - **The general cards pass** (Julio 10-17: "jack-of-all-trades"; "both in parallel"; live test OK in a new topic "cards test" as @claude_test):
-              - **T-1767 (running):** the group seams on web and phone.
-                - Then 4 web group tasks (data / charts / progress / content) and 4 phone twins, at most 3 mobile at once.
+              - **T-1767 is merged and held** (the group seams).
+                - **Running:** the web groups T-1770 (data), T-1771 (charts), T-1772 (progress) and T-1773 (content + place), and the phone T-1775 (data).
+                - **Next:** the phone twins of charts, progress and content, after each web twin merges, since they reuse its chat-core helper.
               - **T-1768 (running):** the shared card guide, `fmt` date helpers and `tool.save` card reports.
                 - **Hold its merge** until the web group renderers merge.
               - **Then:** the live test of about 20 varied requests, with screenshots against the boards.

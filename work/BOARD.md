@@ -1777,3 +1777,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1764](T-1764-topic-member-ids.md) | Topic.memberIds, TopicAi.avatarUrl, isTopicJoined | 2026-10-16 |
 | [T-1766](T-1766-tool-card-header.md) | tool cards: card header, readable title, fmt helper | 2026-10-16 |
 | [T-1767](T-1767-block-group-seams.md) | block group seams on web and phone | 2026-10-16 |
+| [T-1770](T-1770-web-data-blocks.md) | web stats and table blocks | 2026-10-16 |
