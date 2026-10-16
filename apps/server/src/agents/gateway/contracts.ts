@@ -17,6 +17,9 @@ import type { DeskClient } from './desk-exec';
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;
+  /** T-1633: an optional low-volume trace line. The pure test logger only
+   * implements info/warn, so callers use `logger.debug?.(…)`. */
+  debug?: (fields: Record<string, unknown>, message: string) => void;
 }
 
 export interface AgentGatewayDeps {
@@ -178,6 +181,10 @@ export interface RoomSubscription {
   topicId: string;
   joinedAtMs: number;
   nick: string;
+  /** T-1633: when this AI's own room message reflected back, for rule R. */
+  lastOwnReplyAtMs?: number;
+  /** T-1633: when another AI's message arrived in the room, for rule R. */
+  lastOtherAiAtMs?: number;
 }
 
 // T-0475: one debounce window per room, at the gateway level, shared by every

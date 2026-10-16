@@ -1644,3 +1644,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1635](T-1635-split-desk-docker.md) | Split the jail argument builders out of desk docker.ts | 2026-10-16 |
 | [T-1636](T-1636-split-model-client.md) | Split the error mapping out of ai/model-client.ts | 2026-10-16 |
 | [T-1634](T-1634-split-dm-tool-turn.md) | Split the tool round loop out of agents/dm-tool-turn.ts | 2026-10-16 |
+| [T-1633](T-1633-wire-smart-wake.md) | Group AIs wake on a name, a one-AI-room question or a follow-up | 2026-10-16 |

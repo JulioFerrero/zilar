@@ -20,6 +20,7 @@ import {
   createGatewayHelpers,
   jsonResponse,
   seedAi as seedGatewayAi,
+  tick,
   waitFor,
   type Call,
 } from './gateway.test-harness';
@@ -380,5 +381,200 @@ describe('group turn failure notice (T-1290)', () => {
     expect(roomReplies()[0]?.text).not.toContain(PROVIDER_KEY_REJECTED_REPLY);
     expect(ownerDms()).toHaveLength(1);
     expect(ownerDms()[0]?.text).toBe(PROVIDER_KEY_REJECTED_REPLY);
+  });
+});
+
+// T-1633 (plan smart-wake §5.3): `decideWake` is wired into the mention check,
+// so a person's unaddressed message wakes an AI when it clearly addresses it,
+// when it is a question in a one-AI room, or when it is a follow-up question
+// right after that AI's own reply.
+describe('smart wake rules (T-1633)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  type SeededAi = Awaited<ReturnType<typeof seedGatewayAi>>;
+
+  const roomReplies = (core: FakeCore, roomJid: string): FakeCore['sent'] =>
+    core.sent.filter((message) => message.to === roomJid && message.kind === 'groupchat');
+
+  // One AI per name, all joined to the group's room. `calls` collects the
+  // model calls every AI makes, so a test can assert a wake never fired.
+  async function openRoom(
+    names: string[],
+    calls: Call[],
+  ): Promise<{ cores: FakeCore[]; roomJid: string; senderJid: string; aiJids: string[] }> {
+    const fetchImpl: FetchLike = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve(completionResponse('AI answer'));
+    };
+    const helpers = createGatewayHelpers({
+      getContext: () => context,
+      setGateway: () => undefined,
+    });
+    const cores: FakeCore[] = [];
+    const { gateway } = helpers.harness(cores, fetchImpl);
+    const seeded: SeededAi[] = [];
+    for (const name of names) {
+      seeded.push(await seedGatewayAi(context, { name }));
+    }
+    const first = seeded[0];
+    if (first === undefined) {
+      throw new Error('openRoom needs at least one AI');
+    }
+    await seedGroup(
+      context,
+      first.ownerId,
+      [{ userId: first.ownerId, role: 'owner' }],
+      seeded.map((ai) => ai.aiId),
+    );
+    await gateway.start();
+    await waitFor(() => gateway.aiIds().length === seeded.length);
+    const aiCores: FakeCore[] = [];
+    for (const ai of seeded) {
+      const core = await helpers.coreFor(cores, ai.aiJid);
+      await waitFor(() => core.joined.length === 1);
+      aiCores.push(core);
+    }
+    const roomJid = aiCores[0]?.joined[0]?.roomJid ?? '';
+    expect(roomJid).not.toBe('');
+    return {
+      cores: aiCores,
+      roomJid,
+      senderJid: first.ownerJid,
+      aiJids: seeded.map((ai) => ai.aiJid),
+    };
+  }
+
+  it('answers an unaddressed question in a one-AI room (rule S)', async () => {
+    const calls: Call[] = [];
+    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI'], calls);
+    const core = cores[0];
+    if (core === undefined) {
+      throw new Error('no core');
+    }
+    core.receive({
+      id: 'q-1',
+      chatJid: roomJid,
+      kind: 'groupchat',
+      fromJid: senderJid,
+      fromResolved: true,
+      fromNick: 'Owner',
+      body: 'what is BTC at?',
+      timestamp: ROOM_DAY,
+      outgoing: false,
+    });
+    await waitFor(() => roomReplies(core, roomJid).length === 1);
+    expect(calls.length).toBe(1);
+  });
+
+  it('does not answer an unaddressed question in a two-AI room', async () => {
+    const calls: Call[] = [];
+    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI', 'Second AI'], calls);
+    const [core, secondCore] = cores;
+    if (core === undefined || secondCore === undefined) {
+      throw new Error('missing cores');
+    }
+    const message = {
+      id: 'q-1',
+      chatJid: roomJid,
+      kind: 'groupchat' as const,
+      fromJid: senderJid,
+      fromResolved: true,
+      fromNick: 'Owner',
+      body: 'what is BTC at?',
+      timestamp: ROOM_DAY,
+      outgoing: false,
+    };
+    core.receive(message);
+    secondCore.receive(message);
+    await tick(200);
+    expect(roomReplies(core, roomJid)).toHaveLength(0);
+    expect(roomReplies(secondCore, roomJid)).toHaveLength(0);
+    expect(calls.length).toBe(0);
+  });
+
+  it('does not answer a plain remark', async () => {
+    const calls: Call[] = [];
+    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI'], calls);
+    const core = cores[0];
+    if (core === undefined) {
+      throw new Error('no core');
+    }
+    core.receive({
+      id: 'r-1',
+      chatJid: roomJid,
+      kind: 'groupchat',
+      fromJid: senderJid,
+      fromResolved: true,
+      fromNick: 'Owner',
+      body: 'thanks!',
+      timestamp: ROOM_DAY,
+      outgoing: false,
+    });
+    await tick(200);
+    expect(roomReplies(core, roomJid)).toHaveLength(0);
+    expect(calls.length).toBe(0);
+  });
+
+  it('answers a follow-up question right after its own reply (rule R)', async () => {
+    const calls: Call[] = [];
+    const { cores, roomJid, senderJid, aiJids } = await openRoom(
+      ['Gateway AI', 'Second AI'],
+      calls,
+    );
+    const [core, secondCore] = cores;
+    const aiJid = aiJids[0];
+    if (core === undefined || secondCore === undefined || aiJid === undefined) {
+      throw new Error('missing cores');
+    }
+    // An explicit mention makes the first AI reply; the second AI stays idle.
+    core.receive({
+      id: 'm-1',
+      chatJid: roomJid,
+      kind: 'groupchat',
+      fromJid: senderJid,
+      fromResolved: true,
+      fromNick: 'Owner',
+      body: 'hello AI',
+      timestamp: ROOM_DAY,
+      mentions: [{ jid: aiJid, begin: 0, end: 2 }],
+      outgoing: false,
+    });
+    await waitFor(() => roomReplies(core, roomJid).length === 1);
+    // Its own room message reflects back `outgoing`, which opens the
+    // follow-up window (rule R), not rule S (the room holds two AIs).
+    core.receive({
+      id: 'stanza-1',
+      chatJid: roomJid,
+      kind: 'groupchat',
+      fromJid: `${roomJid}/Gateway AI`,
+      fromResolved: false,
+      fromNick: 'Gateway AI',
+      body: 'AI answer',
+      timestamp: ROOM_DAY,
+      outgoing: true,
+    });
+    const followUp = {
+      id: 'q-2',
+      chatJid: roomJid,
+      kind: 'groupchat' as const,
+      fromJid: senderJid,
+      fromResolved: true,
+      fromNick: 'Owner',
+      body: 'and gold?',
+      timestamp: ROOM_DAY,
+      outgoing: false,
+    };
+    core.receive(followUp);
+    secondCore.receive(followUp);
+    await waitFor(() => roomReplies(core, roomJid).length === 2);
+    expect(roomReplies(secondCore, roomJid)).toHaveLength(0);
   });
 });

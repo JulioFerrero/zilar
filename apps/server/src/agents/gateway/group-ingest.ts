@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { normBareJid } from '../context';
+import { decideWake, type WakeReason } from './addressing';
 import {
   GROUP_JOIN_SKEW_MS,
   ROUND_MAX_HOPS,
@@ -16,7 +17,6 @@ import {
 import type { createRoomListener } from './listener';
 import { answerOnReply, rekeyOnReflection } from './question-answer';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
-import { bodyAddressesAi } from './typed-mention';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
 // even without an `@` mention. Zilar's own clients quote a reply by id only
@@ -101,7 +101,11 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     // send records the sent id too; a duplicate is harmless.
     if (message.outgoing) {
       const ownRoomJid = normBareJid(message.chatJid);
-      if (session.rooms.has(ownRoomJid)) {
+      const ownRoom = session.rooms.get(ownRoomJid);
+      if (ownRoom !== undefined) {
+        // T-1633: stamp this AI's own reflection so rule R (a follow-up
+        // question right after its reply) can see how long ago it answered.
+        ownRoom.lastOwnReplyAtMs = Date.now();
         rememberRoomSentId(session, ownRoomJid, message.id);
         if (message.originId !== undefined) {
           rememberRoomSentId(session, ownRoomJid, message.originId);
@@ -145,18 +149,45 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     }
     const aiBare = normBareJid(session.aiJid);
     const fromBare = normBareJid(message.fromJid);
+    // T-1633: another AI's room message is remembered so rule R only follows
+    // this AI's own last reply, not a reply another AI gave.
+    if (isAiSender(fromBare) && fromBare !== aiBare) {
+      room.lastOtherAiAtMs = Date.now();
+    }
+    const pickedMention = (message.mentions ?? []).some(
+      (mention) => normBareJid(mention.jid) === aiBare,
+    );
+    const replied = replyTargetsAi({
+      replyTo: message.replyTo,
+      aiBare,
+      aiOccupantJid: `${roomJid}/${room.nick}`,
+      sentIds: session.roomSentIds.get(roomJid),
+    });
     // T-1617: a person who types the AI's nick or username instead of picking
     // it from the list wakes it too. Only a person's typed mention counts, so
     // two AIs cannot wake each other by naming one another.
-    const mentioned =
-      (message.mentions ?? []).some((mention) => normBareJid(mention.jid) === aiBare) ||
-      replyTargetsAi({
-        replyTo: message.replyTo,
-        aiBare,
-        aiOccupantJid: `${roomJid}/${room.nick}`,
-        sentIds: session.roomSentIds.get(roomJid),
-      }) ||
-      (!isAiSender(fromBare) && bodyAddressesAi(body, [room.nick, aiBare.split('@')[0] ?? '']));
+    // T-1633: the typed address now runs through `decideWake`, which adds the
+    // one-AI-room question (S) and the follow-up question (R). The live-AI
+    // count is only read once the cheaper mention and reply checks miss.
+    let wakeReason: WakeReason | null = null;
+    if (!pickedMention && !replied && !isAiSender(fromBare)) {
+      const liveAisInRoom = [...sessions.values()].filter((candidate) =>
+        candidate.rooms.has(roomJid),
+      ).length;
+      wakeReason = decideWake({
+        body,
+        names: [room.nick, aiBare.split('@')[0] ?? ''],
+        liveAisInRoom,
+        lastOwnReplyAtMs: room.lastOwnReplyAtMs ?? null,
+        otherAiRepliedSince: (room.lastOtherAiAtMs ?? 0) > (room.lastOwnReplyAtMs ?? 0),
+        nowMs: Date.now(),
+        rules: { oneAiQuestion: true, followUpQuestion: true },
+      });
+      if (wakeReason !== null) {
+        logger.debug?.({ roomJid, aiId: session.aiId, reason: wakeReason }, 'AI woken by rule');
+      }
+    }
+    const mentioned = pickedMention || replied || wakeReason !== null;
     // T-0475: the listener sees every human room message, mention or not,
     // before the mention early-return below. AI senders never feed it.
     if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {
