@@ -266,9 +266,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1676 (channel manage errors say "channel");
         - T-1677 (the phone New message sheet lists contacts with a filter, like web).
       - **Full check on main at T-1669:** typecheck 16/16, every package's tests pass, server 123 files / 891 tests (one flaky failure under load, green on the re-run).
-      - **Running:**
-        - T-1672 (mock: a seed person's @handle resolves to their seed id, with relation "contact");
-        - T-1678 and T-1679 (splits of `groups/members.ts` and client-core `polling.ts`, both 393 lines).
+      - **Merged, 02:10–04:00 UTC:**
+        - T-1672 (mock: a seed person's @handle resolves to their seed id, relation "contact");
+        - T-1681 (two stale max-lines lint exemptions dropped);
+        - size splits, every one checked by diff as a word-for-word move:
+          - T-1678: `groups/members.ts` 393 → 230;
+          - T-1679: client-core `polling.ts` 393 → 167;
+          - T-1680: phone `store/effects/ports.ts` 393 → 285;
+          - T-1682: `gifs/giphy.ts` 397 → 190, plus the unused fake provider deleted;
+          - T-1683: web `panels/topicPanelOps.ts` 398 → 278.
+      - **Tooling hiccup:** under load, `lead merge` hit `spawnSync git ETIMEDOUT` after the squash for T-1679 (branch and state cleanup) and T-1683 (the push). The lead finished them by hand (branch deleted, `lead forget`, the next merge pushed). Main and origin are in sync.
+      - **Running (more splits of 390+ line files):**
+        - T-1684 (phone `group-actions.ts`: the role actions);
+        - T-1685 (`tools/mutations.ts`: the deletes);
+        - T-1686 (`tools/queries.ts`: the row mappers);
+        - T-1687 (`groups/ais.ts`: the topic-room sync);
+        - T-1688 (`media/api.ts`: the item mapping).
       - **Gap 5 (export on the phone) needs a design:** the export route wants a sign-in from the last 30 minutes (403 "reauth"), and the phone has no step-up re-sign-in, so a plain button would mostly fail.
       - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):
         - ✅ T-1659: back cancels an armed reply and stays in the chat.

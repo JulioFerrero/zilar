@@ -11,16 +11,9 @@ import {
 } from '@zilar/client-core/store';
 
 import type { GroupDetail } from '../../lib/chat-api';
-import type {
-  ApproverRole,
-  CreateTopicInput,
-  PatchTopicInput,
-  SetTopicRolesInput,
-  Topic,
-  TopicRole,
-} from '../../lib/topics-api';
-import type { CustomGroupRole } from '../../lib/roles-api';
+import type { CreateTopicInput, PatchTopicInput, Topic } from '../../lib/topics-api';
 import type { ChannelMemberRole } from '../../lib/groups-api';
+import type { GroupRolesActions } from './group-roles-actions';
 import type { GroupActions } from './groups';
 import { Ports } from './ports';
 import { lift, orElse, type StoreCtx } from './runtime';
@@ -28,12 +21,8 @@ import { lift, orElse, type StoreCtx } from './runtime';
 /** The closure helpers and values of `makeGroups` the `GroupActions` body reads. */
 export interface GroupActionHelpers {
   readonly groupDetails: Map<string, GroupDetail>;
-  readonly groupRolesById: Map<string, CustomGroupRole[]>;
-  readonly topicRolesById: Map<string, { roles: TopicRole[]; approverRole: ApproverRole | null }>;
   bumpRevision(): void;
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
-  ensureGroupRoles(groupId: string, force?: boolean): Effect.Effect<void, unknown>;
-  ensureTopicRoles(chatId: string, force?: boolean): Effect.Effect<void, unknown>;
   actionStore(): GroupActionStore;
   applyTopicRow(topic: Topic): Effect.Effect<void, unknown>;
   joinRoomQuietly(rowId: string): Effect.Effect<void, never>;
@@ -42,17 +31,16 @@ export interface GroupActionHelpers {
 }
 
 /** The `GroupActions` object of `makeGroups`, relocated behind its helpers. */
-export function makeGroupActions(ctx: StoreCtx, helpers: GroupActionHelpers): GroupActions {
+export function makeGroupActions(
+  ctx: StoreCtx,
+  helpers: GroupActionHelpers,
+): Omit<GroupActions, keyof GroupRolesActions> {
   const { get, h } = ctx;
-  const { topics, inviteLinks, roles: rolesApi, groups: groupsApi } = ctx.ports;
+  const { topics, inviteLinks, groups: groupsApi } = ctx.ports;
   const {
     groupDetails,
-    groupRolesById,
-    topicRolesById,
     bumpRevision,
     ensureGroupDetail,
-    ensureGroupRoles,
-    ensureTopicRoles,
     actionStore,
     applyTopicRow,
     joinRoomQuietly,
@@ -308,86 +296,5 @@ export function makeGroupActions(ctx: StoreCtx, helpers: GroupActionHelpers): Gr
           true,
         ),
       ),
-    groupRoles: (groupId) => {
-      // Reading the revision subscribes the selector to roles loads, like
-      // `groupDetail`.
-      void get().groupDetailsRevision;
-      return groupRolesById.get(groupId);
-    },
-    refreshGroupRoles: (groupId) => ctx.run(ensureGroupRoles(groupId, true)),
-    createGroupRole: (groupId, name) =>
-      ctx.run(
-        Effect.gen(function* () {
-          const role = yield* lift(() => rolesApi.createGroupRole(groupId, name));
-          groupRolesById.set(groupId, [...(groupRolesById.get(groupId) ?? []), role]);
-          bumpRevision();
-          return role;
-        }),
-      ),
-    renameGroupRole: (groupId, roleId, name) =>
-      ctx.run(
-        Effect.gen(function* () {
-          const role = yield* lift(() => rolesApi.renameGroupRole(groupId, roleId, name));
-          groupRolesById.set(
-            groupId,
-            (groupRolesById.get(groupId) ?? []).map((entry) =>
-              entry.id === roleId ? role : entry,
-            ),
-          );
-          bumpRevision();
-          return role;
-        }),
-      ),
-    deleteGroupRole: (groupId, roleId) =>
-      ctx.run(
-        Effect.gen(function* () {
-          yield* lift(() => rolesApi.deleteGroupRole(groupId, roleId));
-          groupRolesById.set(
-            groupId,
-            (groupRolesById.get(groupId) ?? []).filter((entry) => entry.id !== roleId),
-          );
-          bumpRevision();
-        }),
-      ),
-    setGroupRoleMembers: (groupId, roleId, userIds) =>
-      ctx.run(
-        Effect.gen(function* () {
-          const role = yield* lift(() => rolesApi.setGroupRoleMembers(groupId, roleId, userIds));
-          const known = groupRolesById.get(groupId);
-          groupRolesById.set(
-            groupId,
-            known === undefined
-              ? [role]
-              : known.some((entry) => entry.id === roleId)
-                ? known.map((entry) => (entry.id === roleId ? role : entry))
-                : [...known, role],
-          );
-          bumpRevision();
-          return role;
-        }),
-      ),
-    setTopicRoles: (chatId, input) =>
-      ctx.run(
-        changeTopicCore(
-          ctx.coreCtx,
-          actionStore(),
-          chatId,
-          (topicId) => topics.setTopicRoles(topicId, input as SetTopicRolesInput),
-          // The refreshed row carries the server truth: going public cleared
-          // the roles there, so no stale roles stay in the store.
-          (topic) => h.rememberTopicRoles(topic),
-        ),
-      ),
-    topicRoles: (chatId) => {
-      // Reading the revision subscribes the selector to topic-roles loads,
-      // like `groupDetail`.
-      void get().groupDetailsRevision;
-      const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
-      if (topicId === undefined) {
-        return undefined;
-      }
-      return topicRolesById.get(topicId);
-    },
-    refreshTopicRoles: (chatId) => ctx.run(ensureTopicRoles(chatId, true)),
   };
 }

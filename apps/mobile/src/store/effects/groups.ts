@@ -17,6 +17,7 @@ import {
   makeGroupMembershipActions,
   type GroupMembershipActions,
 } from './group-membership-actions';
+import { makeGroupRolesActions } from './group-roles-actions';
 import { makeGroupSettingsActions, type GroupSettingsActions } from './group-settings-actions';
 import { Ports } from './ports';
 import { failAfter, lift, orElse, type StoreCtx } from './runtime';
@@ -272,17 +273,21 @@ export function makeGroups(ctx: StoreCtx): Groups {
   const actions: GroupActions & GroupMembershipActions & GroupSettingsActions = {
     ...makeGroupActions(ctx, {
       groupDetails,
-      groupRolesById,
-      topicRolesById,
       bumpRevision,
       ensureGroupDetail,
-      ensureGroupRoles,
-      ensureTopicRoles,
       actionStore,
       applyTopicRow,
       joinRoomQuietly,
       refreshQuietly,
       removeTopicMemberEffect,
+    }),
+    ...makeGroupRolesActions(ctx, {
+      groupRolesById,
+      topicRolesById,
+      bumpRevision,
+      ensureGroupRoles,
+      ensureTopicRoles,
+      actionStore,
     }),
     ...makeGroupMembershipActions(ctx, { ensureGroupDetail, refreshQuietly }),
     ...makeGroupSettingsActions(ctx, { ensureGroupDetail, refreshQuietly }),
