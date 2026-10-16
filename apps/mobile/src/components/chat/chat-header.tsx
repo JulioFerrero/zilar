@@ -9,11 +9,13 @@ import { AiActivityMarks } from '@/components/chat/ai-activity-marks';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { AisHereSheet } from '@/components/chat/ais-here-sheet';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import type { Contact } from '@/lib/chat-api';
+import type { Contact, GroupDetail } from '@/lib/chat-api';
 import { chatSubtitle } from '@/lib/chat';
+import { cn } from '@/lib/utils';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { typingLabel } from '@/lib/format';
@@ -45,6 +47,26 @@ export function dmHandleFor(chat: ChatSummary, contacts: Contact[]): string | un
   return handle === undefined || handle === null || handle === '' ? undefined : handle;
 }
 
+/**
+ * T-1780: the person behind one `topic.memberIds` id, when the group detail the
+ * header subscribes to knows them. An id the detail has not loaded yet draws no
+ * circle, but still counts in the line's N.
+ */
+function memberPerson(
+  memberId: string,
+  detail: GroupDetail | undefined,
+): TopicLinePerson | undefined {
+  const member = detail?.members.find((entry) => entry.userId === memberId);
+  if (member === undefined) {
+    return undefined;
+  }
+  return {
+    id: member.userId,
+    name: member.name,
+    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+  };
+}
+
 type ChatHeaderProps = {
   chat: ChatSummary;
   onBack: () => void;
@@ -52,7 +74,7 @@ type ChatHeaderProps = {
   onSearchInChat?: () => void;
   /** Opens the media/files/links/voice sheet for this chat (T-0436). */
   onOpenMedia?: () => void;
-  /** The group name shown small above a topic name (T-0112). */
+  /** The group name shown on a topic's people line (T-0112, T-1780). */
   topicGroupName?: string;
   /** Opens the topic-info sheet when the header is tapped (topics only). */
   onOpenInfo?: () => void;
@@ -71,6 +93,9 @@ type ChatHeaderProps = {
  * the DM case: with the peer's `@handle` known, the title opens their profile.
  * T-1539 adds the topic's "AIs here" key: a topic with a working or waiting AI
  * shows that AI's marks first among the keys, opening the "AIs here" sheet.
+ * T-1780 draws a topic's two-line header (the board `PhoneHeader.dc.html`): the
+ * 17 px title, then `TopicPeopleLine` — the people and AIs stack with
+ * `group · N`, or the writers while someone writes.
  */
 export function ChatHeader({
   chat,
@@ -87,6 +112,16 @@ export function ChatHeader({
   const contacts = useChatStore((state) => state.contacts);
   const dmHandle = dmHandleFor(chat, contacts);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
+  const topic = chat.topic;
+  const isTopic = topic !== undefined;
+  const groupIdForChat = useChatStore((state) => state.groupIdForChat);
+  // T-1780: the header subscribes to the group's detail so the topic's people
+  // resolve to names and pictures; `groupIdForChat` covers legacy rows that
+  // carry no `groupId`, the same read `chat-composer-dock.tsx` uses.
+  const topicGroupId = isTopic ? (chat.groupId ?? groupIdForChat(chat.id)) : undefined;
+  const groupDetail = useChatStore((state) =>
+    topicGroupId === undefined ? undefined : state.groupDetail(topicGroupId),
+  );
   const aiStatusText = useChatStore(
     (state) => (state.typing[chat.id] as TypingStatus | undefined)?.status,
   );
@@ -102,42 +137,46 @@ export function ChatHeader({
   const subtitle =
     connection ?? aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const working = chat.isAI && chat.aiStatus === 'working';
-  const topic = chat.topic;
-  const isTopic = topic !== undefined;
   const [aisHereOpen, setAisHereOpen] = useState(false);
   // The AIs at work decide the "AIs here" key: only a topic with something
   // active (working or waiting) shows it.
   const topicActivity =
     topic === undefined ? undefined : topicActivityView(topic.activity, topic.doneAt);
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
+  // T-1780: the people line's data, all from the topic row (T-1777). The stack
+  // is the topic's people then its AIs; N counts both, and a topic row the
+  // server has not filled falls back to the group count.
+  const topicPeople = (topic?.memberIds ?? [])
+    .map((memberId) => memberPerson(memberId, groupDetail))
+    .filter((person): person is TopicLinePerson => person !== undefined);
+  const topicAis: TopicLinePerson[] = (topic?.ais ?? []).map((ai) => ({
+    id: ai.id,
+    name: ai.name,
+    ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+  }));
+  const topicCount =
+    topic === undefined
+      ? 0
+      : topic.memberIds === undefined && topic.ais === undefined
+        ? (chat.memberCount ?? 0)
+        : (topic.memberIds?.length ?? 0) + (topic.ais?.length ?? 0);
+  // The connection line and an AI's status still win over the people line, the
+  // way they win over the subtitle today.
+  const showPeopleLine = isTopic && connection === undefined && aiLine === undefined;
   const title = (
     // `justify-center` keeps the two text lines on the avatar's centre line:
     // the wrapper stretches to the header height, so without it the content
     // sticks to the top and reads about 11 dp too high (T-1308).
-    <View className="ml-2.5 min-w-0 flex-1 justify-center">
-      {isTopic && topicGroupName !== undefined && topicGroupName !== '' ? (
-        groupTarget !== undefined ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open group ${topicGroupName}`}
-            onPress={() => onOpenGroup?.(groupTarget)}
-            hitSlop={{ top: 6, bottom: 4 }}
-            className="self-start"
-          >
-            <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
-              {topicGroupName}
-            </Text>
-          </Pressable>
-        ) : (
-          <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
-            {topicGroupName}
-          </Text>
-        )
-      ) : null}
+    // T-1780: a topic reads the board's 17 px title with a 3 px gap between the
+    // two lines; every other chat keeps its 15 px title and spacing.
+    <View className={cn('ml-2.5 min-w-0 flex-1 justify-center', isTopic && 'gap-[3px]')}>
       <View className="flex-row items-center gap-1.5">
         <Text
           numberOfLines={1}
-          className="shrink text-[15px] font-semibold leading-5 text-foreground"
+          className={cn(
+            'shrink font-semibold text-foreground',
+            isTopic ? 'text-[17px] leading-[22px]' : 'text-[15px] leading-5',
+          )}
         >
           {chat.title}
         </Text>
@@ -158,14 +197,25 @@ export function ChatHeader({
         ) : null}
         {chat.isAI ? <AiBadge /> : null}
       </View>
-      <View className="flex-row items-center gap-1">
-        <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
-          {subtitle}
-        </Text>
-        {working || writing || aiLine !== undefined ? (
-          <TypingDots color={MUTED_FOREGROUND} />
-        ) : null}
-      </View>
+      {showPeopleLine ? (
+        <TopicPeopleLine
+          people={topicPeople}
+          ais={topicAis}
+          count={topicCount}
+          writers={names ?? []}
+          {...(topicGroupName === undefined ? {} : { groupName: topicGroupName })}
+          {...(groupTarget === undefined ? {} : { onOpenGroup: () => onOpenGroup?.(groupTarget) })}
+        />
+      ) : (
+        <View className="flex-row items-center gap-1">
+          <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
+            {subtitle}
+          </Text>
+          {working || writing || aiLine !== undefined ? (
+            <TypingDots color={MUTED_FOREGROUND} />
+          ) : null}
+        </View>
+      )}
     </View>
   );
   return (

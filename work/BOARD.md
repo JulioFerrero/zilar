@@ -1787,3 +1787,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1776](T-1776-phone-progress-blocks.md) | phone progress, timeline and countdown blocks | 2026-10-16 |
 | [T-1778](T-1778-prereview-failed-fallback.md) | pre-review falls back on a failed start | 2026-10-16 |
 | [T-1774](T-1774-topic-preview.md) | topic preview for members who haven't joined | 2026-10-16 |
+| [T-1780](T-1780-phone-topic-header.md) | phone topic header with the people stack | 2026-10-16 |
