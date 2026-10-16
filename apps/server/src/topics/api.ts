@@ -9,12 +9,18 @@
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { TopicsCreateRateLimit, TopicsGroup, TopicsJoinRateLimit } from '@zilar/api-contract';
+import {
+  TopicsCreateRateLimit,
+  TopicsGroup,
+  TopicsJoinRateLimit,
+  TopicsPreviewRateLimit,
+} from '@zilar/api-contract';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
+import { HttpError } from '../errors';
 import {
   handler,
   mountApi,
@@ -24,6 +30,7 @@ import {
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { createRateLimiter } from '../rate-limit';
+import type { ArchivePool } from '../search/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   listTopicAis,
@@ -47,11 +54,14 @@ import {
 } from './service';
 import { joinTopic } from './members';
 import { patchTopic } from './patch';
+import { readTopicPreview } from './preview';
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
 export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const TOPIC_JOIN_RATE_LIMIT_MAX = 60;
 export const TOPIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+export const TOPIC_PREVIEW_RATE_LIMIT_MAX = 120;
+export const TOPIC_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 const TopicsApi = HttpApi.make('topics').add(TopicsGroup);
 
@@ -62,6 +72,8 @@ export interface TopicsApiDependencies {
   adminClient: EjabberdAdminClient;
   logger: Logger;
   audit?: AuditRecorder;
+  /** T-1774: the MUC archive read for the topic preview; absent → 501. */
+  archive?: ArchivePool;
   /** T-1514: the live gateway's turn read model for each topic's AI activity. */
   getGateway?: () => TurnWatcher | null;
   /** Injected in tests so the rate-limit window can advance without waiting. */
@@ -79,6 +91,11 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const joinLimiter = createRateLimiter({
     max: TOPIC_JOIN_RATE_LIMIT_MAX,
     windowMs: TOPIC_JOIN_RATE_LIMIT_WINDOW_MS,
+    now: deps.now ?? Date.now,
+  });
+  const previewLimiter = createRateLimiter({
+    max: TOPIC_PREVIEW_RATE_LIMIT_MAX,
+    windowMs: TOPIC_PREVIEW_RATE_LIMIT_WINDOW_MS,
     now: deps.now ?? Date.now,
   });
 
@@ -221,6 +238,40 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
           }),
         ),
       )
+      // T-1774: a group member reads a public topic they have not joined,
+      // read-only, from the archive — not over XMPP. Private and General
+      // topics (members read those over XMPP) answer the same 404 as a missing
+      // id, and so does a topic the caller may not see.
+      .handle(
+        'preview',
+        handler(logger, (request, user) =>
+          Effect.gen(function* () {
+            const topic = yield* Effect.promise(() =>
+              requireVisibleTopic(deps.db, request.params.id, user.id),
+            );
+            if (topic.isGeneral || topic.visibility === 'private') {
+              throw toMissingTopic();
+            }
+            const archive = deps.archive;
+            if (archive === undefined) {
+              throw new HttpError(501, 'preview_unavailable', 'Topic preview is not configured');
+            }
+            const roomJid = `${topic.roomLocalpart}@${mucDomain}`;
+            const messages = yield* Effect.tryPromise({
+              try: () => readTopicPreview(archive, roomJid),
+              catch: () => {
+                logger.error({ topicId: topic.id }, 'topic preview failed');
+                return new HttpError(
+                  502,
+                  'preview_failed',
+                  'Topic preview failed, try again later',
+                );
+              },
+            }).pipe(Effect.orDie);
+            return { messages };
+          }),
+        ),
+      )
       .handle(
         'removeMember',
         handler(logger, (request, user) =>
@@ -310,6 +361,10 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
     // user too.
     Layer.provide(
       rateLimitLayer(TopicsJoinRateLimit, joinLimiter, 'Too many joins, try again later'),
+    ),
+    // T-1774: reading a topic's archive for a non-member is capped per user.
+    Layer.provide(
+      rateLimitLayer(TopicsPreviewRateLimit, previewLimiter, 'Too many previews, try again later'),
     ),
     Layer.provide(schemaErrorLayer(logger)),
   );

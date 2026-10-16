@@ -6,7 +6,13 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { lenientLiterals } from './lenient';
-import { SchemaErrors, Session, TopicsCreateRateLimit, TopicsJoinRateLimit } from './middleware';
+import {
+  SchemaErrors,
+  Session,
+  TopicsCreateRateLimit,
+  TopicsJoinRateLimit,
+  TopicsPreviewRateLimit,
+} from './middleware';
 import { mutableStruct } from './mutable-struct';
 
 export const TOPIC_NAME_MAX = 80;
@@ -250,6 +256,28 @@ export const TopicMemberList = Schema.Struct({
 
 export const TopicAiList = Schema.Struct({ ais: Schema.mutable(Schema.Array(TopicAi)) });
 
+/**
+ * T-1774: one message in a topic preview. `payload` is the decoded `<agent>`
+ * payload object, absent for a plain message; the client keeps it opaque and
+ * decodes it again with its own `decodePayload`.
+ */
+export const TopicPreviewMessage = mutableStruct({
+  id: Schema.String,
+  at: Schema.String,
+  nick: Schema.String,
+  body: Schema.String,
+  payload: Schema.optional(Schema.Unknown),
+});
+
+export type TopicPreviewMessage = typeof TopicPreviewMessage.Type;
+
+/** T-1774: the recent messages of a public topic, oldest first. */
+export const TopicPreview = Schema.Struct({
+  messages: Schema.mutable(Schema.Array(TopicPreviewMessage)),
+});
+
+export type TopicPreview = typeof TopicPreview.Type;
+
 const GroupIdParams = Schema.Struct({ id: Schema.String });
 const TopicIdParams = Schema.Struct({ id: Schema.String });
 const TopicMemberParams = Schema.Struct({ id: Schema.String, userId: Schema.String });
@@ -299,6 +327,10 @@ export const TopicsGroup = HttpApiGroup.make('topics')
       params: TopicIdParams,
       success: Topic,
     }).middleware(TopicsJoinRateLimit),
+    HttpApiEndpoint.get('preview', '/topics/:id/preview', {
+      params: TopicIdParams,
+      success: TopicPreview,
+    }).middleware(TopicsPreviewRateLimit),
     HttpApiEndpoint.put('setRoles', '/topics/:id/roles', {
       params: TopicIdParams,
       payload: SetTopicRolesPayload,

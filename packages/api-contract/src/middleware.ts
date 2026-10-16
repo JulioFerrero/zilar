@@ -176,6 +176,15 @@ export class TopicsJoinRateLimit extends HttpApiMiddleware.Service<
 >()('zilar/effect/http/TopicsJoinRateLimit') {}
 
 /**
+ * The topic-preview budget (T-1774): reading a topic's archive for a
+ * non-member is capped per user. It runs after `Session`, before the handler.
+ */
+export class TopicsPreviewRateLimit extends HttpApiMiddleware.Service<
+  TopicsPreviewRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/TopicsPreviewRateLimit') {}
+
+/**
  * The AI-memory write budget. It runs before the query or payload is decoded,
  * so an invalid request still spends budget.
  */

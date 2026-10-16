@@ -103,6 +103,9 @@ export function messagingRoutes({
     ...base,
     adminClient,
     audit,
+    // T-1774: the topic preview reads the MUC archive for non-members, like
+    // search; without a pool the route answers 501.
+    ...opt('archive', deps.archive),
     ...opt('getGateway', getTurnWatcher),
   });
   mounts.push(topicsApi);
