@@ -1656,3 +1656,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1645](T-1645-execute-prompt-routine.md) | Routine executor runs prompt routines with a daily cap | 2026-10-16 |
 | [T-1644](T-1644-ci-deploy-checks.md) | CI runs the offline deploy tests and renders every compose file | 2026-10-16 |
 | [T-1646](T-1646-room-scheduled-item.md) | Room queue accepts a scheduled run as its own turn | 2026-10-16 |
+| [T-1650](T-1650-backup-doc-test-ci.md) | Backup doc says ejabberd-database is not covered; test joins CI | 2026-10-16 |

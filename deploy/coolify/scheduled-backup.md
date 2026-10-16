@@ -51,8 +51,8 @@ before then.
 
 ## What `ejabberd-database` holds, and why it should be backed up
 
-`ejabberd-database` is mounted at `/opt/ejabberd/database` and is **not** in the
-schedule above. With `default_db: sql` (`deploy/ejabberd/ejabberd.yml`), rooms,
+`ejabberd-database` is mounted at `/opt/ejabberd/database` and is **not covered**
+by the nightly backups above. With `default_db: sql` (`deploy/ejabberd/ejabberd.yml`), rooms,
 MAM history, rosters and push sessions all live in Postgres, so the volume holds
 the **Mnesia leftovers** written before the switch plus the node's **Erlang
 cookie**. Losing it is low impact — a restored node writes a fresh cookie — but
