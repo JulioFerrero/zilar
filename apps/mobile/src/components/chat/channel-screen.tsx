@@ -157,7 +157,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   // T-1587: the Content group's Always allowed rows (manager-only) and the
   // owner's More menu, which deletes the channel like the group flow does.
   const groupRules = useGroupRules(groupId, isManager);
-  const manage = useGroupManage({ groupId, groupChatId: feedId, isOwner });
+  const manage = useGroupManage({ groupId, groupChatId: feedId, isOwner, noun: 'channel' });
 
   // Non-managers never see the audience: the admins slice (owner/admins —
   // who posts is public, every admin post carries its name) loads once the

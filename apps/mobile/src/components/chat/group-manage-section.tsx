@@ -45,7 +45,9 @@ export function useGroupManage(input: {
   groupId: string;
   groupChatId: string;
   isOwner: boolean;
+  noun?: 'group' | 'channel';
 }): GroupManageProps {
+  const noun = input.noun ?? 'group';
   const router = useRouter();
   const leaveChannel = useChatStore((state) => state.leaveChannel);
   const transferGroupOwner = useChatStore((state) => state.transferGroupOwner);
@@ -72,19 +74,19 @@ export function useGroupManage(input: {
     onLeave: () =>
       runWrite(
         () => leaveChannel(input.groupChatId),
-        'Could not leave the group.',
+        `Could not leave the ${noun}.`,
         () => goBackOrHome(router),
       ),
     onTransferOwner: (userId: string) =>
       runWrite(
         () => transferGroupOwner(input.groupId, userId),
-        'Could not hand over the group.',
+        `Could not hand over the ${noun}.`,
         () => {},
       ),
     onDelete: () =>
       runWrite(
         () => deleteGroup(input.groupId),
-        'Could not delete the group.',
+        `Could not delete the ${noun}.`,
         () => goBackOrHome(router),
       ),
   };
