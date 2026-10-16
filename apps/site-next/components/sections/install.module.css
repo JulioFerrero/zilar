@@ -1,0 +1,108 @@
+.install {
+  padding-block: 140px 110px;
+}
+
+.inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: clamp(24px, 5vw, 80px);
+  align-items: start;
+}
+
+.rise {
+  will-change: transform, opacity;
+}
+
+.install h2 {
+  font-size: clamp(42px, 6.2vw, 100px);
+  margin: 14px 0 20px;
+}
+
+.install p {
+  color: var(--muted);
+  max-width: 28em;
+  margin: 0 0 18px;
+}
+
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 14px 14px 18px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 1px 1px rgba(0, 0, 0, 0.8),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cmd code {
+  flex: 1;
+  min-width: 0;
+  font: 14px var(--mono);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.cmd :global(.key) {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.need {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.need li {
+  display: flex;
+  gap: 12px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.need li b {
+  color: var(--fg);
+  font-weight: 500;
+  min-width: 6.5em;
+}
+
+.android {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(14, 14, 14, 0.8);
+  flex-wrap: wrap;
+}
+
+.android div {
+  flex: 1;
+  min-width: 200px;
+}
+
+.android b {
+  display: block;
+  font-size: 16px;
+}
+
+.android span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
