@@ -1,6 +1,6 @@
 import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
 import { AiStatusLine } from '@/components/topic/AiStatusLine';
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ContactPanel } from '@/components/ContactPanel';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
+import { useMessageSelection } from '@/components/useMessageSelection';
 import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
@@ -98,14 +99,11 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   };
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
-  // The ids checked in select mode; null means not selecting. Reset when the
-  // chat changes so a selection can never leak from one chat to the next.
-  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
-  const [selectionChatId, setSelectionChatId] = useState(chat.id);
-  if (selectionChatId !== chat.id) {
-    setSelectionChatId(chat.id);
-    setSelectedIds(null);
-  }
+  const { selectedIds, setSelectedIds, selection, forwardSelected } = useMessageSelection({
+    chatId: chat.id,
+    storeApi,
+    setForwarding,
+  });
   // Edit mode and reply are exclusive: starting an edit clears the reply. The
   // reset happens during render (React's "adjust state when a prop changes"),
   // like the composer's chat-switch reset.
@@ -179,40 +177,6 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   const cancelReply = (): void => {
     setReplyTo(undefined);
-  };
-
-  const startSelect = useCallback((message: UiMessage): void => {
-    setSelectedIds([message.id]);
-  }, []);
-
-  const toggleSelect = useCallback((message: UiMessage): void => {
-    setSelectedIds((current) => {
-      if (current === null) {
-        return current;
-      }
-      return current.includes(message.id)
-        ? current.filter((id) => id !== message.id)
-        : [...current, message.id];
-    });
-  }, []);
-
-  const selection = useMemo(
-    () => ({ ids: new Set(selectedIds ?? []), onToggle: toggleSelect, onStart: startSelect }),
-    [selectedIds, toggleSelect, startSelect],
-  );
-
-  const forwardSelected = (): void => {
-    if (selectedIds === null) {
-      return;
-    }
-    const ids = new Set(selectedIds);
-    setForwarding(
-      storeApi
-        .getState()
-        .messages(chat.id)
-        .filter((message) => ids.has(message.id)),
-    );
-    setSelectedIds(null);
   };
 
   const notice = topicNotice?.chatId === chat.id ? topicNotice : undefined;
