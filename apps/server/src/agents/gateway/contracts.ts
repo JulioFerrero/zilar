@@ -141,10 +141,23 @@ export const GROUP_JOIN_SKEW_MS = 60_000;
 export const LISTENER_QUIET_MS_DEFAULT = 20_000;
 export const LISTENER_EVERY_N_DEFAULT = 12;
 
+// T-1642 (plan §2.2): the outcome a scheduled routine's DM turn reports back
+// through its `onOutcome`. The three owner-message outcomes plus the two
+// exits a synthetic trigger can hit before a turn starts: `limited` is the
+// daily budget gate, `offline` a disconnected AI.
+export type ScheduledTurnOutcome = 'replied' | 'failed' | 'stopped' | 'limited' | 'offline';
+
 export interface PendingMessage {
   id: string;
   body: string;
   fromJid: string;
+  /** T-1642: a routine's synthetic trigger, never from the network. It counts
+   * as the owner's message, gets no read marker, and reports its turn's
+   * outcome through `onOutcome` exactly once. */
+  scheduled?: {
+    routineId: string;
+    onOutcome: (outcome: ScheduledTurnOutcome) => void;
+  };
 }
 
 export interface RoomPendingMessage {

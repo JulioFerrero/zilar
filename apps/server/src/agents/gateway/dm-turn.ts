@@ -21,6 +21,7 @@ import {
   type AiSession,
   type GatewayLogger,
   type PendingMessage,
+  type ScheduledTurnOutcome,
 } from './contracts';
 import { loadActiveAi, loadOwnerName } from './db';
 import { loadModelTarget } from './model-target';
@@ -79,6 +80,24 @@ export function createDmTurn(ctx: DmTurnContext) {
     draftHub,
   } = ctx;
 
+  // T-1642 (plan §2.2): a scheduled routine queues a synthetic trigger like an
+  // owner message. This builds the once-only reporter for one batch: the first
+  // outcome wins, whatever the exit (`effect.ensuring` below reports the
+  // catch-all 'failed', harmless because a settled item is skipped).
+  function settleFor(batch: PendingMessage[]): (outcome: ScheduledTurnOutcome) => void {
+    const scheduled = batch.filter((item) => item.scheduled !== undefined);
+    const settled = new Set<string>();
+    return (outcome) => {
+      for (const item of scheduled) {
+        if (item.scheduled === undefined || settled.has(item.id)) {
+          continue;
+        }
+        settled.add(item.id);
+        item.scheduled.onOutcome(outcome);
+      }
+    };
+  }
+
   // One turn at a time per AI. Messages arriving during a turn are coalesced:
   // when the turn ends, one more turn runs if new owner messages came in.
   const pumpSessionEffect = Effect.fnUntraced(function* (
@@ -91,7 +110,10 @@ export function createDmTurn(ctx: DmTurnContext) {
     yield* Effect.gen(function* () {
       while (session.pending.length > 0 && !session.stopped) {
         const batch = session.pending.splice(0, session.pending.length);
-        yield* runSessionTurnEffect(session, batch);
+        const settle = settleFor(batch);
+        yield* runSessionTurnEffect(session, batch, settle).pipe(
+          Effect.ensuring(Effect.sync(() => settle('failed'))),
+        );
       }
     }).pipe(
       Effect.ensuring(
@@ -108,6 +130,7 @@ export function createDmTurn(ctx: DmTurnContext) {
   const runSessionTurnEffect = Effect.fnUntraced(function* (
     session: AiSession,
     batch: PendingMessage[],
+    settle: (outcome: ScheduledTurnOutcome) => void,
   ): Effect.fn.Return<void> {
     // The owner JID comes from the database, never from the message. The AI
     // id below is the gateway's own: it keyed this session, so the connection
@@ -119,16 +142,18 @@ export function createDmTurn(ctx: DmTurnContext) {
       yield* Effect.promise(() => disconnectAi(session.aiId)).pipe(
         Effect.catchDefect(() => Effect.void),
       );
+      settle('offline');
       return;
     }
     const ownerJid = jidFor(localpartFor(ai.owner), deps.xmpp.domain);
     const ownerBare = bareJid(ownerJid);
-    // The owner always wins; other `ai-*` senders get no turn (which rules
-    // out AI-to-AI loops) and strangers get none either.
+    // The owner always wins; a scheduled routine's synthetic trigger counts as
+    // the owner's. Other `ai-*` senders get no turn (which rules out AI-to-AI
+    // loops) and strangers get none either.
     const ownerMessages: PendingMessage[] = [];
     for (const item of batch) {
       const from = bareJid(item.fromJid);
-      if (from === ownerBare) {
+      if (item.scheduled !== undefined || from === ownerBare) {
         ownerMessages.push(item);
       } else if (isAiSender(from)) {
         // Another AI (or our own reflection): never a turn, never a loop.
@@ -149,8 +174,11 @@ export function createDmTurn(ctx: DmTurnContext) {
     // stanza id). Only owner messages are ever marked: strangers and other
     // AIs returned above, before this point. The `liveMarkDisplayed` wrapper
     // drops the marker when the AI was stopped between the message arriving
-    // and the marker going out.
-    liveMarkDisplayed(session, ownerJid, 'chat', trigger.id);
+    // and the marker going out. T-1642: a scheduled trigger has no real
+    // incoming message to mark, so the marker is skipped for it.
+    if (trigger.scheduled === undefined) {
+      liveMarkDisplayed(session, ownerJid, 'chat', trigger.id);
+    }
 
     // The soft daily limit holds even when the marker above already went out:
     // a limited AI answers with at most one notice per day, and further
@@ -165,6 +193,7 @@ export function createDmTurn(ctx: DmTurnContext) {
       }),
     );
     if (dmBudget.limited) {
+      settle('limited');
       return;
     }
 
@@ -192,6 +221,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           catch: (typingError) => typingError,
         }).pipe(Effect.ignore);
         turnDrafts.end('failed');
+        settle('failed');
         return;
       }
 
@@ -284,6 +314,7 @@ export function createDmTurn(ctx: DmTurnContext) {
         log: turnLog,
       });
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
+      settle(outcome.kind);
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
       // turn.
