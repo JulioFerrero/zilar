@@ -87,6 +87,7 @@ function BlockBody({ block, showHeading }: { block: Block; showHeading: boolean 
     case 'timeline':
     case 'countdown':
       return renderProgressBlock(block, showHeading);
+    case 'place':
     case 'weather':
     case 'event':
       return renderContentBlock(block, showHeading);

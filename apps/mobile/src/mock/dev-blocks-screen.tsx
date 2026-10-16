@@ -249,6 +249,62 @@ const EXAMPLES: readonly Example[] = [
       ],
     },
   },
+  {
+    label: '21 · PLACE',
+    time: '20:31',
+    data: {
+      fallback: 'Casa Paco — Calle Mayor 12 · 650 m · 8 min walk.',
+      blocks: [
+        {
+          kind: 'place',
+          title: 'Casa Paco',
+          subtitle: 'Calle Mayor 12 · 650 m · 8 min walk',
+          url: 'https://www.google.com/maps/search/?api=1&query=Calle+Mayor+12',
+        },
+      ],
+    },
+  },
+  {
+    label: '22 · WEATHER',
+    time: '08:00',
+    data: {
+      fallback:
+        'Weather in Madrid: clear, 18°, high 22°, low 11°. 10:00 19°, 12:00 21°, 14:00 22°, 16:00 21°, 18:00 18°.',
+      blocks: [
+        {
+          kind: 'weather',
+          place: 'Madrid',
+          condition: 'Clear',
+          high: '22°',
+          low: '11°',
+          temp: '18°',
+          hourly: [
+            { at: '10:00', condition: 'Clear', temp: '19°' },
+            { at: '12:00', condition: 'Clear', temp: '21°' },
+            { at: '14:00', condition: 'Cloudy', temp: '22°' },
+            { at: '16:00', condition: 'Cloudy', temp: '21°' },
+            { at: '18:00', condition: 'Clear', temp: '18°' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    label: '23 · EVENT',
+    time: '17:42',
+    data: {
+      fallback: 'Dinner at Casa Paco, Fri 21:00 – 23:00, 4 people.',
+      blocks: [
+        {
+          kind: 'event',
+          title: 'Dinner at Casa Paco',
+          startAt: '2026-10-17T21:00:00+02:00',
+          endAt: '2026-10-17T23:00:00+02:00',
+          detail: '4 people',
+        },
+      ],
+    },
+  },
 ];
 
 function Time({ children }: { children: string }) {
