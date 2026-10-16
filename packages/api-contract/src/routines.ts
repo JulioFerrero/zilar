@@ -59,6 +59,10 @@ export const RoutinesGroup = HttpApiGroup.make('routines')
       params: RoutineIdParams,
       success: Schema.Array(Routine),
     }),
+    HttpApiEndpoint.get('listForTopic', '/topics/:id/routines', {
+      params: RoutineIdParams,
+      success: Schema.Array(Routine),
+    }),
     HttpApiEndpoint.post('pause', '/routines/:id/pause', {
       params: RoutineIdParams,
       success: Routine,

@@ -4,7 +4,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
-import { toPublicRoutines } from './queries';
+import { listRoutinesForTopic, toPublicRoutines } from './queries';
 import type { PublicRoutine } from './schemas';
 import type { RoutineRow } from './service';
 
@@ -221,4 +221,19 @@ export async function listMyRoutines(
     });
   }
   return result;
+}
+
+// T-1753: the routines of one topic, for the "In this topic" row. A missing
+// topic and one the caller may not see both answer null, so the route replies
+// the same 404 for either and ids cannot be probed.
+export async function listVisibleTopicRoutines(
+  db: ServerDatabase,
+  topicId: string,
+  userId: string,
+): Promise<PublicRoutine[] | null> {
+  const topic = await findTopicById(db, topicId);
+  if (!topic || !(await canSeeTopic(db, topic, userId))) {
+    return null;
+  }
+  return listRoutinesForTopic(db, topicId);
 }

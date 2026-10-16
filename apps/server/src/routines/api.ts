@@ -27,6 +27,7 @@ import {
   findTopicById,
   listMyRoutines,
   listTopicsByGroup,
+  listVisibleTopicRoutines,
   type MyRoutineView,
 } from './reads';
 import {
@@ -124,6 +125,16 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
             }
           }
           return result.map(toListWire);
+        }),
+      )
+      .handle(
+        'listForTopic',
+        handler(logger, async (request, user) => {
+          const rows = await listVisibleTopicRoutines(deps.db, request.params.id, user.id);
+          if (rows === null) {
+            throw new HttpError(404, 'not_found', 'Topic not found');
+          }
+          return rows.map(toListWire);
         }),
       )
       .handle(
