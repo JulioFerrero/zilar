@@ -1779,3 +1779,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1767](T-1767-block-group-seams.md) | block group seams on web and phone | 2026-10-16 |
 | [T-1770](T-1770-web-data-blocks.md) | web stats and table blocks | 2026-10-16 |
 | [T-1772](T-1772-web-progress-blocks.md) | web progress, timeline and countdown blocks | 2026-10-16 |
+| [T-1775](T-1775-phone-data-blocks.md) | phone stats and table blocks | 2026-10-16 |

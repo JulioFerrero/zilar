@@ -148,6 +148,48 @@ const EXAMPLES: readonly Example[] = [
       ],
     },
   },
+  {
+    label: '03 · STAT TILES',
+    time: '10:30',
+    data: {
+      title: 'chat.zilar.app',
+      icon: 'activity',
+      fallback: 'chat.zilar.app: CPU 23%, Memory 3.1/8 GB, Disk 41%, Uptime 12 d.',
+      blocks: [
+        {
+          kind: 'stats',
+          tiles: [
+            { label: 'CPU', value: '23%', ratio: 0.23 },
+            { label: 'Memory', value: '3.1/8 GB', ratio: 0.39 },
+            { label: 'Disk', value: '41%', ratio: 0.41 },
+            { label: 'Uptime', value: '12 d' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    label: '04 · TABLE',
+    time: 'Sun 20:00',
+    data: {
+      title: 'AI spend this week',
+      fallback:
+        'AI spend this week: Deepseek 142 turns, 1.2M tokens, $0.38; Claude 38, 410k, $1.12; GLM 61, 650k, $0.00. Total 241 turns, 2.3M tokens, $1.50.',
+      blocks: [
+        {
+          kind: 'table',
+          columns: ['AI', 'Turns', 'Tokens', 'Cost'],
+          rows: [
+            ['Deepseek', '142', '1.2M', '$0.38'],
+            ['Claude', '38', '410k', '$1.12'],
+            ['GLM', '61', '650k', '$0.00'],
+            ['Total', '241', '2.3M', '$1.50'],
+          ],
+          total: true,
+        },
+      ],
+    },
+  },
 ];
 
 function Time({ children }: { children: string }) {

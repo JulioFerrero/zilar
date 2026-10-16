@@ -1,21 +1,24 @@
 import type { Block } from '@zilar/protocol';
 import type { ReactNode } from 'react';
 
-/** The kinds the data group draws on the phone; empty until its task lands. */
-export const DATA_KINDS: ReadonlySet<Block['kind']> = new Set<Block['kind']>();
+import { StatsBlock } from '@/components/chat/blocks/stats-block';
+import { TableBlock } from '@/components/chat/blocks/table-block';
+
+/** The kinds the data group draws on the phone. */
+export const DATA_KINDS: ReadonlySet<Block['kind']> = new Set<Block['kind']>(['stats', 'table']);
 
 /**
  * The data group's one dispatch point: `stats` (03) and `table` (04). The bodies
- * follow the board `docs/design/mockups/blocks/PhoneNumbers.dc.html`; until that
- * task lands this returns `null` for every kind, exactly like an unknown one.
+ * follow the board `docs/design/mockups/blocks/PhoneNumbers.dc.html`.
  */
 export function renderDataBlock(
   block: Extract<Block, { kind: 'stats' | 'table' }>,
-  _showHeading: boolean,
+  showHeading: boolean,
 ): ReactNode {
   switch (block.kind) {
     case 'stats':
+      return <StatsBlock block={block} showHeading={showHeading} />;
     case 'table':
-      return null;
+      return <TableBlock block={block} showHeading={showHeading} />;
   }
 }
