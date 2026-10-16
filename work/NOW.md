@@ -419,6 +419,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - eight detail cards with live micro-demos;
         - a "zilar" finale.
         - Checked headless (desktop and phone): no script errors.
+      - **About 16:40 UTC, Julio approved the landing** ("much much much better, lets build the real deal with the correct 3d model"). The prototype and brief are committed in `docs/design/mockups/landing/` (`adcd0919b`). The build runs in a new `apps/site-next`, so the live site keeps working, then swaps in:
+        - **T-1728:** the scaffold (Next 16.4.2 static export, Lenis and GSAP provider, header and footer, section ids) is running;
+        - **after T-1728, two at a time:**
+          - T-1729: the real planet (the `apps/site` scene with its HDRI, textures, nebula and dust) on scroll stations;
+          - T-1730: the hero and the ownership line;
+          - T-1731: the phone story;
+          - T-1732: the keys band and the terminal;
+          - T-1733: the details cards;
+          - T-1734: install and the finale;
+        - **T-1735:** swap into `apps/site`, with the Dockerfile serving `out/` and every Caddy redirect kept. Its push redeploys www.zilar.app.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
