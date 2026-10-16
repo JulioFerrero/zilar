@@ -237,25 +237,36 @@ async function claimDue(
     }),
   );
   const claimed: ClaimedRoutine[] = [];
+  // A row that cannot be scheduled — an invalid schedule, or a next run the
+  // schedule cannot compute — is parked one hour out as a dead-letter spot so
+  // it does not spin every tick. No audit: the row carries no output.
+  const parkOneHourOut = async (row: RoutineRow): Promise<void> => {
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE routines
+          SET next_run_at = ${new Date(nowDate.getTime() + 3_600_000)}, updated_at = ${nowDate}
+          WHERE id = ${row.id} AND next_run_at = ${row.nextRunAt}`;
+      }),
+    );
+  };
   for (const row of due) {
     const parsed = parseRoutineSchedule(row.schedule);
     if (!parsed.ok) {
-      // A row whose schedule no longer validates (older code wrote it)
-      // would otherwise spin every tick: log the id and park it one hour
-      // out as a dead-letter spot. No audit: the row carries no output.
       logger.warn({ routineId: row.id }, 'routine has an invalid schedule; parking it');
-      await runSql(
-        db,
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`UPDATE routines
-            SET next_run_at = ${new Date(nowDate.getTime() + 3_600_000)}, updated_at = ${nowDate}
-            WHERE id = ${row.id} AND next_run_at = ${row.nextRunAt}`;
-        }),
-      );
+      await parkOneHourOut(row);
       continue;
     }
-    const advanced = nextRunAfter(parsed.value, nowDate);
+    let advanced: Date;
+    try {
+      advanced = nextRunAfter(parsed.value, nowDate);
+    } catch {
+      // One bad row must not fail the tick for every other routine.
+      logger.warn({ routineId: row.id }, 'routine schedule could not advance; parking it');
+      await parkOneHourOut(row);
+      continue;
+    }
     const lateByMs = nowDate.getTime() - row.nextRunAt.getTime();
     const missed = lateByMs > MISSED_AFTER_LATE_MS;
     const updated = await runSql(

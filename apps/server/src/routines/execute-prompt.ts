@@ -61,6 +61,22 @@ export async function claimPromptRun(db: ServerDatabase, aiId: string, at: Date)
   return rows.length > 0;
 }
 
+// Gives back the slot a claim took for the day of `at` (its UTC date), when
+// the run did not actually reach the AI (offline, or the room is gone). The
+// `count > 0` guard keeps a stray refund from going negative.
+export async function refundPromptRun(db: ServerDatabase, aiId: string, at: Date): Promise<void> {
+  const day = at.toISOString().slice(0, 10);
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE routine_prompt_runs
+        SET count = routine_prompt_runs.count - 1
+        WHERE ai_id = ${aiId} AND day = ${day} AND count > 0`;
+    }),
+  );
+}
+
 export async function executePromptRoutine(
   ports: ExecuteRoutinePorts,
   row: RoutineRow,
@@ -103,6 +119,17 @@ export async function executePromptRoutine(
   }
   if (outcome === 'failed') {
     await recordFailure(options.db, options, ports, row, at, startedAt);
+    return;
+  }
+  if (outcome === 'offline' || outcome === 'not_in_room') {
+    // The run never reached the AI, so it must not burn one of the day's
+    // shared slots: refund the claim and say so, with ids only.
+    options.logger.warn(
+      { routineId: row.id, aiId: row.aiId, outcome },
+      'prompt routine skipped: AI not reachable',
+    );
+    await refundPromptRun(options.db, row.aiId, at);
+    await markSkipped(options.db, options, row, at, startedAt);
     return;
   }
   await markSkipped(options.db, options, row, at, startedAt);

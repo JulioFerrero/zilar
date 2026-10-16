@@ -61,6 +61,17 @@ async function readRoutine(context: TestContext, id: string): Promise<RoutineRow
   return row;
 }
 
+async function readPromptRunCount(context: TestContext, aiId: string): Promise<number> {
+  const rows = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ count: number }>`SELECT count FROM routine_prompt_runs
+        WHERE ai_id = ${aiId} AND day = ${DAY} LIMIT 1`;
+    }),
+  );
+  return rows[0]?.count ?? 0;
+}
+
 function runPromptOnce(
   context: TestContext,
   row: RoutineRow,
@@ -192,6 +203,40 @@ describe('executePromptRoutine', () => {
       { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
     );
 
+    const updated = await readRoutine(context, row.id);
+    expect(updated.lastStatus).toBe('skipped');
+  });
+
+  it('keeps the daily slot when the AI replied', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
+
+    await runPromptOnce(context, row, async () => 'replied', []);
+
+    expect(await readPromptRunCount(context, aiId)).toBe(1);
+  });
+
+  it('refunds the daily slot when the AI is offline', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
+
+    await runPromptOnce(context, row, async () => 'offline', []);
+
+    expect(await readPromptRunCount(context, aiId)).toBe(0);
+    const updated = await readRoutine(context, row.id);
+    expect(updated.lastStatus).toBe('skipped');
+  });
+
+  it('refunds the daily slot when the AI is not in the room', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
+
+    await runPromptOnce(context, row, async () => 'not_in_room', []);
+
+    expect(await readPromptRunCount(context, aiId)).toBe(0);
     const updated = await readRoutine(context, row.id);
     expect(updated.lastStatus).toBe('skipped');
   });
