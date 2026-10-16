@@ -1775,3 +1775,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1763](T-1763-card-follow-ups.md) | untagged crash reply, approval logger, card delegation summary | 2026-10-16 |
 | [T-1765](T-1765-post-forwards-payload.md) | the post port forwards the card payload | 2026-10-16 |
 | [T-1764](T-1764-topic-member-ids.md) | Topic.memberIds, TopicAi.avatarUrl, isTopicJoined | 2026-10-16 |
+| [T-1766](T-1766-tool-card-header.md) | tool cards: card header, readable title, fmt helper | 2026-10-16 |

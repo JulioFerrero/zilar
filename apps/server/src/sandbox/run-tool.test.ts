@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runTool } from './run-tool';
 import type { RunToolResult } from './types';
 import type { HostFetcher } from './host-fetch';
+import { readableToolName } from '../tools/card-header';
 
 const textEncoder = new TextEncoder();
 
@@ -115,6 +116,77 @@ describe('runTool happy path', () => {
     if (result.ok) {
       expect(result.output).toEqual({ text: 'got:null' });
     }
+  });
+});
+
+describe('runTool cards and fmt', () => {
+  it('keeps a tool card and formats values with fmt', async () => {
+    const result = await runTool({
+      source: `export default async function run() {
+        return {
+          text: 'Prices',
+          blocks: [{ kind: 'figure', rows: [
+            { label: 'BTC', value: fmt.money(82302, '$', 0), change: fmt.change(105, 100) },
+          ] }],
+          card: { title: 'Prices', icon: 'chart', meta: '22:34 UTC' },
+        };
+      }`,
+      input: null,
+      allowedHosts: [],
+      fetcher: NO_NETWORK_FETCHER,
+    });
+    expectOk(result);
+    if (result.ok) {
+      expect(result.output).toEqual({
+        text: 'Prices',
+        blocks: [
+          {
+            kind: 'figure',
+            rows: [{ label: 'BTC', value: '$82,302', change: { direction: 'up', text: '5.0%' } }],
+          },
+        ],
+        card: { title: 'Prices', icon: 'chart', meta: '22:34 UTC' },
+      });
+    }
+  });
+
+  // QuickJS has no `Intl`, so `fmt` does the grouping and rounding by hand.
+  it('formats numbers, money and changes without Intl', async () => {
+    const result = await runTool({
+      source: `export default async function run() {
+        return JSON.stringify({
+          n0: fmt.number(7744.1, 0),
+          n2: fmt.number(7744.1),
+          m0: fmt.money(82302, '$', 0),
+          m2: fmt.money(82302),
+          flat: fmt.change(100, 100),
+          down: fmt.change(4152, 4164),
+          nan: fmt.number(NaN),
+          frozen: Object.isFrozen(fmt),
+        });
+      }`,
+      input: null,
+      allowedHosts: [],
+      fetcher: NO_NETWORK_FETCHER,
+    });
+    expectOk(result);
+    if (result.ok) {
+      const parsed = JSON.parse(result.output.text) as Record<string, unknown>;
+      expect(parsed).toEqual({
+        n0: '7,744',
+        n2: '7,744.10',
+        m0: '$82,302',
+        m2: '$82,302.00',
+        flat: { direction: 'flat', text: '0.0%' },
+        down: { direction: 'down', text: '0.3%' },
+        nan: '—',
+        frozen: true,
+      });
+    }
+  });
+
+  it('reads a tool name with hyphens as a title', () => {
+    expect(readableToolName('market-prices')).toBe('Market prices');
   });
 });
 

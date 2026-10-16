@@ -179,6 +179,7 @@ export async function executeRoutine(
   // Step 4: run the current version with the routine's input.
   let outputText: string | null = null;
   let outputBlocks: unknown = undefined;
+  let outputCard: unknown = undefined;
   try {
     const { result } = await runToolVersion(
       { db, runner: ports.runTool },
@@ -191,6 +192,7 @@ export async function executeRoutine(
     }
     outputText = result.output.text;
     outputBlocks = result.output.blocks;
+    outputCard = result.output.card;
   } catch (error) {
     // `runToolVersion` throws `ai_not_active` when the AI stopped between
     // the step-1 check and the run, and `not_found` when the tool was
@@ -213,10 +215,10 @@ export async function executeRoutine(
   // is stopped or not in the room. AI-18: a post during the AI's reconnect
   // also answers `false`, so retry once after a short wait before giving up;
   // only then is the run `skipped` with no failure count.
-  let posted = await postResult(ports, options, row, outputText, outputBlocks);
+  let posted = await postResult(ports, options, row, outputText, outputBlocks, outputCard);
   if (!posted) {
     await sleep(postRetryDelayMs);
-    posted = await postResult(ports, options, row, outputText, outputBlocks);
+    posted = await postResult(ports, options, row, outputText, outputBlocks, outputCard);
   }
   if (!posted) {
     await markSkipped(db, options, row, at, startedAt);

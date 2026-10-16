@@ -45,6 +45,7 @@ export const outputJsonSchema = Schema.Struct({
   text: Schema.String,
   data: Schema.optional(Schema.Unknown),
   blocks: Schema.optional(Schema.Unknown),
+  card: Schema.optional(Schema.Unknown),
 });
 
 export function sanitizeMessage(message: string): string {

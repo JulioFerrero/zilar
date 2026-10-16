@@ -12,13 +12,50 @@ export default async function run(input) {
 
 `input` is any JSON value (default `null`). The function may return a
 **string** (treated as `{ text }`) or `{ text: string, data?: JSON,
-blocks?: Block[] }`. `blocks` uses the same kinds as `post_blocks` (figure,
-number, checklist, status, link, callout) with pre-formatted string values;
-when a scheduled tool routine returns valid `blocks`, it posts them as a card
-whose header is the routine title and its schedule, while `text` stays the
-plain message body. Anything else is `invalid_output`. `runTool` never throws
-for a problem in the tool's code: every failure is
+blocks?: Block[], card?: Card }`. `blocks` uses the same kinds as `post_blocks`
+(figure, number, checklist, status, link, callout) with pre-formatted string
+values. When a scheduled tool routine returns valid `blocks`, it posts them as
+a card whose header is the routine title and its schedule, while `text` stays
+the plain message body. Anything else is `invalid_output`. `runTool` never
+throws for a problem in the tool's code: every failure is
 `{ ok: false, error: { kind, message } }`.
+
+## Cards
+
+`card` sets the header of a `tool.run` card: `title` (defaults to the tool name
+with hyphens read as spaces, e.g. `Market prices`), `icon` (a lucide name from
+`BlockIconSchema`, e.g. `chart`) and `meta` (a short time or date, e.g.
+`22:34 UTC`). The card header is validated with the blocks: an invalid `card`
+falls back to the plain text post.
+
+QuickJS has no `Intl`, so format numbers inside the tool with the sandbox
+`fmt` helpers (a non-finite number gives `—`):
+
+- `fmt.number(n, digits = 2)` — `fmt.number(7744.1, 0)` is `"7,744"`.
+- `fmt.money(n, symbol = '$', digits = 2)` — `fmt.money(82302, '$', 0)` is `"$82,302"`.
+- `fmt.change(now, before, digits = 1)` — the absolute percent and its
+  direction: `fmt.change(105, 100)` is `{ direction: 'up', text: '5.0%' }`.
+
+The board's prices card, as a tool:
+
+```js
+export default async function run() {
+  return {
+    text: 'Prices for today',
+    card: { title: 'Prices', icon: 'chart', meta: '22:34 UTC' },
+    blocks: [
+      {
+        kind: 'figure',
+        rows: [
+          { label: 'BTC', value: fmt.money(82302, '$', 0), change: fmt.change(82302, 80598) },
+          { label: 'Gold', value: fmt.money(4152, '$', 0), change: fmt.change(4152, 4164) },
+          { label: 'S&P 500', value: fmt.number(7744, 0), change: fmt.change(7744, 7713) },
+        ],
+      },
+    ],
+  };
+}
+```
 
 ## Limits (defaults)
 

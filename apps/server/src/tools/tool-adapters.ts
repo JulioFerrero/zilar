@@ -16,6 +16,7 @@ import {
   serviceFailure,
   type AdapterState,
 } from './adapter-support';
+import { cardHeader, readableToolName } from './card-header';
 import { routineLine, pendingApprovalLine, pendingRoutineApprovals } from './routine-list-lines';
 import {
   getTool,
@@ -263,13 +264,14 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
         };
       }
       const text = ran.result.output.text;
-      // T-1761: a saved tool may return `blocks`. A valid set rides on the post
-      // as a `blocks` card; a broken set falls back to today's plain text (the
-      // reason is never logged, the AI id only). The live example the user
-      // sees is still the output posted as the AI into the topic. A `false`
-      // answer (stopped AI, left room) still returns the normal result —
-      // delivery is best-effort.
+      // T-1761: a saved tool may return `blocks`. T-1766: it may also return a
+      // `card` header. A valid set rides on the post as a `blocks` card; a
+      // broken set falls back to today's plain text (the reason is never
+      // logged, the AI id only). The live example the user sees is still the
+      // output posted as the AI into the topic. A `false` answer (stopped AI,
+      // left room) still returns the normal result — delivery is best-effort.
       const blocks = ran.result.output.blocks;
+      const card = cardHeader(ran.result.output.card);
       const postText = `${found.name}\n${truncateChars(text, MAX_TOOL_POST_CHARS)}`;
       const postArgs = (payload?: Payload) => ({
         aiId: actionCtx.aiId,
@@ -283,7 +285,15 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
         if (blocks === undefined) {
           posted = await state.post(postArgs());
         } else {
-          const built = buildBlocksPayload({ title: found.name, blocks }, text);
+          const built = buildBlocksPayload(
+            {
+              title: card.title ?? readableToolName(found.name),
+              icon: card.icon,
+              meta: card.meta,
+              blocks,
+            },
+            text,
+          );
           if (built.ok) {
             posted = await state.post(postArgs(built.payload));
           } else {

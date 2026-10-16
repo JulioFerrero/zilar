@@ -522,8 +522,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **The cause:** the production `post` port (`startup/components.ts:84-95`) drops `payload`, so tool.run and tool routines never posted cards.
                   - **The fix is T-1765 (running):** `postAsAi` forwards the payload, plus a regression test.
                 - T-1763 (the follow-ups) is merged and held.
-                - **Push T-1763 + T-1765 together, then ask Julio to retest the card.**
-                - T-1764 (S2 memberIds) is running; hold its merge until Julio is done testing.
+                - **T-1763 + T-1765 are live (`bc6caface`, 22:31 UTC).** The card works for Julio (22:34).
+                - **Julio: "not like in the design".**
+                  - The gaps come from the tool's JSON and the missing server support.
+                  - **The fix is T-1766 (running):** a tool can set `card {title, icon, meta}`; tool.run titles default to a readable name; a sandbox `fmt` helper (QuickJS has no Intl); the guide gets the board's example.
+                  - After it deploys, Julio asks Deepseek to update `market-prices` to the board's shape.
+                - T-1764 (S2 memberIds) is merged and held; push it with T-1766.
             - **Push plan (done up to step 2):**
               1. Once T-1755 merges: `lead push`, which deploys blocks plus T-1753, T-1754 and T-1760. Check `/health`.
               2. Then merge T-1757 to main **and do not push main again until W9/W10 (the Join UI) merge.** S1, S2, S6 and the W tasks build on it.

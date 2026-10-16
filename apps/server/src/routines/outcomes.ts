@@ -9,6 +9,7 @@ import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { buildBlocksPayload } from '../message-blocks/build';
 import { truncateChars } from '../text';
+import { cardHeader } from '../tools/card-header';
 import { describeSchedule } from '../tools/routine-adapters';
 import { auditPaused, auditRun } from './audit';
 import type { ExecuteRoutineOptions, ExecuteRoutinePorts } from './execute';
@@ -29,9 +30,10 @@ export async function postResult(
   row: RoutineRow,
   outputText: string,
   outputBlocks: unknown,
+  outputCard?: unknown,
 ): Promise<boolean> {
   const text = `${row.title}\n${truncateChars(outputText, MAX_POST_TEXT_CHARS)}`;
-  const payload = routineBlocksPayload(row, outputText, outputBlocks, options);
+  const payload = routineBlocksPayload(row, outputText, outputBlocks, outputCard, options);
   try {
     return await ports.post({
       aiId: row.aiId,
@@ -53,10 +55,13 @@ export async function postResult(
 // the schedule text; the plain text goes out unchanged either way, so
 // previews, push and old clients keep working. Invalid blocks log only the
 // routine id (never the reason) and fall back to today's plain post.
+// T-1766: the tool's `card.icon`, when it has one, is kept as the header icon;
+// the routine title and schedule stay authoritative for a routine.
 function routineBlocksPayload(
   row: RoutineRow,
   outputText: string,
   outputBlocks: unknown,
+  outputCard: unknown,
   options: ExecuteRoutineOptions,
 ): Payload | undefined {
   if (outputBlocks === undefined) {
@@ -67,6 +72,7 @@ function routineBlocksPayload(
     {
       title: row.title,
       ...(parsed.ok ? { meta: describeSchedule(parsed.value) } : {}),
+      icon: cardHeader(outputCard).icon,
       blocks: outputBlocks,
     },
     outputText,

@@ -2,6 +2,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { Effect } from 'effect';
 import { getQuickJS, type QuickJSHandle } from 'quickjs-emscripten';
 import { MAX_SOURCE_BYTES, resolveLimits, type SandboxLimits } from './limits';
+import { TOOL_PRELUDE } from './tool-prelude';
 import { createFetchBridge } from './tool-worker-fetch';
 import {
   createCpuTracker,
@@ -117,6 +118,17 @@ const run = Effect.gen(function* () {
     context.setProp(context.global, 'console', consoleHandle);
 
     context.setProp(context.global, '__zilar_input', track(context.newString(params.inputJson)));
+
+    // T-1766: install the `fmt` helpers before the tool source runs. QuickJS
+    // has no `Intl`, so tools format numbers through these instead.
+    const preludeResult = evalInVm(TOOL_PRELUDE);
+    if (preludeResult.error) {
+      const dumped = dumpVmError(context, preludeResult.error);
+      preludeResult.error.dispose();
+      failRun('runtime', dumped.message.slice(0, 300));
+      return;
+    }
+    preludeResult.value.dispose();
 
     const evalResult = evalInVm(params.source, true);
     if (evalResult.error) {

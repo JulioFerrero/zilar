@@ -27,6 +27,7 @@ export interface ToolOutput {
   text: string;
   data?: unknown;
   blocks?: unknown;
+  card?: unknown;
 }
 
 export type RunToolResult =
@@ -49,6 +50,7 @@ const toolOutputSchema = Schema.Struct({
   text: Schema.String,
   data: Schema.optional(Schema.Unknown),
   blocks: Schema.optional(Schema.Unknown),
+  card: Schema.optional(Schema.Unknown),
 });
 
 export function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | null {
@@ -60,11 +62,12 @@ export function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | 
   if (output.text.length > maxBytes) {
     return null;
   }
-  // `blocks` passes through unchecked: a broken shape is rejected later by
-  // `buildBlocksPayload`, so a bad tool never breaks its own run.
+  // `blocks` and `card` pass through unchecked: a broken shape is rejected
+  // later by `buildBlocksPayload`, so a bad tool never breaks its own run.
   return {
     text: output.text,
     ...(output.data === undefined ? {} : { data: output.data }),
     ...(output.blocks === undefined ? {} : { blocks: output.blocks }),
+    ...(output.card === undefined ? {} : { card: output.card }),
   };
 }
