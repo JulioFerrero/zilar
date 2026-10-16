@@ -1640,3 +1640,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1629](T-1629-compose-log-rotation.md) | Every compose service rotates its logs (json-file 10m x 3) | 2026-10-16 |
 | [T-1625](T-1625-no-double-mention.md) | Group replies never start with a doubled @mention | 2026-10-16 |
 | [T-1631](T-1631-addressing-core.md) | Addressing core: decide when a group message is for an AI | 2026-10-16 |
+| [T-1632](T-1632-client-findings-resweep.md) | Fresh status for the open client findings | 2026-10-16 |

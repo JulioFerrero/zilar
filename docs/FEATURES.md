@@ -35,7 +35,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Sticker creator and favorites | Make packs from photos, star favorites, reorder the panel | server, web | 🟡 Merged | T-0121 |
 | GIFs | GIF search and sending through a privacy proxy; sent GIFs stored by us; off until `GIF_PROVIDER` + `GIF_API_KEY` are set | server, web | 🟡 Merged (needs Julio's provider key) | T-0122 |
 | Channels | One-way feeds: only admins post, subscribers read-only | server, web, mobile | 🟡 Merged | T-0124, T-0144 |
-| Tool host approval | New sites a tool wants to contact need one approval per tool; runs use declared ∩ approved hosts; approvals happen through the AI's card | server, web | 🟡 Merged (off by default) | T-0132 |
+| Tool host approval | New sites a tool wants to contact need one approval per tool; runs use declared ∩ approved hosts; approvals happen through the AI's card | server, web | 🟡 On by default since T-1613 (live) | T-0132, T-1613 |
 | Model side of AI tools | Tool guide in the turn, several model rounds per turn, "working on it" progress line | server | 🟡 Merged (not tried against a real model yet) | T-0106 |
 | Tools and Routines UI | Tool list, read-only source, version history with revert, Run now, routines with plain-words schedules, pause/resume/delete | web | 🟡 Merged | T-0107 |
 | Voice messages | Hold the mic to record, release to send; a real waveform of the recording; AAC 128 kbps mono; playback with speed; the server converts to AAC/M4A; the archive keeps voice notes through a reload | server, web, mobile | 🟡 Merged (live on a phone: record, send, play) | T-0154, T-0176 |
@@ -102,7 +102,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 |---|---|---|---|---|
 | Machines registry | Single-use hashed pairing codes, proof of key possession, approve, deny, revoke | server, web | 🟡 Merged | T-0068, T-0070 |
 | Runner app and hub | A small program you install pairs to the server and connects over a WebSocket tunnel (`wss://` supported); revoke drops it; off by default | runner, server | 🟡 Merged | T-0071, T-0072, T-0075, T-0077 |
-| Desks and the docker driver | Sandboxed computers for AIs | runner | 🧭 Planned | plan §11 |
+| AI computers | Each AI can get its own Linux computer: a gVisor jail per AI with a persistent `/workspace`, no root, and the web only through an egress proxy (one credential per jail). `desk-agent` and `desk-egress` run beside the server; the installer's `--desks-host` flag (`get.zilar.app`) sets a host up. Jails are removed on agent stop and start (T-1626). Computer turns get 40 rounds, 80 calls, 15 min (T-1611) | server, desk, deploy | ✅ Live (2026-10-16) | T-1393..T-1420, T-1582, T-1592, T-1593, T-1606..T-1626 |
 
 ## 6. AI-built tools and routines (the "every morning post gold, S&P 500 and BTC" feature)
 
@@ -110,9 +110,9 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 |---|---|---|---|---|
 | Tool sandbox | Model-written JavaScript runs in QuickJS/WebAssembly inside a worker thread with time, memory, output and fetch limits; the only door out is a GET-only, HTTPS-only `fetch` to an exact host allowlist with DNS pinning and a private-address guard | server | 🟡 Merged | T-0102 |
 | Versioned tools store | Each tool belongs to one AI in one chat; append-only history with a message per version, revert is a new version, manual run, read routes, audit without code or output | server | 🟡 Merged | T-0103 |
-| Routines scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved; behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
-| Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway, wired to the sandbox behind `TOOLS_ENABLED`; scheduling needs an approval card that lists the sites and can never be "always allowed"; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
-| Keyless web tools | Guarded fetch, Wikipedia, prices, feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 Merged (off by default) | T-0125 |
+| Routines scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved; behind `ROUTINES_ENABLED` | server | 🟡 On by default since T-1613 (live, not yet tested end to end) | T-0104, T-1613 |
+| Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway, wired to the sandbox behind `TOOLS_ENABLED`; scheduling needs an approval card that lists the sites and can never be "always allowed"; results reach the model as untrusted text | server | 🟡 On by default since T-1613 (live) | T-0105, T-1613 |
+| Keyless web tools | Guarded fetch, Wikipedia, prices (Yahoo chart endpoint since T-1616), feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 On by default since T-1613 (live) | T-0125, T-1613, T-1616 |
 
 ## 7. Design and clients
 
@@ -143,7 +143,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 |---|---|---|---|---|
 | Monorepo | pnpm + Turborepo; apps and shared packages | repo | ✅ | T-0001, T-0012 |
 | Local infrastructure | Postgres 18 with pgvector and ejabberd in Docker Compose; `pnpm infra:up`, `infra:smoke`, `xmpp:e2e` | infra | ✅ Live | T-0002, T-1413 |
-| Server foundation | zod config, redacted logs, JSON errors, request ids, Drizzle migrations at startup, PGlite tests | server | ✅ Live | T-0014 |
+| Server foundation | Effect Schema config (`apps/server/src/config/server-schema.ts`), redacted logs, JSON errors, request ids, hand-written SQL migrations run at startup by `migrateSql` (`apps/server/src/effect/sql.ts`), PGlite tests | server | ✅ Live | T-0014, T-1457 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
 | Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/zilar init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
