@@ -1662,3 +1662,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1647](T-1647-scheduled-turn-runner.md) | Gateway runs a routine's scheduled turn and returns its outcome | 2026-10-16 |
 | [T-1653](T-1653-git-credentials-plan.md) | Plan: GitHub access for AI computers via a proxy git endpoint | 2026-10-16 |
 | [T-1648](T-1648-wire-run-prompt.md) | Routine scheduler runs prompt routines through the gateway | 2026-10-16 |
+| [T-1649](T-1649-routine-schedule-prompt-card.md) | routine.schedule accepts a prompt the AI runs on schedule | 2026-10-16 |

@@ -3,6 +3,7 @@
 import { Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 import { routineScheduleSchema } from '../routines/schedule';
+import { MAX_ROUTINE_PROMPT_CHARS } from '../routines/schemas';
 import { MAX_ROUTINE_INPUT_BYTES, MAX_ROUTINE_TITLE_CHARS } from '../routines/service';
 import { toolHostsSchema, toolNameSchema, toolVersionInputSchema } from './schemas';
 
@@ -80,13 +81,43 @@ export const routineTitleSchema = Schema.String.check(
   ),
 );
 
-export const routineScheduleArgsSchema = struct({
+// T-1649: the prompt a scheduled AI job runs itself. Trimmed non-empty and
+// no longer than the routines service limit, so an oversize prompt fails the
+// adapter schema and the gateway denies `invalid_args` before `execute`.
+const routinePromptSchema = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    value.trim().length >= 1 ? undefined : 'prompt must not be empty',
+  ),
+  Schema.makeFilter((value: string) =>
+    value.trim().length <= MAX_ROUTINE_PROMPT_CHARS
+      ? undefined
+      : `prompt must be at most ${MAX_ROUTINE_PROMPT_CHARS} characters`,
+  ),
+);
+
+// The saved-tool form: a tool the routine runs on the schedule.
+const routineToolScheduleArgsSchema = struct({
   tool: toolNameSchema,
   title: routineTitleSchema,
   schedule: routineScheduleSchema,
   hosts: toolHostsSchema,
   input: Schema.optional(inputField(MAX_ROUTINE_INPUT_BYTES)),
 });
+
+// T-1649: the prompt form: a prompt the AI runs itself and answers here.
+export const routinePromptScheduleArgsSchema = struct({
+  title: routineTitleSchema,
+  schedule: routineScheduleSchema,
+  prompt: routinePromptSchema,
+});
+
+// T-1649: either form, never both. The two shapes share no required field and
+// the strict decode rejects the other form's keys, so a value with `prompt`
+// never decodes as the tool shape and vice versa.
+export const routineScheduleArgsSchema = Schema.Union([
+  routineToolScheduleArgsSchema,
+  routinePromptScheduleArgsSchema,
+]);
 
 export const routineTitleArgsSchema = struct({
   title: routineTitleSchema,

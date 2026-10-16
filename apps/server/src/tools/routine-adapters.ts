@@ -3,6 +3,7 @@
 // `tools/adapters.ts` unchanged.
 import type { Schema } from 'effect';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
+import { createPromptRoutine } from '../routines/prompt-routines';
 import { nextRunAfter, type RoutineSchedule } from '../routines/schedule';
 import {
   RoutineServiceError,
@@ -25,6 +26,16 @@ import { getTool } from './service';
 import { routineScheduleArgsSchema, routineTitleArgsSchema } from './tool-arg-schemas';
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// T-1649: the approval card shows at most this many characters of a
+// scheduled prompt; the full prompt stays in the routine row.
+const MAX_PROMPT_CARD_CHARS = 500;
+
+function promptForCard(prompt: string): string {
+  return prompt.length <= MAX_PROMPT_CARD_CHARS
+    ? prompt
+    : `${prompt.slice(0, MAX_PROMPT_CARD_CHARS)}…`;
+}
 
 // `schedule` in words for cards, lists and summaries, e.g. `every 6 hours`
 // or `daily at 09:00 Europe/Madrid on Mon, Wed, Fri`.
@@ -77,10 +88,10 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
   return {
     name: 'routine.schedule',
     description:
-      'Schedule a routine in this topic that runs a tool and posts the result here (needs approval).',
+      'Schedule a routine in this chat (needs approval): either a prompt you run yourself on that schedule and answer here (use your computer or actions as needed), or a saved tool whose result is posted.',
     tier: 2,
     argsExample:
-      '{"tool":"daily-report","title":"Daily report","schedule":{"kind":"interval","everyMinutes":1440},"hosts":["api.example.com"]}',
+      '{"title":"Morning prices","schedule":{"kind":"daily","time":"08:00","timezone":"Europe/Madrid"},"prompt":"Post the current BTC, gold and S&P 500 prices with their sources."}',
     argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as {
@@ -88,9 +99,17 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         title: string;
         schedule: RoutineSchedule;
         hosts: string[];
+        prompt?: string;
       };
+      const summary = `Schedule "${parsed.title}": ${describeSchedule(parsed.schedule)}`;
+      if (parsed.prompt !== undefined) {
+        return {
+          summary,
+          details: `Runs this prompt on that schedule and posts my answer here: "${promptForCard(parsed.prompt)}"`,
+        };
+      }
       return {
-        summary: `Schedule "${parsed.title}": ${describeSchedule(parsed.schedule)}`,
+        summary,
         details: `Runs tool ${parsed.tool} and posts the result here. It will contact: ${hostsLine(parsed.hosts)}.`,
       };
     },
@@ -102,7 +121,38 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         schedule: unknown;
         hosts: string[];
         input?: unknown;
+        prompt?: string;
       };
+      // T-1649: the prompt form needs no tool and no hosts check; it creates
+      // a `kind = 'prompt'` routine the AI runs itself and posts here.
+      if (parsed.prompt !== undefined) {
+        const owner = await ownerOf(state.db, actionCtx.aiId);
+        try {
+          const created = await createPromptRoutine(
+            state.db,
+            {
+              aiId: actionCtx.aiId,
+              groupId: actionCtx.groupId,
+              topicId: actionCtx.topicId,
+              title: parsed.title,
+              schedule: parsed.schedule,
+              prompt: parsed.prompt,
+              userId: owner,
+            },
+            state.now(),
+            ...(state.audit === undefined ? [] : ([state.audit] as const)),
+          );
+          const next = nextRunAfter(created.schedule, state.now());
+          return {
+            summary: `Scheduled "${created.title}"; next run ${formatNextRun(created.schedule, next)}`,
+          };
+        } catch (error) {
+          if (error instanceof RoutineServiceError) {
+            return { summary: serviceFailure(error) };
+          }
+          throw error;
+        }
+      }
       const found = await findToolByName(state, actionCtx, parsed.tool);
       if (!found) {
         return { summary: 'no such tool' };
