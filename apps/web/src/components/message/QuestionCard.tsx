@@ -11,7 +11,10 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
  */
 export function hidesBodyText(card: { type: string } | undefined): boolean {
   return (
-    card?.type === 'question' || card?.type === 'progress' || card?.type === 'approval.request'
+    card?.type === 'question' ||
+    card?.type === 'progress' ||
+    card?.type === 'blocks' ||
+    card?.type === 'approval.request'
   );
 }
 

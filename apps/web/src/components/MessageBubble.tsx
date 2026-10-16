@@ -129,7 +129,8 @@ export const MessageBubble = memo(function MessageBubble({
   const bodyText = hasText && !hidesBodyText(message.card);
   // A work (progress) card stands alone (T-1618): like `bigEmoji`, the message
   // draws no bubble surface around it and the card's own box is the only one.
-  const standaloneCard = message.card?.type === 'progress';
+  // A blocks card (T-1755) stands alone the same way.
+  const standaloneCard = message.card?.type === 'progress' || message.card?.type === 'blocks';
 
   // A reply quote click: scroll when loaded, else load around it then scroll (PinnedBanner.tsx:40-55).
   const [, openQuote] = useAction((messageId: string) =>

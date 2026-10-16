@@ -10,6 +10,7 @@ import { VoiceMessage } from '../VoiceMessage';
 import { cn } from '@/lib/utils';
 import { mediaSrc } from '@/lib/attachments';
 import { AlbumGrid } from './AlbumGrid';
+import { BlockCard } from './blocks/BlockCard';
 import { MediaMetaPill } from './MediaMetaPill';
 import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
@@ -63,6 +64,12 @@ export function AttachmentBody({
   // A media bubble is edge to edge (T-1335): the media fills the bubble and its
   // own clip follows the bubble's corners and tail.
   const radius = mediaCorners(mediaTop, !hasText, lastInGroup, own);
+  // T-1618: a work card stands alone; T-1755: a blocks card is its own surface
+  // too. Neither takes the bubble's inner padding box, and each shows its own
+  // time instead of the row below the bubble.
+  const cardStandsAlone =
+    message.card !== undefined &&
+    (message.card.type === 'progress' || message.card.type === 'blocks');
   // An album head draws the whole grid (T-1268) instead of its single photo;
   // the caption under it is the bubble's text body. A failed tile owns its own
   // upload-failure Retry, but the fixed "Not sent" row (reason, Retry, Delete
@@ -244,10 +251,16 @@ export function AttachmentBody({
       )}
 
       {message.card !== undefined && (
-        // T-1618: a work card stands alone; only the other cards get the
-        // bubble's inner padding box.
-        <div className={cn(message.card.type !== 'progress' && 'px-3 py-1.5')}>
+        // T-1618: a work card stands alone; T-1755: a blocks card is its own
+        // surface too, so neither gets the bubble's inner padding box.
+        <div className={cn(!cardStandsAlone && 'px-3 py-1.5')}>
           {message.card.type === 'progress' && <ProgressCard progress={message.card.data} />}
+          {message.card.type === 'blocks' && (
+            <BlockCard
+              data={message.card.data}
+              footer={<MessageMeta message={message} showTicks={own} className="text-[#8a8a8a]" />}
+            />
+          )}
           {message.card.type === 'approval.request' && (
             <ApprovalCard
               request={message.card.data}
@@ -268,7 +281,8 @@ export function AttachmentBody({
       {!hasText &&
         (message.voice !== undefined ||
           // T-1618: a work card's own timer is its time; no clock or "edited".
-          (message.card !== undefined && message.card.type !== 'progress') ||
+          // T-1755: a blocks card shows its own time inside the card, too.
+          (message.card !== undefined && !cardStandsAlone) ||
           (attachmentFile && !videoAttachment)) && (
           <div className="flex justify-end px-3 pb-2">
             <MessageMeta
