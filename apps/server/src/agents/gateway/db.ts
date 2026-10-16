@@ -2,10 +2,8 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ActiveAiForGateway } from '../../ais/service';
 import type { ServerDatabase } from '../../db/client';
-import type { TopicMemberRow } from '../../db/rows';
 import { runSql } from '../../effect/sql';
 import type { GroupRole } from '../../groups/service';
-import { topicRoleHolderIds } from '../../roles/service';
 import { allowedTopicAiIds } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { normBareJid } from '../context';
@@ -62,6 +60,10 @@ interface GroupListenerSettings {
 
 interface TopicIsGeneralRow {
   isGeneral: boolean;
+}
+
+interface TopicMemberRow {
+  userId: string;
 }
 
 interface GroupMemberRow {
@@ -137,10 +139,9 @@ export async function listAiRooms(
     }),
   );
   const inTopic = new Set(topicAiRows.map((row) => row.topicId));
-  // The owner's membership is a live derived rule (see `allowedTopicAiIds`):
-  // a non-General topic counts only while the AI's owner is a topic member
-  // (and still in the group). The rows stay, so adding the owner back brings
-  // the AI back automatically.
+  // The owner's visibility is a live derived rule (see `allowedTopicAiIds`):
+  // a private topic counts only while the AI's owner is a topic member. The
+  // rows stay, so adding the owner back brings the AI back automatically.
   const allowedByTopic = new Map<string, Set<string>>();
   for (const topic of topicRows) {
     if (!topic.isGeneral && topic.archivedAt === null && inTopic.has(topic.id)) {
@@ -303,8 +304,8 @@ export interface RoomGateState {
 
 // The fresh gate for one topic turn: who may trigger the AI, and which
 // nicks belong to AIs. For a General topic the humans are every group
-// member; for any other topic they are that topic's members (T-1757: the
-// `topic_members` rows plus the holders of its roles). Member JIDs
+// member; for any other topic they are that topic's members (public topics:
+// every group member; private topics: the `topic_members` rows). Member JIDs
 // are derived with the same `localpartFor` the provisioning uses, so no
 // extra mapping table is needed. Roles come from `group_members` and are
 // looked up per turn so a promotion or demotion that lands between turns is
@@ -340,21 +341,15 @@ export async function loadRoomGateState(
     }),
   );
   let memberIds: Set<string> | null = null;
-  if (topic && !topic.isGeneral) {
+  if (topic && !topic.isGeneral && topic.visibility === 'private') {
     const rows = await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<
-          Pick<TopicMemberRow, 'userId'>
-        >`SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
+        return yield* sql<TopicMemberRow>`SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
       }),
     );
     memberIds = new Set(rows.map((row) => row.userId));
-    // T-1757/T-0116: a role holder is a topic member too, like the room sync.
-    for (const holder of await topicRoleHolderIds(db, topic.id, groupId)) {
-      memberIds.add(holder);
-    }
   }
   const members = await runSql(
     db,

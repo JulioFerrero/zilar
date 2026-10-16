@@ -26,14 +26,14 @@ function readGroupMembers(
   );
 }
 
-// Who belongs in the topic's room: every group member for General,
-// `topic_members` plus the holders of its roles for every other topic, plus
-// the AI memberships — every `group_ais` AI for General, the topic's
+// Who belongs in the topic's room: every group member for a public topic,
+// `topic_members` plus the holders of its roles for a private one, plus the
+// AI memberships — every `group_ais` AI for General, the topic's
 // `topic_ais` rows otherwise.
 // The return maps each JID to the affiliation it should hold: the group owner
 // is the room's owner for General; for other topics the topic creator is
 // owner (when they are still allowed in), everyone else is a member. AIs are
-// always plain members. An AI that is not a member of a non-General topic is
+// always plain members. An AI that is not a member of a private topic is
 // never included, even when it is in the group: the room itself enforces it.
 // T-0124: a channel's General topic (its feed) keeps the voice mapping —
 // owner stays `owner`, admins stay `admin` (voice in the moderated room),
@@ -45,9 +45,7 @@ export async function desiredMembers(
   domain: string,
 ): Promise<Map<string, RoomAffiliation>> {
   const wanted = new Map<string, RoomAffiliation>();
-  // T-1757: only General is the whole group; every other topic follows the
-  // `topic_members` plus role holders branch below.
-  if (topic.isGeneral) {
+  if (topic.visibility !== 'private') {
     const [group] = await runSql(
       db,
       Effect.gen(function* () {
@@ -120,7 +118,7 @@ export async function desiredMembers(
 
 // AI affiliations for one topic room: every group AI for General, the
 // topic's allowed `topic_ais` rows otherwise (see `allowedTopicAiIds`: for a
-// non-General topic an AI counts only while its owner is a topic member, so the
+// private topic an AI counts only while its owner is a topic member, so the
 // sync removes the AI from the room once its owner is not a member —
 // without deleting the row, so adding the owner back brings it back). Only
 // active AIs join a room; a stale row for a stopped or disabled AI no longer

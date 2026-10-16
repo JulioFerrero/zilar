@@ -21,8 +21,8 @@ type TopicRoomRow = Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral'
 
 // Whether the AI is still a member of the routine topic's room: General
 // topics read `group_ais`; other topics use the derived rule of
-// `allowedTopicAiIds` (the AI is in `topic_ais` and, in a non-General topic,
-// its owner is still a member), so the tool never runs for an AI that may no
+// `allowedTopicAiIds` (the AI is in `topic_ais` and, in a private topic, its
+// owner still sees the topic), so the tool never runs for an AI that may no
 // longer be there. An archived topic's room is gone, so the routine skips.
 export async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boolean> {
   const [topic] = await runSql(

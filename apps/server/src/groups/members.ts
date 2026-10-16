@@ -158,15 +158,14 @@ export async function removeGroupMember(
             });
             yield* sql`DELETE FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
-            // T-0108: a removed person loses their `topic_members` rows for
-            // every topic of the group. The topic room sync below then drops
-            // them from every topic room.
+            // T-0108: a removed person loses their private-topic rows too. The
+            // topic room sync below then drops them from every topic room.
             const topicRows = yield* sql<{ id: string }>`SELECT id FROM topics
               WHERE group_id = ${input.groupId}`;
-            const topicIds = topicRows.map((row) => row.id);
-            if (topicIds.length > 0) {
+            const privateIds = topicRows.map((row) => row.id);
+            if (privateIds.length > 0) {
               yield* sql`DELETE FROM topic_members
-                WHERE topic_id IN ${sql.in(topicIds)} AND user_id = ${input.targetUserId}`;
+                WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${input.targetUserId}`;
             }
           }),
         );

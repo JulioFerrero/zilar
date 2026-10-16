@@ -99,21 +99,6 @@ export async function canSeeTopic(
   return holdsTopicRole(db, topic.id, userId);
 }
 
-// T-1757: whether the user belongs to the topic itself. Only General is the
-// whole group; every other topic owns its member list, so membership is a
-// `topic_members` row or a holder of one of its roles. Group membership is
-// checked by the caller where it matters.
-export async function isTopicMember(
-  db: ServerDatabase,
-  topicId: string,
-  userId: string,
-): Promise<boolean> {
-  if (await isPrivateMember(db, topicId, userId)) {
-    return true;
-  }
-  return holdsTopicRole(db, topicId, userId);
-}
-
 export async function requireVisibleTopic(
   db: ServerDatabase,
   topicId: string,
