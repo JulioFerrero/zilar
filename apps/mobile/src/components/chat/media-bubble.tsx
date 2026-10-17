@@ -9,6 +9,7 @@ import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { AttachmentViewer, isLoadableMediaUrl } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { ImageMessage } from '@/components/chat/image-message';
+import { MEDIA_WIDTH, mediaFrame } from '@/components/chat/media-frame';
 import { MediaMetaPill } from '@/components/chat/media-meta-pill';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
@@ -21,8 +22,6 @@ import { useMediaSource } from '@/lib/media-source';
 import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 
-const MEDIA_WIDTH = 240;
-const MAX_IMAGE_HEIGHT = 320;
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 
 /**
@@ -127,6 +126,26 @@ export function MediaBubble({
     !gifVideo &&
     upload.localUri === undefined &&
     !showsMedia;
+  // A single photo bubble fits the photo at its ratio (T-1924): a tall phone
+  // screenshot used to shrink inside the fixed 240 px wrapper and leave a white
+  // bar beside it. Albums, GIF videos and the non-photo states (an untrusted
+  // file row, a failed upload) keep the full width.
+  const imageSize =
+    message.image ??
+    (attachment !== undefined && attachment.kind === 'image' ? attachment : undefined);
+  const imageRatio =
+    imageSize !== undefined &&
+    imageSize.width !== undefined &&
+    imageSize.height !== undefined &&
+    imageSize.height > 0
+      ? imageSize.width / imageSize.height
+      : undefined;
+  const singlePhoto =
+    message.album === undefined &&
+    !gifVideo &&
+    (message.image !== undefined ||
+      (attachment !== undefined && attachment.kind === 'image' && !failed && !untrustedImage));
+  const bubbleWidth = singlePhoto ? mediaFrame(imageRatio).width : MEDIA_WIDTH;
 
   let media: ReactNode = null;
   if (message.album !== undefined) {
@@ -174,7 +193,7 @@ export function MediaBubble({
   }
 
   return (
-    <View style={{ width: MEDIA_WIDTH }}>
+    <View style={{ width: bubbleWidth }}>
       <View className="relative">
         {media}
         {!hasCaption && (showsMedia || failed || untrustedImage) ? (
@@ -277,10 +296,7 @@ function MediaImage({
     attachment.width !== undefined && attachment.height !== undefined
       ? attachment.width / attachment.height
       : undefined;
-  const size =
-    ratio === undefined
-      ? { width: '100%' as const, height: MAX_IMAGE_HEIGHT }
-      : { width: '100%' as const, aspectRatio: ratio, maxHeight: MAX_IMAGE_HEIGHT };
+  const size = mediaFrame(ratio);
 
   if (failed) {
     return (
