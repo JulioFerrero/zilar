@@ -9,6 +9,7 @@ import { Linking, Text as RNText } from 'react-native';
 
 import { safeLinkTarget } from '@/lib/links';
 import { FOREGROUND } from '@/lib/colors';
+import { MentionText } from './mention-text';
 import { BODY, INLINE_CODE_BACKGROUND } from './markdown-text';
 
 const CHIP_INCOMING = 'rgba(255,255,255,0.08)';
@@ -58,17 +59,17 @@ export function LinkText({
       {segments.map((segment, index) => {
         if (segment.kind === 'mention') {
           const mine = !outgoing && isMentionOfMe(segment.jid, meJid);
-          return (
-            <RNText
-              key={index}
-              style={{
-                fontFamily: 'Geist_600SemiBold',
-                color: mine ? '#ededed' : undefined,
-                backgroundColor: mine ? CHIP_ME : outgoing ? CHIP_OUTGOING : CHIP_INCOMING,
-              }}
-            >
+          const style = {
+            fontFamily: 'Geist_600SemiBold',
+            color: mine ? '#ededed' : undefined,
+            backgroundColor: mine ? CHIP_ME : outgoing ? CHIP_OUTGOING : CHIP_INCOMING,
+          };
+          return mine ? (
+            <RNText key={index} style={style}>
               {segment.text}
             </RNText>
+          ) : (
+            <MentionText key={index} jid={segment.jid} text={segment.text} style={style} />
           );
         }
         return splitLinks(segment.text).map((linkSegment, linkIndex) =>

@@ -4,8 +4,16 @@ import { Pressable } from 'react-native';
 
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
-import { personTarget, type PersonTarget } from '@/lib/person-link';
+import { personTarget, type PersonLinkRoute, type PersonTarget } from '@/lib/person-link';
 import { useChatStore } from '@/store/chat-store-provider';
+
+/** Where a tap on `target` should go, read from the chat store. */
+export function usePersonRoute(target: PersonTarget): PersonLinkRoute | undefined {
+  const contacts = useChatStore((state) => state.contacts);
+  const chats = useChatStore((state) => state.chats);
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  return personTarget(target, { contacts, chats, currentUserId });
+}
 
 /**
  * Makes a person's avatar or name open them (T-1859): a contact or an
@@ -22,10 +30,7 @@ export function PersonPressable({
   name: string;
   children: ReactNode;
 }) {
-  const contacts = useChatStore((state) => state.contacts);
-  const chats = useChatStore((state) => state.chats);
-  const currentUserId = useChatStore((state) => state.currentUserId);
-  const route = personTarget(target, { contacts, chats, currentUserId });
+  const route = usePersonRoute(target);
   // The link is an inner `Pressable`, so it swallows the enclosing bubble's
   // `onLongPress` (`message-menu-context.tsx`): forward the menu open so a long
   // hold still opens the message actions, while a short tap opens the person.

@@ -1886,3 +1886,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1874](T-1874-web-alt-arrow-chats.md) | web: Alt+Up/Down switches chats | 2026-10-17 |
 | [T-1878](T-1878-alert-quiet-run.md) | alert routines post only at the threshold | 2026-10-17 |
 | [T-1875](T-1875-alert-card-guide.md) | the card guide teaches the alert card | 2026-10-17 |
+| [T-1877](T-1877-phone-mention-links.md) | phone: @mention chips open the person | 2026-10-17 |
