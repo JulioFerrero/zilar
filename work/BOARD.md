@@ -1929,3 +1929,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1916](T-1916-phone-pins-clear.md) | phone sign-out clears the in-memory pins | 2026-10-17 |
 | [T-1918](T-1918-pnpm-unused-patch.md) | pnpm allows the phone-only patch in server deploys | 2026-10-17 |
 | [T-1919](T-1919-cancel-notice-names-request.md) | an expired approval says which request was not done | 2026-10-17 |
+| [T-1920](T-1920-flaky-scheduled-wait-test.md) | deflake the queued scheduled-run timing test | 2026-10-17 |

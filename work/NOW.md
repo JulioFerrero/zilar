@@ -801,7 +801,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Deferred:**
                 - W2/P2 contact-request rows from the cache (rare);
                 - token prefetch (about 80 ms).
-              - **v0.2.9 needs Julio's OK.** It would carry share-into-Zilar, notification Reply / Mark as read, one notification per chat, and every phone smoothness fix above.
+              - **v0.2.9: Julio OK'd it at about 19:48 UTC.** Tagged on `4a8da94` at 19:52, and the Android release workflow is running.
+                - **CI on `4a8da94`** was red twice, only on `gateway-stop.test.ts` "does not fail a queued scheduled item…". Its 50 ms cap is too tight on a loaded runner; the test passes locally 10/10. **T-1920** deflakes it.
+                - **After the APK:** verify `app.config` shows 0.2.9 / 209, post in Zilar Updates, then ask Julio to test share and notification Reply on his phone.
+              - **Held:** T-1919 (server: "Not carried out: <summary>"). It will be pushed with T-1920.
               - **Older (done):**
                 - T-1895 (`/share`, lead fix round: `file://` only from the cache, empty/oversize refused on screen, Send always re-enabled);
                 - smooth-app wave 1:

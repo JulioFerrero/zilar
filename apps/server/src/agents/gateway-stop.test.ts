@@ -430,7 +430,7 @@ describe('scheduled-run fixes (T-1657)', () => {
         void Effect.runPromise(pump(target)).catch(() => undefined);
       },
       kickRoom: () => undefined,
-      timeoutMs: 50,
+      timeoutMs: 300,
     });
 
     // A first, busy turn holds the queue.
@@ -454,7 +454,7 @@ describe('scheduled-run fixes (T-1657)', () => {
         settled = value;
         return value;
       });
-    await tick(120);
+    await tick(500);
     expect(settled).toBeUndefined();
 
     release();
