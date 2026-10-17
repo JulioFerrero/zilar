@@ -72,80 +72,80 @@ export function ChatListPage({
   // never in the AIs folder.
   const showRequests = folder === undefined || folder.includeTypes.includes('dm');
   return (
-    <>
-      <FlatList
-        className="flex-1"
-        data={rows}
-        keyExtractor={chatRowKey}
-        contentContainerStyle={{ paddingBottom: 180 }}
-        ListHeaderComponent={showRequests ? <ContactRequestRows onToast={onRequestsToast} /> : null}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={onRefresh}
-          />
-        }
-        renderItem={({ item }) => (
-          <ChatRow
-            row={item}
-            onPressChat={onPressChat}
-            onPressGroup={onPressGroup}
-            onLongPress={onLongPress}
-          />
-        )}
-        ListEmptyComponent={
-          listView === 'skeleton' ? (
-            <ChatListSkeleton />
-          ) : listView === 'error' ? (
-            <LoadError message="Could not load chats. Try again." onRetry={onRetry} />
-          ) : (
-            <StateMessage
-              kind="empty"
-              icon={MessageSquarePlus}
-              title={emptyChatsText(chatsCount)}
-              hint={
-                chatsCount === 0
-                  ? 'Start a chat to see it here.'
-                  : 'Try a different folder or search.'
-              }
-              action={
-                chatsCount === 0 && onStartChat !== undefined
-                  ? { label: 'Start a chat', onPress: onStartChat }
-                  : undefined
-              }
-            />
-          )
-        }
-      />
-      {archived.length > 0 ? (
-        <View className="border-t border-divider">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              archivedOpen ? 'Hide archived chats' : `Show archived chats, ${archived.length}`
+    <FlatList
+      className="flex-1"
+      data={rows}
+      keyExtractor={chatRowKey}
+      contentContainerStyle={{ paddingBottom: 180 }}
+      ListHeaderComponent={showRequests ? <ContactRequestRows onToast={onRequestsToast} /> : null}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          tintColor={MUTED_FOREGROUND}
+          onRefresh={onRefresh}
+        />
+      }
+      renderItem={({ item }) => (
+        <ChatRow
+          row={item}
+          onPressChat={onPressChat}
+          onPressGroup={onPressGroup}
+          onLongPress={onLongPress}
+        />
+      )}
+      ListEmptyComponent={
+        listView === 'skeleton' ? (
+          <ChatListSkeleton />
+        ) : listView === 'error' ? (
+          <LoadError message="Could not load chats. Try again." onRetry={onRetry} />
+        ) : (
+          <StateMessage
+            kind="empty"
+            icon={MessageSquarePlus}
+            title={emptyChatsText(chatsCount)}
+            hint={
+              chatsCount === 0
+                ? 'Start a chat to see it here.'
+                : 'Try a different folder or search.'
             }
-            onPress={onToggleArchived}
-            className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
-          >
-            <Archive size={16} color={ICON} />
-            <Text className="text-[14px] font-medium text-muted-foreground">
-              Archived ({archived.length})
-            </Text>
-          </Pressable>
-          {archivedOpen
-            ? archived.map((chat) => (
-                <ChatRow
-                  key={chat.id}
-                  row={{ kind: 'chat', chat }}
-                  onPressChat={onPressChat}
-                  onPressGroup={onPressGroup}
-                  onLongPress={onLongPress}
-                />
-              ))
-            : null}
-        </View>
-      ) : null}
-    </>
+            action={
+              chatsCount === 0 && onStartChat !== undefined
+                ? { label: 'Start a chat', onPress: onStartChat }
+                : undefined
+            }
+          />
+        )
+      }
+      ListFooterComponent={
+        archived.length > 0 ? (
+          <View className="border-t border-divider">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                archivedOpen ? 'Hide archived chats' : `Show archived chats, ${archived.length}`
+              }
+              onPress={onToggleArchived}
+              className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
+            >
+              <Archive size={16} color={ICON} />
+              <Text className="text-[14px] font-medium text-muted-foreground">
+                Archived ({archived.length})
+              </Text>
+            </Pressable>
+            {archivedOpen
+              ? archived.map((chat) => (
+                  <ChatRow
+                    key={chat.id}
+                    row={{ kind: 'chat', chat }}
+                    onPressChat={onPressChat}
+                    onPressGroup={onPressGroup}
+                    onLongPress={onLongPress}
+                  />
+                ))
+              : null}
+          </View>
+        ) : null
+      }
+    />
   );
 }
