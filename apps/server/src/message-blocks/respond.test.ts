@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
-import { createTestContext, type TestContext } from '../test-support';
+import type { RoutineRow } from '../db/rows';
+import { AlertLinkTaken, linkAlertCard } from '../routines/alert-link';
+import { createPromptRoutine } from '../routines/prompt-routines';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';
 import { respondToCard, myPicks, type CardRespondDeps, type CorrectCardInput } from './respond';
@@ -66,6 +71,20 @@ describe('card respond', () => {
       },
     ],
   };
+
+  async function readRoutine(id: string): Promise<RoutineRow> {
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
+      }),
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new Error('routine row missing');
+    }
+    return row;
+  }
 
   async function setup(): Promise<{
     deps: CardRespondDeps;
@@ -243,6 +262,47 @@ describe('card respond', () => {
       code: 'invalid_response',
     });
     expect(await listResponses(context.db, 'alert-origin')).toHaveLength(1);
+  });
+
+  it('drives the linked routine from the alert answer and refuses a second link', async () => {
+    const { deps, aiId, ownerId, memberId } = await setup();
+    const createRoutine = (title: string) =>
+      createPromptRoutine(
+        context.db,
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          title,
+          schedule: { kind: 'interval', everyMinutes: 60 },
+          prompt: 'Tell me when spending passes the threshold',
+          userId: ownerId,
+        },
+        new Date('2026-10-17T12:00:00.000Z'),
+      );
+    const routine = await createRoutine('Spend alert');
+    await linkAlertCard(context.db, routine.id, 'alert-origin', 'alert-1');
+    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
+
+    await respondToCard(deps, memberId, {
+      ...answer,
+      value: { done: false, fields: { value: '$95,000' } },
+    });
+
+    const paused = await readRoutine(routine.id);
+    expect(paused).toMatchObject({ status: 'paused', pausedReason: 'user' });
+    expect(paused.input).toMatchObject({ threshold: 95000 });
+
+    await respondToCard(deps, memberId, { ...answer, value: { done: true } });
+
+    const resumed = await readRoutine(routine.id);
+    expect(resumed).toMatchObject({ status: 'active', pausedReason: null });
+    expect(resumed.input).toMatchObject({ threshold: 95000 });
+
+    const other = await createRoutine('Other alert');
+    await expect(
+      linkAlertCard(context.db, other.id, 'alert-origin', 'alert-1'),
+    ).rejects.toBeInstanceOf(AlertLinkTaken);
   });
 
   it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {

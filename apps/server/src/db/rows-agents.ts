@@ -171,6 +171,11 @@ export interface RoutineRow {
   // T-1713: the routine's single live message; both null until it posts.
   lastMessageId: string | null;
   lastMessageAt: Date | null;
+  // T-1856: the alert card block that drives this routine; both null until a
+  // later task lets `post_blocks` name the routine. Optional only so test
+  // fixtures outside this task's files still build a row.
+  alertCardId?: string | null;
+  alertBlockId?: string | null;
   consecutiveFailures: number;
   createdBy: string;
   createdAt: Date;

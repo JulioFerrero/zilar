@@ -18,6 +18,7 @@ import type { BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { getGroupMembership, isTopicMember, requireVisibleTopic } from '../topics/access';
+import { applyAlertToRoutine } from './alert-routine';
 import { applyResponses } from './apply';
 import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse } from './cards';
 
@@ -344,6 +345,8 @@ export async function respondToCard(
       value: recorded.value,
     });
   }
+  if (recorded.kind === 'item' && block.kind === 'alert')
+    await applyAlertToRoutine(deps, card, input.blockId, userId, recorded.value);
 
   const rows = await listResponses(deps.db, card.originId);
   const nameOf = await loadNameLookup(deps.db, rows);
