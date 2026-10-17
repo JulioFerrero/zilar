@@ -13,10 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
+import { TopicAddContent, type AddTab } from '@/components/chat/topic-add-sheet';
 import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
 import { TopicsSection } from '@/components/group-info/topics-section';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import type { Contact, GroupDetail } from '@/lib/chat-api';
 import { ICON } from '@/lib/colors';
 
 const noop = (): void => undefined;
@@ -119,6 +121,68 @@ const STATES: readonly State[] = [
   { label: 'THREE OR MORE', writers: ['JULITO', 'Deepseek', 'Claude'] },
 ];
 
+// The Add sheet's sample data (`PhoneAdd.dc.html`): the caller is JULITO, the
+// topic holds Marta and Claude, and the group's Deepseek is the caller's own.
+const ME = 'p1';
+const ADD_TOPIC_MEMBERS = ['p2'];
+const ADD_TOPIC_AIS = ['ai-claude'];
+const ADD_DETAIL: GroupDetail = {
+  id: 'g1',
+  title: GROUP,
+  createdBy: ME,
+  members: [
+    { userId: 'p1', name: 'JULITO', role: 'owner' },
+    { userId: 'p2', name: 'Marta', role: 'admin' },
+    { userId: 'p3', name: 'Luis', role: 'member' },
+  ],
+  ais: [
+    { aiId: 'ai-deepseek', jid: `deepseek@${GROUP}`, name: 'Deepseek', ownerId: 'p1' },
+    { aiId: 'ai-claude', jid: `claude@${GROUP}`, name: 'Claude', ownerId: 'p2' },
+  ],
+};
+const ADD_CONTACTS: readonly Contact[] = [
+  { userId: 'p5', name: 'Ana', jid: 'ana@example.test', handle: 'ana' },
+  { userId: 'p6', name: 'Pablo', jid: 'pablo@example.test' },
+];
+const ADD_OWNED_AIS = [
+  { id: 'ai-glm', name: 'GLM' },
+  { id: 'ai-deepseek', name: 'Deepseek' },
+];
+const noopAsync = (): Promise<void> => Promise.resolve();
+
+/** One Add-sheet tab, drawn inline the way the sheet draws it. */
+function AddPreview({ tab }: { tab: AddTab }) {
+  return (
+    <View className="gap-2">
+      <Text className="font-mono text-[11px] tracking-[0.06em] text-[#8a8a8a]">
+        {tab === 'people' ? 'PEOPLE' : 'AIS'}
+      </Text>
+      <View className="rounded-[24px] border-t border-border bg-panel px-4 pb-6 pt-4">
+        <Text className="text-[20px] font-semibold tracking-[-0.02em] text-foreground">
+          Add to {TOPIC}
+        </Text>
+        <View className="mt-3">
+          <TopicAddContent
+            topicName={TOPIC}
+            groupTitle={GROUP}
+            detail={ADD_DETAIL}
+            myUserId={ME}
+            isManager
+            contacts={ADD_CONTACTS}
+            ownedAis={ADD_OWNED_AIS}
+            memberIds={ADD_TOPIC_MEMBERS}
+            topicAiIds={ADD_TOPIC_AIS}
+            isGeneral={false}
+            addMember={noopAsync}
+            addAi={noopAsync}
+            initialTab={tab}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /** The header chrome the state line sits in, drawn like `chat-header.tsx`. */
 function HeaderPreview({ children }: { children: ReactNode }) {
   return (
@@ -180,7 +244,6 @@ export default function TopicHeaderDevScreen() {
               </View>
             ))}
           </View>
-
           <Text variant="h3" color="#ededed" className="mt-10">
             Group topics
           </Text>
@@ -197,6 +260,18 @@ export default function TopicHeaderDevScreen() {
               onNewTopic={noop}
               onJoinTopic={() => Promise.resolve()}
             />
+          </View>
+          <View className="mt-8 gap-2">
+            <Text variant="h3" color="#ededed">
+              Add people or AIs
+            </Text>
+            <Text className="text-[13px] text-[#8a8a8a]">
+              Both tabs, as opened from the topic header&apos;s Add key.
+            </Text>
+          </View>
+          <View className="mt-4 gap-6">
+            <AddPreview tab="people" />
+            <AddPreview tab="ais" />
           </View>
         </ScrollView>
       </SafeAreaView>

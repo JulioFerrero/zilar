@@ -49,19 +49,22 @@ function InfoGroup({ children }: { children: ReactNode }) {
 /**
  * The board's AI owner label (T-1785): "yours" when the caller owns the AI,
  * "{first name}'s" for anyone else, and nothing when the group detail does not
- * know the owner (`GroupAi.ownerId` -> `GroupMember.name`).
+ * know the owner (`GroupAi.ownerId` -> `GroupMember.name`). The Add sheet
+ * (T-1789) passes `null` as `mineLabel`: the board shows no label on the
+ * caller's own AIs there.
  */
-function aiOwnerLabel(
+export function aiOwnerLabel(
   aiId: string,
   detail: GroupDetail | undefined,
   myUserId: string,
+  mineLabel: string | null = 'yours',
 ): string | undefined {
   const ownerId = detail?.ais.find((entry) => entry.aiId === aiId)?.ownerId;
   if (ownerId === undefined) {
     return undefined;
   }
   if (ownerId === myUserId) {
-    return 'yours';
+    return mineLabel ?? undefined;
   }
   const firstName = detail?.members
     .find((member) => member.userId === ownerId)

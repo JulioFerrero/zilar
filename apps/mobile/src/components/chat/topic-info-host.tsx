@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
+import { TopicAddSheet } from '@/components/chat/topic-add-sheet';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -21,8 +22,18 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const setTopicRoles = useChatStore((state) => state.setTopicRoles);
   const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
+  const contacts = useChatStore((state) => state.contacts);
+  const ownedAis = useChatStore((state) => state.ownedAis);
+  const addTopicMember = useChatStore((state) => state.addTopicMember);
+  const addTopicAi = useChatStore((state) => state.addTopicAi);
 
   const [confirmingArchive, setConfirmingArchive] = useState(false);
+  // The Add sheet replaces the info sheet (the board's Close returns to the
+  // topic): one native sheet is presented at a time, like the AI memory sheet.
+  const [addOpen, setAddOpen] = useState(false);
+  const isManager = mayManageRoles(
+    screen.detail?.members.find((member) => member.userId === screen.myUserId)?.role,
+  );
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
     screen.setInfoRolesError('');
@@ -111,6 +122,10 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
         canManageRoles={mayManageRoles(
           screen.detail?.members.find((member) => member.userId === screen.myUserId)?.role,
         )}
+        onAdd={() => {
+          screen.setInfoOpen(false);
+          setAddOpen(true);
+        }}
         onToggleTopicRole={toggleTopicRole}
         onPickApprover={(roleId) =>
           saveTopicRoles(attachedRoleIds(screen.topicRoles?.roles ?? []), roleId)
@@ -124,6 +139,18 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
           screen.setInfoOpen(false);
           screen.setMemoryAi(ai);
         }}
+      />
+      <TopicAddSheet
+        chat={addOpen ? chat : null}
+        groupTitle={screen.groupName}
+        detail={screen.detail}
+        myUserId={screen.myUserId}
+        isManager={isManager}
+        contacts={contacts}
+        ownedAis={ownedAis}
+        addMember={(userId) => addTopicMember(chat.id, userId)}
+        addAi={(aiId) => addTopicAi(chat.id, aiId)}
+        onClose={() => setAddOpen(false)}
       />
       <ConfirmDialog
         visible={confirmingArchive}

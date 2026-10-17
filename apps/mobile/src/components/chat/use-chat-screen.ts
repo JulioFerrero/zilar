@@ -45,7 +45,6 @@ export function useChatScreen() {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const patchTopic = useChatStore((state) => state.patchTopic);
   const listTopicMembers = useChatStore((state) => state.listTopicMembers);
-  const listTopicAis = useChatStore((state) => state.listTopicAis);
   const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const topicRoles = useChatStore((state) => state.topicRoles(chatId));
   const chatGroupId = useChatStore(
@@ -83,7 +82,6 @@ export function useChatScreen() {
   const [jumpError, setJumpError] = useState('');
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoMembers, setInfoMembers] = useState<{ userId: string; name: string }[]>([]);
-  const [infoAis, setInfoAis] = useState<{ id: string; name: string }[]>([]);
   const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | null>(null);
   const [infoBusy, setInfoBusy] = useState(false);
   const [infoError, setInfoError] = useState('');
@@ -246,10 +244,6 @@ export function useChatScreen() {
       onSuccess: setInfoMembers,
       onFailure: () => setInfoMembers([]),
     });
-    runInBackground(() => listTopicAis(chatId), {
-      onSuccess: setInfoAis,
-      onFailure: () => setInfoAis([]),
-    });
     // The access picker reads the attached roles fresh.
     refreshInfoRoles();
   };
@@ -306,7 +300,6 @@ export function useChatScreen() {
     infoOpen,
     setInfoOpen,
     infoMembers,
-    infoAis,
     infoBusy,
     setInfoBusy,
     infoError,
