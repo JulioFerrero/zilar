@@ -748,10 +748,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - the tag is on `3570ee938` (pushed 17:38), which includes T-1885 (topic AI rows open the AI; emulator + web mock checked) and the T-1887 plan;
                 - the "Android release" run 39054502753 is building;
                 - after it: check `assets/app.config` in the APK shows 0.2.8 / 208, then post in Zilar Updates.
-              - **Running (17:40):**
-                - T-1889 (`POST /api/chats/:jid/reply`, notification reply server route);
-                - T-1890 (D1 compose: `CARD_MEDIA_STORAGE_DIR=/data/avatars/card-media`);
-                - T-1891 (share task 1: `expo-share-intent` 8.0.1 + plugin + provider).
+              - **Live `205047f2a` (17:45):** 0 errors.
+                - T-1889: `POST /api/chats/:jid/reply`; migration 0075 is applied and the `notification_replies` table exists.
+                - T-1890 (D1): `/data/avatars/card-media` exists on the avatar volume. Card media from before 17:45 sat on the container disk and is gone (the three test cards in "cards test" now show grey); new media survives deploys.
+                - T-1891: the share library (phone, ships in the next APK).
+              - **Running (17:50):**
+                - T-1892 (share payload parser);
+                - T-1893 (Mark as read: preview `archiveId` + `displayed`);
+                - T-1894 (shared chat picker for Forward and Share).
               - **Next APK checks:** tap a person, an @mention chip and a People page row; card photos open the viewer; long-press a reaction.
               - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
                 1. "Allow btc-price to use the web";
