@@ -1,10 +1,12 @@
+import { numericColumns } from '@zilar/chat-core';
 import type { TableBlock as TableBlockData } from '@zilar/protocol';
 import { cn } from '@/lib/utils';
 
-// The board's table (`WebNumbers.dc.html:134-142`): the first column is the row
-// label and the rest are pre-formatted numbers, mono, tabular and right-aligned.
-// The header rule is `#232323`; a data row carries a `#1c1c1c` rule under it; a
-// total row sits under a rule and is bold in its first and last cells.
+// The board's table (`WebNumbers.dc.html:134-142`): the header rule is `#232323`;
+// a data row carries a `#1c1c1c` rule under it; a total row sits under a rule and
+// is bold in its first and last cells. T-1793: alignment is per column, from
+// `numericColumns` — number columns are right-aligned, mono and tabular; text
+// columns are left-aligned in the body font.
 const HEAD_CELL = 'border-b border-[#232323] pb-[6px] text-[12px] text-[#8a8a8a]';
 const ROW_CELL = 'border-b border-[#1c1c1c] py-[6px]';
 const LAST_ROW_CELL = 'py-[6px]';
@@ -14,6 +16,7 @@ const NUMBER = 'text-right font-mono tabular-nums';
 /** 04 · TABLE: a header row and the rows, with an optional total row. */
 export function TableBlock({ block }: { block: TableBlockData }) {
   const columns = block.columns.length;
+  const numeric = numericColumns(block.columns, block.rows);
   const autoColumns = Array.from({ length: columns - 1 }, () => 'auto');
   const gridTemplateColumns = ['1fr', ...autoColumns].join(' ');
   const lastRow = block.rows.length - 1;
@@ -30,7 +33,10 @@ export function TableBlock({ block }: { block: TableBlockData }) {
       <div className="min-w-0 overflow-x-auto">
         <div className="grid min-w-max gap-x-[18px]" style={{ gridTemplateColumns }}>
           {block.columns.map((column, index) => (
-            <span key={`head-${index}`} className={cn(HEAD_CELL, index > 0 && NUMBER)}>
+            <span
+              key={`head-${index}`}
+              className={cn(HEAD_CELL, numeric[index] === true && NUMBER)}
+            >
               {column}
             </span>
           ))}
@@ -43,7 +49,7 @@ export function TableBlock({ block }: { block: TableBlockData }) {
                   key={`${rowIndex}-${index}`}
                   className={cn(
                     total ? TOTAL_CELL : rowIndex < lastRow ? ROW_CELL : LAST_ROW_CELL,
-                    index > 0 && NUMBER,
+                    numeric[index] === true && NUMBER,
                     bold && 'font-semibold',
                   )}
                 >

@@ -1,3 +1,4 @@
+import { numericColumns } from '@zilar/chat-core';
 import type { TableBlock as TableBlockData } from '@zilar/protocol';
 import { ScrollView, View } from 'react-native';
 
@@ -28,10 +29,11 @@ function Cell({ text, numeric, className }: { text: string; numeric: boolean; cl
 
 /**
  * 04 · TABLE: a header row, the body rows and, when `total` is set, the last row
- * drawn as the total. Column one is the label column; every other column is a
- * right-aligned mono number. The grid is built column by column, so a column is
- * as wide as its widest cell and the rows stay aligned. A table wider than the
- * card scrolls sideways in its own `ScrollView`.
+ * drawn as the total. A column whose filled cells are all formatted numbers is
+ * right-aligned and mono; every other column keeps the body font and the left
+ * edge (T-1793). The grid is built column by column, so a column is as wide as
+ * its widest cell and the rows stay aligned. A table wider than the card scrolls
+ * sideways in its own `ScrollView`.
  */
 export function TableBlock({
   block,
@@ -42,6 +44,7 @@ export function TableBlock({
 }) {
   const totalIndex = block.total === true ? block.rows.length - 1 : -1;
   const lastColumn = block.columns.length - 1;
+  const numeric = numericColumns(block.columns, block.rows);
   return (
     <View className="gap-2.5">
       {showHeading && block.title !== undefined ? (
@@ -56,7 +59,7 @@ export function TableBlock({
       >
         <View className="flex-row gap-3.5">
           {block.columns.map((column, columnIndex) => {
-            const numeric = columnIndex > 0;
+            const isNumeric = numeric[columnIndex] === true;
             const edge = columnIndex === 0 || columnIndex === lastColumn;
             return (
               <View
@@ -65,21 +68,25 @@ export function TableBlock({
                 // columns keep their content width so a wide table overflows.
                 className={columnIndex === 0 ? 'grow shrink-0' : undefined}
               >
-                <Cell text={column} numeric={numeric} className={numeric ? HEADER_NUM : HEADER} />
+                <Cell
+                  text={column}
+                  numeric={isNumeric}
+                  className={isNumeric ? HEADER_NUM : HEADER}
+                />
                 {block.rows.map((row, rowIndex) =>
                   rowIndex === totalIndex ? (
                     <Cell
                       key={rowIndex}
                       text={row[columnIndex] ?? ''}
-                      numeric={numeric}
-                      className={`${numeric ? TOTAL_NUM : TOTAL}${edge ? TOTAL_EDGE : ''}`}
+                      numeric={isNumeric}
+                      className={`${isNumeric ? TOTAL_NUM : TOTAL}${edge ? TOTAL_EDGE : ''}`}
                     />
                   ) : (
                     <Cell
                       key={rowIndex}
                       text={row[columnIndex] ?? ''}
-                      numeric={numeric}
-                      className={numeric ? CELL_NUM : CELL}
+                      numeric={isNumeric}
+                      className={isNumeric ? CELL_NUM : CELL}
                     />
                   ),
                 )}
