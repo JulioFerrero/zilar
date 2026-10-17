@@ -38,6 +38,7 @@ export const INTERACTIVE_KINDS: readonly Block['kind'][] = [
   'choice',
   'form',
   'rating',
+  'alert',
 ];
 
 // The general rules, kept short: a header, how to choose a kind, how to write
@@ -116,6 +117,9 @@ export const INTERACTIVE_RULES = [
   'Every interactive block and every action, option and field has an `id` (letters, digits, `.` `_` `~` `-`), unique in its block.',
   'Never send `votes`, `selected`, `chosen` or `sent`; the server fills them in.',
   'In a direct chat only the owner can answer an interactive card.',
+  "For a 'tell me when …' request, post an `alert` card: `title` names the rule, `field.label` names what is watched, `field.value` is the threshold as a display string, and `on: true`. Use one alert block per card.",
+  'Then call `routine.schedule` in the saved-tool form (a saved tool whose result carries the watched number) with `alert_card: {card: <the card id from the post_blocks result>, block: <the alert block id>}` and `input: {threshold: <the number>}`. After approval, the switch and the threshold on the card drive that routine.',
+  "Only the routine's manager can change a linked alert. An answer given before the approval is not applied.",
 ].join('\n');
 
 export const INTERACTIVE_SHAPES = [
@@ -124,6 +128,7 @@ export const INTERACTIVE_SHAPES = [
   'kind=choice {id,question,options:[2-5]string}',
   'kind=form {id,title?,fields:[1-4]{id,label,kind:text|number|date,value?},submit}',
   'kind=rating {id,prompt,max:1-5}',
+  'kind=alert {id,title,field:{label,value},on:boolean,note?}',
 ].join('\n');
 
 export function cardGuide(opts?: { interactive?: boolean }): string {
