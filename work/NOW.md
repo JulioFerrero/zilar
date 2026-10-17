@@ -532,6 +532,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **Pre-reviews on the free Muse fail at start** (outcome failed, from about 23:14 UTC).
               - The six stuck reviews were switched to paid Muse by hand (`session.switchModel` + `session.prompt`).
               - **T-1778 is merged and live:** the autopilot falls back on its own, and was restarted on it.
+            - **INCIDENT 00:06 UTC: chat.zilar.app is down (503).**
+              - The deploy of `0652012aa` failed.
+              - **Cause:** Docker on the VPS is stuck removing the old app containers. They are "Dead", in the `removing` state. `docker rm -f` says "removal already in progress", and containerd logs "calling snapshotter.Remove is forbidden". The new containers never started.
+              - **Fix:** restart the Docker daemon on the VPS, then redeploy. That restarts every container on the VPS, so it waits for Julio's OK. The push alert couldn't be sent (mobile push is off).
+              - **Resolved at 08:17 UTC** with Julio's OK at 08:14: `systemctl restart docker`, then a Coolify redeploy of `0652012aa`.
+                - All 6 app containers are healthy and the server shows 0 errors.
+                - `coolify-sentinel` is back.
+                - The preview and join routes answer 401 signed out, and web answers 200.
+                - **Downtime was about 8 h 10 min.**
             - **State at 00:20 UTC:**
               - **Live `e1e4af0c0`** (health OK, 0 errors): T-1777, T-1771, T-1773, T-1776 and T-1778.
               - **Merged and held:** T-1774 (S6 preview), T-1780 (W2 phone header) and T-1782 (phone content).

@@ -47,6 +47,7 @@ export const PollBlockSchema = struct({
       struct({
         id: IdSchema,
         label: Text,
+        votes: Schema.optional(CountSchema),
       }),
     ),
   ).pipe(

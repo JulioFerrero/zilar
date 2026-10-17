@@ -178,6 +178,45 @@ export interface RoutineRow {
   deletedAt: Date | null;
 }
 
+// Row of the `block_cards` table. `data` is a checked `BlocksData` payload; the
+// row type stays `unknown` so `db/` does not depend on the protocol package.
+export interface BlockCardRow {
+  originId: string;
+  stanzaId: string | null;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  roomJid: string;
+  data: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Insert shape of the `block_cards` table.
+export interface BlockCardInsert {
+  originId: string;
+  stanzaId?: string | null | undefined;
+  aiId: string;
+  groupId?: string | null | undefined;
+  topicId?: string | null | undefined;
+  roomJid: string;
+  data: unknown;
+  createdAt?: Date | undefined;
+  updatedAt?: Date | undefined;
+}
+
+// Row of the `block_responses` table: one interaction, keyed by the block and
+// item it answered (`''` for a block-level answer).
+export interface BlockResponseRow {
+  cardId: string;
+  blockId: string;
+  itemId: string;
+  actorId: string;
+  value: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Row of the `media_items` table.
 export interface MediaItemRow {
   id: string;
