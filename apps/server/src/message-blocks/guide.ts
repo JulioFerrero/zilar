@@ -29,6 +29,17 @@ export const CARD_KINDS: readonly Block['kind'][] = [
   'callout',
 ];
 
+// The kinds people can act on. Only `post_blocks` cards in a group or topic
+// draw them (a DM card stays read-only), so the `post_blocks` description adds
+// the interactive guide and the saved-tool guide does not.
+export const INTERACTIVE_KINDS: readonly Block['kind'][] = [
+  'buttons',
+  'poll',
+  'choice',
+  'form',
+  'rating',
+];
+
 // The general rules, kept short: a header, how to choose a kind, how to write
 // values, and where the time and source live. The shape map is written out as a
 // markdown table so the model matches the data it has to the kind that fits.
@@ -94,6 +105,29 @@ export const CARD_SHAPES = [
   'kind=callout {tone:success|warning|error|info,text}',
 ].join('\n');
 
-export function cardGuide(): string {
-  return CARD_RULES + '\n' + CARD_SHAPES;
+// The interactive kinds: what each one is for, and the fields it needs. The
+// bounds and the id pattern come from `packages/protocol/src/blocks-choices.ts`;
+// `votes` and `selected` are filled by the server when people answer.
+export const INTERACTIVE_RULES = [
+  'Use an interactive kind only when people must act. `buttons`, `choice`, `rating` and `form` ask for a decision; the answer comes back to you as a reply that mentions you.',
+  '`poll` collects votes and `checklist` collects ticks; everyone sees them and they do not wake you.',
+  'Every interactive block and every action, option and field has an `id` (letters, digits, `.` `_` `~` `-`), unique in its block.',
+  'Never send `votes` or `selected`; the server fills them in.',
+  'Interactive kinds work only in a group or topic, never in a direct chat.',
+].join('\n');
+
+export const INTERACTIVE_SHAPES = [
+  'kind=buttons {id,text,actions:[1-4]{id,label,style:light|dark}}',
+  'kind=poll {id,question,options:[1-8]{id,label},multiple?}',
+  'kind=choice {id,question,options:[2-5]string}',
+  'kind=form {id,title?,fields:[1-4]{id,label,kind:text|number|date,value?},submit}',
+  'kind=rating {id,prompt,max:1-5}',
+].join('\n');
+
+export function cardGuide(opts?: { interactive?: boolean }): string {
+  const guide = CARD_RULES + '\n' + CARD_SHAPES;
+  if (opts?.interactive !== true) {
+    return guide;
+  }
+  return guide + '\n' + INTERACTIVE_RULES + '\n' + INTERACTIVE_SHAPES;
 }

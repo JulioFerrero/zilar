@@ -1814,3 +1814,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1797](T-1797-web-topic-join-mute-leave.md) | web topic join preview, mute and leave | 2026-10-17 |
 | [T-1795](T-1795-web-interactive-cards.md) | web interactive cards answer through the respond route | 2026-10-17 |
 | [T-1802](T-1802-public-topics-start-empty.md) | new public topics start empty | 2026-10-17 |
+| [T-1803](T-1803-guide-interactive-kinds.md) | the post_blocks guide offers interactive cards | 2026-10-17 |

@@ -6,6 +6,7 @@ import { Effect } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import { buildBlocksPayload } from '../../message-blocks/build';
 import type { RecordCardInput } from '../../message-blocks/cards';
+import { INTERACTIVE_KINDS } from '../../message-blocks/guide';
 import { POST_BLOCKS_TOOL } from '../tools';
 import type { ToolExecution } from '../reply';
 import { errorName, type AiSession, type GatewayLogger } from './contracts';
@@ -38,6 +39,10 @@ const POSTED_TEXT_GROUP =
 const POSTED_TEXT_CHAT =
   'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.';
 const FAILED_TEXT = 'error: the card could not be posted';
+// T-1803: a DM card cannot be answered (nothing records it), so an interactive
+// kind there would strand the reader; the model is told to use a read-only kind.
+const INTERACTIVE_IN_DM_TEXT =
+  'invalid: interactive cards work only in a group or topic; use a read-only kind here';
 
 export function createPostBlocksRunner(
   logger: GatewayLogger,
@@ -111,6 +116,19 @@ export function createPostBlocksRunner(
     if (payload.type !== 'blocks') {
       return { content: FAILED_TEXT };
     }
+    // T-1803: an interactive card in a direct chat can never be answered, so
+    // refuse it here, before anything is sent.
+    const kind = chat.kind ?? 'groupchat';
+    if (
+      kind === 'chat' &&
+      payload.data.blocks.some((block) => INTERACTIVE_KINDS.includes(block.kind))
+    ) {
+      logger.info(
+        { aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: false },
+        'AI post_blocks refused',
+      );
+      return { content: INTERACTIVE_IN_DM_TEXT };
+    }
     const posted = yield* Effect.promise(() => postCard(session, chat, payload));
     if (!posted.ok) {
       logger.warn(
@@ -130,7 +148,6 @@ export function createPostBlocksRunner(
     }
     // T-1800: a DM card is read-only for now, so there is nothing to record;
     // a tap on it answers 404 like any other tool card.
-    const kind = chat.kind ?? 'groupchat';
     if (kind !== 'chat') {
       yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
     }

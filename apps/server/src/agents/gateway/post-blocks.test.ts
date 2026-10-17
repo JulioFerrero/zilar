@@ -179,6 +179,38 @@ describe('post_blocks runner', () => {
     expect(records).toHaveLength(0);
   });
 
+  it('refuses an interactive card in the owner DM and sends nothing', async () => {
+    const dmJid = 'owner@zilar.localhost';
+    const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
+    const sent: SentMessage[] = [];
+    const records: RecordCardInput[] = [];
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
+      records.push(input);
+    });
+
+    const result = await runner.runPostBlocks(
+      session,
+      {
+        text: 'Lunch?',
+        blocks: [
+          {
+            kind: 'poll',
+            id: 'lunch',
+            question: 'Where do we eat?',
+            options: [{ id: 'thai', label: 'Thai' }],
+          },
+        ],
+      },
+      { roomJid: dmJid, kind: 'chat' },
+    );
+
+    expect(result.content).toBe(
+      'invalid: interactive cards work only in a group or topic; use a read-only kind here',
+    );
+    expect(sent).toHaveLength(0);
+    expect(records).toHaveLength(0);
+  });
+
   it('keeps the posted result when recording the card fails', async () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);

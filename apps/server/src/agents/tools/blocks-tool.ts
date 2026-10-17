@@ -12,7 +12,7 @@ const POST_BLOCKS_DESCRIPTION =
   'Post a small native card with numbers, lists or status — not for prose. `text` ' +
   'is the plain summary people see in previews and notifications; every other ' +
   'value is a pre-formatted display string and links must be https. ' +
-  cardGuide();
+  cardGuide({ interactive: true });
 
 export const POST_BLOCKS_TOOL_DEF: ChatToolDefinition = {
   type: 'function',
