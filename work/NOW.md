@@ -639,7 +639,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1834 (General lists the group's AIs);
                 - T-1835 (General has no "Mark as done").
                 - **Verified live:** "ai test › General" panel: AIs in this topic = Deepseek (no Remove), and the Topic section has only "Add a link".
-              - **Running (13:20):** T-1832 (plan only: the alert card and routines).
+              - **Merged and held:**
+                - T-1832 (alert card plan; questions below);
+                - T-1836 (the web panel count includes AIs: "cards test" shows 3 members while the header says 4).
+              - **Running (13:28), board fidelity:**
+                - **T-1837 (web):** "In this topic" order AIs → People → Tools, counted sections of grouped 44 px rows, "yours", the owner crown, and ⋯ menus instead of Remove pills, per `WebTopic.dc.html`.
+                - **T-1838 (phone):** a Tools and routines row in the topic sheet, opening a topic-scoped page; no roles line on public topics; Archive as a red row, per `PhonePeople.dc.html`.
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);

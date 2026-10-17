@@ -1846,3 +1846,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1835](T-1835-general-no-done.md) | General has no Mark as done | 2026-10-17 |
 | [T-1832](T-1832-alert-card-plan.md) | alert card plan | 2026-10-17 |
 | [T-1836](T-1836-panel-count-includes-ais.md) | web topic panel count includes AIs | 2026-10-17 |
+| [T-1839](T-1839-web-group-topic-hash.md) | web group panel topic tiles show # | 2026-10-17 |

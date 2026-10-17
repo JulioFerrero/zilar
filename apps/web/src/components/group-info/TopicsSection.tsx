@@ -74,14 +74,14 @@ function subtitleOf(topic: TopicInfo, info: GroupDetail | undefined): string {
   return firstAi === undefined ? `${count} people` : `${count} people · ${firstAi}`;
 }
 
-/** The flat topic tile: the row's glyph, or a lock when the topic is private. */
+/** The flat topic tile: `#`, or a lock when the topic is private. */
 function TopicGlyph({ topic }: { topic: TopicInfo }) {
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface-raised text-[15px] font-semibold text-foreground/80">
       {topic.visibility === 'private' ? (
         <Lock className="size-3.5" role="img" aria-label="Private" />
       ) : (
-        topic.glyph
+        <span aria-hidden="true">#</span>
       )}
     </span>
   );
