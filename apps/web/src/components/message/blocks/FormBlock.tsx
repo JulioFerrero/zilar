@@ -28,6 +28,16 @@ const LIGHT_KEY_STYLE = {
 
 type Answer = { at: Date; by?: string | undefined; mine: boolean };
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A date well opens the native picker only when the block's value fits it. */
+function usesNativeDate(field: FormBlockData['fields'][number]): boolean {
+  return (
+    field.kind === 'date' &&
+    (field.value === undefined || field.value === '' || ISO_DATE.test(field.value))
+  );
+}
+
 function valueOf(field: FormBlockData['fields'][number]): string {
   const value = field.value ?? '';
   return field.kind === 'number' && value === '' ? '0' : value;
@@ -140,7 +150,7 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
       </span>
     ) : (
       <input
-        type={field.kind === 'date' ? 'date' : 'text'}
+        type={usesNativeDate(field) ? 'date' : 'text'}
         aria-label={field.label}
         value={values[field.id] ?? ''}
         maxLength={MAX_FIELD_CHARS}
