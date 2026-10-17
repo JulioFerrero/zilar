@@ -41,14 +41,26 @@ function TodoMark() {
   );
 }
 
-/** 10 · TIMELINE: ordered steps, each marked done, current or todo. */
-export function TimelineBlock({ block }: { block: TimelineBlockData }) {
+/**
+ * 10 · TIMELINE: ordered steps, each marked done, current or todo.
+ * `showHeading` hides the block's own title row when the card already draws a
+ * header.
+ */
+export function TimelineBlock({
+  block,
+  showHeading,
+}: {
+  block: TimelineBlockData;
+  showHeading: boolean;
+}) {
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <Package className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{block.title}</span>
-      </div>
+      {showHeading && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <Package className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{block.title}</span>
+        </div>
+      )}
       <div className="flex flex-col">
         {block.steps.map((step: Step, index) => {
           const last = index === block.steps.length - 1;

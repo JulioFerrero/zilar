@@ -14,19 +14,25 @@ const BAR_CURRENT =
 const TRACK_HEIGHT = 120;
 const PEAK_HEIGHT = 87;
 
-/** 05 · BARS: a column per series entry, today's column raised and labelled. */
-export function BarsBlock({ block }: { block: BarsBlockData }) {
+/**
+ * 05 · BARS: a column per series entry, today's column raised and labelled.
+ * `showHeading` draws the block's own title and total when the card has no
+ * header.
+ */
+export function BarsBlock({ block, showHeading }: { block: BarsBlockData; showHeading: boolean }) {
   const heights = barHeights(block.series, PEAK_HEIGHT);
   const aria =
     [block.title, block.value].filter((part) => part !== undefined).join(', ') || 'Bar chart';
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <span className="min-w-0 flex-1 truncate">{block.title ?? ''}</span>
-        {block.value !== undefined && (
-          <span className="shrink-0 font-mono text-[12px] tabular-nums">{block.value}</span>
-        )}
-      </div>
+      {showHeading && (block.title !== undefined || block.value !== undefined) && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <span className="min-w-0 flex-1 truncate">{block.title ?? ''}</span>
+          {block.value !== undefined && (
+            <span className="shrink-0 font-mono text-[12px] tabular-nums">{block.value}</span>
+          )}
+        </div>
+      )}
       <div
         role="img"
         aria-label={aria}

@@ -1803,3 +1803,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1781](T-1781-phone-chart-blocks.md) | phone bars, line and gauge blocks | 2026-10-17 |
 | [T-1793](T-1793-cards-test-fixes.md) | table aligns only number columns; guide steers trends to line | 2026-10-17 |
 | [T-1792](T-1792-blocks-respond.md) | card respond route, room correction and re-key retry | 2026-10-17 |
+| [T-1794](T-1794-web-block-headings.md) | web block headings hide under a card header; wide table fade | 2026-10-17 |

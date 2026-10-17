@@ -14,35 +14,35 @@ import { NumberBlock } from './NumberBlock';
 import { StatusBlock } from './StatusBlock';
 
 /** The block kinds this build can draw; the rest are skipped (T-1755). */
-function renderBlock(block: Block): ReactNode {
+function renderBlock(block: Block, showHeading: boolean): ReactNode {
   switch (block.kind) {
     case 'figure':
       return <FigureBlock block={block} />;
     case 'number':
       return <NumberBlock block={block} />;
     case 'checklist':
-      return <ChecklistBlock block={block} />;
+      return <ChecklistBlock block={block} showHeading={showHeading} />;
     case 'status':
-      return <StatusBlock block={block} />;
+      return <StatusBlock block={block} showHeading={showHeading} />;
     case 'link':
       return <LinkBlock block={block} />;
     case 'callout':
       return <CalloutBlock block={block} />;
     case 'stats':
     case 'table':
-      return renderDataBlock(block);
+      return renderDataBlock(block, showHeading);
     case 'bars':
     case 'line':
     case 'gauge':
-      return renderChartBlock(block);
+      return renderChartBlock(block, showHeading);
     case 'progress':
     case 'timeline':
     case 'countdown':
-      return renderProgressBlock(block);
+      return renderProgressBlock(block, showHeading);
     case 'place':
     case 'weather':
     case 'event':
-      return renderContentBlock(block);
+      return renderContentBlock(block, showHeading);
     default:
       return null;
   }
@@ -57,12 +57,16 @@ function renderBlock(block: Block): ReactNode {
  * text, so the card is never empty.
  */
 export function BlockCard({ data, footer }: { data: BlocksData; footer?: ReactNode }) {
+  const hasHeader = data.icon !== undefined || data.title !== undefined || data.meta !== undefined;
   const rendered = data.blocks
-    .map((block, index) => ({ key: `${block.kind}-${index}`, block, node: renderBlock(block) }))
+    .map((block, index) => ({
+      key: `${block.kind}-${index}`,
+      block,
+      node: renderBlock(block, !hasHeader),
+    }))
     .filter(
       (entry): entry is { key: string; block: Block; node: ReactNode } => entry.node !== null,
     );
-  const hasHeader = data.icon !== undefined || data.title !== undefined || data.meta !== undefined;
   // The board draws a lone callout in a headerless card as one row: the tinted
   // icon, the line and the time inline, 12/14 padding and no footer underneath.
   const lone = !hasHeader && rendered.length === 1 ? rendered[0]?.block : undefined;

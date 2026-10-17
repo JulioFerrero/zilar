@@ -7,10 +7,12 @@ import { WeatherBlock } from './WeatherBlock';
 /**
  * The content group's one dispatch point: `place` (21), `weather` (22) and
  * `event` (23). The bodies follow the board
- * `docs/design/mockups/blocks/WebContent.dc.html`.
+ * `docs/design/mockups/blocks/WebContent.dc.html`. Content kinds keep their own
+ * title when the card has a header, because the title is their content.
  */
 export function renderContentBlock(
   block: Extract<Block, { kind: 'place' | 'weather' | 'event' }>,
+  _showHeading: boolean,
 ): ReactNode {
   switch (block.kind) {
     case 'place':

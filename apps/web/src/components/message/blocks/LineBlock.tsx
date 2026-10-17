@@ -17,8 +17,12 @@ function lastPoint(path: string): { x: number; y: number } | null {
   return match === null ? null : { x: Number(match[1]), y: Number(match[2]) };
 }
 
-/** 06 · LINE: a sparkline with faint area fill, bounds labels and time labels. */
-export function LineBlock({ block }: { block: LineBlockData }) {
+/**
+ * 06 · LINE: a sparkline with faint area fill, bounds labels and time labels.
+ * `showHeading` draws the block's own title and value when the card has no
+ * header.
+ */
+export function LineBlock({ block, showHeading }: { block: LineBlockData; showHeading: boolean }) {
   const path = linePath(block.points, WIDTH, HEIGHT - PAD * 2, block.min, block.max);
   const area = path === '' ? '' : `${path} L ${WIDTH} ${HEIGHT - PAD} L 0 ${HEIGHT - PAD} Z`;
   const marker = lastPoint(path);
@@ -28,14 +32,16 @@ export function LineBlock({ block }: { block: LineBlockData }) {
     [block.title, block.value].filter((part) => part !== undefined).join(', ') || 'Line chart';
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <span className="min-w-0 flex-1 truncate">{block.title ?? ''}</span>
-        {block.value !== undefined && (
-          <span className="shrink-0 font-mono text-[12px] tabular-nums text-[#ededed]">
-            {block.value}
-          </span>
-        )}
-      </div>
+      {showHeading && (block.title !== undefined || block.value !== undefined) && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <span className="min-w-0 flex-1 truncate">{block.title ?? ''}</span>
+          {block.value !== undefined && (
+            <span className="shrink-0 font-mono text-[12px] tabular-nums text-[#ededed]">
+              {block.value}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex gap-2">
         <svg
           className="h-[110px] w-full"

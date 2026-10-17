@@ -16,18 +16,29 @@ const BOX_OFF = {
   boxShadow: 'inset 0 1px 2px rgba(0,0,0,.9)',
 };
 
-/** 08 · CHECKLIST: the ticks everyone sees, read-only in this task. */
-export function ChecklistBlock({ block }: { block: ChecklistBlockData }) {
+/**
+ * 08 · CHECKLIST: the ticks everyone sees, read-only in this task. `showHeading`
+ * hides the block's own title row when the card already draws a header.
+ */
+export function ChecklistBlock({
+  block,
+  showHeading,
+}: {
+  block: ChecklistBlockData;
+  showHeading: boolean;
+}) {
   const { done, total } = checklistCount(block);
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <ListChecks className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{block.title}</span>
-        <span className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">
-          {done} of {total}
-        </span>
-      </div>
+      {showHeading && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <ListChecks className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{block.title}</span>
+          <span className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">
+            {done} of {total}
+          </span>
+        </div>
+      )}
       <div className="flex flex-col">
         {block.items.map((item) => (
           <div key={item.id} className="flex min-h-[28px] items-center gap-2.5">

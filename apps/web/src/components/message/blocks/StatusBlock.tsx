@@ -19,14 +19,26 @@ const DOT_LABEL: Record<StatusBlockData['rows'][number]['status'], string> = {
   bad: 'Down',
 };
 
-/** 12 · STATUS LIST: a dot with a soft ring plus a value, never a word. */
-export function StatusBlock({ block }: { block: StatusBlockData }) {
+/**
+ * 12 · STATUS LIST: a dot with a soft ring plus a value, never a word.
+ * `showHeading` hides the block's own title row when the card already draws a
+ * header.
+ */
+export function StatusBlock({
+  block,
+  showHeading,
+}: {
+  block: StatusBlockData;
+  showHeading: boolean;
+}) {
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <Activity className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{block.title}</span>
-      </div>
+      {showHeading && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <Activity className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{block.title}</span>
+        </div>
+      )}
       <div className="flex flex-col">
         {block.rows.map((row, index) => {
           // A newer server may add a status word (expand/contract); an unknown

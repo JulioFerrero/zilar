@@ -25,8 +25,18 @@ function Tile({ value, unit }: { value: number; unit: string }) {
   );
 }
 
-/** 11 · COUNTDOWN: the label and the tiles that tick down to `targetAt`. */
-export function CountdownBlock({ block }: { block: CountdownBlockData }) {
+/**
+ * 11 · COUNTDOWN: the label and the tiles that tick down to `targetAt`.
+ * `showHeading` hides the block's own label row when the card already draws a
+ * header.
+ */
+export function CountdownBlock({
+  block,
+  showHeading,
+}: {
+  block: CountdownBlockData;
+  showHeading: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -44,10 +54,12 @@ export function CountdownBlock({ block }: { block: CountdownBlockData }) {
   const parts = countdownParts(block.targetAt, now);
   return (
     <>
-      <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-        <Clock className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{block.label}</span>
-      </div>
+      {showHeading && (
+        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+          <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{block.label}</span>
+        </div>
+      )}
       {parts.past ? (
         // A reached target has no tiles to show: a muted word instead of zeros
         // or negative numbers. "Started" is the closer word — a countdown

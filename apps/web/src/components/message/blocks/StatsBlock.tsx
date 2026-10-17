@@ -11,11 +11,21 @@ const TRACK =
   'h-[6px] overflow-hidden rounded-full bg-[#0c0c0c] shadow-[inset_0_1px_2px_rgba(0,0,0,.9),0_1px_0_rgba(255,255,255,.05)]';
 const FILL = 'h-full rounded-full bg-gradient-to-b from-[#f5f5f5] to-[#b5b5b5]';
 
-/** 03 · STAT TILES: label / value tiles with an optional ratio bar. */
-export function StatsBlock({ block }: { block: StatsBlockData }) {
+/**
+ * 03 · STAT TILES: label / value tiles with an optional ratio bar.
+ * `showHeading` draws the block's own title when the card has no header, as
+ * `ChecklistBlock` does.
+ */
+export function StatsBlock({
+  block,
+  showHeading,
+}: {
+  block: StatsBlockData;
+  showHeading: boolean;
+}) {
   return (
     <>
-      {block.title !== undefined && (
+      {showHeading && block.title !== undefined && (
         <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
           <Server className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{block.title}</span>
