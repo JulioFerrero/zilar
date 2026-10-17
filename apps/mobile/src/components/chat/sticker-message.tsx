@@ -2,6 +2,7 @@ import type { UiMessage } from '@zilar/chat-core';
 import type { Sticker } from '@zilar/protocol';
 import { Effect, Fiber } from 'effect';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -62,10 +63,12 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
 
   return (
     <Pressable
+      onPress={() => router.push(`/stickers/${sticker.pack_id}`)}
       onLongPress={onLongPress}
       delayLongPress={350}
       accessibilityRole="image"
       accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
+      accessibilityHint="Opens the sticker pack"
       className={cn('relative', outgoing ? 'items-end' : 'items-start')}
     >
       {trusted && !broken ? (
