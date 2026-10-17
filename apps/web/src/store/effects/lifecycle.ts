@@ -17,6 +17,12 @@ import { authClient } from '@/lib/auth';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import { clearChatListCache, readChatListCache } from '../chatListCache';
+import {
+  clearMessageCache,
+  MESSAGE_CACHE_WRITE_DELAY_MS,
+  readMessageCache,
+  writeMessageCache,
+} from '../messageCache';
 import { mergeWithPainted } from './chatRows';
 import { LAST_READ_PREFIX } from './constants';
 import type { StoreCtx } from './ctx';
@@ -52,7 +58,10 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     const { storage } = yield* Ports;
     ctx.get().stop();
     reset(ctx);
+    // A pending throttled save must not recreate the key after the clear.
+    cancelScheduledMessageSave(ctx);
     clearChatListCache(storage);
+    clearMessageCache(storage);
     resetIsServerOwnerCache();
     // A new sign-in is a new session for the handle gate: clear every
     // dismissal so the next user is asked again.
@@ -121,6 +130,39 @@ export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =
 
 // --- Adapter code: the web-only parts of the lifecycle the core calls back. ---
 
+// One pending throttled write per store. A sign-out drops it, so it can never
+// recreate the key after the reset removed it.
+const messageSaveTimers = new WeakMap<StoreCtx, ReturnType<typeof setTimeout>>();
+
+function cancelScheduledMessageSave(ctx: StoreCtx): void {
+  const timer = messageSaveTimers.get(ctx);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    messageSaveTimers.delete(ctx);
+  }
+}
+
+/** Writes the message cache now (`pagehide`) and drops any pending write. */
+export function saveMessages(ctx: StoreCtx): void {
+  cancelScheduledMessageSave(ctx);
+  const state = ctx.get();
+  writeMessageCache(ctx.ports.storage, state.currentUserId, state.chats, state.messagesByChat);
+}
+
+/** Schedules one write about 2 s after the last message change. */
+export function scheduleMessageSave(ctx: StoreCtx): void {
+  const state = ctx.get();
+  if (state.currentUserId === '' || typeof window === 'undefined') {
+    return;
+  }
+  cancelScheduledMessageSave(ctx);
+  const timer = setTimeout(() => {
+    messageSaveTimers.delete(ctx);
+    saveMessages(ctx);
+  }, MESSAGE_CACHE_WRITE_DELAY_MS);
+  messageSaveTimers.set(ctx, timer);
+}
+
 /** Paints the cached list and arms `pagehide`, once per store. */
 export function prepareStart(ctx: StoreCtx): void {
   const { storage } = ctx.ports;
@@ -132,10 +174,21 @@ export function prepareStart(ctx: StoreCtx): void {
       // Paint the last list at once; boot replaces it with fresh data.
       ctx.cachedUserId = cached.userId;
       ctx.set({ chats: cached.chats, chatsState: 'ready' });
+      // Then the open chat's last rows, so it is not empty until XMPP
+      // connects. The history page merges over them in place.
+      const cachedMessages = readMessageCache(storage, cached.userId);
+      if (Object.keys(cachedMessages).length > 0) {
+        ctx.set((state) => ({
+          messagesByChat: { ...state.messagesByChat, ...cachedMessages },
+        }));
+      }
     }
   }
   if (typeof window !== 'undefined') {
-    const onPageHide = (): void => saveChatList(ctx);
+    const onPageHide = (): void => {
+      saveChatList(ctx);
+      saveMessages(ctx);
+    };
     window.addEventListener('pagehide', onPageHide);
     ctx.rt.onStoreClose(Effect.sync(() => window.removeEventListener('pagehide', onPageHide)));
   }

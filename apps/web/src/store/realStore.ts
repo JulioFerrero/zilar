@@ -4,8 +4,9 @@ import { makeGroupActions } from './effects/groupActions';
 import { createStoreLocals } from './effects/locals';
 import { portsLayer, readPorts, type RealStoreDeps } from './effects/ports';
 import { makeLifetime } from './effects/runtime';
+import { scheduleMessageSave } from './effects/lifecycle';
 import { makeStoreContext } from './effects/storeContext';
-import { createAtomStore, type StoreApi } from './atomStore';
+import { createAtomStore, type SetState, type StoreApi } from './atomStore';
 import type { ChatStoreState } from './store';
 
 export { CONNECT_RETRY_DELAYS_MS, TOPIC_REFRESH_INTERVAL_MS } from './effects/constants';
@@ -26,9 +27,21 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // owned by one object so the helpers and the actions share them.
     const locals = createStoreLocals();
 
+    // Every message change goes through this setter, so the local cache is
+    // written about 2 s after the last stanza instead of on every one.
+    let onMessagesChanged: () => void = () => undefined;
+    const setWithMessageCache: SetState<ChatStoreState> = (partial, replace) => {
+      const before = get().messagesByChat;
+      set(partial, replace);
+      if (get().messagesByChat !== before) {
+        onMessagesChanged();
+      }
+    };
+
     // The ledger, the plain helpers and the context the effect modules and
     // the actions share (`effects/storeContext.ts`).
-    const { ctx } = makeStoreContext({ locals, ports, rt, set, get });
+    const { ctx } = makeStoreContext({ locals, ports, rt, set: setWithMessageCache, get });
+    onMessagesChanged = () => scheduleMessageSave(ctx);
 
     return {
       currentUserId: '',
@@ -96,8 +109,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         sortByRecency(
           get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),
         ),
-      ...makeChatActions({ ctx, rt, locals, set, get, ports }),
-      ...makeGroupActions({ ctx, rt, locals, set, get, ports }),
+      ...makeChatActions({ ctx, rt, locals, set: setWithMessageCache, get, ports }),
+      ...makeGroupActions({ ctx, rt, locals, set: setWithMessageCache, get, ports }),
     };
   });
 }
