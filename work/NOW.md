@@ -724,16 +724,25 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Verified live in "cards test":**
                   - asked to show `https://www.gstatic.com/webp/gallery/1.jpg`, Deepseek posted an image card with the photo;
                   - a Wikimedia photo failed: one URL was 14 MB, a thumb size gives 400, and Wikimedia also refuses requests without a User-Agent. That last one is fixed in T-1881.
-              - **Merged and held (push about 17:15):**
+              - **Pushed `8742bd8ae` (17:18):**
                 - T-1877 (phone @mention chips open the person; code review, as the mock has no mentions);
                 - T-1876 (phone card photos open in the photo viewer; emulator checked);
                 - T-1879 (the card guide teaches image and file cards);
-                - T-1881 (`fetch_media` User-Agent and reason log).
-              - **Running (17:00):**
-                - T-1880 (the alert card's "Checked … · now …" note on each run);
-                - T-1882 (People and AIs rows open the person, phone + web AI rows);
-                - T-1883 (`save_text_media`: an AI-written CSV/text file card).
-              - **Next APK checks:** tap a person and an @mention chip; the People page; card photos open the viewer.
+                - T-1881 (`fetch_media` User-Agent and reason log);
+                - T-1880 (the alert card's note "Checked … · now …" on each run; a lead fix keeps it to the routine's own card);
+                - T-1882 (People and AIs rows open the person; web mock checked);
+                - T-1883 (`save_text_media`: AI-written CSV/TXT/MD/JSON file cards, sharing the 4-per-turn media budget);
+                - T-1886 (phone: long-press a reaction to see who reacted; emulator checked);
+                - T-1888 (clean-ups);
+                - T-1884 (plan `docs/plan/share-into-zilar.md`: Zilar in the Android share sheet).
+                - **Live 17:20:** 0 errors.
+                - **Verified in "cards test" at 17:22:**
+                  - "make me a small CSV file…": Deepseek posted a file card, `european-capitals-population.csv`, 131 B, CSV;
+                  - a Wikimedia photo URL (`…/500px-Fronalpstock_big.jpg`): it posted the photo card. That failed before T-1881.
+              - **Running (17:20):**
+                - T-1885 (topic AI rows open the AI; fix round for the phone type);
+                - T-1887 (plan: Reply / Mark as read from a phone notification).
+              - **Next APK checks:** tap a person, an @mention chip and a People page row; card photos open the viewer; long-press a reaction.
               - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
                 1. "Allow btc-price to use the web";
                 2. the alert card (Bitcoin above $90,000, switch on);
@@ -762,6 +771,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
                   I only release when you say so. After it, T8 step C (the server drops `kind`, `status` and `owner`) can start.
                 - ~~Alert card, People and AIs row, media plan~~: answered 10-17 ~15:10 (see above); being built.
+                - **Share into Zilar from other apps (audit MUX-19)?** The plan is `docs/plan/share-into-zilar.md`.
+                  - **It needs one new native dependency,** `expo-share-intent` 8.0.1 (made for Expo SDK 57), and a new APK.
+                  - **What it gives:** Zilar appears in Android's share sheet for text, links, photos and files. You pick a chat and tap Send; nothing sends without a tap.
+                  - **Once you say yes,** I run the 6 tasks (Android first; iOS later).
                 - **The live card media store needs a persistent place (media task D1):** once `fetch_media` (T-1873) is live, AIs can store images and files.
                   - **The problem:** today they land on the container layer, so every deploy wipes them and old cards show grey placeholder tiles.
                   - **The cheapest fix:** set `CARD_MEDIA_STORAGE_DIR: /data/avatars/card-media` in `deploy/coolify/docker-compose.app.yml`. That puts it on the existing `avatar-data` volume, exactly as `BACKGROUND_STORAGE_DIR` already does (`:183-186`), so no new volume is needed and the nightly volume backup covers it.

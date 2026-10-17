@@ -1896,3 +1896,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1886](T-1886-phone-who-reacted.md) | phone: long-press a reaction to see who reacted | 2026-10-17 |
 | [T-1888](T-1888-small-cleanups.md) | RoutineRow alert fields required; drop setFound | 2026-10-17 |
 | [T-1884](T-1884-share-into-zilar-plan.md) | plan: share into Zilar from other apps | 2026-10-17 |
+| [T-1887](T-1887-notification-reply-plan.md) | plan: reply and mark as read from a notification | 2026-10-17 |
