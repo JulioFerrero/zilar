@@ -671,7 +671,27 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - leaving by yourself never bans.
               - **Verified live (cards test, 14:48):** "post a quick form card … Day prefilled Sat 18 Oct, Time prefilled 20:30" gives a "Book a table" form whose Day well shows "Sat 18 Oct" (T-1840) and Time "20:30".
               - **Full suites on main `45eeac981` (quiet stretch, 15:00):** tests 16/16 tasks pass and typecheck 16/16 pass. The first typecheck run failed only because the main checkout's `node_modules` lacked `expo-sharing` from T-1845; `pnpm install --frozen-lockfile` fixed it.
-              - **No workers running (14:50).**
+              - **Julio answered by the question tool at ~15:10:**
+                - the alert card and the media plan take all recommendations;
+                - the "People and AIs" row opens one combined page;
+                - **v0.2.8 was left unanswered,** so no release (memory `decisions-1017-afternoon`).
+              - **Then he left again (~15:45):** "continue working all you can". He also asked for an accessibility / easy-life pass that I test myself on web and apply to the phone too (memory `day-1017-afternoon-away`).
+              - **Merged and pushed at 15:37 (`46a7c5d6d`):**
+                - **T-1847:** media M1, the card media store; migration 0073 `card_media`.
+                - **T-1848:** alert A1, the respond route accepts the switch and the threshold.
+                - **T-1849:** the web alert card, checked against the board in Cosmos, on and off.
+                - **T-1850:** the phone alert card, checked on the emulator, on and off.
+              - **Easy-life findings, from using live "cards test" myself:**
+                - **Clicking a person did nothing:** a message avatar, the sender name, or a person row in the topic panel. **T-1851 (web, running):** these open the DM (a contact, or your own AI), or `/u/<handle>` for anyone else.
+                - **The header's people line was a dead `#in-this-topic` anchor,** and the header avatar wasn't clickable. **T-1852 (web, running):** both open the panel.
+                - **The phone twin of T-1851** comes after it merges. The phone header title already opens the sheet.
+              - **Julio's phone screenshot (`@iryna` search, "looks horrible"):**
+                - **T-1854 (phone, running):**
+                  - the tall card with a big "Send request" and a loose "Block" becomes one compact person row, like the People list and web;
+                  - the Messages section loses the repeated per-chat header;
+                  - the snippet stops drawing bigger than the sender (nested phone `Text` applied its own size).
+                - **T-1855 (web, running):** the same header removal on web.
+              - **Also running:** T-1853 (media M2, `GET /api/card-media/:id`, owner-only for DM cards).
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);
@@ -693,18 +713,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - T8 step A.
 
                   I only release when you say so. After it, T8 step C (the server drops `kind`, `status` and `owner`) can start.
-                - **Alert card (18 · ALERT RULE; plan `docs/plan/alert-card.md`, T-1832)** is the only interactive kind left unbuilt:
-                  - **Recommendation (B):** the card controls one routine. The switch pauses or resumes it, the well sets its threshold, each check writes "Checked every 5 min · now $X" into the card, and it posts only when the threshold is crossed.
-                  - **The cost:** one sandbox run per check and no model call. The build is 7 tasks.
-                  - **Your call (§7):**
-                    1. 5 min default and minimum?
-                    2. 3 alerts per topic and 288 runs per AI per day?
-                    3. Only the routine's manager may toggle?
-                    4. Saved tools only in v1?
-                    5. "Above" only, no band?
-                    6. Keep the 3-failure notice?
-                - **The group screen's "People and AIs" row isn't built** (plan `docs/plan/topic-people.md` §3.5; boards `PhoneGroup`/`WebGroup`). Both apps still show separate Members and AIs rows. The boards don't say where one combined row leads, while today each row opens its own page. Which should it open: a combined page, or Members with an AIs section?
-                - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
+                - ~~Alert card, People and AIs row, media plan~~: answered 10-17 ~15:10 (see above); being built.
+                - **The live card media store needs a volume:** media task D1 adds `CARD_MEDIA_STORAGE_DIR` on a persistent volume in the compose file. That's a prod config change, so it needs your OK before it goes live. Until then the server only warns at start, and nothing writes there yet.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.
             - **Follow-ups found today (not yet specs):**

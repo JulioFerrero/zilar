@@ -3,6 +3,7 @@
 import type { EffectApiMount } from '../effect/http-core';
 import { createAvatarsApi } from '../avatars/api';
 import { createBackgroundsApi } from '../backgrounds/api';
+import { createCardMediaApi } from '../card-media/api';
 import { createGetBotToken } from '../integrations/routes';
 import { settingsCipherFor } from '../setup/settings';
 import { createStickerConverter } from '../stickers/convert';
@@ -62,6 +63,15 @@ export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[
     ...opt('uploadLimiter', deps.backgroundUploadLimiter),
   });
   mounts.push(backgroundsApi);
+
+  // Card media (T-1853): read-only serving of the files an AI attached to a
+  // card. The storage dir comes from `CARD_MEDIA_STORAGE_DIR`; tests override
+  // it with a temp dir.
+  const cardMediaApi = createCardMediaApi({
+    ...base,
+    storageDir: deps.cardMediaStorageDir ?? config.CARD_MEDIA_STORAGE_DIR,
+  });
+  mounts.push(cardMediaApi);
 
   return mounts;
 }

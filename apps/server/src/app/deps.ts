@@ -116,6 +116,8 @@ export interface AppDependencies {
   backgroundNow?: () => number;
   /** T-0460: overrides the background upload limiter (tests inject a window). */
   backgroundUploadLimiter?: { allow: (key: string) => boolean };
+  /** T-1853: card media storage dir override; defaults to the parsed config. */
+  cardMediaStorageDir?: string;
   /** T-0120: injected in tests so the upload rate window can advance. */
   stickerNow?: () => number;
   /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
