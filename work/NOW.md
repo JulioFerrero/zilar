@@ -642,9 +642,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Merged and held:**
                 - T-1832 (alert card plan; questions below);
                 - T-1836 (the web panel count includes AIs: "cards test" shows 3 members while the header says 4).
-              - **Running (13:28), board fidelity:**
-                - **T-1837 (web):** "In this topic" order AIs → People → Tools, counted sections of grouped 44 px rows, "yours", the owner crown, and ⋯ menus instead of Remove pills, per `WebTopic.dc.html`.
-                - **T-1838 (phone):** a Tools and routines row in the topic sheet, opening a topic-scoped page; no roles line on public topics; Archive as a red row, per `PhonePeople.dc.html`.
+              - **Merged and held (13:43), board fidelity, each checked against its board:**
+                - **T-1837 (web):** "In this topic" goes AIs → People → Tools, in counted grouped rows, with "yours", the owner crown and ⋯ menus. Checked in mock mode on the branch.
+                - **T-1838 (phone):** the sheet has a Tools and routines row that opens a topic-scoped page; no roles line on public topics; Archive is a red row. Checked on the emulator.
+                - **T-1839:** `#` tiles in the web group panel.
+                - **T-1840:** the web form keeps the AI's date text ("Fri 17 Oct"). The native date input had emptied it.
+              - **Phone interactive cards vs PhoneChoices** (emulator, `dev/blocks`): match.
+              - **Running:** T-1841 (the mock answers `POST /invites`, so the Add dialog's link works in mock mode).
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);

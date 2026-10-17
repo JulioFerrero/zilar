@@ -22,6 +22,10 @@ const MAX_LABEL_LENGTH = 60;
 
 export function handleInviteLinks(data: MockData, request: MockHttpRequest): Response | undefined {
   const [head, first, second] = request.segments;
+  if (head === 'invites' && first === undefined && request.method === 'POST') {
+    const code = randomToken().slice(0, 8);
+    return jsonResponse({ code, url: `https://zilar.test/invite/${code}` });
+  }
   if (head === 'groups' && second === 'invite-links') {
     return handleGroupLinks(data, request, decodeURIComponent(first ?? ''));
   }

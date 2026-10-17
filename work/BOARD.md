@@ -1850,3 +1850,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1840](T-1840-web-form-date-text.md) | web form keeps the AI's date text | 2026-10-17 |
 | [T-1837](T-1837-web-topic-panel-board.md) | web topic panel follows its board | 2026-10-17 |
 | [T-1838](T-1838-phone-topic-sheet-board.md) | phone topic sheet follows its board | 2026-10-17 |
+| [T-1841](T-1841-mock-create-invite.md) | mock creates invites | 2026-10-17 |
