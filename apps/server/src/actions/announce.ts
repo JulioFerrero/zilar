@@ -43,6 +43,11 @@ export interface BuildApprovalCardInput {
 export const FAILED_NOTICE = 'The action failed.';
 export const CANCELLED_NOTICE = 'The request was not carried out.';
 
+// For `executed`, the second argument is the adapter's summary. For
+// `cancelled`, it is the approval's own summary (the text already shown on
+// the approval card), never adapter text: two approvals expiring together
+// must say which request was not carried out. `failed` always posts the
+// fixed notice.
 export function summaryForOutcome(
   status: 'executed' | 'failed' | 'cancelled',
   adapterSummary: string | null,
@@ -53,7 +58,8 @@ export function summaryForOutcome(
   if (status === 'failed') {
     return FAILED_NOTICE;
   }
-  return CANCELLED_NOTICE;
+  const summary = adapterSummary?.trim() ?? '';
+  return summary.length > 0 ? `Not carried out: ${summary}` : CANCELLED_NOTICE;
 }
 
 // Builds the body of the card message. Plain text, no payload — the

@@ -8,11 +8,43 @@ import { runSql } from '../effect/sql';
 import { allowedTopicAiIds } from '../topics/access';
 import type { ActionGatewayDependencies, RequestParams } from './gateway';
 import type { ActionResult } from './registry';
-import { errorName, safeAnnounce, truncateSummary } from './support';
+import { errorName, safeAnnounce, truncateSummary, truncateText } from './support';
 
 // Internal row shapes. Extracted so the implementation does not lean on the
 // schema inference for places where we hand-pick columns.
 type AiStatusRow = Pick<AisRow, 'id' | 'status'>;
+
+// The cancelled notice names the approval, so it stays short: the card's own
+// summary is already bounded, and this is only here to keep a future caller
+// from posting an unbounded string.
+const CANCELLED_SUMMARY_MAX = 200;
+
+// Best effort: the approval's own summary names the request the chat saw on
+// the card. A failed read or a missing row returns `null`, and the announcer
+// falls back to the fixed notice.
+async function approvalSummary(
+  deps: ActionGatewayDependencies,
+  approvalId: string,
+): Promise<string | null> {
+  try {
+    const [approval] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<Pick<ApprovalRow, 'summary'>>`SELECT summary FROM approvals
+          WHERE id = ${approvalId} LIMIT 1`;
+      }),
+    );
+    const summary = approval?.summary.trim() ?? '';
+    return summary.length === 0 ? null : truncateText(summary, CANCELLED_SUMMARY_MAX);
+  } catch (error) {
+    deps.logger.warn(
+      { err: errorName(error), approvalId },
+      'approval summary lookup failed; posting the fixed cancelled notice',
+    );
+    return null;
+  }
+}
 
 export async function cancelPending(
   deps: ActionGatewayDependencies,
@@ -33,6 +65,7 @@ export async function cancelPending(
   if (updated.length === 0) {
     return;
   }
+  const summary = await approvalSummary(deps, row.approvalId);
   await deps.audit.record({
     actorUserId: null,
     aiId: row.aiId,
@@ -51,7 +84,7 @@ export async function cancelPending(
       groupId: row.groupId,
       ...(row.topicId === null ? {} : { topicId: row.topicId }),
       status: 'cancelled',
-      summary: null,
+      summary,
     },
   });
 }

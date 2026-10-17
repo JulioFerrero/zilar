@@ -792,14 +792,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Deploy blocked, 19:21:** "Production images" failed for `0f8e4a2` with `ENOENT /repo/patches/expo-share-intent@8.0.1.patch`. The Dockerfiles don't copy `patches/` before `pnpm install`. Live stays on `8e87ff0`. **T-1917 (urgent)** adds `COPY patches ./patches` to the server, web, site and desk-agent Dockerfiles; merged and pushed as `5e0247a` (19:28).
 
                 Images still failed at 19:33: `pnpm --filter @zilar/server deploy --prod` → `ERR_PNPM_UNUSED_PATCH` (the patch is phone-only). **T-1918 (urgent)** sets `allowUnusedPatches: true`, with a local `pnpm deploy` check. The lesson: a pnpm patch also needs the Docker `COPY` and must be allowed unused in filtered deploys.
-              - **Held:**
-                - T-1911 (list error bars float as pills);
-                - T-1913 (web pins from the cache);
-                - T-1914 (phone pins from the offline cache).
-              - **Running:**
-                - T-1915 (splash waits for the cached paint);
-                - T-1916 (sign-out clears the phone pins);
-                - T-1917.
+              - **Deploy unblocked:** **live `4a8da94`** (19:41 UTC, Coolify) carries T-1908 to T-1918. All containers are healthy with 0 errors, and a warm reload of "cards test" has FCP and LCP at 208 ms.
+              - **Running:** T-1919 (a cancelled or expired approval says "Not carried out: <summary>"). Julio's two identical "The request was not carried out." lines at 19:30 Madrid were two approvals from 16:57 UTC expiring unanswered at 17:27 UTC.
               - **Running:**
                 - T-1913 (web pins from the cache);
                 - T-1914 (phone pins from the offline cache).
