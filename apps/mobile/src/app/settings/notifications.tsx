@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Bell } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { runApi, type PushDevice } from '@zilar/api-contract';
@@ -119,8 +119,17 @@ function NotificationsSettings() {
   const [thisDeviceId, setThisDeviceId] = useState<string | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<string | null>(null);
 
+  // The load callback keeps its identity between focuses, so it reads the
+  // status from a ref: a refresh with the settings on screen keeps them and
+  // only a screen with nothing to show yet gets the spinner (T-1906).
+  const statusRef = useRef<PageStatus>('loading');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   const load = useCallback(() => {
-    setStatus('loading');
+    const keepContent = statusRef.current === 'ready';
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     setLoadError('');
     const fiber = Effect.runFork(
       Effect.all(
@@ -148,6 +157,10 @@ function NotificationsSettings() {
         ),
         Effect.tapError(() =>
           Effect.sync(() => {
+            // A failed background refresh keeps the settings; the next focus retries.
+            if (keepContent) {
+              return;
+            }
             setLoadError(LOAD_ERROR);
             setStatus('error');
           }),

@@ -3,7 +3,7 @@ import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-
 import { Effect } from 'effect';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MonitorSmartphone } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -123,8 +123,17 @@ function DevicesList() {
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [signingOut, setSigningOut] = useState(false);
 
+  // The load callback keeps its identity between focuses, so it reads the
+  // status from a ref: a refresh with the devices on screen keeps them and
+  // only a screen with nothing to show yet gets the spinner (T-1906).
+  const statusRef = useRef<PageStatus>('loading');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   const load = useCallback(() => {
-    setStatus('loading');
+    const keepContent = statusRef.current === 'ready';
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     setError('');
     const fiber = Effect.runFork(
       Effect.tryPromise({ try: () => api.list(), catch: (cause) => cause }).pipe(
@@ -136,6 +145,10 @@ function DevicesList() {
         ),
         Effect.catch(() =>
           Effect.sync(() => {
+            // A failed background refresh keeps the devices; the next focus retries.
+            if (keepContent) {
+              return;
+            }
             setError(LOAD_ERROR);
             setStatus('error');
           }),

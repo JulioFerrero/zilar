@@ -55,8 +55,11 @@ function IntegrationsBody() {
 
   // Latest reload wins: a focus reload replaces a load still in flight.
   const [, load] = useAction(
-    () =>
-      Effect.tryPromise({
+    () => {
+      // A refresh with the cards on screen keeps them: the spinner is only for
+      // a screen with nothing to show yet (T-1906).
+      const keepContent = status === 'ready';
+      return Effect.tryPromise({
         try: () => api.getIntegrationsStatus(),
         catch: (cause: unknown) => cause,
       }).pipe(
@@ -68,6 +71,10 @@ function IntegrationsBody() {
         ),
         Effect.catch((cause) =>
           Effect.sync(() => {
+            // A failed background refresh keeps the cards; the next focus retries.
+            if (keepContent) {
+              return;
+            }
             if (cause instanceof Error && 'status' in cause && cause.status === 404) {
               setStatus('forbidden');
             } else {
@@ -76,12 +83,13 @@ function IntegrationsBody() {
             }
           }),
         ),
-      ),
+      );
+    },
     { mode: 'replace' },
   );
 
   const reload = useCallback(() => {
-    setStatus('loading');
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     load(undefined);
   }, [load]);
 

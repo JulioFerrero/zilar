@@ -54,7 +54,9 @@ function RequestsList() {
   const [, reload] = useAction<void, void, never>(
     () =>
       Effect.sync(() => {
-        setStatus('loading');
+        // A refresh with requests on screen keeps them: the spinner is only for
+        // a screen with nothing to show yet (T-1906).
+        setStatus((current) => (current === 'ready' ? current : 'loading'));
         setError('');
       }).pipe(
         Effect.andThen(
@@ -72,6 +74,10 @@ function RequestsList() {
         ),
         Effect.catch((message: string) =>
           Effect.sync(() => {
+            // A failed background refresh keeps the requests; the next focus retries.
+            if (status === 'ready') {
+              return;
+            }
             setError(message);
             setStatus('error');
           }),
