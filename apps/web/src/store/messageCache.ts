@@ -1,4 +1,5 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import { Pin, type Pin as PinRow } from '@zilar/api-contract';
 import { Result, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 import type { StorageLike } from './realStore';
@@ -41,10 +42,18 @@ const cacheSchema = struct({
   version: Schema.Literal(CACHE_VERSION),
   userId: Schema.String,
   messages: Schema.Record(Schema.String, Schema.mutable(Schema.Array(cachedMessageSchema))),
+  pins: Schema.optional(Schema.Unknown),
 });
 
 type EncodedMessage = Record<string, unknown>;
 type EncodedMessages = Record<string, EncodedMessage[]>;
+type CachedPin = PinRow;
+
+interface KeptChat {
+  readonly id: string;
+  readonly messages: EncodedMessage[];
+  readonly pins: CachedPin[];
+}
 
 /** Whether a URL would only work on this device, so it must never be stored. */
 function isLocalUrl(url: string): boolean {
@@ -106,8 +115,52 @@ function decodeMessage(message: Schema.Schema.Type<typeof cachedMessageSchema>):
   return decoded;
 }
 
-function serialize(userId: string, messages: EncodedMessages): string {
-  return JSON.stringify({ version: CACHE_VERSION, userId, messages });
+/**
+ * Keeps the pins of a cached chat, dropping an entry the contract does not
+ * accept (an older or newer server may write something we cannot paint).
+ */
+function decodePins(raw: unknown): Record<string, CachedPin[]> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return {};
+  }
+  const pins: Record<string, CachedPin[]> = {};
+  for (const [chatId, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) {
+      continue;
+    }
+    const decoded: CachedPin[] = [];
+    for (const entry of list) {
+      const result = Schema.decodeUnknownResult(Pin)(entry);
+      if (Result.isSuccess(result)) {
+        decoded.push(result.success);
+      }
+    }
+    if (decoded.length > 0) {
+      pins[chatId] = decoded;
+    }
+  }
+  return pins;
+}
+
+function serialize(userId: string, kept: readonly KeptChat[]): string {
+  const messages: EncodedMessages = {};
+  const pins: Record<string, CachedPin[]> = {};
+  for (const chat of kept) {
+    messages[chat.id] = chat.messages;
+    if (chat.pins.length > 0) {
+      pins[chat.id] = chat.pins;
+    }
+  }
+  const payload: {
+    version: number;
+    userId: string;
+    messages: EncodedMessages;
+    pins?: Record<string, CachedPin[]>;
+  } = { version: CACHE_VERSION, userId, messages };
+  if (Object.keys(pins).length > 0) {
+    payload.pins = pins;
+  }
+  return JSON.stringify(payload);
 }
 
 function byteLength(value: string): number {
@@ -115,56 +168,88 @@ function byteLength(value: string): number {
 }
 
 /**
+ * Reads the payload for `userId`, or `undefined` when there is none or it is
+ * unusable. The key is dropped when it belongs to a different account, so one
+ * user's copy can never be painted for another.
+ */
+function readPayload(
+  storage: StorageLike | null,
+  userId: string,
+): Schema.Schema.Type<typeof cacheSchema> | undefined {
+  if (storage === null || userId === '') {
+    return undefined;
+  }
+  try {
+    const raw = storage.getItem(MESSAGE_CACHE_KEY);
+    if (raw === null) {
+      return undefined;
+    }
+    const parsed = Schema.decodeUnknownResult(cacheSchema)(JSON.parse(raw));
+    if (!Result.isSuccess(parsed)) {
+      return undefined;
+    }
+    if (parsed.success.userId !== userId) {
+      storage.removeItem(MESSAGE_CACHE_KEY);
+      return undefined;
+    }
+    return parsed.success;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The cached messages for `userId`, or an empty map when there is none or it
- * is unusable. The key is dropped when it belongs to a different account, so
- * one user's copy can never be painted for another.
+ * is unusable.
  */
 export function readMessageCache(
   storage: StorageLike | null,
   userId: string,
 ): Record<string, UiMessage[]> {
-  if (storage === null || userId === '') {
+  const payload = readPayload(storage, userId);
+  if (payload === undefined) {
     return {};
   }
-  try {
-    const raw = storage.getItem(MESSAGE_CACHE_KEY);
-    if (raw === null) {
-      return {};
-    }
-    const parsed = Schema.decodeUnknownResult(cacheSchema)(JSON.parse(raw));
-    if (!Result.isSuccess(parsed)) {
-      return {};
-    }
-    if (parsed.success.userId !== userId) {
-      storage.removeItem(MESSAGE_CACHE_KEY);
-      return {};
-    }
-    const messages: Record<string, UiMessage[]> = {};
-    for (const [chatId, list] of Object.entries(parsed.success.messages)) {
-      messages[chatId] = list.map(decodeMessage);
-    }
-    return messages;
-  } catch {
-    return {};
+  const messages: Record<string, UiMessage[]> = {};
+  for (const [chatId, list] of Object.entries(payload.messages)) {
+    messages[chatId] = list.map(decodeMessage);
   }
+  return messages;
 }
 
 /**
- * Saves the newest 50 messages of the 30 most recent chats in the list's order.
- * The payload is kept under 1.5 MB by dropping the oldest chats first, then the
- * oldest rows of the newest chat, so a huge history can never fill the quota.
+ * The cached pins of `userId`, or an empty map when there are none or they are
+ * unusable. They let the pinned banner paint with the first frame.
+ */
+export function readCachedPins(
+  storage: StorageLike | null,
+  userId: string,
+): Record<string, CachedPin[]> {
+  const payload = readPayload(storage, userId);
+  if (payload === undefined) {
+    return {};
+  }
+  return decodePins(payload.pins);
+}
+
+/**
+ * Saves the newest 50 messages of the 30 most recent chats in the list's order,
+ * and the pins of the chats it keeps. The payload is kept under 1.5 MB by
+ * dropping the oldest chats first, then the oldest rows of the newest chat, then
+ * the pins, so a huge history can never fill the quota.
  */
 export function writeMessageCache(
   storage: StorageLike | null,
   userId: string,
   chats: readonly ChatSummary[],
   messagesByChat: Record<string, UiMessage[]>,
+  pinsByChat: Record<string, readonly CachedPin[]> = {},
 ): void {
   if (storage === null || userId === '') {
     return;
   }
   try {
-    const kept: [string, EncodedMessage[]][] = [];
+    const kept: KeptChat[] = [];
     for (const chat of chats.slice(0, MAX_CACHED_CHATS)) {
       const list = messagesByChat[chat.id];
       if (list === undefined) {
@@ -172,27 +257,39 @@ export function writeMessageCache(
       }
       const recent = list.filter(isCacheable).slice(-MAX_CACHED_MESSAGES).map(encodeMessage);
       if (recent.length > 0) {
-        kept.push([chat.id, recent]);
+        kept.push({ id: chat.id, messages: recent, pins: [...(pinsByChat[chat.id] ?? [])] });
       }
     }
     // The list is newest first, so the oldest chats sit at the end.
-    let json = serialize(userId, Object.fromEntries(kept));
+    let json = serialize(userId, kept);
     while (byteLength(json) > MAX_CACHE_BYTES && kept.length > 1) {
       kept.pop();
-      json = serialize(userId, Object.fromEntries(kept));
+      json = serialize(userId, kept);
     }
     // One chat may still overflow on its own: drop its oldest rows and keep
     // the newest, which is what a first paint needs.
     const newest = kept[0];
     if (newest !== undefined) {
-      while (byteLength(json) > MAX_CACHE_BYTES && newest[1].length > 1) {
-        newest[1].shift();
-        json = serialize(userId, Object.fromEntries(kept));
+      while (byteLength(json) > MAX_CACHE_BYTES && newest.messages.length > 1) {
+        newest.messages.shift();
+        json = serialize(userId, kept);
+      }
+    }
+    // Pins are only a first paint, so they go before the last rows.
+    for (
+      let index = kept.length - 1;
+      index >= 0 && byteLength(json) > MAX_CACHE_BYTES;
+      index -= 1
+    ) {
+      const chat = kept[index];
+      if (chat !== undefined && chat.pins.length > 0) {
+        chat.pins.splice(0, chat.pins.length);
+        json = serialize(userId, kept);
       }
     }
     if (byteLength(json) > MAX_CACHE_BYTES) {
       // A single message over the cap is not worth keeping anything for.
-      json = serialize(userId, {});
+      json = serialize(userId, []);
     }
     storage.setItem(MESSAGE_CACHE_KEY, json);
   } catch {

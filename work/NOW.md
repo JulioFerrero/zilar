@@ -784,10 +784,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1905 (AI status pill + a fixed gap in topics);
                 - T-1906 and T-1907 (phone screens keep their content on focus).
               - **Measured live, 19:10:** a cold reload of "cards test" now has its LCP (the card photo) at **184 ms**, down from 1360 ms. The `card-media` requests start at 128 ms, before the XMPP token (297 ms).
-              - **Held, not pushed:**
+              - **Pushed `0f8e4a2`** (19:15 UTC):
                 - T-1908 (`pnpm patch` of expo-share-intent: the share crash fixed; the emulator Photos → Zilar → Ana flow sends the photo);
-                - T-1909 (`sessionGone` clears the message cache; phone `joinGroups` type).
-              - **Running:** T-1910 (`/share` resets the pick and error on a new share).
+                - T-1909 (`sessionGone` clears the message cache; phone `joinGroups` type);
+                - T-1910 (`/share` resets on a new share);
+                - T-1912 (a resumed stream skips the room rejoin).
+              - **Held:** T-1911 (list error bars float as pills).
+              - **Running:**
+                - T-1913 (web pins from the cache);
+                - T-1914 (phone pins from the offline cache).
+              - **Next:** T-1915 (the phone splash waits up to 400 ms for the cached paint; written, launch after T-1914 merges, both touch `effects/lifecycle.ts`).
+              - **Deferred:**
+                - W2/P2 contact-request rows from the cache (rare);
+                - token prefetch (about 80 ms).
+              - **v0.2.9 needs Julio's OK.** It would carry share-into-Zilar, notification Reply / Mark as read, one notification per chat, and every phone smoothness fix above.
               - **Older (done):**
                 - T-1895 (`/share`, lead fix round: `file://` only from the cache, empty/oversize refused on screen, Send always re-enabled);
                 - smooth-app wave 1:

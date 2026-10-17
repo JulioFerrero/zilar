@@ -1922,3 +1922,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1910](T-1910-share-reset-on-new.md) | a new share starts with a clean share screen | 2026-10-17 |
 | [T-1912](T-1912-resume-no-rejoin.md) | a resumed stream skips rejoining every room | 2026-10-17 |
 | [T-1911](T-1911-list-errors-float.md) | chat list errors float as a pill, chats never move | 2026-10-17 |
+| [T-1913](T-1913-web-pins-cache.md) | web pinned banner paints from the local cache | 2026-10-17 |

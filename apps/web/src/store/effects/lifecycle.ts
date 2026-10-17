@@ -20,6 +20,7 @@ import { clearChatListCache, readChatListCache } from '../chatListCache';
 import {
   clearMessageCache,
   MESSAGE_CACHE_WRITE_DELAY_MS,
+  readCachedPins,
   readMessageCache,
   writeMessageCache,
 } from '../messageCache';
@@ -146,7 +147,13 @@ function cancelScheduledMessageSave(ctx: StoreCtx): void {
 export function saveMessages(ctx: StoreCtx): void {
   cancelScheduledMessageSave(ctx);
   const state = ctx.get();
-  writeMessageCache(ctx.ports.storage, state.currentUserId, state.chats, state.messagesByChat);
+  writeMessageCache(
+    ctx.ports.storage,
+    state.currentUserId,
+    state.chats,
+    state.messagesByChat,
+    state.pinsByChat,
+  );
 }
 
 /** Schedules one write about 2 s after the last message change. */
@@ -180,6 +187,19 @@ export function prepareStart(ctx: StoreCtx): void {
       if (Object.keys(cachedMessages).length > 0) {
         ctx.set((state) => ({
           messagesByChat: { ...state.messagesByChat, ...cachedMessages },
+        }));
+      }
+      // The cached pins paint the banner with the first frame; the pin load on
+      // open still replaces them. A chat that already has pins keeps them.
+      const cachedPins = readCachedPins(storage, cached.userId);
+      const missingPins = Object.fromEntries(
+        Object.entries(cachedPins).filter(
+          ([chatId]) => (ctx.get().pinsByChat[chatId] ?? []).length === 0,
+        ),
+      );
+      if (Object.keys(missingPins).length > 0) {
+        ctx.set((state) => ({
+          pinsByChat: { ...state.pinsByChat, ...missingPins },
         }));
       }
     }

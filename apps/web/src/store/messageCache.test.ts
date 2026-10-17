@@ -1,8 +1,10 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { Pin } from '@zilar/api-contract';
 import { describe, expect, it } from 'vitest';
 import {
   MESSAGE_CACHE_KEY,
   clearMessageCache,
+  readCachedPins,
   readMessageCache,
   writeMessageCache,
 } from './messageCache';
@@ -36,6 +38,19 @@ function message(chatId: string, id: string, overrides: Partial<UiMessage> = {})
 
 function chat(id: string): ChatSummary {
   return { id } as ChatSummary;
+}
+
+function pin(chatId: string, id: string): Pin {
+  return {
+    id,
+    chat: chatId,
+    messageId: `m-${id}`,
+    senderName: 'Ana',
+    text: `pinned ${id}`,
+    kind: 'text',
+    pinnedBy: 'Ana',
+    pinnedAt: '2026-10-17T10:00:00.000Z',
+  };
 }
 
 describe('message cache (T-1903)', () => {
@@ -102,6 +117,29 @@ describe('message cache (T-1903)', () => {
     expect(list.find((entry) => entry.id === 'm-ok')?.attachment?.url).toBe(
       'https://files.example/x.pdf',
     );
+  });
+
+  it('round-trips the cached pins and gives another user nothing', () => {
+    const storage = memoryStorage();
+    const ana = 'ana@zilar.test';
+    const bob = 'bob@zilar.test';
+
+    writeMessageCache(
+      storage,
+      'u-1',
+      [chat(ana), chat(bob)],
+      { [ana]: [message(ana, 'm1')], [bob]: [message(bob, 'm3')] },
+      { [ana]: [pin(ana, 'p1'), pin(ana, 'p2')], [bob]: [pin(bob, 'p3')] },
+    );
+
+    expect(readCachedPins(storage, 'u-1')).toEqual({
+      [ana]: [pin(ana, 'p1'), pin(ana, 'p2')],
+      [bob]: [pin(bob, 'p3')],
+    });
+
+    // Another account reads nothing, and the foreign copy is dropped.
+    expect(readCachedPins(storage, 'u-2')).toEqual({});
+    expect(storage.getItem(MESSAGE_CACHE_KEY)).toBeNull();
   });
 
   it('drops the oldest chats when the payload is over the byte cap', () => {
