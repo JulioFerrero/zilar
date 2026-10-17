@@ -1874,3 +1874,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1865](T-1865-phone-search-cleanup.md) | phone: drop dead search actions and the AIs page wrapper | 2026-10-17 |
 | [T-1864](T-1864-alert-link-plan.md) | docs: plan for linking an alert card to its routine | 2026-10-17 |
 | [T-1866](T-1866-web-row-right-click.md) | web: right-click a chat row for its menu | 2026-10-17 |
+| [T-1862](T-1862-card-media-fetch.md) | card media: fetch, sniff, strip and store one file | 2026-10-17 |
