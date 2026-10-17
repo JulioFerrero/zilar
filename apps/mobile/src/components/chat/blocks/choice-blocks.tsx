@@ -1,6 +1,7 @@
 import type { Block } from '@zilar/protocol';
 import type { ReactNode } from 'react';
 
+import { AlertBlock } from '@/components/chat/blocks/alert-block';
 import { ButtonsBlock } from '@/components/chat/blocks/buttons-block';
 import { ChoiceBlock } from '@/components/chat/blocks/choice-block';
 import { FormBlock } from '@/components/chat/blocks/form-block';
@@ -14,15 +15,16 @@ export const CHOICE_KINDS: ReadonlySet<Block['kind']> = new Set<Block['kind']>([
   'choice',
   'form',
   'rating',
+  'alert',
 ]);
 
 /**
  * The choice group's one dispatch point: buttons (13), poll (14), pick one
- * (15), quick form (16) and rating (17), following the board
- * `docs/design/mockups/blocks/PhoneChoices.dc.html`.
+ * (15), quick form (16), rating (17) and the alert rule (18), following the
+ * board `docs/design/mockups/blocks/PhoneChoices.dc.html`.
  */
 export function renderChoiceBlock(
-  block: Extract<Block, { kind: 'buttons' | 'poll' | 'choice' | 'form' | 'rating' }>,
+  block: Extract<Block, { kind: 'buttons' | 'poll' | 'choice' | 'form' | 'rating' | 'alert' }>,
 ): ReactNode {
   switch (block.kind) {
     case 'buttons':
@@ -35,5 +37,7 @@ export function renderChoiceBlock(
       return <FormBlock block={block} />;
     case 'rating':
       return <RatingBlock block={block} />;
+    case 'alert':
+      return <AlertBlock block={block} />;
   }
 }

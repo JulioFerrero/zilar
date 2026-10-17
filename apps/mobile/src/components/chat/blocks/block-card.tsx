@@ -108,6 +108,7 @@ function BlockBody({ block, showHeading }: { block: Block; showHeading: boolean 
     case 'choice':
     case 'form':
     case 'rating':
+    case 'alert':
       return renderChoiceBlock(block);
     default:
       return null;

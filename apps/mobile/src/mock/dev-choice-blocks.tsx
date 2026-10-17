@@ -1,6 +1,6 @@
 /**
  * The choice examples of the hidden blocks catalog (T-1796): buttons, poll,
- * pick one, quick form and rating, drawn from
+ * pick one, quick form, rating and the alert rule, drawn from
  * `docs/design/mockups/blocks/PhoneChoices.dc.html`. Kept out of
  * `dev-blocks-screen.tsx` so that file stays a plain list. Without a respond
  * context every control is drawn disabled, as it is on own cards.
@@ -126,6 +126,40 @@ const EXAMPLES: readonly Example[] = [
     data: {
       fallback: 'How was this summary?',
       blocks: [{ kind: 'rating', id: 'summary-open', prompt: 'How was this summary?', max: 5 }],
+    },
+  },
+  {
+    label: '18 · ALERT RULE (ON)',
+    time: '09:01',
+    data: {
+      fallback: 'Tell me when BTC goes above. Price $90,000. Checked every 5 min · now $82,302',
+      blocks: [
+        {
+          kind: 'alert',
+          id: 'btc-alert',
+          title: 'Tell me when BTC goes above',
+          field: { label: 'Price', value: '$90,000' },
+          on: true,
+          note: 'Checked every 5 min · now $82,302',
+        },
+      ],
+    },
+  },
+  {
+    label: '18 · ALERT RULE (OFF)',
+    time: '09:01',
+    data: {
+      fallback: 'Tell me when BTC goes above. Price $90,000.',
+      blocks: [
+        {
+          kind: 'alert',
+          id: 'btc-alert-off',
+          title: 'Tell me when BTC goes above',
+          field: { label: 'Price', value: '$90,000' },
+          on: false,
+          note: 'Paused · now $82,302',
+        },
+      ],
     },
   },
 ];
