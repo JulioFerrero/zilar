@@ -89,9 +89,8 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
       <TopicInfoSheet
         chat={screen.infoOpen ? chat : null}
         groupTitle={screen.groupName}
-        members={screen.infoMembers}
-        ais={screen.infoAis}
-        aiCount={screen.infoAis.length}
+        detail={screen.detail}
+        myUserId={screen.myUserId}
         canArchive={screen.canArchiveInfo}
         isMember={screen.isPrivateMember}
         busy={screen.infoBusy}

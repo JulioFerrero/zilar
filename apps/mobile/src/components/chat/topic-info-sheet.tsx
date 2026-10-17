@@ -1,90 +1,82 @@
-import { Brain, Check, Lock } from 'lucide-react-native';
-import { useState } from 'react';
+import { Brain, Globe, Lock, Plus } from 'lucide-react-native';
+import { Children, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { TopicDoneRow } from '@/components/chat/topic-done-row';
+import { TopicInfoRoles } from '@/components/chat/topic-info-roles';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
+import { memberPerson, type TopicLinePerson } from '@/components/chat/topic-people-line';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
-import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
+import type { GroupDetail } from '@/lib/chat-api';
+import { ACCENT_FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import type { CustomGroupRole } from '@/lib/roles-api';
-import type { ApproverRole, PatchTopicInput, TopicMember, TopicRole } from '@/lib/topics-api';
+import type { ApproverRole, PatchTopicInput, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
-/**
- * An error line with a Retry button. The topic-roles and group-roles load
- * failures share this row; each keeps its own message and retry call.
- */
-function RetryRow({
-  message,
-  retryLabel,
-  onRetry,
-}: {
-  message: string;
-  retryLabel: string;
-  onRetry: () => void;
-}) {
+/** The board's `.sec`: a 13 px label on the left, a mono count on the right. */
+function SectionHeader({ label, count }: { label: string; count: number }) {
   return (
-    <View className="gap-2 py-1">
-      <Text accessibilityRole="alert" className="text-[13px] text-danger">
-        {message}
-      </Text>
-      <Button
-        variant="outline"
-        accessibilityLabel={retryLabel}
-        onPress={onRetry}
-        className="self-start"
-      >
-        <Text>Retry</Text>
-      </Button>
+    <View className="flex-row items-center justify-between px-1">
+      <Text className="text-[13px] font-semibold text-muted-foreground">{label}</Text>
+      <Text className="font-mono text-[13px] text-muted-foreground">{count}</Text>
     </View>
   );
 }
 
 /**
- * The topic-info sheet opened from the topic header (T-0112): visibility,
- * members (private list with Leave for a member), AIs in the topic, and
- * Archive / Leave actions for managers and members. The screen loads the
- * data; the sheet only renders it.
+ * The board's `.group` (`PhonePeople.dc.html`): a `#111` list, one hairline
+ * between rows and none after the last.
  */
-export function TopicInfoSheet({
-  chat,
-  groupTitle,
-  members,
-  ais,
-  aiCount,
-  canArchive,
-  isMember,
-  busy,
-  error,
-  onLeave,
-  onArchive,
-  onClose,
-  roles,
-  rolesError,
-  rolesLoading,
-  groupRolesError,
-  approverRole,
-  groupRoles,
-  canManageRoles,
-  onToggleTopicRole,
-  onPickApprover,
-  onRetryRoles,
-  onRetryGroupRoles,
-  patch,
-  patchError,
-  onPatchError,
-  onOpenAiMemory,
-}: {
+function InfoGroup({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children);
+  return (
+    <View className="overflow-hidden rounded-[14px] border border-border bg-surface">
+      {items.map((child, index) => (
+        <View key={index} className={cn(index > 0 && 'border-t border-divider')}>
+          {child}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * The board's AI owner label (T-1785): "yours" when the caller owns the AI,
+ * "{first name}'s" for anyone else, and nothing when the group detail does not
+ * know the owner (`GroupAi.ownerId` -> `GroupMember.name`).
+ */
+function aiOwnerLabel(
+  aiId: string,
+  detail: GroupDetail | undefined,
+  myUserId: string,
+): string | undefined {
+  const ownerId = detail?.ais.find((entry) => entry.aiId === aiId)?.ownerId;
+  if (ownerId === undefined) {
+    return undefined;
+  }
+  if (ownerId === myUserId) {
+    return 'yours';
+  }
+  const firstName = detail?.members
+    .find((member) => member.userId === ownerId)
+    ?.name.trim()
+    .split(/\s+/)[0];
+  return firstName === undefined || firstName === '' ? undefined : `${firstName}'s`;
+}
+
+type TopicInfoSheetProps = {
   chat: ChatSummary | null;
   groupTitle: string;
-  members: TopicMember[];
-  ais: { id: string; name: string }[];
-  aiCount: number;
+  /** The group detail behind the topic, for people names and AI owners. */
+  detail: GroupDetail | undefined;
+  /** The signed-in user id, to mark the caller's own row. */
+  myUserId: string;
   canArchive: boolean;
   isMember: boolean;
   busy: boolean;
@@ -119,19 +111,63 @@ export function TopicInfoSheet({
   /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
    * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
-}) {
+  /** Opens the Add people or AIs sheet (T-1785 part 2). When unset the
+   * primary key is not shown. */
+  onAdd?: () => void;
+};
+
+/**
+ * The topic-info sheet opened from the topic header (T-0112), redrawn in
+ * T-1785 after `PhonePeople.dc.html`: the topic header, an optional
+ * "Add people or AIs" key, the AIs with their owner labels and the topic's
+ * people from `memberIds` (the group's members on General). The topic link,
+ * the error line, the roles block and Archive / Leave stay below. The screen
+ * loads the data; the sheet only renders it.
+ */
+export function TopicInfoSheet({
+  chat,
+  groupTitle,
+  detail,
+  myUserId,
+  canArchive,
+  isMember,
+  busy,
+  error,
+  onLeave,
+  onArchive,
+  onClose,
+  roles,
+  rolesError,
+  rolesLoading,
+  groupRolesError,
+  approverRole,
+  groupRoles,
+  canManageRoles,
+  onToggleTopicRole,
+  onPickApprover,
+  onRetryRoles,
+  onRetryGroupRoles,
+  patch,
+  patchError,
+  onPatchError,
+  onOpenAiMemory,
+  onAdd,
+}: TopicInfoSheetProps) {
   const topic = chat?.topic;
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [approverOpen, setApproverOpen] = useState(false);
-  const isPrivate = topic?.visibility === 'private';
-  // The picker rows and approver options come from the shared helpers, so
-  // the sheet renders exactly what the unit tests pin (attached first, the
-  // rest sorted by name).
-  const accessRows = topicAccessRows(topic?.visibility ?? 'public', roles, groupRoles);
-  const attachedRows = accessRows.filter((row) => row.attached);
-  const addableRows = accessRows.filter((row) => !row.attached);
-  const approverOpts = approverOptions(roles, approverRole);
-  const line = approverLine(approverRole);
+  const ais = topic?.ais ?? [];
+  const groupMembers: TopicLinePerson[] = (detail?.members ?? []).map((member) => ({
+    id: member.userId,
+    name: member.name,
+    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+  }));
+  // General lists the whole group; any other topic lists its own people from
+  // `memberIds`, skipping ids the group detail has not loaded yet.
+  const people: TopicLinePerson[] =
+    topic?.isGeneral === true
+      ? groupMembers
+      : (topic?.memberIds ?? [])
+          .map((memberId) => memberPerson(memberId, detail))
+          .filter((person): person is TopicLinePerson => person !== undefined);
   return (
     <BottomSheet
       visible={chat !== null}
@@ -142,16 +178,107 @@ export function TopicInfoSheet({
       {chat !== null && topic !== undefined ? (
         <View className="gap-3 py-2">
           <View className="flex-row items-center gap-3">
-            <EntityAvatar chat={chat} size={44} />
-            <View className="min-w-0 flex-1">
-              <Text numberOfLines={1} className="text-[17px] font-semibold text-foreground">
+            <EntityAvatar chat={chat} size={52} />
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text numberOfLines={1} className="text-[20px] font-semibold text-foreground">
                 {chat.title}
               </Text>
-              <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-                {groupTitle} · {topic.visibility === 'private' ? 'Private' : 'Public'}
-              </Text>
+              <View className="flex-row items-center gap-1.5">
+                {topic.visibility === 'private' ? (
+                  <Lock size={14} color={MUTED_FOREGROUND} accessibilityLabel="Private" />
+                ) : (
+                  <Globe size={14} color={MUTED_FOREGROUND} accessibilityLabel="Public" />
+                )}
+                <Text numberOfLines={1} className="shrink text-[14px] text-muted-foreground">
+                  {groupTitle}
+                </Text>
+              </View>
             </View>
-            {topic.visibility === 'private' ? <Lock size={16} color={MUTED_FOREGROUND} /> : null}
+          </View>
+
+          {onAdd !== undefined ? (
+            <Button
+              variant="key"
+              accessibilityLabel="Add people or AIs"
+              onPress={onAdd}
+              className="h-12 gap-2 rounded-[14px]"
+            >
+              <Plus size={18} color={ACCENT_FOREGROUND} />
+              <Text className="text-[16px] font-semibold">Add people or AIs</Text>
+            </Button>
+          ) : null}
+
+          <View className="gap-2">
+            <SectionHeader label="AIs" count={ais.length} />
+            {ais.length === 0 ? (
+              <StateMessage kind="empty" size="inline" title="No AIs here yet." />
+            ) : (
+              <InfoGroup>
+                {ais.map((ai) => {
+                  const owner = aiOwnerLabel(ai.id, detail, myUserId);
+                  return (
+                    <View key={ai.id} className="min-h-[52px] flex-row items-center gap-3 px-3">
+                      <EntityAvatar
+                        person={{
+                          id: ai.id,
+                          name: ai.name,
+                          ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+                        }}
+                        size={34}
+                        ai
+                      />
+                      <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
+                        <Text numberOfLines={1} className="shrink text-[16px] text-foreground">
+                          {ai.name}
+                        </Text>
+                        <AiBadge />
+                      </View>
+                      {owner === undefined ? null : (
+                        <Text className="shrink-0 text-[13px] text-muted-foreground">{owner}</Text>
+                      )}
+                      {onOpenAiMemory !== undefined ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`What ${ai.name} remembers`}
+                          onPress={() => onOpenAiMemory(ai)}
+                          className="rounded-full p-2 active:bg-surface-raised"
+                        >
+                          <Brain size={16} color={MUTED_FOREGROUND} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </InfoGroup>
+            )}
+          </View>
+
+          <View className="gap-2">
+            <SectionHeader label="People" count={people.length} />
+            {people.length === 0 ? (
+              <StateMessage kind="empty" size="inline" title="No people here yet." />
+            ) : (
+              <InfoGroup>
+                {people.map((person) => (
+                  <View key={person.id} className="min-h-[52px] flex-row items-center gap-3 px-3">
+                    <EntityAvatar
+                      person={{
+                        id: person.id,
+                        name: person.name,
+                        ...(person.avatarUrl === undefined ? {} : { avatarUrl: person.avatarUrl }),
+                      }}
+                      size={34}
+                    />
+                    <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] text-foreground">
+                      {person.name}
+                      {person.id === myUserId ? (
+                        <Text className="text-[16px] text-muted-foreground"> (you)</Text>
+                      ) : null}
+                    </Text>
+                  </View>
+                ))}
+              </InfoGroup>
+            )}
           </View>
 
           <View className="gap-1">
@@ -163,182 +290,26 @@ export function TopicInfoSheet({
             ) : null}
           </View>
 
-          <View>
-            <Text className="text-[13px] font-semibold text-muted-foreground">
-              {topic.visibility === 'private'
-                ? `Members (${members.length})`
-                : `All ${chat.memberCount ?? members.length} members of the group`}
-            </Text>
-            {topic.visibility === 'private'
-              ? members.map((member) => (
-                  <View key={member.userId} className="flex-row items-center gap-2 py-1.5">
-                    <EntityAvatar person={{ userId: member.userId, name: member.name }} size={28} />
-                    <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
-                      {member.name}
-                    </Text>
-                  </View>
-                ))
-              : null}
-          </View>
-
-          <View>
-            <Text className="text-[13px] font-semibold text-muted-foreground">
-              AIs in this topic ({aiCount})
-            </Text>
-            {ais.map((ai) => (
-              <View key={ai.id} className="flex-row items-center gap-2 py-1.5">
-                <EntityAvatar person={{ id: ai.id, name: ai.name }} size={28} ai />
-                <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
-                  {ai.name}
-                </Text>
-                {onOpenAiMemory !== undefined ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`What ${ai.name} remembers`}
-                    onPress={() => onOpenAiMemory(ai)}
-                    className="rounded-full p-2 active:bg-surface-raised"
-                  >
-                    <Brain size={16} color={MUTED_FOREGROUND} />
-                  </Pressable>
-                ) : null}
-              </View>
-            ))}
-            {ais.length === 0 ? (
-              <StateMessage kind="empty" size="inline" title="No AIs here yet." />
-            ) : null}
-          </View>
-
           {error !== '' ? (
             <Text accessibilityRole="alert" className="text-[13px] text-danger">
               {error}
             </Text>
           ) : null}
 
-          {isPrivate ? (
-            <View>
-              <Text className="text-[13px] font-semibold text-muted-foreground">Roles</Text>
-              {rolesError !== '' ? (
-                <RetryRow
-                  message={rolesError}
-                  retryLabel="Retry loading topic roles"
-                  onRetry={onRetryRoles}
-                />
-              ) : rolesLoading ? (
-                <Text className="py-1 text-[14px] text-muted-foreground">Checking your role…</Text>
-              ) : (
-                <View>
-                  {roles.length === 0 ? (
-                    <StateMessage
-                      kind="empty"
-                      size="inline"
-                      title="No roles here yet — only the people above can see this topic."
-                    />
-                  ) : null}
-                  {attachedRows.map((row) => (
-                    <View key={row.id} className="flex-row items-center gap-2 py-1">
-                      <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px]">
-                        {row.label}
-                      </Text>
-                      {canManageRoles ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          accessibilityLabel={`Remove ${row.label} from the topic`}
-                          onPress={() => onToggleTopicRole(row.id)}
-                        >
-                          <Text>Remove</Text>
-                        </Button>
-                      ) : null}
-                    </View>
-                  ))}
-                  {groupRolesError !== '' ? (
-                    <RetryRow
-                      message={groupRolesError}
-                      retryLabel="Retry loading group roles"
-                      onRetry={onRetryGroupRoles}
-                    />
-                  ) : null}
-                  {canManageRoles ? (
-                    pickerOpen ? (
-                      <View className="gap-1 py-1">
-                        {addableRows.map((row) => (
-                          <Button
-                            key={row.id}
-                            variant="outline"
-                            size="sm"
-                            accessibilityLabel={`Add ${row.label} to the topic`}
-                            onPress={() => onToggleTopicRole(row.id)}
-                          >
-                            <Text>{row.label}</Text>
-                          </Button>
-                        ))}
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Done adding roles"
-                          onPress={() => setPickerOpen(false)}
-                          className="self-start rounded-[10px] px-3 py-1.5 active:bg-surface-raised"
-                        >
-                          <Text className="text-[14px] text-foreground">Done</Text>
-                        </Pressable>
-                      </View>
-                    ) : addableRows.length > 0 ? (
-                      <Button
-                        accessibilityLabel="Add roles to the topic"
-                        onPress={() => setPickerOpen(true)}
-                        className="self-start"
-                      >
-                        <Text>Add roles</Text>
-                      </Button>
-                    ) : null
-                  ) : null}
-                  {canManageRoles ? (
-                    approverOpen ? (
-                      <View className="gap-1 py-1">
-                        {approverOpts.map((option) => (
-                          <Pressable
-                            key={option.id ?? 'none'}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected: option.selected }}
-                            accessibilityLabel={`Approvers: ${option.label}`}
-                            onPress={() => {
-                              setApproverOpen(false);
-                              onPickApprover(option.id);
-                            }}
-                            className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
-                          >
-                            <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
-                              {option.label}
-                            </Text>
-                            {option.selected ? <Check size={16} color={FOREGROUND} /> : null}
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Choose approvers"
-                        onPress={() => setApproverOpen(true)}
-                        className="flex-row items-center gap-2 py-1 active:opacity-80 disabled:opacity-50"
-                      >
-                        <Text className="text-[13px] font-medium text-muted-foreground">
-                          Approvers
-                        </Text>
-                        <Text className="text-[14px] text-foreground">
-                          {approverRole?.name ?? 'Owner and admins only'}
-                        </Text>
-                      </Pressable>
-                    )
-                  ) : line !== undefined ? (
-                    <Text className="py-1 text-[13px] text-muted-foreground">{line}</Text>
-                  ) : null}
-                </View>
-              )}
-            </View>
-          ) : (
-            <Text className="text-[13px] text-muted-foreground">
-              Roles are only available on private topics.
-            </Text>
-          )}
+          <TopicInfoRoles
+            visibility={topic.visibility}
+            roles={roles}
+            rolesError={rolesError}
+            rolesLoading={rolesLoading}
+            groupRolesError={groupRolesError}
+            approverRole={approverRole}
+            groupRoles={groupRoles}
+            canManageRoles={canManageRoles}
+            onToggleTopicRole={onToggleTopicRole}
+            onPickApprover={onPickApprover}
+            onRetryRoles={onRetryRoles}
+            onRetryGroupRoles={onRetryGroupRoles}
+          />
 
           <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />
 

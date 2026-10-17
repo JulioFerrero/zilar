@@ -6,6 +6,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
+import type { GroupDetail } from '@/lib/chat-api';
 import { FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,27 @@ export type TopicLinePerson = {
   name: string;
   avatarUrl?: string;
 };
+
+/**
+ * The person behind one `topic.memberIds` id, when the group detail knows them.
+ * An id the detail has not loaded yet has no person (callers skip it, the
+ * header still counts it in the line's N). Shared by the header (T-1780) and
+ * the topic-info sheet (T-1785).
+ */
+export function memberPerson(
+  memberId: string,
+  detail: GroupDetail | undefined,
+): TopicLinePerson | undefined {
+  const member = detail?.members.find((entry) => entry.userId === memberId);
+  if (member === undefined) {
+    return undefined;
+  }
+  return {
+    id: member.userId,
+    name: member.name,
+    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+  };
+}
 
 type TopicPeopleLineProps = {
   /** The topic's people, in stack order. */

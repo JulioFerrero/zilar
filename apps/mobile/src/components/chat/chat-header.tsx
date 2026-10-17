@@ -9,11 +9,15 @@ import { AiActivityMarks } from '@/components/chat/ai-activity-marks';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { AisHereSheet } from '@/components/chat/ais-here-sheet';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
+import {
+  TopicPeopleLine,
+  memberPerson,
+  type TopicLinePerson,
+} from '@/components/chat/topic-people-line';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import type { Contact, GroupDetail } from '@/lib/chat-api';
+import type { Contact } from '@/lib/chat-api';
 import { chatSubtitle } from '@/lib/chat';
 import { cn } from '@/lib/utils';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
@@ -45,26 +49,6 @@ export function dmHandleFor(chat: ChatSummary, contacts: Contact[]): string | un
   );
   const handle = contact?.handle;
   return handle === undefined || handle === null || handle === '' ? undefined : handle;
-}
-
-/**
- * T-1780: the person behind one `topic.memberIds` id, when the group detail the
- * header subscribes to knows them. An id the detail has not loaded yet draws no
- * circle, but still counts in the line's N.
- */
-function memberPerson(
-  memberId: string,
-  detail: GroupDetail | undefined,
-): TopicLinePerson | undefined {
-  const member = detail?.members.find((entry) => entry.userId === memberId);
-  if (member === undefined) {
-    return undefined;
-  }
-  return {
-    id: member.userId,
-    name: member.name,
-    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
-  };
 }
 
 type ChatHeaderProps = {

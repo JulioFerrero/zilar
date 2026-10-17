@@ -1790,3 +1790,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1780](T-1780-phone-topic-header.md) | phone topic header with the people stack | 2026-10-16 |
 | [T-1782](T-1782-phone-content-blocks.md) | phone weather, event and place blocks | 2026-10-16 |
 | [T-1768](T-1768-card-guide.md) | one card guide, fmt dates, card validity on save | 2026-10-17 |
+| [T-1785](T-1785-phone-topic-sheet.md) | phone In this topic, part 1 (split + people) | 2026-10-17 |
