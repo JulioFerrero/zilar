@@ -262,7 +262,7 @@ export const ASK_PEOPLE_TOOL_DEF: ChatToolDefinition = {
       'Ask the people in this room to decide something only they can decide. Ask ' +
       'one short question in plain words; options of one to three words: they can ' +
       'tap one, and a free reply is still allowed. Ask one question at a time and ' +
-      'never ask the same thing twice.',
+      'never ask the same thing twice. When someone asks you for buttons, a poll or a form, use post_blocks instead.',
     parameters: {
       type: 'object',
       properties: {

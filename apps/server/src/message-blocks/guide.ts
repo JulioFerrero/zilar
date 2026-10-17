@@ -111,6 +111,7 @@ export const CARD_SHAPES = [
 // answer.
 export const INTERACTIVE_RULES = [
   'Use an interactive kind only when people must act. `buttons`, `choice`, `rating` and `form` ask for a decision; the answer comes back to you as a reply that mentions you.',
+  'When a person asks for buttons, a poll, a choice, a rating or a form, post that kind with post_blocks; do not use ask_people for it.',
   '`poll` collects votes and `checklist` collects ticks; everyone sees them and they do not wake you.',
   'Every interactive block and every action, option and field has an `id` (letters, digits, `.` `_` `~` `-`), unique in its block.',
   'Never send `votes`, `selected`, `chosen` or `sent`; the server fills them in.',

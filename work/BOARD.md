@@ -1830,3 +1830,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1815](T-1815-form-answer-persists.md) | a sent form keeps its answer | 2026-10-17 |
 | [T-1820](T-1820-card-answer-error.md) | a failed card answer says so | 2026-10-17 |
 | [T-1821](T-1821-question-answered.md) | question cards stay answered after a reload | 2026-10-17 |
+| [T-1823](T-1823-buttons-not-question.md) | asked for buttons, the AI posts a buttons card | 2026-10-17 |
