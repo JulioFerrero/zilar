@@ -10,8 +10,8 @@ catalog:
   '@effect/atom-react': 4.0.4
   '@xmpp/client': ^0.14.0
   better-auth: ^1.7.6
-  clsx: ^2.1.1
   class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
   effect: ^4.0.4
   scheduler: ^0.27.0
   tailwind-merge: ^3.7.0
@@ -19,16 +19,16 @@ catalog:
   vite: ^8.3.1
   vitest: ^5.0.2
 
+onlyBuiltDependencies:
+  - esbuild
+
 overrides:
   '@types/node': '^24'
+  drizzle-kit: '-'
   # T-0909: better-auth's optional drizzle peers are auto-installed and then
   # resolve PGlite, which put 25 MB of the test database in the production
   # deploy. The server uses its own SQL adapter, not drizzle.
   drizzle-orm: '-'
-  drizzle-kit: '-'
-
-onlyBuiltDependencies:
-  - esbuild
 
 # T-0272: pnpm 10 resolves ws's optional peers non-deterministically for the
 # metro <-> metro-config cycle, flipping bufferutil/utf-8-validate in the
@@ -43,3 +43,5 @@ packageExtensions:
         optional: true
       utf-8-validate:
         optional: true
+patchedDependencies:
+  expo-share-intent@8.0.1: patches/expo-share-intent@8.0.1.patch

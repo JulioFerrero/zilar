@@ -54,10 +54,15 @@ catalogs:
 
 overrides:
   '@types/node': ^24
-  drizzle-orm: '-'
   drizzle-kit: '-'
+  drizzle-orm: '-'
 
 packageExtensionsChecksum: sha256-phokSFO6ziZSjQwLz+yFAJcHECQWoPH6cowRQ8w+6/s=
+
+patchedDependencies:
+  expo-share-intent@8.0.1:
+    hash: 20ce0f19d68e81cf8c75bb2d1aa9039f2ff638cc646c48bc35703f4ba9edce32
+    path: patches/expo-share-intent@8.0.1.patch
 
 importers:
 
@@ -200,7 +205,7 @@ importers:
         version: 57.0.4(expo@57.0.25)
       expo-share-intent:
         specifier: 8.0.1
-        version: 8.0.1(@typescript/typescript6@6.0.2)(expo-constants@57.0.19)(expo-linking@57.0.11)(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+        version: 8.0.1(patch_hash=20ce0f19d68e81cf8c75bb2d1aa9039f2ff638cc646c48bc35703f4ba9edce32)(@typescript/typescript6@6.0.2)(expo-constants@57.0.19)(expo-linking@57.0.11)(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       expo-sharing:
         specifier: ~57.0.23
         version: 57.0.23(@typescript/typescript6@6.0.2)(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -10459,7 +10464,7 @@ snapshots:
 
   expo-server@57.0.3: {}
 
-  expo-share-intent@8.0.1(@typescript/typescript6@6.0.2)(expo-constants@57.0.19)(expo-linking@57.0.11)(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3):
+  expo-share-intent@8.0.1(patch_hash=20ce0f19d68e81cf8c75bb2d1aa9039f2ff638cc646c48bc35703f4ba9edce32)(@typescript/typescript6@6.0.2)(expo-constants@57.0.19)(expo-linking@57.0.11)(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3):
     dependencies:
       '@expo/config-plugins': 57.0.10(@typescript/typescript6@6.0.2)
       expo: 57.0.25(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.16)(@typescript/typescript6@6.0.2)(expo-router@57.0.23)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
