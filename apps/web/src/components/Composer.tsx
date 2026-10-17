@@ -259,7 +259,12 @@ export function Composer({
       return;
     }
 
-    if (event.key === 'ArrowUp' && editing === undefined && replyTo === undefined) {
+    if (
+      event.key === 'ArrowUp' &&
+      !event.altKey &&
+      editing === undefined &&
+      replyTo === undefined
+    ) {
       if (value.length === 0) {
         event.preventDefault();
         editLastMessage();

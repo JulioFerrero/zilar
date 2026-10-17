@@ -16,6 +16,10 @@ export function TopicKeyboardNav({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+    // Alt/Ctrl/Meta+arrows belong to the window-level chat switch (T-1874).
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') {
       return;
     }
