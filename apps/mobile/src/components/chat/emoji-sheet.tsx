@@ -1,8 +1,5 @@
 import { Film, Smile, Sticker as StickerIcon } from 'lucide-react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { Modal, Pressable, View } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
@@ -12,8 +9,10 @@ import type { GifsApi } from '@/lib/gifs-api';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { EmojiTab } from '@/components/chat/emoji-tab';
 import { GifPanel } from '@/components/chat/gif-panel';
-import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { StickerGrid, type StickerPanelState } from '@/components/chat/sticker-panel';
+
+/** The inline panel's height, about what Telegram docks under the input. */
+const PANEL_HEIGHT = 300;
 
 /** The sheet tabs, in display order (Emoji first, selected by default). */
 export type EmojiSheetTab = 'emoji' | 'stickers' | 'gifs';
@@ -56,18 +55,15 @@ type EmojiSheetProps = {
   /** GIFs tab. */
   gifsApi?: GifsApi | undefined;
   onPickGif: (gif: GifItem) => void;
-  onClose: () => void;
 };
 
 /**
- * The one emoji sheet (T-0175): tabs Emoji | Stickers | GIFs above the
- * bodies the separate sheets showed before. The sheet takes about half of
- * the screen height and never hides the composer's current line; on Android
- * with the keyboard open it replaces the keyboard (the composer dismisses
- * it when the sheet opens). T-1669 wraps the sheet in a keyboard-avoiding
- * view: while a search field is focused, the panel rises above the keyboard
- * and shrinks with it, so the results stay visible. Back button and
- * tap-outside close it, as the other sheets do. Lucide icons for the tabs;
+ * The one emoji panel (T-0175): tabs Emoji | Stickers | GIFs above the
+ * bodies the separate sheets showed before. T-1927 docks it under the
+ * composer instead of over it, as Telegram does: the composer dismisses the
+ * keyboard when it opens, and the panel takes `PANEL_HEIGHT` below the input,
+ * so the field and each picked emoji stay visible. The keyboard key under the
+ * field, a tap on the field and Back close it. Lucide icons for the tabs;
  * emoji characters only as emoji content.
  */
 export function EmojiSheet({ open, ...props }: EmojiSheetProps) {
@@ -77,10 +73,7 @@ export function EmojiSheet({ open, ...props }: EmojiSheetProps) {
   return <EmojiSheetBody open={open} {...props} />;
 }
 
-/**
- * The open sheet's body. Split out so closing unmounts it, restarting the
- * panel's slide on the next open (hooks cannot run after the early return).
- */
+/** The open panel's body. */
 function EmojiSheetBody({
   open,
   tab,
@@ -99,11 +92,8 @@ function EmojiSheetBody({
   onRetryStickers,
   gifsApi,
   onPickGif,
-  onClose,
 }: EmojiSheetProps) {
-  const insets = useSafeAreaInsets();
   const iconColor = ICON;
-  const { panelStyle, onLayout, close } = useSheetMotion(onClose);
   const visible: EmojiSheetTab = resolveSheetTab(tab, gifsVisible);
   const tabs: { id: EmojiSheetTab; label: string; icon: React.ReactNode }[] = [
     { id: 'emoji', label: 'Emoji', icon: <Smile size={16} color={iconColor} /> },
@@ -113,68 +103,54 @@ function EmojiSheetBody({
       : []),
   ];
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Pressable
-          accessibilityLabel="Close emoji panel"
-          onPress={close}
-          className="flex-1 justify-end bg-black/40"
-        >
-          <Animated.View className="h-[50%]" onLayout={onLayout} style={panelStyle}>
-            <Pressable
-              onPress={() => {}}
-              accessibilityRole="menu"
-              accessibilityLabel="Emoji, stickers and GIFs"
-              className="flex-1 rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-              style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-            >
-              <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-              <View
-                accessibilityRole="tablist"
-                accessibilityLabel="Panel tabs"
-                className="flex-row gap-1 pb-2"
-              >
-                {tabs.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    accessibilityRole="tab"
-                    accessibilityLabel={item.label}
-                    accessibilityState={{ selected: visible === item.id }}
-                    onPress={() => onSelectTab(item.id)}
-                    className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5 active:bg-surface-raised"
-                  >
-                    {item.icon}
-                    <Text className="text-[13px] font-medium text-foreground">{item.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <View className="min-h-0 flex-1">
-                {visible === 'emoji' ? (
-                  <EmojiTab
-                    open={open}
-                    recents={emojiRecents}
-                    activeCategory={emojiCategory}
-                    onSelectCategory={onSelectEmojiCategory}
-                    onPick={onPickEmoji}
-                  />
-                ) : visible === 'stickers' ? (
-                  <StickerGrid
-                    packs={packs}
-                    state={panelState}
-                    recents={stickerRecents}
-                    activePackId={activePackId}
-                    onSelectPack={onSelectPack}
-                    onPick={onPickSticker}
-                    onRetry={onRetryStickers}
-                  />
-                ) : (
-                  <GifPanel open={open} api={gifsApi} onPick={onPickGif} />
-                )}
-              </View>
-            </Pressable>
-          </Animated.View>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    <View
+      accessibilityRole="menu"
+      accessibilityLabel="Emoji, stickers and GIFs"
+      className="mt-1.5 border-t border-border bg-surface px-4 pt-3"
+      style={{ height: PANEL_HEIGHT }}
+    >
+      <View
+        accessibilityRole="tablist"
+        accessibilityLabel="Panel tabs"
+        className="flex-row gap-1 pb-2"
+      >
+        {tabs.map((item) => (
+          <Pressable
+            key={item.id}
+            accessibilityRole="tab"
+            accessibilityLabel={item.label}
+            accessibilityState={{ selected: visible === item.id }}
+            onPress={() => onSelectTab(item.id)}
+            className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5 active:bg-surface-raised"
+          >
+            {item.icon}
+            <Text className="text-[13px] font-medium text-foreground">{item.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View className="min-h-0 flex-1">
+        {visible === 'emoji' ? (
+          <EmojiTab
+            open={open}
+            recents={emojiRecents}
+            activeCategory={emojiCategory}
+            onSelectCategory={onSelectEmojiCategory}
+            onPick={onPickEmoji}
+          />
+        ) : visible === 'stickers' ? (
+          <StickerGrid
+            packs={packs}
+            state={panelState}
+            recents={stickerRecents}
+            activePackId={activePackId}
+            onSelectPack={onSelectPack}
+            onPick={onPickSticker}
+            onRetry={onRetryStickers}
+          />
+        ) : (
+          <GifPanel open={open} api={gifsApi} onPick={onPickGif} />
+        )}
+      </View>
+    </View>
   );
 }

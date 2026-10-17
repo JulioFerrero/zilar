@@ -798,7 +798,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **iOS 0.2.9 on Iryna's iPhone 16 Pro** (Julio asked at 20:30 UTC). It was built from tag `v0.2.9` in the scratch worktree `../zilar-ios-build` (RELEASING §8), installed and launched at 20:43 UTC.
                 - It has the same limits as before: a personal team, so no push (`aps-environment` dropped from the generated entitlements) and a 7-day expiry.
                 - Share-into-Zilar is Android-only (`disableIOS: true`).
-              - **T-1926 (running):** the full emoji set, flags included. Julio asked "we dont have all the emojis? like the flags". The shared `chat-core` table had 328 hand-picked glyphs and no flags; a generated table from `unicode-emoji-json` 0.9.0 brings about 1,870 (Emoji ≤ 15.0) to web and phone.
+              - **21:32 UTC (Julio OK'd all three):**
+                - pushed `a7932b7f1` (T-1923 to T-1926; the deploy means about 50 s of Bad Gateway);
+                - tagged **v0.2.10** (the Android release workflow);
+                - building iOS 0.2.10 for Iryna's iPhone from the same commit.
+              - **T-1926 merged:** the full emoji set, flags included (checked on the emulator: a Flags tab with country flags). Julio asked "we dont have all the emojis? like the flags". The shared `chat-core` table had 328 hand-picked glyphs and no flags; a generated table from `unicode-emoji-json` 0.9.0 brings about 1,870 (Emoji ≤ 15.0) to web and phone.
               - **Merged and held:**
                 - T-1923, checked on the emulator: the big emoji shows whole, with no tail;
                 - T-1925, checked on the emulator: "Send 2" sent an album at once.

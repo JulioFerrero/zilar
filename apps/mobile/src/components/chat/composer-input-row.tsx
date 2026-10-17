@@ -1,5 +1,5 @@
 import { lightToPlain } from '@zilar/chat-core';
-import { ArrowUp, Check, Paperclip, Smile, X } from 'lucide-react-native';
+import { ArrowUp, Check, Keyboard, Paperclip, Smile, X } from 'lucide-react-native';
 import type { RefObject } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
@@ -87,6 +87,9 @@ type ComposerInputRowProps = {
   onSend: () => void;
   onOpenAttach: () => void;
   onOpenSheet: () => void;
+  /** The inline emoji panel is under the input (T-1927). */
+  sheetOpen: boolean;
+  onCloseSheet: () => void;
   voiceRecording: boolean;
   onRecordingChange: (recording: boolean) => void;
   replyTo: ReplyRef | undefined;
@@ -111,6 +114,8 @@ export function ComposerInputRow({
   onSend,
   onOpenAttach,
   onOpenSheet,
+  sheetOpen,
+  onCloseSheet,
   voiceRecording,
   onRecordingChange,
   replyTo,
@@ -127,6 +132,11 @@ export function ComposerInputRow({
     : stagedCount >= 2
       ? `Send ${stagedCount} files`
       : 'Send message';
+  // The key under the panel brings the keyboard back (T-1927).
+  const showKeyboard = () => {
+    onCloseSheet();
+    inputRef?.current?.focus();
+  };
   return (
     <View
       className="flex-row items-end gap-1 rounded-[14px] p-2"
@@ -148,6 +158,11 @@ export function ComposerInputRow({
             className="mx-1 flex-1 py-2 text-[16px] text-foreground"
             style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
             selection={selection}
+            onFocus={() => {
+              if (sheetOpen) {
+                onCloseSheet();
+              }
+            }}
             onContentSizeChange={(event) =>
               onInputHeightChange(fieldHeightFor(event.nativeEvent.contentSize.height))
             }
@@ -158,8 +173,16 @@ export function ComposerInputRow({
               })
             }
           />
-          <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]" onPress={onOpenSheet}>
-            <Smile size={20} color={iconColor} />
+          <IconButton
+            label={sheetOpen ? 'Keyboard' : 'Emoji'}
+            className="h-9 w-9 rounded-[10px]"
+            onPress={sheetOpen ? showKeyboard : onOpenSheet}
+          >
+            {sheetOpen ? (
+              <Keyboard size={20} color={iconColor} />
+            ) : (
+              <Smile size={20} color={iconColor} />
+            )}
           </IconButton>
         </>
       ) : null}

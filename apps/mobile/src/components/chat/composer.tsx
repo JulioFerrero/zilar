@@ -269,6 +269,8 @@ export function Composer({
         onSend={handleSend}
         onOpenAttach={media.openAttach}
         onOpenSheet={sheet.openSheet}
+        sheetOpen={sheet.sheetOpen}
+        onCloseSheet={sheet.closeSheet}
         voiceRecording={media.voiceRecording}
         onRecordingChange={media.setVoiceRecording}
         replyTo={replyTo}
@@ -294,7 +296,6 @@ export function Composer({
         onRetryStickers={sheet.loadPanel}
         gifsApi={gifsApi}
         onPickGif={media.pickGif}
-        onClose={sheet.closeSheet}
       />
       <AttachSheet
         open={media.attachOpen}

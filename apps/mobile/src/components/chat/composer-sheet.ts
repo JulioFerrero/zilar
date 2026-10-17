@@ -1,7 +1,7 @@
 import { StickerSchema, isValid } from '@zilar/protocol';
 import { Effect } from 'effect';
-import { useCallback, useState } from 'react';
-import { Keyboard } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { BackHandler, Keyboard } from 'react-native';
 
 import { step } from '@/components/chat/composer-media';
 import type { EmojiSheetTab } from '@/components/chat/emoji-sheet';
@@ -128,8 +128,8 @@ export function useComposerSheet({
   );
 
   const openSheet = () => {
-    // On Android with the keyboard open the sheet replaces the keyboard:
-    // dismiss it now, and a tap on the field brings it back.
+    // The panel docks under the input: dismiss the keyboard so it has room,
+    // and a tap on the field brings the keyboard back (T-1927).
     Keyboard.dismiss();
     setSheetOpen(true);
     loadPanel();
@@ -137,6 +137,18 @@ export function useComposerSheet({
   };
 
   const closeSheet = () => setSheetOpen(false);
+
+  // Android Back closes the panel before it leaves the chat (T-1927).
+  useEffect(() => {
+    if (!sheetOpen) {
+      return;
+    }
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setSheetOpen(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [sheetOpen]);
 
   // Remembering a picked emoji or sticker never blocks typing or sending: a
   // failing store leaves the row as it was.
@@ -157,9 +169,9 @@ export function useComposerSheet({
     { mode: 'replace' },
   );
 
-  // Tapping an emoji inserts it at the caret and keeps the sheet open, so
-  // several can be added; the sheet closes with its handle, a tap outside,
-  // or the back button.
+  // Tapping an emoji inserts it at the caret and keeps the panel open, so
+  // several can be added; it closes with the keyboard key, a tap on the
+  // field, Back, or a picked sticker or GIF.
   const pickEmoji = (emoji: string) => {
     const { text: next, caret } = insertEmojiAtCaret(text, emoji, selection);
     setText(next);
