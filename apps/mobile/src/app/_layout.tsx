@@ -13,6 +13,7 @@ import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono/500Medium';
 import { PortalHost } from '@rn-primitives/portal';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import { ShareIntentProvider } from 'expo-share-intent';
 import { ThemeProvider } from 'expo-router/react-navigation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -127,14 +128,17 @@ export default function RootLayout() {
           <StatusBar style="light" />
           <SessionBootstrap />
           <NotificationRouter />
-          <ChatStoreProvider>
-            <ActiveChatSync />
-            <View style={{ flex: 1 }}>
-              <ClientVersionBanner />
-              <Stack screenOptions={{ headerShown: false }} />
-              <UpdateDialog />
-            </View>
-          </ChatStoreProvider>
+          {/* T-1891: share-sheet payloads (Android SEND); the /share route reads them (share plan). */}
+          <ShareIntentProvider options={{ resetOnBackground: true }}>
+            <ChatStoreProvider>
+              <ActiveChatSync />
+              <View style={{ flex: 1 }}>
+                <ClientVersionBanner />
+                <Stack screenOptions={{ headerShown: false }} />
+                <UpdateDialog />
+              </View>
+            </ChatStoreProvider>
+          </ShareIntentProvider>
           <PortalHost />
         </ThemeProvider>
       </KeyboardProvider>

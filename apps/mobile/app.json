@@ -73,7 +73,15 @@
           "granularPermissions": ["photo", "video"]
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*", "image/*", "video/*", "application/*", "audio/*"],
+          "androidMultiIntentFilters": ["image/*", "video/*"],
+          "disableIOS": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
