@@ -1,12 +1,15 @@
 // T-1758: the `post_blocks` runner posts one blocks card for a valid call and
 // refuses a call whose blocks fail validation, without sending anything.
+// T-1791: a posted card is also recorded for interaction, best-effort.
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
+import type { RecordCardInput } from '../../message-blocks/cards';
 import { createPostBlocksRunner } from './post-blocks';
 import type { AiSession, GatewayLogger } from './contracts';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
+const noopRecord = async () => {};
 
 function sessionFor(aiId: string, aiJid: string, room: string): AiSession {
   return {
@@ -59,7 +62,7 @@ describe('post_blocks runner', () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent));
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), noopRecord);
 
     const result = await runner.runPostBlocks(
       session,
@@ -91,7 +94,7 @@ describe('post_blocks runner', () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent));
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), noopRecord);
 
     const result = await runner.runPostBlocks(
       session,
@@ -103,14 +106,70 @@ describe('post_blocks runner', () => {
     expect(sent).toHaveLength(0);
 
     // A send that rejects must come back as a failure, not crash the tool call.
-    const failing = createPostBlocksRunner(silentLogger, async () => {
-      throw new Error('xmpp down');
-    });
+    const failing = createPostBlocksRunner(
+      silentLogger,
+      async () => {
+        throw new Error('xmpp down');
+      },
+      noopRecord,
+    );
     const failed = await failing.runPostBlocks(
       session,
       { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
       { roomJid },
     );
     expect(failed.content).toBe('error: the card could not be posted');
+  });
+
+  it('records the posted card with the origin id, the room and the card data', async () => {
+    const roomJid = 'blocks@rooms.zilar.localhost';
+    const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
+    const sent: SentMessage[] = [];
+    const records: RecordCardInput[] = [];
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
+      records.push(input);
+    });
+
+    const result = await runner.runPostBlocks(
+      session,
+      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
+      { roomJid, groupId: 'g-1', topicId: 'topic-1' },
+    );
+
+    expect(result.content).toBe(
+      'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.',
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      originId: 'block-1',
+      aiId: 'ai-1',
+      groupId: 'g-1',
+      topicId: 'topic-1',
+      roomJid,
+    });
+    expect(records[0]?.data).toMatchObject({
+      fallback: 'Prices today',
+      blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }],
+    });
+  });
+
+  it('keeps the posted result when recording the card fails', async () => {
+    const roomJid = 'blocks@rooms.zilar.localhost';
+    const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
+    const sent: SentMessage[] = [];
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async () => {
+      throw new Error('db down');
+    });
+
+    const result = await runner.runPostBlocks(
+      session,
+      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
+      { roomJid },
+    );
+
+    expect(result.content).toBe(
+      'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.',
+    );
+    expect(sent).toHaveLength(1);
   });
 });

@@ -5,6 +5,7 @@
 import { Effect } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import { buildBlocksPayload } from '../../message-blocks/build';
+import type { RecordCardInput } from '../../message-blocks/cards';
 import { POST_BLOCKS_TOOL } from '../tools';
 import type { ToolExecution } from '../reply';
 import { errorName, type AiSession, type GatewayLogger } from './contracts';
@@ -25,6 +26,8 @@ export interface PostBlocksCall {
 // The room the turn runs in: where the card is posted.
 export interface PostBlocksChat {
   roomJid: string;
+  groupId?: string;
+  topicId?: string;
 }
 
 const POSTED_TEXT =
@@ -34,6 +37,7 @@ const FAILED_TEXT = 'error: the card could not be posted';
 export function createPostBlocksRunner(
   logger: GatewayLogger,
   send: LiveSession['liveSendMessage'],
+  record: (input: RecordCardInput) => Promise<void>,
 ) {
   // Posts the card. A rejected `send` must be caught here: a rejected
   // `Effect.promise` inside the generator below would end the run as a defect,
@@ -50,6 +54,28 @@ export function createPostBlocksRunner(
       return { ok: true, id: sent.id };
     } catch (error) {
       return { ok: false, error };
+    }
+  }
+
+  // T-1791: records the posted card so a tap can find it later. Best-effort:
+  // a storage failure is logged and never changes the tool result.
+  async function recordPosted(
+    session: AiSession,
+    chat: PostBlocksChat,
+    originId: string,
+    data: RecordCardInput['data'],
+  ): Promise<void> {
+    try {
+      await record({
+        originId,
+        aiId: session.aiId,
+        roomJid: chat.roomJid,
+        ...(chat.groupId === undefined ? {} : { groupId: chat.groupId }),
+        ...(chat.topicId === undefined ? {} : { topicId: chat.topicId }),
+        data,
+      });
+    } catch (error) {
+      logger.warn({ aiId: session.aiId, err: errorName(error) }, 'AI card record failed');
     }
   }
 
@@ -98,6 +124,7 @@ export function createPostBlocksRunner(
       );
       return { content: FAILED_TEXT };
     }
+    yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
     logger.info({ aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: true }, 'AI post_blocks posted');
     // T-1761: the card is in the room, so the group turn sends no echo reply.
     return { content: POSTED_TEXT, postedToRoom: true };

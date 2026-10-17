@@ -532,6 +532,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **Pre-reviews on the free Muse fail at start** (outcome failed, from about 23:14 UTC).
               - The six stuck reviews were switched to paid Muse by hand (`session.switchModel` + `session.prompt`).
               - **T-1778 is merged and live:** the autopilot falls back on its own, and was restarted on it.
+            - **Morning summary 10-17 (08:25 UTC):**
+              - **Live `4dec3ff62`** (health OK, 0 errors, migration 0071 applied).
+              - **Cards:**
+                - all four web groups (data, progress, charts, content);
+                - the shared card guide (T-1768), with exact shapes, `fmt` dates and card validity on save;
+                - the phone data, progress and content twins.
+              - **Topics:**
+                - S6 preview (T-1774);
+                - W1/W2 headers with the people stack and "is writing";
+                - W3/W4 @ list filtered to the topic, plus the "isn't in" row with Add;
+                - W5 web Add dialog;
+                - W6a phone In this topic;
+                - W8 phone Your/Other topics with Join.
+              - **Wave 2 (interactive cards) started:** design in `docs/plan/message-blocks.md` §8; storage T-1790 merged; B8b T-1791 running.
+              - **Running:** T-1781 (phone charts, resumed), T-1786 (W7 web group topics), T-1789 (W6b phone Add sheet), T-1791.
+              - **Next:**
+                - W9/W10 (Join preview, Mute, Leave, then flip `PUBLIC_TOPICS_START_EMPTY`);
+                - B9 (the respond route), then B10/B11;
+                - the live cards test in "cards test";
+                - the emulator check of the phone screens (not while Julio is at the PC).
             - **INCIDENT 00:06 UTC: chat.zilar.app is down (503).**
               - The deploy of `0652012aa` failed.
               - **Cause:** Docker on the VPS is stuck removing the old app containers. They are "Dead", in the `removing` state. `docker rm -f` says "removal already in progress", and containerd logs "calling snapshotter.Remove is forbidden". The new containers never started.

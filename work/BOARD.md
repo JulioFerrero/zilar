@@ -1797,3 +1797,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1788](T-1788-phone-topic-mentions.md) | phone @ list filtered to the topic, isn't-in row | 2026-10-17 |
 | [T-1784](T-1784-web-topic-add-dialog.md) | web In this topic with the Add dialog | 2026-10-17 |
 | [T-1787](T-1787-phone-group-topics.md) | phone group screen: Your and Other topics | 2026-10-17 |
+| [T-1791](T-1791-record-cards.md) | record AI cards and re-key them on reflection | 2026-10-17 |

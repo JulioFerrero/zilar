@@ -16,6 +16,7 @@ import {
 } from './contracts';
 import type { createRoomListener } from './listener';
 import { answerOnReply, rekeyOnReflection } from './question-answer';
+import { rekeyCardOnReflection } from './card-rekey';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
@@ -113,6 +114,8 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         // T-1579: re-key a question card's row from the origin id to the
         // stanza id a reply quotes. Best-effort, never awaited.
         void rekeyOnReflection(deps.db, session, message, logger);
+        // T-1791: re-key the blocks card row the same way.
+        void rekeyCardOnReflection(deps.db, session, message, logger);
       }
       return;
     }

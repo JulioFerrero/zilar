@@ -27,6 +27,7 @@ import {
 } from './desk-exec';
 import { createAskPeopleRunner } from './ask-people';
 import { createPostBlocksRunner } from './post-blocks';
+import { recordCard } from '../../message-blocks/cards';
 import { createDelegateRunner } from './delegate-run';
 import { createRequestActionRunner } from './request-action';
 import {
@@ -74,7 +75,9 @@ export function createToolExec(ctx: ToolExecContext) {
     logger,
   );
   const { runAskPeopleEffect } = createAskPeopleRunner(deps.db, logger, liveSendMessage);
-  const { runPostBlocksEffect } = createPostBlocksRunner(logger, liveSendMessage);
+  const { runPostBlocksEffect } = createPostBlocksRunner(logger, liveSendMessage, (input) =>
+    recordCard(deps.db, input).then(() => undefined),
+  );
   const { runDelegate, runTaskStatus } = createDelegateRunner({
     deps,
     logger,
@@ -214,7 +217,11 @@ export function createToolExec(ctx: ToolExecContext) {
         if (context === undefined) {
           return { content: 'invalid: unknown tool' };
         }
-        return yield* runPostBlocksEffect(session, call, { roomJid: context.roomJid });
+        return yield* runPostBlocksEffect(session, call, {
+          roomJid: context.roomJid,
+          groupId: context.groupId,
+          topicId: context.topicId,
+        });
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         yield* Effect.promise(() => setPersonaFromChat(deps.db, aiId, call.persona));
