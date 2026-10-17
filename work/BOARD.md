@@ -1940,3 +1940,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1928](T-1928-phone-sheet-drag-close.md) | phone attach and sticker sheets drag down to close | 2026-10-17 |
 | [T-1929](T-1929-sticker-tap-opens-pack.md) | tapping a sticker opens its pack (web + phone) | 2026-10-17 |
 | [T-1934](T-1934-phone-archived-in-list.md) | phone archived chats scroll inside the chat list | 2026-10-17 |
+| [T-1932](T-1932-phone-reactions-any-emoji.md) | phone reactions take any emoji; no clipped tops | 2026-10-17 |

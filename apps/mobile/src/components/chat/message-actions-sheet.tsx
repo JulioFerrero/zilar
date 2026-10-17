@@ -7,16 +7,21 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Plus,
   Reply,
   RotateCw,
   Trash2,
 } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { EmojiTab } from '@/components/chat/emoji-tab';
 import { tap } from '@/components/chat/haptics';
 import { Text } from '@/components/ui/text';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ICON } from '@/lib/colors';
+import type { EmojiCategoryId } from '@/lib/emoji-data';
 import { cn } from '@/lib/utils';
 
 type MessageActionsSheetProps = {
@@ -79,12 +84,13 @@ type MessageActionsSheetProps = {
 
 /**
  * Bottom sheet with the quick-reaction bar and Reply / Edit / Copy text /
- * Delete. In a group the delete row is "Delete for everyone" behind a kit
- * `ConfirmDialog`. In a DM (T-1247) the peer's message offers "Delete for me"
- * with the DM body, and my own offers both choices in an in-sheet confirm. The
- * parent just toggles `confirmOpen`. A failed own text instead starts with
- * Retry and (local-only, no-confirm) Delete, and hides Forward, Edit and
- * Delete.
+ * Delete. The bar's last key opens the full emoji grid in place of the
+ * actions, so any emoji can be a reaction (T-1932). In a group the delete row
+ * is "Delete for everyone" behind a kit `ConfirmDialog`. In a DM (T-1247) the
+ * peer's message offers "Delete for me" with the DM body, and my own offers
+ * both choices in an in-sheet confirm. The parent just toggles `confirmOpen`.
+ * A failed own text instead starts with Retry and (local-only, no-confirm)
+ * Delete, and hides Forward, Edit and Delete.
  */
 export function MessageActionsSheet({
   visible,
@@ -119,6 +125,103 @@ export function MessageActionsSheet({
   onClose,
 }: MessageActionsSheetProps) {
   const myEmojiSet = new Set(myReactions.map((entry) => entry.emoji));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [category, setCategory] = useState<EmojiCategoryId | 'recent' | undefined>('smileys');
+
+  // The parent closes the sheet on a pick; reset the grid during render, so a
+  // reopen starts on the actions and no effect synchronizes state.
+  if (!visible && pickerOpen) {
+    setPickerOpen(false);
+  }
+
+  // `ActionSheet` draws a divider between its direct children, and a fragment
+  // counts as one child, so the rows are a flat array.
+  const actions = [
+    ...(failed
+      ? [
+          <ActionSheetItem
+            key="retry"
+            label="Retry"
+            accessibilityLabel="Retry sending message"
+            onPress={onRetry ?? (() => {})}
+            icon={RotateCw}
+          />,
+          <ActionSheetItem
+            key="delete-local"
+            label="Delete"
+            accessibilityLabel="Delete unsent message"
+            onPress={onDeleteLocal ?? (() => {})}
+            destructive
+            icon={Trash2}
+          />,
+        ]
+      : []),
+    <ActionSheetItem key="reply" label="Reply" onPress={onReply} icon={Reply} />,
+    ...(!failed && canForward === true
+      ? [
+          <ActionSheetItem
+            key="forward"
+            label="Forward"
+            accessibilityLabel="Forward message"
+            onPress={onForward ?? (() => {})}
+            icon={Forward}
+          />,
+        ]
+      : []),
+    ...(!failed && canForward === true && onSelect !== undefined
+      ? [
+          <ActionSheetItem
+            key="select"
+            label="Select"
+            accessibilityLabel="Select messages"
+            onPress={onSelect}
+            icon={ListChecks}
+          />,
+        ]
+      : []),
+    ...(!failed && canEdit
+      ? [
+          <ActionSheetItem
+            key="edit"
+            label="Edit"
+            accessibilityLabel="Edit message"
+            onPress={onEdit}
+            icon={Pencil}
+          />,
+        ]
+      : []),
+    <ActionSheetItem
+      key="copy"
+      label="Copy text"
+      onPress={onCopy}
+      disabled={!canCopy}
+      icon={Copy}
+    />,
+    ...(!failed
+      ? [
+          <ActionSheetItem
+            key="delete"
+            label={deleteLabel}
+            accessibilityLabel={deleteLabel}
+            onPress={onDelete}
+            disabled={!canDelete}
+            destructive
+            icon={Trash2}
+          />,
+        ]
+      : []),
+    ...(canPin === true
+      ? [
+          <ActionSheetItem
+            key="pin"
+            label={isPinned === true ? 'Unpin' : 'Pin'}
+            accessibilityLabel={isPinned === true ? 'Unpin message' : 'Pin message'}
+            onPress={onPin ?? (() => {})}
+            icon={isPinned === true ? PinOff : Pin}
+          />,
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -153,74 +256,42 @@ export function MessageActionsSheet({
                     canReact ? null : 'opacity-40',
                   )}
                 >
-                  <Text className="text-[20px] leading-none">{emoji}</Text>
+                  <Text className="text-[20px] leading-[26px]">{emoji}</Text>
                 </Pressable>
               );
             })}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More reactions"
+              accessibilityState={{ disabled: !canReact }}
+              disabled={!canReact}
+              onPress={() => {
+                tap();
+                setPickerOpen(true);
+              }}
+              className={cn(
+                'h-11 w-11 items-center justify-center rounded-full active:bg-surface-raised',
+                canReact ? null : 'opacity-40',
+              )}
+            >
+              <Plus size={20} color={ICON} />
+            </Pressable>
           </View>
         }
       >
-        {failed ? (
-          <>
-            <ActionSheetItem
-              label="Retry"
-              accessibilityLabel="Retry sending message"
-              onPress={onRetry ?? (() => {})}
-              icon={RotateCw}
+        {pickerOpen ? (
+          <View className="h-[360px] px-2 py-2">
+            <EmojiTab
+              open
+              recents={[]}
+              activeCategory={category}
+              onSelectCategory={setCategory}
+              onPick={onReact}
             />
-            <ActionSheetItem
-              label="Delete"
-              accessibilityLabel="Delete unsent message"
-              onPress={onDeleteLocal ?? (() => {})}
-              destructive
-              icon={Trash2}
-            />
-          </>
-        ) : null}
-        <ActionSheetItem label="Reply" onPress={onReply} icon={Reply} />
-        {!failed && canForward === true ? (
-          <ActionSheetItem
-            label="Forward"
-            accessibilityLabel="Forward message"
-            onPress={onForward ?? (() => {})}
-            icon={Forward}
-          />
-        ) : null}
-        {!failed && canForward === true && onSelect !== undefined ? (
-          <ActionSheetItem
-            label="Select"
-            accessibilityLabel="Select messages"
-            onPress={onSelect}
-            icon={ListChecks}
-          />
-        ) : null}
-        {!failed && canEdit ? (
-          <ActionSheetItem
-            label="Edit"
-            accessibilityLabel="Edit message"
-            onPress={onEdit}
-            icon={Pencil}
-          />
-        ) : null}
-        <ActionSheetItem label="Copy text" onPress={onCopy} disabled={!canCopy} icon={Copy} />
-        {!failed ? (
-          <ActionSheetItem
-            label={deleteLabel}
-            accessibilityLabel={deleteLabel}
-            onPress={onDelete}
-            disabled={!canDelete}
-            destructive
-            icon={Trash2}
-          />
-        ) : null}
-        {canPin === true ? (
-          <ActionSheetItem
-            label={isPinned === true ? 'Unpin' : 'Pin'}
-            accessibilityLabel={isPinned === true ? 'Unpin message' : 'Pin message'}
-            onPress={onPin ?? (() => {})}
-            icon={isPinned === true ? PinOff : Pin}
-          />
-        ) : null}
+          </View>
+        ) : (
+          actions
+        )}
       </ActionSheet>
       {ownDelete ? (
         <ActionSheet

@@ -69,7 +69,7 @@ export function ReactionChips({ reactions, outgoing, onToggle }: ReactionChipsPr
               )}
               style={reaction.mine ? null : raisedPill}
             >
-              <Text className="text-[13px] leading-none">{reaction.emoji}</Text>
+              <Text className="text-[13px] leading-[17px]">{reaction.emoji}</Text>
               <Text
                 className={cn(
                   'font-mono text-[11px] tabular-nums leading-none',
