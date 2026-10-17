@@ -49,19 +49,6 @@ async function addTopicMember(
   );
 }
 
-async function removeTopicMember(
-  context: TestContext,
-  topicId: string,
-  userId: string,
-): Promise<void> {
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`DELETE FROM topic_members WHERE topic_id = ${topicId} AND user_id = ${userId}`;
-    }),
-  );
-}
-
 async function addTopicAi(
   context: TestContext,
   topicId: string,
@@ -126,11 +113,9 @@ async function seedPublicTopic(context: TestContext): Promise<PublicFixture> {
     actorId: owner,
     name: 'Announcements',
   });
-  // T-1762: the compat default seeds every group member into a new public
-  // topic; these reads need a topic that only some of the group belongs to, so
-  // drop the two outsiders to reach the T-1757 shape.
-  await removeTopicMember(context, topic.id, outsider);
-  await removeTopicMember(context, topic.id, other);
+  // These reads need a topic that only some of the group belongs to: the
+  // creator and `joined`, while `outsider` and `other` stay out.
+  await addTopicMember(context, topic.id, joined, owner);
   await addTopicAi(context, topic.id, aiId, owner);
   return { topic, owner, joined, outsider, other, aiId };
 }

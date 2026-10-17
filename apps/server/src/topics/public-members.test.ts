@@ -1,7 +1,7 @@
 // T-1754: the write half of "public topics get real members". Going public
-// keeps the direct members it had as a private topic. T-1762: while the Join UI
-// is missing, a public topic starts with every group member (the compat switch
-// in `public-compat.ts`), so users see no change until that batch flips it.
+// keeps the direct members it had as a private topic. T-1762/T-1802: the Join UI
+// has shipped, so the compat switch in `public-compat.ts` is on: a public topic
+// starts with only its creator and the others join it from "Other topics".
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,7 +56,7 @@ describe('public topic members (T-1754)', () => {
     await context.close();
   });
 
-  it('starts a public topic with every group member until the Join UI ships', async () => {
+  it('starts a public topic with only its creator', async () => {
     const owner = await seedUser(context);
     const member = await seedUser(context);
     const { groupId } = await seedGroup(
@@ -75,7 +75,7 @@ describe('public topic members (T-1754)', () => {
       name: 'Announcements',
     });
 
-    expect(await memberIdsOf(context, topic.id)).toEqual([owner, member].sort());
+    expect(await memberIdsOf(context, topic.id)).toEqual([owner]);
   });
 
   it('gives only the creator when the compat switch is on, every member when off', async () => {
@@ -97,7 +97,7 @@ describe('public topic members (T-1754)', () => {
     );
   });
 
-  it('adds a new group member to public topics, but not to private ones', async () => {
+  it('does not add a new group member to public or private topics', async () => {
     const owner = await seedUser(context);
     const existing = await seedUser(context);
     const added = await seedUser(context);
@@ -132,7 +132,7 @@ describe('public topic members (T-1754)', () => {
       logger: context.logger,
     });
 
-    expect(await memberIdsOf(context, publicTopic.id)).toEqual([owner, existing, added].sort());
+    expect(await memberIdsOf(context, publicTopic.id)).toEqual([owner]);
     expect(await memberIdsOf(context, privateTopic.id)).toEqual([owner, existing].sort());
   });
 

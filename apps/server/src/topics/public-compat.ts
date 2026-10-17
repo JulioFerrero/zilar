@@ -3,15 +3,14 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-// T-1762: Julio's rule (2026-10-16, docs/design/mockups/topic-people/README.md
+// T-1762/T-1802: Julio's rule (2026-10-16, docs/design/mockups/topic-people/README.md
 // "Round 2") is that a public topic includes nobody until people join, while
-// General stays everyone. The reads already follow that rule (T-1757), but the
-// Join UI does not exist yet, so while this switch is `false` the writes keep
-// the old behaviour: a new public topic starts with every group member and a
-// new group member joins every public topic. That way main can be deployed at
-// any time and users see no change. The Join UI batch (web W9 and phone W10 in
-// docs/plan/topic-people.md) sets this to `true`.
-export const PUBLIC_TOPICS_START_EMPTY = false;
+// General stays everyone. The reads follow that rule (T-1757) and the Join UI
+// has shipped (web W9 in T-1797, phone W10 in T-1798), so the writes follow it
+// too: a new public topic starts with only its creator, and a new group member
+// joins no public topic until they join one. Existing topics keep their
+// members, since their rows were backfilled.
+export const PUBLIC_TOPICS_START_EMPTY = true;
 
 // The members a new public topic starts with: only its creator once the Join UI
 // ships, otherwise every current group member of the group (the creator is one

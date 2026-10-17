@@ -555,7 +555,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **Julio away from about 09:45 UTC** ("dont stop working", no questions). Work continues alone; summary below when he's back.
             - **State at 10:05 UTC:**
               - **Live `aefac1968`** (09:52 UTC; 6 containers healthy, 0 errors, routes 401 signed out): T-1799 (guide nits), T-1805 (phone dev catalogs in mock builds), T-1801 (mock topic members), T-1800 (`post_blocks` in DMs), T-1804 (media plan) and T-1798 (W10 phone Join, Mute and Leave).
-              - **Merged and held:** T-1806 (the approval-scope test was stale since T-1762; fixed the seed) and T-1797 (W9 web Join, Mute and Leave).
+              - **Merged and held:** T-1806 (the approval-scope test was stale since T-1762; fixed the seed), T-1797 (W9 web Join, Mute and Leave) and T-1795 (B10 web interactive cards).
+              - **Running at 10:30:**
+                - T-1796 (B11 phone; lead round: re-tap no-op, form failure);
+                - T-1802 (the flip; three stale tests allowed);
+                - T-1803 (B12 guide, plus a DM guard that refuses interactive kinds in DMs);
+                - T-1807 (web preview cards);
+                - T-1808 (mock preview route);
+                - T-1809 (plan for interactive cards in DMs).
+              - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
               - **Running:**
                 - T-1795 (B10 web interactive cards, final pre-review);
                 - T-1796 (B11 phone; rating `selected` follows the server's 1..max);

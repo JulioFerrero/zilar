@@ -891,15 +891,32 @@ describe('group invite links', () => {
   it('a failing topic sync still commits the member and answers 200', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const friend = await bootstrapUser(context, app, 'friend@example.com');
+    const sideMember = await bootstrapUser(context, app, 'side@example.com');
     const groupId = await lonelyGroup(owner);
-    // A second topic, so the post-commit sync has more than the group's own
-    // room to touch.
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role)
+          VALUES (${groupId}, ${sideMember.id}, 'member')`;
+      }),
+    );
+    // A private second topic whose member row lands after the room was synced,
+    // so the join's sync has a real affiliation to set and the failing call is
+    // exercised.
     const extra = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/topics`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: owner.cookie },
-      body: JSON.stringify({ name: 'Side' }),
+      body: JSON.stringify({ name: 'Side', visibility: 'private' }),
     });
     expect(extra.status).toBe(201);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by)
+          SELECT id, ${sideMember.id}, ${owner.id} FROM topics
+          WHERE group_id = ${groupId} AND name = 'Side'`;
+      }),
+    );
     const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
     // The group room itself works; only the topic rooms fail. The member
     // row still commits and the route answers 200 (best effort, logged).
