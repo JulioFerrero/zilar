@@ -1,10 +1,11 @@
-// T-1660: the searchable, lowercase name of every glyph in the shared
-// `EMOJI_BY_CATEGORY` table (`packages/chat-core/src/emoji-table.ts`). Each
-// value is the canonical name plus a few space-separated keywords, so the Emoji
-// tab can filter by name. Keep the names lowercase: searchEmoji lowercases the
-// query first.
+// T-1660: hand-picked search keywords for the glyphs in the shared emoji table.
+// T-1926 derives `EMOJI_NAMES` from the generated Unicode names plus these
+// keywords, so every glyph (flags included) is searchable by name. Keep the
+// keywords lowercase: searchEmoji lowercases the query first.
 
-export const EMOJI_NAMES: Readonly<Record<string, string>> = {
+import { EMOJI_BASE_NAMES } from './emoji-table.generated';
+
+const EMOJI_KEYWORDS: Readonly<Record<string, string>> = {
   '😀': 'grinning face smile happy',
   '😃': 'grinning face with big eyes smile happy',
   '😄': 'grinning face with smiling eyes smile happy',
@@ -334,6 +335,17 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = {
   '💤': 'zzz sleep',
   '💥': 'collision boom explosion',
 };
+
+/**
+ * The searchable, lowercase name of every glyph in `EMOJI_BY_CATEGORY`: its
+ * Unicode name plus the hand-picked keywords when they exist.
+ */
+export const EMOJI_NAMES: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(EMOJI_BASE_NAMES).map(([glyph, name]) => {
+    const keywords = EMOJI_KEYWORDS[glyph];
+    return [glyph, keywords === undefined ? name : `${name} ${keywords}`];
+  }),
+);
 
 /**
  * The glyphs in `glyphs` whose name contains the trimmed, lowercased `query`,

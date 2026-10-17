@@ -802,6 +802,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Merged and held:**
                 - T-1923, checked on the emulator: the big emoji shows whole, with no tail;
                 - T-1925, checked on the emulator: "Send 2" sent an album at once.
+                - T-1924, checked on the emulator: a 300×900 photo gets a narrow frame.
                 - Phone-only, so no deploy.
               - **Julio's iPhone findings (20:55 UTC, Iryna's phone on 0.2.9):**
                 - **T-1923:** a lone big emoji has its top clipped (`leading-none` at 48 px), and a stray white `BubbleTail` shows on big emoji, stickers and caption-less photos.

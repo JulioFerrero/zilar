@@ -1935,3 +1935,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1923](T-1923-phone-emoji-tail.md) | phone big emoji shows whole; no tail without a bubble | 2026-10-17 |
 | [T-1925](T-1925-phone-gallery-send.md) | phone gallery Send N sends the photos at once | 2026-10-17 |
 | [T-1924](T-1924-phone-photo-fit.md) | phone photo bubbles fit the photo | 2026-10-17 |
+| [T-1926](T-1926-full-emoji-set.md) | emoji pickers show the full Unicode set with flags | 2026-10-17 |

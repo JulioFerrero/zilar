@@ -591,6 +591,10 @@ importers:
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../protocol
+    devDependencies:
+      unicode-emoji-json:
+        specifier: 0.9.0
+        version: 0.9.0
 
   packages/client-core:
     dependencies:
@@ -6617,6 +6621,9 @@ packages:
   unicode-canonical-property-names-ecmascript@2.0.1:
     resolution: {integrity: sha512-dA8WbNeb2a6oQzAQ55YlT5vQAWGV9WXOsi3SskE3bcCdM0P4SDd+24zS/OCacdRq5BkdsRj9q3Pg6YyQoxIGqg==}
     engines: {node: '>=4'}
+
+  unicode-emoji-json@0.9.0:
+    resolution: {integrity: sha512-HdrQW/7SdbXUsTd8uTATv7LvQJkCSgbAgRCDCtOhQ6xn3EAx+xZHQtRniOXWJK3ywIqPegkNhP4U4EbuFsiQng==}
 
   unicode-match-property-ecmascript@2.0.0:
     resolution: {integrity: sha512-5kaZCrbp5mmbz5ulBkDkbY0SsPOjKqVS35VpL9ulMPfSl0J0Xsm+9Evphv9CoIZFwre7aJoa94AY6seMKGVN5Q==}
@@ -13470,6 +13477,8 @@ snapshots:
   undici@8.11.2: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
+
+  unicode-emoji-json@0.9.0: {}
 
   unicode-match-property-ecmascript@2.0.0:
     dependencies:

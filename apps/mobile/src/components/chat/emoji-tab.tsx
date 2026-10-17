@@ -1,9 +1,9 @@
 import { searchEmoji } from '@zilar/chat-core';
 import {
   Clock,
+  Flag,
   Hand,
   Hash,
-  Heart,
   Lightbulb,
   PawPrint,
   Pizza,
@@ -26,13 +26,13 @@ const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 const CATEGORY_ICONS: Record<EmojiCategoryId, typeof Smile> = {
   smileys: Smile,
   people: Hand,
-  hearts: Heart,
   animals: PawPrint,
   food: Pizza,
   activities: Trophy,
   travel: Plane,
   objects: Lightbulb,
   symbols: Hash,
+  flags: Flag,
 };
 
 type EmojiTabProps = {
