@@ -54,6 +54,19 @@ describe('card respond', () => {
     ],
   };
 
+  const alertData: BlocksData = {
+    fallback: 'Spend alert',
+    blocks: [
+      {
+        kind: 'alert',
+        id: 'alert-1',
+        title: 'Tell me when spending passes',
+        field: { label: 'Threshold', value: '100' },
+        on: true,
+      },
+    ],
+  };
+
   async function setup(): Promise<{
     deps: CardRespondDeps;
     aiId: string;
@@ -89,6 +102,14 @@ describe('card respond', () => {
       topicId: generalTopicId,
       roomJid,
       data: pollData,
+    });
+    await recordCard(context.db, {
+      originId: 'alert-origin',
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      roomJid,
+      data: alertData,
     });
     return {
       deps: { db: context.db, logger: context.logger, correctInRoom },
@@ -187,6 +208,41 @@ describe('card respond', () => {
       });
     }
     expect(await listResponses(context.db, 'dm-origin')).toHaveLength(1);
+  });
+
+  it('records a member alert answer and merges the switch and the threshold', async () => {
+    const { deps, memberId } = await setup();
+    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
+
+    const result = await respondToCard(deps, memberId, {
+      ...answer,
+      value: { done: false, fields: { value: '$95,000' } },
+    });
+
+    const [block] = result.data.blocks;
+    if (block?.kind !== 'alert') {
+      throw new Error('expected an alert block');
+    }
+    expect(block).toMatchObject({ on: false, field: { label: 'Threshold', value: '$95,000' } });
+
+    const rows = await listResponses(context.db, 'alert-origin');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      cardId: 'alert-origin',
+      blockId: 'alert-1',
+      itemId: '',
+      actorId: memberId,
+      value: { on: false, threshold: '$95,000' },
+    });
+
+    await expect(
+      respondToCard(deps, memberId, { ...answer, value: { fields: { value: 'soon' } } }),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_response' });
+    await expect(respondToCard(deps, memberId, { ...answer, value: {} })).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_response',
+    });
+    expect(await listResponses(context.db, 'alert-origin')).toHaveLength(1);
   });
 
   it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {

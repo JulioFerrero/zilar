@@ -1856,3 +1856,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1843](T-1843-general-never-done.md) | General never reads as done | 2026-10-17 |
 | [T-1845](T-1845-phone-viewer-share.md) | phone photo viewer can share | 2026-10-17 |
 | [T-1846](T-1846-group-bans.md) | SG-8: removed members can't rejoin on their own | 2026-10-17 |
+| [T-1848](T-1848-alert-answer.md) | alert card answers record the switch and threshold | 2026-10-17 |

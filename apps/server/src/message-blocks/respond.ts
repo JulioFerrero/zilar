@@ -23,6 +23,38 @@ import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse
 
 const FORM_VALUE_MAX = 120;
 
+// A threshold counts as a number once spaces, commas and one leading currency
+// sign are removed; anything else is not a number the card can draw.
+function isNumberText(text: string): boolean {
+  const numeric = text.replace(/[ ,]/g, '').replace(/^[$€£]/, '');
+  return numeric.length > 0 && Number.isFinite(Number(numeric));
+}
+
+// T-1848: an alert answer changes the switch and/or the threshold. At least one
+// must be present, and the threshold must be a number.
+function alertAnswer(value: BlocksRespondValue): Record<string, unknown> {
+  const on = value.done;
+  if (on !== undefined && typeof on !== 'boolean') {
+    throw invalidResponse();
+  }
+  const raw = value.fields?.value;
+  const threshold = raw === undefined ? undefined : raw.trim();
+  if (threshold !== undefined && (threshold.length > FORM_VALUE_MAX || !isNumberText(threshold))) {
+    throw invalidResponse();
+  }
+  if (on === undefined && threshold === undefined) {
+    throw invalidResponse();
+  }
+  const answer: Record<string, unknown> = {};
+  if (on !== undefined) {
+    answer.on = on;
+  }
+  if (threshold !== undefined) {
+    answer.threshold = threshold;
+  }
+  return answer;
+}
+
 export interface CorrectCardInput {
   aiId: string;
   roomJid: string;
@@ -171,6 +203,8 @@ function recordedResponse(
       }
       return { kind: 'item', itemId: '', value: { fields } };
     }
+    case 'alert':
+      return { kind: 'item', itemId: '', value: alertAnswer(value) };
     default:
       throw invalidResponse();
   }

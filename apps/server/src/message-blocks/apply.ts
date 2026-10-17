@@ -1,4 +1,5 @@
 import type {
+  AlertBlock,
   Block,
   BlocksData,
   ButtonsBlock,
@@ -164,6 +165,30 @@ function applyForm(block: FormBlock, rows: readonly BlockResponseRow[], nameOf: 
   };
 }
 
+// T-1848: the latest answer sets the switch and/or the threshold; a field the
+// row lacks keeps the card's value.
+function applyAlert(block: AlertBlock, rows: readonly BlockResponseRow[]): AlertBlock {
+  const row = latestRow(rows, block.id);
+  if (row === undefined) {
+    return block;
+  }
+  const on = booleanField(row.value, 'on');
+  const threshold = stringField(row.value, 'threshold');
+  if (on === undefined && threshold === undefined) {
+    return block;
+  }
+  const next: AlertBlock = { ...block };
+  if (on !== undefined) {
+    next.on = on;
+  }
+  if (threshold !== undefined) {
+    const value = threshold.trim();
+    const fits = value.length > MAX_SHORT ? `${value.slice(0, MAX_SHORT - 1)}…` : value;
+    next.field = { ...block.field, value: fits };
+  }
+  return next;
+}
+
 function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: NameOf): Block {
   switch (block.kind) {
     case 'checklist':
@@ -178,6 +203,8 @@ function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: Nam
       return applyButtons(block, rows, nameOf);
     case 'form':
       return applyForm(block, rows, nameOf);
+    case 'alert':
+      return applyAlert(block, rows);
     default:
       return block;
   }

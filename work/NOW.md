@@ -663,10 +663,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Not checked on a device:** mock photos don't load, and I don't sign in to live on the emulator.
                 - It needs the next native build (v0.2.8). Julio can check Share there.
               - **Audit doc:** OPS-7 is marked fixed (T-1643 pinned ejabberd by digest).
-              - **Running (14:25):** T-1846 (SG-8 group bans, a DB-schema task):
-                - a member removed by an owner or admin can't rejoin by link or public join (the same 404);
-                - adding them back lifts it;
-                - leaving by yourself never bans.
+              - **Live `45eeac981`** (14:47 UTC; 6 containers healthy, 0 errors; 73 migrations applied, and `group_bans` exists in the `zilar` database). It carries:
+                - **T-1845:** phone Share, in the next APK.
+                - **T-1846 (SG-8 group bans):**
+                  - a member removed by an owner or admin can't rejoin by link or public join (the same 404);
+                  - adding them back lifts it;
+                  - leaving by yourself never bans.
+              - **Verified live (cards test, 14:48):** "post a quick form card … Day prefilled Sat 18 Oct, Time prefilled 20:30" gives a "Book a table" form whose Day well shows "Sat 18 Oct" (T-1840) and Time "20:30".
+              - **Full suites on main `45eeac981` (quiet stretch, 15:00):** tests 16/16 tasks pass and typecheck 16/16 pass. The first typecheck run failed only because the main checkout's `node_modules` lacked `expo-sharing` from T-1845; `pnpm install --frozen-lockfile` fixed it.
+              - **No workers running (14:50).**
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);
