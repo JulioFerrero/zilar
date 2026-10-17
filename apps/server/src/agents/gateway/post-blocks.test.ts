@@ -1,7 +1,8 @@
 // T-1758: the `post_blocks` runner posts one blocks card for a valid call and
 // refuses a call whose blocks fail validation, without sending anything.
 // T-1791: a posted card is also recorded for interaction, best-effort.
-// T-1800: a DM card goes out as a `chat` message and is not recorded.
+// T-1800: a DM card goes out as a `chat` message.
+// T-1824: a DM card is recorded there under the sent id, with no group or topic.
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
@@ -154,7 +155,7 @@ describe('post_blocks runner', () => {
     });
   });
 
-  it('posts a read-only chat card in the owner DM and records nothing', async () => {
+  it('records the DM card under the sent id with no group or topic', async () => {
     const dmJid = 'owner@zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
     const sent: SentMessage[] = [];
@@ -176,7 +177,14 @@ describe('post_blocks runner', () => {
     expect(sent[0]?.to).toBe(dmJid);
     expect(sent[0]?.kind).toBe('chat');
     expect(sent[0]?.payload).toMatchObject({ v: 0, type: 'blocks' });
-    expect(records).toHaveLength(0);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      originId: 'block-1',
+      aiId: 'ai-1',
+      roomJid: dmJid,
+    });
+    expect(records[0]).not.toHaveProperty('groupId');
+    expect(records[0]).not.toHaveProperty('topicId');
   });
 
   it('refuses an interactive card in the owner DM and sends nothing', async () => {

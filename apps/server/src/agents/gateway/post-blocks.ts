@@ -146,11 +146,9 @@ export function createPostBlocksRunner(
       );
       return { content: FAILED_TEXT };
     }
-    // T-1800: a DM card is read-only for now, so there is nothing to record;
-    // a tap on it answers 404 like any other tool card.
-    if (kind !== 'chat') {
-      yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
-    }
+    // T-1824: a DM card is never reflected, so it keeps the sent id and is
+    // recorded there too; the owner answers it, anyone else gets 404.
+    yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
     logger.info({ aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: true }, 'AI post_blocks posted');
     // T-1761: the card is in the room, so the group turn sends no echo reply.
     return {

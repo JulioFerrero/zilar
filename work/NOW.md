@@ -590,16 +590,31 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - Question chips stay tappable after an answer and a reload (that card has no answered state).
                   - **T-1821, running:** the clients find the first reply that quotes the question in the loaded messages. A server-side answered field would need the card's origin id, which the re-key drops.
                   - Still a design call for Julio: should `ask_people` become a blocks buttons card?
-              - **Merged and held (push at the 11:38 window):**
-                - T-1815 (a sent form keeps its answer; long answers truncated with `…`);
-                - T-1820 (a failed card answer shows "Could not send. Try again." on both apps).
+              - **Live `f380f4762`** (11:40 UTC; 6 containers healthy, 0 errors, `/api/blocks/mine` 401 signed out), with:
+                - T-1815 (form);
+                - T-1820 (failed answer line);
+                - T-1821 (question answered);
+                - T-1822 (poll own votes);
+                - T-1823 (buttons, not question chips).
+              - **Verified live in "cards test"** (11:42–11:46 UTC):
+                - "ask me with buttons: tea or coffee" gives a real buttons card ("Afternoon drink"); after a reload it shows "Julio chose Coffee".
+                - A multiple-choice poll: vote Chips, reload, the check stays; add Fruit, reload, both are checked, so nothing was dropped.
+                - A form shows an empty number as 0. After send and reload it is read-only with "Julio" and 2 and "Julio sent this".
+                - **T-1821 doesn't work yet for chip taps made live.** The reply quotes the question's origin id (`gmvcat84k-…`), while after a reload the question is stored under its archive id, and `UiMessage` has no `originId`. T-1825 adds `UiMessage.originId`; **T-1826** then matches it too.
+              - **Android v0.2.7 tagged** on `f380f4762` at Julio's request (11:41 UTC). The "Android release" run is 39029724959.
               - **Full suites on main:** server 988/988, mobile 250/250.
               - **Phone, mock build of main:**
                 - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);
                 - the B11 choice cards match `PhoneChoices.dc.html`;
                 - preview bubbles had square corners and a card inside a bubble → **T-1814, running**.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
-              - **Running (11:30):** T-1809 (DM interactive cards plan, in an auto fix round) and T-1821 (question answered state).
+              - **T-1809 merged** (the DM interactive cards plan, `docs/plan/dm-interactive-cards.md`, Option A; the lead's corrections are in its Review).
+              - **Running (11:46):**
+                - T-1824 (DM cards server: record, owner-only access, chat correction);
+                - T-1825 (DM cards clients: `originId` on messages; DM answers send it with a plain reply).
+              - **Next:**
+                - T-1826 (question match by `originId`, after T-1825);
+                - then lift T-1803's DM refusal once T-1824 and T-1825 are live and tested in Julio's DM. That needs his OK to message there, or a test DM of `@claude_test`'s own AI.
               - **For Julio:**
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.

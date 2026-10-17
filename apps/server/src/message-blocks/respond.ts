@@ -12,6 +12,7 @@ import { SqlClient } from 'effect/sql';
 import type { BlocksRespondPayload, BlocksRespondValue } from '@zilar/api-contract';
 import { BlocksDataSchema, type Block, type BlocksData, type Payload } from '@zilar/protocol';
 import type { Logger } from 'pino';
+import { loadAiOwnerId } from '../agents/gateway/db';
 import type { ServerDatabase } from '../db/client';
 import type { BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -82,6 +83,15 @@ async function requireCardAccess(
     return;
   }
   if (card.groupId !== null && (await getGroupMembership(db, card.groupId, userId)) !== null) {
+    return;
+  }
+  if (card.groupId === null && card.topicId === null) {
+    // T-1824: a DM card lives only in the AI's DM, so its owner is the one
+    // person who may answer it; everyone else gets the same 404.
+    const ownerId = await loadAiOwnerId(db, card.aiId);
+    if (ownerId === null || ownerId !== userId) {
+      throw cardNotFound();
+    }
     return;
   }
   throw cardNotFound();

@@ -155,6 +155,40 @@ describe('card respond', () => {
     });
   });
 
+  it('lets only the AI owner answer a DM card; a group member gets the same 404', async () => {
+    const { deps, aiId, ownerId, memberId, outsiderId } = await setup();
+    const dmJid = 'owner@zilar.localhost';
+    await recordCard(context.db, {
+      originId: 'dm-origin',
+      aiId,
+      roomJid: dmJid,
+      data: cardData,
+    });
+    const dmTick = { ...tick, messageId: 'dm-origin' };
+
+    const result = await respondToCard(deps, ownerId, dmTick);
+    const [block] = result.data.blocks;
+    if (block?.kind !== 'checklist') {
+      throw new Error('expected a checklist block');
+    }
+    expect(block.items[0]).toMatchObject({ id: 'item-1', done: true, by: 'Owner' });
+    expect(correctInRoom).toHaveBeenCalledWith({
+      aiId,
+      roomJid: dmJid,
+      originalId: 'dm-origin',
+      text: 'Packing list',
+      payload: { v: 0, type: 'blocks', data: result.data },
+    });
+
+    for (const userId of [memberId, outsiderId]) {
+      await expect(respondToCard(deps, userId, dmTick)).rejects.toMatchObject({
+        status: 404,
+        code: 'card_not_found',
+      });
+    }
+    expect(await listResponses(context.db, 'dm-origin')).toHaveLength(1);
+  });
+
   it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {
     const { deps, ownerId, memberId, outsiderId } = await setup();
     const vote = (userId: string, optionIds: string[]) =>

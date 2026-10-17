@@ -332,10 +332,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return Effect.runPromise(postToChatEffect(input));
   }
 
-  // T-1792: corrects one message the AI posted in a room (XEP-0308), with the
-  // same guards as `postToChatEffect`: the session must be live and still hold
-  // the room. A stopped AI (kill switch) or a session that left the room sends
-  // nothing and answers `false`.
+  // T-1792: corrects one message the AI posted in a room (XEP-0308) with the
+  // same guards as `postToChatEffect`. T-1824: a DM card corrects as `chat`.
   const correctInRoomEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     roomJid: string;
@@ -347,13 +345,21 @@ export function createLiveSession(ctx: LiveSessionContext) {
     if (session === undefined || !sessionIsLive(session)) {
       return false;
     }
-    if (!session.rooms.has(input.roomJid)) {
-      return false;
+    const isRoom = session.rooms.has(input.roomJid);
+    if (!isRoom) {
+      const ownerId = yield* loadOwnerId(input.aiId);
+      if (ownerId === null) {
+        return false;
+      }
+      const ownerJid = jidFor(localpartFor(ownerId), deps.xmpp.domain);
+      if (ownerJid.toLowerCase() !== input.roomJid.toLowerCase()) {
+        return false;
+      }
     }
     yield* Effect.promise(() =>
       session.core.sendCorrection(
         input.roomJid,
-        'groupchat',
+        isRoom ? 'groupchat' : 'chat',
         input.originalId,
         input.text,
         sendOptions(input),
