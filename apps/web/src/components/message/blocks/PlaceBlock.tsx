@@ -1,12 +1,6 @@
 import type { PlaceBlock as PlaceBlockData } from '@zilar/protocol';
 import { Navigation } from 'lucide-react';
-
-// The dark secondary key of the boards (`WebContent.dc.html:26,78`).
-const KEY = {
-  background: 'linear-gradient(180deg,#1c1c1c,#121212)',
-  border: '1px solid #2a2a2a',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
-};
+import { BLOCK_KEY } from './blockKey';
 
 /**
  * 21 · PLACE: the title, the address line and a Directions key when there is a
@@ -28,7 +22,7 @@ export function PlaceBlock({ block }: { block: PlaceBlockData }) {
           target="_blank"
           rel="noopener noreferrer"
           className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-[14px] text-[14px] font-medium text-[#ededed]"
-          style={KEY}
+          style={BLOCK_KEY}
         >
           <Navigation className="size-3.5" strokeWidth={2} aria-hidden="true" />
           Directions

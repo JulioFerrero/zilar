@@ -71,6 +71,39 @@ const PLACE: BlocksData = {
   ],
 };
 
+// `WebContent.dc.html:122-135`. The ids are made up: the tiles show the board's
+// `#181818` placeholder in Cosmos, where no card media exists.
+const IMAGES: BlocksData = {
+  fallback: 'Four photos.',
+  blocks: [
+    {
+      kind: 'images',
+      items: ['mock-photo-1', 'mock-photo-2', 'mock-photo-3', 'mock-photo-4'],
+      extra: 3,
+    },
+  ],
+};
+
+const ONE_IMAGE: BlocksData = {
+  fallback: 'One photo.',
+  blocks: [{ kind: 'images', items: ['mock-photo-1'] }],
+};
+
+// `WebContent.dc.html:85-100`.
+const FILE: BlocksData = {
+  fallback: 'prices-october.csv, 12 KB, CSV, 31 rows.',
+  blocks: [
+    {
+      kind: 'file',
+      media: 'mock-file-1',
+      name: 'prices-october.csv',
+      size: '12 KB',
+      format: 'CSV',
+      rows: '31',
+    },
+  ],
+};
+
 export default {
   'Content blocks': (
     <div className="min-h-screen bg-[#0a0a0a] p-10">
@@ -83,6 +116,15 @@ export default {
         </Example>
         <Example label="21 · PLACE">
           <BlockCard data={PLACE} footer={<Time at="20:31" />} />
+        </Example>
+        <Example label="20 · IMAGES">
+          <BlockCard data={IMAGES} footer={<Time at="13:52" />} />
+        </Example>
+        <Example label="20 · IMAGES · one">
+          <BlockCard data={ONE_IMAGE} footer={<Time at="13:52" />} />
+        </Example>
+        <Example label="24 · FILE">
+          <BlockCard data={FILE} footer={<Time at="Sat 10:00" />} />
         </Example>
       </div>
     </div>

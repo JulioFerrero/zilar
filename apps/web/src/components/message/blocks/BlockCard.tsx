@@ -5,6 +5,7 @@ import type { BlocksRespondValue } from '@zilar/api-contract';
 import { Info, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { respondToBlock } from '@/lib/api/blocks';
+import { cn } from '@/lib/utils';
 import { renderChartBlock } from './ChartBlocks';
 import { renderChoiceBlock } from './ChoiceBlocks';
 import { renderContentBlock } from './ContentBlocks';
@@ -23,7 +24,7 @@ import { StatusBlock } from './StatusBlock';
  * The block kinds this build can draw; the rest are skipped (T-1755). The
  * choice kinds (13-18) are interactive and answer through `BlockRespond`.
  */
-function renderBlock(block: Block, showHeading: boolean): ReactNode {
+function renderBlock(block: Block, showHeading: boolean, title?: string): ReactNode {
   switch (block.kind) {
     case 'figure':
       return <FigureBlock block={block} />;
@@ -58,7 +59,9 @@ function renderBlock(block: Block, showHeading: boolean): ReactNode {
     case 'place':
     case 'weather':
     case 'event':
-      return renderContentBlock(block, showHeading);
+    case 'images':
+    case 'file':
+      return renderContentBlock(block, showHeading, title);
     default:
       return null;
   }
@@ -144,7 +147,7 @@ export function BlockCard({
     .map((block, index) => ({
       key: `${block.kind}-${index}`,
       block,
-      node: renderBlock(block, !hasHeader),
+      node: renderBlock(block, !hasHeader, shown.title),
     }))
     .filter(
       (entry): entry is { key: string; block: Block; node: ReactNode } => entry.node !== null,
@@ -153,6 +156,9 @@ export function BlockCard({
   // icon, the line and the time inline, 12/14 padding and no footer underneath.
   const lone = !hasHeader && rendered.length === 1 ? rendered[0]?.block : undefined;
   const compactCallout = lone !== undefined && lone.kind === 'callout' ? lone : undefined;
+  // An images-only card is the one body the board draws edge to edge: the grid
+  // keeps its own 4 px gap, so the card padding is 6/6/8/6 instead of 14/12/8/14.
+  const loneImages = lone !== undefined && lone.kind === 'images';
   const errorLine = failed ? (
     <p role="alert" className="mt-1 text-[12px] text-danger">
       Could not send. Try again.
@@ -173,7 +179,12 @@ export function BlockCard({
   }
   return (
     <BlockRespondContext.Provider value={context}>
-      <div className="flex w-full min-w-[280px] max-w-[380px] flex-col gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px] text-[14px] leading-[20px] text-[#ededed]">
+      <div
+        className={cn(
+          'flex w-full min-w-[280px] max-w-[380px] flex-col gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] text-[14px] leading-[20px] text-[#ededed]',
+          loneImages ? 'px-[6px] pt-[6px] pb-[8px]' : 'px-[14px] pt-[12px] pb-[8px]',
+        )}
+      >
         {hasHeader && (
           <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
             {shown.icon !== undefined && <BlockIcon name={shown.icon} />}
@@ -195,7 +206,9 @@ export function BlockCard({
           ))
         )}
 
-        {footer !== undefined && <div className="flex justify-end">{footer}</div>}
+        {footer !== undefined && (
+          <div className={cn('flex justify-end', loneImages && 'pr-2')}>{footer}</div>
+        )}
       </div>
       {errorLine}
     </BlockRespondContext.Provider>
