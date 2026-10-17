@@ -6,6 +6,7 @@
  */
 
 import { Effect, type Effect as EffectType } from 'effect';
+import { Platform } from 'react-native';
 
 export const MIC_DENIED_MESSAGE =
   'Zilar needs access to your microphone to record voice messages. You can allow it in Settings.';
@@ -101,15 +102,6 @@ const loadExpoAudio: Effect.Effect<RecordingAudio, unknown> = Effect.tryPromise(
   })),
 );
 
-/** The platform name for the recording options; 'unknown' when react-native is missing. */
-const platformOs: Effect.Effect<string> = Effect.tryPromise({
-  try: () => import('react-native'),
-  catch: () => undefined,
-}).pipe(
-  Effect.map((module) => module.Platform.OS as string),
-  Effect.orElseSucceed(() => 'unknown'),
-);
-
 /**
  * Switches the audio session mode. It is a nicety: a failure here never
  * blocks recording or playback, so every error is swallowed.
@@ -161,7 +153,7 @@ export function createVoiceRecorder(deps?: {
     yield* recordMode;
     // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
     // doubles the file; metering feeds the live waveform.
-    const os = deps?.platform ?? (yield* platformOs);
+    const os = deps?.platform ?? Platform.OS;
     const fresh = new audio.AudioRecorder(buildRecordingOptions(audio.HIGH_QUALITY, os));
     yield* Effect.promise(() => fresh.prepareToRecordAsync());
     fresh.record();

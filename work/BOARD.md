@@ -1942,3 +1942,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1934](T-1934-phone-archived-in-list.md) | phone archived chats scroll inside the chat list | 2026-10-17 |
 | [T-1932](T-1932-phone-reactions-any-emoji.md) | phone reactions take any emoji; no clipped tops | 2026-10-17 |
 | [T-1931](T-1931-ios-sheet-queue.md) | phone sheets queue their transitions (iOS delete/forward) | 2026-10-17 |
+| [T-1930](T-1930-ios-voice-crash.md) | iOS voice recording no longer crashes the app | 2026-10-17 |
