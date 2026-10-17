@@ -3,6 +3,7 @@ import type { TopicPreviewMessage } from '@zilar/api-contract';
 import { isValid, PayloadSchema } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { useState } from 'react';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { ProgressCard } from '@/components/ProgressCard';
 import { BlockCard } from '@/components/message/blocks/BlockCard';
 import { Button } from '@/components/ui/button';
@@ -128,39 +129,42 @@ function PreviewRow({ message }: { message: TopicPreviewMessage }) {
   );
 
   return (
-    <div
-      className={cn(
-        'flex max-w-[min(560px,100%)] flex-col self-start',
-        // A card is its own surface, as in the thread: no bubble box around it.
-        asText &&
-          'bubble-in gap-0.5 rounded-[14px] rounded-bl-[4px] px-3 py-2 text-[14px] leading-[1.5]',
-      )}
-    >
-      {asText ? (
-        <span
-          className="truncate text-[12px] font-semibold"
-          style={{ color: senderColor(message.nick) }}
-        >
-          {message.nick}
-        </span>
-      ) : (
-        // The thread's standalone card keeps the sender over the card with
-        // `MessageSender`'s classes plus its `px-3 pt-2` wrapper.
-        <div
-          className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
-          style={{ color: senderColor(message.nick) }}
-        >
-          <span className="truncate">{message.nick}</span>
-        </div>
-      )}
-      {blocks !== undefined && <BlockCard data={blocks} footer={time} />}
-      {progress !== undefined && <ProgressCard progress={progress} readOnly />}
-      {asText && (
-        <>
-          <span className="whitespace-pre-wrap break-words">{message.body}</span>
-          {time}
-        </>
-      )}
+    <div className="flex max-w-[min(560px,100%)] items-end gap-1.5 self-start">
+      <EntityAvatar person={{ id: message.nick, name: message.nick }} size={34} />
+      <div
+        className={cn(
+          'flex min-w-0 flex-col',
+          // A card is its own surface, as in the thread: no bubble box around it.
+          asText &&
+            'bubble-in gap-0.5 rounded-[14px] rounded-bl-[4px] px-3 py-2 text-[14px] leading-[1.5]',
+        )}
+      >
+        {asText ? (
+          <span
+            className="truncate text-[12px] font-semibold"
+            style={{ color: senderColor(message.nick) }}
+          >
+            {message.nick}
+          </span>
+        ) : (
+          // The thread's standalone card keeps the sender over the card with
+          // `MessageSender`'s classes plus its `px-3 pt-2` wrapper.
+          <div
+            className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
+            style={{ color: senderColor(message.nick) }}
+          >
+            <span className="truncate">{message.nick}</span>
+          </div>
+        )}
+        {blocks !== undefined && <BlockCard data={blocks} footer={time} />}
+        {progress !== undefined && <ProgressCard progress={progress} readOnly />}
+        {asText && (
+          <>
+            <span className="whitespace-pre-wrap break-words">{message.body}</span>
+            {time}
+          </>
+        )}
+      </div>
     </div>
   );
 }
