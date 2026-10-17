@@ -240,18 +240,14 @@ export function useComposerMedia({
     sendGif(gif);
   };
 
-  // A pick stages several files (T-1536): when two or more are pictures they
-  // send first, in pick order, as one album (`attachmentSends`); every other
-  // file follows. With fewer than two pictures the pick order is kept and no
-  // album marker is set. The composer text and the reply quote ride the first
-  // message sent. The sheet closes and the composer clears. Returns whether it
-  // handled the send, so the caller falls through to text.
-  const sendPicked = (): boolean => {
-    if (picks.length === 0) {
-      return false;
-    }
+  // Sending several files (T-1536): when two or more are pictures they send
+  // first, in pick order, as one album (`attachmentSends`); every other file
+  // follows. With fewer than two pictures the pick order is kept and no album
+  // marker is set. The composer text and the reply quote ride the first message
+  // sent. The sheet closes, the picks are emptied and the composer clears.
+  const sendNow = (files: readonly PickedFile[], error?: string) => {
     if (onSendAttachment !== undefined) {
-      attachmentSends(picks).forEach((send, index) => {
+      attachmentSends(files).forEach((send, index) => {
         const caption = index === 0 ? captionOptions(text, replyTo) : {};
         onSendAttachment(
           send.file,
@@ -261,8 +257,16 @@ export function useComposerMedia({
     }
     setPicks([]);
     setAttachOpen(false);
-    setAttachError(undefined);
+    setAttachError(error);
     clearDraft();
+  };
+
+  // Returns whether it handled the send, so the caller falls through to text.
+  const sendPicked = (): boolean => {
+    if (picks.length === 0) {
+      return false;
+    }
+    sendNow(picks);
     return true;
   };
 
@@ -310,15 +314,13 @@ export function useComposerMedia({
     setAttachOpen(false);
   };
 
-  // The Gallery tab's send (T-1320): the selected assets arrive as picked files
-  // and are added to the composer strip, exactly like a library pick (the same
-  // append + close above), so albums (T-1271) and captions keep working.
-  // `sendPicked` reads the same `picks`.
-  const stageFiles = (files: PickedFile[]) => {
-    const staged = appendPicks(picks, files);
-    setPicks(staged.files);
-    setAttachError(staged.overflow ? MAX_FILES_MESSAGE : undefined);
-    setAttachOpen(false);
+  // The Gallery tab's send (T-1925): the selected assets arrive as picked files
+  // and send at once, together with anything already staged. Past the cap the
+  // first ten go and the attach error explains why. The composer text becomes
+  // the caption, the reply quote rides the first message and the strip clears.
+  const sendFiles = (files: PickedFile[]) => {
+    const all = appendPicks(picks, files);
+    sendNow(all.files, all.overflow ? MAX_FILES_MESSAGE : undefined);
   };
 
   return {
@@ -338,6 +340,6 @@ export function useComposerMedia({
     closeAttach,
     chooseAttachment,
     demoPick,
-    stageFiles,
+    sendFiles,
   };
 }

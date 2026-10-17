@@ -25,8 +25,8 @@ type AttachSheetProps = {
   onPick: (choice: AttachmentChoice) => void;
   /** Stages a demo attachment (mock mode only). */
   onPickDemo?: ((attachment: Attachment) => void) | undefined;
-  /** Stages the gallery's picked files in the composer strip (T-1320). */
-  onStageFiles: (files: PickedFile[]) => void;
+  /** Sends the gallery's picked files right away (T-1320, T-1925). */
+  onSendFiles: (files: PickedFile[]) => void;
   onClose: () => void;
 };
 
@@ -36,7 +36,8 @@ type AttachSheetProps = {
  * with a live camera tile and multi-select ("Send N"), reading
  * `expo-media-library`; the File tab keeps today's document picker. Picking
  * stages the files in the composer's strip (T-1246), which sends them; the
- * composer owns the picking.
+ * gallery's "Send N" sends its selection at once (T-1925). The composer owns the
+ * picking.
  */
 export function AttachSheet({ open, onClose, ...props }: AttachSheetProps) {
   if (!open) {
@@ -56,7 +57,7 @@ function AttachSheetBody({
   demoAttachments,
   onPick,
   onPickDemo,
-  onStageFiles,
+  onSendFiles,
   onClose,
 }: Omit<AttachSheetProps, 'open'>) {
   const insets = useSafeAreaInsets();
@@ -112,7 +113,7 @@ function AttachSheetBody({
                   demoAttachments={demoAttachments}
                   onPick={onPick}
                   onPickDemo={onPickDemo}
-                  onStageFiles={onStageFiles}
+                  onSendFiles={onSendFiles}
                 />
               </View>
               {tab === 'file' ? <FileTab busy={busy} onPick={onPick} /> : null}

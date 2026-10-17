@@ -20,11 +20,11 @@ const STAGE_FAILED_MESSAGE = 'Could not prepare those photos. Try again.';
 
 /**
  * The Gallery tab (T-1320): the recent-assets grid with the camera tile, multi
- * select and the "Send N" bar that stages the picked files through the
- * composer's strip. When the media library is not available it falls back to
- * the mock demo attachments, and a denied permission offers the system
- * settings or the plain gallery picker. Pure view plus selection: the composer
- * owns the send.
+ * select and the "Send N" bar that sends the picked files at once, with the
+ * composer text as the caption (T-1925). When the media library is not
+ * available it falls back to the mock demo attachments, and a denied permission
+ * offers the system settings or the plain gallery picker. Pure view plus
+ * selection: the composer owns the send.
  */
 export function GalleryTab({
   gallery,
@@ -32,14 +32,14 @@ export function GalleryTab({
   demoAttachments,
   onPick,
   onPickDemo,
-  onStageFiles,
+  onSendFiles,
 }: {
   gallery: GalleryAssets;
   busy: boolean;
   demoAttachments?: Attachment[] | undefined;
   onPick: (choice: AttachmentChoice) => void;
   onPickDemo?: ((attachment: Attachment) => void) | undefined;
-  onStageFiles: (files: PickedFile[]) => void;
+  onSendFiles: (files: PickedFile[]) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [stageError, setStageError] = useState<string | undefined>(undefined);
@@ -59,7 +59,7 @@ export function GalleryTab({
             return;
           }
           if (staged.files.length > 0) {
-            onStageFiles(staged.files);
+            onSendFiles(staged.files);
           }
         }),
       ),

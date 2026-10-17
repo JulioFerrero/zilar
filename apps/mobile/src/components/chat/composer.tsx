@@ -303,7 +303,7 @@ export function Composer({
         demoAttachments={demoAttachments}
         onPick={media.chooseAttachment}
         onPickDemo={demoAttachments === undefined ? undefined : media.demoPick}
-        onStageFiles={media.stageFiles}
+        onSendFiles={media.sendFiles}
         onClose={media.closeAttach}
       />
     </View>
