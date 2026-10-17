@@ -204,7 +204,7 @@ function TopicPanelBody({
           onClose={onClose}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 *:shrink-0">
           <Button
             type="button"
             className="h-10 w-full text-[14px]"

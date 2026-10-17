@@ -1826,3 +1826,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1816](T-1816-web-preview-avatars.md) | web Join preview rows show sender avatars | 2026-10-17 |
 | [T-1817](T-1817-web-public-topic-members.md) | web panel lists a public topic's members | 2026-10-17 |
 | [T-1818](T-1818-public-topic-hint.md) | public topic hint: anyone can find and join it | 2026-10-17 |
+| [T-1819](T-1819-panel-rows-dont-shrink.md) | panel rows keep their height | 2026-10-17 |
