@@ -795,6 +795,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Deploy unblocked:** **live `4a8da94`** (19:41 UTC, Coolify) carries T-1908 to T-1918. All containers are healthy with 0 errors, and a warm reload of "cards test" has FCP and LCP at 208 ms.
               - **Live `b0ed285`** (19:57 UTC) carries T-1919 ("Not carried out: <summary>") and T-1920 (deflaked timing test). CI is green, all containers are healthy and there are 0 errors.
               - **v0.2.9 released** (Julio OK'd it at about 19:48 UTC). The arm64 APK embeds 0.2.9 / 209 (verified), and it was posted in Zilar Updates at 22:24 Madrid. **Waits for Julio:** test share-into-Zilar and notification Reply / Mark as read on his phone.
+              - **iOS 0.2.9 on Iryna's iPhone 16 Pro** (Julio asked at 20:30 UTC). It was built from tag `v0.2.9` in the scratch worktree `../zilar-ios-build` (RELEASING §8), installed and launched at 20:43 UTC.
+                - It has the same limits as before: a personal team, so no push (`aps-environment` dropped from the generated entitlements) and a 7-day expiry.
+                - Share-into-Zilar is Android-only (`disableIOS: true`).
               - **Motion pass (Julio, 20:10 UTC):**
                 - He had Emil Kowalski's 15 skills installed in `~/.claude/skills`. `find-animation-opportunities` kept 5 suggestions, and he picked 1–3 and 4.
                 - **T-1921 (web overlay motion):** menus, select and combobox were verified frame by frame (150 ms in from the trigger, 100 ms out). Dialogs and sheets mount already open, so Base UI never starts them; a fix round adds `starting:` (CSS `@starting-style`) plus an exit before `onClose`.

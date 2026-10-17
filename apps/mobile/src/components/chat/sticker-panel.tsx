@@ -2,10 +2,12 @@ import { Effect } from 'effect';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
 import { interruptFiber } from '@/lib/effect/timers';
@@ -232,7 +234,18 @@ export function StickerGrid({
  * `PinsSheet`: the composer owns the packs load and the recents storage.
  * The body is `StickerGrid`, shared with the tabbed `EmojiSheet` (T-0175).
  */
-export function StickerPanel({
+export function StickerPanel({ open, ...props }: StickerPanelProps) {
+  if (!open) {
+    return null;
+  }
+  return <StickerPanelBody open={open} {...props} />;
+}
+
+/**
+ * The open panel's body. Split out so closing unmounts it, restarting the
+ * panel's slide on the next open (hooks cannot run after the early return).
+ */
+function StickerPanelBody({
   open,
   packs,
   state,
@@ -244,41 +257,40 @@ export function StickerPanel({
   onClose,
 }: StickerPanelProps) {
   const insets = useSafeAreaInsets();
-
-  if (!open) {
-    return null;
-  }
+  const { panelStyle, onLayout, close } = useSheetMotion(onClose);
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
       <Pressable
         accessibilityLabel="Close stickers"
-        onPress={onClose}
+        onPress={close}
         className="flex-1 justify-end bg-black/40"
       >
-        <Pressable
-          onPress={() => {}}
-          accessibilityRole="menu"
-          accessibilityLabel="Stickers"
-          className="h-[50%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-        >
-          <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-          <Text
-            accessibilityRole="header"
-            className="py-2 text-[17px] font-semibold text-foreground"
+        <Animated.View className="h-[50%]" onLayout={onLayout} style={panelStyle}>
+          <Pressable
+            onPress={() => {}}
+            accessibilityRole="menu"
+            accessibilityLabel="Stickers"
+            className="flex-1 rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
+            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
           >
-            Stickers
-          </Text>
-          <StickerGrid
-            packs={packs}
-            state={state}
-            recents={recents}
-            activePackId={activePackId}
-            onSelectPack={onSelectPack}
-            onPick={onPick}
-            onRetry={onRetry}
-          />
-        </Pressable>
+            <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
+            <Text
+              accessibilityRole="header"
+              className="py-2 text-[17px] font-semibold text-foreground"
+            >
+              Stickers
+            </Text>
+            <StickerGrid
+              packs={packs}
+              state={state}
+              recents={recents}
+              activePackId={activePackId}
+              onSelectPack={onSelectPack}
+              onPick={onPick}
+              onRetry={onRetry}
+            />
+          </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

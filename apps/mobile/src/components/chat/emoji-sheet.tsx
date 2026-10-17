@@ -1,6 +1,7 @@
 import { Film, Smile, Sticker as StickerIcon } from 'lucide-react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Modal, Pressable, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
@@ -11,6 +12,7 @@ import type { GifsApi } from '@/lib/gifs-api';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { EmojiTab } from '@/components/chat/emoji-tab';
 import { GifPanel } from '@/components/chat/gif-panel';
+import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { StickerGrid, type StickerPanelState } from '@/components/chat/sticker-panel';
 
 /** The sheet tabs, in display order (Emoji first, selected by default). */
@@ -68,7 +70,18 @@ type EmojiSheetProps = {
  * tap-outside close it, as the other sheets do. Lucide icons for the tabs;
  * emoji characters only as emoji content.
  */
-export function EmojiSheet({
+export function EmojiSheet({ open, ...props }: EmojiSheetProps) {
+  if (!open) {
+    return null;
+  }
+  return <EmojiSheetBody open={open} {...props} />;
+}
+
+/**
+ * The open sheet's body. Split out so closing unmounts it, restarting the
+ * panel's slide on the next open (hooks cannot run after the early return).
+ */
+function EmojiSheetBody({
   open,
   tab,
   onSelectTab,
@@ -90,9 +103,7 @@ export function EmojiSheet({
 }: EmojiSheetProps) {
   const insets = useSafeAreaInsets();
   const iconColor = ICON;
-  if (!open) {
-    return null;
-  }
+  const { panelStyle, onLayout, close } = useSheetMotion(onClose);
   const visible: EmojiSheetTab = resolveSheetTab(tab, gifsVisible);
   const tabs: { id: EmojiSheetTab; label: string; icon: React.ReactNode }[] = [
     { id: 'emoji', label: 'Emoji', icon: <Smile size={16} color={iconColor} /> },
@@ -102,64 +113,66 @@ export function EmojiSheet({
       : []),
   ];
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <Pressable
           accessibilityLabel="Close emoji panel"
-          onPress={onClose}
+          onPress={close}
           className="flex-1 justify-end bg-black/40"
         >
-          <Pressable
-            onPress={() => {}}
-            accessibilityRole="menu"
-            accessibilityLabel="Emoji, stickers and GIFs"
-            className="h-[50%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-          >
-            <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-            <View
-              accessibilityRole="tablist"
-              accessibilityLabel="Panel tabs"
-              className="flex-row gap-1 pb-2"
+          <Animated.View className="h-[50%]" onLayout={onLayout} style={panelStyle}>
+            <Pressable
+              onPress={() => {}}
+              accessibilityRole="menu"
+              accessibilityLabel="Emoji, stickers and GIFs"
+              className="flex-1 rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
+              style={{ paddingBottom: Math.max(insets.bottom, 8) }}
             >
-              {tabs.map((item) => (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="tab"
-                  accessibilityLabel={item.label}
-                  accessibilityState={{ selected: visible === item.id }}
-                  onPress={() => onSelectTab(item.id)}
-                  className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5 active:bg-surface-raised"
-                >
-                  {item.icon}
-                  <Text className="text-[13px] font-medium text-foreground">{item.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View className="min-h-0 flex-1">
-              {visible === 'emoji' ? (
-                <EmojiTab
-                  open={open}
-                  recents={emojiRecents}
-                  activeCategory={emojiCategory}
-                  onSelectCategory={onSelectEmojiCategory}
-                  onPick={onPickEmoji}
-                />
-              ) : visible === 'stickers' ? (
-                <StickerGrid
-                  packs={packs}
-                  state={panelState}
-                  recents={stickerRecents}
-                  activePackId={activePackId}
-                  onSelectPack={onSelectPack}
-                  onPick={onPickSticker}
-                  onRetry={onRetryStickers}
-                />
-              ) : (
-                <GifPanel open={open} api={gifsApi} onPick={onPickGif} />
-              )}
-            </View>
-          </Pressable>
+              <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
+              <View
+                accessibilityRole="tablist"
+                accessibilityLabel="Panel tabs"
+                className="flex-row gap-1 pb-2"
+              >
+                {tabs.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.label}
+                    accessibilityState={{ selected: visible === item.id }}
+                    onPress={() => onSelectTab(item.id)}
+                    className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5 active:bg-surface-raised"
+                  >
+                    {item.icon}
+                    <Text className="text-[13px] font-medium text-foreground">{item.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View className="min-h-0 flex-1">
+                {visible === 'emoji' ? (
+                  <EmojiTab
+                    open={open}
+                    recents={emojiRecents}
+                    activeCategory={emojiCategory}
+                    onSelectCategory={onSelectEmojiCategory}
+                    onPick={onPickEmoji}
+                  />
+                ) : visible === 'stickers' ? (
+                  <StickerGrid
+                    packs={packs}
+                    state={panelState}
+                    recents={stickerRecents}
+                    activePackId={activePackId}
+                    onSelectPack={onSelectPack}
+                    onPick={onPickSticker}
+                    onRetry={onRetryStickers}
+                  />
+                ) : (
+                  <GifPanel open={open} api={gifsApi} onPick={onPickGif} />
+                )}
+              </View>
+            </Pressable>
+          </Animated.View>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>

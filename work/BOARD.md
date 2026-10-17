@@ -1931,3 +1931,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1919](T-1919-cancel-notice-names-request.md) | an expired approval says which request was not done | 2026-10-17 |
 | [T-1920](T-1920-flaky-scheduled-wait-test.md) | deflake the queued scheduled-run timing test | 2026-10-17 |
 | [T-1921](T-1921-web-overlay-motion.md) | web dialogs, sheets and menus enter and leave with motion | 2026-10-17 |
+| [T-1922](T-1922-phone-sheets-slide.md) | phone attach, emoji and sticker sheets slide up | 2026-10-17 |
