@@ -1,6 +1,6 @@
 import { formatTime, senderColor } from '@zilar/chat-core';
 import { PayloadSchema, isValid } from '@zilar/protocol';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
@@ -9,12 +9,10 @@ import { PayloadCard, isRenderedCard } from '@/components/chat/payload-card';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { API_URL } from '@/lib/auth';
 import { bubbleStyle } from '@/lib/depth';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { runInBackground } from '@/lib/effect/run-in-background';
-import { getSessionToken } from '@/lib/session-token';
-import { createTopicsApi, type TopicPreviewMessage } from '@/lib/topics-api';
+import type { TopicPreviewMessage } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -38,8 +36,9 @@ function previewTime(at: string): string {
  */
 export function TopicJoinView({ chat }: { chat: ChatSummary }) {
   const joinTopic = useChatStore((state) => state.joinTopic);
-  // The preview lives on the topics port; the screen has no store read for it.
-  const api = useMemo(() => createTopicsApi(getSessionToken, undefined, API_URL), []);
+  // The preview lives on the mock-aware topics port; the store action resolves
+  // the topic id behind this chat row first.
+  const topicPreview = useChatStore((state) => state.topicPreview);
   // The screen remounts this view with a `key` per topic, so this id is fixed
   // for the life of the mount. A result for anything else is ignored.
   const mountedChatId = useRef(chat.id);
@@ -51,7 +50,7 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
 
   useEffect(() => {
     let active = true;
-    runInBackground(() => api.topicPreview(chat.id), {
+    runInBackground(() => topicPreview(chat.id), {
       onSuccess: (messages) => {
         if (active && chat.id === mountedChatId.current) {
           setState({ kind: 'ready', messages });
@@ -66,7 +65,7 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
     return () => {
       active = false;
     };
-  }, [api, chat.id, attempt]);
+  }, [topicPreview, chat.id, attempt]);
 
   return (
     <View className="flex-1">

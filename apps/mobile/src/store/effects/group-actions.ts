@@ -149,6 +149,13 @@ export function makeGroupActions(
           return yield* lift(() => topics.listTopicMembers(topicId));
         }),
       ),
+    topicPreview: (chatId) =>
+      ctx.run(
+        Effect.gen(function* () {
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
+          return yield* lift(() => topics.topicPreview(topicId));
+        }),
+      ),
     listTopicAis: (chatId) =>
       ctx.run(
         Effect.gen(function* () {

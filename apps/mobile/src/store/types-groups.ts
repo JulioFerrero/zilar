@@ -15,6 +15,7 @@ import type {
   CreateTopicInput,
   PatchTopicInput,
   SetTopicRolesInput,
+  TopicPreviewMessage,
   TopicRole,
 } from '../lib/topics-api';
 
@@ -99,6 +100,8 @@ export interface ChatStoreGroups {
   leaveTopic: (chatId: string) => Promise<void>;
   /** Reads the members of a private topic (public topics read the group). */
   listTopicMembers: (chatId: string) => Promise<{ userId: string; name: string }[]>;
+  /** Reads the recent messages of a public topic the caller has not joined. */
+  topicPreview: (chatId: string) => Promise<TopicPreviewMessage[]>;
   /** Reads the AIs in a topic. */
   listTopicAis: (chatId: string) => Promise<{ id: string; name: string }[]>;
   /**

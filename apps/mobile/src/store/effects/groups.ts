@@ -37,6 +37,7 @@ export type GroupActions = Pick<
   | 'joinTopic'
   | 'leaveTopic'
   | 'listTopicMembers'
+  | 'topicPreview'
   | 'listTopicAis'
   | 'listInviteLinks'
   | 'createInviteLink'
