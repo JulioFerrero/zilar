@@ -121,31 +121,32 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
                 {previewTime(item.at)}
               </Text>
             );
+            const senderName = (
+              <Text
+                numberOfLines={1}
+                className="mb-0.5 text-[12px] font-semibold"
+                color={senderColor(item.nick)}
+              >
+                {item.nick}
+              </Text>
+            );
             return (
               <View className="max-w-[85%] flex-row items-end gap-2 self-start">
                 <EntityAvatar person={{ id: item.nick, name: item.nick }} size={28} />
-                <View className="px-3 py-2" style={bubbleStyle('incoming', true)}>
-                  <Text
-                    numberOfLines={1}
-                    className="mb-0.5 text-[12px] font-semibold"
-                    color={senderColor(item.nick)}
-                  >
-                    {item.nick}
-                  </Text>
-                  {card !== undefined ? (
-                    <>
-                      <PayloadCard card={card} footer={card.type === 'blocks' ? time : undefined} />
-                      {card.type === 'blocks' ? null : time}
-                    </>
-                  ) : (
-                    <>
-                      <Text className="text-[15px] leading-[21px] text-foreground">
-                        {item.body}
-                      </Text>
-                      {time}
-                    </>
-                  )}
-                </View>
+                {card !== undefined ? (
+                  // Blocks and progress cards carry their own surface, like the
+                  // thread: no bubble around them (T-1807, T-1814).
+                  <View className="shrink">
+                    {senderName}
+                    <PayloadCard card={card} footer={card.type === 'blocks' ? time : undefined} />
+                  </View>
+                ) : (
+                  <View className="rounded-[14px] px-3 py-2" style={bubbleStyle('incoming', true)}>
+                    {senderName}
+                    <Text className="text-[15px] leading-[21px] text-foreground">{item.body}</Text>
+                    {time}
+                  </View>
+                )}
               </View>
             );
           }}

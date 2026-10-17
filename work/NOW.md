@@ -570,7 +570,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - rating: 4 stars, "@Deepseek 4/5", and the AI logged it.
                 - **Bug:** after a reload, every card was back to its original state. The server sends the correction, but the client ledger applies a payload correction only to `progress` cards (`packages/client-core/src/store/ledger-edits.ts:72-76`). **Fix: T-1810, running.**
                 - **Bug:** a member reloading a public topic briefly sees "Join <topic>" (web `currentUserId` is `''` until `/api/me`). **Fix: T-1811, running.**
-                - Still to test after T-1810 deploys: choice and form, and that answers survive a reload.
+                - **After T-1810 deployed (`af0cf1b2e`, 10:41 UTC):**
+                  - the poll vote and the rating survive a reload, and the Join flash is gone (T-1811);
+                  - choice works (12:30 picked, the AI set the call);
+                  - the form works (the AI got "Day: 2026-10-18, Time: 21:00, People: 2").
+                  - **Gaps:**
+                    - buttons and forms have no answered field in their data, so they reopen after a reload, or once the correction lands for a form. **T-1813 (buttons) is running; T-1815 (form, plus an empty stepper showing 0) is spec'd and launches after T-1813.**
+                    - On web, Day is a native date input ("dd/mm/yyyy"), where the board shows a plain value.
+              - **Phone, mock build of main:**
+                - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);
+                - the B11 choice cards match `PhoneChoices.dc.html`;
+                - preview bubbles had square corners and a card inside a bubble → **T-1814, running**.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
               - **Running:**
                 - T-1795 (B10 web interactive cards, final pre-review);

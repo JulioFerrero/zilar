@@ -1821,3 +1821,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1811](T-1811-join-view-guards.md) | Join view waits for ids; preview progress is read-only | 2026-10-17 |
 | [T-1796](T-1796-phone-interactive-cards.md) | phone interactive cards answer through the respond route | 2026-10-17 |
 | [T-1812](T-1812-phone-preview-via-store.md) | phone Join preview reads through the store | 2026-10-17 |
+| [T-1814](T-1814-phone-preview-bubbles.md) | phone Join preview rows look like the thread | 2026-10-17 |
