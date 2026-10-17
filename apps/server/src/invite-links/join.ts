@@ -6,6 +6,7 @@ import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
+import { isBanned, isBannedIn } from '../groups/bans';
 import { groupOwnerId } from '../groups/queries';
 import type { TopicRow } from '../topics/access';
 import { addToPublicTopics } from '../topics/public-compat';
@@ -108,6 +109,11 @@ export async function joinByInviteLink(
   if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw toInvalidLink();
   }
+  // T-1846 (SG-8): a member removed by an owner or admin is banned, and a ban
+  // answers the same 404 `invalid_link` an unusable link answers.
+  if (await isBanned(deps.db, link.groupId, userId)) {
+    throw toInvalidLink();
+  }
   if (await isGroupMember(deps.db, link.groupId, userId)) {
     return { groupId: link.groupId, alreadyMember: true };
   }
@@ -129,6 +135,11 @@ export async function joinByInviteLink(
             WHERE group_id = ${link.groupId} AND user_id = ${userId} LIMIT 1`;
           if (existing !== undefined) {
             return false;
+          }
+          // T-1846 (SG-8): a ban set since the pre-check still refuses the
+          // join, and it refuses before any use is claimed.
+          if (yield* isBannedIn(sql, link.groupId, userId)) {
+            return yield* Effect.fail(toInvalidLink());
           }
           const claimed = yield* claimLinkUse(sql, link.id, now);
           if (!claimed) {

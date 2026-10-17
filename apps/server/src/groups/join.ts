@@ -7,6 +7,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import { pairHasBlock } from '../blocks/service';
+import { isBanned, isBannedIn } from './bans';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -71,6 +72,11 @@ export async function joinPublicGroup(
   if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
+  // T-1846 (SG-8): a member removed by an owner or admin is banned, and a ban
+  // answers the same 404 a private or unknown group answers.
+  if (await isBanned(deps.db, groupId, userId)) {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
   const [existing] = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -107,6 +113,11 @@ export async function joinPublicGroup(
             WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
           if (inside) {
             return false;
+          }
+          // T-1846 (SG-8): re-check under the lock, so a removal committed
+          // since the pre-check still refuses the join.
+          if (yield* isBannedIn(sql, groupId, userId)) {
+            return yield* Effect.fail(new HttpError(404, 'not_found', 'Group not found'));
           }
           // Locked above: the count and the insert are atomic against concurrent
           // joins of this group, so the cap is never exceeded (people and AIs

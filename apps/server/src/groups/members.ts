@@ -9,6 +9,7 @@ import { addToPublicTopics } from '../topics/public-compat';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { archiveDrainedPrivateTopics, emitDroppedGroupTopicAis, syncGroupTopicRooms } from './ais';
+import { banMember, unbanMembers } from './bans';
 import { assertContacts, inviteNewMembers } from './invites';
 import { assertChannelKeepsAnAdmin, getGroupDetail, getMembership, requireGroup } from './queries';
 import {
@@ -110,6 +111,9 @@ export async function addGroupMembers(
                   catch: (error) => error,
                 });
               }
+              // T-1846 (SG-8): adding someone back lifts the ban a removal
+              // set, in the same transaction as the membership row.
+              yield* unbanMembers(sql, input.groupId, added);
               yield* sql`INSERT INTO group_members ${sql.insert(
                 added.map((userId) => ({
                   group_id: input.groupId,
@@ -198,6 +202,12 @@ export async function removeGroupMember(
             });
             yield* sql`DELETE FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
+            // T-1846 (SG-8): a removal by an owner or admin bans the person,
+            // so the public join and the invite links refuse them. A self-leave
+            // never bans. Same transaction as the delete: no half state.
+            if (!isSelf) {
+              yield* banMember(sql, input.groupId, input.targetUserId, input.actorId);
+            }
             // T-0108: a removed person loses their `topic_members` rows for
             // every topic of the group. The topic room sync below then drops
             // them from every topic room.

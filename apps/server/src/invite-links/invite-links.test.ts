@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { MAX_GROUP_MEMBERS } from '../groups/service';
+import { MAX_GROUP_MEMBERS, addGroupMembers, removeGroupMember } from '../groups/service';
 import { createApp } from '../app';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { createAuditRecorder } from '../audit/service';
@@ -384,6 +384,115 @@ describe('group invite links', () => {
       }),
     );
     expect(row!.uses).toBe(0);
+  });
+
+  it('a removed member is banned: the public join and the link refuse until added back (T-1846, SG-8)', async () => {
+    const owner = await bootstrapUser(context, app, 'owner-ban@example.com');
+    const member = await contactOf(context, app, owner.id, 'member-ban@example.com');
+    const created = await app.request(`${TEST_BASE_URL}/api/groups`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({
+        title: 'Bans',
+        memberIds: [member.id],
+        visibility: 'public',
+        handle: 'ban_test',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const groupId = ((await created.json()) as { id: string }).id;
+    const link = (await (
+      await createLink(owner.cookie, groupId, { maxUses: 1 })
+    ).json()) as CreatedLinkBody;
+
+    await removeGroupMember(context.db, context.adminClient, {
+      groupId,
+      actorId: owner.id,
+      targetUserId: member.id,
+      domain: context.config.xmpp.domain,
+      logger: context.logger,
+    });
+
+    // The public join answers the same 404 a private or unknown group does.
+    const publicJoin = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/join`, {
+      method: 'POST',
+      headers: { cookie: member.cookie },
+    });
+    expect(publicJoin.status).toBe(404);
+    expect(errorOf(await publicJoin.json()).code).toBe('not_found');
+
+    // The link answers the same 404 an unusable link does and burns no use.
+    const refused = await join(link.token, member.cookie);
+    expect(refused.status).toBe(404);
+    expect(errorOf(await refused.json()).code).toBe('invalid_link');
+    const [refusedLink] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
+    expect(refusedLink!.uses).toBe(0);
+
+    // Adding them back lifts the ban in the same transaction as the row.
+    await addGroupMembers(context.db, context.adminClient, {
+      groupId,
+      actorId: owner.id,
+      userIds: [member.id],
+      domain: context.config.xmpp.domain,
+      logger: context.logger,
+    });
+    const [ban] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_bans WHERE group_id = ${groupId}
+        `;
+      }),
+    );
+    expect(ban).toBeUndefined();
+
+    // The link no longer refuses them (they are a member again already).
+    const rejoined = await join(link.token, member.cookie);
+    expect(rejoined.status).toBe(200);
+    expect(await rejoined.json()).toEqual({ groupId, alreadyMember: true });
+  });
+
+  it('a member who leaves by themselves is not banned and can rejoin by link (T-1846)', async () => {
+    const owner = await bootstrapUser(context, app, 'owner-leave@example.com');
+    const member = await contactOf(context, app, owner.id, 'member-leave@example.com');
+    const created = await app.request(`${TEST_BASE_URL}/api/groups`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ title: 'Leavers', memberIds: [member.id] }),
+    });
+    expect(created.status).toBe(201);
+    const groupId = ((await created.json()) as { id: string }).id;
+    const link = (await (
+      await createLink(owner.cookie, groupId, { maxUses: 1 })
+    ).json()) as CreatedLinkBody;
+
+    await removeGroupMember(context.db, context.adminClient, {
+      groupId,
+      actorId: member.id,
+      targetUserId: member.id,
+      domain: context.config.xmpp.domain,
+      logger: context.logger,
+    });
+    const [ban] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_bans WHERE group_id = ${groupId}
+        `;
+      }),
+    );
+    expect(ban).toBeUndefined();
+
+    const rejoined = await join(link.token, member.cookie);
+    expect(rejoined.status).toBe(200);
+    expect(await rejoined.json()).toEqual({ groupId, alreadyMember: false });
   });
 
   it('answers the identical 404 for unknown, expired, revoked and exhausted links', async () => {

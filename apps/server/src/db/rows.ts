@@ -65,6 +65,15 @@ export interface GroupMemberRow {
   addedAt: Date;
 }
 
+// Row of the `group_bans` table (T-1846): a member removed by an owner or
+// admin cannot rejoin until one of them adds them back.
+export interface GroupBanRow {
+  groupId: string;
+  userId: string;
+  bannedBy: string | null;
+  createdAt: Date;
+}
+
 // Row of the `topic_members` table.
 export interface TopicMemberRow {
   topicId: string;

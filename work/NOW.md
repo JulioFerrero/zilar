@@ -657,7 +657,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **T-1842:** the phone @ list follows PhoneMention. Checked on the emulator, together with the Leave sheet vs PhoneLeave (match).
                 - **T-1844:** the web @ list matches it. Checked in mock mode on the branch; live was AI last with the badge far right.
               - **Web mock check:** Join from Group info › Other topics moves Ideas to Your topics and into the sidebar.
-              - **Running (14:02):** T-1843 (General never reads as done: no green check and no dimmed title; in its autofix round).
+              - **Live `4770f6970`** (14:18 UTC; 6 containers healthy, 0 errors), with T-1842, T-1843 and T-1844.
+                - **Verified live:** "ai test › General" has no green check and a normal title; "cards test" keeps its check.
+              - **Merged and held:** T-1845 (a Share key in the phone photo viewer, audit MUX-13, with `expo-sharing`).
+                - **Not checked on a device:** mock photos don't load, and I don't sign in to live on the emulator.
+                - It needs the next native build (v0.2.8). Julio can check Share there.
+              - **Audit doc:** OPS-7 is marked fixed (T-1643 pinned ejabberd by digest).
+              - **Running (14:25):** T-1846 (SG-8 group bans, a DB-schema task):
+                - a member removed by an owner or admin can't rejoin by link or public join (the same 404);
+                - adding them back lifts it;
+                - leaving by yourself never bans.
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);
@@ -670,8 +679,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.
                 - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
-                - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check. Scheduled runs can fetch prices (T-1655), but the card needs a design for how its switch and threshold become a routine. It's the only interactive kind left; `images` and `file` wait for the media plan.
-                - **Alert card (plan `docs/plan/alert-card.md`, T-1832):**
+                - **Release v0.2.8 (Android)?** It's ready on main and carries every phone change since v0.2.7:
+                  - DM card answers;
+                  - only your topics in the lists;
+                  - the topic sheet and @ list matching the boards;
+                  - General never "done";
+                  - Share in the photo viewer;
+                  - T8 step A.
+
+                  I only release when you say so. After it, T8 step C (the server drops `kind`, `status` and `owner`) can start.
+                - **Alert card (18 · ALERT RULE; plan `docs/plan/alert-card.md`, T-1832)** is the only interactive kind left unbuilt:
                   - **Recommendation (B):** the card controls one routine. The switch pauses or resumes it, the well sets its threshold, each check writes "Checked every 5 min · now $X" into the card, and it posts only when the threshold is crossed.
                   - **The cost:** one sandbox run per check and no model call. The build is 7 tasks.
                   - **Your call (§7):**
@@ -687,7 +704,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.
             - **Follow-ups found today (not yet specs):**
               - ~~**Web Join preview** (T-1797): draw card rows as cards~~ (done: T-1807, T-1816).
-              - **Interactive cards in DMs:** a DM card is never reflected back to the AI, so it can't be re-keyed, and a client's id for an incoming DM may not match the origin id. Clients would have to send the origin id. Needs a small design first.
+              - ~~**Interactive cards in DMs**~~ (done: plan T-1809; T-1824, T-1825 and T-1827. A DM card is answered under its origin id, by the AI's owner only).
               - ~~**The mute switch shows a group-inherited mute as on**~~: no change. The topic really is muted (`packages/chat-core/src/chat-prefs.ts:78-91`), and switching it off writes the topic's own unmuted row, which wins.
             - **State at 09:55 UTC:**
               - **Merged and held:** T-1799 (guide nits).
