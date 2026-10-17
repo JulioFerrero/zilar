@@ -563,6 +563,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1807 (web preview cards);
                 - T-1808 (mock preview route);
                 - T-1809 (plan for interactive cards in DMs).
+              - **Live `8cf019db0`** (10:11 UTC; healthy, 0 errors): B10 web interactive cards, B12 guide (interactive kinds; DMs refuse them), W9, the flip (new public topics start empty), T-1806.
+              - **Live interactive cards test** (web, as Julio, "cards test", 10:13-10:16 UTC):
+                - poll: a vote shows "1 vote" and the check;
+                - buttons: "You chose Wait until Monday", the quoted @AI reply, and the AI answered;
+                - rating: 4 stars, "@Deepseek 4/5", and the AI logged it.
+                - **Bug:** after a reload, every card was back to its original state. The server sends the correction, but the client ledger applies a payload correction only to `progress` cards (`packages/client-core/src/store/ledger-edits.ts:72-76`). **Fix: T-1810, running.**
+                - **Bug:** a member reloading a public topic briefly sees "Join <topic>" (web `currentUserId` is `''` until `/api/me`). **Fix: T-1811, running.**
+                - Still to test after T-1810 deploys: choice and form, and that answers survive a reload.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
               - **Running:**
                 - T-1795 (B10 web interactive cards, final pre-review);

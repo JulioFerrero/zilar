@@ -530,6 +530,81 @@ describe('the message ledger: payload cards', () => {
     );
     expect(h.messages()[0]?.card).toEqual(card('Done', 'done'));
   });
+
+  // T-1810: an answered card is corrected with a fresh `blocks` payload
+  // (`apps/server/src/message-blocks/respond.ts`), so it must replace the card
+  // the same way a progress correction does.
+  const blocksCard = (votes: number): Payload => ({
+    v: 0,
+    type: 'blocks',
+    data: {
+      fallback: 'Lunch?',
+      blocks: [
+        {
+          kind: 'poll',
+          id: 'poll-1',
+          question: 'Lunch?',
+          options: [
+            { id: 'pizza', label: 'Pizza', votes },
+            { id: 'salad', label: 'Salad' },
+          ],
+        },
+      ],
+    },
+  });
+
+  it('replaces a blocks card with the correction payload', () => {
+    const h = harness();
+    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+    expect(h.messages()[0]?.card).toEqual(blocksCard(0));
+
+    h.receive(
+      stanza({
+        id: 'fix-blocks',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'S1' },
+        payload: blocksCard(1),
+      }),
+    );
+    expect(h.messages()[0]?.card).toEqual(blocksCard(1));
+  });
+
+  it('ignores a blocks correction from another author', () => {
+    const h = harness();
+    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+    h.receive(
+      stanza({
+        id: 'fix-other',
+        fromJid: ANA,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'S1' },
+        payload: blocksCard(3),
+      }),
+    );
+    expect(h.messages()[0]?.card).toEqual(blocksCard(0));
+  });
+
+  // A reload reads the correction back from history, so the persisted answer
+  // must apply there too.
+  it('replaces a blocks card from a correction read back in history', () => {
+    const h = harness();
+    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+
+    h.ledger.ingestHistoryEdits([
+      stanza({
+        id: 'fix-blocks',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'S1' },
+        payload: blocksCard(1),
+      }),
+    ]);
+    expect(h.messages()[0]?.card).toEqual(blocksCard(1));
+  });
 });
 
 describe('the message ledger: the routine edit bump (T-1722)', () => {

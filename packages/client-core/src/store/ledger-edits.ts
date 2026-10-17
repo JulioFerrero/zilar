@@ -66,13 +66,14 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return undefined;
   }
 
-  // A correction carrying a progress payload replaces its target's task card
-  // (T-1419). A body-less one still counts: the card is the whole update. Any
-  // other payload type is not a card edit and is ignored.
+  // A correction carrying a progress or blocks payload replaces its target's
+  // card (T-1419, T-1810 for block card answers). A body-less one still counts:
+  // the card is the whole update. Any other payload type is not a card edit.
   function cardEditFor(message: LedgerStanza): CardEdit | undefined {
     const correction = message.correction;
     const payload = message.payload;
-    if (correction === undefined || payload === undefined || payload.type !== 'progress') {
+    const isCard = payload?.type === 'progress' || payload?.type === 'blocks';
+    if (correction === undefined || payload === undefined || !isCard) {
       return undefined;
     }
     return {
