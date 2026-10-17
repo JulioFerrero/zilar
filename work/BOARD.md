@@ -1810,3 +1810,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1800](T-1800-post-blocks-in-dms.md) | post_blocks cards in the owner's DM | 2026-10-17 |
 | [T-1804](T-1804-blocks-media-plan.md) | plan for media in AI cards | 2026-10-17 |
 | [T-1798](T-1798-phone-topic-join-mute-leave.md) | phone topic join preview, mute and leave | 2026-10-17 |
+| [T-1806](T-1806-fix-approval-scope-test.md) | approval scope test seeds topic B membership | 2026-10-17 |

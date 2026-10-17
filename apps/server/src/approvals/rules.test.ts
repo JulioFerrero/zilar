@@ -1084,11 +1084,13 @@ describe('approval rules service (T-0099)', () => {
         [aiId],
       );
       const topicB = await seedTopic(context, group1.groupId, owner.id, { name: 'Topic B' });
-      // The AI works in both topics: membership of topic B (a `topic_ais`
-      // row) lets the request reach the approval path there.
+      // The AI works in both topics: the owner is a topic B member (as a
+      // topic created through the service would be) and the AI has its
+      // `topic_ais` row, so the request reaches the approval path there.
       await testSql(context)(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${topicB}, ${owner.id}, ${owner.id})`;
           yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${topicB}, ${aiId}, ${owner.id})`;
         }),
       );
