@@ -59,7 +59,7 @@ export interface DmTurnContext {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
-    options?: { unattended?: boolean },
+    options?: { unattended?: boolean; dmJid?: string },
   ) => ExecuteToolCall;
   withToolGuide: (messages: ChatCompletionMessage[]) => ChatCompletionMessage[];
   draftHub: DraftHub;

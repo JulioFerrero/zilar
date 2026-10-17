@@ -114,7 +114,8 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
           // T-1655: a routine's synthetic trigger is unattended, so the
           // action gateway runs tier 0/1 and refuses a tier-2 request with
           // `needs_approval` instead of parking a card.
-          { unattended: scheduled === true },
+          // T-1800: `dmJid` lets `post_blocks` send a read-only card here.
+          { unattended: scheduled === true, dmJid: ownerJid },
         ),
         // T-1655: the full action list is offered again (T-1647 had turned it
         // off for a scheduled run); `unattended` above is what keeps a

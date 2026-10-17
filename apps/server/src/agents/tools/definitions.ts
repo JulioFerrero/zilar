@@ -315,7 +315,12 @@ export function buildTools(
     actions.length === 0
       ? [...PERSONA_TOOLS, ...MEMORY_TOOLS]
       : [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
-  return withTaskTitles(opts?.desk === true ? [...base, ...deskToolDefinitions()] : base);
+  // T-1800: the owner's DM offers `post_blocks` too, so a card request gets a
+  // card instead of plain text. The executor sends it as a `chat` message.
+  const withBlocks = [...base, POST_BLOCKS_TOOL_DEF];
+  return withTaskTitles(
+    opts?.desk === true ? [...withBlocks, ...deskToolDefinitions()] : withBlocks,
+  );
 }
 
 // The tools array for one group turn: always the three memory tools (T-0444),

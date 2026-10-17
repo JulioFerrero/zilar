@@ -23,15 +23,20 @@ export interface PostBlocksCall {
   blocks: unknown[];
 }
 
-// The room the turn runs in: where the card is posted.
+// The room the turn runs in: where the card is posted. T-1800: `kind` is
+// `chat` for the owner's DM and `groupchat` (the default) everywhere else.
 export interface PostBlocksChat {
   roomJid: string;
   groupId?: string;
   topicId?: string;
+  kind?: 'groupchat' | 'chat';
 }
 
-const POSTED_TEXT =
+// T-1800: a group card lands in the room, a DM card in the chat with the owner.
+const POSTED_TEXT_GROUP =
   'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.';
+const POSTED_TEXT_CHAT =
+  'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.';
 const FAILED_TEXT = 'error: the card could not be posted';
 
 export function createPostBlocksRunner(
@@ -48,9 +53,8 @@ export function createPostBlocksRunner(
     payload: Extract<Payload, { type: 'blocks' }>,
   ): Promise<{ ok: true; id: string } | { ok: false; error: unknown }> {
     try {
-      const sent = await send(session, chat.roomJid, 'groupchat', payload.data.fallback, {
-        payload,
-      });
+      const kind = chat.kind ?? 'groupchat';
+      const sent = await send(session, chat.roomJid, kind, payload.data.fallback, { payload });
       return { ok: true, id: sent.id };
     } catch (error) {
       return { ok: false, error };
@@ -124,10 +128,18 @@ export function createPostBlocksRunner(
       );
       return { content: FAILED_TEXT };
     }
-    yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
+    // T-1800: a DM card is read-only for now, so there is nothing to record;
+    // a tap on it answers 404 like any other tool card.
+    const kind = chat.kind ?? 'groupchat';
+    if (kind !== 'chat') {
+      yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
+    }
     logger.info({ aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: true }, 'AI post_blocks posted');
     // T-1761: the card is in the room, so the group turn sends no echo reply.
-    return { content: POSTED_TEXT, postedToRoom: true };
+    return {
+      content: kind === 'chat' ? POSTED_TEXT_CHAT : POSTED_TEXT_GROUP,
+      postedToRoom: true,
+    };
   });
 
   const runPostBlocks = (

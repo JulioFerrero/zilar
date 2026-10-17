@@ -99,7 +99,7 @@ export function createToolExec(ctx: ToolExecContext) {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
-    options?: { unattended?: boolean },
+    options?: { unattended?: boolean; dmJid?: string },
   ): ExecuteToolCall {
     const aiId = session.aiId;
     // T-1409: one desk runner per turn, created only when the turn offered the
@@ -213,9 +213,17 @@ export function createToolExec(ctx: ToolExecContext) {
         });
       }
       if (call.tool === POST_BLOCKS_TOOL) {
-        // Offered on every group turn; a DM (no context) got the guard above.
+        // Offered on every group turn and, since T-1800, in the owner's DM;
+        // any other context-free turn (an AI handoff, say) got the guard
+        // above or has no DM JID, so it stays an unknown tool.
         if (context === undefined) {
-          return { content: 'invalid: unknown tool' };
+          if (options?.dmJid === undefined) {
+            return { content: 'invalid: unknown tool' };
+          }
+          return yield* runPostBlocksEffect(session, call, {
+            roomJid: options.dmJid,
+            kind: 'chat',
+          });
         }
         return yield* runPostBlocksEffect(session, call, {
           roomJid: context.roomJid,

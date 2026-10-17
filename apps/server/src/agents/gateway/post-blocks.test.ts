@@ -1,6 +1,7 @@
 // T-1758: the `post_blocks` runner posts one blocks card for a valid call and
 // refuses a call whose blocks fail validation, without sending anything.
 // T-1791: a posted card is also recorded for interaction, best-effort.
+// T-1800: a DM card goes out as a `chat` message and is not recorded.
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
@@ -151,6 +152,31 @@ describe('post_blocks runner', () => {
       fallback: 'Prices today',
       blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }],
     });
+  });
+
+  it('posts a read-only chat card in the owner DM and records nothing', async () => {
+    const dmJid = 'owner@zilar.localhost';
+    const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
+    const sent: SentMessage[] = [];
+    const records: RecordCardInput[] = [];
+    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
+      records.push(input);
+    });
+
+    const result = await runner.runPostBlocks(
+      session,
+      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
+      { roomJid: dmJid, kind: 'chat' },
+    );
+
+    expect(result.content).toBe(
+      'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.',
+    );
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.to).toBe(dmJid);
+    expect(sent[0]?.kind).toBe('chat');
+    expect(sent[0]?.payload).toMatchObject({ v: 0, type: 'blocks' });
+    expect(records).toHaveLength(0);
   });
 
   it('keeps the posted result when recording the card fails', async () => {

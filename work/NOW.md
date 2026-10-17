@@ -553,6 +553,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - the live cards test in "cards test";
                 - the emulator check of the phone screens (not while Julio is at the PC).
             - **Julio away from about 09:45 UTC** ("dont stop working", no questions). Work continues alone; summary below when he's back.
+            - **Follow-ups found today (not yet specs):**
+              - **Web Join preview** (T-1797): draw card rows (`payload`) as cards and skip empty-body rows, as T-1798 does on the phone.
+              - **Interactive cards in DMs:** a DM card is never reflected back to the AI, so it can't be re-keyed, and a client's id for an incoming DM may not match the origin id. Clients would have to send the origin id. Needs a small design first.
+              - **The mute switch shows a group-inherited mute as on** (`packages/chat-core/src/chat-prefs.ts:78-91`), the same as the existing mute menus on both apps.
             - **State at 09:55 UTC:**
               - **Merged and held:** T-1799 (guide nits).
               - **Running (8):**
