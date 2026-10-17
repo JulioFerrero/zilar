@@ -4,17 +4,20 @@
 // them with `handler` and passes the API's rate limiter, so the check order is
 // unchanged: access first, then the write budget.
 
+import { buildDisplayed } from '@zilar/xmpp-core';
 import type { HttpServerRequest } from 'effect/http';
 import { httpErrorResponse, requestIdOf, type SessionUser } from '../effect/http-core';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
+import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { ChatsApiDependencies } from './api';
 import { markDeliveredAndNotify } from './delivered-notice';
 import { putChatRead, requireChatReadAccess } from './reads';
+import { kindFor } from './reply-handler';
 
 interface MarkReadRequest {
   params: { jid: string };
-  payload: { messageId: string };
+  payload: { messageId: string; displayed?: string | undefined };
   request: HttpServerRequest.HttpServerRequest;
 }
 
@@ -67,6 +70,25 @@ export async function markReadFor(
     userId: user.id,
     messageId: request.payload.messageId,
   });
+
+  // T-1893: a notification's Mark as read sends the same XEP-0333 marker an
+  // in-app read sends, as the caller. Best effort: the mark is already stored,
+  // so a failed send never fails the read.
+  const displayed = request.payload.displayed;
+  const adminClient = deps.adminClient;
+  if (displayed !== undefined && adminClient !== undefined) {
+    try {
+      const callerBare = jidFor(localpartFor(user.id), deps.config.xmpp.domain);
+      const stanza = buildDisplayed({
+        chatJid: bare,
+        kind: kindFor(bare, deps.config.xmpp.mucDomain),
+        messageId: displayed,
+      }).toString();
+      await adminClient.sendStanza(callerBare, bare, stanza);
+    } catch {
+      deps.logger.warn({ userId: user.id, chatJid: bare }, 'read marker send failed');
+    }
+  }
 }
 
 // The receiving device's delivery confirmation. Access is checked before the

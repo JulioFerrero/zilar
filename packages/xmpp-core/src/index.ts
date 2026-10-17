@@ -60,6 +60,9 @@ export type { XmppCoreError } from './errors';
 // so the server and the apps share one builder.
 export { buildMessage } from './stanza/build-outgoing';
 
+// T-1893: the read route sends the same XEP-0333 marker the apps send.
+export { buildDisplayed } from './stanza/build-control';
+
 /**
  * Creates the shared XMPP client. The returned object is the only chat API the
  * web and mobile apps use; each (re)connect asks `getToken` for a fresh JWT.

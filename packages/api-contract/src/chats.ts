@@ -150,7 +150,14 @@ export const ChatsGroup = HttpApiGroup.make('chats')
   .add(
     HttpApiEndpoint.put('markRead', '/chats/:jid/read', {
       params: { jid: Schema.String },
-      payload: Schema.Struct({ messageId: Schema.String }),
+      payload: Schema.Struct({
+        messageId: Schema.String,
+        // T-1893: the origin id to mark as displayed for a notification's
+        // Mark as read. Optional, so existing clients keep working.
+        displayed: Schema.optional(
+          Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        ),
+      }),
       success: HttpApiSchema.NoContent,
     }),
   )

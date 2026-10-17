@@ -194,7 +194,11 @@ describe('GET /api/push/preview', () => {
     const { status, json } = await preview(alice.cookie, 'origin-1');
 
     expect(status).toBe(200);
-    expect(json).toEqual({ title: 'Bob', body: 'Hello there', chatId: peer });
+    expect(json).toMatchObject({ title: 'Bob', body: 'Hello there', chatId: peer });
+    // T-1893: the notification needs the archive id for Mark as read.
+    expect((json as { archiveId?: string }).archiveId).toBe(
+      String(Date.parse('2026-06-01T00:00:00.000Z') * 1000),
+    );
   });
 
   it('answers the generic body when previews are off', async () => {
@@ -207,7 +211,7 @@ describe('GET /api/push/preview', () => {
     const { status, json } = await preview(alice.cookie, 'origin-2');
 
     expect(status).toBe(200);
-    expect(json).toEqual({ title: 'Bob', body: 'New message', chatId: peer });
+    expect(json).toMatchObject({ title: 'Bob', body: 'New message', chatId: peer });
   });
 
   it('stores the caller’s delivered mark for a DM message it may see', async () => {
@@ -347,7 +351,7 @@ describe('GET /api/push/preview', () => {
     // A real message still previews.
     const answer = await preview(alice.cookie, 'origin-answer');
     expect(answer.status).toBe(200);
-    expect(answer.json).toEqual({ title: 'Bob', body: 'Here is the answer', chatId: peer });
+    expect(answer.json).toMatchObject({ title: 'Bob', body: 'Here is the answer', chatId: peer });
   });
 
   it('answers 401 without a session', async () => {

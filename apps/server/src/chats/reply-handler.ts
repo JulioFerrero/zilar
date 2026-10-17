@@ -52,7 +52,7 @@ async function chatAccessForReply(
 
 // A room JID is on the MUC domain; everything else the access check let
 // through is a DM.
-function kindFor(bare: string, mucDomain: string): 'groupchat' | 'chat' {
+export function kindFor(bare: string, mucDomain: string): 'groupchat' | 'chat' {
   return bare.slice(bare.indexOf('@') + 1) === mucDomain.toLowerCase() ? 'groupchat' : 'chat';
 }
 

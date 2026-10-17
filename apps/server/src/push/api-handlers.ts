@@ -223,6 +223,9 @@ export function createPushGroupLayer(
               title: payload.title,
               body: payload.body,
               chatId: verdict.message.chatJid,
+              // T-1893: the archive id, so a notification's Mark as read can
+              // store this row's mark.
+              archiveId: String(row.timestamp),
             };
           }),
         ),
