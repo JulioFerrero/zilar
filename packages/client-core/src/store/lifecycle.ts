@@ -169,12 +169,14 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
     // the status still says `online`. After a `rebound` (a new session) the
     // resume path below rejoins the groups, as it does today.
     return wakeAndResend(ctx, current).pipe(
-      Effect.andThen(
+      Effect.andThen((outcome) =>
         Effect.gen(function* () {
           setConnectionStatus(ctx, 'online');
           flushOnline(ctx);
           const me = ctx.get().me;
-          if (me !== undefined && me !== null) {
+          // A resumed stream kept the room occupancy and its queued stanzas,
+          // so only a fresh session (or a core without wake) rejoins.
+          if (outcome !== 'resumed' && me !== undefined && me !== null) {
             yield* fromPromise(() =>
               ctx.fx.joinGroups(current, me, {
                 first: ctx.pendingOpenChatId,

@@ -10,6 +10,10 @@ import { flushPending, type HistoryCtx } from './history';
 import { flushOutbox, type SendCtx } from './send';
 import { outboxRebound } from './send/outbox';
 
+/** What `wake()` reported, borrowed from the core's own signature: the
+ * package root exports `XmppCore` but not the outcome type. */
+type WakeOutcome = Awaited<ReturnType<NonNullable<XmppCore['wake']>>>;
+
 /** Runs the pending history open and resends every waiting text. One helper
  * so no path that ends `online` can miss the outbox flush: a text queued
  * while offline (no `stanzaId`) goes out again with the same id, and one
@@ -28,11 +32,16 @@ export function markReboundOutbox(ctx: HistoryCtx): void {
 
 /** Wakes the core and, when it reported a `rebound` (a fresh session), marks
  * the outbox for one resend before the caller flushes it. A `resumed` session
- * carried the queued stanzas, so nothing is marked. */
-export function wakeAndResend(ctx: HistoryCtx, current: XmppCore): Effect.Effect<void, unknown> {
+ * carried the queued stanzas, so nothing is marked. Returns the outcome so the
+ * caller can skip work a resume already kept; a core without `wake` reports
+ * `'unknown'`. */
+export function wakeAndResend(
+  ctx: HistoryCtx,
+  current: XmppCore,
+): Effect.Effect<WakeOutcome | 'unknown', unknown> {
   const wake = current.wake;
   if (wake === undefined) {
-    return fromPromise(() => current.connect());
+    return fromPromise(() => current.connect()).pipe(Effect.as('unknown'));
   }
   return fromPromise(() => wake()).pipe(
     Effect.tap((outcome) =>
@@ -42,6 +51,5 @@ export function wakeAndResend(ctx: HistoryCtx, current: XmppCore): Effect.Effect
         }
       }),
     ),
-    Effect.asVoid,
   );
 }

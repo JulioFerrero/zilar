@@ -62,6 +62,7 @@ interface LifecycleState {
   historyComplete: Record<string, boolean>;
   status: string;
   activeChatId: string | undefined;
+  me?: { id: string };
 }
 
 function lifecycleCtx(
@@ -257,6 +258,41 @@ describe('resume gate (R8)', () => {
     expect(wakes).toBe(1);
     expect(connects).toBe(0);
     expect(fx.setStatus).toHaveBeenCalledWith('online');
+  });
+
+  it('skips the group rejoin when the stream resumed (R8)', async () => {
+    const { ctx, fx } = lifecycleCtx({
+      ports: { flags: { connectRetry: true, reconnectOnResume: true } },
+      state: { status: 'online', me: { id: 'u-me' } },
+    });
+    ctx.started = true;
+    ctx.core = {
+      wake: async () => 'resumed',
+    } as unknown as XmppCore;
+
+    await Effect.runPromise(reconnect(ctx));
+
+    // The resumed stream kept the room occupancy: no round trip per room.
+    expect(fx.joinGroups).not.toHaveBeenCalled();
+    expect(ctx.groupsJoined).toBe(true);
+  });
+
+  it('rejoins the group rooms when the session rebound (R8)', async () => {
+    const { ctx, fx } = lifecycleCtx({
+      ports: { flags: { connectRetry: true, reconnectOnResume: true } },
+      state: { status: 'online', me: { id: 'u-me' } },
+    });
+    ctx.started = true;
+    const core = {
+      wake: async () => 'rebound',
+    } as unknown as XmppCore;
+    ctx.core = core;
+
+    await Effect.runPromise(reconnect(ctx));
+
+    // A fresh session lost the rooms: they are joined once, as before.
+    expect(fx.joinGroups).toHaveBeenCalledTimes(1);
+    expect(fx.joinGroups).toHaveBeenCalledWith(core, { id: 'u-me' }, expect.anything());
   });
 
   it('the core emitting authFailed schedules the connect retry', async () => {
