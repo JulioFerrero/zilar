@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http';
 import { CHAT_LIST_CACHE_KEY } from '@/store/chatListCache';
-import { checkSession } from './sessionGone';
+import { MESSAGE_CACHE_KEY } from '@/store/messageCache';
+import { checkSession, sessionGone, type SessionGoneStorage } from './sessionGone';
 
 vi.mock('./chats', () => ({ getMe: vi.fn() }));
+vi.mock('../auth', () => ({ authClient: { signOut: vi.fn(() => Promise.resolve()) } }));
 
 import { getMe } from './chats';
 
@@ -33,5 +35,22 @@ describe('checkSession (T-1223)', () => {
 
   it('the cache key the adapter clears is the chat-list cache', () => {
     expect(CHAT_LIST_CACHE_KEY).toBe('zilar:chatList');
+  });
+
+  it('a dead session clears the chat list and message caches (T-1909)', async () => {
+    const removed: string[] = [];
+    const storage: SessionGoneStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: (key) => removed.push(key),
+    };
+    const goToLogin = vi.fn();
+
+    sessionGone(goToLogin, storage);
+
+    expect(removed).toContain(CHAT_LIST_CACHE_KEY);
+    expect(removed).toContain(MESSAGE_CACHE_KEY);
+    expect(MESSAGE_CACHE_KEY).toBe('zilar:messages');
+    await vi.waitFor(() => expect(goToLogin).toHaveBeenCalled());
   });
 });

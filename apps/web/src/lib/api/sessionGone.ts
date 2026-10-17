@@ -8,6 +8,7 @@ import { writeStoredDevice } from '../push/deviceStorage';
 import { resetIsServerOwnerCache } from '../useIsServerOwner';
 import type { StorageLike } from '@/store/realStore';
 import { clearChatListCache } from '@/store/chatListCache';
+import { clearMessageCache } from '@/store/messageCache';
 import { ApiError } from './http';
 import { getMe } from './chats';
 
@@ -44,14 +45,16 @@ export type SessionGoneStorage = StorageLike | null;
  * Signs out after `checkSession` answered `gone`, so the user lands on
  * login (T-1223). Runs the persistent half of the `signOutStore` flow
  * (`store/effects/lifecycle.ts:105-118`): the server sign-out, the chat-list
- * cache clear, the push-device clear (so the next account must re-register
+ * and message cache clears, the push-device clear (so the next account must re-register
  * instead of re-enabling the previous user's node, T-1152), and the gate
  * dismissal + server-owner cache resets — then leaves for `/login`. The
  * `<disable/>` stanza itself cannot be sent (the XMPP connection is down),
  * but the local handle must not survive it.
  */
 export const sessionGone = (goToLogin: () => void, storage?: SessionGoneStorage): void => {
-  clearChatListCache(storage === undefined ? defaultSessionGoneStorage() : storage);
+  const target = storage === undefined ? defaultSessionGoneStorage() : storage;
+  clearChatListCache(target);
+  clearMessageCache(target);
   resetIsServerOwnerCache();
   resetHandleGateDismissal();
   try {

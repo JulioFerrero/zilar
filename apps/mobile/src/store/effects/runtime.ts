@@ -1,4 +1,10 @@
-import { makeLifetime, type CoreCtx, type Lifetime, type SendRun } from '@zilar/client-core/store';
+import {
+  makeLifetime,
+  type CoreCtx,
+  type JoinGroupsHooks,
+  type Lifetime,
+  type SendRun,
+} from '@zilar/client-core/store';
 import { Context, Effect, Exit, Fiber, Scope } from 'effect';
 import type { ChatSummary, EditAuthor, MessageStatus, ReplyRef, UiMessage } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
@@ -238,7 +244,7 @@ export interface StoreFx {
   /** Refreshes the open chat's pins now, when its poll is running. */
   refreshActiveChatPins(chatId: string): void;
   restartBoot(): void;
-  joinGroups(current: XmppCore, me: Me): Effect.Effect<void, never, Ports>;
+  joinGroups(current: XmppCore, me: Me, hooks?: JoinGroupsHooks): Effect.Effect<void, never, Ports>;
   loadPreview(current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports>;
 }
 
