@@ -2,6 +2,7 @@ import { Effect } from 'effect';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -257,41 +258,48 @@ function StickerPanelBody({
   onClose,
 }: StickerPanelProps) {
   const insets = useSafeAreaInsets();
-  const { panelStyle, onLayout, close } = useSheetMotion(onClose);
+  const { panelStyle, onLayout, close, dragGesture } = useSheetMotion(onClose);
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
-      <Pressable
-        accessibilityLabel="Close stickers"
-        onPress={close}
-        className="flex-1 justify-end bg-black/40"
-      >
-        <Animated.View className="h-[50%]" onLayout={onLayout} style={panelStyle}>
-          <Pressable
-            onPress={() => {}}
-            accessibilityRole="menu"
-            accessibilityLabel="Stickers"
-            className="flex-1 rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-          >
-            <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-            <Text
-              accessibilityRole="header"
-              className="py-2 text-[17px] font-semibold text-foreground"
+      {/* Gestures do not fire inside an RN `Modal` on Android without a root. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Pressable
+          accessibilityLabel="Close stickers"
+          onPress={close}
+          className="flex-1 justify-end bg-black/40"
+        >
+          <Animated.View className="h-[50%]" onLayout={onLayout} style={panelStyle}>
+            <Pressable
+              onPress={() => {}}
+              accessibilityRole="menu"
+              accessibilityLabel="Stickers"
+              className="flex-1 rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
+              style={{ paddingBottom: Math.max(insets.bottom, 8) }}
             >
-              Stickers
-            </Text>
-            <StickerGrid
-              packs={packs}
-              state={state}
-              recents={recents}
-              activePackId={activePackId}
-              onSelectPack={onSelectPack}
-              onPick={onPick}
-              onRetry={onRetry}
-            />
-          </Pressable>
-        </Animated.View>
-      </Pressable>
+              <GestureDetector gesture={dragGesture}>
+                <View className="py-2">
+                  <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
+                  <Text
+                    accessibilityRole="header"
+                    className="py-2 text-[17px] font-semibold text-foreground"
+                  >
+                    Stickers
+                  </Text>
+                </View>
+              </GestureDetector>
+              <StickerGrid
+                packs={packs}
+                state={state}
+                recents={recents}
+                activePackId={activePackId}
+                onSelectPack={onSelectPack}
+                onPick={onPick}
+                onRetry={onRetry}
+              />
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
