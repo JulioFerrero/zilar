@@ -174,8 +174,6 @@ function GroupInfo() {
     chatReady,
     title: groupTitle,
     memberCount: groupDetail === undefined ? undefined : members.length + groupAis.length,
-    peopleCount: groupDetail === undefined ? undefined : members.length,
-    aisCount: groupDetail === undefined ? undefined : groupAis.length,
     pinsCount: content.pinsCount,
     allowedCount: groupRules.status === 'ready' ? groupRules.rules.length : undefined,
     topics,
@@ -193,8 +191,6 @@ function GroupInfo() {
     onAdd: openMembersWithPicker,
     onMore: () => setMoreOpen(true),
     onOpenMembers: openMembers,
-    onOpenAis: () => setPage('ais'),
-    onOpenLinks: openLinks,
     onOpenSettings: openSettings,
     onLeave: () => setLeaveOpen(true),
     onOpenMedia: content.openMedia,
@@ -216,6 +212,7 @@ function GroupInfo() {
   const membersProps: ComponentProps<typeof MembersPage> = {
     groupId,
     members,
+    ais: groupAis,
     roles: roles.roles,
     me: currentUserId,
     isManager,
@@ -245,8 +242,6 @@ function GroupInfo() {
         page={page}
         onBack={closePage}
         groupId={groupId}
-        ais={groupAis}
-        isManager={isManager}
         rules={groupRules}
         root={rootProps}
         members={membersProps}

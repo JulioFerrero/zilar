@@ -3,8 +3,6 @@ import {
   ChevronLeft,
   Crown,
   Link2,
-  MoreVertical,
-  Shield,
   ShieldCheck,
   ShieldOff,
   UserMinus,
@@ -14,10 +12,10 @@ import { useState } from 'react';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { RoleChips } from '@/components/chat/role-chips';
 import { NewGroupMembers } from '@/components/group/new-group-members';
+import { GroupAisList } from '@/components/group-info/ais-list';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
+import { MembersList } from '@/components/group-info/members-list';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -25,16 +23,12 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
-import type { GroupMember } from '@/lib/chat-api';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import type { GroupAi, GroupMember } from '@/lib/chat-api';
+import { ICON } from '@/lib/colors';
 import type { Contact } from '@/lib/contacts-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { membersWithChips } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import { useChatStore } from '@/store/chat-store-provider';
-
-/** The owner crown from the web `MemberRow` (`#e5b84b`); mobile has no token for it. */
-const OWNER_COLOR = '#e5b84b';
 
 type MemberWriteKind = 'add' | 'remove' | 'transfer' | 'role';
 
@@ -55,6 +49,8 @@ type MemberWrite = {
 type MembersPageProps = {
   groupId: string;
   members: GroupMember[];
+  /** The group's AIs, shown first on the combined page. */
+  ais: GroupAi[];
   /** The fresh custom roles, once loaded, so a member's chips stay right. */
   roles: CustomGroupRole[] | undefined;
   me: string | undefined;
@@ -69,15 +65,17 @@ type MembersPageProps = {
 };
 
 /**
- * The Members page (T-1569), after `WebMembers.dc.html`: a search field, the
- * Add members and Invite with a link rows for managers, one rounded list of
- * members (avatar, name and `@handle`, owner/admin as icons, role tags), a ⋮
- * per removable row and a Roles row at the end for managers. Full screen with
- * the root's back key; the write rules are web's, the server is the enforcer.
+ * The People and AIs page (T-1569, combined in T-1858), after
+ * `PhoneGroup.dc.html:56-61`: the AIs first (with Add AI for managers), then a
+ * People label, the search field, the Add members and Invite with a link rows
+ * for managers, one rounded list of members and a Roles row at the end for
+ * managers. Full screen with the root's back key; the write rules are web's,
+ * the server is the enforcer.
  */
 export function MembersPage({
   groupId,
   members,
+  ais,
   roles,
   me,
   isManager,
@@ -145,9 +143,6 @@ export function MembersPage({
             member.name.toLowerCase().includes(needle) ||
             (member.handle ?? '').toLowerCase().includes(needle),
         );
-  const chipsByUser = new Map(
-    membersWithChips(visible, roles).map((row) => [row.userId, row.chips]),
-  );
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -156,12 +151,20 @@ export function MembersPage({
           <ChevronLeft size={18} color={ICON} />
         </IconButton>
         <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          Members
+          People and AIs
         </Text>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        <View className="px-4 pb-3">
+        <View className="pb-3">
+          <GroupAisList groupId={groupId} ais={ais} isManager={isManager} />
+        </View>
+
+        <View className="gap-2 px-4 pb-3">
+          <View className="flex-row items-center justify-between px-1">
+            <Text className="text-[13px] font-semibold text-muted-foreground">People</Text>
+            <Text className="font-mono text-[13px] text-muted-foreground">{members.length}</Text>
+          </View>
           <SearchField
             value={query}
             onChangeText={setQuery}
@@ -184,56 +187,15 @@ export function MembersPage({
         ) : null}
 
         <View className="px-4">
-          <InfoRowGroup>
-            {visible.map((member) => {
-              const transferable = isOwner && member.userId !== me;
-              const removable = isManager && member.role !== 'owner' && member.userId !== me;
-              return (
-                <View
-                  key={member.userId}
-                  className="min-h-[48px] flex-row items-center gap-3 px-3 py-2"
-                >
-                  <EntityAvatar person={member} size={40} />
-                  <View className="min-w-0 flex-1">
-                    <View className="min-w-0 flex-row items-center gap-1.5">
-                      <Text numberOfLines={1} className="shrink text-[15px] text-foreground">
-                        {member.name}
-                      </Text>
-                      {member.handle === undefined ? null : (
-                        <Text
-                          numberOfLines={1}
-                          className="shrink text-[13px] text-muted-foreground"
-                        >
-                          @{member.handle}
-                        </Text>
-                      )}
-                      {member.role === 'owner' ? (
-                        <View accessibilityRole="image" accessibilityLabel="Owner">
-                          <Crown size={14} color={OWNER_COLOR} />
-                        </View>
-                      ) : null}
-                      {member.role === 'admin' ? (
-                        <View accessibilityRole="image" accessibilityLabel="Admin">
-                          <Shield size={14} color={MUTED_FOREGROUND} />
-                        </View>
-                      ) : null}
-                    </View>
-                    <RoleChips roles={chipsByUser.get(member.userId) ?? []} />
-                  </View>
-                  {transferable || removable ? (
-                    <IconButton
-                      label={`Options for ${member.name}`}
-                      className="h-9 w-9"
-                      disabled={busy}
-                      onPress={() => setMenuFor(member)}
-                    >
-                      <MoreVertical size={16} color={ICON} />
-                    </IconButton>
-                  ) : null}
-                </View>
-              );
-            })}
-          </InfoRowGroup>
+          <MembersList
+            members={visible}
+            roles={roles}
+            me={me}
+            isManager={isManager}
+            isOwner={isOwner}
+            busy={busy}
+            onOpenMenu={setMenuFor}
+          />
         </View>
 
         {isManager ? (

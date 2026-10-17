@@ -1,10 +1,9 @@
 import { isTopicJoined } from '@zilar/chat-core';
-import { palette } from '@zilar/ui-tokens';
 import { BellOff, ChevronRight, Lock, Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { AvatarStack } from '@/components/group-info/avatar-stack';
 import { InfoRowGroup } from '@/components/group-info/info-row';
 import { Button } from '@/components/ui/button';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -20,10 +19,6 @@ import { runInBackground } from '@/lib/effect/run-in-background';
  * the route owns the data and the writes.
  */
 
-/** The 22 px stack circle, its ring and the board's 7 px overlap. */
-const STACK_SIZE = 22;
-const STACK_RING = 2;
-const STACK_OVERLAP = -7;
 const STACK_MAX = 4;
 
 type SectionPerson = { id: string; name: string; avatarUrl?: string };
@@ -58,41 +53,6 @@ type TopicsSectionProps = {
   onNewTopic: () => void;
   onJoinTopic: (chatId: string) => Promise<void>;
 };
-
-/** The overlapping circles: up to four people or AIs, ringed in the row's colour. */
-function Stack({ people }: { people: readonly SectionPerson[] }) {
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      className="flex-row items-center"
-    >
-      {people.map((person, index) => (
-        <View
-          key={person.id}
-          style={{
-            width: STACK_SIZE,
-            height: STACK_SIZE,
-            borderRadius: STACK_SIZE / 2,
-            borderWidth: STACK_RING,
-            borderColor: palette.surface,
-            overflow: 'hidden',
-            marginLeft: index === 0 ? 0 : STACK_OVERLAP,
-          }}
-        >
-          <EntityAvatar
-            person={{
-              id: person.id,
-              name: person.name,
-              ...(person.avatarUrl === undefined ? {} : { avatarUrl: person.avatarUrl }),
-            }}
-            size={STACK_SIZE - STACK_RING * 2}
-          />
-        </View>
-      ))}
-    </View>
-  );
-}
 
 /** The 34 px tile: a lock for a private topic, `#` otherwise. */
 function GlyphTile({ isPrivate }: { isPrivate: boolean }) {
@@ -197,7 +157,7 @@ function YourTopicRow({
         </Text>
       </View>
       {chat.muted ? <BellOff size={15} color={MUTED_FOREGROUND} /> : null}
-      {stack.length > 0 ? <Stack people={stack} /> : null}
+      {stack.length > 0 ? <AvatarStack people={stack} /> : null}
       <ChevronRight size={14} color={MUTED_FOREGROUND} />
     </Pressable>
   );

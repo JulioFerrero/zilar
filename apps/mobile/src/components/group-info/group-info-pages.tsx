@@ -6,13 +6,11 @@ import { MediaSheet } from '@/components/chat/media-sheet';
 import { PinsSheet, type SheetPin } from '@/components/chat/pins-sheet';
 import { openSearchHitEffect } from '@/components/chat/search-jump';
 import { ActivityPage } from '@/components/group-info/activity-page';
-import { AisPage } from '@/components/group-info/ais-page';
 import { AllowedPage, type GroupRulesHandle } from '@/components/group-info/allowed-page';
 import { MembersPage } from '@/components/group-info/members-page';
 import { GroupInfoRoot } from '@/components/group-info/root-page';
 import { SettingsPage } from '@/components/group-info/settings-page';
 import { ToolsPage } from '@/components/group-info/tools-page';
-import type { GroupAi } from '@/lib/chat-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -22,8 +20,7 @@ import { useChatStore } from '@/store/chat-store-provider';
  * media/pins state, so `[id].tsx` stays a composition and under 400 lines.
  */
 
-export type GroupInfoPage =
-  'root' | 'members' | 'ais' | 'tools' | 'activity' | 'allowed' | 'settings';
+export type GroupInfoPage = 'root' | 'members' | 'tools' | 'activity' | 'allowed' | 'settings';
 
 type RootProps = ComponentProps<typeof GroupInfoRoot>;
 type MembersProps = ComponentProps<typeof MembersPage>;
@@ -192,8 +189,6 @@ export function GroupInfoPages({
   page,
   onBack,
   groupId,
-  ais,
-  isManager,
   rules,
   root,
   members,
@@ -202,8 +197,6 @@ export function GroupInfoPages({
   page: GroupInfoPage;
   onBack: () => void;
   groupId: string;
-  ais: GroupAi[];
-  isManager: boolean;
   rules: GroupRulesHandle;
   root: RootProps;
   members: MembersProps;
@@ -214,9 +207,6 @@ export function GroupInfoPages({
   }
   if (page === 'settings') {
     return <SettingsPage {...settings} />;
-  }
-  if (page === 'ais') {
-    return <AisPage groupId={groupId} ais={ais} isManager={isManager} onBack={onBack} />;
   }
   if (page === 'tools') {
     return <ToolsPage groupId={groupId} onBack={onBack} />;

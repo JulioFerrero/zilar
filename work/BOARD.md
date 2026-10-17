@@ -1867,3 +1867,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1854](T-1854-phone-search-results.md) | phone search: compact person row, cleaner message hits | 2026-10-17 |
 | [T-1851](T-1851-web-person-links.md) | web: click a person's avatar or name to open them | 2026-10-17 |
 | [T-1857](T-1857-web-people-and-ais.md) | web Group info: one People and AIs row and page | 2026-10-17 |
+| [T-1858](T-1858-phone-people-and-ais.md) | phone Group info: one People and AIs row and page | 2026-10-17 |

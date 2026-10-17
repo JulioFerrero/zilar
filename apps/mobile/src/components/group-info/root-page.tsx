@@ -1,28 +1,46 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import {
   Activity,
-  Bot,
   ChevronLeft,
+  ChevronRight,
   Image,
-  Link2,
   LogOut,
   Pin,
   Settings,
   ShieldCheck,
-  Users,
   Wrench,
 } from 'lucide-react-native';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { AvatarStack, type StackPerson } from '@/components/group-info/avatar-stack';
 import { InfoKeys } from '@/components/group-info/info-keys';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { TopicsSection } from '@/components/group-info/topics-section';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+
+/** The board's row stack: up to five circles. */
+const STACK_MAX = 5;
+
+const personOfMember = (member: GroupMember): StackPerson => ({
+  id: member.userId,
+  name: member.name,
+  ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+});
+
+const personOfAi = (ai: GroupAi): StackPerson => ({
+  id: ai.aiId,
+  name: ai.name,
+  ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+});
+
+/** The one row's stack: the AIs first, then the people, up to five. */
+const stackOf = (members: readonly GroupMember[], ais: readonly GroupAi[]): StackPerson[] =>
+  [...ais.map(personOfAi), ...members.map(personOfMember)].slice(0, STACK_MAX);
 
 type GroupInfoRootProps = {
   /** The group's own chat row: the General topic, for the picture and Mute. */
@@ -30,12 +48,8 @@ type GroupInfoRootProps = {
   /** Whether that chat row is loaded; until then Mute and Search are disabled. */
   chatReady: boolean;
   title: string;
-  /** People plus AIs; `undefined` while the detail is not loaded (no number). */
+  /** People plus AIs, for the one People and AIs row; `undefined` while not loaded. */
   memberCount: number | undefined;
-  /** People only, for the Members row; `undefined` when not loaded. */
-  peopleCount: number | undefined;
-  /** The group's AIs, for the AIs row; `undefined` when not loaded. */
-  aisCount: number | undefined;
   /** The group chat's pins, for the Pinned messages row; `undefined` when not loaded. */
   pinsCount: number | undefined;
   /** The group's always-allowed rules; `undefined` when not loaded. */
@@ -54,8 +68,6 @@ type GroupInfoRootProps = {
   onAdd: () => void;
   onMore: () => void;
   onOpenMembers: () => void;
-  onOpenAis: () => void;
-  onOpenLinks: () => void;
   onOpenSettings: () => void;
   onLeave: () => void;
   onOpenMedia: () => void;
@@ -78,15 +90,14 @@ const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member
  * row and disables the keys until the group's own chat row is loaded; T-1573
  * adds the Content group (Shared media, Pinned messages, Tools and routines,
  * and Activity and Always allowed for managers); T-1574 shows the Settings row
- * to managers, like web.
+ * to managers, like web; T-1858 folds Members, AIs and Invite links into one
+ * People and AIs row (stack, total, chevron) that opens one page.
  */
 export function GroupInfoRoot({
   groupChatId,
   chatReady,
   title,
   memberCount,
-  peopleCount,
-  aisCount,
   pinsCount,
   allowedCount,
   topics,
@@ -100,8 +111,6 @@ export function GroupInfoRoot({
   onAdd,
   onMore,
   onOpenMembers,
-  onOpenAis,
-  onOpenLinks,
   onOpenSettings,
   onLeave,
   onOpenMedia,
@@ -152,10 +161,24 @@ export function GroupInfoRoot({
         </View>
 
         <View className="gap-3 px-4">
+          {/* T-1858: one People and AIs row, after `PhoneGroup.dc.html:56-61`:
+              the stack (AIs first), the label, the total and a chevron. */}
           <InfoRowGroup>
-            <InfoRow icon={Users} label="Members" count={peopleCount} onPress={onOpenMembers} />
-            <InfoRow icon={Bot} label="AIs" count={aisCount} onPress={onOpenAis} />
-            {isManager ? <InfoRow icon={Link2} label="Invite links" onPress={onOpenLinks} /> : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="People and AIs"
+              onPress={onOpenMembers}
+              className="min-h-[48px] flex-row items-center gap-3 px-3 active:bg-surface-raised"
+            >
+              <AvatarStack people={stackOf(groupMembers, groupAis)} />
+              <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
+                People and AIs
+              </Text>
+              {memberCount === undefined ? null : (
+                <Text className="font-mono text-[13px] text-muted-foreground">{memberCount}</Text>
+              )}
+              <ChevronRight size={14} color={MUTED_FOREGROUND} />
+            </Pressable>
           </InfoRowGroup>
 
           {/* T-1787: Your topics and Other topics, after `PhoneGroup.dc.html:64-107`. */}
