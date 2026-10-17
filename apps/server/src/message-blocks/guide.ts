@@ -107,12 +107,12 @@ export const CARD_SHAPES = [
 
 // The interactive kinds: what each one is for, and the fields it needs. The
 // bounds and the id pattern come from `packages/protocol/src/blocks-choices.ts`;
-// `votes` and `selected` are filled by the server when people answer.
+// `votes`, `selected` and `chosen` are filled by the server when people answer.
 export const INTERACTIVE_RULES = [
   'Use an interactive kind only when people must act. `buttons`, `choice`, `rating` and `form` ask for a decision; the answer comes back to you as a reply that mentions you.',
   '`poll` collects votes and `checklist` collects ticks; everyone sees them and they do not wake you.',
   'Every interactive block and every action, option and field has an `id` (letters, digits, `.` `_` `~` `-`), unique in its block.',
-  'Never send `votes` or `selected`; the server fills them in.',
+  'Never send `votes`, `selected` or `chosen`; the server fills them in.',
   'Interactive kinds work only in a group or topic, never in a direct chat.',
 ].join('\n');
 

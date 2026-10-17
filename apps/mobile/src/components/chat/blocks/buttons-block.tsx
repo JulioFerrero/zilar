@@ -10,6 +10,31 @@ import { cn } from '@/lib/utils';
 
 type Action = ButtonsBlockData['actions'][number];
 
+type Answer = {
+  actionId?: string;
+  label: string;
+  at: Date;
+  by?: string | undefined;
+  mine: boolean;
+};
+
+/** The answered row the server merged in; `undefined` when the card is open. */
+function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
+  const chosen = block.chosen;
+  const action =
+    chosen === undefined ? undefined : block.actions.find((item) => item.id === chosen.actionId);
+  if (chosen === undefined || action === undefined) {
+    return undefined;
+  }
+  return {
+    actionId: action.id,
+    label: action.label,
+    at: new Date(chosen.at),
+    by: chosen.by,
+    mine: false,
+  };
+}
+
 /** The board's `17:41` answer time: a fixed 24-hour clock. */
 function clockTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -18,18 +43,34 @@ function clockTime(date: Date): string {
 /**
  * 13 · BUTTONS (T-1796): the text, then up to four keys — light or dark per the
  * action's `style`. A press answers the card and, once the route succeeds,
- * leaves the board's answered row: a green check, "You chose {label}" and the
- * time. Read-only without a respond context.
+ * leaves the board's answered row: a green check, the chooser's wording and the
+ * time. The recorded `chosen` action reopens the card answered for everyone.
+ * Read-only without a respond context.
  */
 export function ButtonsBlock({ block }: { block: ButtonsBlockData }) {
   const respond = useBlockRespond();
-  const [answered, setAnswered] = useState<{ label: string; at: string }>();
+  const [answered, setAnswered] = useState<Answer | undefined>(() => chosenAnswer(block));
+  const [seenChosen, setSeenChosen] = useState(block.chosen);
+
+  // The room correction fills `chosen` in; a tap made in this view on the same
+  // action keeps the "You chose" wording.
+  if (block.chosen !== seenChosen) {
+    setSeenChosen(block.chosen);
+    const next = chosenAnswer(block);
+    if (next !== undefined) {
+      setAnswered((current) =>
+        current !== undefined && current.actionId === next.actionId
+          ? { ...next, mine: true }
+          : next,
+      );
+    }
+  }
 
   const press = (action: Action): void => {
     if (respond === null || respond.pending || answered !== undefined) {
       return;
     }
-    setAnswered({ label: action.label, at: clockTime(new Date()) });
+    setAnswered({ actionId: action.id, label: action.label, at: new Date(), mine: true });
     respond.submit({
       blockId: block.id,
       value: { actionId: action.id },
@@ -78,10 +119,11 @@ export function ButtonsBlock({ block }: { block: ButtonsBlockData }) {
             <Check size={12} color="#0a0a0a" aria-hidden />
           </View>
           <Text className="flex-1 text-[14px] text-[#a1a1a1]" numberOfLines={2}>
-            You chose <Text className="text-[#ededed]">{answered.label}</Text>
+            {answered.mine ? 'You' : (answered.by ?? 'Someone')} chose{' '}
+            <Text className="text-[#ededed]">{answered.label}</Text>
           </Text>
           <Text className="font-mono text-[12px] text-[#8a8a8a]" style={TABULAR}>
-            {answered.at}
+            {clockTime(answered.at)}
           </Text>
         </View>
       )}

@@ -21,10 +21,36 @@ const KEY_DARK_STYLE = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
 };
 
+type Answer = {
+  actionId?: string;
+  label: string;
+  at: Date;
+  by?: string | undefined;
+  mine: boolean;
+};
+
+/** The answered row the server merged in; `undefined` when the card is open. */
+function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
+  const chosen = block.chosen;
+  const action =
+    chosen === undefined ? undefined : block.actions.find((item) => item.id === chosen.actionId);
+  if (chosen === undefined || action === undefined) {
+    return undefined;
+  }
+  return {
+    actionId: action.id,
+    label: action.label,
+    at: new Date(chosen.at),
+    by: chosen.by,
+    mine: false,
+  };
+}
+
 /**
  * 13 · BUTTONS: the line, then its keys. A press answers with the action id; on
  * success the keys become the answered row (the green tick, the label, the
- * time) and the label is sent as the @AI reply.
+ * time) and the label is sent as the @AI reply. The recorded `chosen` action
+ * reopens the card answered for everyone.
  */
 export function ButtonsBlock({
   block,
@@ -36,16 +62,32 @@ export function ButtonsBlock({
 }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
-  const [answered, setAnswered] = useState<{ label: string; at: Date } | null>(
-    initialAnswer ?? null,
-  );
+  const [answered, setAnswered] = useState<Answer | null>(() => {
+    if (initialAnswer !== undefined) {
+      return { ...initialAnswer, mine: true };
+    }
+    return chosenAnswer(block) ?? null;
+  });
+  const [seenChosen, setSeenChosen] = useState(block.chosen);
   const [busy, setBusy] = useState(false);
+
+  // React's prop-sync pattern: the room correction fills `chosen` in. A tap
+  // made in this view on the same action keeps the "You chose" wording.
+  if (block.chosen !== seenChosen) {
+    setSeenChosen(block.chosen);
+    const next = chosenAnswer(block);
+    if (next !== undefined) {
+      setAnswered((current) =>
+        current !== null && current.actionId === next.actionId ? { ...next, mine: true } : next,
+      );
+    }
+  }
 
   const press = (action: ButtonsBlockData['actions'][number]): void => {
     if (respond === null || busy || answered !== null) {
       return;
     }
-    setAnswered({ label: action.label, at: new Date() });
+    setAnswered({ actionId: action.id, label: action.label, at: new Date(), mine: true });
     setBusy(true);
     void respond.answer(block.id, { actionId: action.id }).then((next) => {
       setBusy(false);
@@ -85,7 +127,8 @@ export function ButtonsBlock({
             <Check className="size-3 text-[#0a0a0a]" strokeWidth={3} aria-hidden="true" />
           </span>
           <span className="min-w-0 flex-1 truncate">
-            You chose <span className="font-medium text-[#ededed]">{answered.label}</span>
+            {answered.mine ? 'You' : (answered.by ?? 'Someone')} chose{' '}
+            <span className="font-medium text-[#ededed]">{answered.label}</span>
           </span>
           <span className="shrink-0 font-mono text-[12px] tabular-nums text-[#8a8a8a]">
             {formatTime(answered.at)}

@@ -1,6 +1,7 @@
 import type {
   Block,
   BlocksData,
+  ButtonsBlock,
   ChecklistBlock,
   ChoiceBlock,
   PollBlock,
@@ -30,6 +31,11 @@ function booleanField(value: unknown, key: string): boolean | undefined {
 function indexField(value: unknown, key: string): number | undefined {
   const field = fieldOf(value, key);
   return typeof field === 'number' && Number.isInteger(field) && field >= 0 ? field : undefined;
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  const field = fieldOf(value, key);
+  return typeof field === 'string' ? field : undefined;
 }
 
 // The latest row of one block, ties going to the later row.
@@ -111,6 +117,27 @@ function applyRating(block: RatingBlock, rows: readonly BlockResponseRow[]): Rat
   return selected === undefined ? block : { ...block, selected };
 }
 
+function applyButtons(
+  block: ButtonsBlock,
+  rows: readonly BlockResponseRow[],
+  nameOf: NameOf,
+): ButtonsBlock {
+  const row = latestRow(rows, block.id);
+  const actionId = row === undefined ? undefined : stringField(row.value, 'actionId');
+  if (row === undefined || actionId === undefined) {
+    return block;
+  }
+  if (!block.actions.some((action) => action.id === actionId)) {
+    return block;
+  }
+  const name = nameOf(row.actorId);
+  const at = row.updatedAt.toISOString();
+  return {
+    ...block,
+    chosen: name === undefined ? { actionId, at } : { actionId, at, by: name },
+  };
+}
+
 function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: NameOf): Block {
   switch (block.kind) {
     case 'checklist':
@@ -121,6 +148,8 @@ function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: Nam
       return applyChoice(block, rows);
     case 'rating':
       return applyRating(block, rows);
+    case 'buttons':
+      return applyButtons(block, rows, nameOf);
     default:
       return block;
   }

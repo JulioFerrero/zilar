@@ -73,6 +73,55 @@ describe('interactive cards', () => {
     expect(() => decodeOrThrow(BlocksDataSchema)(applied)).not.toThrow();
   });
 
+  it('marks a buttons card chosen with the latest action, its actor and the time', async () => {
+    const aiId = await seedAiId();
+    const ana = await seedUser(context, { name: 'Ana' });
+    const data: BlocksData = {
+      fallback: 'Plan the trip',
+      blocks: [
+        {
+          kind: 'buttons',
+          id: 'buttons-1',
+          text: 'When do we leave?',
+          actions: [
+            { id: 'a-1', label: 'Book it', style: 'dark' },
+            { id: 'a-2', label: 'Wait until Monday', style: 'light' },
+          ],
+        },
+      ],
+    };
+    await recordCard(context.db, {
+      originId: 'origin-3',
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      data,
+    });
+
+    await upsertResponse(context.db, {
+      cardId: 'origin-3',
+      blockId: 'buttons-1',
+      itemId: '',
+      actorId: ana,
+      value: { actionId: 'a-2' },
+    });
+
+    const rows = await listResponses(context.db, 'origin-3');
+    expect(rows).toHaveLength(1);
+
+    const applied = applyResponses(data, rows, (id) => (id === ana ? 'Ana' : undefined));
+    const [block] = applied.blocks;
+    if (block?.kind !== 'buttons') {
+      throw new Error('expected a buttons block');
+    }
+    expect(block.chosen).toMatchObject({ actionId: 'a-2', by: 'Ana' });
+    if (block.chosen === undefined) {
+      throw new Error('expected a chosen action');
+    }
+    expect(Number.isNaN(Date.parse(block.chosen.at))).toBe(false);
+
+    expect(() => decodeOrThrow(BlocksDataSchema)(applied)).not.toThrow();
+  });
+
   it('counts a poll per option and totals distinct voters', async () => {
     const aiId = await seedAiId();
     const alice = await seedUser(context, { name: 'Alice' });

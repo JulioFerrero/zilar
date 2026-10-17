@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { IdSchema, struct } from './common';
+import { IdSchema, IsoDateTimeSchema, struct } from './common';
 import { NumberText, ShortText, Text } from './blocks-numbers';
 
 const hasUniqueIds = (ids: readonly string[]): boolean => new Set(ids).size === ids.length;
@@ -32,7 +32,24 @@ export const ButtonsBlockSchema = struct({
       ),
     ),
   ),
-});
+  chosen: Schema.optional(
+    struct({
+      actionId: IdSchema,
+      by: Schema.optional(Text),
+      at: IsoDateTimeSchema,
+    }),
+  ),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((block) => {
+      const chosen = block.chosen;
+      if (chosen === undefined || block.actions.some((action) => action.id === chosen.actionId)) {
+        return undefined;
+      }
+      return 'buttons chosen actionId must name an action';
+    }),
+  ),
+);
 
 export type ButtonsBlock = typeof ButtonsBlockSchema.Type;
 
