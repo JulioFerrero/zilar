@@ -1,8 +1,10 @@
 // effect-plain: moved unchanged from apps/server/src/tools/adapters.ts (size split)
 // T-0966: the `routine.*` adapters and schedule formatting, split out of
 // `tools/adapters.ts` unchanged.
-import type { Schema } from 'effect';
+import { Option, Schema } from 'effect';
+import { BlocksDataSchema } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
+import { findCard } from '../message-blocks/cards';
 import { createPromptRoutine } from '../routines/prompt-routines';
 import { nextRunAfter, type RoutineSchedule } from '../routines/schedule';
 import {
@@ -85,6 +87,45 @@ export function formatNextRun(schedule: RoutineSchedule, at: Date): string {
   }
 }
 
+interface AlertCardArgs {
+  card: string;
+  block: string;
+}
+
+// T-1871: the alert card must be this AI's, in this chat, and hold the named
+// `alert` block. Every failure answers the same message, so a card id from
+// another chat cannot be probed. A `prepareArgs` throw becomes `failed`.
+async function requireOwnAlertCard(
+  state: AdapterState,
+  actionCtx: ActionContext,
+  alertCard: AlertCardArgs,
+): Promise<void> {
+  const row = await findCard(state.db, alertCard.card);
+  const decoded =
+    row === null ? Option.none() : Schema.decodeUnknownOption(BlocksDataSchema)(row.data);
+  const hasBlock =
+    Option.isSome(decoded) &&
+    decoded.value.blocks.some((block) => block.kind === 'alert' && block.id === alertCard.block);
+  if (
+    row === null ||
+    row.aiId !== actionCtx.aiId ||
+    row.groupId !== actionCtx.groupId ||
+    row.topicId !== actionCtx.topicId ||
+    !hasBlock
+  ) {
+    throw new Error('no such alert card');
+  }
+}
+
+// The link stored in the hashed args and passed to the create call.
+function alertCardLink(args: {
+  alert_card?: AlertCardArgs;
+}): { cardId: string; blockId: string } | undefined {
+  return args.alert_card === undefined
+    ? undefined
+    : { cardId: args.alert_card.card, blockId: args.alert_card.block };
+}
+
 export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unknown> {
   return {
     name: 'routine.schedule',
@@ -99,11 +140,19 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
     // so the card lists them and `execute`'s fail-safe still compares equal
     // sets. A missing tool throws, which the gateway answers as `failed`.
     prepareArgs: async (ctx, args) => {
-      const parsed = args as { tool?: string; hosts?: string[]; prompt?: string };
+      const parsed = args as {
+        tool?: string;
+        hosts?: string[];
+        prompt?: string;
+        alert_card?: AlertCardArgs;
+      };
+      const actionCtx = ctx as ActionContext;
+      if (parsed.alert_card !== undefined) {
+        await requireOwnAlertCard(state, actionCtx, parsed.alert_card);
+      }
       if (parsed.prompt !== undefined || parsed.tool === undefined || parsed.hosts !== undefined) {
         return args;
       }
-      const actionCtx = ctx as ActionContext;
       const found = await findToolByName(state, actionCtx, parsed.tool);
       if (!found) {
         throw new Error('no such tool');
@@ -121,17 +170,22 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         schedule: RoutineSchedule;
         hosts: string[];
         prompt?: string;
+        alert_card?: AlertCardArgs;
       };
       const summary = `${parsed.title} · ${describeSchedule(parsed.schedule)}`;
+      const alertNote =
+        parsed.alert_card === undefined
+          ? ''
+          : ' It also links the alert card above, so its switch and threshold drive this routine.';
       if (parsed.prompt !== undefined) {
         return {
           summary,
-          details: `Runs this prompt on that schedule and posts my answer here: "${promptForCard(parsed.prompt)}"`,
+          details: `Runs this prompt on that schedule and posts my answer here: "${promptForCard(parsed.prompt)}"${alertNote}`,
         };
       }
       return {
         summary,
-        details: `Runs tool ${parsed.tool} and posts the result here. It will contact: ${hostsLine(parsed.hosts)}.`,
+        details: `Runs tool ${parsed.tool} and posts the result here. It will contact: ${hostsLine(parsed.hosts)}.${alertNote}`,
       };
     },
     execute: async (ctx, args) => {
@@ -143,7 +197,9 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         hosts: string[];
         input?: unknown;
         prompt?: string;
+        alert_card?: AlertCardArgs;
       };
+      const alertCard = alertCardLink(parsed);
       // T-1737: a second approval for the same title must not make a second
       // routine. Checked before either create path so a retry after an
       // already-approved schedule creates nothing and says so.
@@ -165,6 +221,7 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
               schedule: parsed.schedule,
               prompt: parsed.prompt,
               userId: owner,
+              ...(alertCard === undefined ? {} : { alertCard }),
             },
             state.now(),
             ...(state.audit === undefined ? [] : ([state.audit] as const)),
@@ -215,6 +272,7 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
             ...(parsed.input === undefined ? {} : { input: parsed.input }),
             approvedHosts: parsed.hosts,
             userId: owner,
+            ...(alertCard === undefined ? {} : { alertCard }),
           },
           state.now(),
           ...(state.audit === undefined ? [] : ([state.audit] as const)),

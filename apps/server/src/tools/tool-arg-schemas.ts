@@ -1,7 +1,7 @@
 // T-0966: argument schemas for the tool and routine adapters. Split out of
 // `tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
-import { struct } from '@zilar/protocol';
+import { IdSchema, struct } from '@zilar/protocol';
 import { routineScheduleSchema } from '../routines/schedule';
 import { MAX_ROUTINE_PROMPT_CHARS } from '../routines/schemas';
 import { MAX_ROUTINE_INPUT_BYTES, MAX_ROUTINE_TITLE_CHARS } from '../routines/service';
@@ -95,6 +95,15 @@ const routinePromptSchema = Schema.String.check(
   ),
 );
 
+// T-1871: the alert card an `alert` block drives. Both ids were chosen by the
+// server when it posted the card, so they are plain ids, never model text.
+const alertCardField = Schema.optional(
+  struct({
+    card: IdSchema,
+    block: IdSchema,
+  }),
+);
+
 // The saved-tool form: a tool the routine runs on the schedule. T-1737:
 // `hosts` is optional; when the model leaves it out the adapter binds the
 // saved tool's current hosts in `prepareArgs` before the card is described,
@@ -105,6 +114,7 @@ const routineToolScheduleArgsSchema = struct({
   schedule: routineScheduleSchema,
   hosts: Schema.optional(toolHostsSchema),
   input: Schema.optional(inputField(MAX_ROUTINE_INPUT_BYTES)),
+  alert_card: alertCardField,
 });
 
 // T-1649: the prompt form: a prompt the AI runs itself and answers here.
@@ -112,6 +122,7 @@ export const routinePromptScheduleArgsSchema = struct({
   title: routineTitleSchema,
   schedule: routineScheduleSchema,
   prompt: routinePromptSchema,
+  alert_card: alertCardField,
 });
 
 // T-1649: either form, never both. The two shapes share no required field and

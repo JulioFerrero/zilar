@@ -5,8 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { BlocksData } from '@zilar/protocol';
 import { decodeActionArgs, type ActionAdapter, type ActionContext } from '../actions/registry';
 import type { RoutineRow } from '../db/rows';
+import { recordCard } from '../message-blocks/cards';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { buildToolAdapters } from './adapters';
@@ -18,6 +20,20 @@ const PROMPT_ARGS = {
   title: 'Morning prices',
   schedule: { kind: 'daily', time: '08:00', timezone: 'Europe/Madrid' },
   prompt: 'Post the current BTC, gold and S&P 500 prices with their sources.',
+};
+
+// T-1871: an alert card's block, as the AI read its id from `post_blocks`.
+const ALERT_CARD_DATA: BlocksData = {
+  fallback: 'Spend alert',
+  blocks: [
+    {
+      kind: 'alert',
+      id: 'alert-1',
+      title: 'Spend',
+      field: { label: 'Threshold', value: '500 EUR' },
+      on: true,
+    },
+  ],
 };
 
 function scheduleAdapter(context: TestContext): ActionAdapter<unknown> {
@@ -233,5 +249,54 @@ describe('routine.schedule prompt variant', () => {
     const byId = new Map(rows.map((row) => [row.id, row]));
     expect(byId.get(first)!.deletedAt).not.toBeNull();
     expect(byId.get(second)!.deletedAt).toBeNull();
+  });
+
+  // T-1871: the alert card link is a permission edge: only this AI's card, in
+  // this chat, with that `alert` block, may drive the new routine.
+  it('links only an alert card of this AI in this chat that holds the block', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const other = await seedAi(context, ownerId);
+    await recordCard(context.db, {
+      originId: 'other-card',
+      aiId: other.aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      data: ALERT_CARD_DATA,
+    });
+    const mine = await recordCard(context.db, {
+      originId: 'my-card',
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      data: ALERT_CARD_DATA,
+    });
+    const adapter = scheduleAdapter(context);
+    const prepare = adapter.prepareArgs;
+    if (!prepare) {
+      throw new Error('routine.schedule prepareArgs missing');
+    }
+    const ctx: ActionContext = { aiId, groupId: null, topicId: null, requestId: 'req-alert' };
+    const title = 'Spend alert';
+    const args = { ...PROMPT_ARGS, title };
+
+    await expect(
+      prepare(ctx, { ...args, alert_card: { card: 'other-card', block: 'alert-1' } }),
+    ).rejects.toThrow('no such alert card');
+    await expect(
+      prepare(ctx, { ...args, alert_card: { card: mine.originId, block: 'missing-block' } }),
+    ).rejects.toThrow('no such alert card');
+
+    const prepared = await prepare(ctx, {
+      ...args,
+      alert_card: { card: mine.originId, block: 'alert-1' },
+    });
+    expect(adapter.describe(prepared).details).toContain(
+      'It also links the alert card above, so its switch and threshold drive this routine.',
+    );
+    const result = await adapter.execute(ctx, prepared);
+    expect(result.summary).toContain('Scheduled "Spend alert"');
+    const rows = await routinesOf(context, aiId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.alertCardId).toBe(mine.originId);
+    expect(rows[0]!.alertBlockId).toBe('alert-1');
   });
 });
