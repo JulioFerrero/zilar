@@ -21,6 +21,7 @@ import { createApiClient } from '../effect/api-client';
 import { getSessionToken } from '../session-token';
 import { channelForWake, parseChatKind, type PushChatKind } from './channels';
 import { recordPushReceived } from './last-received';
+import { MESSAGE_CATEGORY, onNotificationAction, registerMessageCategory } from './actions';
 
 /** The task name ejabberd's publish is delivered to; defined and registered below. */
 export const WAKE_TASK = 'zilar-background-notification';
@@ -126,9 +127,17 @@ function post(
   body: string,
   chatId: string,
   chatKind: PushChatKind | undefined,
+  ids?: { messageId: string; archiveId?: string },
 ): Promise<void> {
+  const data: Record<string, string> = { chatId };
+  if (ids !== undefined) {
+    data['messageId'] = ids.messageId;
+    if (ids.archiveId !== undefined) {
+      data['archiveId'] = ids.archiveId;
+    }
+  }
   return schedule({
-    content: { title, body, data: { chatId } },
+    content: { title, body, data, categoryIdentifier: MESSAGE_CATEGORY },
     trigger: { channelId: channelForWake(chatKind).id },
   });
 }
@@ -167,7 +176,7 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     return;
   }
   const client = createApiClient(deps);
-  let preview: { title: string; body: string; chatId: string };
+  let preview: { title: string; body: string; chatId: string; archiveId?: string };
   try {
     preview = await runApi(client.push.preview({ query: { messageId: payload.messageId } }));
   } catch (error) {
@@ -177,7 +186,10 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId, payload.chatKind);
     return;
   }
-  await post(preview.title, preview.body, preview.chatId, payload.chatKind);
+  await post(preview.title, preview.body, preview.chatId, payload.chatKind, {
+    messageId: payload.messageId,
+    ...(preview.archiveId === undefined ? {} : { archiveId: preview.archiveId }),
+  });
 }
 
 /** The chat id a notification was posted for, when it carries one. */
@@ -225,7 +237,11 @@ export async function onWake(payload: WakePayload, deps: WakeDeps = {}): Promise
 if (!MOCK_MODE) {
   TaskManager.defineTask<Notifications.NotificationTaskPayload>(WAKE_TASK, async ({ data }) => {
     if ('actionIdentifier' in data) {
-      return Notifications.BackgroundNotificationTaskResult.NoData; // a tap, routed by tap.ts
+      // A plain tap is routed by `tap.ts`; an action runs here, headless.
+      if (data.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        await onNotificationAction(data);
+      }
+      return Notifications.BackgroundNotificationTaskResult.NoData;
     }
     const wake = parseWake(data.data);
     if (wake !== undefined) {
@@ -233,6 +249,9 @@ if (!MOCK_MODE) {
     }
     return Notifications.BackgroundNotificationTaskResult.NoData;
   });
+
+  // Chat notifications carry Reply and Mark as read (T-1896).
+  void registerMessageCategory();
 
   // Best effort: a failed registration is warned, not thrown.
   void Notifications.registerTaskAsync(WAKE_TASK).catch((error) => {

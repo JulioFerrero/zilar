@@ -4,6 +4,7 @@ import { jsonResponse } from '@/test/wait';
 
 const notifications = vi.hoisted(() => ({
   scheduleNotificationAsync: vi.fn(async () => 'notification-1'),
+  setNotificationCategoryAsync: vi.fn(async () => null),
   registerTaskAsync: vi.fn(async () => null),
   setNotificationHandler: vi.fn(),
   BackgroundNotificationTaskResult: { NewData: 0, NoData: 1, Failed: 2 },
@@ -60,7 +61,12 @@ describe('onWake (T-1143)', () => {
 
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
-      content: { title: 'Ada', body: 'see you there', data: { chatId: 'preview-chat' } },
+      content: {
+        title: 'Ada',
+        body: 'see you there',
+        data: { chatId: 'preview-chat', messageId: 'msg-1' },
+        categoryIdentifier: 'message',
+      },
       trigger: { channelId: 'groups' },
     });
   });
@@ -74,8 +80,37 @@ describe('onWake (T-1143)', () => {
     );
 
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
-      content: { title: 'Ada', body: 'hi', data: { chatId: 'dm-1' } },
+      content: {
+        title: 'Ada',
+        body: 'hi',
+        data: { chatId: 'dm-1', messageId: 'msg-1' },
+        categoryIdentifier: 'message',
+      },
       trigger: { channelId: 'direct-messages' },
+    });
+  });
+
+  it('carries the preview archive id for Mark as read (T-1896)', async () => {
+    const fetchImpl = previewFetch({
+      title: 'Ada',
+      body: 'hi',
+      chatId: 'dm-1',
+      archiveId: '1700000000000',
+    });
+
+    await onWake(
+      { chatId: 'dm-1', messageId: 'msg-1' },
+      { getToken: token, fetchImpl, apiUrl: API_URL },
+    );
+
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      content: {
+        title: 'Ada',
+        body: 'hi',
+        data: { chatId: 'dm-1', messageId: 'msg-1', archiveId: '1700000000000' },
+        categoryIdentifier: 'message',
+      },
+      trigger: { channelId: 'groups' },
     });
   });
 

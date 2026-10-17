@@ -744,10 +744,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 2. D1, card media on the avatar volume;
                 3. share into Zilar (expo-share-intent);
                 4. notification Reply / Mark as read, phone side too.
-              - **v0.2.8:**
-                - the tag is on `3570ee938` (pushed 17:38), which includes T-1885 (topic AI rows open the AI; emulator + web mock checked) and the T-1887 plan;
-                - the "Android release" run 39054502753 is building;
-                - after it: check `assets/app.config` in the APK shows 0.2.8 / 208, then post in Zilar Updates.
+              - **v0.2.8 released at 17:59:**
+                - the tag is on `3570ee938`, and the "Android release" run 39054502753 succeeded;
+                - `zilar-v0.2.8-arm64.apk` (70.7 MB) embeds version 0.2.8 / versionCode 208 (checked with unzip);
+                - posted in Zilar Updates at 19:59 Madrid;
+                - phones on 0.2.6+ get it from the in-app updater.
               - **Live `205047f2a` (17:45):** 0 errors.
                 - T-1889: `POST /api/chats/:jid/reply`; migration 0075 is applied and the `notification_replies` table exists.
                 - T-1890 (D1): `/data/avatars/card-media` exists on the avatar volume. Card media from before 17:45 sat on the container disk and is gone (the three test cards in "cards test" now show grey); new media survives deploys.
