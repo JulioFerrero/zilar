@@ -4,7 +4,9 @@ import { MoreHorizontal } from 'lucide-react';
 import { useState, type RefObject } from 'react';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { MessageActionsMenu } from '../MessageActionsMenu';
+import { EmojiTab } from '../sticker/EmojiTab';
 import { Button } from '../ui/button';
+import { Dialog } from '../ui/dialog';
 import { useToast } from '../ui/toast';
 import { useAlbumMembers } from './AlbumGrid';
 import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
@@ -112,6 +114,9 @@ export function MessageMenu({
   const storeApi = useChatStoreApi();
   const show = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // T-1933: the + key in the reaction row opens the full emoji picker. It stays
+  // mounted outside `open &&` because opening it closes the menu.
+  const [pickerOpen, setPickerOpen] = useState(false);
   const members = useAlbumMembers();
   // T-1273: on an album bubble the menu acts on every photo. The list row hands
   // the grid its grouped members; with two or more, Delete loops over all of
@@ -175,6 +180,10 @@ export function MessageMenu({
           onReact={(emoji) => {
             onClose();
             onReact(emoji);
+          }}
+          onMoreReactions={() => {
+            onClose();
+            setPickerOpen(true);
           }}
           onReply={() => {
             onClose();
@@ -272,6 +281,14 @@ export function MessageMenu({
           }}
         />
       )}
+      <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} title="React" size="sm">
+        <EmojiTab
+          onEmoji={(emoji) => {
+            setPickerOpen(false);
+            onReact(emoji);
+          }}
+        />
+      </Dialog>
     </>
   );
 }

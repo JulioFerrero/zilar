@@ -7,6 +7,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Plus,
   Reply,
   Trash2,
 } from 'lucide-react';
@@ -46,6 +47,8 @@ export interface MessageActionsMenuProps {
   onPin: () => void;
   onUnpin: () => void;
   onReact: (emoji: string) => void;
+  /** Opens the full emoji picker (T-1933). The + key is drawn only when given. */
+  onMoreReactions?: (() => void) | undefined;
   onClose: () => void;
   /** Which bubble edge the menu hangs from; incoming bubbles align left. */
   align?: 'left' | 'right';
@@ -78,6 +81,7 @@ export function MessageActionsMenu({
   onPin,
   onUnpin,
   onReact,
+  onMoreReactions,
   onClose,
   align = 'right',
   point,
@@ -119,6 +123,16 @@ export function MessageActionsMenu({
             <span aria-hidden="true">{emoji}</span>
           </MenuEntry>
         ))}
+        {onMoreReactions !== undefined && (
+          <MenuEntry
+            ariaLabel="More reactions"
+            disabled={!canReact}
+            onSelect={onMoreReactions}
+            className="key-icon flex size-7 items-center justify-center rounded-full text-muted-foreground"
+          >
+            <Plus className="size-4" aria-hidden="true" />
+          </MenuEntry>
+        )}
       </div>
       <MenuItem onSelect={onReply} icon={Reply}>
         Reply
