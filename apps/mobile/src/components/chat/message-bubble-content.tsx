@@ -195,6 +195,16 @@ export function MessageBubbleContent({
                 <BubbleMeta message={message} outgoing={outgoing} color={metaColor} />
               ) : undefined
             }
+            respond={
+              outgoing
+                ? undefined
+                : {
+                    messageId: message.id,
+                    chatId: message.chatId,
+                    aiName: message.senderName,
+                    aiJid: message.senderId,
+                  }
+            }
           />
           {/* T-1619: the progress card stands alone, so it shows no time or
               "edited" row; a blocks card shows its time inside the card. Approval

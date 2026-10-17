@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { BlockCard } from '@/components/chat/blocks/block-card';
 import { Text } from '@/components/ui/text';
+import { ChoiceBlockExamples } from '@/mock/dev-choice-blocks';
 
 type Example = { label: string; data: BlocksData; time: string };
 
@@ -401,6 +402,7 @@ function BlocksCatalog() {
               <BlockCard data={example.data} footer={<Time>{example.time}</Time>} />
             </View>
           ))}
+          <ChoiceBlockExamples />
         </View>
       </ScrollView>
     </SafeAreaView>

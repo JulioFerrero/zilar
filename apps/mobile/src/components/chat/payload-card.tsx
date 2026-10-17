@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { ApprovalCard } from '@/components/chat/approval-card';
+import { type BlockRespondTarget } from '@/components/chat/blocks/block-respond';
 import { BlockCard } from '@/components/chat/blocks/block-card';
 import { ProgressCard } from '@/components/chat/progress-card';
 import { QuestionCard } from '@/components/chat/question-card';
@@ -38,7 +39,16 @@ function ProgressCardSurface({ data }: { data: Progress }) {
 }
 
 /** Renders the AI card payloads from `@zilar/protocol`. */
-export function PayloadCard({ card, footer }: { card: Payload; footer?: ReactNode }) {
+export function PayloadCard({
+  card,
+  footer,
+  respond,
+}: {
+  card: Payload;
+  footer?: ReactNode;
+  /** T-1796: who answers a `blocks` card; absent on own cards. */
+  respond?: BlockRespondTarget;
+}) {
   switch (card.type) {
     case 'progress':
       return <ProgressCardSurface data={card.data} />;
@@ -47,7 +57,7 @@ export function PayloadCard({ card, footer }: { card: Payload; footer?: ReactNod
     case 'question':
       return <QuestionCard question={card.data} />;
     case 'blocks':
-      return <BlockCard data={card.data} footer={footer} />;
+      return <BlockCard data={card.data} footer={footer} respond={respond} />;
     default:
       return null;
   }
