@@ -1794,3 +1794,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1783](T-1783-web-topic-mentions.md) | web @ list filtered to the topic, isn't-in row | 2026-10-17 |
 | [T-1779](T-1779-web-topic-header.md) | web topic header with the people stack | 2026-10-17 |
 | [T-1790](T-1790-block-cards-db.md) | card storage: block_cards, responses, applyResponses | 2026-10-17 |
+| [T-1788](T-1788-phone-topic-mentions.md) | phone @ list filtered to the topic, isn't-in row | 2026-10-17 |

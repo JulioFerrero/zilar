@@ -1,11 +1,13 @@
 // effect-plain: moved unchanged from apps/mobile/src/app/chat/[id].tsx (size split)
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { View } from 'react-native';
 
 import { AiStatusLine } from '@/components/chat/ai-status-line';
 import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { systemConfirmsCopy } from '@/components/chat/chat-notice-context';
 import { Composer } from '@/components/chat/composer';
 import { SelectionBar } from '@/components/chat/selection-bar';
+import { AddToTopicRow, type TopicNotIn } from '@/components/chat/topic-not-in-row';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
 import { API_URL } from '@/lib/auth';
@@ -14,7 +16,12 @@ import { createGifsApi, type GifsApi } from '@/lib/gifs-api';
 import { mockDemoAttachments } from '@/mock/attachments';
 import { mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
-import { isMentionOfMe, type MentionMember, type UiMention } from '@zilar/chat-core';
+import {
+  isMentionOfMe,
+  mentionInTopic,
+  type MentionMember,
+  type UiMention,
+} from '@zilar/chat-core';
 import type { ChatSummary } from '@/lib/types';
 import type { SendAttachmentOptions, SendTextOptions, SendVoiceRecording } from '@/store/types';
 
@@ -39,6 +46,12 @@ function createMockGifs(): GifsApi {
   throw new Error('The mock API is not part of this build');
 }
 
+/** The localpart of a jid, lowercased (`Ana@x` → `ana`). */
+function jidLocalpart(jid: string): string {
+  const at = jid.indexOf('@');
+  return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
+}
+
 /**
  * The bottom bar: the selection bar while forwarding, otherwise the full
  * composer or the channel feed bar. One copy replaces the three composer
@@ -52,6 +65,8 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
   const sendSticker = useChatStore((state) => state.sendSticker);
   const sendTyping = useChatStore((state) => state.sendTyping);
   const stopTyping = useChatStore((state) => state.stopTyping);
+  const addTopicAi = useChatStore((state) => state.addTopicAi);
+  const addTopicMember = useChatStore((state) => state.addTopicMember);
   // The `@` picker members (T-0227, like web): group and topic chats read
   // the group's members and AIs, minus me; DMs pass nothing (no picker).
   // Scalar deps only — `chat` itself is still loading above this line.
@@ -73,16 +88,29 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     mentionGroupId === undefined ? undefined : state.groupDetail(mentionGroupId),
   );
   const meJid = me?.jid ?? undefined;
+  const chatTopic = chat.topic;
   const mentionMembers: MentionMember[] | undefined = useMemo(() => {
     if (mentionChatKind !== 'group') {
       return undefined;
     }
     void groupDetailForMentions;
-    return groupMembers(mentionChatId).filter((member) => !isMentionOfMe(member.jid, meJid));
+    const members = groupMembers(mentionChatId).filter(
+      (member) => !isMentionOfMe(member.jid, meJid),
+    );
+    // T-1788: in a topic, `@` offers only its people and AIs (the phone twin
+    // of web's T-1783 filter). Other chats stay unfiltered.
+    if (chatTopic === undefined) {
+      return members;
+    }
+    const aiIdByJid = new Map<string, string>();
+    for (const ai of groupDetailForMentions?.ais ?? []) {
+      aiIdByJid.set(ai.jid, ai.aiId);
+    }
+    return members.filter((member) => mentionInTopic(chatTopic, member.jid, aiIdByJid));
     // The memo reads the detail value above only to subscribe to its async
     // loads: `groupMembers` resolves from the same cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mentionChatKind, mentionChatId, groupMembers, groupDetailForMentions, meJid]);
+  }, [mentionChatKind, mentionChatId, groupMembers, groupDetailForMentions, meJid, chatTopic]);
   // Stickers: `useStickersApi` returns the mock-backed adapter in mock mode
   // and the real one otherwise, so the panel loads the same way in both.
   const { api: stickersApi, mock: mockActive } = useStickersApi();
@@ -99,6 +127,65 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
   // GIFs: the shared mock backend serves trending and search, so mock mode
   // gets the mock-backed client; real mode falls back to the panel's own.
   const gifsApi = useMemo(() => (mockActive ? createMockGifs() : undefined), [mockActive]);
+
+  // T-1788: the mentions of people outside the open topic that the last send
+  // put on screen (the phone twin of web's T-1783 list). Cleared on a chat
+  // switch and replaced on the next send.
+  const [notInTopic, setNotInTopic] = useState<TopicNotIn[]>([]);
+  useEffect(() => {
+    setNotInTopic([]);
+  }, [chat.id]);
+
+  // T-1788: after a send in a topic, collect the mentions of people and AIs
+  // who are not in it, deduped by jid, with the name and picture from the
+  // group detail. A General topic, a non-topic chat and an older server whose
+  // `memberIds` is missing produce no rows.
+  const surfaceNotInTopic = (sent: readonly UiMention[]): void => {
+    if (chatTopic === undefined || sent.length === 0) {
+      setNotInTopic([]);
+      return;
+    }
+    const aiIdByJid = new Map<string, string>();
+    for (const ai of groupDetailForMentions?.ais ?? []) {
+      aiIdByJid.set(ai.jid, ai.aiId);
+    }
+    const missing: TopicNotIn[] = [];
+    const seen = new Set<string>();
+    for (const mention of sent) {
+      if (seen.has(mention.jid) || mentionInTopic(chatTopic, mention.jid, aiIdByJid)) {
+        continue;
+      }
+      seen.add(mention.jid);
+      const aiId = aiIdByJid.get(mention.jid);
+      if (aiId !== undefined) {
+        const ai = groupDetailForMentions?.ais.find((entry) => entry.aiId === aiId);
+        missing.push({
+          jid: mention.jid,
+          name: mention.name,
+          kind: 'ai',
+          id: aiId,
+          ...(ai?.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+        });
+        continue;
+      }
+      const member = groupDetailForMentions?.members.find(
+        (entry) => entry.userId.toLowerCase() === jidLocalpart(mention.jid),
+      );
+      missing.push({
+        jid: mention.jid,
+        name: mention.name,
+        kind: 'person',
+        id: member?.userId ?? jidLocalpart(mention.jid),
+        ...(member?.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+      });
+    }
+    setNotInTopic(missing);
+  };
+
+  // T-1788: the Add key's call for one entry; its group half is added first on
+  // the server (T-1769). The row drops itself through `onAdded` on success.
+  const addToTopic = (entry: TopicNotIn): Promise<void> =>
+    entry.kind === 'ai' ? addTopicAi(chat.id, entry.id) : addTopicMember(chat.id, entry.id);
 
   const sendAttachmentNow = (file: PickedFile, options?: SendAttachmentOptions) => {
     sendAttachment(chat.id, file, options);
@@ -123,6 +210,7 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
             ...(mentions === undefined || mentions.length === 0 ? {} : { mentions }),
           },
     );
+    surfaceNotInTopic(mentions ?? []);
     // The receiver clears the line on the message itself; the paused stanza is
     // the backstop for a slow echo or another device.
     stopTyping(chat.id);
@@ -159,6 +247,22 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
       ) : variant === 'composer' ? (
         <>
           <AiStatusLine chat={chat} />
+          {notInTopic.length > 0 ? (
+            <View className="mb-2 flex-col items-center gap-1.5 px-3">
+              {notInTopic.map((entry) => (
+                <AddToTopicRow
+                  key={entry.jid}
+                  name={entry.name}
+                  avatarUrl={entry.avatarUrl}
+                  topicTitle={chat.title}
+                  add={() => addToTopic(entry)}
+                  onAdded={() =>
+                    setNotInTopic((previous) => previous.filter((item) => item.jid !== entry.jid))
+                  }
+                />
+              ))}
+            </View>
+          ) : null}
           <Composer
             chatKey={chat.id}
             title={chat.title}
