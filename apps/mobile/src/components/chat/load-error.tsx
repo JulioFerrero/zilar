@@ -53,8 +53,8 @@ export function LoadError({ message, onRetry, className, style }: LoadErrorProps
 /** A thin inline bar over data that is still on screen, with a small Retry. */
 export function LoadErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <View className="flex-row items-center justify-between gap-3 border-b border-divider px-3 py-2">
-      <Text className="flex-1 text-[13px] text-muted-foreground">{message}</Text>
+    <View className="flex-row items-center gap-2 rounded-full border border-divider bg-surface-raised py-1 pr-1 pl-3">
+      <Text className="text-[13px] text-muted-foreground">{message}</Text>
       <RetryButton onPress={onRetry} className="h-8 px-3" />
     </View>
   );

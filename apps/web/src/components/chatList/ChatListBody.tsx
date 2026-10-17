@@ -80,27 +80,29 @@ export function ChatListBody({
       ) : (
         <>
           {(chatsState === 'error' || retrying) && (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className="text-[13px] text-muted-foreground">
-                {retrying ? 'Retrying…' : "Couldn't load chats"}
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-full"
-                disabled={retrying}
-                aria-busy={retrying || undefined}
-                onClick={retryChats}
-              >
-                {retrying && (
-                  <Loader2
-                    className="size-3.5 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                )}
-                {retrying ? 'Retrying…' : 'Retry'}
-              </Button>
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
+              <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-surface-raised py-1 pr-1 pl-3 shadow-sm">
+                <p role="status" className="text-[13px] text-muted-foreground">
+                  {retrying ? 'Retrying…' : "Couldn't load chats"}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={retrying}
+                  aria-busy={retrying || undefined}
+                  onClick={retryChats}
+                >
+                  {retrying && (
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {retrying ? 'Retrying…' : 'Retry'}
+                </Button>
+              </div>
             </div>
           )}
           {/* WUX-19: pending incoming contact requests show as a row at the

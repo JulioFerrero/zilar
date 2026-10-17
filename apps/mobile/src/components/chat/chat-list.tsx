@@ -109,15 +109,25 @@ export function ChatList({
             </View>
           </View>
         ) : null}
-        {swipeError !== '' ? (
-          <View className="border-b border-divider px-3 py-1">
-            <Text accessibilityLiveRegion="polite" className="text-center text-[12px] text-danger">
-              {swipeError}
-            </Text>
+        {swipeError !== '' || (chatsLoad === 'error' && chatsCount > 0) ? (
+          <View
+            pointerEvents="box-none"
+            className="absolute bottom-3 left-0 right-0 z-10 items-center gap-2 px-3"
+          >
+            {swipeError !== '' ? (
+              <View className="rounded-full border border-divider bg-surface-raised px-3 py-1">
+                <Text
+                  accessibilityLiveRegion="polite"
+                  className="text-center text-[12px] text-danger"
+                >
+                  {swipeError}
+                </Text>
+              </View>
+            ) : null}
+            {chatsLoad === 'error' && chatsCount > 0 ? (
+              <LoadErrorBanner message="Could not load chats. Try again." onRetry={onRetry} />
+            ) : null}
           </View>
-        ) : null}
-        {chatsLoad === 'error' && chatsCount > 0 ? (
-          <LoadErrorBanner message="Could not load chats. Try again." onRetry={onRetry} />
         ) : null}
         <FolderPager
           count={folders.length + 1}
