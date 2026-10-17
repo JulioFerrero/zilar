@@ -132,10 +132,12 @@ export function TopicPeopleLine({
   chat,
   groupTitle,
   names,
+  onOpen,
 }: {
   chat: ChatSummary;
   groupTitle: string | undefined;
   names: readonly string[];
+  onOpen?: (() => void) | undefined;
 }) {
   const info = useChatSelector((state) => state.groupInfo(chat.id));
   const writing = writingLabel(names);
@@ -157,13 +159,30 @@ export function TopicPeopleLine({
   const count = topicCount(chat, info);
   const label =
     groupTitle === undefined || groupTitle === '' ? `${count}` : `${groupTitle} · ${count}`;
-  return (
-    <a
-      href="#in-this-topic"
-      className="flex h-5 min-w-0 items-center gap-1.5 text-[12px] leading-4 text-muted-foreground"
-    >
+  const className =
+    'flex h-5 min-w-0 items-center gap-1.5 text-[12px] leading-4 text-muted-foreground';
+  const content = (
+    <>
       <AvatarStack people={linePeople(chat, info).slice(0, STACK_MAX)} />
       <span className="truncate">{label}</span>
-    </a>
+    </>
+  );
+  // T-1852: with no handler the line stays a plain span; the header passes one
+  // so tapping the people opens the topic panel.
+  if (onOpen === undefined) {
+    return <span className={className}>{content}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="People in this topic"
+      className={cn(
+        className,
+        'rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+      )}
+    >
+      {content}
+    </button>
   );
 }

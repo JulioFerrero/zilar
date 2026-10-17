@@ -2,10 +2,8 @@ import type { ChatSummary } from '@zilar/chat-core';
 import {
   ArrowLeft,
   Bookmark,
-  Globe,
   Images,
   Info,
-  Lock,
   MoreVertical,
   Palette,
   Search,
@@ -14,14 +12,12 @@ import {
 import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AiBadge } from './AiBadge';
 import { EntityAvatar } from './EntityAvatar';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
+import { ChatHeaderSubtitle, ChatHeaderTitle } from './ChatHeaderLines';
 import { ConfirmDialog } from './ConfirmDialog';
-import { TypingDots } from './TypingDots';
 import { AisHereKey } from './topic/AisHereKey';
-import { TopicPeopleLine } from './topic/TopicPeopleLine';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
@@ -143,33 +139,22 @@ export function ChatHeader({
   // A topic's Archive entry needs a manager; the entry hides until the
   // group detail loads and the role is known (see `TopicArchiveItem`).
 
-  const line1 = (
-    <div className="flex items-center gap-1.5">
-      <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
-      {chat.isAI && <AiBadge />}
-      {chat.visibility === 'public' && (
-        <Globe role="img" aria-label="Public" className="size-3.5 text-muted-foreground" />
-      )}
-      {isTopic && chat.topic?.visibility === 'private' && (
-        <Lock role="img" aria-label="Private" className="size-3.5 text-muted-foreground" />
-      )}
-    </div>
+  const line1 = <ChatHeaderTitle chat={chat} isTopic={isTopic} />;
+  // T-1852: the second line is its own button (a topic's people line), so it
+  // stays a sibling of the panel button instead of nesting inside it.
+  const line2 = (
+    <ChatHeaderSubtitle
+      chat={chat}
+      isTopic={isTopic}
+      names={names}
+      groupTitle={groupTitle}
+      onOpen={openPanel}
+      connection={connection}
+      aiLine={aiLine}
+      subtitle={subtitle}
+      showTypingDots={(working || typing !== undefined || aiLine !== undefined) && !writing}
+    />
   );
-  // T-1779 (W1): a topic's second line swaps the old subtitle for the people
-  // stack and, while someone writes, the writers with the pulsing dot. The
-  // connection line and an AI status line win, exactly as before.
-  const line2 =
-    isTopic && connection === undefined && aiLine === undefined ? (
-      <TopicPeopleLine chat={chat} groupTitle={groupTitle} names={names} />
-    ) : (
-      <div
-        role="status"
-        className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
-      >
-        <span className="truncate">{subtitle}</span>
-        {(working || typing !== undefined || aiLine !== undefined) && !writing && <TypingDots />}
-      </div>
-    );
 
   // On narrow screens the in-chat search bar replaces the header entirely
   // (WUX-34); ChatView owns that state so the contact panel can start the same
@@ -179,10 +164,22 @@ export function ChatHeader({
       <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
         <ArrowLeft className="size-5" aria-hidden="true" />
       </IconButton>
-      <EntityAvatar chat={chat} size={36} online={chat.online === true} ai={chat.isAI} />
+      {openPanel === undefined ? (
+        <EntityAvatar chat={chat} size={36} online={chat.online === true} ai={chat.isAI} />
+      ) : (
+        <button
+          type="button"
+          onClick={openPanel}
+          tabIndex={-1}
+          aria-hidden="true"
+          className="shrink-0 rounded-full"
+        >
+          <EntityAvatar chat={chat} size={36} online={chat.online === true} ai={chat.isAI} />
+        </button>
+      )}
       {openPanel !== undefined ? (
         isTopic ? (
-          // T-1779: the second line is its own link to "In this topic", so it
+          // T-1852: the second line opens the same panel on its own, so it
           // stays a sibling of the panel button instead of nesting inside it.
           <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
             <button
