@@ -95,3 +95,16 @@ export function mediaUrl(
   }
   return `${apiOrigin}/api/files?chat=${encodeURIComponent(chatId)}&url=${encodeURIComponent(url)}`;
 }
+
+/**
+ * The URL of a card media item (T-1868), the native twin of web's card media
+ * source: `GET /api/card-media/:id` (T-1853) serves an uploaded image or file
+ * to a session that can see the card. The block carries an id, never a URL, so
+ * a card cannot point the app at another host. Undefined without an API URL.
+ */
+export function cardMediaUrl(id: string, apiUrl: string | undefined = API_URL): string | undefined {
+  const apiOrigin = apiUrl === undefined ? undefined : parseUrl(apiUrl)?.origin;
+  return apiOrigin === undefined
+    ? undefined
+    : `${apiOrigin}/api/card-media/${encodeURIComponent(id)}`;
+}

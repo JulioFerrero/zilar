@@ -99,9 +99,11 @@ function BlockBody({ block, showHeading }: { block: Block; showHeading: boolean 
     case 'timeline':
     case 'countdown':
       return renderProgressBlock(block, showHeading);
+    case 'images':
     case 'place':
     case 'weather':
     case 'event':
+    case 'file':
       return renderContentBlock(block, showHeading);
     case 'buttons':
     case 'poll':
@@ -212,6 +214,9 @@ export function BlockCard({
   // no footer row underneath. Every other card keeps the stacked layout.
   const only = blocks.length === 1 ? blocks[0] : undefined;
   const compactCallout = !hasHeader && only?.kind === 'callout' ? only : undefined;
+  // The board (PhoneContent 20) draws a card holding only photos with a 6 px
+  // side padding and a 6 px top, so the grid sits close to the card's edge.
+  const tightImages = only?.kind === 'images';
   const errorLine = failed ? (
     <Text accessibilityRole="alert" className="mt-1 text-[13px] font-semibold text-danger">
       Could not send. Try again.
@@ -233,7 +238,13 @@ export function BlockCard({
         </>
       ) : (
         <>
-          <View className="w-full min-w-[260px] max-w-[340px] gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px]">
+          <View
+            className={
+              tightImages
+                ? 'w-full min-w-[260px] max-w-[340px] gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[6px] pt-[6px] pb-[8px]'
+                : 'w-full min-w-[260px] max-w-[340px] gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px]'
+            }
+          >
             <TextClassContext.Provider value="text-[15px] leading-[21px]">
               {hasHeader ? (
                 <BlockHeader icon={shown.icon} title={shown.title} meta={shown.meta} />
@@ -250,7 +261,9 @@ export function BlockCard({
               )}
             </TextClassContext.Provider>
             {/* The footer stays outside the body text context: its time keeps its own size. */}
-            {footer === undefined ? null : <View className="items-end">{footer}</View>}
+            {footer === undefined ? null : (
+              <View className={tightImages ? 'items-end pr-[8px]' : 'items-end'}>{footer}</View>
+            )}
           </View>
           {errorLine}
         </>

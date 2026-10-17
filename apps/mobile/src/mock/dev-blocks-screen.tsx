@@ -12,6 +12,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { BlockCard } from '@/components/chat/blocks/block-card';
 import { Text } from '@/components/ui/text';
 import { ChoiceBlockExamples } from '@/mock/dev-choice-blocks';
+import { MediaBlockExamples } from '@/mock/dev-media-blocks';
 
 type Example = { label: string; data: BlocksData; time: string };
 
@@ -403,6 +404,7 @@ function BlocksCatalog() {
             </View>
           ))}
           <ChoiceBlockExamples />
+          <MediaBlockExamples />
         </View>
       </ScrollView>
     </SafeAreaView>
