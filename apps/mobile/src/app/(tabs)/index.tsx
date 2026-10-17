@@ -15,6 +15,7 @@ import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { connectionLabel } from '@/lib/connection';
 import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
+import { useDelayed } from '@/lib/use-delayed';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatsScreen() {
@@ -38,7 +39,7 @@ function ChatsList() {
   const setActiveFolder = useChatStore((state) => state.setActiveFolder);
   const folders = useChatStore((state) => state.folders);
   const status = useChatStore((state) => state.status);
-  const connection = connectionLabel(status);
+  const connection = useDelayed(connectionLabel(status), 1500);
   const me = useChatStore((state) => state.me);
   const [searchOpen, setSearchOpen] = useState(false);
   // Typing `@handle` looks the person up above the other results (T-0193):

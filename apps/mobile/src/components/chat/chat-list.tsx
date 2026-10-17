@@ -12,8 +12,8 @@ import type { LoadState } from '@/store/types';
 
 /**
  * The chats list body (T-0112, T-0135): the folder tabs over a horizontal
- * pager, the connection line, the error banners, and the Archived entry inside
- * each page. The screen owns the load, search and refresh state. T-1310: the
+ * pager, the connection pill floating over the pager, the error banners, and
+ * the Archived entry inside each page. The screen owns the load, search and refresh state. T-1310: the
  * pager (gesture-handler + reanimated) slides between the folders and the tabs
  * follow it; only the visible page and its neighbours render. The rows inside
  * the pager are plain: while the folder tabs are up the pager owns horizontal
@@ -99,30 +99,36 @@ export function ChatList({
         progress={progress}
         onSelect={onSelectFolder}
       />
-      {connection !== undefined ? (
-        <View className="border-b border-divider px-3 py-1">
-          <Text className="text-center text-[12px] text-muted-foreground">{connection}</Text>
-        </View>
-      ) : null}
-      {swipeError !== '' ? (
-        <View className="border-b border-divider px-3 py-1">
-          <Text accessibilityLiveRegion="polite" className="text-center text-[12px] text-danger">
-            {swipeError}
-          </Text>
-        </View>
-      ) : null}
-      {chatsLoad === 'error' && chatsCount > 0 ? (
-        <LoadErrorBanner message="Could not load chats. Try again." onRetry={onRetry} />
-      ) : null}
-      <FolderPager
-        count={folders.length + 1}
-        index={index}
-        progress={progress}
-        onIndexChange={(page) =>
-          onSelectFolder(page === 0 ? 'all' : (folders[page - 1]?.id ?? 'all'))
-        }
-        renderPage={renderPage}
-      />
+      <View className="flex-1">
+        {connection !== undefined ? (
+          <View pointerEvents="none" className="absolute left-0 right-0 top-2 z-10 items-center">
+            <View className="rounded-full border border-divider bg-surface-raised px-3 py-1">
+              <Text accessibilityLiveRegion="polite" className="text-[12px] text-muted-foreground">
+                {connection}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {swipeError !== '' ? (
+          <View className="border-b border-divider px-3 py-1">
+            <Text accessibilityLiveRegion="polite" className="text-center text-[12px] text-danger">
+              {swipeError}
+            </Text>
+          </View>
+        ) : null}
+        {chatsLoad === 'error' && chatsCount > 0 ? (
+          <LoadErrorBanner message="Could not load chats. Try again." onRetry={onRetry} />
+        ) : null}
+        <FolderPager
+          count={folders.length + 1}
+          index={index}
+          progress={progress}
+          onIndexChange={(page) =>
+            onSelectFolder(page === 0 ? 'all' : (folders[page - 1]?.id ?? 'all'))
+          }
+          renderPage={renderPage}
+        />
+      </View>
     </>
   );
 }

@@ -24,6 +24,7 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { typingLabel } from '@/lib/format';
 import type { ChatSummary } from '@/lib/types';
+import { useDelayed } from '@/lib/use-delayed';
 import { useChatStore } from '@/store/chat-store-provider';
 
 /**
@@ -114,7 +115,8 @@ export function ChatHeader({
   const writing = chat.isAI && (typing !== undefined || hasDraft);
   // T-1192 (MUX-15): while the connection is not online the status line wins
   // over the subtitle and the typing hint, the way the chat list shows it.
-  const connection = connectionLabel(status);
+  // T-1898: it waits out the delay too, so a quick reconnect never flashes.
+  const connection = useDelayed(connectionLabel(status), 1500);
   // T-1406: while the AI carries a status it reads next to the dots, e.g.
   // "Searching the web…"; with no status the line keeps the plain dots.
   const aiLine = aiStatusText === undefined ? undefined : `${aiStatusText}…`;

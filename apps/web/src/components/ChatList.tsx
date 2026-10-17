@@ -154,32 +154,40 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           </div>
         </>
       )}
-      {connection !== undefined && (
-        <div className="shrink-0 border-b border-border px-3 py-1 text-center text-[12px] text-muted-foreground">
-          {connection}
-        </div>
-      )}
       {!isWide && <FolderTabs />}
-      <ChatListBody
-        rows={rows}
-        chatsState={chatsState}
-        hasAnyChats={hasAnyChats}
-        retrying={retrying}
-        retryChats={retryChats}
-        search={search}
-        searchChat={searchChat}
-        activeChatId={activeChatId}
-        isWide={isWide}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapse}
-        archivedOpen={archivedOpen}
-        onToggleArchived={toggleArchived}
-        showArchived={showArchived}
-        onToggleShowArchived={() => setShowArchived((value) => !value)}
-        onInvite={() => setInviteOpen(true)}
-        onExplore={() => setExploreOpen(true)}
-        onOpenNewTopic={setNewTopicChatId}
-      />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {connection !== undefined && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center"
+          >
+            <span className="rounded-full border border-border bg-surface-raised px-3 py-1 text-[12px] text-muted-foreground">
+              {connection}
+            </span>
+          </div>
+        )}
+        <ChatListBody
+          rows={rows}
+          chatsState={chatsState}
+          hasAnyChats={hasAnyChats}
+          retrying={retrying}
+          retryChats={retryChats}
+          search={search}
+          searchChat={searchChat}
+          activeChatId={activeChatId}
+          isWide={isWide}
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapse}
+          archivedOpen={archivedOpen}
+          onToggleArchived={toggleArchived}
+          showArchived={showArchived}
+          onToggleShowArchived={() => setShowArchived((value) => !value)}
+          onInvite={() => setInviteOpen(true)}
+          onExplore={() => setExploreOpen(true)}
+          onOpenNewTopic={setNewTopicChatId}
+        />
+      </div>
       <NewChatButton onExplore={() => setExploreOpen(true)} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
       {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
