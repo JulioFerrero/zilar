@@ -332,6 +332,46 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return Effect.runPromise(postToChatEffect(input));
   }
 
+  // T-1792: corrects one message the AI posted in a room (XEP-0308), with the
+  // same guards as `postToChatEffect`: the session must be live and still hold
+  // the room. A stopped AI (kill switch) or a session that left the room sends
+  // nothing and answers `false`.
+  const correctInRoomEffect = Effect.fnUntraced(function* (input: {
+    aiId: string;
+    roomJid: string;
+    originalId: string;
+    text: string;
+    payload?: Payload;
+  }): Effect.fn.Return<boolean> {
+    const session = sessions.get(input.aiId);
+    if (session === undefined || !sessionIsLive(session)) {
+      return false;
+    }
+    if (!session.rooms.has(input.roomJid)) {
+      return false;
+    }
+    yield* Effect.promise(() =>
+      session.core.sendCorrection(
+        input.roomJid,
+        'groupchat',
+        input.originalId,
+        input.text,
+        sendOptions(input),
+      ),
+    );
+    return true;
+  });
+
+  function correctInRoom(input: {
+    aiId: string;
+    roomJid: string;
+    originalId: string;
+    text: string;
+    payload?: Payload;
+  }): Promise<boolean> {
+    return Effect.runPromise(correctInRoomEffect(input));
+  }
+
   return {
     sessionIsLive,
     liveSendMessage,
@@ -340,6 +380,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
     liveSendStatus,
     liveMarkDisplayed,
     postToChat,
+    // T-1792: correct a card in the room as the AI, after a member answers it.
+    correctInRoom,
     // T-1647: the routine runner resolves the owner JID and the room JID the
     // same way `postToChatEffect` does, so it needs the same loaders.
     loadOwnerId,

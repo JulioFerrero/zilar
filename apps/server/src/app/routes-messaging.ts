@@ -21,6 +21,7 @@ import { createInviteLinksApi } from '../invite-links/api';
 import { createMachinesApi } from '../machines/api';
 import { createDbMachineRegistry } from '../machines/registry';
 import { createMediaApi } from '../media/api';
+import { cardCorrectorOf, createMessageBlocksApi, type CardCorrector } from '../message-blocks/api';
 import { createPinsApi } from '../pins/api';
 import { createPushApi } from '../push/api';
 import { loadPushConfig } from '../push/config';
@@ -109,6 +110,15 @@ export function messagingRoutes({
     ...opt('getGateway', getTurnWatcher),
   });
   mounts.push(topicsApi);
+  // T-1792: a member answers the interactive card an AI posted; the route
+  // records, merges and corrects the card in the room. It never wakes the AI.
+  const getCardCorrector =
+    gateway === undefined ? undefined : (): CardCorrector | null => cardCorrectorOf(gateway());
+  const messageBlocksApi = createMessageBlocksApi({
+    ...base,
+    ...opt('getGateway', getCardCorrector),
+  });
+  mounts.push(messageBlocksApi);
   const chatsApi = createChatsApi({
     ...base,
     adminClient,

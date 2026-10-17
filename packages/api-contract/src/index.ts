@@ -27,6 +27,7 @@ export * from './lenient-nullable-string';
 export * from './link-preview';
 export * from './machines';
 export * from './media';
+export * from './message-blocks';
 export * from './middleware';
 export * from './omit-undefined';
 export * from './pins';

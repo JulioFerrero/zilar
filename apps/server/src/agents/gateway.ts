@@ -86,6 +86,7 @@ export function createAgentGateway(
     liveSendTyping,
     liveMarkDisplayed,
     postToChat,
+    correctInRoom,
     loadOwnerId,
     loadRoomJid,
     loadTopicRoomJid,
@@ -388,6 +389,7 @@ export function createAgentGateway(
       return ids;
     },
     postToChat,
+    correctInRoom,
     stopTurn,
     runScheduledTurn,
     continueAfterApproval,

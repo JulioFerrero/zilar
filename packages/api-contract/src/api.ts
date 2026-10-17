@@ -22,6 +22,7 @@ import { InviteLinksGroup } from './invite-links';
 import { LinkPreviewGroup } from './link-preview';
 import { MachinesGroup } from './machines';
 import { MediaGroup } from './media';
+import { MessageBlocksGroup } from './message-blocks';
 import { PinsGroup } from './pins';
 import { PushGroup } from './push';
 import { RolesGroup } from './roles';
@@ -63,6 +64,7 @@ export const ZilarApi = HttpApi.make('zilar').add(
   LinkPreviewGroup,
   MachinesGroup,
   MediaGroup,
+  MessageBlocksGroup,
   PinsGroup,
   PushGroup,
   RolesGroup,

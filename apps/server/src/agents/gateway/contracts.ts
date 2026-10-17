@@ -276,6 +276,19 @@ export interface AgentGateway {
     payload?: Payload;
   }) => Promise<boolean>;
   /**
+   * T-1792: corrects one message the AI posted in a room (XEP-0308), after a
+   * member answered the card it carries. Same guards as `postToChat`: the
+   * session must be live and still hold the room, otherwise nothing is sent
+   * and it answers `false`. Never used to answer a person's turn.
+   */
+  correctInRoom: (input: {
+    aiId: string;
+    roomJid: string;
+    originalId: string;
+    text: string;
+    payload?: Payload;
+  }) => Promise<boolean>;
+  /**
    * T-1422: aborts the turn running in one chat, if any. `chatJid` is the
    * client chat id the owner sees (the AI's own JID in a DM, the room JID in a
    * group/topic). Returns `true` when a turn was running and was aborted,

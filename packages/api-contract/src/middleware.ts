@@ -215,6 +215,15 @@ export class BlocksReadRateLimit extends HttpApiMiddleware.Service<
   { requires: CurrentUser }
 >()('zilar/effect/http/BlocksReadRateLimit') {}
 
+/**
+ * The card-answer budget (T-1792): every tap stores a response and corrects
+ * the card in the room, so it is capped per user.
+ */
+export class BlocksRespondRateLimit extends HttpApiMiddleware.Service<
+  BlocksRespondRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/BlocksRespondRateLimit') {}
+
 /** The create budget; it runs before the payload is decoded, so a bad body still spends it. */
 export class ContactRequestCreateRateLimit extends HttpApiMiddleware.Service<
   ContactRequestCreateRateLimit,
