@@ -102,6 +102,10 @@ export const ChatListItem = memo(function ChatListItem({
         to={`/c/${encodeURIComponent(chat.id)}`}
         data-topic-row=""
         aria-current={selected ? 'page' : undefined}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenuOpen(true);
+        }}
         className={cn(
           'flex items-center gap-3 transition-colors',
           isWide
