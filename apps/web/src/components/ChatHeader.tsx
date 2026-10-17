@@ -21,6 +21,7 @@ import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TypingDots } from './TypingDots';
 import { AisHereKey } from './topic/AisHereKey';
+import { TopicPeopleLine } from './topic/TopicPeopleLine';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
@@ -142,23 +143,25 @@ export function ChatHeader({
   // A topic's Archive entry needs a manager; the entry hides until the
   // group detail loads and the role is known (see `TopicArchiveItem`).
 
-  const title = (
-    <>
-      <div className="flex items-center gap-1.5">
-        {isTopic && groupTitle !== undefined && groupTitle !== '' && (
-          <span className="shrink-0 truncate text-[15px] leading-5 font-semibold text-muted-foreground">
-            {groupTitle} <span aria-hidden="true">›</span>
-          </span>
-        )}
-        <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
-        {chat.isAI && <AiBadge />}
-        {chat.visibility === 'public' && (
-          <Globe role="img" aria-label="Public" className="size-3.5 text-muted-foreground" />
-        )}
-        {isTopic && chat.topic?.visibility === 'private' && (
-          <Lock role="img" aria-label="Private" className="size-3.5 text-muted-foreground" />
-        )}
-      </div>
+  const line1 = (
+    <div className="flex items-center gap-1.5">
+      <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
+      {chat.isAI && <AiBadge />}
+      {chat.visibility === 'public' && (
+        <Globe role="img" aria-label="Public" className="size-3.5 text-muted-foreground" />
+      )}
+      {isTopic && chat.topic?.visibility === 'private' && (
+        <Lock role="img" aria-label="Private" className="size-3.5 text-muted-foreground" />
+      )}
+    </div>
+  );
+  // T-1779 (W1): a topic's second line swaps the old subtitle for the people
+  // stack and, while someone writes, the writers with the pulsing dot. The
+  // connection line and an AI status line win, exactly as before.
+  const line2 =
+    isTopic && connection === undefined && aiLine === undefined ? (
+      <TopicPeopleLine chat={chat} groupTitle={groupTitle} names={names} />
+    ) : (
       <div
         role="status"
         className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
@@ -166,8 +169,7 @@ export function ChatHeader({
         <span className="truncate">{subtitle}</span>
         {(working || typing !== undefined || aiLine !== undefined) && !writing && <TypingDots />}
       </div>
-    </>
-  );
+    );
 
   // On narrow screens the in-chat search bar replaces the header entirely
   // (WUX-34); ChatView owns that state so the contact panel can start the same
@@ -179,16 +181,36 @@ export function ChatHeader({
       </IconButton>
       <EntityAvatar chat={chat} size={36} online={chat.online === true} ai={chat.isAI} />
       {openPanel !== undefined ? (
-        <button
-          type="button"
-          aria-label={panelLabel}
-          onClick={openPanel}
-          className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        >
-          {title}
-        </button>
+        isTopic ? (
+          // T-1779: the second line is its own link to "In this topic", so it
+          // stays a sibling of the panel button instead of nesting inside it.
+          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+            <button
+              type="button"
+              aria-label={panelLabel}
+              onClick={openPanel}
+              className="min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              {line1}
+            </button>
+            {line2}
+          </div>
+        ) : (
+          <button
+            type="button"
+            aria-label={panelLabel}
+            onClick={openPanel}
+            className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            {line1}
+            {line2}
+          </button>
+        )
       ) : (
-        <div className="min-w-0 flex-1">{title}</div>
+        <div className="min-w-0 flex-1">
+          {line1}
+          {line2}
+        </div>
       )}
       {actionError !== '' && (
         <span
