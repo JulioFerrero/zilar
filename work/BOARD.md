@@ -1927,3 +1927,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1917](T-1917-docker-copy-patches.md) | Docker builds copy the pnpm patches before install | 2026-10-17 |
 | [T-1915](T-1915-splash-waits-cache.md) | phone splash waits for the cached paint (400 ms cap) | 2026-10-17 |
 | [T-1916](T-1916-phone-pins-clear.md) | phone sign-out clears the in-memory pins | 2026-10-17 |
+| [T-1918](T-1918-pnpm-unused-patch.md) | pnpm allows the phone-only patch in server deploys | 2026-10-17 |
