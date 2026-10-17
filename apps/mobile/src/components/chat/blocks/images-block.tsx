@@ -1,6 +1,7 @@
 import { parseUrl, type ViewerPhoto } from '@zilar/chat-core';
 import type { ImagesBlock as ImagesBlockData } from '@zilar/protocol';
 import { Image } from 'expo-image';
+import { ImageOff } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import type { ViewStyle } from 'react-native';
@@ -9,6 +10,7 @@ import { AttachmentViewer } from '@/components/chat/attachment-message';
 import { Text } from '@/components/ui/text';
 import { cardMediaUrl } from '@/lib/attachment-common';
 import { API_URL } from '@/lib/auth';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useMediaSource } from '@/lib/media-source';
 
 // The board's empty tile (`PhoneContent.dc.html:59`).
@@ -59,14 +61,22 @@ function Tile({
       accessibilityRole="image"
       accessibilityLabel="Photo"
       onPress={() => {
-        if (url !== undefined) {
+        if (url !== undefined && !failed) {
           onOpen();
         }
       }}
       className="overflow-hidden active:opacity-90"
       style={style}
     >
-      {source === undefined || failed ? (
+      {failed ? (
+        <View
+          className="h-full w-full items-center justify-center gap-1.5"
+          style={{ backgroundColor: PLACEHOLDER }}
+        >
+          <ImageOff size={22} color={MUTED_FOREGROUND} />
+          <Text className="text-[12px] text-muted-foreground">Photo unavailable</Text>
+        </View>
+      ) : source === undefined ? (
         <View className="h-full w-full" style={{ backgroundColor: PLACEHOLDER }} />
       ) : (
         <Image

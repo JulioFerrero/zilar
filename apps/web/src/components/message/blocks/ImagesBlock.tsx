@@ -1,4 +1,5 @@
 import type { ImagesBlock as ImagesBlockData } from '@zilar/protocol';
+import { ImageOff } from 'lucide-react';
 import { useState } from 'react';
 
 /**
@@ -46,7 +47,7 @@ export function ImagesBlock({
         return (
           <a
             key={`${id}-${index}`}
-            href={`/api/card-media/${id}`}
+            href={failed.has(id) ? undefined : `/api/card-media/${id}`}
             target="_blank"
             rel="noopener noreferrer"
             aria-label={label}
@@ -56,7 +57,12 @@ export function ImagesBlock({
               borderRadius: tileRadius(index, count),
             }}
           >
-            {!failed.has(id) && (
+            {failed.has(id) ? (
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground">
+                <ImageOff className="size-5" aria-hidden />
+                <span className="text-[12px]">Photo unavailable</span>
+              </span>
+            ) : (
               <img
                 src={`/api/card-media/${id}`}
                 loading="lazy"

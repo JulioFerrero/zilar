@@ -753,10 +753,27 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1889: `POST /api/chats/:jid/reply`; migration 0075 is applied and the `notification_replies` table exists.
                 - T-1890 (D1): `/data/avatars/card-media` exists on the avatar volume. Card media from before 17:45 sat on the container disk and is gone (the three test cards in "cards test" now show grey); new media survives deploys.
                 - T-1891: the share library (phone, ships in the next APK).
-              - **Running (17:50):**
-                - T-1892 (share payload parser);
-                - T-1893 (Mark as read: preview `archiveId` + `displayed`);
-                - T-1894 (shared chat picker for Forward and Share).
+              - **Merged 17:50–18:10:**
+                - T-1892 (share parser), T-1894 (chat picker) and T-1896 (phone Reply / Mark as read);
+                - T-1893 (read route `displayed` + preview `archiveId`) and T-1897 (one notification per chat + unread badge).
+
+                Live `0f5ba86` at 18:08 carries T-1892 to T-1896; T-1897 is held.
+              - **Julio, 18:10, "smoother app":**
+                - "Connecting" pushes the chats down;
+                - Settings loads the profile, then pushes everything down;
+                - "cards test" opens slowly;
+                - an Android AI photo shows as an empty message.
+              - **Found:**
+                - the phone inserts the connection row with no delay (`chat-list.tsx:102`); the web delays it 1.5 s but also inserts it;
+                - Settings shows a spinner on every focus (`settings.tsx:153-215`);
+                - a cold web open waits about 1.3 s for connect + history: the web has no message cache, while the phone has one (T-1313);
+                - the empty photo is a card from before the D1 move (its file is gone: the 3 `card_media` rows predate 17:45, and the new folder holds 0 files). A fresh photo card was posted in "cards test" at 20:09 Madrid for Julio to check on the phone.
+              - **Running:**
+                - T-1895 (`/share` screen, fix round);
+                - T-1898 (connection pill, 1.5 s delay, no jump; web + phone);
+                - T-1899 (Settings: no spinner, cached profile);
+                - T-1900 ("Photo unavailable" on failed card photos);
+                - T-1901 (plan `docs/plan/smooth-app.md`: open timeline, caches, every jump).
               - **Next APK checks:** tap a person, an @mention chip and a People page row; card photos open the viewer; long-press a reaction.
               - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
                 1. "Allow btc-price to use the web";
