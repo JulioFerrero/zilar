@@ -18,6 +18,7 @@ import { TopicToolsRow } from './panels/TopicToolsRow';
 import { failInline } from './panels/topic-failure';
 import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
 import { TopicLinkRow } from './topic/TopicLinkRow';
+import { TopicMuteLeave } from './topic/TopicMuteLeave';
 import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
@@ -180,9 +181,7 @@ function TopicPanelBody({
       : !isPrivate && info !== undefined
         ? ` · All ${memberCount} members`
         : '';
-  const iAmMember = membersState.members.some((member) => member.userId === me);
   const visibilityBusy = isWaiting(visibilityState);
-
   // T-1534: any member who can see the topic may mark it done or reopen it.
   // The store repaints the row from the server's answer, then `refreshChats`
   // updates the sidebar's mark.
@@ -225,10 +224,7 @@ function TopicPanelBody({
             allMembersText={`All ${memberCount} members of ${groupTitle} can read and write here.`}
             me={me}
             isManager={isManager}
-            iAmMember={iAmMember}
-            leaving={isWaiting(leaveState)}
             onRetry={() => refreshMembers()}
-            onLeave={() => runLeave()}
             removeMember={removeMember}
             onError={setErrorMessage}
           />
@@ -308,6 +304,14 @@ function TopicPanelBody({
               onArchive={() => setConfirmingArchive(true)}
             />
           )}
+
+          {/* T-1797: the board's bottom group, one Leave row (none on General). */}
+          <TopicMuteLeave
+            chat={chat}
+            groupTitle={groupTitle}
+            leaving={isWaiting(leaveState)}
+            onLeave={() => runLeave()}
+          />
 
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
         </div>

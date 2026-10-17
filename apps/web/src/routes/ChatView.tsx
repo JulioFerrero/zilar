@@ -1,4 +1,4 @@
-import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
+import { isTopicJoined, type ChatSummary, type ReplyRef, type UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -23,6 +23,7 @@ import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
 import { StepsPanel } from '@/components/StepsPanel';
 import { TopicPanel } from '@/components/TopicPanel';
+import { TopicJoinView } from '@/components/topic/TopicJoinView';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { runWeb } from '@/lib/effect/runtime';
 import { replyRef } from '@/lib/format';
@@ -216,6 +217,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   // T-1323: a DM that is not an AI opens the contact info panel.
   const contactChat = chat.kind === 'dm' && !chat.isAI ? chat : undefined;
 
+  // T-1797: a public topic the viewer has not joined reads read-only, with one
+  // Join key instead of the composer (W9). General is everyone's topic.
+  const joinPreview =
+    chat.topic !== undefined &&
+    chat.topic.visibility === 'public' &&
+    chat.topic.isGeneral !== true &&
+    !isTopicJoined(chat.topic, currentUserId);
+
   // Pins load when the chat opens (the store also refreshes them on focus
   // and every 60 s while the chat is open; there is no realtime channel yet).
   useEffect(() => {
@@ -258,32 +267,38 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
             </Button>
           </div>
         )}
-        <MessageList
-          key={chat.id}
-          chat={chat}
-          onReply={startReply}
-          onForward={forwardOne}
-          selection={selection}
-          selecting={selectedIds !== null}
-        />
-        {selectedIds !== null ? (
-          <SelectionBar
-            chat={chat}
-            selectedIds={selectedIds}
-            onForward={forwardSelected}
-            onCancel={() => setSelectedIds(null)}
-          />
-        ) : chat.chatKind === 'channel' ? (
-          <ChannelComposerBar chat={chat} />
+        {joinPreview ? (
+          <TopicJoinView key={chat.id} chat={chat} />
         ) : (
           <>
-            <AiStatusLine chat={chat} />
-            <Composer
-              chatId={chat.id}
-              replyTo={replyTo}
-              onCancelReply={cancelReply}
-              onOpenStickersSettings={() => navigate('/settings/stickers')}
+            <MessageList
+              key={chat.id}
+              chat={chat}
+              onReply={startReply}
+              onForward={forwardOne}
+              selection={selection}
+              selecting={selectedIds !== null}
             />
+            {selectedIds !== null ? (
+              <SelectionBar
+                chat={chat}
+                selectedIds={selectedIds}
+                onForward={forwardSelected}
+                onCancel={() => setSelectedIds(null)}
+              />
+            ) : chat.chatKind === 'channel' ? (
+              <ChannelComposerBar chat={chat} />
+            ) : (
+              <>
+                <AiStatusLine chat={chat} />
+                <Composer
+                  chatId={chat.id}
+                  replyTo={replyTo}
+                  onCancelReply={cancelReply}
+                  onOpenStickersSettings={() => navigate('/settings/stickers')}
+                />
+              </>
+            )}
           </>
         )}
         {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}

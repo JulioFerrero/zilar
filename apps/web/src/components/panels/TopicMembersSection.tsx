@@ -2,7 +2,6 @@ import { Effect } from 'effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import type { GroupDetail, TopicMember } from '@/lib/api';
 import { EntityAvatar } from '../EntityAvatar';
-import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
 import { RemoveMemberButton } from './TopicActionButtons';
 import { LoadFailed, RefreshFailed } from './TopicListNotices';
@@ -16,9 +15,10 @@ export type MembersState = {
 };
 
 /**
- * The Members section: the private topic's list with Remove for managers and
- * Leave for a member, or the "all members can read" line for a public one. The
- * add pickers moved to the one "Add people or AIs" dialog (T-1784).
+ * The Members section: the private topic's list with Remove for managers, or
+ * the "all members can read" line for a public one. Leave moved to the panel's
+ * bottom group (T-1797). The add pickers moved to the one "Add people or AIs"
+ * dialog (T-1784).
  */
 export function TopicMembersSection({
   isPrivate,
@@ -27,10 +27,7 @@ export function TopicMembersSection({
   allMembersText,
   me,
   isManager,
-  iAmMember,
-  leaving,
   onRetry,
-  onLeave,
   removeMember,
   onError,
 }: {
@@ -40,10 +37,7 @@ export function TopicMembersSection({
   allMembersText: string;
   me: string | undefined;
   isManager: boolean;
-  iAmMember: boolean;
-  leaving: boolean;
   onRetry: () => void;
-  onLeave: () => void;
   removeMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
 }) {
@@ -90,18 +84,6 @@ export function TopicMembersSection({
                 </div>
               );
             })}
-          {!isManager && iAmMember && (
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="mx-2 self-start rounded-full px-4"
-              disabled={leaving}
-              onClick={onLeave}
-            >
-              {leaving ? 'Leaving…' : 'Leave topic'}
-            </Button>
-          )}
         </>
       ) : (
         <p className="px-2 text-[13px] text-muted-foreground">{allMembersText}</p>

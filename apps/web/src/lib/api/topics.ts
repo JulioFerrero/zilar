@@ -10,6 +10,7 @@ import {
   type TopicKind,
   type TopicMember,
   type TopicOwner,
+  type TopicPreviewMessage,
   type TopicRole,
   type TopicStatus,
   type TopicVisibility,
@@ -112,6 +113,14 @@ export function addTopicMember(id: string, userId: string): Promise<Topic> {
 // no-op (its members already see it); General is rejected (400 is_general).
 export function joinTopic(id: string): Promise<Topic> {
   return callApi((client) => client.topics.join({ params: { id } }));
+}
+
+// T-1797: the recent messages of a public topic the caller has not joined,
+// oldest first. The server answers 404 for a private or joined topic.
+export function getTopicPreview(id: string): Promise<TopicPreviewMessage[]> {
+  return callApi((client) => client.topics.preview({ params: { id } })).then(
+    ({ messages }) => messages,
+  );
 }
 
 export function removeTopicMember(id: string, userId: string): Promise<Topic> {
