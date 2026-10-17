@@ -25,6 +25,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { deleteOwnHandlers } from './delete-own';
 import { listChatsFor } from './list-handler';
 import { markDeliveredFor, markReadFor } from './mark-handlers';
+import { replyFor } from './reply-handler';
 
 export const CHAT_READ_RATE_LIMIT_MAX = 600;
 export const CHAT_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -62,6 +63,8 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
     windowMs: CHAT_READ_RATE_LIMIT_WINDOW_MS,
     now,
   });
+  // T-1889: the notification reply has its own budget, checked before the claim.
+  const replyLimiter = createRateLimiter({ max: 60, windowMs: 10 * 60 * 1000, now });
   // T-1236: both DM delete handlers (their own limiter + audit recorder live in
   // `delete-own.ts`), built here so `api.ts` stays inside its 400-line bar.
   const deleteOwn = deleteOwnHandlers(deps);
@@ -89,7 +92,12 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
       )
       // T-1236: the caller's own copy of a DM, both bodies in `delete-own.ts`.
       .handle('clearHistory', deleteOwn.clearHistory)
-      .handle('deleteForMe', deleteOwn.deleteForMe),
+      .handle('deleteForMe', deleteOwn.deleteForMe)
+      // T-1889: a reply from a phone notification, sent as the caller.
+      .handle(
+        'reply',
+        handler(logger, (request, user) => replyFor(deps, replyLimiter, request, user)),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ChatsApi).pipe(

@@ -1898,3 +1898,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1884](T-1884-share-into-zilar-plan.md) | plan: share into Zilar from other apps | 2026-10-17 |
 | [T-1887](T-1887-notification-reply-plan.md) | plan: reply and mark as read from a notification | 2026-10-17 |
 | [T-1885](T-1885-topic-ai-links.md) | topic AI rows open the AI (web + phone) | 2026-10-17 |
+| [T-1889](T-1889-notification-reply-route.md) | POST /chats/:jid/reply for notification replies | 2026-10-17 |

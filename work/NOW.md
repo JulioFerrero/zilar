@@ -739,9 +739,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Verified in "cards test" at 17:22:**
                   - "make me a small CSV file…": Deepseek posted a file card, `european-capitals-population.csv`, 131 B, CSV;
                   - a Wikimedia photo URL (`…/500px-Fronalpstock_big.jpg`): it posted the photo card. That failed before T-1881.
-              - **Running (17:20):**
-                - T-1885 (topic AI rows open the AI; fix round for the phone type);
-                - T-1887 (plan: Reply / Mark as read from a phone notification).
+              - **Julio back at 17:35. He approved all four:**
+                1. release v0.2.8;
+                2. D1, card media on the avatar volume;
+                3. share into Zilar (expo-share-intent);
+                4. notification Reply / Mark as read, phone side too.
+              - **v0.2.8:**
+                - the tag is on `3570ee938` (pushed 17:38), which includes T-1885 (topic AI rows open the AI; emulator + web mock checked) and the T-1887 plan;
+                - the "Android release" run 39054502753 is building;
+                - after it: check `assets/app.config` in the APK shows 0.2.8 / 208, then post in Zilar Updates.
+              - **Running (17:40):**
+                - T-1889 (`POST /api/chats/:jid/reply`, notification reply server route);
+                - T-1890 (D1 compose: `CARD_MEDIA_STORAGE_DIR=/data/avatars/card-media`);
+                - T-1891 (share task 1: `expo-share-intent` 8.0.1 + plugin + provider).
               - **Next APK checks:** tap a person, an @mention chip and a People page row; card photos open the viewer; long-press a reaction.
               - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
                 1. "Allow btc-price to use the web";
@@ -761,7 +771,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.
                 - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
-                - **Release v0.2.8 (Android)?** It's ready on main and carries every phone change since v0.2.7:
+                - ~~Release v0.2.8, share into Zilar, card media store (D1), notification Reply~~: all approved 10-17 17:35, in progress (see above).
+                - (Old) **Release v0.2.8 (Android)?** It's ready on main and carries every phone change since v0.2.7:
                   - DM card answers;
                   - only your topics in the lists;
                   - the topic sheet and @ list matching the boards;

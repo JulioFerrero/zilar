@@ -154,6 +154,17 @@ export const ChatsGroup = HttpApiGroup.make('chats')
       success: HttpApiSchema.NoContent,
     }),
   )
+  // T-1889: a reply sent from a phone notification, as the caller.
+  .add(
+    HttpApiEndpoint.post('reply', '/chats/:jid/reply', {
+      params: { jid: Schema.String },
+      payload: Schema.Struct({
+        clientId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+        text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4000)),
+      }),
+      success: HttpApiSchema.NoContent,
+    }),
+  )
   .add(
     HttpApiEndpoint.put('markDelivered', '/chats/:jid/delivered', {
       params: { jid: Schema.String },

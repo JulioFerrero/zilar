@@ -56,6 +56,10 @@ export {
 } from './errors';
 export type { XmppCoreError } from './errors';
 
+// T-1889: the notification reply route builds the same stanza the app sends,
+// so the server and the apps share one builder.
+export { buildMessage } from './stanza/build-outgoing';
+
 /**
  * Creates the shared XMPP client. The returned object is the only chat API the
  * web and mobile apps use; each (re)connect asks `getToken` for a fresh JWT.
