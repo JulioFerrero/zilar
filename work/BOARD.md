@@ -1800,3 +1800,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1791](T-1791-record-cards.md) | record AI cards and re-key them on reflection | 2026-10-17 |
 | [T-1786](T-1786-web-group-topics.md) | web group screen: Your and Other topics, join | 2026-10-17 |
 | [T-1789](T-1789-phone-topic-add-sheet.md) | phone In this topic Add sheet | 2026-10-17 |
+| [T-1781](T-1781-phone-chart-blocks.md) | phone bars, line and gauge blocks | 2026-10-17 |

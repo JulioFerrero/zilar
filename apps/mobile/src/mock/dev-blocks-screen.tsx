@@ -305,6 +305,67 @@ const EXAMPLES: readonly Example[] = [
       ],
     },
   },
+  {
+    label: '05 · BAR CHART',
+    time: 'Sun 20:00',
+    data: {
+      fallback:
+        'Messages per day: Mon 142, Tue 188, Wed 161, Thu 203, Fri 256, Sat 97, Sun 237. Total 1,284.',
+      blocks: [
+        {
+          kind: 'bars',
+          title: 'Messages per day',
+          value: '1,284',
+          series: [
+            { label: 'M', value: 142 },
+            { label: 'T', value: 188 },
+            { label: 'W', value: 161 },
+            { label: 'T', value: 203 },
+            { label: 'F', value: 256 },
+            { label: 'S', value: 97 },
+            { label: 'S', value: 237, current: true },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    label: '06 · LINE CHART',
+    time: '09:00',
+    data: {
+      fallback: 'Bitcoin $82,302, up 2.1% over the last 24 hours.',
+      blocks: [
+        {
+          kind: 'line',
+          title: 'BTC · 24 h',
+          value: '$82,302',
+          points: [
+            79100, 79800, 79400, 80600, 80200, 81300, 80800, 81800, 81400, 82100, 81600, 82200,
+            81900, 82300,
+          ],
+          min: 79100,
+          max: 82300,
+          labels: ['09:00', '21:00', 'now'],
+        },
+      ],
+    },
+  },
+  {
+    label: '07 · GAUGE',
+    time: '14:00',
+    data: {
+      fallback: 'Daily limit: $0.62 of $1.00 used, 62 percent, resets at 00:00.',
+      blocks: [
+        {
+          kind: 'gauge',
+          label: 'Daily limit',
+          ratio: 0.62,
+          value: '$0.62 of $1.00',
+          caption: 'resets at 00:00',
+        },
+      ],
+    },
+  },
 ];
 
 function Time({ children }: { children: string }) {

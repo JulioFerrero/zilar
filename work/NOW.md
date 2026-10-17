@@ -552,6 +552,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - B9 (the respond route), then B10/B11;
                 - the live cards test in "cards test";
                 - the emulator check of the phone screens (not while Julio is at the PC).
+            - **State at 08:55 UTC:**
+              - **Merged and held (not pushed):** T-1787 (W8), T-1791 (B8b), T-1786 (W7) and T-1789 (W6b, after a rebase conflict).
+              - **T-1781 (phone charts):** a rebase conflict in `dev-blocks-screen.tsx` was sent to the worker; continue the rebase and merge.
+              - **Running:** T-1792 (B9, the respond route) and T-1793 (fixes from the cards test).
+              - **Live cards test** (as Julio, in "cards test"; the AI's room limit is 6 turns per 10 min):
+                - **Good:** weather, checklist, BTC/ETH figure + lines, countdown, status (after Julio approved the tool's web access), recipe, population bars, progress, Apollo timeline, link.
+                - **Findings, now in T-1793:**
+                  - EUR/USD bars look flat (bars start at 0; the guide should steer trends to line);
+                  - table text columns are right-aligned.
+                - **Nit:** the checklist header icon repeats.
             - **INCIDENT 00:06 UTC: chat.zilar.app is down (503).**
               - The deploy of `0652012aa` failed.
               - **Cause:** Docker on the VPS is stuck removing the old app containers. They are "Dead", in the `removing` state. `docker rm -f` says "removal already in progress", and containerd logs "calling snapshotter.Remove is forbidden". The new containers never started.

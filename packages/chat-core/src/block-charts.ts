@@ -17,14 +17,14 @@ const COMPACT_UNITS: readonly { readonly limit: number; readonly suffix: string 
 
 // Shortens a raw axis number the way the board labels its bounds (`79.1k`, `82.3k`,
 // `WebNumbers.dc.html:80-81`): one decimal, no trailing `.0`, the sign kept. Below a
-// thousand the number is shown as it is.
+// thousand the number is rounded to at most two decimals (`79.123` gives `79.12`).
 export function compactNumber(value: number): string {
   const sign = value < 0 ? '-' : '';
   const abs = Math.abs(value);
   for (const unit of COMPACT_UNITS) {
     if (abs >= unit.limit) return `${sign}${round(abs / unit.limit)}${unit.suffix}`;
   }
-  return `${value}`;
+  return `${Math.round(value * 100) / 100}`;
 }
 
 // Scales a series' values to bar heights; the tallest bar reaches `maxHeight` in
