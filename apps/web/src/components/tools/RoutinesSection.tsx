@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   deleteRoutine,
   listAiRoutines,
@@ -114,12 +114,15 @@ export function RoutinesSection({
   scope,
   scopeKey,
   canManage,
+  onCount,
 }: {
   /** Exactly one of the two lists, matching the server routes. */
   scope: { aiId: string } | { groupId: string };
   scopeKey: string;
   /** False hides Pause/Resume/Delete (a member the API would refuse). */
   canManage: boolean;
+  /** T-1784: the loaded list's size, for the panel's "Tools and routines · N · M". */
+  onCount?: (count: number) => void;
 }) {
   const [list, reloadList] = useQuery(() => loadRoutines(scope), [scopeKey]);
   // One action at a time on the list: while a row waits, every row's
@@ -146,6 +149,13 @@ export function RoutinesSection({
       ? 'error'
       : 'ready';
   const routines = status === 'ready' && AsyncResult.isSuccess(list) ? list.value : [];
+
+  // T-1784: the collapse row's routine count, from the list the section shows.
+  useEffect(() => {
+    if (status === 'ready') {
+      onCount?.(routines.length);
+    }
+  }, [status, routines.length, onCount]);
 
   return (
     <section aria-label="Routines" className="flex flex-col gap-1">

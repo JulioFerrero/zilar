@@ -4,8 +4,8 @@ import type { GroupDetail, TopicMember } from '@/lib/api';
 import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
-import { AddMemberButton, RemoveMemberButton } from './TopicActionButtons';
-import { LoadFailed, PickerToggle, RefreshFailed } from './TopicListNotices';
+import { RemoveMemberButton } from './TopicActionButtons';
+import { LoadFailed, RefreshFailed } from './TopicListNotices';
 
 type GroupMemberRow = GroupDetail['members'][number];
 
@@ -16,42 +16,35 @@ export type MembersState = {
 };
 
 /**
- * The Members section: the private topic's list with Add/Remove for managers
- * and Leave for a member, or the "all members can read" line for a public one.
+ * The Members section: the private topic's list with Remove for managers and
+ * Leave for a member, or the "all members can read" line for a public one. The
+ * add pickers moved to the one "Add people or AIs" dialog (T-1784).
  */
 export function TopicMembersSection({
   isPrivate,
   state,
   groupMembers,
-  addableMembers,
   allMembersText,
   me,
   isManager,
   iAmMember,
-  pickerOpen,
   leaving,
-  onPickerOpenChange,
   onRetry,
   onLeave,
   removeMember,
-  addMember,
   onError,
 }: {
   isPrivate: boolean;
   state: MembersState;
   groupMembers: GroupMemberRow[];
-  addableMembers: GroupMemberRow[];
   allMembersText: string;
   me: string | undefined;
   isManager: boolean;
   iAmMember: boolean;
-  pickerOpen: boolean;
   leaving: boolean;
-  onPickerOpenChange: (open: boolean) => void;
   onRetry: () => void;
   onLeave: () => void;
   removeMember: (userId: string) => Effect.Effect<void, ApiFailure>;
-  addMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
 }) {
   return (
@@ -97,23 +90,6 @@ export function TopicMembersSection({
                 </div>
               );
             })}
-          {isManager && addableMembers.length > 0 && (
-            <PickerToggle
-              open={pickerOpen}
-              openLabel="Add people"
-              onOpen={() => onPickerOpenChange(true)}
-              onCancel={() => onPickerOpenChange(false)}
-            >
-              {addableMembers.map((member) => (
-                <AddMemberButton
-                  key={member.userId}
-                  member={member}
-                  add={addMember}
-                  onError={onError}
-                />
-              ))}
-            </PickerToggle>
-          )}
           {!isManager && iAmMember && (
             <Button
               type="button"

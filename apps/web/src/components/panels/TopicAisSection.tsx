@@ -1,13 +1,13 @@
 import { Effect } from 'effect';
 import { Brain } from 'lucide-react';
 import type { ApiFailure } from '@/lib/effect/errors';
-import type { PublicAi, TopicAi } from '@/lib/api';
+import type { TopicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
-import { AddAiButton, RemoveAiButton } from './TopicActionButtons';
-import { LoadFailed, PickerToggle, RefreshFailed } from './TopicListNotices';
+import { RemoveAiButton } from './TopicActionButtons';
+import { LoadFailed, RefreshFailed } from './TopicListNotices';
 
 export type AisState = {
   status: 'loading' | 'ready' | 'error';
@@ -15,33 +15,28 @@ export type AisState = {
   message: string;
 };
 
-/** The "AIs in this topic" section: rows with memory and Remove, and the add picker. */
+/**
+ * The "AIs in this topic" section: rows with memory and Remove. The add pickers
+ * moved to the one "Add people or AIs" dialog (T-1784).
+ */
 export function TopicAisSection({
   state,
-  addableAis,
   pictureOf,
   ownerNameOf,
   canRemove,
-  pickerOpen,
-  onPickerOpenChange,
   onRetry,
   onOpenMemory,
   removeAi,
-  addAi,
   onError,
 }: {
   state: AisState;
-  addableAis: PublicAi[];
   /** Topic AI rows carry no picture; the group detail knows it. */
   pictureOf: (aiId: string) => string | undefined;
   ownerNameOf: (aiId: string) => string;
   canRemove: (aiId: string) => boolean;
-  pickerOpen: boolean;
-  onPickerOpenChange: (open: boolean) => void;
   onRetry: () => void;
   onOpenMemory: (ai: { id: string; name: string }) => void;
   removeAi: (aiId: string) => Effect.Effect<void, ApiFailure>;
-  addAi: (aiId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
 }) {
   return (
@@ -88,18 +83,6 @@ export function TopicAisSection({
             {canRemove(ai.id) && <RemoveAiButton ai={ai} remove={removeAi} onError={onError} />}
           </div>
         ))}
-      {addableAis.length > 0 && (
-        <PickerToggle
-          open={pickerOpen}
-          openLabel="Add my AI"
-          onOpen={() => onPickerOpenChange(true)}
-          onCancel={() => onPickerOpenChange(false)}
-        >
-          {addableAis.map((ai) => (
-            <AddAiButton key={ai.id} ai={ai} add={addAi} onError={onError} />
-          ))}
-        </PickerToggle>
-      )}
     </section>
   );
 }

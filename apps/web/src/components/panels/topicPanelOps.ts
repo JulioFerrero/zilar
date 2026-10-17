@@ -1,6 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   listTopicAis,
@@ -63,8 +63,7 @@ export function useTopicPanelOps({
 
   const [toolsCount, setToolsCount] = useState<number | null>(null);
   const [myAis, setMyAis] = useState<PublicAi[]>([]);
-  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
-  const [aiPickerOpen, setAiPickerOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [confirmingVisibility, setConfirmingVisibility] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -135,11 +134,11 @@ export function useTopicPanelOps({
       Effect.flatMap((gone) => (gone ? closeTopicScreen : members.reloadAfter())),
     );
 
-  // ONE call: the store issues the POST and folds the row back in. The
-  // picker closes in the same step as the list update.
+  // ONE call: the store issues the POST and folds the row back in. The Add
+  // dialog keeps the row (it turns into "Added"), so only the list refreshes.
   const addMember = (userId: string): Effect.Effect<void, ApiFailure> =>
     storeCall(() => storeApi.getState().addTopicMember(chat.id, userId)).pipe(
-      Effect.andThen(members.reloadAfter(() => setMemberPickerOpen(false))),
+      Effect.andThen(members.reloadAfter()),
     );
 
   // ONE call: the store issues the DELETE and folds the row back in (real)
@@ -152,11 +151,19 @@ export function useTopicPanelOps({
     onMissing: afterMissingMember,
   });
 
-  // ONE call: the store issues the POST and folds the row back in.
+  // ONE call: the store issues the POST and folds the row back in. The Add
+  // dialog keeps the row (it turns into "Added"), so only the list refreshes.
   const addAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
     storeCall(() => storeApi.getState().addTopicAi(chat.id, aiId)).pipe(
-      Effect.andThen(ais.reloadAfter(() => setAiPickerOpen(false))),
+      Effect.andThen(ais.reloadAfter()),
     );
+
+  // T-1784: the Add dialog's invite row. A stable function so the dialog's
+  // query runs once per open, like `InviteDialog`.
+  const createInvite = useCallback(
+    (): Effect.Effect<string, ApiFailure> => fromApi(() => storeApi.getState().createInvite()),
+    [storeApi],
+  );
 
   // ONE call: the store issues the DELETE and folds the row back in. The
   // reload may fail after a successful delete (transient network): never show
@@ -252,10 +259,8 @@ export function useTopicPanelOps({
     refreshAis: ais.refresh,
     toolsCount,
     myAis,
-    memberPickerOpen,
-    setMemberPickerOpen,
-    aiPickerOpen,
-    setAiPickerOpen,
+    addDialogOpen,
+    setAddDialogOpen,
     confirmingVisibility,
     setConfirmingVisibility,
     confirmingArchive,
@@ -268,6 +273,7 @@ export function useTopicPanelOps({
     addMember,
     removeAi,
     addAi,
+    createInvite,
     leaveState,
     runLeave,
     archiveState,

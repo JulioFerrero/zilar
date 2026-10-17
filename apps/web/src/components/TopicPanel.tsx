@@ -1,22 +1,24 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { CheckCircle2, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Plus, RotateCcw } from 'lucide-react';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { FieldError } from './ais/AiPageShell';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PinsSection } from './PinsPanel';
+import { TopicAddDialog, type AddAi, type AddPerson } from './panels/TopicAddDialog';
 import { TopicAisSection } from './panels/TopicAisSection';
 import { TopicDangerZone } from './panels/TopicDangerZone';
 import { TopicHeader } from './panels/TopicHeader';
 import { TopicMembersSection } from './panels/TopicMembersSection';
 import { TopicRolesSection } from './panels/TopicRolesSection';
 import { TopicRulesSection } from './panels/TopicRulesSection';
+import { TopicToolsRow } from './panels/TopicToolsRow';
 import { failInline } from './panels/topic-failure';
 import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
-import { RoutinesSection } from './tools/RoutinesSection';
-import { ToolsSection } from './tools/ToolsSection';
 import { TopicLinkRow } from './topic/TopicLinkRow';
+import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 
@@ -74,10 +76,8 @@ function TopicPanelBody({
     refreshAis,
     toolsCount,
     myAis,
-    memberPickerOpen,
-    setMemberPickerOpen,
-    aiPickerOpen,
-    setAiPickerOpen,
+    addDialogOpen,
+    setAddDialogOpen,
     confirmingVisibility,
     setConfirmingVisibility,
     confirmingArchive,
@@ -90,6 +90,7 @@ function TopicPanelBody({
     addMember,
     removeAi,
     addAi,
+    createInvite,
     leaveState,
     runLeave,
     archiveState,
@@ -97,6 +98,8 @@ function TopicPanelBody({
     visibilityState,
     runVisibility,
   } = useTopicPanelOps({ chat, topic, onClose });
+
+  const contacts = useChatSelector((s) => s.contacts);
 
   const isPrivate = topic.visibility === 'private';
   const topicId = topic.id;
@@ -111,6 +114,52 @@ function TopicPanelBody({
     info === undefined ? (chat.memberCount ?? 0) : info.members.length + info.ais.length;
   const myAisInGroup = myAis.filter((ai) => groupAis.some((item) => item.aiId === ai.id));
   const addableAis = myAisInGroup.filter((ai) => !aisState.ais.some((item) => item.id === ai.id));
+
+  // T-1784: the Add dialog's rows. Contacts and other AIs are the ones a group
+  // owner or admin can pull in (they join the group in the same step, T-1769).
+  // T-1784: the contacts and other AIs are only "outside the group" once the
+  // group info has loaded; while it is loading `groupMembers` is empty and
+  // every contact would look like it is not in the group yet.
+  const contactsNotInGroup =
+    info === undefined
+      ? []
+      : contacts.filter((contact) => !groupMembers.some((m) => m.userId === contact.userId));
+  const otherAis =
+    info === undefined ? [] : myAis.filter((ai) => !groupAis.some((item) => item.aiId === ai.id));
+  const addDialogPeople: AddPerson[] = [
+    ...addableMembers.map((member) => ({
+      id: member.userId,
+      name: member.name,
+      ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+      ...(member.handle === undefined ? {} : { handle: member.handle }),
+      inGroup: true,
+    })),
+    ...(isManager
+      ? contactsNotInGroup.map((contact) => ({
+          id: contact.userId,
+          name: contact.name,
+          ...(contact.avatarUrl === undefined ? {} : { avatarUrl: contact.avatarUrl }),
+          ...(contact.handle === undefined ? {} : { handle: contact.handle }),
+          inGroup: false,
+        }))
+      : []),
+  ];
+  const addDialogAis: AddAi[] = [
+    ...addableAis.map((ai) => ({
+      id: ai.id,
+      name: ai.name,
+      ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+      inGroup: true,
+    })),
+    ...(isManager
+      ? otherAis.map((ai) => ({
+          id: ai.id,
+          name: ai.name,
+          ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+          inGroup: false,
+        }))
+      : []),
+  ];
   const aiOwnerName = (aiId: string): string => {
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     if (ownerId === undefined) {
@@ -160,22 +209,27 @@ function TopicPanelBody({
         />
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+          <Button
+            type="button"
+            className="h-10 w-full text-[14px]"
+            onClick={() => setAddDialogOpen(true)}
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            Add people or AIs
+          </Button>
+
           <TopicMembersSection
             isPrivate={isPrivate}
             state={membersState}
             groupMembers={groupMembers}
-            addableMembers={addableMembers}
             allMembersText={`All ${memberCount} members of ${groupTitle} can read and write here.`}
             me={me}
             isManager={isManager}
             iAmMember={iAmMember}
-            pickerOpen={memberPickerOpen}
             leaving={isWaiting(leaveState)}
-            onPickerOpenChange={setMemberPickerOpen}
             onRetry={() => refreshMembers()}
             onLeave={() => runLeave()}
             removeMember={removeMember}
-            addMember={addMember}
             onError={setErrorMessage}
           />
 
@@ -199,16 +253,12 @@ function TopicPanelBody({
 
           <TopicAisSection
             state={aisState}
-            addableAis={addableAis}
             pictureOf={(aiId) => groupAis.find((item) => item.aiId === aiId)?.avatarUrl}
             ownerNameOf={aiOwnerName}
             canRemove={canRemoveAi}
-            pickerOpen={aiPickerOpen}
-            onPickerOpenChange={setAiPickerOpen}
             onRetry={() => refreshAis()}
             onOpenMemory={setMemoryAi}
             removeAi={removeAi}
-            addAi={addAi}
             onError={setErrorMessage}
           />
 
@@ -236,27 +286,13 @@ function TopicPanelBody({
             />
           )}
 
-          {toolsCount !== null && (
-            <p className="px-2 text-[13px] text-muted-foreground">
-              {toolsCount} {toolsCount === 1 ? 'tool' : 'tools'} in this topic
-            </p>
-          )}
-
-          {/* T-0107: tools and routines of this topic. Managers see the
-              actions (run, revert, pause, resume, delete); members read. */}
           {chat.groupId !== undefined && (
-            <>
-              <ToolsSection
-                scope={{ topicId }}
-                scopeKey={`topic:${topicId}`}
-                canManage={isManager}
-              />
-              <RoutinesSection
-                scope={{ groupId: chat.groupId }}
-                scopeKey={`topic-routines:${topicId}`}
-                canManage={isManager}
-              />
-            </>
+            <TopicToolsRow
+              topicId={topicId}
+              groupId={chat.groupId}
+              isManager={isManager}
+              toolsCount={toolsCount}
+            />
           )}
 
           <PinsSection chatId={chat.id} onOpen={() => storeApi.getState().setPinsPanel(chat.id)} />
@@ -275,6 +311,22 @@ function TopicPanelBody({
 
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
         </div>
+
+        {/* T-1784: the one Add dialog. A child of the Sheet, like the confirms,
+            so Escape closes only the topmost overlay. */}
+        {addDialogOpen && (
+          <TopicAddDialog
+            topicName={chat.title}
+            groupTitle={groupTitle}
+            isManager={isManager}
+            people={addDialogPeople}
+            ais={addDialogAis}
+            addMember={addMember}
+            addAi={addAi}
+            createInvite={createInvite}
+            onClose={() => setAddDialogOpen(false)}
+          />
+        )}
 
         {/* T-1351: the confirms are React children of the Sheet, not siblings,
             so Base UI nests them and Escape closes only the confirm. */}
