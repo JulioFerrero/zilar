@@ -704,12 +704,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Web T-1857:** one "People and AIs" row and page, after two screenshot fix rounds.
                 - **Alert card:** T-1856 (the link and the answer effect) and T-1860 (manager-only, audited).
                 - **Media:** T-1853 (the read route).
-              - **Merged and held:** T-1863 (web: double-click a message to reply; mock checked).
-              - **Running (16:15):**
-                - T-1859 (phone person links);
-                - T-1862 (media M3a, fetch/sniff/strip);
-                - T-1864 (plan: how an alert card links to a routine that needs approval first; a gap I found);
-                - T-1865 (phone dead-code cleanup).
+              - **Live `4a03a18dc` (16:24):** 0 errors.
+                - **Web easy-life:**
+                  - **T-1863:** double-click a message to reply (mock checked).
+                  - **T-1866:** right-click a chat row for its menu (checked live).
+                - **Alert card:** T-1864 (plan: post the card, then `routine.schedule` carries `alert_card`) and T-1869 (`post_blocks` returns the card id).
+                - **Media:** T-1862 (fetch, sniff, strip, store) and T-1867 (web `images`/`file` blocks; Cosmos matches the board).
+                - **Phone:** T-1865 (dead code removed).
+              - **Merged and held:** T-1870 (routines store the alert link on create).
+              - **Running (16:35):**
+                - T-1859 (phone person links; I sent a fix round so an occupant JID never opens the group);
+                - T-1868 (phone media blocks);
+                - T-1871 (`routine.schedule` + `alert_card`);
+                - T-1872 (media M4: a card's media ids must be the AI's own, from this chat);
+                - T-1873 (`fetch_media` tool). **Merge T-1873 only after T-1872.**
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);
@@ -732,7 +740,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
                   I only release when you say so. After it, T8 step C (the server drops `kind`, `status` and `owner`) can start.
                 - ~~Alert card, People and AIs row, media plan~~: answered 10-17 ~15:10 (see above); being built.
-                - **The live card media store needs a volume:** media task D1 adds `CARD_MEDIA_STORAGE_DIR` on a persistent volume in the compose file. That's a prod config change, so it needs your OK before it goes live. Until then the server only warns at start, and nothing writes there yet.
+                - **The live card media store needs a persistent place (media task D1):** once `fetch_media` (T-1873) is live, AIs can store images and files.
+                  - **The problem:** today they land on the container layer, so every deploy wipes them and old cards show grey placeholder tiles.
+                  - **The cheapest fix:** set `CARD_MEDIA_STORAGE_DIR: /data/avatars/card-media` in `deploy/coolify/docker-compose.app.yml`. That puts it on the existing `avatar-data` volume, exactly as `BACKGROUND_STORAGE_DIR` already does (`:183-186`), so no new volume is needed and the nightly volume backup covers it.
+                  - **Not done yet:** it's a prod config change, so it needs your OK.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.
             - **Follow-ups found today (not yet specs):**

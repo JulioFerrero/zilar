@@ -4,6 +4,7 @@ import type { Schema } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
 import { buildBlocksPayload } from '../message-blocks/build';
+import { withoutMedia } from '../message-blocks/media-ids';
 import { truncateChars } from '../text';
 import {
   MAX_SAVE_MODEL_TEXT_CHARS,
@@ -297,7 +298,9 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
               title: card.title ?? readableToolName(found.name),
               icon: card.icon,
               meta: card.meta,
-              blocks,
+              // T-1872: a saved tool cannot fetch media, so it never posts a
+              // media block or a map image.
+              blocks: Array.isArray(blocks) ? withoutMedia(blocks) : blocks,
             },
             text,
           );

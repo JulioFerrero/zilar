@@ -6,12 +6,32 @@
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
+import type { CardMediaRow } from '../../db/rows-agents';
 import type { RecordCardInput } from '../../message-blocks/cards';
 import { createPostBlocksRunner } from './post-blocks';
 import type { AiSession, GatewayLogger } from './contracts';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 const noopRecord = async () => {};
+const lookupNone = async () => undefined;
+
+// T-1872: a stored media row, as `fetch_media` will write it.
+function mediaRow(id: string, aiId: string, roomJid: string): CardMediaRow {
+  return {
+    id,
+    aiId,
+    roomJid,
+    groupId: null,
+    topicId: null,
+    mime: 'image/png',
+    size: 4,
+    width: 4,
+    height: 4,
+    name: 'photo.png',
+    storageKey: 'storage-key',
+    createdAt: new Date(0),
+  };
+}
 
 function sessionFor(aiId: string, aiJid: string, room: string): AiSession {
   return {
@@ -64,7 +84,12 @@ describe('post_blocks runner', () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), noopRecord);
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      noopRecord,
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,
@@ -96,7 +121,12 @@ describe('post_blocks runner', () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), noopRecord);
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      noopRecord,
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,
@@ -114,6 +144,7 @@ describe('post_blocks runner', () => {
         throw new Error('xmpp down');
       },
       noopRecord,
+      lookupNone,
     );
     const failed = await failing.runPostBlocks(
       session,
@@ -128,9 +159,14 @@ describe('post_blocks runner', () => {
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
     const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
-      records.push(input);
-    });
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      async (input) => {
+        records.push(input);
+      },
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,
@@ -160,9 +196,14 @@ describe('post_blocks runner', () => {
     const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
     const sent: SentMessage[] = [];
     const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
-      records.push(input);
-    });
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      async (input) => {
+        records.push(input);
+      },
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,
@@ -192,9 +233,14 @@ describe('post_blocks runner', () => {
     const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
     const sent: SentMessage[] = [];
     const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async (input) => {
-      records.push(input);
-    });
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      async (input) => {
+        records.push(input);
+      },
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,
@@ -231,13 +277,69 @@ describe('post_blocks runner', () => {
     expect(records[0]).not.toHaveProperty('topicId');
   });
 
+  it('refuses media ids this AI did not fetch into this chat', async () => {
+    const roomJid = 'blocks@rooms.zilar.localhost';
+    const dmJid = 'owner@zilar.localhost';
+    const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
+    const rows = new Map<string, CardMediaRow>([
+      ['own', mediaRow('own', 'ai-1', roomJid)],
+      ['other-ai', mediaRow('other-ai', 'ai-2', roomJid)],
+      ['other-room', mediaRow('other-room', 'ai-1', 'elsewhere@rooms.zilar.localhost')],
+      ['dm-own', mediaRow('dm-own', 'ai-1', 'helper@zilar.localhost')],
+      ['dm-owner', mediaRow('dm-owner', 'ai-1', dmJid)],
+    ]);
+    const sent: SentMessage[] = [];
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      noopRecord,
+      async (id) => rows.get(id),
+    );
+    const imagesCard = (id: string) => ({
+      text: 'A photo',
+      blocks: [{ kind: 'images', items: [id] }],
+    });
+
+    for (const id of ['other-ai', 'other-room', 'missing']) {
+      const result = await runner.runPostBlocks(session, imagesCard(id), { roomJid });
+      expect(result.content).toBe('invalid: unknown media');
+    }
+    expect(sent).toHaveLength(0);
+
+    const posted = await runner.runPostBlocks(session, imagesCard('own'), { roomJid });
+    expect(posted.content).toBe(
+      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
+    );
+    expect(sent).toHaveLength(1);
+
+    // A DM's media key is the AI's own JID, not the owner's JID.
+    const dmRefused = await runner.runPostBlocks(session, imagesCard('dm-owner'), {
+      roomJid: dmJid,
+      kind: 'chat',
+    });
+    expect(dmRefused.content).toBe('invalid: unknown media');
+    expect(sent).toHaveLength(1);
+
+    const dmPosted = await runner.runPostBlocks(session, imagesCard('dm-own'), {
+      roomJid: dmJid,
+      kind: 'chat',
+    });
+    expect(dmPosted.content.startsWith('Your card was posted')).toBe(true);
+    expect(sent).toHaveLength(2);
+  });
+
   it('keeps the posted result when recording the card fails', async () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
     const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(silentLogger, recordingSend(sent), async () => {
-      throw new Error('db down');
-    });
+    const runner = createPostBlocksRunner(
+      silentLogger,
+      recordingSend(sent),
+      async () => {
+        throw new Error('db down');
+      },
+      lookupNone,
+    );
 
     const result = await runner.runPostBlocks(
       session,

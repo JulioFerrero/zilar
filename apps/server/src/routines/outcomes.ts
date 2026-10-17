@@ -8,6 +8,7 @@ import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { buildBlocksPayload } from '../message-blocks/build';
+import { withoutMedia } from '../message-blocks/media-ids';
 import { truncateChars } from '../text';
 import { cardHeader } from '../tools/card-header';
 import { describeSchedule } from '../tools/routine-adapters';
@@ -57,6 +58,7 @@ export async function postResult(
 // routine id (never the reason) and fall back to today's plain post.
 // T-1766: the tool's `card.icon`, when it has one, is kept as the header icon;
 // the routine title and schedule stay authoritative for a routine.
+// T-1872: media blocks are dropped, because a routine cannot fetch media.
 function routineBlocksPayload(
   row: RoutineRow,
   outputText: string,
@@ -68,12 +70,14 @@ function routineBlocksPayload(
     return undefined;
   }
   const parsed = parseRoutineSchedule(row.schedule);
+  // T-1872: a routine cannot fetch media, so it never posts a media block.
+  const blocks = Array.isArray(outputBlocks) ? withoutMedia(outputBlocks) : outputBlocks;
   const built = buildBlocksPayload(
     {
       title: row.title,
       ...(parsed.ok ? { meta: describeSchedule(parsed.value) } : {}),
       icon: cardHeader(outputCard).icon,
-      blocks: outputBlocks,
+      blocks,
     },
     outputText,
   );

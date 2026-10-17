@@ -28,6 +28,7 @@ import {
 import { createAskPeopleRunner } from './ask-people';
 import { createPostBlocksRunner } from './post-blocks';
 import { recordCard } from '../../message-blocks/cards';
+import { getCardMedia } from '../../card-media/service';
 import { createDelegateRunner } from './delegate-run';
 import { createRequestActionRunner } from './request-action';
 import {
@@ -75,8 +76,11 @@ export function createToolExec(ctx: ToolExecContext) {
     logger,
   );
   const { runAskPeopleEffect } = createAskPeopleRunner(deps.db, logger, liveSendMessage);
-  const { runPostBlocksEffect } = createPostBlocksRunner(logger, liveSendMessage, (input) =>
-    recordCard(deps.db, input).then(() => undefined),
+  const { runPostBlocksEffect } = createPostBlocksRunner(
+    logger,
+    liveSendMessage,
+    (input) => recordCard(deps.db, input).then(() => undefined),
+    (id) => getCardMedia(deps.db, id),
   );
   const { runDelegate, runTaskStatus } = createDelegateRunner({
     deps,
