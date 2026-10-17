@@ -76,7 +76,7 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.',
+      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
     );
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe(roomJid);
@@ -139,7 +139,7 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.',
+      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
     );
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
@@ -171,7 +171,7 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.',
+      'Your card was posted in this chat (card id block-1). Do not repeat what it shows; reply with at most one short line.',
     );
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe(dmJid);
@@ -213,7 +213,7 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.',
+      'Your card was posted in this chat (card id block-1). Do not repeat what it shows; reply with at most one short line.',
     );
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe(dmJid);
@@ -246,7 +246,7 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'Your card was posted in this room. Do not repeat what it shows; reply with at most one short line.',
+      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
     );
     expect(sent).toHaveLength(1);
   });

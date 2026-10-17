@@ -8,10 +8,13 @@ import { POST_BLOCKS_TOOL } from './schemas';
 // card guide, so any data, not just prices, has a kind and its fields. The
 // server checks the real block shapes again in `buildBlocksPayload`, and a bad
 // card comes back as `invalid: <reason>`.
+// T-1869: the result gives the card's id so the model can pass it on.
 const POST_BLOCKS_DESCRIPTION =
   'Post a small native card with numbers, lists or status — not for prose. `text` ' +
   'is the plain summary people see in previews and notifications; every other ' +
   'value is a pre-formatted display string and links must be https. ' +
+  'The result gives the card id; pass it to `routine.schedule` as `alert_card` ' +
+  "when the card's alert drives a routine. " +
   cardGuide({ interactive: true });
 
 export const POST_BLOCKS_TOOL_DEF: ChatToolDefinition = {

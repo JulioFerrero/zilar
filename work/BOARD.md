@@ -1876,3 +1876,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1866](T-1866-web-row-right-click.md) | web: right-click a chat row for its menu | 2026-10-17 |
 | [T-1862](T-1862-card-media-fetch.md) | card media: fetch, sniff, strip and store one file | 2026-10-17 |
 | [T-1867](T-1867-web-media-blocks.md) | web: images and file card blocks | 2026-10-17 |
+| [T-1869](T-1869-post-blocks-card-id.md) | post_blocks tells the AI the card id | 2026-10-17 |
