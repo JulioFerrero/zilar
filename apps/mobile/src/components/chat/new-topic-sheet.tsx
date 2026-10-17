@@ -195,7 +195,7 @@ export function NewTopicSheet({
       </View>
       <Text className="mt-1 text-[13px] text-muted-foreground">
         {visibility === 'public'
-          ? 'Everyone in the group can read and write here.'
+          ? 'Anyone in the group can find it and join.'
           : 'Only the people you pick can see this topic — it stays hidden from everyone else, including group admins.'}
       </Text>
 
