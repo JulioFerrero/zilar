@@ -1,23 +1,18 @@
 import { BlockIconSchema } from '@zilar/protocol';
+import { cardGuide } from '../../message-blocks/guide';
 import type { ChatToolDefinition } from './definitions';
 import { POST_BLOCKS_TOOL } from './schemas';
 
 // T-1758: the `post_blocks` tool definition. The model posts one small native
-// card in a group room. Clients render the six Wave 1 kinds, so the tool offers
-// only those; the server checks the real block shapes again in
-// `buildBlocksPayload`, and a bad card comes back as `invalid: <reason>`.
+// card in a group room. T-1768: the description is one line plus the shared
+// card guide, so any data, not just prices, has a kind and its fields. The
+// server checks the real block shapes again in `buildBlocksPayload`, and a bad
+// card comes back as `invalid: <reason>`.
 const POST_BLOCKS_DESCRIPTION =
   'Post a small native card with numbers, lists or status — not for prose. `text` ' +
-  'is the plain summary people see in previews and notifications. Each block is an ' +
-  'object with a `kind` field, for example ' +
-  '{"kind":"figure","rows":[{"label":"BTC","value":"$82,302","change":{"direction":"up","text":"2.1%"}}]}. ' +
-  'Values are pre-formatted strings like "$82,302"; links must be https. Six kinds: ' +
-  'kind=figure {rows:[{label,value,change?:{direction:up|down|flat,text}}]}; ' +
-  'kind=number {label,value,change?,points?:number[]}; ' +
-  'kind=checklist {id,title,items:[{id,label,done}]}; ' +
-  'kind=status {title,rows:[{label,status:ok|warn|bad,value?}]}; ' +
-  'kind=link {url,title,description?}; ' +
-  'kind=callout {tone:success|warning|error|info,text}.';
+  'is the plain summary people see in previews and notifications; every other ' +
+  'value is a pre-formatted display string and links must be https. ' +
+  cardGuide();
 
 export const POST_BLOCKS_TOOL_DEF: ChatToolDefinition = {
   type: 'function',

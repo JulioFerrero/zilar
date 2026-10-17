@@ -28,13 +28,20 @@ with hyphens read as spaces, e.g. `Market prices`), `icon` (a lucide name from
 `22:34 UTC`). The card header is validated with the blocks: an invalid `card`
 falls back to the plain text post.
 
-QuickJS has no `Intl`, so format numbers inside the tool with the sandbox
-`fmt` helpers (a non-finite number gives `—`):
+QuickJS has no `Intl`, so format numbers and dates inside the tool with the
+sandbox `fmt` helpers (anything invalid gives `—`):
 
 - `fmt.number(n, digits = 2)` — `fmt.number(7744.1, 0)` is `"7,744"`.
 - `fmt.money(n, symbol = '$', digits = 2)` — `fmt.money(82302, '$', 0)` is `"$82,302"`.
 - `fmt.change(now, before, digits = 1)` — the absolute percent and its
   direction: `fmt.change(105, 100)` is `{ direction: 'up', text: '5.0%' }`.
+- `fmt.date(value)` — `"Fri 17 Oct"` (UTC).
+- `fmt.time(value, offsetMinutes = 0)` — `"09:00"` (UTC, optional offset).
+- `fmt.ago(value, now = Date.now())` — `"just now"`, `"5 min ago"`, `"3 h ago"`
+  or `"2 d ago"`.
+- `fmt.duration(ms)` — `"45 s"`, `"12 min"` or `"1 h 20 min"`.
+
+Every `value` is an ISO string or epoch milliseconds.
 
 The board's prices card, as a tool:
 

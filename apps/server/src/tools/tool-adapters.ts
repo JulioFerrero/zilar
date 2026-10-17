@@ -16,7 +16,7 @@ import {
   serviceFailure,
   type AdapterState,
 } from './adapter-support';
-import { cardHeader, readableToolName } from './card-header';
+import { cardHeader, describeToolCard, readableToolName } from './card-header';
 import { routineLine, pendingApprovalLine, pendingRoutineApprovals } from './routine-list-lines';
 import {
   getTool,
@@ -192,6 +192,13 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
         if (result.ok) {
           testSummary = 'test run ok';
           testText = result.output.text;
+          // T-1768: tell the AI whether its card would post, from the same
+          // check `tool.run` applies. A tool without blocks gets no line.
+          const cardLine = describeToolCard(result.output, saved.tool.name);
+          if (cardLine !== null) {
+            testSummary = `test run ok, ${cardLine}`;
+            testText = `${testText}\n${cardLine}`;
+          }
         } else {
           testSummary = `test run failed: ${result.error.kind}`;
           testText =

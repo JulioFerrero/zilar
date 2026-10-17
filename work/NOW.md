@@ -528,10 +528,28 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **The fix is T-1766 (running):** a tool can set `card {title, icon, meta}`; tool.run titles default to a readable name; a sandbox `fmt` helper (QuickJS has no Intl); the guide gets the board's example.
                   - After it deploys, Julio asks Deepseek to update `market-prices` to the board's shape.
                 - **T-1764 (S2) and T-1766 are live (`b188fe043`, about 22:52 UTC).** Health OK.
-            - **Night 10-17:** Julio is asleep until about 08:00 UTC ("continue with work all night"). The emulator is OK. Batched deploys only. Leave a morning summary here.
+            - **Night 10-17:** Julio is asleep until about 08:00 UTC ("continue with work all night", and "find more things to work if you finish all the tasks"). The emulator is OK. Batched deploys only. Leave a morning summary here.
             - **Pre-reviews on the free Muse fail at start** (outcome failed, from about 23:14 UTC).
               - The six stuck reviews were switched to paid Muse by hand (`session.switchModel` + `session.prompt`).
-              - **The autopilot fix is T-1778 (running).**
+              - **T-1778 is merged and live:** the autopilot falls back on its own, and was restarted on it.
+            - **State at 00:20 UTC:**
+              - **Live `e1e4af0c0`** (health OK, 0 errors): T-1777, T-1771, T-1773, T-1776 and T-1778.
+              - **Merged and held:** T-1774 (S6 preview), T-1780 (W2 phone header) and T-1782 (phone content).
+              - **Running (8, 3 mobile):**
+                - T-1768 (card guide, round 4: exact datetime, id and field types);
+                - T-1779 (W1 web header);
+                - T-1781 (phone charts);
+                - T-1783 (W3 web @ filter + "isn't in");
+                - T-1784 (W5 web Add dialog);
+                - T-1785 (W6a phone In this topic);
+                - T-1786 (W7 web Your/Other topics + join client);
+                - T-1787 (W8 phone twin).
+              - **Next:**
+                - W4 (phone @ filter, after T-1783's `mentionInTopic`);
+                - W6b (phone Add sheet, after T-1785);
+                - W9/W10 (Join preview, Mute, Leave, then flip `PUBLIC_TOPICS_START_EMPTY`);
+                - the emulator check of `dev/blocks` and `dev/topic-header`;
+                - the live cards test after T-1768.
             - **The general cards pass** (Julio 10-17: "jack-of-all-trades"; "both in parallel"; live test OK in a new topic "cards test" as @claude_test):
               - **T-1767 is merged and held** (the group seams).
                 - **Merged and held:** T-1770 (web data), T-1772 (web progress) and T-1775 (phone data), each checked in Cosmos against the board.
