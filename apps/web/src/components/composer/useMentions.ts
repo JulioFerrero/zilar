@@ -2,6 +2,7 @@ import {
   filterMentionMembers,
   findMentionQuery,
   insertMention,
+  isAiJid,
   isMentionOfMe,
   mentionInTopic,
   rebaseMentions,
@@ -83,10 +84,12 @@ export function useMentions({
         .filter((member) => !isMentionOfMe(member.jid, meJid))
         .filter((member) => topic === undefined || mentionInTopic(topic, member.jid, aiIdByJid))
     : [];
-  const candidates =
-    picker === undefined
-      ? []
-      : filterMentionMembers(members, picker.query).slice(0, MENTION_MAX_ROWS);
+  const matches = picker === undefined ? [] : filterMentionMembers(members, picker.query);
+  // T-1844: AIs first like the phone (T-1842), each group in its own order, then the row cap.
+  const candidates = [
+    ...matches.filter((member) => isAiJid(member.jid)),
+    ...matches.filter((member) => !isAiJid(member.jid)),
+  ].slice(0, MENTION_MAX_ROWS);
   const pickerActive = isGroup && picker !== undefined;
   const pickerOpen = pickerActive && candidates.length > 0;
   const activeRow = pickerOpen ? Math.min(activeIndex, candidates.length - 1) : 0;

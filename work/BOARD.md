@@ -1852,3 +1852,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1838](T-1838-phone-topic-sheet-board.md) | phone topic sheet follows its board | 2026-10-17 |
 | [T-1841](T-1841-mock-create-invite.md) | mock creates invites | 2026-10-17 |
 | [T-1842](T-1842-phone-mention-board.md) | phone @ list follows its board | 2026-10-17 |
+| [T-1844](T-1844-web-mention-parity.md) | web @ list matches the phone | 2026-10-17 |

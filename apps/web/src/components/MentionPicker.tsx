@@ -48,13 +48,15 @@ export function MentionPicker({ id, members, activeIndex, onSelect, onHover }: M
             )}
           >
             <EntityAvatar person={{ id: member.jid, name: member.name }} ai={ai} size={28} />
-            <span className="min-w-0 flex-1 truncate">
-              {member.name}
-              {member.handle !== undefined && member.handle !== '' && (
-                <span className="ml-1 text-muted-foreground">@{member.handle}</span>
-              )}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="truncate">{member.name}</span>
+              {ai && <AiBadge />}
             </span>
-            {ai && <AiBadge />}
+            {member.handle !== undefined && member.handle !== '' && (
+              <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                @{member.handle}
+              </span>
+            )}
           </button>
         );
       })}
