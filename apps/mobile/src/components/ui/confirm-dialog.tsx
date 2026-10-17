@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Modal, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { queueSheetTransition } from '@/components/ui/sheet-queue';
 import { Text } from '@/components/ui/text';
 
 type ConfirmDialogProps = {
@@ -49,9 +51,33 @@ export function ConfirmDialog({
   accessibilityLabel,
 }: ConfirmDialogProps) {
   const hasError = error !== undefined && error !== '';
+  // The dialog waits for a sheet that is still leaving (T-1931); iOS cannot
+  // dismiss one controller and present another in the same instant.
+  const [shown, setShown] = useState(false);
+  // A close hides it at once; adjust during render (React's derived-state
+  // pattern), as `block-card.tsx` does.
+  if (!visible && shown) {
+    setShown(false);
+  }
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    let cancelled = false;
+    void queueSheetTransition(() => {
+      if (!cancelled) {
+        setShown(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
   return (
     <Modal
-      visible={visible}
+      visible={shown}
       transparent
       animationType="fade"
       onRequestClose={onCancel}

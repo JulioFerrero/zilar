@@ -6,9 +6,9 @@ import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/ui/icon-button';
+import { queueSheetTransition } from '@/components/ui/sheet-queue';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { runInBackground } from '@/lib/effect/run-in-background';
 import { cn } from '@/lib/utils';
 
 type BottomSheetProps = {
@@ -97,10 +97,10 @@ export function BottomSheet({
     }
     if (visible) {
       presented.current = true;
-      runInBackground(() => instance.present(), {});
+      void queueSheetTransition(() => instance.present());
     } else if (presented.current) {
       presented.current = false;
-      runInBackground(() => instance.dismiss(), {});
+      void queueSheetTransition(() => instance.dismiss());
     }
   }, [visible]);
 

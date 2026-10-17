@@ -4,9 +4,9 @@ import type { LucideIcon } from 'lucide-react-native';
 import { Children, useEffect, useRef, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { queueSheetTransition } from '@/components/ui/sheet-queue';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { runInBackground } from '@/lib/effect/run-in-background';
 import { cn } from '@/lib/utils';
 
 type ActionSheetProps = {
@@ -73,11 +73,11 @@ export function ActionSheet({
     }
     if (visible) {
       presented.current = true;
-      runInBackground(() => instance.present(), {});
+      void queueSheetTransition(() => instance.present());
     } else if (presented.current) {
       presented.current = false;
       dismissedByEffect.current = true;
-      runInBackground(() => instance.dismiss(), {});
+      void queueSheetTransition(() => instance.dismiss());
     }
   }, [visible]);
 
