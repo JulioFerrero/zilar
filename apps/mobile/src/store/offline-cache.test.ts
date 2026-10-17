@@ -2,6 +2,7 @@
 // task names: hydrate then server history (no duplicates, server wins), another
 // user's file is ignored, and sign-out removes the file. The file is an
 // injected in-memory port, so the real `expo-file-system` is never loaded.
+import type { Pin } from '@zilar/api-contract';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
@@ -10,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import {
   createOfflineCache,
+  decodeOfflineCache,
   encodeOfflineCache,
   offlineSnapshot,
   type OfflineCachePort,
@@ -19,6 +21,17 @@ import { waitFor } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
 const ME = 'u-me';
+
+const ANA_PIN: Pin = {
+  id: 'pin-1',
+  chat: ANA,
+  messageId: 'm1',
+  senderName: 'Ana',
+  text: 'pinned copy',
+  kind: 'text',
+  pinnedBy: 'u-ana',
+  pinnedAt: '2026-09-28T09:00:00Z',
+};
 
 function cachedMessage(id: string, text: string, createdAt: string): UiMessage {
   return {
@@ -117,6 +130,32 @@ describe('mobile offline chat cache (T-1313)', () => {
       ...chats.slice(0, 50).map((chat) => chat.id),
       'c-55',
     ]);
+  });
+
+  it("round-trips the cached chats' pins, and another user still decodes to null", () => {
+    const snapshot = offlineSnapshot(
+      ME,
+      [chatRow(ANA)],
+      { [ANA]: [cachedMessage('m1', 'hello', '2026-09-28T09:00:00Z')] },
+      undefined,
+      (chatId) => (chatId === ANA ? [ANA_PIN] : []),
+    );
+    if (snapshot === undefined) {
+      throw new Error('expected a snapshot');
+    }
+
+    const encoded = encodeOfflineCache(snapshot);
+    expect(decodeOfflineCache(encoded, ME)?.pins).toEqual({ [ANA]: [ANA_PIN] });
+    expect(decodeOfflineCache(encoded, 'u-other')).toBeNull();
+
+    // A partly corrupt pins field costs the pins, never the messages.
+    const corrupt = {
+      ...(JSON.parse(encoded) as Record<string, unknown>),
+      pins: { [ANA]: [{ id: 1 }] },
+    };
+    const lenient = decodeOfflineCache(JSON.stringify(corrupt), ME);
+    expect(lenient?.pins).toEqual({});
+    expect(lenient?.messages[ANA]?.map((message) => message.id)).toEqual(['m1']);
   });
 
   it('hydrates, then merges the server history without duplicates (server wins)', async () => {

@@ -13,9 +13,11 @@
  * the rows already carry. A different signed-in user ignores the file (the
  * owner must match) and the next save replaces it; sign-out removes it.
  */
+import type { Pin } from '@zilar/api-contract';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { Result, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
+import { decodeCachedPins, encodeCachedPins } from './offline-cache-pins';
 
 /** The cache file name; one file per install (removed on sign-out). */
 export const OFFLINE_CACHE_FILE_NAME = 'zilar-offline-cache.json';
@@ -26,10 +28,12 @@ const MAX_CACHED_MESSAGES = 50;
 // handler flushes the pending write at once (`effects/lifecycle.ts`).
 export const OFFLINE_CACHE_WRITE_DELAY_MS = 2_000;
 
-/** The cache's contents: one signed-in user's recent messages. */
+/** The cache's contents: one signed-in user's recent messages and their pins. */
 export interface OfflineCacheSnapshot {
   userId: string;
   messages: Record<string, UiMessage[]>;
+  /** T-1914: the pinned banner of a cached chat paints before the pins answer. */
+  pins?: Record<string, Pin[]>;
 }
 
 /**
@@ -79,6 +83,9 @@ const cacheSchema = struct({
   version: Schema.Literal(CACHE_VERSION),
   userId: Schema.String,
   messages: Schema.Record(Schema.String, Schema.mutable(Schema.Array(cachedMessageSchema))),
+  // Decoded separately and leniently (`offline-cache-pins.ts`), so a bad pin
+  // never discards the messages.
+  pins: Schema.optional(Schema.Unknown),
 });
 
 // The mobile-only fields the cache must drop: the `file://` preview and the
@@ -134,10 +141,12 @@ export function encodeOfflineCache(snapshot: OfflineCacheSnapshot): string {
   for (const [chatId, list] of Object.entries(snapshot.messages)) {
     messages[chatId] = list.filter(isCacheable).slice(-MAX_CACHED_MESSAGES).map(encodeMessage);
   }
+  const pins = encodeCachedPins(snapshot.pins ?? {});
   return JSON.stringify({
     version: CACHE_VERSION,
     userId: snapshot.userId,
     messages,
+    ...(Object.keys(pins).length > 0 ? { pins } : {}),
   });
 }
 
@@ -172,7 +181,11 @@ export function decodeOfflineCache(raw: string, userId: string): OfflineCacheSna
   for (const [chatId, list] of Object.entries(decoded.success.messages)) {
     messages[chatId] = list.map(decodeMessage);
   }
-  return { userId: decoded.success.userId, messages };
+  return {
+    userId: decoded.success.userId,
+    messages,
+    pins: decodeCachedPins(decoded.success.pins),
+  };
 }
 
 /**
@@ -206,18 +219,24 @@ export function offlineSnapshot(
   chats: readonly ChatSummary[],
   messages: Record<string, UiMessage[]>,
   activeChatId?: string | null,
+  pinsFor?: (chatId: string) => readonly Pin[],
 ): OfflineCacheSnapshot | undefined {
   if (userId === undefined || userId === '') {
     return undefined;
   }
   const recent: Record<string, UiMessage[]> = {};
+  const pins: Record<string, Pin[]> = {};
   for (const chat of cachedChats(chats, activeChatId)) {
     const list = messages[chat.id];
     if (list !== undefined) {
       recent[chat.id] = list;
     }
+    const pinned = pinsFor?.(chat.id) ?? [];
+    if (pinned.length > 0) {
+      pins[chat.id] = [...pinned];
+    }
   }
-  return { userId, messages: recent };
+  return { userId, messages: recent, pins };
 }
 
 /** The cache over one file port, with the debounced write and the removal. */

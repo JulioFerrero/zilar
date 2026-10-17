@@ -34,6 +34,7 @@ export type PinActions = Pick<
   ChatStoreState,
   | 'pins'
   | 'refreshPins'
+  | 'seedCachedPins'
   | 'pinFor'
   | 'canPin'
   | 'pinMessage'
@@ -131,6 +132,16 @@ export function makePins(ctx: StoreCtx): Pins {
       return pinsByChat.get(chatId) ?? EMPTY_PINS;
     },
     refreshPins: (chatId) => ctx.run(loadPins(chatId, true)),
+    // T-1914: paint the cached pins of a cold start before the pins answer.
+    // A chat that already has pins keeps them; the normal load replaces both.
+    seedCachedPins: (cached) => {
+      for (const [chatId, list] of Object.entries(cached)) {
+        if (list.length === 0 || pinsByChat.has(chatId)) {
+          continue;
+        }
+        publishPins(chatId, list);
+      }
+    },
     pinFor: (chatId, messageId) =>
       pinsByChat.get(chatId)?.find((pin) => pin.messageId === messageId),
     canPin: (chatId) => canPinIn(chatId),

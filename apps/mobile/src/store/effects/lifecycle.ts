@@ -122,6 +122,9 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
         }
       }
       set({ currentUserId: userId, messagesByChat });
+      // T-1914: the cached pins paint the open chat's banner before the pins
+      // answer, so the thread does not drop; the normal load replaces them.
+      get().seedCachedPins(cached.pins ?? {});
     })();
   };
 

@@ -45,6 +45,7 @@ export function createOfflineCacheSync(deps: {
           state.chats,
           state.messagesByChat,
           getActiveChatId(),
+          (chatId) => state.pins(chatId),
         );
         if (snapshot !== undefined) {
           cache.schedule(snapshot);

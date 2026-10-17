@@ -230,6 +230,12 @@ export interface ChatStoreState extends ChatStoreGroups {
   pinsError?: { chatId: string; message: string };
   /** Loads the pins of one chat (called on open; silent while open). */
   refreshPins: (chatId: string) => Promise<void>;
+  /**
+   * T-1914: seeds the pins kept in the offline cache, only for chats whose
+   * pins are not loaded yet, so a cold start paints the pinned banner at once.
+   * The open chat's normal pin load still replaces them.
+   */
+  seedCachedPins: (pins: Record<string, readonly Pin[]>) => void;
   /** The pin for a loaded message, if it is pinned. */
   pinFor: (chatId: string, messageId: string) => Pin | undefined;
   /**
