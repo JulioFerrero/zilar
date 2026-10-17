@@ -74,7 +74,8 @@ export function TopicRow({
   const deletedPreview = previewed?.deleted === true ? 'Message deleted' : undefined;
   const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
   const showTicks = chat.unread === 0 && last?.senderId === currentUserId;
-  const activityDone = topic !== undefined && topicActivityView(topic.activity, topic.doneAt).done;
+  const activityDone =
+    topic !== undefined && topicActivityView(topic.activity, topic.doneAt, topic.isGeneral).done;
   return (
     <Pressable
       accessibilityRole="button"
@@ -124,6 +125,7 @@ export function TopicRow({
               <AiActivityMarks
                 activity={topic.activity}
                 doneAt={topic.doneAt}
+                isGeneral={topic.isGeneral}
                 className="ml-2 shrink-0"
               />
             ) : null}

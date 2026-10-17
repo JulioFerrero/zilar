@@ -30,16 +30,21 @@ export function topicActivityLine(state: TopicAiState): string {
  * still at work, working first, then waiting; `done` is true only when nothing
  * is active and either a person marked the topic done (`doneAt`) or an AI
  * finished. An idle topic reads as `{ active: [], done: false, label: '' }`.
+ * General is the group's room and never finishes (T-1843), so there `done` stays
+ * false and the label is empty even after an AI replies.
  */
 export function topicActivityView(
   activity: readonly TopicAiActivity[],
   doneAt: string | null,
+  isGeneral = false,
 ): TopicActivityView {
   const active = activity
     .filter((entry) => entry.state === 'working' || entry.state === 'waiting')
     .sort((left, right) => STATE_ORDER[left.state] - STATE_ORDER[right.state]);
   const done =
-    active.length === 0 && (doneAt !== null || activity.some((entry) => entry.state === 'done'));
+    !isGeneral &&
+    active.length === 0 &&
+    (doneAt !== null || activity.some((entry) => entry.state === 'done'));
   const label =
     active.length > 0
       ? active.map((entry) => `${entry.name} ${topicActivityLine(entry.state)}`).join(', ')

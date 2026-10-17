@@ -151,21 +151,23 @@ export function AiActivityMark({
  * A topic's AIs at work (T-1539), shared by the topic row and the "AIs here"
  * key: up to three overlapping pictures, working (turning ring) before waiting
  * (amber dot), then "+N". A finished topic shows the green check instead; an
- * idle topic shows nothing.
+ * idle topic shows nothing. General never reads as finished (T-1843).
  */
 export function AiActivityMarks({
   activity,
   doneAt,
+  isGeneral = false,
   ringColor = palette.panel,
   className,
 }: {
   activity: readonly TopicAiActivity[];
   doneAt: string | null;
+  isGeneral?: boolean;
   /** The colour the marks ring themselves in; match the surface behind them. */
   ringColor?: string;
   className?: string;
 }) {
-  const view = topicActivityView(activity, doneAt);
+  const view = topicActivityView(activity, doneAt, isGeneral);
   if (view.done) {
     return <DoneCheck />;
   }

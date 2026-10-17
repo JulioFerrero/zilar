@@ -54,7 +54,13 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
   if (activity.length === 0) {
     return null;
   }
-  const view = topicActivityView(activity, doneAt);
+  const isGeneral = chat.topic?.isGeneral === true;
+  const view = topicActivityView(activity, doneAt, isGeneral);
+  // General with only finished AIs has activity but nothing to show or open, so
+  // the key hides instead of drawing an empty button (T-1843).
+  if (view.active.length === 0 && !view.done) {
+    return null;
+  }
 
   return (
     <Menu
@@ -64,7 +70,7 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
       align="end"
       trigger={
         <IconButton aria-label={`AIs here: ${view.label}`}>
-          <AiActivityMarks activity={activity} doneAt={doneAt} />
+          <AiActivityMarks activity={activity} doneAt={doneAt} isGeneral={isGeneral} />
         </IconButton>
       }
     >

@@ -125,7 +125,9 @@ export function ChatHeader({
   // The AIs at work decide the "AIs here" key: only a topic with something
   // active (working or waiting) shows it.
   const topicActivity =
-    topic === undefined ? undefined : topicActivityView(topic.activity, topic.doneAt);
+    topic === undefined
+      ? undefined
+      : topicActivityView(topic.activity, topic.doneAt, topic.isGeneral);
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
   // T-1780: the people line's data, all from the topic row (T-1777). The stack
   // is the topic's people then its AIs; N counts both, and a topic row the
@@ -247,6 +249,7 @@ export function ChatHeader({
             <AiActivityMarks
               activity={topic.activity}
               doneAt={topic.doneAt}
+              isGeneral={topic.isGeneral}
               ringColor={palette.surface}
             />
           </IconButton>

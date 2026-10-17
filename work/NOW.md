@@ -653,9 +653,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Emulator (mock build of main):**
                 - **The @ list** is filtered to the topic, but its style is off the board → **T-1842**.
                 - **The Add sheet** matches PhoneAdd, except the board's "New AI" row. The phone has no new-AI route, so T-1789 left it out on purpose, and `topic-add-sheet.tsx` is at 400 lines.
-              - **Running (13:55):**
-                - T-1842 (the phone @ list follows PhoneMention: AIs first, 48 px rows, mono handles);
-                - T-1843 (General never reads as done: no green check and no dimmed title. Live "ai test › General" shows the check after an AI reply).
+              - **Merged and held:**
+                - **T-1842:** the phone @ list follows PhoneMention. Checked on the emulator, together with the Leave sheet vs PhoneLeave (match).
+                - **T-1844:** the web @ list matches it. Checked in mock mode on the branch; live was AI last with the badge far right.
+              - **Web mock check:** Join from Group info › Other topics moves Ideas to Your topics and into the sidebar.
+              - **Running (14:02):** T-1843 (General never reads as done: no green check and no dimmed title; in its autofix round).
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);

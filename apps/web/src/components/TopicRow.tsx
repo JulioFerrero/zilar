@@ -93,7 +93,9 @@ export function TopicRow({
   const glyph = chat.topic?.glyph ?? chat.title.charAt(0).toUpperCase() ?? '?';
   const topic = chat.topic;
   const activity =
-    topic === undefined ? undefined : topicActivityView(topic.activity, topic.doneAt);
+    topic === undefined
+      ? undefined
+      : topicActivityView(topic.activity, topic.doneAt, topic.isGeneral);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -141,7 +143,11 @@ export function TopicRow({
             {chat.isAI && <AiBadge />}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
               {topic !== undefined && (
-                <AiActivityMarks activity={topic.activity} doneAt={topic.doneAt} />
+                <AiActivityMarks
+                  activity={topic.activity}
+                  doneAt={topic.doneAt}
+                  isGeneral={topic.isGeneral}
+                />
               )}
               {chat.muted && (
                 <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />
