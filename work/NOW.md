@@ -768,12 +768,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - Settings shows a spinner on every focus (`settings.tsx:153-215`);
                 - a cold web open waits about 1.3 s for connect + history: the web has no message cache, while the phone has one (T-1313);
                 - the empty photo is a card from before the D1 move (its file is gone: the 3 `card_media` rows predate 17:45, and the new folder holds 0 files). A fresh photo card was posted in "cards test" at 20:09 Madrid for Julio to check on the phone.
+              - **Merged and live** (`0c2bdcb`, 18:30 UTC):
+                - T-1897 (one notification per chat + badge);
+                - T-1898 (connection pill: 1.5 s delay, never moves the list);
+                - T-1899 (phone Settings: no spinner; emulator 0.4 s and 2.4 s frames identical);
+                - T-1900 ("Photo unavailable").
+
+                T-1901 is merged and held (plan `docs/plan/smooth-app.md`: the history waits for every room join; the web has no message cache; jump list W1–W6 / P1–P7; 10 tasks).
+              - **Live check, 18:40:** the two pre-D1 "cards test" photos return 404 (Julio's browser shows them from its cache), and the 20:09 photo returns 200.
               - **Running:**
-                - T-1895 (`/share` screen, fix round);
-                - T-1898 (connection pill, 1.5 s delay, no jump; web + phone);
-                - T-1899 (Settings: no spinner, cached profile);
-                - T-1900 ("Photo unavailable" on failed card photos);
-                - T-1901 (plan `docs/plan/smooth-app.md`: open timeline, caches, every jump).
+                - T-1895 (`/share`, lead fix round: `file://` only from the cache, empty/oversize refused on screen, Send always re-enabled);
+                - smooth-app wave 1:
+                  - T-1902 (history waits for its own room; plan task 2);
+                  - T-1903 (web message cache; task 1);
+                  - T-1904 (phone caches 50 chats + the open one; task 5);
+                  - T-1905 (AI status line as a floating pill; task 8).
+              - **Next:**
+                - tasks 3+4 (token prefetch, previews after the open chat) after T-1902;
+                - tasks 6+7 (pins and requests from the cache) after T-1903;
+                - task 9 (focus loaders);
+                - task 10 (resume without a full rejoin).
               - **Next APK checks:** tap a person, an @mention chip and a People page row; card photos open the viewer; long-press a reaction.
               - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
                 1. "Allow btc-price to use the web";

@@ -12,13 +12,13 @@ import { GeistMono_400Regular } from '@expo-google-fonts/geist-mono/400Regular';
 import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono/500Medium';
 import { PortalHost } from '@rn-primitives/portal';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { ShareIntentProvider } from 'expo-share-intent';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { ThemeProvider } from 'expo-router/react-navigation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme } from 'nativewind';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
@@ -81,6 +81,31 @@ function ActiveChatSync() {
   return null;
 }
 
+/**
+ * Opens `/share` when an Android share arrives (T-1895): a SEND intent carries
+ * no linking URL, so the `+native-intent` branch alone cannot route it. Only
+ * the transition to `hasShareIntent` navigates, once, and never over `/share`
+ * itself. Must be inside `ShareIntentProvider`.
+ */
+function ShareIntentRedirect() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { hasShareIntent } = useShareIntentContext();
+  const redirected = useRef(false);
+
+  useEffect(() => {
+    if (hasShareIntent && !redirected.current && pathname !== '/share') {
+      redirected.current = true;
+      router.push('/share');
+    }
+    if (!hasShareIntent) {
+      redirected.current = false;
+    }
+  }, [hasShareIntent, pathname, router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   // The primary text font (`font-sans` → Geist_400Regular, tailwind.config.js)
   // gates the first paint only, or the 1 s cap: a slow secondary face must not
@@ -130,6 +155,7 @@ export default function RootLayout() {
           <NotificationRouter />
           {/* T-1891: share-sheet payloads (Android SEND); the /share route reads them (share plan). */}
           <ShareIntentProvider options={{ resetOnBackground: true }}>
+            <ShareIntentRedirect />
             <ChatStoreProvider>
               <ActiveChatSync />
               <View style={{ flex: 1 }}>
