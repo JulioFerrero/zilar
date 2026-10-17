@@ -553,3 +553,37 @@ three sources.
    `README.md:40`), capped at 12 blocks and 16 KiB.
 4. **May a saved tool post blocks, or only the AI?** Recommended: both, but a
    tool's blocks pass the same validation, and media always by uploaded id.
+
+## 8. Wave 2 decisions (lead, 2026-10-17 night)
+
+Julio was asleep and said to keep working ("find more things to work"). The lead took the recommended answers above and settled the open mechanics below. Each one is easy to change before the clients ship.
+
+1. **How a card is identified.**
+   - `post_blocks` records every card it posts in a new table, `block_cards`. Its key is the origin id `sendMessage` returns (`agents/gateway/post-blocks.ts:47-50`). The row also holds the room JID, the AI, the group and topic, and the card's current `BlocksData`.
+   - The room reflection re-keys the row with the stanza id, the way `rekeyOnReflection` does for questions (`agents/gateway/question-answer.ts:24-46`). A card is then found by either id.
+   - Only cards posted with `post_blocks` are interactive in Wave 2. Tool and routine cards stay read-only.
+2. **How a tap reaches the server.**
+   - Not over XMPP. It goes through an authenticated HTTP route, `POST /api/blocks/respond`, with `{ messageId, blockId, itemId?, value }`.
+   - The actor is the session user, never a payload field.
+   - The route answers 404 when the caller can't read the card's room, or when the card or block is unknown.
+   - A per-user limiter applies.
+3. **Shared state.**
+   - `block_responses` (§3) holds one row per actor per item.
+   - The server merges the rows into the card's `BlocksData`:
+     - **checklist:** `done` and `by` per item, from the latest row;
+     - **poll:** the per-option counts. **Protocol change:** the poll option gains `votes?: number`, and the block's `votes` stays the total of distinct voters;
+     - **choice and rating:** `selected` comes from the latest row;
+     - **buttons and form:** nothing is drawn, the row is only recorded.
+   - The server then **corrects the card as the AI** (`session.core.sendCorrection`, as `agents/gateway/routine-send.ts:146-151` does), so every client redraws.
+   - If the AI's session is offline, the state is still saved and the route returns it. Only the live update is skipped.
+   - The route returns the new `BlocksData`, so the tapping client updates at once.
+4. **Waking the AI.**
+   - The route never wakes a turn.
+   - For the decision kinds (buttons, choice, form, rating), the client also sends the normal `@AI` reply text, as question chips do (`apps/web/src/components/message/QuestionCard.tsx`, `apps/mobile/src/components/chat/question-card.tsx:38`). That reply wakes the AI and carries the answer into its context.
+   - Checklist ticks and poll votes never wake it (§7.2).
+5. **Tasks:**
+   - **B8a [server+DB]:** migration `0071` (`block_cards`, `block_responses`), the rows in `db/rows-agents.ts`, `blocks/cards.ts` (record, re-key, find, record a response), and the pure `applyResponses(data, rows)`. Tests: 2 (idempotent second tap; the poll counts).
+   - **B8b [server]:** `post_blocks` records the card, and the reflection re-keys it.
+   - **B9 [server+contract+protocol]:** the route, the correction, the limiter and the poll option `votes?`. Test: 1 (a non-member gets 404).
+   - **B10 [web] and B11 [phone]:** draw buttons, poll, choice, form and rating to `WebChoices.dc.html` / `PhoneChoices.dc.html`; make checklist items tappable; call the route; send the `@AI` reply for decision kinds.
+   - **B12 [server]:** the card guide (`message-blocks/guide.ts`) offers the interactive kinds once B10 and B11 are live.
