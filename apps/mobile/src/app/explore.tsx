@@ -80,13 +80,15 @@ function ExploreList() {
   // typing instead of erroring, like the web Explore page. The search waits
   // before it applies the loading state (the lint rule flags synchronous
   // setState inside effects); a newer search, a change of the inputs or an
-  // unmount interrupts it, so a stale page never replaces the rows.
+  // unmount interrupts it, so a stale page never replaces the rows. A search
+  // with results on screen (a focus reload) replaces them in place instead of
+  // blanking the list.
   const [, search, searchControls] = useAction(
     (input: SearchDirectoryInput) =>
       Effect.sleep(300).pipe(
         Effect.andThen(
           Effect.sync(() => {
-            setStatus('loading');
+            setStatus((current) => (current === 'ready' ? current : 'loading'));
             setJoinError('');
           }),
         ),
@@ -103,7 +105,7 @@ function ExploreList() {
             setErrorMessage(
               describeDirectoryError(error, 'Could not load the directory. Try again.'),
             );
-            setStatus('error');
+            setStatus((current) => (current === 'ready' ? current : 'error'));
           }),
         ),
       ),
@@ -121,8 +123,10 @@ function ExploreList() {
     return searchControls.interrupt;
   }, [api, trimmed, kind, attempt, search, searchControls]);
 
+  // A focus reload refreshes the rows in place; the loading state is only
+  // for a screen with nothing to show yet (the first load or an error).
   const reload = useCallback(() => {
-    setStatus('loading');
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     setAttempt((value) => value + 1);
   }, []);
 

@@ -65,8 +65,10 @@ function OwnProfile() {
   // the explicit Save uploads (the settings/profile.tsx pattern).
   const [staged, setStaged] = useState<PickedPicture | null>(null);
 
+  // A focus reload with the profile on screen refreshes it in place; only a
+  // load with nothing to show takes the loading state or the error view.
   const load = useCallback(() => {
-    setStatus('loading');
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     Effect.runFork(
       Effect.all([fromApi(() => api.getMe()), sessionTokenEffect], {
         concurrency: 'unbounded',
@@ -78,7 +80,9 @@ function OwnProfile() {
             setStatus('ready');
           }),
         ),
-        Effect.catch(() => Effect.sync(() => setStatus('error'))),
+        Effect.catch(() =>
+          Effect.sync(() => setStatus((current) => (current === 'ready' ? current : 'error'))),
+        ),
       ),
     );
   }, [api]);

@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -68,6 +68,10 @@ function HandleProfileView() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  // The handle whose profile is on screen. A focus reload of that profile
+  // refreshes it in place; a new handle has nothing to show yet, so it still
+  // takes the loading state and never shows the previous person.
+  const loadedHandle = useRef<string | null>(null);
 
   // A newer load interrupts the one in flight, so a stale answer never
   // replaces the card.
@@ -79,10 +83,16 @@ function HandleProfileView() {
             setProfile(found);
             setSent(false);
             setLoading(false);
+            loadedHandle.current = value;
           }),
         ),
         Effect.tapError((loadError) =>
           Effect.sync(() => {
+            // A failed refresh of the profile already on screen keeps it, so
+            // only a load with nothing to show takes the error or empty view.
+            if (loadedHandle.current === value) {
+              return;
+            }
             if (
               loadError !== null &&
               typeof loadError === 'object' &&
@@ -107,7 +117,8 @@ function HandleProfileView() {
       setMissing(true);
       return;
     }
-    setLoading(true);
+    // The loader only appears when this handle has no profile on screen yet.
+    setLoading(loadedHandle.current !== handle);
     setMissing(false);
     setError('');
     fetchProfile(handle);

@@ -78,9 +78,11 @@ function AisList() {
   const [runError, setRunError] = useState('');
 
   // The list load. A focus reload, a retry and a 409 reload all come here;
-  // leaving the screen does not cancel it (as before).
+  // leaving the screen does not cancel it (as before). A reload with the list
+  // on screen refreshes it in place: only a load with nothing to show takes
+  // the loading state or the error view.
   const reload = useCallback(() => {
-    setStatus('loading');
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
     Effect.runFork(
       apiCall(() => api.listAis()).pipe(
         Effect.tap((list) =>
@@ -92,7 +94,7 @@ function AisList() {
         Effect.catch((error: unknown) =>
           Effect.sync(() => {
             setErrorInfo(describeAisError(error, 'Could not load your AIs'));
-            setStatus('error');
+            setStatus((current) => (current === 'ready' ? current : 'error'));
           }),
         ),
       ),
