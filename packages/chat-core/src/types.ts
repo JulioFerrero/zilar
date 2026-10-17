@@ -125,17 +125,7 @@ export interface UiReaction {
   reactors: string[];
 }
 
-export type TopicKind = 'chat' | 'task' | 'bug' | 'ui' | 'routine';
-
-export type TopicStatus = 'open' | 'in_progress' | 'in_review' | 'blocked' | 'done';
-
 export type TopicVisibility = 'public' | 'private';
-
-export interface TopicOwner {
-  kind: 'user' | 'ai';
-  id: string;
-  name: string;
-}
 
 /** T-1514: the three AI activity states a topic row may carry. */
 export type TopicAiState = 'working' | 'waiting' | 'done';
@@ -167,14 +157,11 @@ export interface TopicInfoAi {
 export interface TopicInfo {
   id: string;
   glyph: string;
-  kind: TopicKind;
-  status: TopicStatus;
   visibility: TopicVisibility;
   isGeneral: boolean;
   archived: boolean;
   /** T-1521: when a person marked the topic done, an ISO time; null when open. */
   doneAt: string | null;
-  owner: TopicOwner | null;
   linkUrl: string | null;
   linkLabel: string | null;
   /** T-1514: the AIs at work in this topic, idle ones left out. */

@@ -30,7 +30,6 @@ export function useGroupNewTopic(options: { groupChatId: string; myAis: readonly
     return rawCall(() =>
       createTopic(options.groupChatId, {
         name: input.name,
-        kind: input.kind,
         visibility: input.visibility,
         ...(input.memberIds === undefined ? {} : { memberIds: input.memberIds }),
       }),

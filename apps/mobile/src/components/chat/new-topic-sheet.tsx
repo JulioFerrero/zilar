@@ -9,29 +9,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { cn } from '@/lib/utils';
-import type { TopicKind, TopicVisibility } from '@/lib/topics-api';
+import type { TopicVisibility } from '@/lib/topics-api';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
-
-const TYPE_CHIPS: { kind: TopicKind; label: string }[] = [
-  { kind: 'chat', label: 'Topic' },
-  { kind: 'task', label: 'Task' },
-  { kind: 'bug', label: 'Bug' },
-  { kind: 'ui', label: 'UI' },
-  { kind: 'routine', label: 'Routine' },
-];
 
 export type NewTopicInput = {
   name: string;
-  kind: TopicKind;
   visibility: TopicVisibility;
   memberIds: string[] | undefined;
   aiIds: string[];
 };
 
 /**
- * The new-topic sheet (T-0112): name, type chips, Public/Private with the
- * help text, the member list for private (the creator locked in), and the
- * viewer's group AIs unticked with "AIs only read topics you add them to".
+ * The new-topic sheet (T-0112): name, Public/Private with the help text, the
+ * member list for private (the creator locked in), and the viewer's group AIs
+ * unticked with "AIs only read topics you add them to".
  * Thin view: the screen validates and creates.
  */
 export function NewTopicSheet({
@@ -56,7 +47,6 @@ export function NewTopicSheet({
   onClose: () => void;
 }) {
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<TopicKind>('chat');
   const [visibility, setVisibility] = useState<TopicVisibility>('public');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAis, setSelectedAis] = useState<string[]>([]);
@@ -86,7 +76,6 @@ export function NewTopicSheet({
     setLocalError('');
     onCreate({
       name: trimmed.slice(0, 80),
-      kind,
       visibility,
       memberIds: visibility === 'private' ? [meUserId, ...selectedMembers] : undefined,
       aiIds: selectedAis,
@@ -122,39 +111,6 @@ export function NewTopicSheet({
         accessibilityLabel="Topic name"
         className="mt-1"
       />
-
-      <Text className="mt-3 text-[14px] font-medium text-foreground">Type</Text>
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Topic type"
-        className="mt-1.5 flex-row flex-wrap gap-1.5"
-      >
-        {TYPE_CHIPS.map((chip) => {
-          const selected = kind === chip.kind;
-          return (
-            <Pressable
-              key={chip.kind}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
-              accessibilityLabel={chip.label}
-              onPress={() => setKind(chip.kind)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 active:bg-surface-raised',
-                selected ? 'border-border-strong bg-surface-raised' : 'border-border',
-              )}
-            >
-              <Text
-                className={cn(
-                  'text-[13px] font-medium',
-                  selected ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {chip.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       <Text className="mt-3 text-[14px] font-medium text-foreground">Who can see it</Text>
       <View

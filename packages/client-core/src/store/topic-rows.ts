@@ -45,13 +45,10 @@ function topicInfoOf(topic: Topic): TopicInfo {
   return {
     id: topic.id,
     glyph: topic.glyph,
-    kind: topic.kind,
-    status: topic.status,
     visibility: topic.visibility,
     isGeneral: topic.isGeneral,
     archived: false,
     doneAt: topic.doneAt ?? null,
-    owner: topic.owner,
     linkUrl: topic.linkUrl,
     linkLabel: topic.linkLabel,
     activity: topicActivityOf(topic),

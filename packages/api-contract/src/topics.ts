@@ -209,8 +209,9 @@ export const TopicActivity = mutableStruct({
 export type TopicActivity = typeof TopicActivity.Type;
 
 /**
- * A topic row. An unknown `kind`, `status` or `visibility` from a newer server
- * reads as `chat`, `open` and `private` (hiding is safer than leaking).
+ * A topic row. An unknown `visibility` from a newer server reads as `private`
+ * (hiding is safer than leaking). T-1831: `kind`, `status` and `owner` are
+ * optional so a client keeps decoding a server that no longer sends them.
  * `roles` and `approverRole` are absent on older servers.
  */
 export const Topic = mutableStruct({
@@ -220,9 +221,9 @@ export const Topic = mutableStruct({
   glyph: Schema.String,
   chatJid: Schema.String,
   visibility: lenientLiterals(TOPIC_VISIBILITIES, 'private'),
-  kind: lenientLiterals(TOPIC_KINDS, 'chat'),
-  status: lenientLiterals(TOPIC_STATUSES, 'open'),
-  owner: Schema.NullOr(TopicOwner),
+  kind: Schema.optional(lenientLiterals(TOPIC_KINDS, 'chat')),
+  status: Schema.optional(lenientLiterals(TOPIC_STATUSES, 'open')),
+  owner: Schema.optional(Schema.NullOr(TopicOwner)),
   linkUrl: Schema.NullOr(Schema.String),
   linkLabel: Schema.NullOr(Schema.String),
   isGeneral: Schema.Boolean,

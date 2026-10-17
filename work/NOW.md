@@ -221,7 +221,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - running: T-1646 (the room queue), T-1649 (the `routine.schedule` prompt card; **the lead holds its merge until the runner is wired**), T-1651 ("runs a prompt" in the lists, web and phone);
       - next: T-1647 (the gateway runner) and T-1648 (wiring).
       - **Goal by morning:** Julio tells @Deepseek "every morning at 8 post BTC, gold and S&P 500", approves one card, and it runs at 08:00 his time.
-      - **Tool surface:** a scheduled run gets the computer but no `request_action`, so an AI without a computer can't fetch prices on schedule yet. Follow-up: allow tier-0/1 actions (`web.price` and similar) in scheduled runs.
+      - **Tool surface:** ~~a scheduled run gets no `request_action`~~ Closed by T-1655: a scheduled trigger keeps `request_action` for tier-0/1 actions, unattended (`apps/server/src/agents/gateway/group-turn-access.ts:41-50`; re-checked 2026-10-17).
     - **Also merged:** T-1643 (ejabberd pinned by digest, OPS-7; live and healthy), T-1644 (a CI job runs the offline deploy tests and renders all four compose files, OPS-12). T-1650 is running (the backup doc wording, so `scheduled-backups.test.sh` passes and joins CI).
     - **Merged after 03:00:**
       - T-1646 (the room queue takes a scheduled run as its own turn, with no `request_action`, `ask_people` or delegation);
@@ -626,13 +626,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Verified live:** the "Pizza or sushi" question now shows Sushi filled, Pizza dimmed and "You answered" after a reload.
                 - **Not tried live:** an interactive card in a DM, because I don't write in Julio's DMs. **Julio: in your DM with Deepseek, ask "ask me with buttons: …"**, tap one, then reload.
               - **T-1809 merged** (the DM interactive cards plan, `docs/plan/dm-interactive-cards.md`, Option A; the lead's corrections are in its Review).
-              - **Running (12:35):**
-                - T-1828 (audit only: the safe order to drop `topics.kind`/`status`/`owner_ai_id`, AI work T8);
-                - T-1829 (a public topic you haven't joined leaves your chat list and unread counts; it stays under Other topics with Join).
+              - **Live `ea1395fce`** (12:47 UTC; 6 containers healthy, 0 errors, only the 2 usual "AI is offline" warnings; `/api/chats` 401 signed out), with:
+                - T-1828: `docs/audit/topic-old-shape-removal.md`. Released phones require `kind`/`status`/`owner`, so the order is A (clients tolerate them) → B (phone release) → C (server stops) → D (drop migration).
+                - T-1829: topics you haven't joined leave the chat list and unread counts. Live check: Julio's "ai test" still lists General, cards test and Financial.
+                - T-1830: push goes only to a topic's members; General still reaches the whole group.
+              - **Running (12:50):** T-1831 (T8 step A: the clients let go of `kind`/`status`/`owner` and the dead "Type" chips on both new-topic forms; the server still sends all three).
+              - **Next phone release (v0.2.8)** should carry T-1831; only after that can step C start.
+              - **Earlier:**
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.
                 - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
-                - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check, and a scheduled run can't fetch prices without a computer yet (see the routines note above). It's the only interactive kind left; `images` and `file` wait for the media plan.
+                - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check. Scheduled runs can fetch prices (T-1655), but the card needs a design for how its switch and threshold become a routine. It's the only interactive kind left; `images` and `file` wait for the media plan.
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.

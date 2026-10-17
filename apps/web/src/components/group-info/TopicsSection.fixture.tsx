@@ -35,13 +35,10 @@ function topicRow(input: {
   const topic: TopicInfo = {
     id: input.id,
     glyph: input.glyph,
-    kind: 'chat',
-    status: 'open',
     visibility: input.visibility,
     isGeneral: input.isGeneral ?? false,
     archived: false,
     doneAt: null,
-    owner: null,
     linkUrl: null,
     linkLabel: null,
     activity: [],

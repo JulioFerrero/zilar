@@ -7,12 +7,9 @@ import {
   type ToolListItem,
   type Topic,
   type TopicAi,
-  type TopicKind,
   type TopicMember,
-  type TopicOwner,
   type TopicPreviewMessage,
   type TopicRole,
-  type TopicStatus,
   type TopicVisibility,
 } from '@zilar/api-contract';
 import { callApi } from '@/lib/effect/api-client';
@@ -27,29 +24,17 @@ import { callApi } from '@/lib/effect/api-client';
 // viewer may not see is a 404 everywhere, byte-identical to a missing id.
 // The schemas live in `@zilar/api-contract` (T-0892). T-0116: `roles` and
 // `approverRole` are absent on older servers (treated as none). An unknown
-// kind, status or visibility from a newer server reads as `chat`, `open` and
-// `private`. `topicSchema` stays exported for the chat entries, which carry
-// topic rows that are decoded one by one.
+// visibility from a newer server reads as `private`. `topicSchema` stays
+// exported for the chat entries, which carry topic rows that are decoded one
+// by one.
 export { topicSchema };
-export type {
-  ApproverRole,
-  Topic,
-  TopicAi,
-  TopicKind,
-  TopicMember,
-  TopicOwner,
-  TopicRole,
-  TopicStatus,
-  TopicVisibility,
-};
+export type { ApproverRole, Topic, TopicAi, TopicMember, TopicRole, TopicVisibility };
 
 export interface CreateTopicInput {
   name: string;
-  kind?: TopicKind;
   visibility?: TopicVisibility;
   memberIds?: string[];
   glyph?: string;
-  owner?: { kind: 'user' | 'ai'; id: string } | null;
   linkUrl?: string | null;
   linkLabel?: string | null;
 }
@@ -57,9 +42,6 @@ export interface CreateTopicInput {
 export interface PatchTopicInput {
   name?: string;
   glyph?: string;
-  kind?: TopicKind;
-  status?: TopicStatus;
-  owner?: { kind: 'user' | 'ai'; id: string } | null;
   linkUrl?: string | null;
   linkLabel?: string | null;
   archived?: true;

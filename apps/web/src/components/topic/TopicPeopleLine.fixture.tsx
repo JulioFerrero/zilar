@@ -25,13 +25,10 @@ const CHAT: ChatSummary = {
   topic: {
     id: 't-financial',
     glyph: 'F',
-    kind: 'chat',
-    status: 'open',
     visibility: 'public',
     isGeneral: false,
     archived: false,
     doneAt: null,
-    owner: null,
     linkUrl: null,
     linkLabel: null,
     activity: [],

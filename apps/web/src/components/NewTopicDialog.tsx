@@ -13,16 +13,8 @@ import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextInput } from './ui/text-input';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
+import type { GroupDetail, GroupRole, PublicAi, TopicVisibility } from '@/lib/api';
 import { listGroupRoles } from '@/lib/api';
-
-const TYPE_CHIPS: { kind: TopicKind; label: string }[] = [
-  { kind: 'chat', label: 'Topic' },
-  { kind: 'task', label: 'Task' },
-  { kind: 'bug', label: 'Bug' },
-  { kind: 'ui', label: 'UI' },
-  { kind: 'routine', label: 'Routine' },
-];
 
 class TopicNameMissing extends Data.TaggedError('TopicNameMissing') {}
 class TopicCreateFailed extends Data.TaggedError('TopicCreateFailed') {}
@@ -65,7 +57,6 @@ export function NewTopicDialog({
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<TopicKind>('chat');
   const [visibility, setVisibility] = useState<TopicVisibility>('public');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAis, setSelectedAis] = useState<string[]>([]);
@@ -138,7 +129,6 @@ export function NewTopicDialog({
       const chatJid = yield* fromApi(() =>
         storeApi.getState().createTopic(groupId, {
           name: trimmed.slice(0, 80),
-          kind,
           visibility,
           glyph: glyphFor(trimmed),
           ...(memberIds === undefined ? {} : { memberIds }),
@@ -208,17 +198,6 @@ export function NewTopicDialog({
           placeholder="e.g. Checkout bug"
         />
       </label>
-
-      <div className="mt-3 flex flex-col gap-1.5">
-        <span className="text-[14px] font-medium">Type</span>
-        <SegmentedControl
-          mode="radio"
-          ariaLabel="Type"
-          options={TYPE_CHIPS.map((chip) => ({ value: chip.kind, label: chip.label }))}
-          value={kind}
-          onChange={(next) => setKind(next as TopicKind)}
-        />
-      </div>
 
       <div className="mt-3 flex flex-col gap-1.5">
         <span className="text-[14px] font-medium">Who can see it</span>

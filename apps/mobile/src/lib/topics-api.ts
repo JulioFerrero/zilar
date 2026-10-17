@@ -8,7 +8,7 @@ import {
   type Topic as ContractTopic,
   type TopicPreviewMessage,
 } from '@zilar/api-contract';
-import type { TopicKind, TopicOwner, TopicStatus, TopicVisibility } from '@zilar/chat-core';
+import type { TopicVisibility } from '@zilar/chat-core';
 
 import { createApiClient } from './effect/api-client';
 
@@ -17,12 +17,12 @@ import { createApiClient } from './effect/api-client';
  * create and patch topics, read members, plus the group's
  * `membersCanCreateTopics` switch, as a Promise port over the client derived
  * from the shared contract (`@zilar/api-contract`, `topics.ts`, T-0892). The
- * contract reads an unknown enum value as a safe default (a mid-rollout server
- * can send a kind the bundle does not know), and `parseTopic` drops malformed
+ * contract reads an unknown visibility as `private` (a mid-rollout server can
+ * send a value the bundle does not know), and `parseTopic` drops malformed
  * rows, never rendered.
  */
 
-export type { TopicKind, TopicStatus, TopicVisibility, TopicOwner };
+export type { TopicVisibility };
 /** The one preview row shape (T-1798), re-exported for callers of the port. */
 export type { TopicPreviewMessage };
 
@@ -40,9 +40,6 @@ export interface Topic {
   glyph: string;
   chatJid: string;
   visibility: TopicVisibility;
-  kind: TopicKind;
-  status: TopicStatus;
-  owner: TopicOwner | null;
   linkUrl: string | null;
   linkLabel: string | null;
   isGeneral: boolean;
@@ -80,11 +77,9 @@ export interface ApproverRole {
 
 export interface CreateTopicInput {
   name: string;
-  kind?: TopicKind;
   visibility?: TopicVisibility;
   memberIds?: string[];
   glyph?: string;
-  owner?: { kind: 'user' | 'ai'; id: string } | null;
   linkUrl?: string | null;
   linkLabel?: string | null;
 }
@@ -92,9 +87,6 @@ export interface CreateTopicInput {
 export interface PatchTopicInput {
   name?: string;
   glyph?: string;
-  kind?: TopicKind;
-  status?: TopicStatus;
-  owner?: { kind: 'user' | 'ai'; id: string } | null;
   linkUrl?: string | null;
   linkLabel?: string | null;
   archived?: true;
@@ -133,34 +125,6 @@ export interface TopicsApi {
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const TopicsApiError = ApiError;
 export type TopicsApiError = ApiError;
-
-/** Unknown kinds fall back to `chat`, so a newer server never breaks the list. */
-export function parseTopicKind(value: unknown): TopicKind {
-  if (
-    value === 'chat' ||
-    value === 'task' ||
-    value === 'bug' ||
-    value === 'ui' ||
-    value === 'routine'
-  ) {
-    return value;
-  }
-  return 'chat';
-}
-
-/** Unknown statuses fall back to `open`, always with their text (never color alone). */
-export function parseTopicStatus(value: unknown): TopicStatus {
-  if (
-    value === 'open' ||
-    value === 'in_progress' ||
-    value === 'in_review' ||
-    value === 'blocked' ||
-    value === 'done'
-  ) {
-    return value;
-  }
-  return 'open';
-}
 
 /** Unknown visibilities are treated as private: hiding is safer than leaking. */
 export function parseTopicVisibility(value: unknown): TopicVisibility {

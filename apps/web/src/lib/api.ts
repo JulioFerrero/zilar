@@ -158,11 +158,8 @@ export type {
   SetTopicRolesInput,
   Topic,
   TopicAi,
-  TopicKind,
   TopicMember,
-  TopicOwner,
   TopicRole,
-  TopicStatus,
   TopicTool,
   TopicVisibility,
 } from './api/topics';
