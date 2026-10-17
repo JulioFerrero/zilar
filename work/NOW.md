@@ -633,13 +633,37 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **T-1831 merged and held** (T8 step A). Web mock check: New topic shows Name, Who can see it and the new hint, with no Type row; creating "QA probe" works and it starts with only its creator.
               - **Phone smoke of main (mock, 13:00):** PASS for `/group/g-devteam`, the Ideas Join view and `/dev/blocks`. The group screen still listed topics you haven't joined → **T-1833, running**.
               - **T-1833 merged and held.** Phone smoke of main: `/group/g-devteam` shows "6 members, 5 topics" with the 5 joined topics, and Group info lists the same 5 under Your topics.
-              - **Running (13:02):** T-1832 (plan only: the alert card and routines).
+              - **Live `ece0adb11`** (13:18 UTC; 6 containers healthy, 0 errors), with:
+                - T-1831 (T8 step A);
+                - T-1833 (phone group screen lists your topics only);
+                - T-1834 (General lists the group's AIs);
+                - T-1835 (General has no "Mark as done").
+                - **Verified live:** "ai test › General" panel: AIs in this topic = Deepseek (no Remove), and the Topic section has only "Add a link".
+              - **Running (13:20):** T-1832 (plan only: the alert card and routines).
+              - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
+                - the DM card answers (T-1825);
+                - the question origin-id match (T-1826);
+                - topics you haven't joined staying out of the list (T-1829, T-1833);
+                - T8 step A (T-1831);
+                - General's AIs and no done row (T-1834, T-1835).
+                - **After v0.2.8 is the floor,** T8 step C can start.
               - **Next phone release (v0.2.8)** should carry T-1831; only after that can step C start.
               - **Earlier:**
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.
                 - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
                 - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check. Scheduled runs can fetch prices (T-1655), but the card needs a design for how its switch and threshold become a routine. It's the only interactive kind left; `images` and `file` wait for the media plan.
+                - **Alert card (plan `docs/plan/alert-card.md`, T-1832):**
+                  - **Recommendation (B):** the card controls one routine. The switch pauses or resumes it, the well sets its threshold, each check writes "Checked every 5 min · now $X" into the card, and it posts only when the threshold is crossed.
+                  - **The cost:** one sandbox run per check and no model call. The build is 7 tasks.
+                  - **Your call (§7):**
+                    1. 5 min default and minimum?
+                    2. 3 alerts per topic and 288 runs per AI per day?
+                    3. Only the routine's manager may toggle?
+                    4. Saved tools only in v1?
+                    5. "Above" only, no band?
+                    6. Keep the 3-failure notice?
+                - **The group screen's "People and AIs" row isn't built** (plan `docs/plan/topic-people.md` §3.5; boards `PhoneGroup`/`WebGroup`). Both apps still show separate Members and AIs rows. The boards don't say where one combined row leads, while today each row opens its own page. Which should it open: a combined page, or Members with an AIs section?
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.

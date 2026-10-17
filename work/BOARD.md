@@ -1844,3 +1844,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1833](T-1833-phone-group-joined-topics.md) | phone group screen lists your topics only | 2026-10-17 |
 | [T-1834](T-1834-general-lists-group-ais.md) | General lists the group's AIs | 2026-10-17 |
 | [T-1835](T-1835-general-no-done.md) | General has no Mark as done | 2026-10-17 |
+| [T-1832](T-1832-alert-card-plan.md) | alert card plan | 2026-10-17 |
