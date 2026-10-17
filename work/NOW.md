@@ -629,6 +629,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Running (12:35):**
                 - T-1828 (audit only: the safe order to drop `topics.kind`/`status`/`owner_ai_id`, AI work T8);
                 - T-1829 (a public topic you haven't joined leaves your chat list and unread counts; it stays under Other topics with Join).
+                - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.
                 - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
                 - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check, and a scheduled run can't fetch prices without a computer yet (see the routines note above). It's the only interactive kind left; `images` and `file` wait for the media plan.
