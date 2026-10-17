@@ -138,6 +138,9 @@ function MessageBubbleImpl({
   const showSenderName =
     isGroup && !outgoing && isFirstInGroup && !bigEmoji && sticker === undefined;
   const showAvatar = isGroup && !outgoing && isLastInGroup;
+  // No tail without a bubble: a sticker, a lone big emoji and media with no
+  // caption (photo, album, GIF) have no bubble surface for it to hang from.
+  const showTail = isLastInGroup && sticker === undefined && !bigEmoji && !(mediaFirst && !hasText);
 
   // The haptic is a native call the press does not wait for; it starts here,
   // in the press handler, and a failed haptic is ignored.
@@ -248,7 +251,7 @@ function MessageBubbleImpl({
             {bubbleBody}
           </Pressable>
         )}
-        {isLastInGroup ? (
+        {showTail ? (
           <BubbleTail
             outgoing={outgoing}
             // Match the body: the well colour while recessed/generating, and

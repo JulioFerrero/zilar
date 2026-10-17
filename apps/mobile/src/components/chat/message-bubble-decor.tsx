@@ -144,7 +144,7 @@ export function BigEmoji({
       className={cn('flex-col', outgoing ? 'items-end' : 'items-start')}
     >
       <Text
-        className="px-2 py-1 text-[48px] leading-none text-foreground"
+        className="px-2 py-1 text-[48px] leading-[60px] text-foreground"
         {...(generating ? { color: GENERATING_FOREGROUND } : {})}
       >
         {text}
