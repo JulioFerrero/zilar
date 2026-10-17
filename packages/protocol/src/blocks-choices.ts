@@ -121,6 +121,12 @@ export const FormBlockSchema = struct({
     ),
   ),
   submit: ShortText,
+  sent: Schema.optional(
+    struct({
+      by: Schema.optional(Text),
+      at: IsoDateTimeSchema,
+    }),
+  ),
 });
 
 export type FormBlock = typeof FormBlockSchema.Type;

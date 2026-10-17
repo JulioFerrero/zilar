@@ -4,9 +4,11 @@ import type {
   ButtonsBlock,
   ChecklistBlock,
   ChoiceBlock,
+  FormBlock,
   PollBlock,
   RatingBlock,
 } from '@zilar/protocol';
+import { MAX_SHORT } from '@zilar/protocol';
 import type { BlockResponseRow } from '../db/rows';
 
 // The pure state merge (B8a): every reader (the route, the correction) turns a
@@ -138,6 +140,30 @@ function applyButtons(
   };
 }
 
+function applyForm(block: FormBlock, rows: readonly BlockResponseRow[], nameOf: NameOf): FormBlock {
+  const row = latestRow(rows, block.id);
+  const answer = row === undefined ? undefined : fieldOf(row.value, 'fields');
+  if (row === undefined || typeof answer !== 'object' || answer === null) {
+    return block;
+  }
+  const fields = block.fields.map((field) => {
+    const text = (answer as Record<string, unknown>)[field.id];
+    if (typeof text !== 'string') {
+      return { ...field };
+    }
+    const value = text.trim();
+    const fits = value.length > MAX_SHORT ? `${value.slice(0, MAX_SHORT - 1)}…` : value;
+    return { ...field, value: fits };
+  });
+  const name = nameOf(row.actorId);
+  const at = row.updatedAt.toISOString();
+  return {
+    ...block,
+    fields,
+    sent: name === undefined ? { at } : { at, by: name },
+  };
+}
+
 function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: NameOf): Block {
   switch (block.kind) {
     case 'checklist':
@@ -150,6 +176,8 @@ function applyBlock(block: Block, rows: readonly BlockResponseRow[], nameOf: Nam
       return applyRating(block, rows);
     case 'buttons':
       return applyButtons(block, rows, nameOf);
+    case 'form':
+      return applyForm(block, rows, nameOf);
     default:
       return block;
   }

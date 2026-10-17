@@ -1,9 +1,10 @@
 import type { FormBlock as FormBlockData } from '@zilar/protocol';
-import { Calendar, Minus, Plus } from 'lucide-react-native';
+import { Calendar, Check, Minus, Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { KEY_DARK, KEY_LIGHT, WELL, useBlockRespond } from '@/components/chat/blocks/block-respond';
+import { TABULAR } from '@/components/chat/blocks/figure-block';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
@@ -12,8 +13,29 @@ type Field = FormBlockData['fields'][number];
 /** The server accepts at most 120 characters per answer. */
 const VALUE_MAX = 120;
 
+type Answer = { at: Date; by?: string | undefined; mine: boolean };
+
+function valueOf(field: Field): string {
+  const value = field.value ?? '';
+  return field.kind === 'number' && value === '' ? '0' : value;
+}
+
 function initialValues(fields: readonly Field[]): Record<string, string> {
-  return Object.fromEntries(fields.map((field) => [field.id, field.value ?? '']));
+  return Object.fromEntries(fields.map((field) => [field.id, valueOf(field)]));
+}
+
+/** The sent row the server merged in; `undefined` when the form is open. */
+function sentAnswer(block: FormBlockData): Answer | undefined {
+  const sent = block.sent;
+  if (sent === undefined) {
+    return undefined;
+  }
+  return { at: new Date(sent.at), by: sent.by, mine: false };
+}
+
+/** The board's `17:41` answer time: a fixed 24-hour clock. */
+function clockTime(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function numberValue(text: string | undefined): number {
@@ -24,22 +46,30 @@ function numberValue(text: string | undefined): number {
 /**
  * 16 · QUICK FORM (T-1796): an optional header, the fields in the board's
  * wells (text and date as inputs, number as −/+ keys around a centered mono
- * value), and the light submit key. Values stop at 120 characters; pressing
- * submit sends the fields and the regular @AI reply with `Label: value` pairs.
+ * value that starts at 0), and the light submit key. Values stop at 120
+ * characters; pressing submit sends the fields and the regular @AI reply with
+ * `Label: value` pairs. A sent form draws its values read-only under the
+ * answered row.
  */
 export function FormBlock({ block }: { block: FormBlockData }) {
   const respond = useBlockRespond();
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(block.fields));
   const [failed, setFailed] = useState(false);
+  const [answered, setAnswered] = useState<Answer | undefined>(() => sentAnswer(block));
   // A room correction's values win; adjust during render rather than in an
-  // effect, as `use-chat-screen.ts:131` does.
+  // effect, as `use-chat-screen.ts:131` does. A send made in this view keeps
+  // the "You sent this" wording.
   const [valuesFrom, setValuesFrom] = useState(block);
   if (valuesFrom !== block) {
     setValuesFrom(block);
     setValues(initialValues(block.fields));
     setFailed(false);
+    const next = sentAnswer(block);
+    if (next !== undefined) {
+      setAnswered((current) => (current?.mine === true ? current : next));
+    }
   }
-  const disabled = respond === null || respond.pending;
+  const disabled = respond === null || respond.pending || answered !== undefined;
 
   const setValue = (id: string, text: string): void => {
     setValues((previous) => ({ ...previous, [id]: text.slice(0, VALUE_MAX) }));
@@ -63,14 +93,16 @@ export function FormBlock({ block }: { block: FormBlockData }) {
       value: { fields: values },
       reply,
       onSettled: (ok) => {
-        if (!ok) {
-          setFailed(true);
+        if (ok) {
+          setAnswered((current) => current ?? { at: new Date(), mine: true });
+          return;
         }
+        setFailed(true);
       },
     });
   };
 
-  const submitKey = (
+  const submitKey = answered === undefined && (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={block.submit}
@@ -82,6 +114,24 @@ export function FormBlock({ block }: { block: FormBlockData }) {
     >
       <Text className="text-[15px] font-medium text-[#0a0a0a]">{block.submit}</Text>
     </Pressable>
+  );
+
+  const answeredRow = answered !== undefined && (
+    <View className="flex-row items-center gap-2">
+      <View className="h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[#22c55e]">
+        <Check size={12} color="#0a0a0a" aria-hidden />
+      </View>
+      <Text className="flex-1 text-[14px] text-[#a1a1a1]" numberOfLines={2}>
+        {answered.mine
+          ? 'You sent this'
+          : answered.by === undefined
+            ? 'Sent'
+            : `${answered.by} sent this`}
+      </Text>
+      <Text className="font-mono text-[12px] text-[#8a8a8a]" style={TABULAR}>
+        {clockTime(answered.at)}
+      </Text>
+    </View>
   );
 
   const last = block.fields[block.fields.length - 1];
@@ -128,7 +178,7 @@ export function FormBlock({ block }: { block: FormBlockData }) {
                   >
                     <Plus size={16} color="#d4d4d4" aria-hidden />
                   </Pressable>
-                  {last?.id === field.id ? (
+                  {answered === undefined && last?.id === field.id ? (
                     <>
                       <View className="flex-1" />
                       {submitKey}
@@ -158,7 +208,10 @@ export function FormBlock({ block }: { block: FormBlockData }) {
           );
         })}
       </View>
-      {last?.kind === 'number' ? null : <View className="flex-row justify-end">{submitKey}</View>}
+      {last?.kind === 'number' || answered !== undefined ? null : (
+        <View className="flex-row justify-end">{submitKey}</View>
+      )}
+      {answeredRow}
       {failed ? (
         <Text className="text-[13px] font-semibold text-danger">Could not send. Try again.</Text>
       ) : null}

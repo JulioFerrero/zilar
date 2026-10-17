@@ -1,6 +1,7 @@
 // effect-plain: a presentational control; the block card owns the request.
+import { formatTime } from '@zilar/chat-core';
 import type { FormBlock as FormBlockData } from '@zilar/protocol';
-import { Calendar, Minus, Plus } from 'lucide-react';
+import { Calendar, Check, Minus, Plus } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useBlockReply, useBlockRespond } from './BlockRespond';
 
@@ -25,15 +26,32 @@ const LIGHT_KEY_STYLE = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,.4), 0 2px 6px rgba(0,0,0,.6)',
 };
 
+type Answer = { at: Date; by?: string | undefined; mine: boolean };
+
+function valueOf(field: FormBlockData['fields'][number]): string {
+  const value = field.value ?? '';
+  return field.kind === 'number' && value === '' ? '0' : value;
+}
+
 function valuesOf(block: FormBlockData): Record<string, string> {
-  return Object.fromEntries(block.fields.map((field) => [field.id, field.value ?? '']));
+  return Object.fromEntries(block.fields.map((field) => [field.id, valueOf(field)]));
+}
+
+/** The sent row the server merged in; `undefined` when the form is open. */
+function sentAnswer(block: FormBlockData): Answer | undefined {
+  const sent = block.sent;
+  if (sent === undefined) {
+    return undefined;
+  }
+  return { at: new Date(sent.at), by: sent.by, mine: false };
 }
 
 /**
  * 16 · QUICK FORM: the optional title header, the fields in wells (two to a
  * row) and the light submit key. A number field gets −/+ dark icon keys around
- * a centered mono value. Submit answers with every field and sends the
- * "Label: value" pairs as the @AI reply. Each value is capped at 120 characters.
+ * a centered mono value and starts at 0. Submit answers with every field and
+ * sends the "Label: value" pairs as the @AI reply. Each value is capped at 120
+ * characters. A sent form draws its values read-only under the answered row.
  */
 export function FormBlock({ block, showHeading }: { block: FormBlockData; showHeading: boolean }) {
   const respond = useBlockRespond();
@@ -41,11 +59,17 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
   const [values, setValues] = useState<Record<string, string>>(() => valuesOf(block));
   const [seenBlock, setSeenBlock] = useState(block);
   const [busy, setBusy] = useState(false);
+  const [answered, setAnswered] = useState<Answer | null>(() => sentAnswer(block) ?? null);
 
-  // React's prop-sync pattern: the room correction replaces the drawn values.
+  // React's prop-sync pattern: the room correction replaces the drawn values
+  // and the sent row. A send made in this view keeps the "You" wording.
   if (block !== seenBlock) {
     setSeenBlock(block);
     setValues(valuesOf(block));
+    const next = sentAnswer(block);
+    if (next !== undefined) {
+      setAnswered((current) => (current?.mine === true ? current : next));
+    }
   }
 
   const setValue = (fieldId: string, value: string): void => {
@@ -71,11 +95,12 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
       if (data === null) {
         return;
       }
+      setAnswered((current) => current ?? { at: new Date(), mine: true });
       reply(block.fields.map((field) => `${field.label}: ${fields[field.id] ?? ''}`).join(', '));
     });
   };
 
-  const interactive = respond !== null && !busy;
+  const interactive = respond !== null && !busy && answered === null;
   const rows: FormBlockData['fields'][] = [];
   for (let index = 0; index < block.fields.length; index += 2) {
     rows.push(block.fields.slice(index, index + 2));
@@ -127,7 +152,7 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
       />
     );
 
-  const submitKey = (
+  const submitKey = answered === null && (
     <button
       type="button"
       disabled={!interactive}
@@ -138,6 +163,24 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
     >
       {block.submit}
     </button>
+  );
+
+  const answeredRow = answered !== null && (
+    <div className="flex items-center gap-2 text-[13px] text-[#a1a1a1]">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#22c55e]">
+        <Check className="size-3 text-[#0a0a0a]" strokeWidth={3} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 truncate">
+        {answered.mine
+          ? 'You sent this'
+          : answered.by === undefined
+            ? 'Sent'
+            : `${answered.by} sent this`}
+      </span>
+      <span className="shrink-0 font-mono text-[12px] tabular-nums text-[#8a8a8a]">
+        {formatTime(answered.at)}
+      </span>
+    </div>
   );
 
   return (
@@ -160,7 +203,10 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
             {lastNumber !== undefined && row.includes(lastNumber) && submitKey}
           </div>
         ))}
-        {lastNumber === undefined && <div className="flex justify-end">{submitKey}</div>}
+        {lastNumber === undefined && answered === null && (
+          <div className="flex justify-end">{submitKey}</div>
+        )}
+        {answeredRow}
       </div>
     </>
   );

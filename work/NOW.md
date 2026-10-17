@@ -577,6 +577,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **Gaps:**
                     - buttons and forms have no answered field in their data, so they reopen after a reload, or once the correction lands for a form. **T-1813 (buttons) is running; T-1815 (form, plus an empty stepper showing 0) is spec'd and launches after T-1813.**
                     - On web, Day is a native date input ("dd/mm/yyyy"), where the board shows a plain value.
+              - **Live `765400661`** (11:12 UTC; healthy, 0 errors), with:
+                - T-1813 (buttons keep their answer);
+                - T-1814 (phone preview bubbles);
+                - T-1816 (web preview avatars);
+                - T-1817 (the web panel lists a public topic's members);
+                - T-1818 (the public topic hint "Anyone in the group can find it and join.");
+                - T-1819 (panel rows keep their height: the Tools row was squashed to 2 px).
+              - **Verified live:** a new blocks buttons card answered "Later" shows "✓ Julio chose Later" after a reload.
+              - **Seen live, not fixed:**
+                - For "ask me with buttons", the AI picked its question tool (`ask_people`, chips) instead of a blocks buttons card.
+                - Question chips stay tappable after an answer and a reload (that card has no answered state). Worth a small design call: should `ask_people` become a buttons card now?
+              - **Full suites on main:** server 988/988, mobile 250/250.
               - **Phone, mock build of main:**
                 - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);
                 - the B11 choice cards match `PhoneChoices.dc.html`;

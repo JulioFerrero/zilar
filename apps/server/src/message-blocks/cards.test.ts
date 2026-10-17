@@ -122,6 +122,61 @@ describe('interactive cards', () => {
     expect(() => decodeOrThrow(BlocksDataSchema)(applied)).not.toThrow();
   });
 
+  it('marks a form sent with its latest answer in the fields, the actor and the time', async () => {
+    const aiId = await seedAiId();
+    const ana = await seedUser(context, { name: 'Ana' });
+    const data: BlocksData = {
+      fallback: 'Book a table',
+      blocks: [
+        {
+          kind: 'form',
+          id: 'form-1',
+          title: 'Book Dinner Table',
+          fields: [
+            { id: 'day', label: 'Day', kind: 'date' },
+            { id: 'time', label: 'Time', kind: 'text' },
+            { id: 'people', label: 'People', kind: 'number' },
+          ],
+          submit: 'Send',
+        },
+      ],
+    };
+    await recordCard(context.db, {
+      originId: 'origin-4',
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      data,
+    });
+
+    const longTime = '21:00 and a note that runs well past the forty character cap';
+    await upsertResponse(context.db, {
+      cardId: 'origin-4',
+      blockId: 'form-1',
+      itemId: '',
+      actorId: ana,
+      value: { fields: { day: '2026-10-18', time: longTime, people: '2' } },
+    });
+
+    const rows = await listResponses(context.db, 'origin-4');
+    expect(rows).toHaveLength(1);
+
+    const applied = applyResponses(data, rows, (id) => (id === ana ? 'Ana' : undefined));
+    const [block] = applied.blocks;
+    if (block?.kind !== 'form') {
+      throw new Error('expected a form block');
+    }
+    const shortTime = `${longTime.slice(0, 39)}…`;
+    expect(block.fields.map((field) => field.value)).toEqual(['2026-10-18', shortTime, '2']);
+    expect(shortTime).toHaveLength(40);
+    expect(block.sent).toMatchObject({ by: 'Ana' });
+    if (block.sent === undefined) {
+      throw new Error('expected a sent form');
+    }
+    expect(Number.isNaN(Date.parse(block.sent.at))).toBe(false);
+
+    expect(() => decodeOrThrow(BlocksDataSchema)(applied)).not.toThrow();
+  });
+
   it('counts a poll per option and totals distinct voters', async () => {
     const aiId = await seedAiId();
     const alice = await seedUser(context, { name: 'Alice' });
