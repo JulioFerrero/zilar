@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
@@ -29,7 +29,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
-import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import type { MyProfile } from '@/lib/profile-api';
@@ -72,6 +72,10 @@ function hubIcon(icon: SettingsIconId) {
   return <Icon size={18} color={ICON} />;
 }
 
+// T-1899: the hub keeps the last profile it loaded, so opening Settings shows
+// the card at once instead of a spinner while `GET /me` answers.
+let lastProfile: MyProfile | null = null;
+
 function ProfileHeaderCard({
   profile,
   onPress,
@@ -81,14 +85,30 @@ function ProfileHeaderCard({
 }) {
   const me = useAuthStore((state) => state.me);
   const name = profile?.name ?? me?.name ?? '';
-  if (name === '') {
-    return null;
-  }
   // T-1329/T-1334: the ball is seeded by the display name; the picture shows
   // from the session's cached profile while `GET /me` loads, then from the
   // profile. The email is the profile's, the same source the own profile
   // screen shows, so the line is never blank while the session loads.
   const email = profile?.email ?? me?.email ?? '';
+  if (name === '') {
+    // T-1899: the placeholder keeps the card's height, so the menu below stays
+    // where it is until the name arrives.
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Your profile"
+        onPress={onPress}
+        className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 active:bg-surface-raised"
+      >
+        <View className="h-16 w-16 rounded-full bg-muted" />
+        <View className="min-w-0 flex-1">
+          <View className="h-4 w-32 rounded bg-surface-raised" />
+          <View className="mt-0.5 h-3 w-44 rounded bg-surface-raised" />
+        </View>
+        <ChevronRight size={18} color={MUTED_FOREGROUND} />
+      </Pressable>
+    );
+  }
   return (
     <Pressable
       accessibilityRole="button"
@@ -142,9 +162,14 @@ function SettingsHub() {
   const router = useRouter();
   const { api } = useProfileApi();
   const { api: contactsApi } = useContactsApi();
-  const [profile, setProfile] = useState<MyProfile | null>(null);
+  const me = useAuthStore((state) => state.me);
+  // T-1899: the cached profile belongs to the account that loaded it, so a
+  // different account signing in on this phone (after a sign-out or an expired
+  // session) never sees it while `GET /me` is still in flight.
+  const [profile, setProfile] = useState<MyProfile | null>(() =>
+    lastProfile !== null && lastProfile.id === me?.id ? lastProfile : null,
+  );
   const [pendingRequests, setPendingRequests] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const signOut = useAuthStore((state) => state.signOut);
@@ -152,20 +177,20 @@ function SettingsHub() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       // Leaving the tab interrupts a load still in flight, so a late answer
-      // never lands on a hub that is no longer shown.
+      // never lands on a hub that is no longer shown. The card already shows
+      // the last profile or the session's name, so this only refreshes it.
       const load = Effect.runFork(
         fromApi(() => api.getMe()).pipe(
           Effect.tap((me) =>
             Effect.sync(() => {
+              lastProfile = me;
               setProfile(me);
-              setLoading(false);
             }),
           ),
-          // The name still comes from the session; the handle line stays
-          // empty rather than blocking the hub on a profile failure.
-          Effect.catch(() => Effect.sync(() => setLoading(false))),
+          // The name still comes from the session and the card keeps the last
+          // profile it showed, so a failure changes nothing on screen.
+          Effect.catch(() => Effect.void),
         ),
       );
       return () => {
@@ -200,6 +225,11 @@ function SettingsHub() {
   const confirmSignOut = useCallback(() => {
     setSigningOut(true);
     void signOut().finally(() => {
+      // T-1899: the cached profile survives visits to this tab, so it must not
+      // survive a sign-out: the next account to sign in on this phone would
+      // otherwise see the previous one's name and email on first open.
+      lastProfile = null;
+      setProfile(null);
       router.replace('/login');
     });
   }, [router, signOut]);
@@ -207,13 +237,7 @@ function SettingsHub() {
   return (
     <SettingsScreenShell title="Settings">
       <View className="gap-6">
-        {loading ? (
-          <View className="items-center py-4">
-            <ActivityIndicator color={ACCENT} />
-          </View>
-        ) : (
-          <ProfileHeaderCard profile={profile} onPress={() => router.push('/me')} />
-        )}
+        <ProfileHeaderCard profile={profile} onPress={() => router.push('/me')} />
         {groups.map((group) => (
           <GroupCard
             key={group.group}

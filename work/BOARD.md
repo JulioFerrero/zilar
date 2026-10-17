@@ -1907,3 +1907,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1896](T-1896-notification-actions-phone.md) | phone: Reply and Mark as read on notifications | 2026-10-17 |
 | [T-1897](T-1897-one-notification-per-chat.md) | one notification per chat, with the unread count | 2026-10-17 |
 | [T-1900](T-1900-photo-unavailable.md) | a card photo that can't load says Photo unavailable | 2026-10-17 |
+| [T-1899](T-1899-settings-no-spinner.md) | phone Settings opens without the profile jump | 2026-10-17 |
