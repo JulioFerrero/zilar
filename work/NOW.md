@@ -552,6 +552,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - B9 (the respond route), then B10/B11;
                 - the live cards test in "cards test";
                 - the emulator check of the phone screens (not while Julio is at the PC).
+            - **Julio away from about 09:45 UTC** ("dont stop working", no questions). Work continues alone; summary below when he's back.
+            - **State at 09:55 UTC:**
+              - **Merged and held:** T-1799 (guide nits).
+              - **Running (8):**
+                - T-1795 (B10 web interactive cards; fix round: re-tap guard, `useMemo`, form layout, disabled look);
+                - T-1796 (B11 phone);
+                - T-1797 (W9 web Join, Mute and Leave);
+                - T-1798 (W10 phone);
+                - T-1800 (`post_blocks` in DMs);
+                - T-1801 (the mock's public topic members);
+                - T-1804 (plan for media in cards).
+              - **Ready to launch:** T-1802 (flip `PUBLIC_TOPICS_START_EMPTY`, after W9/W10) and T-1803 (B12 guide, after B10/B11).
+              - **The emulator is running** (Julio is away): a mock smoke of `/dev/blocks` and `/dev/topic-header` on B11's branch.
             - **State at 09:25 UTC:**
               - **Live `b24fc0e81`** (pushed 09:14; health OK at 09:17:40, about 1 min down during the swap):
                 - all 6 containers are healthy, with 0 errors and only the 3 usual "AI is offline" startup warnings;

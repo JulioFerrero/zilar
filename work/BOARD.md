@@ -1805,3 +1805,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1792](T-1792-blocks-respond.md) | card respond route, room correction and re-key retry | 2026-10-17 |
 | [T-1794](T-1794-web-block-headings.md) | web block headings hide under a card header; wide table fade | 2026-10-17 |
 | [T-1799](T-1799-card-guide-nits.md) | card guide: unknown change, place facts, titles, news links | 2026-10-17 |
+| [T-1805](T-1805-dev-catalogs-in-mock-builds.md) | phone dev catalogs render in mock builds | 2026-10-17 |
