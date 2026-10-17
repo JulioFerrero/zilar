@@ -93,8 +93,12 @@ function createTopic(data: MockData, groupId: string, request: MockHttpRequest):
       typeof body.linkLabel === 'string' ? body.linkLabel.slice(0, TOPIC_LINK_LABEL_MAX) : null,
     isGeneral: false,
     archived: false,
-    memberIds:
-      visibility === 'private' ? unique([data.me.id, ...readStringArray(body.memberIds)]) : [],
+    // T-1801: a public topic starts with its creator, like the real server; a
+    // private one also lists the people the caller picked.
+    memberIds: unique([
+      data.me.id,
+      ...(visibility === 'private' ? readStringArray(body.memberIds) : []),
+    ]),
     aiIds: [],
     roleIds: [],
     approverRoleId: null,
@@ -139,7 +143,9 @@ function patchTopic(data: MockData, topic: MockTopic, request: MockHttpRequest):
     if (body.confirmExposeHistory !== true) {
       return badRequest('confirmation_required', 'Confirm exposing the history');
     }
-    updated = { ...updated, visibility: 'public', memberIds: [] };
+    // T-1801: the topic keeps the members it has; a public topic is not "the
+    // whole group" any more, so dropping them would lose the people in it.
+    updated = { ...updated, visibility: 'public' };
   } else if (body.visibility === 'private' && updated.visibility === 'public') {
     updated = {
       ...updated,
@@ -281,7 +287,9 @@ function setTopicRoles(data: MockData, topic: MockTopic, request: MockHttpReques
 }
 
 function topicMembers(data: MockData, topic: MockTopic): { userId: string; name: string }[] {
-  if (topic.visibility !== 'private') {
+  // T-1801: only General holds the whole group; any other topic (public or
+  // private) lists its own members. Matches `buildTopicView`'s `memberIds`.
+  if (topic.isGeneral) {
     const group = data.findGroup(topic.groupId);
     return (group?.members ?? []).map((member) => ({
       userId: member.userId,

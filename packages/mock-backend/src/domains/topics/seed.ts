@@ -13,6 +13,14 @@ import { generalTopicRow, groupRoomJid } from '../chats/general-topics';
 import { mockGroups } from '../groups/seed';
 import type { MockTopic } from './tables';
 
+// T-1801: a public topic keeps its own members, so the seeded Dev team topics
+// start with the group's people. "Ideas" and "Release 2.4 notes" leave `u-you`
+// out, so they land under the client's "Other topics" with a Join preview.
+const devTeamMemberIds =
+  mockGroups.find((group) => group.id === 'g-devteam')?.members.map((member) => member.userId) ??
+  [];
+const devTeamMemberIdsWithoutYou = devTeamMemberIds.filter((userId) => userId !== 'u-you');
+
 const devTeamTopics: readonly MockTopic[] = [
   {
     id: 't-devteam-general',
@@ -28,6 +36,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: null,
     isGeneral: true,
     archived: false,
+    // General's members come from the group (view and topicMembers).
     memberIds: [],
     aiIds: [],
     roleIds: [],
@@ -48,7 +57,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: 'PR #42',
     isGeneral: false,
     archived: false,
-    memberIds: [],
+    memberIds: devTeamMemberIds,
     aiIds: ['ai-dev-1'],
     roleIds: [],
     approverRoleId: null,
@@ -71,7 +80,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: null,
     isGeneral: false,
     archived: false,
-    memberIds: [],
+    memberIds: devTeamMemberIds,
     aiIds: [],
     roleIds: [],
     approverRoleId: 'role-designers',
@@ -90,7 +99,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: null,
     isGeneral: false,
     archived: false,
-    memberIds: [],
+    memberIds: devTeamMemberIds,
     aiIds: [],
     roleIds: [],
     approverRoleId: null,
@@ -109,7 +118,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: null,
     isGeneral: false,
     archived: false,
-    memberIds: [],
+    memberIds: devTeamMemberIdsWithoutYou,
     aiIds: [],
     roleIds: [],
     approverRoleId: null,
@@ -147,7 +156,7 @@ const devTeamTopics: readonly MockTopic[] = [
     linkLabel: null,
     isGeneral: false,
     archived: false,
-    memberIds: [],
+    memberIds: devTeamMemberIdsWithoutYou,
     aiIds: [],
     roleIds: [],
     approverRoleId: null,

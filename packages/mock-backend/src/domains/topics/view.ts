@@ -14,9 +14,9 @@ export interface TopicRoleSource {
 }
 
 export interface TopicViewSource {
-  /** How many members the topic's group has (a public topic shows all of them). */
+  /** How many members the topic's group has (General shows all of them). */
   groupMemberCount(groupId: string): number;
-  /** T-1777: the people of a group, for a public topic's `memberIds`. */
+  /** T-1777: the people of a group, for General's `memberIds`. */
   groupMemberIds(groupId: string): readonly string[];
   role(roleId: string): TopicRoleSource | undefined;
   aiName(aiId: string): string;
@@ -34,17 +34,9 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     .map((role) => ({ id: role.id, name: role.name, memberCount: role.memberIds.length }));
   const approver =
     topic.approverRoleId === null ? null : (source.role(topic.approverRoleId) ?? null);
-  // T-1492: AIs count as members. A private topic adds the AIs it lists; a
-  // public topic shows the whole group, people and AIs (see `groupMemberCount`).
-  const memberCount =
-    topic.visibility === 'private'
-      ? new Set([
-          ...topic.memberIds,
-          ...topic.roleIds.flatMap((roleId) => source.role(roleId)?.memberIds ?? []),
-        ]).size + topic.aiIds.length
-      : source.groupMemberCount(topic.groupId);
-  // T-1777: the same sets as `memberCount`, people only, so the client can tell
-  // who is in the topic.
+  // T-1492: AIs count as members. T-1801: a public topic keeps its own people,
+  // like the real server (its creator, then whoever joined); only General holds
+  // the whole group. A private topic lists the people it names, plus roles.
   const memberIds =
     topic.visibility === 'private'
       ? [
@@ -53,7 +45,13 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
             ...topic.roleIds.flatMap((roleId) => source.role(roleId)?.memberIds ?? []),
           ]),
         ]
-      : [...source.groupMemberIds(topic.groupId)];
+      : topic.isGeneral
+        ? [...source.groupMemberIds(topic.groupId)]
+        : [...topic.memberIds];
+  const memberCount =
+    topic.visibility === 'public' && topic.isGeneral
+      ? source.groupMemberCount(topic.groupId)
+      : memberIds.length + topic.aiIds.length;
   return {
     id: topic.id,
     groupId: topic.groupId,

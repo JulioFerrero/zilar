@@ -1806,3 +1806,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1794](T-1794-web-block-headings.md) | web block headings hide under a card header; wide table fade | 2026-10-17 |
 | [T-1799](T-1799-card-guide-nits.md) | card guide: unknown change, place facts, titles, news links | 2026-10-17 |
 | [T-1805](T-1805-dev-catalogs-in-mock-builds.md) | phone dev catalogs render in mock builds | 2026-10-17 |
+| [T-1801](T-1801-mock-public-topic-members.md) | mock public topics keep real members | 2026-10-17 |
