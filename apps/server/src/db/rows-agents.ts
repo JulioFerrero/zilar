@@ -240,3 +240,37 @@ export interface MediaItemRow {
   deleted: boolean;
   createdAt: Date;
 }
+
+// Row of the `card_media` table (T-1847): one AI card image or file whose
+// bytes live under `CARD_MEDIA_STORAGE_DIR` at `storageKey` (a server-made
+// `<uuid>`, never user input).
+export interface CardMediaRow {
+  id: string;
+  aiId: string;
+  roomJid: string;
+  groupId: string | null;
+  topicId: string | null;
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  name: string;
+  storageKey: string;
+  createdAt: Date;
+}
+
+// Insert shape of the `card_media` table.
+export interface CardMediaInsert {
+  id: string;
+  aiId: string;
+  roomJid: string;
+  groupId?: string | null | undefined;
+  topicId?: string | null | undefined;
+  mime: string;
+  size: number;
+  width?: number | null | undefined;
+  height?: number | null | undefined;
+  name: string;
+  storageKey: string;
+  createdAt?: Date | undefined;
+}

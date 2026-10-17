@@ -45,6 +45,7 @@ services run in every stack. The desk agent stays idle until the host has gVisor
 | `STICKER_STORAGE_DIR` | No | `./data/stickers` | Directory uploaded stickers live in; created and checked writable at startup (`server-schema.ts:50`, `apps/server/src/startup/boot.ts:99-107`). | No |
 | `AVATAR_STORAGE_DIR` | No | `./data/avatars` | Directory avatars live in; same rules as stickers (`server-schema.ts:55`, `boot.ts:111-112`). | No |
 | `BACKGROUND_STORAGE_DIR` | No | `./data/backgrounds` | Directory uploaded chat backgrounds live in; same rules (`server-schema.ts:60`, `boot.ts:115-116`). | No |
+| `CARD_MEDIA_STORAGE_DIR` | No | `./data/card-media` | Directory AI card images and files live in; same rules (`server-schema.ts:64`, `boot.ts:120-121`). | No |
 
 ### Database
 

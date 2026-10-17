@@ -37,6 +37,7 @@ export interface BootedServer {
   stickerDir: string;
   avatarDir: string;
   backgroundDir: string;
+  cardMediaDir: string;
 }
 
 /**
@@ -115,6 +116,10 @@ export function bootServer(running: RunningServer): Effect.Effect<BootedServer> 
     const backgroundDir = resolveStorageDir(config.BACKGROUND_STORAGE_DIR);
     yield* Effect.promise(() => ensureWritableDir(backgroundDir, 'BACKGROUND_STORAGE_DIR'));
 
+    // Card media (T-1847): AI card images and files; same rules again.
+    const cardMediaDir = resolveStorageDir(config.CARD_MEDIA_STORAGE_DIR);
+    yield* Effect.promise(() => ensureWritableDir(cardMediaDir, 'CARD_MEDIA_STORAGE_DIR'));
+
     // T-0156: warn once (ids/paths only) when the file stores sit on the
     // container layer in production (no mount: files lost on replace), and when
     // GIF search is half-configured (provider without a key). Absolute paths
@@ -126,6 +131,7 @@ export function bootServer(running: RunningServer): Effect.Effect<BootedServer> 
           { envName: 'STICKER_STORAGE_DIR', dir: stickerDir },
           { envName: 'AVATAR_STORAGE_DIR', dir: avatarDir },
           { envName: 'BACKGROUND_STORAGE_DIR', dir: backgroundDir },
+          { envName: 'CARD_MEDIA_STORAGE_DIR', dir: cardMediaDir },
         ],
         isProduction: config.NODE_ENV === 'production',
         warn: (message) => logger.warn(message),
@@ -146,6 +152,7 @@ export function bootServer(running: RunningServer): Effect.Effect<BootedServer> 
       stickerDir,
       avatarDir,
       backgroundDir,
+      cardMediaDir,
     };
   });
 }

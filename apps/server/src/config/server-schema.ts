@@ -58,6 +58,10 @@ export const serverConfigSchema = Schema.Struct({
   // are `<uuid>.<ext>` (never user input), the dir must exist or be
   // creatable and writable at startup (checked in `index.ts`).
   BACKGROUND_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/backgrounds'),
+  // Card media (T-1847): the directory AI card images and files are stored
+  // under. Same rules as `AVATAR_STORAGE_DIR`: file names are `<uuid>` (never
+  // user input), the dir must exist or be creatable and writable at startup.
+  CARD_MEDIA_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/card-media'),
   // Telegram sticker import (T-0123): the token of a bot that may call
   // `getStickerSet`/`getFile` for public packs (Julio creates one with
   // @BotFather and puts it in `infra/.env`). Unset = the import route
