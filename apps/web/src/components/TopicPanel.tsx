@@ -176,11 +176,13 @@ function TopicPanelBody({
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     return ownerId === me || isManager;
   };
+  // T-1836: AIs count as members, like the chat header; the count waits for
+  // both lists so it never jumps.
   const headerSuffix =
     topic.isGeneral === true
       ? ' · Everyone'
-      : membersState.status === 'ready'
-        ? ` · ${membersState.members.length} members`
+      : membersState.status === 'ready' && aisState.status === 'ready'
+        ? ` · ${membersState.members.length + aisState.ais.length} members`
         : '';
   const visibilityBusy = isWaiting(visibilityState);
   // T-1534: any member who can see the topic may mark it done or reopen it.
