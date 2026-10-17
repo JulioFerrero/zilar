@@ -323,7 +323,9 @@ export function TopicInfoSheet({
             onRetryGroupRoles={onRetryGroupRoles}
           />
 
-          <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />
+          {topic.isGeneral !== true ? (
+            <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />
+          ) : null}
 
           <TopicMuteLeave chat={chat} myUserId={myUserId} disabled={busy} onAskLeave={onAskLeave} />
 

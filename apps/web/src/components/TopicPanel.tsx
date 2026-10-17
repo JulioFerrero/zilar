@@ -231,21 +231,24 @@ function TopicPanelBody({
           />
 
           {/* T-1534: the topic's link and its done switch. Every member who
-              can see the topic may use both. */}
+              can see the topic may use both. T-1835: General is the group's
+              room, so it has no done switch. */}
           <section aria-label="Topic" className="flex flex-col gap-1">
             <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Topic</h2>
             <TopicLinkRow chat={chat} onError={setErrorMessage} />
-            <ListRow
-              icon={
-                topic.doneAt === null ? (
-                  <CheckCircle2 className="size-4" aria-hidden="true" />
-                ) : (
-                  <RotateCcw className="size-4" aria-hidden="true" />
-                )
-              }
-              title={topic.doneAt === null ? 'Mark as done' : 'Reopen'}
-              onClick={() => runToggleDone()}
-            />
+            {topic.isGeneral !== true && (
+              <ListRow
+                icon={
+                  topic.doneAt === null ? (
+                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                  ) : (
+                    <RotateCcw className="size-4" aria-hidden="true" />
+                  )
+                }
+                title={topic.doneAt === null ? 'Mark as done' : 'Reopen'}
+                onClick={() => runToggleDone()}
+              />
+            )}
           </section>
 
           <TopicAisSection
