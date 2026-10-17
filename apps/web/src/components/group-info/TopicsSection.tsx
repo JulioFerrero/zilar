@@ -8,24 +8,18 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NewTopicDialog } from '../NewTopicDialog';
 import { PanelFailure } from '../panels/groupPanelOps';
-import { Avatar } from '../Avatar';
 import { Button } from '../ui/button';
+import { AvatarStack } from './AvatarStack';
+import type { AvatarStackEntry } from './AvatarStack';
 
 const JOIN_ERROR = "Couldn't join";
-
-/** One avatar of a topic row's stack: a person or an AI. */
-interface StackEntry {
-  id: string;
-  name: string;
-  avatarUrl?: string;
-}
 
 function memberById(info: GroupDetail | undefined): Map<string, GroupMember> {
   return new Map((info?.members ?? []).map((member) => [member.userId, member]));
 }
 
 /** The people of a topic, with the names and pictures the group detail holds. */
-function peopleOf(topic: TopicInfo, info: GroupDetail | undefined): StackEntry[] {
+function peopleOf(topic: TopicInfo, info: GroupDetail | undefined): AvatarStackEntry[] {
   const byId = memberById(info);
   return (topic.memberIds ?? []).map((userId) => {
     const member = byId.get(userId);
@@ -38,7 +32,7 @@ function peopleOf(topic: TopicInfo, info: GroupDetail | undefined): StackEntry[]
 }
 
 /** The topic's AIs, in the order the row lists them. */
-function aisOf(topic: TopicInfo): StackEntry[] {
+function aisOf(topic: TopicInfo): AvatarStackEntry[] {
   return (topic.ais ?? []).map((ai) => ({
     id: ai.id,
     name: ai.name,
@@ -83,27 +77,6 @@ function TopicGlyph({ topic }: { topic: TopicInfo }) {
       ) : (
         <span aria-hidden="true">#</span>
       )}
-    </span>
-  );
-}
-
-/** The overlapping stack: at most four people, then the topic's AIs. */
-function AvatarStack({ entries }: { entries: StackEntry[] }) {
-  if (entries.length === 0) {
-    return null;
-  }
-  return (
-    <span className="flex shrink-0 items-center" aria-hidden="true">
-      {entries.map((entry, index) => (
-        <Avatar
-          key={entry.id}
-          seed={entry.name}
-          name={entry.name}
-          size={20}
-          className={index === 0 ? 'border-2 border-surface' : '-ml-1.5 border-2 border-surface'}
-          {...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl })}
-        />
-      ))}
     </span>
   );
 }

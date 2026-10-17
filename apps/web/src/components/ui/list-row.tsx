@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 
 export interface ListRowProps {
   icon?: ReactNode;
+  /** A leading element drawn plainly, without the 32 px key tile (T-1857). */
+  leading?: ReactNode;
   title: string;
   subtitle?: string;
   trailing?: ReactNode;
@@ -16,12 +18,13 @@ export interface ListRowProps {
 }
 
 /**
- * A settings-style row: a 32 px key tile, a title, a one-line muted subtitle
- * and an optional chevron. It renders a button when it acts, a router Link
- * when it points somewhere, and a plain div otherwise.
+ * A settings-style row: a 32 px key tile (or a plain leading element), a title,
+ * a one-line muted subtitle and an optional chevron. It renders a button when
+ * it acts, a router Link when it points somewhere, and a plain div otherwise.
  */
 export function ListRow({
   icon,
+  leading,
   title,
   subtitle,
   trailing,
@@ -33,7 +36,11 @@ export function ListRow({
 }: ListRowProps) {
   const content = (
     <>
-      {icon === undefined ? null : (
+      {leading !== undefined ? (
+        <span aria-hidden="true" className="flex shrink-0 items-center">
+          {leading}
+        </span>
+      ) : icon === undefined ? null : (
         <span
           aria-hidden="true"
           className="key-icon flex size-8 shrink-0 items-center justify-center rounded-[10px]"

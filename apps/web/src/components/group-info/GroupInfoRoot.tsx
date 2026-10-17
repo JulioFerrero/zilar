@@ -4,9 +4,7 @@ import {
   Activity,
   Bell,
   BellOff,
-  Bot,
   Image as ImageIcon,
-  Link,
   MoreHorizontal,
   Pin,
   Search,
@@ -14,7 +12,6 @@ import {
   ShieldCheck,
   Trash2,
   UserPlus,
-  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -29,17 +26,18 @@ import { ListRow } from '../ui/list-row';
 import { Menu, MenuItem } from '../ui/menu';
 import { PanelKey } from '../ui/panel-key';
 import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
+import { AvatarStack } from './AvatarStack';
+import type { AvatarStackEntry } from './AvatarStack';
 import { TopicsSection } from './TopicsSection';
 
 /** The pages of the group info panel; `root` is the page itself (T-1494). */
 export type GroupInfoPageId =
-  'root' | 'members' | 'ais' | 'links' | 'tools' | 'activity' | 'allowed' | 'settings';
+  'root' | 'people' | 'links' | 'tools' | 'activity' | 'allowed' | 'settings';
 
 /** The title of each subpage, shown by `GroupInfoPage`. */
 export const GROUP_INFO_TITLES: Record<GroupInfoPageId, string> = {
   root: '',
-  members: 'Members',
-  ais: 'AIs',
+  people: 'People and AIs',
   links: 'Invite links',
   tools: 'Tools and routines',
   activity: 'Activity',
@@ -56,16 +54,15 @@ function count(value: number): ReactNode {
 
 /**
  * The group info root page (T-1494): the picture, the name and the member
- * count, the Mute / Search / Add keys, and the three grouped lists whose rows
- * open the subpages.
+ * count, the Mute / Search / Add keys, and the grouped lists whose rows open
+ * the subpages. One row opens People and AIs (T-1857).
  */
 export function GroupInfoRoot({
   chat,
   title,
   groupId,
   memberCount,
-  aisCount,
-  linksCount,
+  stack,
   isManager,
   isOwner,
   canLeave,
@@ -80,9 +77,10 @@ export function GroupInfoRoot({
   title: string;
   /** The group's id, for the More key's Delete group dialog. */
   groupId: string | undefined;
+  /** The members plus AIs count, shown in the row's trailing side. */
   memberCount: number;
-  aisCount: number;
-  linksCount: number | undefined;
+  /** The group's AIs first, then its people, for the row's avatar stack. */
+  stack: AvatarStackEntry[];
   isManager: boolean;
   isOwner: boolean;
   /** A member who is not the owner: show the red Leave group row. */
@@ -198,28 +196,12 @@ export function GroupInfoRoot({
             className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface"
           >
             <ListRow
-              icon={<Users className="size-4" aria-hidden="true" />}
-              title="Members"
-              trailing={count(memberCount)}
+              leading={<AvatarStack entries={stack.slice(0, 5)} size={18} />}
+              title="People and AIs"
+              trailing={<span className="font-mono text-[12px]">{memberCount}</span>}
               chevron
-              onClick={() => onOpenPage('members')}
+              onClick={() => onOpenPage('people')}
             />
-            <ListRow
-              icon={<Bot className="size-4" aria-hidden="true" />}
-              title="AIs"
-              trailing={count(aisCount)}
-              chevron
-              onClick={() => onOpenPage('ais')}
-            />
-            {isManager && (
-              <ListRow
-                icon={<Link className="size-4" aria-hidden="true" />}
-                title="Invite links"
-                trailing={linksCount === undefined ? undefined : count(linksCount)}
-                chevron
-                onClick={() => onOpenPage('links')}
-              />
-            )}
           </nav>
 
           {/* T-1786: Your/Other topics, split by the caller's membership. */}

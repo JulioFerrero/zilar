@@ -2,30 +2,27 @@ import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
-import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
+import type { CreatedInviteLink, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import { createGroupInviteLink, revokeGroupInviteLink } from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { GroupMembersSection } from './GroupMembersSection';
+import type { AvatarStackEntry } from './group-info/AvatarStack';
 import { GroupInfoPage } from './group-info/GroupInfoPage';
 import { GROUP_INFO_TITLES, GroupInfoRoot } from './group-info/GroupInfoRoot';
 import type { GroupInfoPageId } from './group-info/GroupInfoRoot';
+import { PeoplePage } from './group-info/PeoplePage';
 import { ActivitySection } from './ais/AiActivity';
-import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
-import { FieldError } from './ais/AiPageShell';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
 import { VisibilitySection } from './VisibilitySection';
-import { GroupAiSection } from './panels/GroupAiSection';
 import { GroupPictureSection } from './panels/GroupPictureSection';
-import { GroupRolesSection } from './panels/GroupRolesSection';
 import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
 import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
 import type { PanelFailure } from './panels/groupPanelOps';
@@ -61,8 +58,6 @@ export function GroupPanel({
   // a snapshot taken on open, so an option that was just added stays mounted
   // until the panel closes the picker (its success callback needs that).
   const [pickerChoices, setPickerChoices] = useState<PublicAi[] | undefined>(undefined);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
   /** T-0466: the manager-only group background dialog. */
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   /** T-1494: the open subpage, and whether the members page opens its picker. */
@@ -153,22 +148,37 @@ export function GroupPanel({
     storeApi.getState().refreshGroupInfo(chat.id);
   }, [storeApi, chat.id]);
 
-  const ownerName = (ai: GroupAi): string =>
-    info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
   const isOwner = meRole === 'owner';
   // T-1249: the panel can be handed the group's General topic row, whose
   // `title` is the topic name ("General"), so show the group title instead.
   const panelTitle = chat.groupTitle ?? chat.title;
+
+  // The People and AIs row's stack (T-1857): the group's AIs first, then people.
+  const stack: AvatarStackEntry[] =
+    info === undefined
+      ? []
+      : [
+          ...info.ais.map((ai) => ({
+            id: ai.aiId,
+            name: ai.name,
+            ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+          })),
+          ...info.members.map((member) => ({
+            id: member.userId,
+            name: member.name,
+            ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+          })),
+        ];
 
   const openPage = (next: GroupInfoPageId): void => {
     setPickerOnMount(false);
     setPage(next);
   };
 
-  // The root's Add key: the members page, with the picker already open.
+  // The root's Add key: the People and AIs page, with the picker already open.
   const openMembersWithPicker = (): void => {
     setPickerOnMount(true);
-    setPage('members');
+    setPage('people');
   };
 
   return (
@@ -179,8 +189,7 @@ export function GroupPanel({
           title={panelTitle}
           groupId={info?.id}
           memberCount={memberCount}
-          aisCount={info?.ais.length ?? 0}
-          linksCount={isManager ? links.length : undefined}
+          stack={stack}
           isManager={isManager}
           isOwner={isOwner}
           canLeave={meRole !== undefined && meRole !== 'owner'}
@@ -201,61 +210,22 @@ export function GroupPanel({
             <StateMessage kind="loading" size="inline" title="Loading…" />
           ) : (
             <>
-              {page === 'members' && (
-                <>
-                  <GroupMembersSection
-                    chatId={chat.id}
-                    info={info}
-                    me={me}
-                    rolesByUser={rolesByUser}
-                    onOpenLinks={() => setPage('links')}
-                    openPickerOnMount={pickerOnMount}
-                  />
-
-                  {/* T-0116: custom group roles — managers only. Everyone sees
-                        the chips next to the member names above. */}
-                  {isManager && (
-                    <GroupRolesSection
-                      groupId={info.id}
-                      members={info.members.map((member) => ({
-                        userId: member.userId,
-                        name: member.name,
-                        ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
-                      }))}
-                      rolesState={rolesState}
-                      onReload={refreshRoles}
-                    />
-                  )}
-                </>
-              )}
-
-              {page === 'ais' && (
-                <>
-                  <GroupAiSection
-                    ais={info.ais}
-                    chatId={chat.id}
-                    ownerNameOf={ownerName}
-                    canRemove={(ai) => ai.ownerId === me || isManager}
-                    isManager={isManager}
-                    eligibleAis={eligibleAis}
-                    pickerChoices={pickerChoices}
-                    onOpenPicker={() => setPickerChoices(eligibleAis)}
-                    onClosePicker={() => setPickerChoices(undefined)}
-                    onOpenMemory={(ai) => setMemoryAi(ai)}
-                    onError={setErrorMessage}
-                  />
-
-                  {memoryAi !== undefined && (
-                    <AiMemoryDialog
-                      chat={chat.id}
-                      aiId={memoryAi.id}
-                      aiName={memoryAi.name}
-                      onClose={() => setMemoryAi(undefined)}
-                    />
-                  )}
-
-                  {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
-                </>
+              {page === 'people' && (
+                <PeoplePage
+                  chatId={chat.id}
+                  info={info}
+                  me={me}
+                  isManager={isManager}
+                  rolesByUser={rolesByUser}
+                  rolesState={rolesState}
+                  onReloadRoles={refreshRoles}
+                  onOpenLinks={() => setPage('links')}
+                  openPickerOnMount={pickerOnMount}
+                  eligibleAis={eligibleAis}
+                  pickerChoices={pickerChoices}
+                  onOpenPicker={() => setPickerChoices(eligibleAis)}
+                  onClosePicker={() => setPickerChoices(undefined)}
+                />
               )}
 
               {/* T-0115: shareable invite links, owners and admins only. */}
