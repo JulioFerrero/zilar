@@ -6,6 +6,7 @@
  * `effects/lifecycle.ts`.
  */
 import type { StoreApi } from './atomStore';
+import { getActiveChatId } from '../lib/push/active-chat';
 import {
   createOfflineCache,
   defaultOfflineCachePort,
@@ -39,7 +40,12 @@ export function createOfflineCacheSync(deps: {
       // bare list.
       store.subscribe(() => {
         const state = store.getState();
-        const snapshot = offlineSnapshot(state.me?.id, state.chats, state.messagesByChat);
+        const snapshot = offlineSnapshot(
+          state.me?.id,
+          state.chats,
+          state.messagesByChat,
+          getActiveChatId(),
+        );
         if (snapshot !== undefined) {
           cache.schedule(snapshot);
         }

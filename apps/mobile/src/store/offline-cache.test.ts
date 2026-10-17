@@ -2,13 +2,18 @@
 // task names: hydrate then server history (no duplicates, server wins), another
 // user's file is ignored, and sign-out removes the file. The file is an
 // injected in-memory port, so the real `expo-file-system` is never loaded.
-import type { UiMessage } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
-import { createOfflineCache, encodeOfflineCache, type OfflineCachePort } from './offline-cache';
+import {
+  createOfflineCache,
+  encodeOfflineCache,
+  offlineSnapshot,
+  type OfflineCachePort,
+} from './offline-cache';
 import { fakeApi, fakeAppState } from './test-support';
 import { waitFor } from '@/test/wait';
 
@@ -84,7 +89,36 @@ function coreWithHistory(messages: ChatMessage[]): XmppCore {
   });
 }
 
+function chatRow(id: string): ChatSummary {
+  return {
+    id,
+    title: id,
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+  };
+}
+
 describe('mobile offline chat cache (T-1313)', () => {
+  it('keeps 50 chats plus the open one when it falls outside them', () => {
+    const chats = Array.from({ length: 60 }, (_, index) => chatRow(`c-${index}`));
+    const messages = Object.fromEntries(
+      chats.map((chat) => [
+        chat.id,
+        [cachedMessage(`m-${chat.id}`, chat.id, '2026-09-28T09:00:00Z')],
+      ]),
+    );
+
+    const snapshot = offlineSnapshot(ME, chats, messages, 'c-55');
+
+    expect(Object.keys(snapshot?.messages ?? {})).toEqual([
+      ...chats.slice(0, 50).map((chat) => chat.id),
+      'c-55',
+    ]);
+  });
+
   it('hydrates, then merges the server history without duplicates (server wins)', async () => {
     const port = fakePort(
       seededFile(ME, [

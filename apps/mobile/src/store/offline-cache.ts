@@ -7,11 +7,11 @@
  * app already uses for small per-device JSON (`lib/composer-drafts.ts`,
  * `lib/voice-transcripts.ts`); no new dependency is added.
  *
- * Only display data is kept: the `UiMessage`s of the 30 most recent chats (50
- * each), the owner's user id and a version. No token and no media bytes, only
- * the attachment URLs the rows already carry. A different signed-in user
- * ignores the file (the owner must match) and the next save replaces it;
- * sign-out removes it.
+ * Only display data is kept: the `UiMessage`s of the 50 most recent chats (50
+ * each) plus the chat currently open when it falls outside those, the owner's
+ * user id and a version. No token and no media bytes, only the attachment URLs
+ * the rows already carry. A different signed-in user ignores the file (the
+ * owner must match) and the next save replaces it; sign-out removes it.
  */
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { Result, Schema } from 'effect';
@@ -20,7 +20,7 @@ import { struct } from '@zilar/protocol';
 /** The cache file name; one file per install (removed on sign-out). */
 export const OFFLINE_CACHE_FILE_NAME = 'zilar-offline-cache.json';
 const CACHE_VERSION = 1;
-const MAX_CACHED_CHATS = 30;
+const MAX_CACHED_CHATS = 50;
 const MAX_CACHED_MESSAGES = 50;
 // Writes are debounced this long after the last change; the app's background
 // handler flushes the pending write at once (`effects/lifecycle.ts`).
@@ -176,20 +176,42 @@ export function decodeOfflineCache(raw: string, userId: string): OfflineCacheSna
 }
 
 /**
+ * The chats to keep: the first MAX_CACHED_CHATS in display order, plus the
+ * chat currently open when it falls outside them (a topic, or a chat opened
+ * from a notification), so it starts from the local copy too.
+ */
+function cachedChats(
+  chats: readonly ChatSummary[],
+  activeChatId: string | null | undefined,
+): readonly ChatSummary[] {
+  const first = chats.slice(0, MAX_CACHED_CHATS);
+  if (activeChatId === null || activeChatId === undefined) {
+    return first;
+  }
+  if (first.some((chat) => chat.id === activeChatId)) {
+    return first;
+  }
+  const active = chats.find((chat) => chat.id === activeChatId);
+  return active === undefined ? first : [...first, active];
+}
+
+/**
  * Builds the snapshot to persist from the store's live values, or undefined
- * when no user is signed in (nothing to scope the file to). Only the 30 most
- * recent chats are kept, so one cache entry can never grow with the whole list.
+ * when no user is signed in (nothing to scope the file to). Only the 50 most
+ * recent chats are kept, plus the open one, so one cache entry can never grow
+ * with the whole list.
  */
 export function offlineSnapshot(
   userId: string | undefined,
   chats: readonly ChatSummary[],
   messages: Record<string, UiMessage[]>,
+  activeChatId?: string | null,
 ): OfflineCacheSnapshot | undefined {
   if (userId === undefined || userId === '') {
     return undefined;
   }
   const recent: Record<string, UiMessage[]> = {};
-  for (const chat of chats.slice(0, MAX_CACHED_CHATS)) {
+  for (const chat of cachedChats(chats, activeChatId)) {
     const list = messages[chat.id];
     if (list !== undefined) {
       recent[chat.id] = list;

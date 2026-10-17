@@ -1911,3 +1911,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1898](T-1898-connection-line-no-jump.md) | Connecting pill waits 1.5 s and never moves the chats | 2026-10-17 |
 | [T-1901](T-1901-smooth-app-plan.md) | plan: a smoother app (fast opens, no jumps) | 2026-10-17 |
 | [T-1895](T-1895-share-screen.md) | phone: the /share screen sends to one picked chat | 2026-10-17 |
+| [T-1904](T-1904-phone-cache-open-chat.md) | phone cache keeps 50 chats and the open one | 2026-10-17 |
