@@ -263,6 +263,7 @@ describe('resolveCandidate', () => {
     const userId = await seedUser(context);
     const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], []);
     const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
     const row = roomRow({
       owner: roomJid(context, topic.roomLocalpart),
       nick: localpartFor(userId),
@@ -304,12 +305,43 @@ describe('resolveCandidate', () => {
     });
   });
 
+  it('hides a public topic from a group member who has not joined it', async () => {
+    const ownerId = await seedUser(context);
+    const memberId = await seedUser(context);
+    const outsiderId = await seedUser(context);
+    const { groupId } = await seedGroup(
+      context,
+      ownerId,
+      [
+        { userId: ownerId, role: 'owner' },
+        { userId: memberId, role: 'member' },
+        { userId: outsiderId, role: 'member' },
+      ],
+      [],
+      { title: 'Team' },
+    );
+    const topic = await seedTopic(context, groupId, ownerId, 'Backend', 'public');
+    await addTopicMember(context, topic.id, memberId, ownerId);
+    const row = roomRow({ owner: roomJid(context, topic.roomLocalpart), nick: 'Other' });
+
+    // A public topic is visible to every group member, but only its members
+    // get its pushes (T-1830).
+    expect(await resolveCandidate(deps, outsiderId, ownerFor(outsiderId), row)).toEqual({
+      status: 'hidden',
+    });
+    expect(await resolveCandidate(deps, memberId, ownerFor(memberId), row)).toMatchObject({
+      status: 'ok',
+      message: { chatJid: roomJid(context, topic.roomLocalpart), place: 'Team › Backend' },
+    });
+  });
+
   it('mutes a topic through its group General mute', async () => {
     const userId = await seedUser(context);
     const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], [], {
       title: 'Team',
     });
     const topic = await seedTopic(context, groupId, userId, 'Backend', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
     const generalJid = await groupGeneralRoomJid(context, groupId);
     await setMute(context, userId, generalJid, new Date(NOW.getTime() + 3_600_000));
     const row = roomRow({ owner: roomJid(context, topic.roomLocalpart), nick: 'Other' });
@@ -324,6 +356,7 @@ describe('resolveCandidate', () => {
       title: 'Team',
     });
     const topic = await seedTopic(context, groupId, userId, 'Backend', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
     const generalJid = await groupGeneralRoomJid(context, groupId);
     await setMute(context, userId, generalJid, new Date(NOW.getTime() - 3_600_000));
     const row = roomRow({ owner: roomJid(context, topic.roomLocalpart), nick: 'Other' });
@@ -504,6 +537,7 @@ describe('resolveCandidate', () => {
     });
     await setGroupKind(context, groupId, 'channel');
     const topic = await seedTopic(context, groupId, userId, 'Feed', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
     const room = roomJid(context, topic.roomLocalpart);
     const row = roomRow({ owner: room, nick: 'Other' });
 

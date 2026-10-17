@@ -1839,3 +1839,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1827](T-1827-dm-cards-allowed.md) | AIs may post interactive cards in their owner's DM | 2026-10-17 |
 | [T-1829](T-1829-unjoined-topics-hidden.md) | topics you haven't joined stay out of your chat list | 2026-10-17 |
 | [T-1828](T-1828-topic-old-shape-audit.md) | audit: safe order to drop the old topic shape | 2026-10-17 |
+| [T-1830](T-1830-push-topic-members.md) | push only to a topic's members | 2026-10-17 |

@@ -6,7 +6,7 @@ import type { SearchOwner } from '../search/service';
 import { bareJid, ownBareJid } from '../jid';
 import { isLiveAiUiEdit, isLiveAiUiRow } from '../notify/ai-cards';
 import { stanzaFrom } from '../search/routes';
-import { canSeeTopic, type TopicRow } from '../topics/access';
+import { canSeeTopic, isTopicMember, type TopicRow } from '../topics/access';
 import { albumInfoFromXml } from '../xmpp/album-xml';
 import { localpartFor } from '../xmpp/provisioning';
 import type { ArchiveCandidate } from './archive-scan';
@@ -88,9 +88,12 @@ async function resolveRoomCandidate(
     return { status: 'skip' };
   }
   // Send-time visibility re-check: a private topic's name only ever goes to
-  // a user who can see that topic right now, and a muted chat sends nothing
-  // (a topic falls back to its group's General mute, like the clients).
+  // a user who can see that topic right now. Past that, only General reaches
+  // the whole group: every other topic notifies its own members (T-1830).
   if (!(await canSeeTopic(deps.db, topic, userId))) {
+    return { status: 'hidden' };
+  }
+  if (!topic.isGeneral && !(await isTopicMember(deps.db, topic.id, userId))) {
     return { status: 'hidden' };
   }
   const [group] = await runSql(
