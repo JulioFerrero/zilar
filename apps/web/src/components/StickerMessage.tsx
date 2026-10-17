@@ -12,6 +12,8 @@ export interface StickerMessageProps {
   sticker: Sticker;
   message: UiMessage;
   own: boolean;
+  /** In select mode a click reaches the row's toggle instead of the pack link. */
+  selecting?: boolean;
 }
 
 /**
@@ -21,44 +23,50 @@ export interface StickerMessageProps {
  * anything else shows a placeholder so a hostile sender cannot make every
  * viewer's browser fetch an arbitrary URL.
  */
-export function StickerMessage({ sticker, message, own }: StickerMessageProps) {
+export function StickerMessage({ sticker, message, own, selecting = false }: StickerMessageProps) {
   const [broken, setBroken] = useState(false);
   const trusted = isSameOriginStickerUrl(sticker.url);
   const alt = sticker.emoji !== undefined && sticker.emoji !== '' ? sticker.emoji : 'Sticker';
   const ratio = `${sticker.width} / ${sticker.height}`;
+  const image =
+    trusted && !broken ? (
+      <img
+        src={sticker.url}
+        alt={alt}
+        loading="lazy"
+        width={sticker.width}
+        height={sticker.height}
+        onError={() => setBroken(true)}
+        style={{ aspectRatio: ratio }}
+        className={cn('max-h-[200px] max-w-[200px] rounded-[8px] object-contain')}
+      />
+    ) : (
+      <div
+        role="img"
+        aria-label={alt}
+        className="flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-edge bg-well text-[40px]"
+      >
+        {alt === 'Sticker' ? (
+          <Smile className="size-10 text-muted-foreground" aria-hidden="true" />
+        ) : (
+          alt
+        )}
+      </div>
+    );
 
   return (
     <div className="relative inline-block max-w-[200px]">
-      <Link
-        to={`/stickers/${sticker.pack_id}`}
-        aria-label="Open sticker pack"
-        className="block cursor-pointer"
-      >
-        {trusted && !broken ? (
-          <img
-            src={sticker.url}
-            alt={alt}
-            loading="lazy"
-            width={sticker.width}
-            height={sticker.height}
-            onError={() => setBroken(true)}
-            style={{ aspectRatio: ratio }}
-            className={cn('max-h-[200px] max-w-[200px] rounded-[8px] object-contain')}
-          />
-        ) : (
-          <div
-            role="img"
-            aria-label={alt}
-            className="flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-edge bg-well text-[40px]"
-          >
-            {alt === 'Sticker' ? (
-              <Smile className="size-10 text-muted-foreground" aria-hidden="true" />
-            ) : (
-              alt
-            )}
-          </div>
-        )}
-      </Link>
+      {selecting ? (
+        <div className="block">{image}</div>
+      ) : (
+        <Link
+          to={`/stickers/${sticker.pack_id}`}
+          aria-label="Open sticker pack"
+          className="block cursor-pointer"
+        >
+          {image}
+        </Link>
+      )}
       <span
         title={formatFullDateTime(message.createdAt)}
         className="raised-pill absolute right-1 bottom-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums"

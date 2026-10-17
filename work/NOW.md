@@ -798,6 +798,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **iOS 0.2.9 on Iryna's iPhone 16 Pro** (Julio asked at 20:30 UTC). It was built from tag `v0.2.9` in the scratch worktree `../zilar-ios-build` (RELEASING §8), installed and launched at 20:43 UTC.
                 - It has the same limits as before: a personal team, so no push (`aps-environment` dropped from the generated entitlements) and a 7-day expiry.
                 - Share-into-Zilar is Android-only (`disableIOS: true`).
+              - **Night iPhone batch (Julio, about 22:00–23:45 UTC), all merged and held (not pushed):**
+                - T-1927: the emoji panel docks under the input;
+                - T-1928: attach and sticker sheets drag down to close;
+                - T-1929: tapping a sticker opens its pack;
+                - T-1930: the iOS voice-record crash (a dynamic `import('react-native')`);
+                - T-1931: the sheet queue (Delete leaving the menu stuck, Forward);
+                - T-1932 and T-1933: reactions take any emoji, no clipped tops;
+                - T-1934: archived chats scroll in the list.
+                - Each was checked on the emulator or the web mock. T-1935 (web sticker click in selection mode) is running.
+                - **Next:** the iOS 0.2.11 build for Iryna's phone (building), then ask Julio about the push (about 50 s outage) and a v0.2.11 tag.
+              - **v0.2.10 released:** the APK embeds 0.2.10 / 210 (verified) and was posted in Zilar Updates. Live `a7932b7f1` since 21:38 UTC.
               - **21:32 UTC (Julio OK'd all three):**
                 - pushed `a7932b7f1` (T-1923 to T-1926; the deploy means about 50 s of Bad Gateway);
                 - tagged **v0.2.10** (the Android release workflow);

@@ -229,7 +229,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <ReplyQuote message={message} onOpen={() => openQuote(message.replyTo!.id)} />
               </div>
             )}
-            <StickerMessage sticker={sticker} message={message} own={own} />
+            <StickerMessage sticker={sticker} message={message} own={own} selecting={selecting} />
             {message.failed === true ? (
               <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
                 <span>Send failed</span>
