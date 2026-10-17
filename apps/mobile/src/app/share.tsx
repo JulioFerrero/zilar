@@ -76,6 +76,17 @@ function ShareToChat() {
     [hasShareIntent, shareIntent],
   );
 
+  // A new share arriving while this screen is open starts fresh: the previous
+  // pick and error belong to the old draft. Adjusted during render, as the
+  // screens do, not in an effect. `sending` is left alone; an in-flight send
+  // re-enables Send itself.
+  const [lastShareIntent, setLastShareIntent] = useState(shareIntent);
+  if (!Object.is(lastShareIntent, shareIntent)) {
+    setLastShareIntent(shareIntent);
+    setSelected(undefined);
+    setFailure(undefined);
+  }
+
   const leave = (): void => {
     resetShareIntent();
     if (router.canGoBack()) {

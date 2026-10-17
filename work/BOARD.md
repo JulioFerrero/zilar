@@ -1919,3 +1919,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1905](T-1905-ai-status-no-resize.md) | the AI status pill never moves the thread | 2026-10-17 |
 | [T-1908](T-1908-share-intent-patch.md) | a share never crashes the app (expo-share-intent patch) | 2026-10-17 |
 | [T-1909](T-1909-smooth-followups.md) | sign-out on a dead session also clears the message cache | 2026-10-17 |
+| [T-1910](T-1910-share-reset-on-new.md) | a new share starts with a clean share screen | 2026-10-17 |

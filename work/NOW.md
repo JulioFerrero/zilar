@@ -776,7 +776,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
                 T-1901 is merged and held (plan `docs/plan/smooth-app.md`: the history waits for every room join; the web has no message cache; jump list W1–W6 / P1–P7; 10 tasks).
               - **Live check, 18:40:** the two pre-D1 "cards test" photos return 404 (Julio's browser shows them from its cache), and the 20:09 photo returns 200.
-              - **Running:**
+              - **Live `8e87ff0`** (18:59 UTC):
+                - T-1895 (`/share`);
+                - T-1902 (history waits for its own room);
+                - T-1903 (web message cache);
+                - T-1904 (phone caches 50 chats + the open one);
+                - T-1905 (AI status pill + a fixed gap in topics);
+                - T-1906 and T-1907 (phone screens keep their content on focus).
+              - **Measured live, 19:10:** a cold reload of "cards test" now has its LCP (the card photo) at **184 ms**, down from 1360 ms. The `card-media` requests start at 128 ms, before the XMPP token (297 ms).
+              - **Held, not pushed:**
+                - T-1908 (`pnpm patch` of expo-share-intent: the share crash fixed; the emulator Photos → Zilar → Ana flow sends the photo);
+                - T-1909 (`sessionGone` clears the message cache; phone `joinGroups` type).
+              - **Running:** T-1910 (`/share` resets the pick and error on a new share).
+              - **Older (done):**
                 - T-1895 (`/share`, lead fix round: `file://` only from the cache, empty/oversize refused on screen, Send always re-enabled);
                 - smooth-app wave 1:
                   - T-1902 (history waits for its own room; plan task 2);
