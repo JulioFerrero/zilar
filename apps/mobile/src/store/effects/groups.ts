@@ -5,6 +5,7 @@ import {
   ensureGroupDetail as ensureGroupDetailCore,
   type GroupActionStore,
   type GroupDetailStore,
+  type JoinGroupsHooks,
   type TopicRowStore,
 } from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
@@ -69,8 +70,9 @@ export interface Groups {
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   /** The member names of a chat's group, from the shared detail load. */
   ensureGroupMembers(chatId: string): Effect.Effect<void, never, Ports>;
-  /** Joins the rooms of every group chat, one at a time; a room can be joined later. */
-  joinGroups(current: XmppCore, me: Me): Effect.Effect<void, never, Ports>;
+  /** Joins the rooms of every group chat, one at a time; a room can be joined later.
+   * `hooks.first` joins before the rest; `hooks.onJoined` fires per joined room. */
+  joinGroups(current: XmppCore, me: Me, hooks?: JoinGroupsHooks): Effect.Effect<void, never, Ports>;
 }
 
 /**
@@ -199,12 +201,22 @@ export function makeGroups(ctx: StoreCtx): Groups {
       }
     });
 
-  const joinGroups = (current: XmppCore, me: Me): Effect.Effect<void, never, Ports> =>
+  const joinGroups = (
+    current: XmppCore,
+    me: Me,
+    hooks?: JoinGroupsHooks,
+  ): Effect.Effect<void, never, Ports> =>
     Effect.gen(function* () {
-      for (const chat of get().chats) {
-        if (chat.kind !== 'group') {
-          continue;
-        }
+      const chats = get().chats.filter((chat) => chat.kind === 'group');
+      const first = hooks?.first;
+      const ordered =
+        first === undefined
+          ? chats
+          : [
+              ...chats.filter((chat) => chat.id === first),
+              ...chats.filter((chat) => chat.id !== first),
+            ];
+      for (const chat of ordered) {
         // The detail first: it fills the cache, so the member-name fallback
         // behind every topic row shares the same GET (T-0147 ordering).
         const groupId = h.groupIdForChat(chat.id);
@@ -214,7 +226,9 @@ export function makeGroups(ctx: StoreCtx): Groups {
         ctx.forkSession(ensureGroupMembers(chat.id));
         // A room can be joined later when the user opens it.
         yield* orElse(
-          lift(() => current.joinRoom(chat.id, h.nick(me))),
+          lift(() => current.joinRoom(chat.id, h.nick(me))).pipe(
+            Effect.tap(() => Effect.sync(() => hooks?.onJoined?.(chat.id))),
+          ),
           undefined,
         );
       }

@@ -71,6 +71,20 @@ export interface CoreHooks {
    * T-1145). Mobile leaves it unset, so it does nothing there.
    */
   readonly notifyIncoming?: (chatId: string, message: UiMessage) => void;
+  /**
+   * The group rooms joined in this session (T-1902), the same set as the
+   * store context's `joinedRooms`. The mobile history adapter rebuilds the
+   * context and reads it here.
+   */
+  readonly joinedRooms?: Set<string>;
+}
+
+/** How `joinGroups` treats the pending chat and reports the rooms it joins (T-1902). */
+export interface JoinGroupsHooks {
+  /** A group chat to join before the rest: the chat the user is opening. */
+  first?: string | undefined;
+  /** Called after each room joins, with that room's chat id. A failed join reports nothing. */
+  onJoined?: ((chatId: string) => void) | undefined;
 }
 
 /** What the lifecycle hands the app to write into its own state on boot. */
@@ -107,8 +121,9 @@ export interface StoreAppHooks extends CoreHooks {
   /** Refreshes the open chat's pins now (web pins). */
   readonly refreshActiveChatPins: (chatId: string) => void;
   /** Joins new group rooms and loads their members (web groupMembers).
-   * Resolves once the joins are done, so group history waits for them. */
-  readonly joinGroups: (core: XmppCore, me: unknown) => Promise<void>;
+   * Resolves once the joins are done, so group history waits for them.
+   * `hooks.first` is joined first and `hooks.onJoined` reports each room. */
+  readonly joinGroups: (core: XmppCore, me: unknown, hooks?: JoinGroupsHooks) => Promise<void>;
   /** Saves the painted chat list to storage and syncs the badge (web reads). */
   readonly saveChatList: () => void;
   /** Loads the default chat background (web prefs), fire and forget. */

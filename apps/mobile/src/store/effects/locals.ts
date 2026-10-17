@@ -32,6 +32,9 @@ export interface StoreLocals {
   loadingHistory: Set<string>;
   pendingOpenChatId: string | undefined;
   groupsJoined: boolean;
+  // The group rooms joined so far (T-1902), so the open chat's own history
+  // can load before every room is.
+  joinedRooms: Set<string>;
   pinsPollEnabled: boolean;
   mediaToken: MediaTokenShape | undefined;
   mediaTrustedHosts: ReadonlySet<string>;
@@ -86,6 +89,9 @@ export function createStoreLocals(): StoreLocals {
     // True once the group rooms are joined; a MAM query for a group before that
     // fails, so a pending group history waits for it (T-0067).
     groupsJoined: false,
+    // The rooms joined in this session: once the pending chat's own room is
+    // in here, its history loads without waiting for the rest (T-1902).
+    joinedRooms: new Set(),
     // The open chat's pins poll (T-0135): `openChat` starts it and the chat
     // screen's `stopPinsPoll` ends it, as the per-chat poll did on mobile.
     pinsPollEnabled: false,

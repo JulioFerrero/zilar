@@ -9,6 +9,7 @@ import {
   stopStore as coreStopStore,
   retryBoot as coreRetryBoot,
   type BootInput,
+  type JoinGroupsHooks,
 } from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatPref, Contact, Me } from '@/lib/api';
@@ -179,8 +180,13 @@ export function refreshActiveChatPinsNow(ctx: StoreCtx, chatId: string): void {
 }
 
 /** Joins new group rooms and loads their members; resolves when the joins are done. */
-export function joinGroupsNow(ctx: StoreCtx, core: XmppCore, me: unknown): Promise<void> {
-  return ctx.rt.runPromise(joinGroups(ctx, core, me as Me));
+export function joinGroupsNow(
+  ctx: StoreCtx,
+  core: XmppCore,
+  me: unknown,
+  hooks?: JoinGroupsHooks,
+): Promise<void> {
+  return ctx.rt.runPromise(joinGroups(ctx, core, me as Me, hooks));
 }
 
 export { scheduleChatsRefresh, saveChatList };

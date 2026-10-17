@@ -109,6 +109,7 @@ export const stopStore = (ctx: LifecycleCtx): Effect.Effect<void> =>
     ctx.connectRetryAttempt = 0;
     ctx.connectRetryPending = false;
     ctx.groupsJoined = false;
+    ctx.joinedRooms?.clear();
     ctx.mediaToken = undefined;
     ctx.fx.applyStop();
   });
@@ -174,7 +175,15 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
           flushOnline(ctx);
           const me = ctx.get().me;
           if (me !== undefined && me !== null) {
-            yield* fromPromise(() => ctx.fx.joinGroups(current, me)).pipe(Effect.ignore);
+            yield* fromPromise(() =>
+              ctx.fx.joinGroups(current, me, {
+                first: ctx.pendingOpenChatId,
+                onJoined: (chatId) => {
+                  ctx.joinedRooms?.add(chatId);
+                  flushPending(ctx);
+                },
+              }),
+            ).pipe(Effect.ignore);
           }
           ctx.groupsJoined = true;
           flushPending(ctx);

@@ -130,7 +130,7 @@ export function makeStoreContext(deps: StoreContextDeps): {
       scheduleChatsRefresh: () => scheduleChatsRefresh(ctx),
       refreshChats: () => refreshChatsNow(ctx),
       refreshActiveChatPins: (chatId) => refreshActiveChatPinsNow(ctx, chatId),
-      joinGroups: (core, me) => joinGroupsNow(ctx, core, me),
+      joinGroups: (core, me, hooks) => joinGroupsNow(ctx, core, me, hooks),
       saveChatList: () => saveChatListHook(ctx),
       refreshDefaultBackground: () => {
         void ctx.get().refreshDefaultBackground();
@@ -149,6 +149,12 @@ export function makeStoreContext(deps: StoreContextDeps): {
     },
     set groupsJoined(value) {
       locals.groupsJoined = value;
+    },
+    get joinedRooms() {
+      return locals.joinedRooms;
+    },
+    set joinedRooms(value) {
+      locals.joinedRooms = value;
     },
     get pendingOpenChatId() {
       return locals.pendingOpenChatId;

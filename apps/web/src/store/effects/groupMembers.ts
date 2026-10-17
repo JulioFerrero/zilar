@@ -3,7 +3,11 @@
 // lifecycle use these without pulling in the group actions.
 import { Effect } from 'effect';
 import type { MentionMember } from '@zilar/chat-core';
-import { ensureGroupDetail, type GroupDetailStore } from '@zilar/client-core/store';
+import {
+  ensureGroupDetail,
+  type GroupDetailStore,
+  type JoinGroupsHooks,
+} from '@zilar/client-core/store';
 import { jidLocal } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { GroupDetail, Me } from '@/lib/api';
@@ -135,19 +139,30 @@ export const loadGroupMembersInBackground = (
   ctx.rt.fork(ensureGroupMembers(ctx, chatId, force));
 };
 
-/** Joins every group room of the painted list and starts loading its members. */
+/** Joins every group room of the painted list and starts loading its members.
+ * `hooks.first` joins before the rest; `hooks.onJoined` fires per joined room. */
 export const joinGroups = (
   ctx: StoreCtx,
   current: XmppCore,
   me: Me,
+  hooks?: JoinGroupsHooks,
 ): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
-    for (const chat of ctx.get().chats) {
-      if (chat.kind !== 'group') {
-        continue;
-      }
+    const chats = ctx.get().chats.filter((chat) => chat.kind === 'group');
+    const first = hooks?.first;
+    const ordered =
+      first === undefined
+        ? chats
+        : [
+            ...chats.filter((chat) => chat.id === first),
+            ...chats.filter((chat) => chat.id !== first),
+          ];
+    for (const chat of ordered) {
       loadGroupMembersInBackground(ctx, chat.id);
       // A room can be joined later when the user opens it.
-      yield* fromPromise(() => current.joinRoom(chat.id, ctx.k.nick(me))).pipe(Effect.ignore);
+      yield* fromPromise(() => current.joinRoom(chat.id, ctx.k.nick(me))).pipe(
+        Effect.tap(() => Effect.sync(() => hooks?.onJoined?.(chat.id))),
+        Effect.ignore,
+      );
     }
   });

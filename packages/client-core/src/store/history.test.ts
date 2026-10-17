@@ -140,6 +140,42 @@ describe('openHistory (core)', () => {
     rt.closeStore();
   });
 
+  it('loads a group once its own room is joined, before every room', async () => {
+    const { ctx, loadHistory, rt, state } = historyCtx({ state: { activeChatId: TEAM } });
+    ctx.groupsJoined = false;
+    ctx.joinedRooms = new Set();
+    expect(canLoadHistory(ctx, team)).toBe(false);
+
+    await Effect.runPromise(openHistory(ctx, TEAM));
+    expect(ctx.pendingOpenChatId).toBe(TEAM);
+    expect(loadHistory).not.toHaveBeenCalled();
+
+    // `onJoined` fires for this room while the other rooms still queue, and
+    // the pending open flushes without waiting for `groupsJoined`.
+    ctx.joinedRooms.add(TEAM);
+    flushPending(ctx);
+    expect(canLoadHistory(ctx, team)).toBe(true);
+    expect(ctx.pendingOpenChatId).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(state().historyState[TEAM]).toBe('ready');
+    });
+    expect(loadHistory).toHaveBeenCalledWith(TEAM, 'groupchat', expect.anything());
+    rt.closeStore();
+  });
+
+  it('the mobile history adapter sees the joined rooms through fx', () => {
+    const { ctx } = historyCtx();
+    ctx.groupsJoined = false;
+    const rooms = new Set<string>([TEAM]);
+    ctx.joinedRooms = rooms;
+    const adapter: HistoryCtx = {
+      ...ctx,
+      joinedRooms: new Set<string>(),
+      fx: { ...ctx.fx, joinedRooms: rooms },
+    };
+    expect(canLoadHistory(adapter, team)).toBe(true);
+  });
+
   it('marks the chat error when the page fails', async () => {
     const { ctx, state } = historyCtx({
       state: { activeChatId: ANA },

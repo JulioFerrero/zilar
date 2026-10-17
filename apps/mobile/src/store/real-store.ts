@@ -11,6 +11,7 @@ import {
   type CoreApi,
   type CoreCtx,
   type CorePorts,
+  type JoinGroupsHooks,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { createAtomStore, type StoreApi } from './atomStore';
@@ -223,6 +224,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           locals.pendingUploads.delete(messageId);
           locals.pendingVoices.delete(messageId);
         },
+        // T-1902: `history-ctx.ts` rebuilds the ctx; it reads the same set here.
+        joinedRooms: locals.joinedRooms,
       },
       get core() {
         return locals.core;
@@ -278,7 +281,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         },
         loadPreview: (current, chat) => history.loadPreview(current, chat),
         loadPins: (chatId, loud) => pins.loadPins(chatId, loud),
-        joinGroups: (current, me) => groups.joinGroups(current, me),
+        joinGroups: (current, me, hooks?: JoinGroupsHooks) => groups.joinGroups(current, me, hooks),
         ensureGroupDetail: (groupId, force) => groups.ensureGroupDetail(groupId, force),
         ensureGroupMembers: (chatId) => groups.ensureGroupMembers(chatId),
         scheduleChatsRefresh: () => events.scheduleChatsRefresh(),

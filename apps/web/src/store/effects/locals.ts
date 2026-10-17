@@ -17,6 +17,9 @@ export interface StoreLocals {
   // Group history (MUC MAM) only works once the room is joined, which
   // happens after the connection is online.
   groupsJoined: boolean;
+  // The group rooms joined so far (T-1902), so the open chat's own history
+  // can load before every room is.
+  joinedRooms: Set<string>;
   // Turn ids whose draft is done, so a late `draft` is ignored.
   finishedTurns: Set<string>;
   finishedTurnOrder: string[];
@@ -62,6 +65,7 @@ export function createStoreLocals(): StoreLocals {
     lastRead: {},
     lastReadUserId: undefined,
     groupsJoined: false,
+    joinedRooms: new Set(),
     finishedTurns: new Set(),
     finishedTurnOrder: [],
     mediaToken: undefined,

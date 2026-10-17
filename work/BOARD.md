@@ -1914,3 +1914,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1904](T-1904-phone-cache-open-chat.md) | phone cache keeps 50 chats and the open one | 2026-10-17 |
 | [T-1906](T-1906-settings-screens-keep-data.md) | phone settings screens keep their content on focus | 2026-10-17 |
 | [T-1907](T-1907-screens-keep-data.md) | phone AIs, Explore, Me and profiles keep content on focus | 2026-10-17 |
+| [T-1902](T-1902-history-own-room.md) | a topic's history waits only for its own room | 2026-10-17 |

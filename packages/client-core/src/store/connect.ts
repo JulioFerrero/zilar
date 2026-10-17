@@ -168,7 +168,15 @@ export const connectXmpp = (
     ctx.connectRetryAttempt = 0;
     setConnectionStatus(ctx, 'online');
     flushPending(ctx);
-    yield* fromPromise(() => ctx.fx.joinGroups(current, me)).pipe(Effect.ignore);
+    yield* fromPromise(() =>
+      ctx.fx.joinGroups(current, me, {
+        first: ctx.pendingOpenChatId,
+        onJoined: (chatId) => {
+          ctx.joinedRooms?.add(chatId);
+          flushPending(ctx);
+        },
+      }),
+    ).pipe(Effect.ignore);
     ctx.groupsJoined = true;
     flushPending(ctx);
     yield* loadPreviews(ctx, current);

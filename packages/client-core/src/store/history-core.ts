@@ -62,6 +62,11 @@ export interface HistoryCtx extends CoreCtx {
   readonly set: HistorySet;
   /** Group history (MUC MAM) only works once the rooms are joined. */
   groupsJoined: boolean;
+  /**
+   * The group rooms joined so far (T-1902): a chat's own history can load
+   * right after its room joins, without waiting for every room.
+   */
+  joinedRooms?: Set<string>;
   /** The latest chat opened before the core or the chats were ready. */
   pendingOpenChatId: string | undefined;
   /** The oldest loaded message id per chat: where the next older page starts. */
@@ -99,7 +104,11 @@ export const clearSupersededMarker = (ctx: HistoryCtx, chatId: string): void => 
 export const canLoadHistory = (ctx: HistoryCtx, chat: ChatSummary): boolean =>
   ctx.core !== undefined &&
   ctx.get().status === 'online' &&
-  (chat.kind !== 'group' || ctx.groupsJoined);
+  (chat.kind !== 'group' ||
+    ctx.groupsJoined ||
+    ctx.joinedRooms?.has(chat.id) === true ||
+    // The mobile history adapter rebuilds the context; the set rides on fx.
+    ctx.fx.joinedRooms?.has(chat.id) === true);
 
 // Resolves true once the in-flight first-page load for a chat settles, false
 // after MESSAGE_JUMP_WAIT_MS so a stalled fetch cannot hang the jump: the

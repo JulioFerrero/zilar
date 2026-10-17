@@ -17,6 +17,7 @@ import {
   type HistoryLoad,
   type HistoryPatch,
   type HistoryState,
+  type JoinGroupsHooks,
   type LifecycleCtx,
   type StoreAppHooks,
 } from '@zilar/client-core/store';
@@ -219,7 +220,18 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     refreshActiveChatPins: (chatId) => {
       ctx.fx.refreshActiveChatPins(chatId);
     },
-    joinGroups: (core, me) => ctx.run(ctx.fx.joinGroups(core, me as Me)),
+    // `StoreFx` (effects/runtime.ts) has no hooks parameter yet; widen this
+    // one call so the pending chat and per-room reports reach the join loop.
+    joinGroups: (core, me, hooks) =>
+      ctx.run(
+        (
+          ctx.fx.joinGroups as (
+            current: XmppCore,
+            me: Me,
+            hooks?: JoinGroupsHooks,
+          ) => ReturnType<StoreCtx['fx']['joinGroups']>
+        )(core, me as Me, hooks),
+      ),
     saveChatList: saveChatListNow,
     refreshDefaultBackground: () => {},
     loadFolders: () => {
@@ -290,6 +302,9 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     },
     set groupsJoined(value) {
       s.groupsJoined = value;
+    },
+    get joinedRooms() {
+      return coreCtx.fx.joinedRooms;
     },
     get pendingOpenChatId() {
       return s.pendingOpenChatId;
