@@ -1,11 +1,13 @@
-import { checklistCount } from '@zilar/chat-core';
+// effect-plain: a presentational control; the block card owns the request.
 import type { ChecklistBlock as ChecklistBlockData } from '@zilar/protocol';
 import { Check, ListChecks } from 'lucide-react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useBlockRespond } from './BlockRespond';
 
 // The tick recipe of the boards (`Main.dc.html:26-28`): a raised light box when
-// done, a recessed well when not. The payload is read-only in this task (T-1755):
-// the box shows the tick, and nothing is a control.
+// done, a recessed well when not. T-1795 makes each row a control: a tap
+// answers with the item's new `done` and keeps the `by` name.
 const BOX_ON = {
   background: 'linear-gradient(180deg,#ffffff,#d4d4d4)',
   boxShadow: 'inset 0 1px 0 #fff, 0 1px 2px rgba(0,0,0,.8)',
@@ -17,8 +19,9 @@ const BOX_OFF = {
 };
 
 /**
- * 08 · CHECKLIST: the ticks everyone sees, read-only in this task. `showHeading`
- * hides the block's own title row when the card already draws a header.
+ * 08 · CHECKLIST: the ticks everyone sees. An item is a button that toggles
+ * `done` at once; a failed answer takes the tick back. `showHeading` hides the
+ * block's own title row when the card already draws a header.
  */
 export function ChecklistBlock({
   block,
@@ -27,7 +30,34 @@ export function ChecklistBlock({
   block: ChecklistBlockData;
   showHeading: boolean;
 }) {
-  const { done, total } = checklistCount(block);
+  const respond = useBlockRespond();
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [seenBlock, setSeenBlock] = useState(block);
+
+  // React's prop-sync pattern: the room correction replaces the optimistic ticks.
+  if (block !== seenBlock) {
+    setSeenBlock(block);
+    setOverrides({});
+  }
+
+  const toggleItem = (item: ChecklistBlockData['items'][number]): void => {
+    if (respond === null) {
+      return;
+    }
+    const done = !(overrides[item.id] ?? item.done);
+    setOverrides((current) => ({ ...current, [item.id]: done }));
+    void respond.answer(block.id, { done }, item.id).then((data) => {
+      if (data === null) {
+        setOverrides((current) => {
+          const next = { ...current };
+          delete next[item.id];
+          return next;
+        });
+      }
+    });
+  };
+
+  const doneCount = block.items.filter((item) => overrides[item.id] ?? item.done).length;
   return (
     <>
       {showHeading && (
@@ -35,38 +65,42 @@ export function ChecklistBlock({
           <ListChecks className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{block.title}</span>
           <span className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">
-            {done} of {total}
+            {doneCount} of {block.items.length}
           </span>
         </div>
       )}
       <div className="flex flex-col">
-        {block.items.map((item) => (
-          <div key={item.id} className="flex min-h-[28px] items-center gap-2.5">
-            <input
-              type="checkbox"
-              checked={item.done}
-              readOnly
-              tabIndex={-1}
+        {block.items.map((item) => {
+          const done = overrides[item.id] ?? item.done;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={done}
               aria-label={item.label}
-              className="sr-only"
-            />
-            <span
-              aria-hidden="true"
-              className="flex size-[18px] shrink-0 items-center justify-center rounded-[6px]"
-              style={item.done ? BOX_ON : BOX_OFF}
+              disabled={respond === null}
+              aria-disabled={respond === null}
+              onClick={() => toggleItem(item)}
+              className="flex min-h-[28px] w-full items-center gap-2.5 rounded-[6px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ededed]/50 disabled:cursor-default"
             >
-              {item.done && <Check className="size-3 text-[#0a0a0a]" strokeWidth={3.2} />}
-            </span>
-            <span
-              className={cn('min-w-0 flex-1 truncate', item.done && 'text-[#8a8a8a] line-through')}
-            >
-              {item.label}
-            </span>
-            {item.by !== undefined && (
-              <span className="shrink-0 text-[12px] text-[#8a8a8a]">{item.by}</span>
-            )}
-          </div>
-        ))}
+              <span
+                aria-hidden="true"
+                className="flex size-[18px] shrink-0 items-center justify-center rounded-[6px]"
+                style={done ? BOX_ON : BOX_OFF}
+              >
+                {done && <Check className="size-3 text-[#0a0a0a]" strokeWidth={3.2} />}
+              </span>
+              <span
+                className={cn('min-w-0 flex-1 truncate', done && 'text-[#8a8a8a] line-through')}
+              >
+                {item.label}
+              </span>
+              {item.by !== undefined && (
+                <span className="shrink-0 text-[12px] text-[#8a8a8a]">{item.by}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </>
   );

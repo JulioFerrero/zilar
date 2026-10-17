@@ -1,11 +1,17 @@
+// effect-plain: a React view; the api module owns the transport, and `answer`
+// is a tap's fire-and-forget promise.
 import type { Block, BlockIcon as BlockIconName, BlocksData } from '@zilar/protocol';
+import type { BlocksRespondValue } from '@zilar/api-contract';
 import { Info, type LucideIcon } from 'lucide-react';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { respondToBlock } from '@/lib/api/blocks';
 import { renderChartBlock } from './ChartBlocks';
+import { renderChoiceBlock } from './ChoiceBlocks';
 import { renderContentBlock } from './ContentBlocks';
 import { renderDataBlock } from './DataBlocks';
 import { renderProgressBlock } from './ProgressBlocks';
 import { BLOCK_ICONS } from './blockIcons';
+import { BlockRespondContext, type BlockRespond, type BlockRespondTarget } from './BlockRespond';
 import { CalloutBlock } from './CalloutBlock';
 import { ChecklistBlock } from './ChecklistBlock';
 import { FigureBlock } from './FigureBlock';
@@ -13,7 +19,10 @@ import { LinkBlock } from './LinkBlock';
 import { NumberBlock } from './NumberBlock';
 import { StatusBlock } from './StatusBlock';
 
-/** The block kinds this build can draw; the rest are skipped (T-1755). */
+/**
+ * The block kinds this build can draw; the rest are skipped (T-1755). The
+ * choice kinds (13-17) are interactive and answer through `BlockRespond`.
+ */
 function renderBlock(block: Block, showHeading: boolean): ReactNode {
   switch (block.kind) {
     case 'figure':
@@ -28,6 +37,12 @@ function renderBlock(block: Block, showHeading: boolean): ReactNode {
       return <LinkBlock block={block} />;
     case 'callout':
       return <CalloutBlock block={block} />;
+    case 'buttons':
+    case 'poll':
+    case 'choice':
+    case 'form':
+    case 'rating':
+      return renderChoiceBlock(block, showHeading);
     case 'stats':
     case 'table':
       return renderDataBlock(block, showHeading);
@@ -55,10 +70,72 @@ function renderBlock(block: Block, showHeading: boolean): ReactNode {
  * compact row (the board, `WebContent.dc.html:103-122`), with the time inline at
  * the right. A payload whose kinds are all unknown shows the `fallback` as plain
  * text, so the card is never empty.
+ *
+ * T-1795: a member's answer is drawn from the route's merged card at once; the
+ * message's own copy still resets it when the room correction arrives. With no
+ * `respond` target (a fixture, or the viewer's own card) every control is drawn
+ * but disabled.
  */
-export function BlockCard({ data, footer }: { data: BlocksData; footer?: ReactNode }) {
-  const hasHeader = data.icon !== undefined || data.title !== undefined || data.meta !== undefined;
-  const rendered = data.blocks
+export function BlockCard({
+  data,
+  footer,
+  respond,
+}: {
+  data: BlocksData;
+  footer?: ReactNode;
+  respond?: BlockRespondTarget;
+}) {
+  const [shown, setShown] = useState(data);
+  const [seenData, setSeenData] = useState(data);
+  const shownRef = useRef(data);
+
+  // React's prop-sync pattern: the room correction replaces the drawn card.
+  if (data !== seenData) {
+    setSeenData(data);
+    setShown(data);
+  }
+
+  useEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
+
+  const answer = useCallback(
+    async (
+      blockId: string,
+      value: BlocksRespondValue,
+      itemId?: string,
+    ): Promise<BlocksData | null> => {
+      if (respond === undefined) {
+        return null;
+      }
+      const previous = shownRef.current;
+      try {
+        const next = await respondToBlock({
+          messageId: respond.messageId,
+          blockId,
+          ...(itemId === undefined ? {} : { itemId }),
+          value,
+        });
+        shownRef.current = next;
+        setShown(next);
+        return next;
+      } catch {
+        shownRef.current = previous;
+        setShown(previous);
+        return null;
+      }
+    },
+    [respond],
+  );
+
+  const context = useMemo<BlockRespond | null>(
+    () => (respond === undefined ? null : { ...respond, answer }),
+    [respond, answer],
+  );
+
+  const hasHeader =
+    shown.icon !== undefined || shown.title !== undefined || shown.meta !== undefined;
+  const rendered = shown.blocks
     .map((block, index) => ({
       key: `${block.kind}-${index}`,
       block,
@@ -82,30 +159,32 @@ export function BlockCard({ data, footer }: { data: BlocksData; footer?: ReactNo
     );
   }
   return (
-    <div className="flex w-full min-w-[280px] max-w-[380px] flex-col gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px] text-[14px] leading-[20px] text-[#ededed]">
-      {hasHeader && (
-        <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
-          {data.icon !== undefined && <BlockIcon name={data.icon} />}
-          <span className="min-w-0 flex-1 truncate">{data.title ?? ''}</span>
-          {data.meta !== undefined && (
-            <span className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">{data.meta}</span>
-          )}
-        </div>
-      )}
+    <BlockRespondContext.Provider value={context}>
+      <div className="flex w-full min-w-[280px] max-w-[380px] flex-col gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px] text-[14px] leading-[20px] text-[#ededed]">
+        {hasHeader && (
+          <div className="flex items-center gap-2 text-[13px] font-medium text-[#a1a1a1]">
+            {shown.icon !== undefined && <BlockIcon name={shown.icon} />}
+            <span className="min-w-0 flex-1 truncate">{shown.title ?? ''}</span>
+            {shown.meta !== undefined && (
+              <span className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">{shown.meta}</span>
+            )}
+          </div>
+        )}
 
-      {rendered.length === 0 ? (
-        <p>{data.fallback}</p>
-      ) : (
-        rendered.map((entry, index) => (
-          <Fragment key={entry.key}>
-            {index > 0 && <div className="h-px bg-[#232323]" />}
-            {entry.node}
-          </Fragment>
-        ))
-      )}
+        {rendered.length === 0 ? (
+          <p>{shown.fallback}</p>
+        ) : (
+          rendered.map((entry, index) => (
+            <Fragment key={entry.key}>
+              {index > 0 && <div className="h-px bg-[#232323]" />}
+              {entry.node}
+            </Fragment>
+          ))
+        )}
 
-      {footer !== undefined && <div className="flex justify-end">{footer}</div>}
-    </div>
+        {footer !== undefined && <div className="flex justify-end">{footer}</div>}
+      </div>
+    </BlockRespondContext.Provider>
   );
 }
 

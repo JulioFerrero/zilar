@@ -1,4 +1,5 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { useMemo } from 'react';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ApprovalCard } from '../ApprovalCard';
 import { FileMessage } from '../FileMessage';
@@ -70,6 +71,35 @@ export function AttachmentBody({
   const cardStandsAlone =
     message.card !== undefined &&
     (message.card.type === 'progress' || message.card.type === 'blocks');
+  // T-1795: an interactive blocks card answers through the route and, for the
+  // decision kinds, sends the @AI reply from this room. The viewer's own cards
+  // and fixture cards have no target, so their controls stay disabled. Memoised
+  // so a bubble re-render does not replace the card's context identity.
+  const blockRespond = useMemo(
+    () =>
+      own
+        ? undefined
+        : {
+            messageId: message.id,
+            chatId: chat.id,
+            aiName: message.senderName,
+            aiJid: message.senderId,
+            reply: (text: string): void => {
+              storeApi.getState().sendText(chat.id, `@${message.senderName} ${text}`, {
+                replyTo: { id: message.id, senderName: message.senderName },
+                mentions: [
+                  {
+                    jid: message.senderId,
+                    name: message.senderName,
+                    begin: 0,
+                    end: message.senderName.length + 1,
+                  },
+                ],
+              });
+            },
+          },
+    [own, message.id, message.senderId, message.senderName, chat.id, storeApi],
+  );
   // An album head draws the whole grid (T-1268) instead of its single photo;
   // the caption under it is the bubble's text body. A failed tile owns its own
   // upload-failure Retry, but the fixed "Not sent" row (reason, Retry, Delete
@@ -259,6 +289,7 @@ export function AttachmentBody({
             <BlockCard
               data={message.card.data}
               footer={<MessageMeta message={message} showTicks={own} className="text-[#8a8a8a]" />}
+              {...(blockRespond === undefined ? {} : { respond: blockRespond })}
             />
           )}
           {message.card.type === 'approval.request' && (

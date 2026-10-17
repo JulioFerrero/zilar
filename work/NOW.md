@@ -553,6 +553,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - the live cards test in "cards test";
                 - the emulator check of the phone screens (not while Julio is at the PC).
             - **Julio away from about 09:45 UTC** ("dont stop working", no questions). Work continues alone; summary below when he's back.
+            - **State at 10:05 UTC:**
+              - **Live `aefac1968`** (09:52 UTC; 6 containers healthy, 0 errors, routes 401 signed out): T-1799 (guide nits), T-1805 (phone dev catalogs in mock builds), T-1801 (mock topic members), T-1800 (`post_blocks` in DMs), T-1804 (media plan) and T-1798 (W10 phone Join, Mute and Leave).
+              - **Merged and held:** T-1806 (the approval-scope test was stale since T-1762; fixed the seed) and T-1797 (W9 web Join, Mute and Leave).
+              - **Running:**
+                - T-1795 (B10 web interactive cards, final pre-review);
+                - T-1796 (B11 phone; rating `selected` follows the server's 1..max);
+                - T-1802 (flip `PUBLIC_TOPICS_START_EMPTY`);
+                - T-1807 (web Join preview cards).
+              - **For Julio:**
+                - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
+                - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
+                - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.
             - **Follow-ups found today (not yet specs):**
               - **Web Join preview** (T-1797): draw card rows (`payload`) as cards and skip empty-body rows, as T-1798 does on the phone.
               - **Interactive cards in DMs:** a DM card is never reflected back to the AI, so it can't be re-keyed, and a client's id for an incoming DM may not match the origin id. Clients would have to send the origin id. Needs a small design first.
