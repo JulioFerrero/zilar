@@ -24,12 +24,11 @@ import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 
 /**
- * The topic info panel (T-0111): visibility, members (private list with
- * Add/Remove for managers and Leave for a member; public shows "All N
- * members of the group"), AIs in the topic, the topic's Always-allowed
- * rules and tools count (read-only, rows show the topic name), Archive, and
- * Make public / Make private (private → public confirms with the
- * history-exposure warning).
+ * The topic info panel (T-0111), following WebTopic.dc.html (T-1837): the Add
+ * key, the counted AIs and people sections, the tools row, the topic's link and
+ * done switch, the topic's Always-allowed rules and roles (read-only, rows show
+ * the topic name), pins, Archive, and Make public / Make private (private →
+ * public confirms with the history-exposure warning).
  */
 export function TopicPanel({
   chat,
@@ -158,15 +157,16 @@ function TopicPanelBody({
         }))
       : []),
   ];
-  const aiOwnerName = (aiId: string): string => {
+  const aiOwnerLabel = (aiId: string): string | undefined => {
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     if (ownerId === undefined) {
-      return 'someone';
+      return undefined;
     }
     if (ownerId === me) {
-      return 'you';
+      return 'yours';
     }
-    return groupMembers.find((member) => member.userId === ownerId)?.name ?? 'someone';
+    const name = groupMembers.find((member) => member.userId === ownerId)?.name;
+    return name === undefined ? undefined : `${name}'s`;
   };
   const canRemoveAi = (aiId: string): boolean => {
     // T-1834: an AI leaves General only by leaving the group, in the group panel.
@@ -220,6 +220,26 @@ function TopicPanelBody({
             Add people or AIs
           </Button>
 
+          <TopicAisSection
+            state={aisState}
+            pictureOf={(aiId) => groupAis.find((item) => item.aiId === aiId)?.avatarUrl}
+            ownerLabelOf={aiOwnerLabel}
+            canRemove={canRemoveAi}
+            onRetry={() => refreshAis()}
+            onOpenMemory={setMemoryAi}
+            removeAi={removeAi}
+            onError={setErrorMessage}
+          />
+
+          {memoryAi !== undefined && (
+            <AiMemoryDialog
+              chat={chat.id}
+              aiId={memoryAi.id}
+              aiName={memoryAi.name}
+              onClose={() => setMemoryAi(undefined)}
+            />
+          )}
+
           <TopicMembersSection
             listsMembers={topic.isGeneral !== true}
             state={membersState}
@@ -231,6 +251,15 @@ function TopicPanelBody({
             removeMember={removeMember}
             onError={setErrorMessage}
           />
+
+          {chat.groupId !== undefined && (
+            <TopicToolsRow
+              topicId={topicId}
+              groupId={chat.groupId}
+              isManager={isManager}
+              toolsCount={toolsCount}
+            />
+          )}
 
           {/* T-1534: the topic's link and its done switch. Every member who
               can see the topic may use both. T-1835: General is the group's
@@ -253,26 +282,6 @@ function TopicPanelBody({
             )}
           </section>
 
-          <TopicAisSection
-            state={aisState}
-            pictureOf={(aiId) => groupAis.find((item) => item.aiId === aiId)?.avatarUrl}
-            ownerNameOf={aiOwnerName}
-            canRemove={canRemoveAi}
-            onRetry={() => refreshAis()}
-            onOpenMemory={setMemoryAi}
-            removeAi={removeAi}
-            onError={setErrorMessage}
-          />
-
-          {memoryAi !== undefined && (
-            <AiMemoryDialog
-              chat={chat.id}
-              aiId={memoryAi.id}
-              aiName={memoryAi.name}
-              onClose={() => setMemoryAi(undefined)}
-            />
-          )}
-
           {chat.groupId !== undefined && (
             <TopicRulesSection groupId={chat.groupId} topicId={topic.id} topicName={chat.title} />
           )}
@@ -285,15 +294,6 @@ function TopicPanelBody({
               topicId={topic.id}
               groupId={chat.groupId}
               isManager={isManager}
-            />
-          )}
-
-          {chat.groupId !== undefined && (
-            <TopicToolsRow
-              topicId={topicId}
-              groupId={chat.groupId}
-              isManager={isManager}
-              toolsCount={toolsCount}
             />
           )}
 

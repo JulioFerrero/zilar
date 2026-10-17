@@ -1848,3 +1848,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1836](T-1836-panel-count-includes-ais.md) | web topic panel count includes AIs | 2026-10-17 |
 | [T-1839](T-1839-web-group-topic-hash.md) | web group panel topic tiles show # | 2026-10-17 |
 | [T-1840](T-1840-web-form-date-text.md) | web form keeps the AI's date text | 2026-10-17 |
+| [T-1837](T-1837-web-topic-panel-board.md) | web topic panel follows its board | 2026-10-17 |

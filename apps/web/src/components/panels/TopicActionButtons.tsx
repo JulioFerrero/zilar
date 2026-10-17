@@ -1,7 +1,9 @@
 import { Effect } from 'effect';
+import { MoreHorizontal } from 'lucide-react';
+import type * as React from 'react';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import type { GroupDetail, PublicAi, TopicAi, TopicMember } from '@/lib/api';
+import type { GroupDetail, PublicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
@@ -10,43 +12,51 @@ import { failInline } from './topic-failure';
 type GroupMemberRow = GroupDetail['members'][number];
 
 /**
- * Removes one member. The row owns its call, so two rows can run at once, and
- * a second click on the same row is ignored while it waits.
+ * The ⋯ key that opens a row's options menu (WebTopic.dc.html). It carries no
+ * visible word, so the accessible name is the row's name plus "options".
  */
-export function RemoveMemberButton({
-  member,
+export function TopicOptionsKey({
+  subject,
+  ...props
+}: { subject: string } & Omit<React.ComponentProps<'button'>, 'type' | 'aria-label'>) {
+  return (
+    <button
+      type="button"
+      aria-label={`${subject} options`}
+      className="flex size-7 shrink-0 items-center justify-center rounded-lg text-subtle-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50"
+      {...props}
+    >
+      <MoreHorizontal className="size-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * Removes one member from the topic. The row owns its call, so two rows can run
+ * at once, and a second click on the same row is ignored while it waits.
+ */
+export function useRemoveMember({
   remove,
   onError,
 }: {
-  member: TopicMember;
   remove: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
-}) {
+}): { removing: boolean; runRemove: (userId: string) => void } {
   const [state, run] = useAction<string, void, never>((userId) =>
     remove(userId).pipe(
       Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the member.')),
     ),
   );
-  const removing = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={`Remove ${member.name} from the topic`}
-      className="shrink-0"
-      disabled={removing}
-      onClick={() => {
-        onError('');
-        run(member.userId);
-      }}
-    >
-      {removing ? 'Removing…' : 'Remove'}
-    </Button>
-  );
+  return {
+    removing: isWaiting(state),
+    runRemove: (userId) => {
+      onError('');
+      run(userId);
+    },
+  };
 }
 
-/** Adds one group member from the picker; one call per row, as RemoveMemberButton. */
+/** Adds one group member from the picker; one call per row, as useRemoveMember. */
 export function AddMemberButton({
   member,
   add,
@@ -81,37 +91,25 @@ export function AddMemberButton({
 }
 
 /** Removes one AI from the topic, with its own call. */
-export function RemoveAiButton({
-  ai,
+export function useRemoveAi({
   remove,
   onError,
 }: {
-  ai: TopicAi;
   remove: (aiId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
-}) {
+}): { removing: boolean; runRemove: (aiId: string) => void } {
   const [state, run] = useAction<string, void, never>((aiId) =>
     remove(aiId).pipe(
       Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the AI.')),
     ),
   );
-  const removing = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={`Remove ${ai.name} from the topic`}
-      className="shrink-0"
-      disabled={removing}
-      onClick={() => {
-        onError('');
-        run(ai.id);
-      }}
-    >
-      {removing ? 'Removing…' : 'Remove'}
-    </Button>
-  );
+  return {
+    removing: isWaiting(state),
+    runRemove: (aiId) => {
+      onError('');
+      run(aiId);
+    },
+  };
 }
 
 /** Adds one of my AIs from the picker, with its own call. */

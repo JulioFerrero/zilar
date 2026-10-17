@@ -1,12 +1,13 @@
 import { Effect } from 'effect';
-import { Brain } from 'lucide-react';
+import { Brain, UserMinus } from 'lucide-react';
+import { useState } from 'react';
 import type { ApiFailure } from '@/lib/effect/errors';
 import type { TopicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';
-import { Button } from '../ui/button';
+import { Menu, MenuItem } from '../ui/menu';
 import { StateMessage } from '../ui/state-message';
-import { RemoveAiButton } from './TopicActionButtons';
+import { TopicOptionsKey, useRemoveAi } from './TopicActionButtons';
 import { LoadFailed, RefreshFailed } from './TopicListNotices';
 
 export type AisState = {
@@ -16,13 +17,14 @@ export type AisState = {
 };
 
 /**
- * The "AIs in this topic" section: rows with memory and Remove. The add pickers
- * moved to the one "Add people or AIs" dialog (T-1784).
+ * The AIs section (WebTopic.dc.html): a counted heading and one grouped card of
+ * 44 px rows, each with the AI badge, who added it and a ⋯ menu for memory and
+ * Remove. The add pickers moved to the one "Add people or AIs" dialog (T-1784).
  */
 export function TopicAisSection({
   state,
   pictureOf,
-  ownerNameOf,
+  ownerLabelOf,
   canRemove,
   onRetry,
   onOpenMemory,
@@ -32,7 +34,8 @@ export function TopicAisSection({
   state: AisState;
   /** Topic AI rows carry no picture; the group detail knows it. */
   pictureOf: (aiId: string) => string | undefined;
-  ownerNameOf: (aiId: string) => string;
+  /** "yours", "<Name>'s", or nothing when the owner is unknown. */
+  ownerLabelOf: (aiId: string) => string | undefined;
   canRemove: (aiId: string) => boolean;
   onRetry: () => void;
   onOpenMemory: (ai: { id: string; name: string }) => void;
@@ -40,8 +43,13 @@ export function TopicAisSection({
   onError: (message: string) => void;
 }) {
   return (
-    <section aria-label="AIs in this topic" className="flex flex-col gap-1">
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs in this topic</h2>
+    <section aria-label="AIs" className="flex flex-col gap-2">
+      <div className="flex items-center justify-between px-0.5 text-[12px] font-semibold text-muted-foreground">
+        <span>AIs</span>
+        {state.status === 'ready' && (
+          <span className="font-mono font-normal">{state.ais.length}</span>
+        )}
+      </div>
       {state.status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
       {state.status === 'error' && <LoadFailed message={state.message} onRetry={onRetry} />}
       {state.status === 'ready' && state.ais.length === 0 && state.message === '' && (
@@ -50,39 +58,85 @@ export function TopicAisSection({
       {state.status === 'ready' && state.message !== '' && (
         <RefreshFailed message={state.message} onRetry={onRetry} />
       )}
-      {state.status === 'ready' &&
-        state.ais.map((ai) => (
-          <div
-            key={ai.id}
-            className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-          >
-            <EntityAvatar
-              person={{ id: ai.id, name: ai.name, avatarUrl: pictureOf(ai.id) }}
-              size={32}
-              ai
+      {state.status === 'ready' && state.ais.length > 0 && (
+        <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
+          {state.ais.map((ai) => (
+            <AiRow
+              key={ai.id}
+              ai={ai}
+              picture={pictureOf(ai.id)}
+              ownerLabel={ownerLabelOf(ai.id)}
+              canRemove={canRemove(ai.id)}
+              onOpenMemory={onOpenMemory}
+              removeAi={removeAi}
+              onError={onError}
             />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-[14px]">{ai.name}</span>
-                <AiBadge />
-              </div>
-              <p className="truncate text-[12px] text-muted-foreground">
-                Added by {ownerNameOf(ai.id)}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={`What ${ai.name} remembers`}
-              className="shrink-0 text-muted-foreground"
-              onClick={() => onOpenMemory({ id: ai.id, name: ai.name })}
-            >
-              <Brain className="size-4" aria-hidden="true" />
-            </Button>
-            {canRemove(ai.id) && <RemoveAiButton ai={ai} remove={removeAi} onError={onError} />}
-          </div>
-        ))}
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function AiRow({
+  ai,
+  picture,
+  ownerLabel,
+  canRemove,
+  onOpenMemory,
+  removeAi,
+  onError,
+}: {
+  ai: TopicAi;
+  picture: string | undefined;
+  ownerLabel: string | undefined;
+  canRemove: boolean;
+  onOpenMemory: (ai: { id: string; name: string }) => void;
+  removeAi: (aiId: string) => Effect.Effect<void, ApiFailure>;
+  onError: (message: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { removing, runRemove } = useRemoveAi({ remove: removeAi, onError });
+  return (
+    <div className="flex min-h-[44px] items-center gap-2.5 pl-2.5 pr-2">
+      <EntityAvatar person={{ id: ai.id, name: ai.name, avatarUrl: picture }} size={28} ai />
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 truncate text-[14px]">{ai.name}</span>
+        <AiBadge />
+      </span>
+      {ownerLabel !== undefined && (
+        <span className="shrink-0 text-[12px] text-muted-foreground">{ownerLabel}</span>
+      )}
+      <Menu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        label={`${ai.name} options`}
+        align="end"
+        trigger={<TopicOptionsKey subject={ai.name} disabled={removing} />}
+      >
+        <MenuItem
+          icon={Brain}
+          onSelect={() => {
+            setMenuOpen(false);
+            onOpenMemory({ id: ai.id, name: ai.name });
+          }}
+        >
+          What {ai.name} remembers
+        </MenuItem>
+        {canRemove && (
+          <MenuItem
+            icon={UserMinus}
+            destructive
+            disabled={removing}
+            onSelect={() => {
+              setMenuOpen(false);
+              runRemove(ai.id);
+            }}
+          >
+            Remove from topic
+          </MenuItem>
+        )}
+      </Menu>
+    </div>
   );
 }
