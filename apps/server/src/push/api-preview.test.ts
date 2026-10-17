@@ -59,6 +59,8 @@ interface SeedRow {
   originId: string;
   txt: string;
   xml: string;
+  /** Archive microseconds; defaults to the fixed 2026-06-01 row time. */
+  timestamp?: number;
 }
 
 async function seedArchive(client: PGlite, rows: SeedRow[]): Promise<void> {
@@ -68,7 +70,7 @@ async function seedArchive(client: PGlite, rows: SeedRow[]): Promise<void> {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         row.owner,
-        Date.parse('2026-06-01T00:00:00.000Z') * 1000,
+        row.timestamp ?? Date.parse('2026-06-01T00:00:00.000Z') * 1000,
         row.peer,
         row.barePeer,
         row.xml,
@@ -199,6 +201,22 @@ describe('GET /api/push/preview', () => {
     expect((json as { archiveId?: string }).archiveId).toBe(
       String(Date.parse('2026-06-01T00:00:00.000Z') * 1000),
     );
+  });
+
+  it('returns the chat’s unread count as the notification badge (T-1897)', async () => {
+    const { alice, peer } = await setupDm();
+    // Recent rows so both sit above the 30-day floor of an unmarked chat.
+    const now = Date.now() * 1000;
+    await seedArchive(archiveClient, [
+      { ...dmRow(localpartFor(alice.id), peer, 'origin-a', 'First'), timestamp: now - 2000 },
+      { ...dmRow(localpartFor(alice.id), peer, 'origin-b', 'Second'), timestamp: now - 1000 },
+    ]);
+
+    const { status, json } = await preview(alice.cookie, 'origin-b');
+
+    expect(status).toBe(200);
+    // Alice has no read mark, so both rows are unread.
+    expect((json as { unread?: number }).unread).toBe(2);
   });
 
   it('answers the generic body when previews are off', async () => {

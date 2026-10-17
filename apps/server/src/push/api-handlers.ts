@@ -10,6 +10,7 @@ import { PushGroup, PushSettingsPayload } from '@zilar/api-contract';
 import { errorClassName } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError, xmppUnavailable } from '../errors';
+import { unreadForChats, type UnreadScope } from '../chats/unread';
 import { cardEditTarget, isLiveAiUiRow } from '../notify/ai-cards';
 import type { RateLimiter } from '../rate-limit';
 import { cachedAllowedArchives } from './archives-cache';
@@ -218,6 +219,24 @@ export function createPushGroupLayer(
             if (payload === undefined) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
+            // T-1897: the chat's unread count, which the phone shows as the
+            // badge of that chat's one notification. A failed read only omits
+            // the field: the preview itself must still answer.
+            const scope: UnreadScope =
+              verdict.message.chatKind === 'dm'
+                ? { kind: 'dm', peer: verdict.message.chatJid.toLowerCase() }
+                : { kind: 'room', room: verdict.message.chatJid.toLowerCase() };
+            const unread = yield* Effect.promise(() =>
+              unreadForChats(
+                deps.db,
+                deps.config,
+                archive,
+                userId,
+                new Map([[verdict.message.chatJid, scope]]),
+              )
+                .then((counts) => counts[verdict.message.chatJid]?.unread)
+                .catch(() => undefined),
+            );
             // Ids only: the derived text is returned, never logged.
             return {
               title: payload.title,
@@ -226,6 +245,8 @@ export function createPushGroupLayer(
               // T-1893: the archive id, so a notification's Mark as read can
               // store this row's mark.
               archiveId: String(row.timestamp),
+              // T-1897: absent when the count is 0 or the read failed.
+              ...(unread !== undefined && unread >= 1 ? { unread } : {}),
             };
           }),
         ),

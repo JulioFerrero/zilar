@@ -61,6 +61,7 @@ describe('onWake (T-1143)', () => {
 
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      identifier: 'chat:preview-chat',
       content: {
         title: 'Ada',
         body: 'see you there',
@@ -80,6 +81,7 @@ describe('onWake (T-1143)', () => {
     );
 
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      identifier: 'chat:dm-1',
       content: {
         title: 'Ada',
         body: 'hi',
@@ -104,6 +106,7 @@ describe('onWake (T-1143)', () => {
     );
 
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      identifier: 'chat:dm-1',
       content: {
         title: 'Ada',
         body: 'hi',
@@ -112,6 +115,33 @@ describe('onWake (T-1143)', () => {
       },
       trigger: { channelId: 'groups' },
     });
+  });
+
+  it('replaces a chat’s notification and badges its unread count (T-1897)', async () => {
+    const fetchImpl = previewFetch({
+      title: 'Ada',
+      body: 'again',
+      chatId: 'dm-1',
+      unread: 2,
+    });
+
+    await onWake(
+      { chatId: 'dm-1', messageId: 'msg-1' },
+      { getToken: token, fetchImpl, apiUrl: API_URL },
+    );
+    await onWake(
+      { chatId: 'dm-1', messageId: 'msg-2' },
+      { getToken: token, fetchImpl, apiUrl: API_URL },
+    );
+
+    const calls = vi.mocked(notifications.scheduleNotificationAsync).mock.calls as unknown as Array<
+      [{ identifier?: string; content: { badge?: number | null } }]
+    >;
+    // The same identifier for the same chat, so the second post replaces the
+    // first instead of stacking; the badge carries the unread count.
+    expect(calls[0]?.[0]?.identifier).toBe('chat:dm-1');
+    expect(calls[1]?.[0]?.identifier).toBe('chat:dm-1');
+    expect(calls[1]?.[0]?.content.badge).toBe(2);
   });
 
   it('posts nothing when the server answers 404', async () => {

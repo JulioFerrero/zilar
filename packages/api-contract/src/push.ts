@@ -66,6 +66,9 @@ export const PushPreview = Schema.Struct({
   // T-1893: the row's archive id, for a notification's Mark as read. Optional,
   // so new phones still read older servers.
   archiveId: Schema.optional(Schema.String),
+  // T-1897: the chat's unread count, so a phone shows one notification per
+  // chat with its badge. Optional, so new phones still read older servers.
+  unread: Schema.optional(Schema.Number),
 });
 
 export type PushPreview = typeof PushPreview.Type;

@@ -128,6 +128,7 @@ function post(
   chatId: string,
   chatKind: PushChatKind | undefined,
   ids?: { messageId: string; archiveId?: string },
+  unread?: number,
 ): Promise<void> {
   const data: Record<string, string> = { chatId };
   if (ids !== undefined) {
@@ -137,7 +138,17 @@ function post(
     }
   }
   return schedule({
-    content: { title, body, data, categoryIdentifier: MESSAGE_CATEGORY },
+    // T-1897: one notification per chat. The stable identifier replaces that
+    // chat's previous notification in place instead of stacking a new one.
+    identifier: `chat:${chatId}`,
+    content: {
+      title,
+      body,
+      data,
+      categoryIdentifier: MESSAGE_CATEGORY,
+      // T-1897: the chat's unread count as the badge, when the server knew it.
+      ...(unread === undefined || unread < 1 ? {} : { badge: unread }),
+    },
     trigger: { channelId: channelForWake(chatKind).id },
   });
 }
@@ -176,7 +187,7 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     return;
   }
   const client = createApiClient(deps);
-  let preview: { title: string; body: string; chatId: string; archiveId?: string };
+  let preview: { title: string; body: string; chatId: string; archiveId?: string; unread?: number };
   try {
     preview = await runApi(client.push.preview({ query: { messageId: payload.messageId } }));
   } catch (error) {
@@ -186,10 +197,17 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId, payload.chatKind);
     return;
   }
-  await post(preview.title, preview.body, preview.chatId, payload.chatKind, {
-    messageId: payload.messageId,
-    ...(preview.archiveId === undefined ? {} : { archiveId: preview.archiveId }),
-  });
+  await post(
+    preview.title,
+    preview.body,
+    preview.chatId,
+    payload.chatKind,
+    {
+      messageId: payload.messageId,
+      ...(preview.archiveId === undefined ? {} : { archiveId: preview.archiveId }),
+    },
+    preview.unread,
+  );
 }
 
 /** The chat id a notification was posted for, when it carries one. */

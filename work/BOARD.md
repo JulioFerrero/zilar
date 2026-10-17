@@ -1905,3 +1905,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1892](T-1892-share-draft-parser.md) | phone: share payload parser (untrusted input boundary) | 2026-10-17 |
 | [T-1893](T-1893-notification-read-ids.md) | Mark as read ids: preview archiveId, read sends displayed | 2026-10-17 |
 | [T-1896](T-1896-notification-actions-phone.md) | phone: Reply and Mark as read on notifications | 2026-10-17 |
+| [T-1897](T-1897-one-notification-per-chat.md) | one notification per chat, with the unread count | 2026-10-17 |
