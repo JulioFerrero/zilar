@@ -12,6 +12,7 @@ export {
   DELEGATE_TOOL,
   DESK_TOOL_NAMES,
   EDIT_TOOL,
+  FETCH_MEDIA_TOOL,
   GIT_TOOL,
   GLOB_TOOL,
   GREP_TOOL,
@@ -32,6 +33,7 @@ export {
   BashArgsSchema,
   DelegateArgsSchema,
   EditArgsSchema,
+  FetchMediaArgsSchema,
   GitArgsSchema,
   GlobArgsSchema,
   GrepArgsSchema,
@@ -53,6 +55,7 @@ export { TOOL_NAME_MAX_LENGTH, parseToolArguments, safeToolName } from './tools/
 
 export type { ChatToolDefinition } from './tools/definitions';
 export { POST_BLOCKS_TOOL_DEF } from './tools/blocks-tool';
+export { FETCH_MEDIA_TOOL_DEF } from './tools/media-tool';
 export { deskToolDefinitions } from './tools/desk-definitions';
 export {
   ASK_PEOPLE_TOOL_DEF,

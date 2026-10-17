@@ -234,6 +234,8 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
         desk: deskProbe,
         // T-1423: the runner hub, read lazily because it starts after this.
         runnerDesk: () => runnerHub,
+        // T-1873: `fetch_media` stores under this directory like the media API.
+        cardMediaDir: boot.cardMediaDir,
       },
       { enabled: config.AGENT_GATEWAY_ENABLED },
     );

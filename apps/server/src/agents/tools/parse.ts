@@ -9,6 +9,8 @@ import {
   DelegateArgsSchema,
   EDIT_TOOL,
   EditArgsSchema,
+  FETCH_MEDIA_TOOL,
+  FetchMediaArgsSchema,
   GIT_TOOL,
   GitArgsSchema,
   GLOB_TOOL,
@@ -106,6 +108,7 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== TASK_STATUS_TOOL &&
     toolName !== ASK_PEOPLE_TOOL &&
     toolName !== POST_BLOCKS_TOOL &&
+    toolName !== FETCH_MEDIA_TOOL &&
     !isDeskToolName(toolName)
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
@@ -212,6 +215,19 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       ...(parsed.value.icon === undefined ? {} : { icon: parsed.value.icon }),
       ...(parsed.value.meta === undefined ? {} : { meta: parsed.value.meta }),
       blocks: parsed.value.blocks,
+    };
+  }
+  if (toolName === FETCH_MEDIA_TOOL) {
+    const parsed = decodeToolArguments(FetchMediaArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: FETCH_MEDIA_TOOL,
+      url: parsed.value.url,
+      kind: parsed.value.kind,
+      ...(parsed.value.name === undefined ? {} : { name: parsed.value.name }),
     };
   }
   if (toolName === BASH_TOOL) {

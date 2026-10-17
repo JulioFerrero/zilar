@@ -18,6 +18,10 @@ export const ASK_PEOPLE_TOOL = 'ask_people';
 // T-1758: the `post_blocks` tool posts a small native card (the six Wave 1
 // kinds) in a group room. Offered on every group turn, routine runs included.
 export const POST_BLOCKS_TOOL = 'post_blocks';
+// T-1873: the `fetch_media` tool fetches one https image or file and stores it
+// under the chat's media key, so the model can cite the id in an `images` or
+// `file` block. Offered wherever `post_blocks` is.
+export const FETCH_MEDIA_TOOL = 'fetch_media';
 
 const ASK_PEOPLE_QUESTION_MAX_LENGTH = 140;
 const ASK_PEOPLE_OPTION_MIN = 2;
@@ -33,6 +37,12 @@ const POST_BLOCKS_ICON_MAX_LENGTH = 40;
 const POST_BLOCKS_META_MAX_LENGTH = 40;
 const POST_BLOCKS_BLOCK_MIN = 1;
 const POST_BLOCKS_BLOCK_MAX = 6;
+
+// T-1873: the `fetch_media` caps. The url limit matches
+// `CARD_MEDIA_URL_MAX_LENGTH` in `card-media/fetch.ts`, which refuses anything
+// longer before the fetch.
+const FETCH_MEDIA_URL_MAX_LENGTH = 2048;
+const FETCH_MEDIA_NAME_MAX_LENGTH = 100;
 
 // T-1409: the desk tools, offered only when the AI has a cloud computer. The
 // names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's
@@ -234,6 +244,14 @@ export const PostBlocksArgsSchema = struct({
   ),
 });
 
+// T-1873: the `fetch_media` arguments: one https url, the kind the model
+// promises (the bytes are sniffed again) and an optional display name.
+export const FetchMediaArgsSchema = struct({
+  url: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(FETCH_MEDIA_URL_MAX_LENGTH)),
+  kind: Schema.Literals(['image', 'file']),
+  name: Schema.optional(Schema.Trim.check(Schema.isMaxLength(FETCH_MEDIA_NAME_MAX_LENGTH))),
+});
+
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }
@@ -266,5 +284,6 @@ export type ParsedToolArguments =
       meta?: string;
       blocks: unknown[];
     }
+  | { ok: true; tool: typeof FETCH_MEDIA_TOOL; url: string; kind: 'image' | 'file'; name?: string }
   | { ok: true; tool: DeskToolName; args: Record<string, unknown> }
   | { ok: false; reason: string };

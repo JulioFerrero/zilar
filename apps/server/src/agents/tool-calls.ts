@@ -5,6 +5,7 @@ import { redactError } from './redact-error';
 import {
   ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
+  FETCH_MEDIA_TOOL,
   MEMORY_ZOOM_TOOL,
   POST_BLOCKS_TOOL,
   RECALL_TOOL,
@@ -229,6 +230,15 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
       ...(parsed.icon === undefined ? {} : { icon: parsed.icon }),
       ...(parsed.meta === undefined ? {} : { meta: parsed.meta }),
       blocks: parsed.blocks,
+    };
+  }
+  if (parsed.tool === FETCH_MEDIA_TOOL) {
+    return {
+      id,
+      tool: FETCH_MEDIA_TOOL,
+      url: parsed.url,
+      kind: parsed.kind,
+      ...(parsed.name === undefined ? {} : { name: parsed.name }),
     };
   }
   // T-1409: the desk tools carry their validated args straight to the executor.

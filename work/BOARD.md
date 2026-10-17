@@ -1882,3 +1882,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1868](T-1868-phone-media-blocks.md) | phone: images and file card blocks | 2026-10-17 |
 | [T-1859](T-1859-phone-person-links.md) | phone: tap a person to open them | 2026-10-17 |
 | [T-1871](T-1871-schedule-alert-card.md) | routine.schedule links an alert card | 2026-10-17 |
+| [T-1873](T-1873-fetch-media-tool.md) | the fetch_media tool for card images and files | 2026-10-17 |

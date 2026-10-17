@@ -18,6 +18,7 @@ import type { TurnLog } from './log/append';
 import {
   ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
+  FETCH_MEDIA_TOOL,
   MEMORY_ZOOM_TOOL,
   POST_BLOCKS_TOOL,
   RECALL_TOOL,
@@ -76,6 +77,15 @@ export type ValidToolCall =
       icon?: string;
       meta?: string;
       blocks: unknown[];
+    }
+  // T-1873: `fetch_media` stores one https image or file under the chat's
+  // media key and returns its media id.
+  | {
+      id: string;
+      tool: typeof FETCH_MEDIA_TOOL;
+      url: string;
+      kind: 'image' | 'file';
+      name?: string;
     }
   // T-1409: the desk tools. `args` is the already-validated argument object;
   // the daemon validates it again.

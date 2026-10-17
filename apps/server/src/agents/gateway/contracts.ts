@@ -84,6 +84,8 @@ export interface AgentGatewayDeps {
    * after the gateway is built). Absent or returning null keeps `runner` and
    * `auto` unavailable. */
   runnerDesk?: () => RunnerDeskSource | null;
+  /** T-1873: where `fetch_media` stores card media. Absent means the tool answers `error: media is not available`. */
+  cardMediaDir?: string;
 }
 
 export interface AgentGatewayConfig {
