@@ -587,26 +587,27 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - **Verified live:** a new blocks buttons card answered "Later" shows "✓ Julio chose Later" after a reload.
               - **Seen live, not fixed:**
                 - For "ask me with buttons", the AI picked its question tool (`ask_people`, chips) instead of a blocks buttons card.
-                - Question chips stay tappable after an answer and a reload (that card has no answered state). Worth a small design call: should `ask_people` become a buttons card now?
+                - Question chips stay tappable after an answer and a reload (that card has no answered state).
+                  - **T-1821, running:** the clients find the first reply that quotes the question in the loaded messages. A server-side answered field would need the card's origin id, which the re-key drops.
+                  - Still a design call for Julio: should `ask_people` become a blocks buttons card?
+              - **Merged and held (push at the 11:38 window):**
+                - T-1815 (a sent form keeps its answer; long answers truncated with `…`);
+                - T-1820 (a failed card answer shows "Could not send. Try again." on both apps).
               - **Full suites on main:** server 988/988, mobile 250/250.
               - **Phone, mock build of main:**
                 - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);
                 - the B11 choice cards match `PhoneChoices.dc.html`;
                 - preview bubbles had square corners and a card inside a bubble → **T-1814, running**.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
-              - **Running:**
-                - T-1795 (B10 web interactive cards, final pre-review);
-                - T-1796 (B11 phone; rating `selected` follows the server's 1..max);
-                - T-1802 (flip `PUBLIC_TOPICS_START_EMPTY`);
-                - T-1807 (web Join preview cards).
+              - **Running (11:30):** T-1809 (DM interactive cards plan, in an auto fix round) and T-1821 (question answered state).
               - **For Julio:**
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.
             - **Follow-ups found today (not yet specs):**
-              - **Web Join preview** (T-1797): draw card rows (`payload`) as cards and skip empty-body rows, as T-1798 does on the phone.
+              - ~~**Web Join preview** (T-1797): draw card rows as cards~~ (done: T-1807, T-1816).
               - **Interactive cards in DMs:** a DM card is never reflected back to the AI, so it can't be re-keyed, and a client's id for an incoming DM may not match the origin id. Clients would have to send the origin id. Needs a small design first.
-              - **The mute switch shows a group-inherited mute as on** (`packages/chat-core/src/chat-prefs.ts:78-91`), the same as the existing mute menus on both apps.
+              - ~~**The mute switch shows a group-inherited mute as on**~~: no change. The topic really is muted (`packages/chat-core/src/chat-prefs.ts:78-91`), and switching it off writes the topic's own unmuted row, which wins.
             - **State at 09:55 UTC:**
               - **Merged and held:** T-1799 (guide nits).
               - **Running (8):**

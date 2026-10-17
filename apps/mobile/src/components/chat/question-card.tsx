@@ -1,4 +1,5 @@
 import type { Question } from '@zilar/protocol';
+import { answeredOption, isQuestionAnswer } from '@zilar/chat-core';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -11,6 +12,8 @@ import { useChatStore } from '@/store/chat-store-provider';
  * chips in a wrapping row. A chip sends a normal reply that @mentions the asking
  * AI and quotes the question; after one tap the chips disable until the server
  * closes the question (step 6). No status words: plain outline pills.
+ * T-1821: after a reload the answer is read back from the first reply in the
+ * loaded messages that quotes the question, so the card stays answered.
  */
 export function QuestionCard({ question }: { question: Question }) {
   const sendText = useChatStore((state) => state.sendText);
@@ -26,11 +29,22 @@ export function QuestionCard({ question }: { question: Question }) {
       return card?.type === 'question' && card.data.id === question.id;
     });
   });
+  const reply = useChatStore((state) => {
+    if (message === undefined) {
+      return undefined;
+    }
+    return state.messages(message.chatId).find((entry) => isQuestionAnswer(entry, message));
+  });
   const [answered, setAnswered] = useState(false);
-  const disabled = answered || message === undefined;
+  const picked =
+    reply === undefined || message === undefined
+      ? undefined
+      : answeredOption(reply.text, message.senderName, question.options);
+  const isAnswered = answered || reply !== undefined;
+  const disabled = isAnswered || message === undefined;
 
   const answer = (option: string): void => {
-    if (message === undefined || answered) {
+    if (message === undefined || isAnswered) {
       return;
     }
     setAnswered(true);
@@ -54,13 +68,20 @@ export function QuestionCard({ question }: { question: Question }) {
             onPress={() => answer(option)}
             className={cn(
               'rounded-full border border-divider px-3.5 py-1.5',
-              disabled ? 'opacity-50' : 'active:bg-surface-raised',
+              isAnswered && option === picked
+                ? 'border-transparent bg-surface-raised'
+                : isAnswered
+                  ? 'opacity-50'
+                  : 'active:bg-surface-raised',
             )}
           >
             <Text className="text-[15px] font-medium text-foreground">{option}</Text>
           </Pressable>
         ))}
       </View>
+      {reply !== undefined && (
+        <Text className="text-[13px] text-muted-foreground">{reply.senderName} answered</Text>
+      )}
     </View>
   );
 }

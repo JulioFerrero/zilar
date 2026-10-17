@@ -1,7 +1,8 @@
 import type { Question } from '@zilar/protocol';
+import { answeredOption, isQuestionAnswer } from '@zilar/chat-core';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**
  * A question card (T-1578), a work/progress card (T-1618) and an approval card
@@ -23,6 +24,8 @@ export function hidesBodyText(card: { type: string } | undefined): boolean {
  * wrapping row. A chip sends a normal reply that @mentions the asking AI and
  * quotes the question; after one tap in this session the chips disable, and the
  * server closes the question (step 6). No status words: plain outline pills.
+ * T-1821: after a reload the answer is read back from the first reply in the
+ * loaded messages that quotes the question, so the card stays answered.
  */
 export function QuestionCard({
   question,
@@ -39,9 +42,22 @@ export function QuestionCard({
 }) {
   const storeApi = useChatStoreApi();
   const [answered, setAnswered] = useState(false);
+  // Both selectors return an existing message object or `undefined`, so their
+  // values stay stable across store changes.
+  const questionMessage = useChatSelector((state) =>
+    state.messages(chatId).find((message) => message.id === messageId),
+  );
+  const reply = useChatSelector((state) =>
+    questionMessage === undefined
+      ? undefined
+      : state.messages(chatId).find((message) => isQuestionAnswer(message, questionMessage)),
+  );
+  const picked =
+    reply === undefined ? undefined : answeredOption(reply.text, aiName, question.options);
+  const isAnswered = answered || reply !== undefined;
 
   const answer = (option: string): void => {
-    if (answered) {
+    if (isAnswered) {
       return;
     }
     setAnswered(true);
@@ -59,17 +75,22 @@ export function QuestionCard({
           <button
             key={option}
             type="button"
-            disabled={answered}
+            disabled={isAnswered}
             onClick={() => answer(option)}
             className={cn(
               'rounded-full border border-divider px-3 py-1 text-[13px] text-foreground transition-colors',
-              answered ? 'cursor-default opacity-50' : 'hover:bg-white/5',
+              isAnswered ? 'cursor-default' : 'hover:bg-white/5',
+              isAnswered && option !== picked && 'opacity-50',
+              isAnswered && option === picked && 'border-transparent bg-white/10',
             )}
           >
             {option}
           </button>
         ))}
       </div>
+      {reply !== undefined && (
+        <p className="text-[12px] text-muted-foreground">{reply.senderName} answered</p>
+      )}
     </div>
   );
 }
