@@ -1889,3 +1889,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1877](T-1877-phone-mention-links.md) | phone: @mention chips open the person | 2026-10-17 |
 | [T-1876](T-1876-phone-card-photo-viewer.md) | phone: card photos open in the photo viewer | 2026-10-17 |
 | [T-1879](T-1879-media-card-guide.md) | the card guide teaches image and file cards | 2026-10-17 |
+| [T-1881](T-1881-fetch-media-user-agent.md) | fetch_media sends a User-Agent and logs its reason | 2026-10-17 |

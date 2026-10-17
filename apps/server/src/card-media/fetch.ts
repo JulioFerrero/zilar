@@ -18,6 +18,7 @@ import {
   type GuardedGetOptions,
   type PinnedFetcher,
 } from '../web-tools/guarded-fetch';
+import { wikipediaUserAgent } from '../web-tools/shared';
 import { CardMediaQuotaError, storeCardMedia } from './service';
 import { sniffFile, sniffImage } from './sniff';
 import { stripImageMetadata } from './strip';
@@ -149,6 +150,9 @@ const fetchCardMediaEffect = Effect.fnUntraced(function* (
     anyPublicHost: true,
     allowedContentTypes: isImage ? IMAGE_CONTENT_TYPES : FILE_CONTENT_TYPES,
     maxResponseBytes: maxBytes,
+    // Wikimedia answers 403 to a request with no User-Agent; every fetch from
+    // the tool now sends the same descriptive one the web tools use.
+    headers: { 'user-agent': wikipediaUserAgent(), accept: isImage ? 'image/*' : '*/*' },
   };
   if (deps.resolver !== undefined) {
     options.resolver = deps.resolver;

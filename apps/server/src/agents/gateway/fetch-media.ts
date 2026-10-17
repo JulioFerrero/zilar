@@ -6,8 +6,8 @@
 //
 // Every failure is a fixed `error:` line: a refusal's reason is already fixed
 // text, and a store failure is caught here because `fetchCardMedia` rejects on
-// a non-quota store error. Log lines carry the AI id, the tool name and the
-// outcome only, never the URL.
+// a non-quota store error. Log lines carry the AI id, the tool name, the
+// outcome and the fixed reason only, never the URL.
 import { Effect } from 'effect';
 import { fetchCardMedia, type FetchCardMediaResult } from '../../card-media/fetch';
 import { FETCH_MEDIA_TOOL } from '../tools';
@@ -31,6 +31,7 @@ export interface FetchMediaChat {
 }
 
 const NOT_AVAILABLE_TEXT = 'error: media is not available';
+const NOT_AVAILABLE_REASON = 'media is not available';
 const STORE_FAILED_REASON = 'the file could not be stored';
 
 const FORMAT_BY_MIME: Readonly<Record<string, string>> = {
@@ -72,8 +73,16 @@ function fetchedText(media: {
   );
 }
 
-function logOutcome(logger: AgentGatewayDeps['logger'], aiId: string, ok: boolean): void {
-  logger.info({ aiId, tool: FETCH_MEDIA_TOOL, ok }, 'AI fetch_media');
+function logOutcome(
+  logger: AgentGatewayDeps['logger'],
+  aiId: string,
+  ok: boolean,
+  reason?: string,
+): void {
+  logger.info(
+    { aiId, tool: FETCH_MEDIA_TOOL, ok, ...(reason === undefined ? {} : { reason }) },
+    'AI fetch_media',
+  );
 }
 
 const runFetchMediaEffect = Effect.fnUntraced(function* (
@@ -84,7 +93,7 @@ const runFetchMediaEffect = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ToolExecution> {
   const dir = deps.cardMediaDir;
   if (dir === undefined) {
-    logOutcome(deps.logger, session.aiId, false);
+    logOutcome(deps.logger, session.aiId, false, NOT_AVAILABLE_REASON);
     return { content: NOT_AVAILABLE_TEXT };
   }
   // A rejection is a non-quota store failure; a refusal comes back as
@@ -106,7 +115,7 @@ const runFetchMediaEffect = Effect.fnUntraced(function* (
     catch: (): FetchCardMediaResult => ({ ok: false, reason: STORE_FAILED_REASON }),
   }).pipe(Effect.catch((failed) => Effect.succeed(failed)));
   if (!result.ok) {
-    logOutcome(deps.logger, session.aiId, false);
+    logOutcome(deps.logger, session.aiId, false, result.reason);
     return { content: `error: ${result.reason}` };
   }
   logOutcome(deps.logger, session.aiId, true);
