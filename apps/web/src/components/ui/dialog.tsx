@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode, RefObject } from 'react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { cn } from '@/lib/utils';
 import { DialogBody, DialogError, DialogFooter, DialogHeader } from './dialog-parts';
@@ -63,6 +63,7 @@ export function Dialog({
   forceRenderBackdrop = false,
 }: DialogProps) {
   const popupRef = useRef<HTMLDivElement>(null);
+  const [leaving, setLeaving] = useState(false);
   const closable = dismissable && !busy;
 
   // First focus goes to `[data-autofocus]` when one exists, otherwise to the
@@ -86,7 +87,7 @@ export function Dialog({
 
   return (
     <DialogPrimitive.Root
-      open={open}
+      open={open && !leaving}
       disablePointerDismissal={!closable}
       onOpenChange={(nextOpen, eventDetails) => {
         if (nextOpen) {
@@ -97,13 +98,19 @@ export function Dialog({
           eventDetails.cancel();
           return;
         }
-        onClose();
+        setLeaving(true);
+      }}
+      onOpenChangeComplete={(isOpen) => {
+        if (!isOpen && leaving) {
+          setLeaving(false);
+          onClose();
+        }
       }}
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
           forceRender={forceRenderBackdrop}
-          className="fixed inset-0 z-40 bg-black/60"
+          className="fixed inset-0 z-40 bg-black/60 transition-opacity duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] starting:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:duration-150"
         />
         <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex items-center justify-center p-4 max-sm:items-end max-sm:p-0">
           <DialogPrimitive.Popup
@@ -115,6 +122,7 @@ export function Dialog({
             className={cn(
               'flex max-h-[85vh] w-full flex-col rounded-2xl border border-border bg-panel shadow-[0_24px_60px_rgba(0,0,0,0.8)] outline-none',
               'max-sm:max-w-none max-sm:rounded-b-none',
+              'transition-[opacity,scale,translate] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] starting:opacity-0 starting:scale-[0.97] data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[ending-style]:scale-[0.97] data-[ending-style]:duration-150 max-sm:duration-300 max-sm:ease-[cubic-bezier(0.32,0.72,0,1)] max-sm:starting:opacity-100 max-sm:starting:scale-100 max-sm:starting:translate-y-full max-sm:data-[starting-style]:scale-100 max-sm:data-[starting-style]:opacity-100 max-sm:data-[starting-style]:translate-y-full max-sm:data-[ending-style]:scale-100 max-sm:data-[ending-style]:opacity-100 max-sm:data-[ending-style]:translate-y-full max-sm:data-[ending-style]:duration-200 motion-reduce:transition-opacity',
               size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-lg' : 'max-w-md',
             )}
           >
@@ -122,7 +130,7 @@ export function Dialog({
               title={title}
               {...(description === undefined ? {} : { description })}
               {...(stepper === undefined ? {} : { stepper })}
-              onClose={onClose}
+              onClose={() => setLeaving(true)}
               closeDisabled={busy}
             />
             {onSubmit === undefined ? (

@@ -31,7 +31,7 @@ const TRIGGER =
   'well-surface flex h-10 w-full items-center justify-between gap-2 rounded-[10px] px-3 text-left text-sm text-foreground outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
 const PANEL =
-  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-[12px] border border-border-strong bg-surface p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_40px_rgba(0,0,0,0.85)] outline-none';
+  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-[12px] border border-border-strong bg-surface p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_40px_rgba(0,0,0,0.85)] outline-none origin-[var(--transform-origin)] transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[ending-style]:scale-[0.97] data-[ending-style]:duration-100 motion-reduce:transition-opacity';
 
 const ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] select-none outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-list-hover data-[selected]:font-medium';

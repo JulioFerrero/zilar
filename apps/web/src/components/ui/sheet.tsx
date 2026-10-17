@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
+import { useState } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 
 export interface SheetProps {
@@ -28,9 +29,11 @@ export function Sheet({
   initialFocusRef,
   dismissable = true,
 }: SheetProps) {
+  const [leaving, setLeaving] = useState(false);
+
   return (
     <DialogPrimitive.Root
-      open={open}
+      open={open && !leaving}
       disablePointerDismissal={!dismissable}
       onOpenChange={(nextOpen, eventDetails) => {
         if (nextOpen) {
@@ -42,16 +45,22 @@ export function Sheet({
           eventDetails.cancel();
           return;
         }
-        onClose();
+        setLeaving(true);
+      }}
+      onOpenChangeComplete={(isOpen) => {
+        if (!isOpen && leaving) {
+          setLeaving(false);
+          onClose();
+        }
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/40" />
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] starting:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:duration-150" />
         <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex justify-end">
           <DialogPrimitive.Popup
             aria-label={ariaLabel}
             initialFocus={initialFocusRef}
-            className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
+            className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px] transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] starting:translate-x-full data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full data-[ending-style]:duration-200 motion-reduce:transition-opacity motion-reduce:starting:translate-x-0 motion-reduce:starting:opacity-0 motion-reduce:data-[starting-style]:translate-x-0 motion-reduce:data-[ending-style]:translate-x-0 motion-reduce:data-[starting-style]:opacity-0 motion-reduce:data-[ending-style]:opacity-0"
           >
             {children}
           </DialogPrimitive.Popup>

@@ -793,18 +793,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
                 Images still failed at 19:33: `pnpm --filter @zilar/server deploy --prod` → `ERR_PNPM_UNUSED_PATCH` (the patch is phone-only). **T-1918 (urgent)** sets `allowUnusedPatches: true`, with a local `pnpm deploy` check. The lesson: a pnpm patch also needs the Docker `COPY` and must be allowed unused in filtered deploys.
               - **Deploy unblocked:** **live `4a8da94`** (19:41 UTC, Coolify) carries T-1908 to T-1918. All containers are healthy with 0 errors, and a warm reload of "cards test" has FCP and LCP at 208 ms.
-              - **Running:** T-1919 (a cancelled or expired approval says "Not carried out: <summary>"). Julio's two identical "The request was not carried out." lines at 19:30 Madrid were two approvals from 16:57 UTC expiring unanswered at 17:27 UTC.
-              - **Running:**
-                - T-1913 (web pins from the cache);
-                - T-1914 (phone pins from the offline cache).
-              - **Next:** T-1915 (the phone splash waits up to 400 ms for the cached paint; written, launch after T-1914 merges, both touch `effects/lifecycle.ts`).
+              - **Live `b0ed285`** (19:57 UTC) carries T-1919 ("Not carried out: <summary>") and T-1920 (deflaked timing test). CI is green, all containers are healthy and there are 0 errors.
+              - **v0.2.9 released** (Julio OK'd it at about 19:48 UTC). The arm64 APK embeds 0.2.9 / 209 (verified), and it was posted in Zilar Updates at 22:24 Madrid. **Waits for Julio:** test share-into-Zilar and notification Reply / Mark as read on his phone.
+              - **Motion pass (Julio, 20:10 UTC):**
+                - He had Emil Kowalski's 15 skills installed in `~/.claude/skills`. `find-animation-opportunities` kept 5 suggestions, and he picked 1–3 and 4.
+                - **T-1921 (web overlay motion):** menus, select and combobox were verified frame by frame (150 ms in from the trigger, 100 ms out). Dialogs and sheets mount already open, so Base UI never starts them; a fix round adds `starting:` (CSS `@starting-style`) plus an exit before `onClose`.
+                - **T-1922 (running):** the phone attach, emoji and sticker sheets slide up.
+                - Not picked: 5, a velocity spring on the phone folder pager.
               - **Deferred:**
                 - W2/P2 contact-request rows from the cache (rare);
                 - token prefetch (about 80 ms).
-              - **v0.2.9: Julio OK'd it at about 19:48 UTC.** Tagged on `4a8da94` at 19:52, and the Android release workflow is running.
-                - **CI on `4a8da94`** was red twice, only on `gateway-stop.test.ts` "does not fail a queued scheduled item…". Its 50 ms cap is too tight on a loaded runner; the test passes locally 10/10. **T-1920** deflakes it.
-                - **After the APK:** verify `app.config` shows 0.2.9 / 209, post in Zilar Updates, then ask Julio to test share and notification Reply on his phone.
-              - **Held:** T-1919 (server: "Not carried out: <summary>"). It will be pushed with T-1920.
               - **Older (done):**
                 - T-1895 (`/share`, lead fix round: `file://` only from the cache, empty/oversize refused on screen, Send always re-enabled);
                 - smooth-app wave 1:

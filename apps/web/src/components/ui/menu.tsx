@@ -34,7 +34,7 @@ export interface MenuProps {
 }
 
 const PANEL =
-  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 shadow-lg outline-none';
+  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 shadow-lg outline-none origin-[var(--transform-origin)] transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-[starting-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[ending-style]:scale-[0.97] data-[ending-style]:duration-100 motion-reduce:transition-opacity';
 
 const ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] select-none outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-list-hover';
