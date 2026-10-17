@@ -116,6 +116,7 @@ export function messagingRoutes({
     gateway === undefined ? undefined : (): CardCorrector | null => cardCorrectorOf(gateway());
   const messageBlocksApi = createMessageBlocksApi({
     ...base,
+    audit,
     ...opt('getGateway', getCardCorrector),
   });
   mounts.push(messageBlocksApi);

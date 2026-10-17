@@ -13,12 +13,13 @@ import type { BlocksRespondPayload, BlocksRespondValue } from '@zilar/api-contra
 import { BlocksDataSchema, type Block, type BlocksData, type Payload } from '@zilar/protocol';
 import type { Logger } from 'pino';
 import { loadAiOwnerId } from '../agents/gateway/db';
+import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { getGroupMembership, isTopicMember, requireVisibleTopic } from '../topics/access';
-import { applyAlertToRoutine } from './alert-routine';
+import { applyAlertToRoutine, requireAlertManager } from './alert-routine';
 import { applyResponses } from './apply';
 import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse } from './cards';
 
@@ -69,6 +70,8 @@ export interface CardRespondDeps {
   logger: Logger;
   /** The live gateway's room correction; absent = no send (tests, no gateway). */
   correctInRoom?: (input: CorrectCardInput) => Promise<boolean>;
+  /** Routine pause/resume audit; absent = not recorded (tests). */
+  audit?: AuditRecorder;
 }
 
 export type RespondInput = BlocksRespondPayload;
@@ -327,6 +330,8 @@ export async function respondToCard(
   if (block === undefined) {
     throw invalidResponse();
   }
+  if (block.kind === 'alert')
+    await requireAlertManager(deps.db, card.originId, input.blockId, userId);
   const recorded = recordedResponse(block, input.itemId, input.value);
 
   if (recorded.kind === 'poll') {

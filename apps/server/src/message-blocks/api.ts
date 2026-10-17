@@ -10,6 +10,7 @@ import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BlocksRespondRateLimit, MessageBlocksGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
@@ -58,6 +59,8 @@ export interface MessageBlocksApiDependencies {
   /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
   respondLimiter?: RateLimiter;
+  /** Routine pause/resume audit; absent = not recorded (tests). */
+  audit?: AuditRecorder;
 }
 
 export function createMessageBlocksApi(deps: MessageBlocksApiDependencies): EffectApiMount {
@@ -81,6 +84,7 @@ export function createMessageBlocksApi(deps: MessageBlocksApiDependencies): Effe
               db: deps.db,
               logger,
               ...(corrector === null ? {} : { correctInRoom: corrector.correctInRoom }),
+              ...(deps.audit === undefined ? {} : { audit: deps.audit }),
             },
             user.id,
             request.payload,

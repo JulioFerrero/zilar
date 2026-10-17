@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
 import type { RoutineRow } from '../db/rows';
+import { createAuditRecorder, listAuditForAi } from '../audit/service';
 import { AlertLinkTaken, linkAlertCard } from '../routines/alert-link';
 import { createPromptRoutine } from '../routines/prompt-routines';
 import { createTestContext, testSql, type TestContext } from '../test-support';
@@ -131,7 +132,12 @@ describe('card respond', () => {
       data: alertData,
     });
     return {
-      deps: { db: context.db, logger: context.logger, correctInRoom },
+      deps: {
+        db: context.db,
+        logger: context.logger,
+        correctInRoom,
+        audit: createAuditRecorder({ db: context.db }),
+      },
       aiId,
       ownerId,
       memberId,
@@ -265,7 +271,7 @@ describe('card respond', () => {
   });
 
   it('drives the linked routine from the alert answer and refuses a second link', async () => {
-    const { deps, aiId, ownerId, memberId } = await setup();
+    const { deps, aiId, ownerId } = await setup();
     const createRoutine = (title: string) =>
       createPromptRoutine(
         context.db,
@@ -284,7 +290,7 @@ describe('card respond', () => {
     await linkAlertCard(context.db, routine.id, 'alert-origin', 'alert-1');
     const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
 
-    await respondToCard(deps, memberId, {
+    await respondToCard(deps, ownerId, {
       ...answer,
       value: { done: false, fields: { value: '$95,000' } },
     });
@@ -293,7 +299,7 @@ describe('card respond', () => {
     expect(paused).toMatchObject({ status: 'paused', pausedReason: 'user' });
     expect(paused.input).toMatchObject({ threshold: 95000 });
 
-    await respondToCard(deps, memberId, { ...answer, value: { done: true } });
+    await respondToCard(deps, ownerId, { ...answer, value: { done: true } });
 
     const resumed = await readRoutine(routine.id);
     expect(resumed).toMatchObject({ status: 'active', pausedReason: null });
@@ -303,6 +309,50 @@ describe('card respond', () => {
     await expect(
       linkAlertCard(context.db, other.id, 'alert-origin', 'alert-1'),
     ).rejects.toBeInstanceOf(AlertLinkTaken);
+  });
+
+  it('lets only the routine manager answer a linked alert and audits the pause', async () => {
+    const { deps, aiId, ownerId, memberId } = await setup();
+    const routine = await createPromptRoutine(
+      context.db,
+      {
+        aiId,
+        groupId: null,
+        topicId: null,
+        title: 'Spend alert',
+        schedule: { kind: 'interval', everyMinutes: 60 },
+        prompt: 'Tell me when spending passes the threshold',
+        userId: ownerId,
+      },
+      new Date('2026-10-17T12:00:00.000Z'),
+    );
+    await linkAlertCard(context.db, routine.id, 'alert-origin', 'alert-1');
+    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
+
+    await expect(
+      respondToCard(deps, memberId, { ...answer, value: { done: false } }),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: 'card_not_found',
+    });
+
+    expect(await listResponses(context.db, 'alert-origin')).toEqual([]);
+    expect(await readRoutine(routine.id)).toMatchObject({ status: 'active' });
+    expect(correctInRoom).not.toHaveBeenCalled();
+
+    await respondToCard(deps, ownerId, { ...answer, value: { done: false } });
+
+    expect(await readRoutine(routine.id)).toMatchObject({
+      status: 'paused',
+      pausedReason: 'user',
+    });
+    const audit = await listAuditForAi(context.db, aiId, ownerId);
+    expect(audit.entries).toHaveLength(1);
+    expect(audit.entries[0]).toMatchObject({
+      action: 'routine.paused',
+      subjectId: routine.id,
+      actorUserId: ownerId,
+    });
   });
 
   it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {
