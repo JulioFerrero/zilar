@@ -7,6 +7,7 @@ import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { enforceRoutineLimit, toPublicRoutine } from './queries';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
@@ -109,31 +110,46 @@ export async function createRoutine(
   }
   await enforceRoutineLimit(db, input.aiId, input.topicId);
   const nextRunAt = nextRunAfter(schedule.value, now);
-  const inserted = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      // jsonb is written as a cast string, or NULL when there is no input.
-      const routineInput =
-        input.input === undefined || input.input === null
-          ? sql`NULL`
-          : sql`${JSON.stringify(input.input)}::jsonb`;
-      const [row] = yield* sql<RoutineRow>`INSERT INTO routines (
-          id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
-          approved_hosts, status, paused_reason, next_run_at, last_run_at,
-          last_status, consecutive_failures, created_by, created_at, updated_at,
-          deleted_at
-        ) VALUES (
-          ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
-          ${tool.id}, ${title}, ${JSON.stringify(schedule.value)}::jsonb,
-          ${routineInput}, ${JSON.stringify(approved)}::jsonb, 'active', NULL,
-          ${nextRunAt.toISOString()}, NULL, NULL, 0, ${input.userId},
-          ${now.toISOString()}, ${now.toISOString()}, NULL
-        )
-        RETURNING *`;
-      return row ?? null;
-    }),
-  );
+  let inserted: RoutineRow | null;
+  try {
+    inserted = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        // jsonb is written as a cast string, or NULL when there is no input.
+        const routineInput =
+          input.input === undefined || input.input === null
+            ? sql`NULL`
+            : sql`${JSON.stringify(input.input)}::jsonb`;
+        const [row] = yield* sql<RoutineRow>`INSERT INTO routines (
+            id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
+            alert_card_id, alert_block_id, approved_hosts, status, paused_reason,
+            next_run_at, last_run_at, last_status, consecutive_failures,
+            created_by, created_at, updated_at, deleted_at
+          ) VALUES (
+            ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
+            ${tool.id}, ${title}, ${JSON.stringify(schedule.value)}::jsonb,
+            ${routineInput}, ${input.alertCard?.cardId ?? null},
+            ${input.alertCard?.blockId ?? null},
+            ${JSON.stringify(approved)}::jsonb, 'active', NULL,
+            ${nextRunAt.toISOString()}, NULL, NULL, 0, ${input.userId},
+            ${now.toISOString()}, ${now.toISOString()}, NULL
+          )
+          RETURNING *`;
+        return row ?? null;
+      }),
+    );
+  } catch (error) {
+    // T-1870: the partial unique index on the alert card block refused a
+    // second live routine; nothing was inserted and no audit is written.
+    if (isUniqueViolation(error)) {
+      throw new RoutineServiceError(
+        'alert_card_taken',
+        'That alert card already drives another routine',
+      );
+    }
+    throw error;
+  }
   if (!inserted) {
     throw new Error('Failed to create routine');
   }
@@ -148,7 +164,7 @@ export async function createRoutine(
       costCurrency: null,
       costAmount: null,
       result: 'ok',
-      detail: { toolId: tool.id },
+      detail: { toolId: tool.id, ...(input.alertCard === undefined ? {} : { alertCard: true }) },
     });
   }
   return toPublicRoutine(inserted, tool.name, schedule.value);

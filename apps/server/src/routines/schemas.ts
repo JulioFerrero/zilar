@@ -57,6 +57,8 @@ export interface CreateRoutineInput {
   input?: unknown;
   approvedHosts: string[];
   userId: string;
+  // T-1870: the alert card block that drives this routine.
+  alertCard?: { cardId: string; blockId: string };
 }
 
 export interface CreatePromptRoutineInput {
@@ -67,6 +69,8 @@ export interface CreatePromptRoutineInput {
   schedule: unknown;
   prompt: string;
   userId: string;
+  // T-1870: the alert card block that drives this routine.
+  alertCard?: { cardId: string; blockId: string };
 }
 
 export interface PublicRoutine {
