@@ -6,6 +6,7 @@ import {
   splitMentions,
   type UiMention,
 } from '@zilar/chat-core';
+import { PersonLink } from './personLink';
 
 /**
  * Renders message text: http/https URLs become safe external links and XEP-0372
@@ -65,13 +66,21 @@ function renderPlain(
   return splitMentions(text, mentions).map((segment, index) => {
     if (segment.kind === 'mention') {
       const mine = isMentionOfMe(segment.jid, meJid);
+      if (mine) {
+        return (
+          <span key={`${keyPrefix}-${index}`} className="raised-pill mention-me">
+            {segment.text}
+          </span>
+        );
+      }
       return (
-        <span
+        <PersonLink
           key={`${keyPrefix}-${index}`}
-          className={mine ? 'raised-pill mention-me' : 'mention-chip'}
+          target={{ jid: segment.jid }}
+          name={segment.text.replace(/^@/, '')}
         >
-          {segment.text}
-        </span>
+          <span className="mention-chip">{segment.text}</span>
+        </PersonLink>
       );
     }
     return splitLinks(segment.text).map((linkSegment, linkIndex) =>
@@ -101,13 +110,21 @@ function renderFormatted(
   return splitMentions(text, mentions).map((segment, index) => {
     if (segment.kind === 'mention') {
       const mine = isMentionOfMe(segment.jid, meJid);
+      if (mine) {
+        return (
+          <span key={`${keyPrefix}-${index}`} className="raised-pill mention-me">
+            {segment.text}
+          </span>
+        );
+      }
       return (
-        <span
+        <PersonLink
           key={`${keyPrefix}-${index}`}
-          className={mine ? 'raised-pill mention-me' : 'mention-chip'}
+          target={{ jid: segment.jid }}
+          name={segment.text.replace(/^@/, '')}
         >
-          {segment.text}
-        </span>
+          <span className="mention-chip">{segment.text}</span>
+        </PersonLink>
       );
     }
     return splitLinks(segment.text).map((linkSegment, linkIndex) =>
