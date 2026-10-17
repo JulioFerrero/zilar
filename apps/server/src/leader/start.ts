@@ -18,6 +18,7 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { startRunnerHub, type RunnerHub } from '../machines/hub';
 import type { DbMachineRegistry } from '../machines/registry';
+import type { CorrectCardInput } from '../message-blocks/respond';
 import { startPushComponent, type PushComponentHandle } from '../push/component';
 import { pushConfigError, type PushConfig } from '../push/config';
 import { createPushCipher } from '../push/crypto';
@@ -48,6 +49,9 @@ export interface LeaderWorkDeps {
   /** Runs a prompt routine through the gateway; the scheduler records
    * `skipped` while it is absent. */
   runPrompt: PromptRunner;
+  /** T-1880: corrects a linked alert card in the room; `false` while the
+   * gateway does not exist yet. */
+  correctCard: (input: CorrectCardInput) => Promise<boolean>;
   /**
    * Called with the runner hub while it runs and with `null` when it stops, so
    * the per-request `isMachineOnline` closure follows the leader.
@@ -219,6 +223,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
         logger,
         post: deps.post,
         runPrompt: deps.runPrompt,
+        correctCard: deps.correctCard,
       });
     },
     // Today's stop order (main.ts): runner hub, push, the agent gateway, the

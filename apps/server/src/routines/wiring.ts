@@ -8,6 +8,7 @@ import type { Payload } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { ToolRunner } from '../tools/types';
+import type { ExecuteRoutinePorts } from './execute';
 import type { PromptRunner } from './execute-prompt';
 import {
   createRoutineScheduler,
@@ -33,6 +34,8 @@ export interface BuildRoutineSchedulerDeps {
   /** Runs a prompt routine through the gateway (`runScheduledTurn`); absent
    * while the gateway is null, so the run is recorded `skipped`. */
   runPrompt?: PromptRunner;
+  /** T-1880: corrects a linked alert card in the room (`correctInRoom`). */
+  correctCard?: ExecuteRoutinePorts['correctCard'];
   audit: AuditRecorder;
   logger: RoutineLogger;
 }
@@ -58,6 +61,7 @@ export function buildRoutineScheduler(
     runTool: deps.toolRunner,
     post: deps.post,
     ...(deps.runPrompt === undefined ? {} : { runPrompt: deps.runPrompt }),
+    ...(deps.correctCard === undefined ? {} : { correctCard: deps.correctCard }),
     audit: deps.audit,
     logger: deps.logger,
   });

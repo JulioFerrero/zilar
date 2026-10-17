@@ -2,10 +2,13 @@
 // once after the fixed wait before the run is marked `skipped`.
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Effect } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { type AlertBlock, BlocksDataSchema, type BlocksData } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/service';
 import type { RoutineRow } from '../db/rows';
+import { findCard, recordCard } from '../message-blocks/cards';
+import type { CorrectCardInput } from '../message-blocks/respond';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { executeRoutine, POST_RETRY_DELAY_MS } from './execute';
@@ -45,6 +48,7 @@ async function seedRoutine(
     createdBy: string;
     routineInput?: unknown;
     alertCardId?: string;
+    alertBlockId?: string;
   },
 ): Promise<RoutineRow> {
   const id = randomUUID();
@@ -56,14 +60,15 @@ async function seedRoutine(
       return yield* sql<RoutineRow>`INSERT INTO routines (
         id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
         approved_hosts, status, paused_reason, next_run_at, last_run_at,
-        last_status, consecutive_failures, alert_card_id, created_by, created_at,
-        updated_at, deleted_at
+        last_status, consecutive_failures, alert_card_id, alert_block_id,
+        created_by, created_at, updated_at, deleted_at
       ) VALUES (
         ${id}, ${input.aiId}, NULL, NULL, ${input.toolId}, 'Digest',
         ${JSON.stringify({ kind: 'interval', everyMinutes: 60 })}::jsonb,
         ${routineInput}::jsonb,
         '[]'::jsonb, 'active', NULL, ${NOW.toISOString()}, NULL, NULL, 0,
-        ${input.alertCardId ?? null}, ${input.createdBy}, ${NOW.toISOString()},
+        ${input.alertCardId ?? null}, ${input.alertBlockId ?? null},
+        ${input.createdBy}, ${NOW.toISOString()},
         ${NOW.toISOString()}, NULL
       )
       RETURNING *`;
@@ -211,5 +216,141 @@ describe('executeRoutine alert threshold', () => {
       lastStatus: 'error',
       consecutiveFailures: 1,
     });
+  });
+});
+
+describe('executeRoutine alert card note', () => {
+  let context: TestContext;
+
+  const alertCardData: BlocksData = {
+    fallback: 'Spend alert',
+    blocks: [
+      {
+        kind: 'alert',
+        id: 'alert-1',
+        title: 'Tell me when spending passes',
+        field: { label: 'Threshold', value: '90,000' },
+        on: true,
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('writes the last check into the card and corrects it in the room', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const toolId = await seedTool(context, aiId, ownerId);
+    const card = await recordCard(context.db, {
+      originId: randomUUID(),
+      aiId,
+      roomJid: 'spend@rooms.zilar.localhost',
+      data: alertCardData,
+    });
+    const row = await seedRoutine(context, {
+      aiId,
+      toolId,
+      createdBy: ownerId,
+      routineInput: { threshold: 90000 },
+      alertCardId: card.originId,
+      alertBlockId: 'alert-1',
+    });
+
+    const corrections: CorrectCardInput[] = [];
+    await executeRoutine(
+      {
+        runTool: async () => ({
+          ok: true,
+          output: { text: 'ran', data: { value: 82302 } },
+          logs: '',
+          durationMs: 1,
+          fetchCount: 0,
+        }),
+        post: async () => {
+          throw new Error('a quiet run must not post');
+        },
+        correctCard: async (input) => {
+          corrections.push(input);
+          return true;
+        },
+      },
+      row,
+      { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
+    );
+
+    expect(await readRoutineState(context, row.id)).toMatchObject({ lastStatus: 'ok' });
+    const saved = await findCard(context.db, card.originId);
+    const decoded = Schema.decodeUnknownOption(BlocksDataSchema)(saved?.data);
+    if (Option.isNone(decoded)) {
+      throw new Error('saved card did not decode');
+    }
+    const alert = decoded.value.blocks.find(
+      (block): block is AlertBlock => block.kind === 'alert' && block.id === 'alert-1',
+    );
+    expect(alert?.note).toMatch(/^Checked .* now 82,302/);
+    expect(alert?.note?.length).toBeLessThanOrEqual(40);
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toMatchObject({ originalId: card.originId, roomJid: card.roomJid });
+  });
+
+  it("leaves another AI's card untouched", async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const { aiId: otherAiId } = await seedAi(context, ownerId);
+    const toolId = await seedTool(context, aiId, ownerId);
+    const card = await recordCard(context.db, {
+      originId: randomUUID(),
+      aiId: otherAiId,
+      roomJid: 'spend@rooms.zilar.localhost',
+      data: alertCardData,
+    });
+    const row = await seedRoutine(context, {
+      aiId,
+      toolId,
+      createdBy: ownerId,
+      routineInput: { threshold: 90000 },
+      alertCardId: card.originId,
+      alertBlockId: 'alert-1',
+    });
+
+    const corrections: CorrectCardInput[] = [];
+    await executeRoutine(
+      {
+        runTool: async () => ({
+          ok: true,
+          output: { text: 'ran', data: { value: 82302 } },
+          logs: '',
+          durationMs: 1,
+          fetchCount: 0,
+        }),
+        post: async () => {
+          throw new Error('a quiet run must not post');
+        },
+        correctCard: async (input) => {
+          corrections.push(input);
+          return true;
+        },
+      },
+      row,
+      { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
+    );
+
+    expect(await readRoutineState(context, row.id)).toMatchObject({ lastStatus: 'ok' });
+    const saved = await findCard(context.db, card.originId);
+    const decoded = Schema.decodeUnknownOption(BlocksDataSchema)(saved?.data);
+    if (Option.isNone(decoded)) {
+      throw new Error('card did not decode');
+    }
+    const alert = decoded.value.blocks.find(
+      (block): block is AlertBlock => block.kind === 'alert' && block.id === 'alert-1',
+    );
+    expect(alert?.note).toBeUndefined();
+    expect(corrections).toHaveLength(0);
   });
 });

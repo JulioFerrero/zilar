@@ -18,7 +18,9 @@
 //    the room, so `skipped` with no failure count. A routine linked to an
 //    alert card posts only when `output.data.value` reaches
 //    `input.threshold` (T-1878): below it the run is `ok` and silent, and
-//    a missing number on either side is a failure.
+//    a missing number on either side is a failure. A linked run also rewrites
+//    the card's note with the last check and value (T-1880); a failed refresh
+//    never changes the outcome.
 // 6. Failure increments `consecutive_failures`; the 3rd in a row pauses
 //    with the fixed notice. Tool error text and logs never reach the chat
 //    (they stay in `ai_tool_runs`).
@@ -33,8 +35,10 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import type { CorrectCardInput } from '../message-blocks/respond';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
+import { refreshAlertNote } from './alert-note';
 import { alertVerdict } from './alert-run';
 import { executePromptRoutine, type PromptRunner } from './execute-prompt';
 import {
@@ -84,6 +88,11 @@ export interface ExecuteRoutinePorts {
    * prompt routine is then recorded `skipped`.
    */
   runPrompt?: PromptRunner;
+  /**
+   * T-1880: corrects the linked alert card in the room after its note is
+   * saved. Absent = no send (tests, no gateway).
+   */
+  correctCard?: (input: CorrectCardInput) => Promise<boolean>;
 }
 
 export interface RoutineRunLogger {
@@ -227,6 +236,16 @@ export async function executeRoutine(
       await recordFailure(db, options, ports, row, at, startedAt);
       return;
     }
+    // T-1880: the card's note says when the routine last checked and what it
+    // saw, whether the run posts or stays quiet. A failed refresh is logged
+    // and swallowed, so it never changes the outcome below.
+    await refreshAlertNote({
+      db,
+      ports,
+      row,
+      value: verdict.value,
+      logger: options.logger,
+    });
     if (verdict.kind === 'quiet') {
       await markOk(db, options, row, at, startedAt);
       return;

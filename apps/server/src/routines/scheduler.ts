@@ -34,6 +34,8 @@ export interface CreateRoutineSchedulerOptions {
   post: ExecuteRoutinePorts['post'];
   /** T-1645: the prompt-routine runner; absent until the gateway is wired. */
   runPrompt?: ExecuteRoutinePorts['runPrompt'];
+  /** T-1880: corrects the linked alert card in the room (the gateway). */
+  correctCard?: ExecuteRoutinePorts['correctCard'];
   audit: AuditRecorder;
   logger: RoutineLogger;
   /** Tick cadence in milliseconds. Defaults to 30 s. */
@@ -115,6 +117,7 @@ export function createRoutineScheduler(
             runTool: options.runTool,
             post: options.post,
             ...(options.runPrompt === undefined ? {} : { runPrompt: options.runPrompt }),
+            ...(options.correctCard === undefined ? {} : { correctCard: options.correctCard }),
           },
           row,
           {

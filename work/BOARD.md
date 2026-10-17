@@ -1891,3 +1891,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1879](T-1879-media-card-guide.md) | the card guide teaches image and file cards | 2026-10-17 |
 | [T-1881](T-1881-fetch-media-user-agent.md) | fetch_media sends a User-Agent and logs its reason | 2026-10-17 |
 | [T-1882](T-1882-people-page-links.md) | People and AIs rows open the person | 2026-10-17 |
+| [T-1880](T-1880-alert-card-note.md) | the alert card shows when it last checked | 2026-10-17 |

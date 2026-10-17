@@ -16,6 +16,8 @@ import { sharedDraftHub } from '../drafts/hub';
 import { serveEdgeOnNode } from '../effect/node-serve';
 import { buildDeskProbe } from '../hands/wiring';
 import { markLeader } from '../health-status';
+import { cardCorrectorOf } from '../message-blocks/api';
+import type { CorrectCardInput } from '../message-blocks/respond';
 import {
   createLeaderLock,
   createPostgresLockConnection,
@@ -93,6 +95,11 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
       }
       return gateway.runScheduledTurn(input);
     };
+
+    // T-1880: corrects a linked alert card in the room after its note changes;
+    // `false` while the gateway does not exist yet.
+    const correctCard = (input: CorrectCardInput): Promise<boolean> =>
+      cardCorrectorOf(running.gateway)?.correctInRoom(input) ?? Promise.resolve(false);
 
     // Action gateway (T-0090): wired in production with an empty adapter
     // registry by default, so every action request is denied `unknown_action`
@@ -275,6 +282,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
       toolRunner,
       post,
       runPrompt,
+      correctCard,
       onRunnerHub: (hub) => {
         runnerHub = hub as RunnerHub | null;
       },
