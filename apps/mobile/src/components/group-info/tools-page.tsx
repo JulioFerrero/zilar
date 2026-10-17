@@ -34,17 +34,20 @@ import { useChatStore } from '@/store/chat-store-provider';
 const isEmptyListError = (error: unknown): boolean =>
   error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
 
-/** Loads the group's tools; a missing or unparseable list reads as empty. */
-const loadGroupTools = (api: ToolsApi, groupId: string) =>
-  Effect.tryPromise({ try: () => api.listGroupTools(groupId), catch: (error) => error }).pipe(
-    Effect.catchIf(isEmptyListError, () => Effect.succeed<ToolListItem[]>([])),
-  );
+/** Loads the group's or topic's tools; a missing or unparseable list reads as empty. */
+const loadTools = (api: ToolsApi, groupId: string, topicId?: string) =>
+  Effect.tryPromise({
+    try: () => (topicId === undefined ? api.listGroupTools(groupId) : api.listTopicTools(topicId)),
+    catch: (error) => error,
+  }).pipe(Effect.catchIf(isEmptyListError, () => Effect.succeed<ToolListItem[]>([])));
 
-/** Loads the group's routines; a missing or unparseable list reads as empty. */
-const loadGroupRoutines = (api: ToolsApi, groupId: string) =>
-  Effect.tryPromise({ try: () => api.listGroupRoutines(groupId), catch: (cause) => cause }).pipe(
-    Effect.catchIf(isEmptyListError, () => Effect.succeed<Routine[]>([])),
-  );
+/** Loads the group's or topic's routines; a missing or unparseable list reads as empty. */
+const loadRoutines = (api: ToolsApi, groupId: string, topicId?: string) =>
+  Effect.tryPromise({
+    try: () =>
+      topicId === undefined ? api.listGroupRoutines(groupId) : api.listTopicRoutines(topicId),
+    catch: (cause) => cause,
+  }).pipe(Effect.catchIf(isEmptyListError, () => Effect.succeed<Routine[]>([])));
 
 /** The routines body state; the tools side uses `sectionStateOf`. */
 function routinesStateOf(
@@ -60,12 +63,24 @@ function routinesStateOf(
   return { status: 'loading', routines: [], message: '' };
 }
 
-export function ToolsPage({ groupId, onBack }: { groupId: string; onBack: () => void }) {
+export function ToolsPage({
+  groupId,
+  topicId,
+  onBack,
+}: {
+  groupId: string;
+  /** Set on the topic-scoped page: the lists then read the topic's own rows. */
+  topicId?: string;
+  onBack: () => void;
+}) {
   const { api } = useToolsApi();
-  const [toolsLoad, reloadTools] = useQuery(() => loadGroupTools(api, groupId), [api, groupId]);
+  const [toolsLoad, reloadTools] = useQuery(
+    () => loadTools(api, groupId, topicId),
+    [api, groupId, topicId],
+  );
   const [routinesLoad, reloadRoutines] = useQuery(
-    () => loadGroupRoutines(api, groupId),
-    [api, groupId],
+    () => loadRoutines(api, groupId, topicId),
+    [api, groupId, topicId],
   );
 
   // A manager acts on the group's routines, like web's group panel; everyone

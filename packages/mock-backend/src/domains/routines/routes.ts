@@ -1,7 +1,7 @@
-// Routine routes (T-0941): list by AI or group, pause, resume and delete,
-// mirroring web's mock. Pausing an active routine sets `pausedReason: 'user'`;
-// resuming a `needs_approval` routine answers 409 `needs_approval`, like the
-// server.
+// Routine routes (T-0941): list by AI, group or topic, pause, resume and
+// delete, mirroring web's mock. Pausing an active routine sets
+// `pausedReason: 'user'`; resuming a `needs_approval` routine answers 409
+// `needs_approval`, like the server.
 
 import type { MockData } from '../../state';
 import type { MockRoutine } from './seed';
@@ -25,6 +25,18 @@ export function handleRoutines(data: MockData, request: MockHttpRequest): Respon
     return jsonResponse(
       data.routines
         .filter((routine) => !routine.deleted && routine.groupId === first)
+        .map((row) => routineRow(data, row)),
+    );
+  }
+  if (
+    head === 'topics' &&
+    second === 'routines' &&
+    request.method === 'GET' &&
+    first !== undefined
+  ) {
+    return jsonResponse(
+      data.routines
+        .filter((routine) => !routine.deleted && routine.topicId === first)
         .map((row) => routineRow(data, row)),
     );
   }

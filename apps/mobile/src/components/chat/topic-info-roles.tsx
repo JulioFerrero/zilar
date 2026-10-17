@@ -93,12 +93,10 @@ export function TopicInfoRoles({
   const approverOpts = approverOptions(roles, approverRole);
   const line = approverLine(approverRole);
 
+  // T-1838: a public topic has no roles at all, so the block is absent rather
+  // than a line about a feature that is not there.
   if (visibility !== 'private') {
-    return (
-      <Text className="text-[13px] text-muted-foreground">
-        Roles are only available on private topics.
-      </Text>
-    );
+    return null;
   }
 
   return (

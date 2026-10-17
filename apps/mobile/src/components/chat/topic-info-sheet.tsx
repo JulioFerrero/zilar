@@ -1,4 +1,4 @@
-import { Brain, Globe, Lock, Plus } from 'lucide-react-native';
+import { Archive, Brain, Globe, Lock, Plus, Wrench } from 'lucide-react-native';
 import { Children, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -9,6 +9,7 @@ import { TopicInfoRoles } from '@/components/chat/topic-info-roles';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
 import { TopicMuteLeave } from '@/components/chat/topic-mute-leave';
 import { memberPerson, type TopicLinePerson } from '@/components/chat/topic-people-line';
+import { InfoRow } from '@/components/group-info/info-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -118,6 +119,9 @@ type TopicInfoSheetProps = {
   /** Opens the Add people or AIs sheet (T-1785 part 2). When unset the
    * primary key is not shown. */
   onAdd?: () => void;
+  /** Opens the topic's Tools and routines page (T-1838). When unset the
+   *  row is not shown (a topic with no group behind it). */
+  onOpenTools?: () => void;
 };
 
 /**
@@ -125,8 +129,9 @@ type TopicInfoSheetProps = {
  * T-1785 after `PhonePeople.dc.html`: the topic header, an optional
  * "Add people or AIs" key, the AIs with their owner labels and the topic's
  * people from `memberIds` (the group's members on General). The topic link,
- * the error line, the roles block, Mute / Leave and Archive stay below. The
- * screen loads the data; the sheet only renders it.
+ * the error line, the roles block, the Tools and routines row, Mute / Leave
+ * and the Archive row stay below. The screen loads the data; the sheet only
+ * renders it.
  */
 export function TopicInfoSheet({
   chat,
@@ -155,6 +160,7 @@ export function TopicInfoSheet({
   onPatchError,
   onOpenAiMemory,
   onAdd,
+  onOpenTools,
 }: TopicInfoSheetProps) {
   const topic = chat?.topic;
   // T-1834: General is the whole group, so its AIs are the group's
@@ -293,6 +299,12 @@ export function TopicInfoSheet({
             )}
           </View>
 
+          {onOpenTools !== undefined ? (
+            <InfoGroup>
+              <InfoRow icon={Wrench} label="Tools and routines" onPress={onOpenTools} />
+            </InfoGroup>
+          ) : null}
+
           <View className="gap-1">
             <TopicLinkRow topic={topic} patch={patch} onError={onPatchError} />
             {patchError !== '' ? (
@@ -330,16 +342,18 @@ export function TopicInfoSheet({
           <TopicMuteLeave chat={chat} myUserId={myUserId} disabled={busy} onAskLeave={onAskLeave} />
 
           {canArchive ? (
-            <View className="flex-row justify-end gap-2">
-              <Button
-                variant="destructive"
-                accessibilityLabel="Archive topic"
-                disabled={busy}
-                onPress={onArchive}
-              >
-                <Text>{busy ? 'Working…' : 'Archive'}</Text>
-              </Button>
-            </View>
+            <InfoGroup>
+              <InfoRow
+                icon={Archive}
+                label="Archive topic"
+                danger
+                onPress={() => {
+                  if (!busy) {
+                    onArchive();
+                  }
+                }}
+              />
+            </InfoGroup>
           ) : null}
         </View>
       ) : null}

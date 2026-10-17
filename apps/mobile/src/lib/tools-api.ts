@@ -118,6 +118,8 @@ export interface ToolsApi {
   listAiRoutines(aiId: string): Promise<Routine[]>;
   listGroupTools(groupId: string): Promise<ToolListItem[]>;
   listGroupRoutines(groupId: string): Promise<Routine[]>;
+  listTopicTools(topicId: string): Promise<ToolListItem[]>;
+  listTopicRoutines(topicId: string): Promise<Routine[]>;
 }
 
 /**
@@ -192,6 +194,12 @@ export function createToolsApi(
     },
     async listGroupRoutines(groupId) {
       return [...(await runApi(client.routines.listForGroup({ params: { id: groupId } })))];
+    },
+    async listTopicTools(topicId) {
+      return [...(await runApi(client.tools.listForTopic({ params: { id: topicId } })))];
+    },
+    async listTopicRoutines(topicId) {
+      return [...(await runApi(client.routines.listForTopic({ params: { id: topicId } })))];
     },
     async listMyRoutines() {
       return [...(await runApi(client.routines.listMine()))];

@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
@@ -18,6 +19,7 @@ type TopicInfoHostProps = {
 
 /** The topic-info sheet and the AI-memory sheet it opens, for the topic branch. */
 export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
+  const router = useRouter();
   const removeTopicMember = useChatStore((state) => state.removeTopicMember);
   const patchTopic = useChatStore((state) => state.patchTopic);
   const setTopicRoles = useChatStore((state) => state.setTopicRoles);
@@ -36,6 +38,20 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const isManager = mayManageRoles(
     screen.detail?.members.find((member) => member.userId === screen.myUserId)?.role,
   );
+  // T-1838: the topic's own Tools and routines page, only when the group
+  // behind it is known (the page's manager bit reads the group's members).
+  const toolsGroupId = screen.chatGroupId;
+  const toolsTopicId = chat.topic?.id;
+  const openTools =
+    toolsGroupId === undefined || toolsTopicId === undefined
+      ? undefined
+      : () => {
+          screen.setInfoOpen(false);
+          router.push({
+            pathname: '/topic-tools/[id]',
+            params: { id: toolsTopicId, group: toolsGroupId },
+          });
+        };
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
     screen.setInfoRolesError('');
@@ -136,6 +152,7 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
           screen.setInfoOpen(false);
           setAddOpen(true);
         }}
+        onOpenTools={openTools}
         onToggleTopicRole={toggleTopicRole}
         onPickApprover={(roleId) =>
           saveTopicRoles(attachedRoleIds(screen.topicRoles?.roles ?? []), roleId)
