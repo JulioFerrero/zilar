@@ -5,5 +5,5 @@
     "lib": ["ES2023"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src", "../../packages/xmpp-core/src/types/xmpp.d.ts"]
 }

@@ -1836,3 +1836,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1824](T-1824-dm-cards-server.md) | DM cards server: record, owner-only answers, chat correction | 2026-10-17 |
 | [T-1825](T-1825-dm-cards-clients.md) | DM cards clients: origin id and plain replies | 2026-10-17 |
 | [T-1826](T-1826-question-origin-id.md) | a question reply matches by origin id too | 2026-10-17 |
+| [T-1827](T-1827-dm-cards-allowed.md) | AIs may post interactive cards in their owner's DM | 2026-10-17 |

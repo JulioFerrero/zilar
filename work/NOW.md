@@ -601,7 +601,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - A multiple-choice poll: vote Chips, reload, the check stays; add Fruit, reload, both are checked, so nothing was dropped.
                 - A form shows an empty number as 0. After send and reload it is read-only with "Julio" and 2 and "Julio sent this".
                 - **T-1821 doesn't work yet for chip taps made live.** The reply quotes the question's origin id (`gmvcat84k-…`), while after a reload the question is stored under its archive id, and `UiMessage` has no `originId`. T-1825 adds `UiMessage.originId`; **T-1826** then matches it too.
-              - **Android v0.2.7 tagged** on `f380f4762` at Julio's request (11:41 UTC). The "Android release" run is 39029724959.
+              - **Android v0.2.7 released** on `f380f4762` at Julio's request. https://github.com/JulioFerrero/zilar/releases/tag/v0.2.7, published 11:48 UTC and marked latest.
+                - **Verified on the arm64 APK:** `assets/app.config` says 0.2.7 / versionCode 207; signed with the release key (CN=Zilar); `chat.zilar.app` is in the bundle; the SHA-256 matches `SHA256SUMS`.
+                - **Copied** to `~/Downloads/zilar-v0.2.7-arm64.apk`.
+                - **Posted** in Zilar Updates.
+                - **Phones on 0.2.6 update in the app.** I haven't installed 0.2.7 on a device yet.
+                - **Not in 0.2.7:** T-1824 to T-1827 (DM cards and the question origin-id match), merged after the tag.
               - **Full suites on main:** server 988/988, mobile 250/250.
               - **Phone, mock build of main:**
                 - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);

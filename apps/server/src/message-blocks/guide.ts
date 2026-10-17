@@ -115,7 +115,7 @@ export const INTERACTIVE_RULES = [
   '`poll` collects votes and `checklist` collects ticks; everyone sees them and they do not wake you.',
   'Every interactive block and every action, option and field has an `id` (letters, digits, `.` `_` `~` `-`), unique in its block.',
   'Never send `votes`, `selected`, `chosen` or `sent`; the server fills them in.',
-  'Interactive kinds work only in a group or topic, never in a direct chat.',
+  'In a direct chat only the owner can answer an interactive card.',
 ].join('\n');
 
 export const INTERACTIVE_SHAPES = [

@@ -187,7 +187,7 @@ describe('post_blocks runner', () => {
     expect(records[0]).not.toHaveProperty('topicId');
   });
 
-  it('refuses an interactive card in the owner DM and sends nothing', async () => {
+  it('posts an interactive card in the owner DM and records it', async () => {
     const dmJid = 'owner@zilar.localhost';
     const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
     const sent: SentMessage[] = [];
@@ -213,10 +213,22 @@ describe('post_blocks runner', () => {
     );
 
     expect(result.content).toBe(
-      'invalid: interactive cards work only in a group or topic; use a read-only kind here',
+      'Your card was posted in this chat. Do not repeat what it shows; reply with at most one short line.',
     );
-    expect(sent).toHaveLength(0);
-    expect(records).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.to).toBe(dmJid);
+    expect(sent[0]?.kind).toBe('chat');
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      originId: 'block-1',
+      aiId: 'ai-1',
+      roomJid: dmJid,
+    });
+    expect(records[0]?.data).toMatchObject({
+      blocks: [{ kind: 'poll', id: 'lunch', question: 'Where do we eat?' }],
+    });
+    expect(records[0]).not.toHaveProperty('groupId');
+    expect(records[0]).not.toHaveProperty('topicId');
   });
 
   it('keeps the posted result when recording the card fails', async () => {
