@@ -45,8 +45,8 @@ function noteFor(schedule: string, value: number): string {
 
 export async function refreshAlertNote(input: RefreshAlertNoteInput): Promise<void> {
   const { db, ports, row, value, logger } = input;
-  const cardId = row.alertCardId ?? null;
-  const blockId = row.alertBlockId ?? null;
+  const cardId = row.alertCardId;
+  const blockId = row.alertBlockId;
   if (cardId === null || blockId === null) {
     return;
   }

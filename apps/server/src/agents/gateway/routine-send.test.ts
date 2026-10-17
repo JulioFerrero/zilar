@@ -39,6 +39,8 @@ function routineRow(overrides: Partial<RoutineRow> = {}): RoutineRow {
     lastStatus: null,
     lastMessageId: null,
     lastMessageAt: null,
+    alertCardId: null,
+    alertBlockId: null,
     consecutiveFailures: 0,
     createdBy: 'owner-1',
     createdAt: NOW,

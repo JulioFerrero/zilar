@@ -1894,3 +1894,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1880](T-1880-alert-card-note.md) | the alert card shows when it last checked | 2026-10-17 |
 | [T-1883](T-1883-save-text-media.md) | save_text_media: AI-written CSV/text files for cards | 2026-10-17 |
 | [T-1886](T-1886-phone-who-reacted.md) | phone: long-press a reaction to see who reacted | 2026-10-17 |
+| [T-1888](T-1888-small-cleanups.md) | RoutineRow alert fields required; drop setFound | 2026-10-17 |

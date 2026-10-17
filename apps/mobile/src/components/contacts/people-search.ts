@@ -133,13 +133,6 @@ export class PeopleSearchController {
     this.runLookup(handle);
   }
 
-  setFound(profile: HandleProfile, sent: boolean): void {
-    if (this.disposed) {
-      return;
-    }
-    this.set({ status: 'found', profile, sent });
-  }
-
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
