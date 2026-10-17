@@ -7,6 +7,7 @@ import { devAiMessages } from './dev-ai';
 import { devTeamMessages } from './dev-team';
 import { familiaMessages } from './familia';
 import { gymMessages } from './gym';
+import { ideasMessages } from './ideas';
 import { luisMessages } from './luis';
 import { marketingAiMessages } from './marketing-ai';
 import { martaMessages } from './marta';
@@ -30,5 +31,6 @@ export const messageSeeds: Readonly<Record<string, readonly MockMessageSeed[]>> 
   'luis@zilar.test': luisMessages,
   'ai-marketing@zilar.test': marketingAiMessages,
   'gym@rooms.zilar.test': gymMessages,
+  't-devteam-ideas@rooms.zilar.test': ideasMessages,
   'product@rooms.zilar.test': productMessages,
 };

@@ -114,7 +114,7 @@ function messageItems(data: MockData, chat: string, message: MockMessage): Index
 
 // A DM: the viewer's own messages read "You", the peer reads its seed name. A
 // room message carries its occupant nick after `/`, which wins.
-function senderNameFor(data: MockData, fromJid: string): string {
+export function senderNameFor(data: MockData, fromJid: string): string {
   const [bare, resource] = fromJid.split('/');
   const nick = resource?.trim() ?? '';
   if (nick !== '') {

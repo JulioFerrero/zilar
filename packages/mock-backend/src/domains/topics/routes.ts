@@ -10,6 +10,7 @@ import {
   readJsonBody,
   type MockHttpRequest,
 } from '../../http/shared';
+import { topicPreviewRoute } from './preview';
 import type { MockTopic, MockTopicOwner, TopicKind, TopicStatus } from './tables';
 import { groupTopicViews, topicView } from './view';
 
@@ -50,6 +51,7 @@ export function handleTopics(data: MockData, request: MockHttpRequest): Response
   }
   if (sub === 'archive' && request.method === 'POST') return archiveTopic(data, topic);
   if (sub === 'join' && request.method === 'POST') return joinTopicRoute(data, topic);
+  if (sub === 'preview' && request.method === 'GET') return topicPreviewRoute(data, topic);
   if (sub === 'members') return handleTopicMembers(data, topic, subId, request);
   if (sub === 'ais') return handleTopicAis(data, topic, subId, request);
   if (sub === 'roles' && request.method === 'PUT') return setTopicRoles(data, topic, request);
