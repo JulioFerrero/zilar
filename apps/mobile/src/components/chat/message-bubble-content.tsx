@@ -14,6 +14,7 @@ import {
   GeneratingLabel,
 } from '@/components/chat/message-bubble-decor';
 import { PayloadCard, isRenderedCard } from '@/components/chat/payload-card';
+import { PersonPressable } from '@/components/chat/person-pressable';
 import {
   BubbleInlineMeta,
   META_OVERLAY,
@@ -154,12 +155,14 @@ export function MessageBubbleContent({
   return (
     <>
       {showSenderName ? (
-        <Text
-          className={cn('mb-0.5 text-[14px] font-semibold', mediaFirst && 'px-3 pt-2')}
-          color={senderColor(message.senderId)}
-        >
-          {message.senderName}
-        </Text>
+        <PersonPressable target={{ jid: message.senderId }} name={message.senderName}>
+          <Text
+            className={cn('mb-0.5 text-[14px] font-semibold', mediaFirst && 'px-3 pt-2')}
+            color={senderColor(message.senderId)}
+          >
+            {message.senderName}
+          </Text>
+        </PersonPressable>
       ) : null}
       {message.forward !== undefined ? (
         <View className={cn(mediaFirst && 'px-3 pt-2')}>

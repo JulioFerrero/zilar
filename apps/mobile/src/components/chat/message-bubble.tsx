@@ -19,6 +19,7 @@ import { appActiveSource, BubbleTail, LONG_PRESS_MS } from '@/components/chat/me
 import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
 import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
+import { PersonPressable } from '@/components/chat/person-pressable';
 import { ReactionChips } from '@/components/chat/reaction-chips';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -293,11 +294,13 @@ function MessageBubbleImpl({
           ) : null}
           {!outgoing && isGroup && handoff === undefined ? (
             showAvatar ? (
-              <EntityAvatar
-                person={{ id: message.senderId, name: message.senderName }}
-                size={34}
-                className="mr-2"
-              />
+              <PersonPressable target={{ jid: message.senderId }} name={message.senderName}>
+                <EntityAvatar
+                  person={{ id: message.senderId, name: message.senderName }}
+                  size={34}
+                  className="mr-2"
+                />
+              </PersonPressable>
             ) : (
               <View className="mr-2" style={{ width: 34 }} />
             )

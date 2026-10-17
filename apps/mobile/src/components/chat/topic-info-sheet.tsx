@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { PersonPressable } from '@/components/chat/person-pressable';
 import { TopicDoneRow } from '@/components/chat/topic-done-row';
 import { TopicInfoRoles } from '@/components/chat/topic-info-roles';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
@@ -178,6 +179,7 @@ export function TopicInfoSheet({
     name: member.name,
     ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
   }));
+  const handles = new Map((detail?.members ?? []).map((m) => [m.userId, m.handle] as const));
   // General lists the whole group; any other topic lists its own people from
   // `memberIds`, skipping ids the group detail has not loaded yet.
   const people: TopicLinePerson[] =
@@ -186,6 +188,7 @@ export function TopicInfoSheet({
       : (topic?.memberIds ?? [])
           .map((memberId) => memberPerson(memberId, detail))
           .filter((person): person is TopicLinePerson => person !== undefined);
+  const rows = people.map((person) => ({ ...person, handle: handles.get(person.id) }));
   return (
     <BottomSheet
       visible={chat !== null}
@@ -277,23 +280,24 @@ export function TopicInfoSheet({
               <StateMessage kind="empty" size="inline" title="No people here yet." />
             ) : (
               <InfoGroup>
-                {people.map((person) => (
-                  <View key={person.id} className="min-h-[52px] flex-row items-center gap-3 px-3">
-                    <EntityAvatar
-                      person={{
-                        id: person.id,
-                        name: person.name,
-                        ...(person.avatarUrl === undefined ? {} : { avatarUrl: person.avatarUrl }),
-                      }}
-                      size={34}
-                    />
-                    <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] text-foreground">
-                      {person.name}
-                      {person.id === myUserId ? (
-                        <Text className="text-[16px] text-muted-foreground"> (you)</Text>
-                      ) : null}
-                    </Text>
-                  </View>
+                {rows.map(({ id, name, avatarUrl, handle }) => (
+                  <PersonPressable key={id} target={{ userId: id, handle }} name={name}>
+                    <View className="min-h-[52px] flex-row items-center gap-3 px-3">
+                      <EntityAvatar
+                        person={{ id, name, ...(avatarUrl === undefined ? {} : { avatarUrl }) }}
+                        size={34}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        className="min-w-0 flex-1 text-[16px] text-foreground"
+                      >
+                        {name}
+                        {id === myUserId ? (
+                          <Text className="text-[16px] text-muted-foreground"> (you)</Text>
+                        ) : null}
+                      </Text>
+                    </View>
+                  </PersonPressable>
                 ))}
               </InfoGroup>
             )}
