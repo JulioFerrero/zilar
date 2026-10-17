@@ -8,7 +8,6 @@ import { useAction } from '@/lib/effect/use-action';
 import { useMessageSearch } from '@/lib/useMessageSearch';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { scrollToMessage } from '@/lib/scrollToMessage';
-import { EntityAvatar } from './EntityAvatar';
 import { MessageSearchResult } from './MessageSearchResult';
 
 // A stable empty list: keeps `items` referentially equal between renders while
@@ -182,15 +181,6 @@ function MessageHitList({
       <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">Messages</p>
       {groups.map((group) => (
         <div key={group.chatJid}>
-          <div className="flex items-center gap-2 px-[10px] pt-1.5 pb-0.5">
-            <EntityAvatar
-              chat={{ id: group.chatJid, title: group.title, avatarUrl: group.avatarUrl }}
-              size={20}
-            />
-            <span className="truncate text-[12px] font-medium text-muted-foreground">
-              {group.title}
-            </span>
-          </div>
           {group.items.map((item) => (
             <SearchHit
               key={`${item.chatJid}:${item.messageId}`}
@@ -244,7 +234,7 @@ export function MessageSearchResults({
     () =>
       groupByChat(
         items,
-        chats.map((chat) => ({ id: chat.id, title: chat.title, avatarUrl: chat.avatarUrl })),
+        chats.map((chat) => ({ id: chat.id, title: chat.title })),
       ),
     [items, chats],
   );
@@ -294,8 +284,8 @@ export function MessageSearchResults({
 
 export function groupByChat(
   items: SearchItem[],
-  chats: Array<{ id: string; title: string; avatarUrl?: string | undefined }>,
-): Array<{ chatJid: string; title: string; avatarUrl?: string | undefined; items: SearchItem[] }> {
+  chats: Array<{ id: string; title: string }>,
+): Array<{ chatJid: string; title: string; items: SearchItem[] }> {
   const byId = new Map(chats.map((chat) => [chat.id, chat]));
   const order: string[] = [];
   const byChat = new Map<string, SearchItem[]>();
@@ -313,7 +303,6 @@ export function groupByChat(
     return {
       chatJid,
       title: chat?.title ?? chatJid,
-      ...(chat?.avatarUrl === undefined ? {} : { avatarUrl: chat.avatarUrl }),
       items: byChat.get(chatJid) ?? [],
     };
   });

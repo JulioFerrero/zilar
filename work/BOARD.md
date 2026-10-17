@@ -1862,3 +1862,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1850](T-1850-phone-alert-block.md) | phone draws the alert card | 2026-10-17 |
 | [T-1853](T-1853-card-media-route.md) | card media read route, members and AI owner only | 2026-10-17 |
 | [T-1852](T-1852-web-header-opens-panel.md) | web header avatar and people line open the panel | 2026-10-17 |
+| [T-1855](T-1855-web-search-group-header.md) | web message search drops the repeated chat header | 2026-10-17 |
