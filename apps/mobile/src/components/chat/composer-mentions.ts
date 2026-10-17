@@ -2,6 +2,7 @@ import {
   filterMentionMembers,
   findMentionQuery,
   insertMention,
+  isAiJid,
   rebaseMentions,
   type ChatSummary,
   type MentionMember,
@@ -29,7 +30,8 @@ export function emptyMentionState(): MentionState {
 /**
  * The picker's member rows for the current query (T-0227, like web's
  * `candidates` in `Composer.tsx`): matches filtered and capped, never
- * shown without an open query.
+ * shown without an open query. AI matches come first, like the board
+ * (T-1842), so the cap never hides an AI behind people.
  */
 export function mentionCandidates(
   all: readonly MentionMember[],
@@ -38,7 +40,10 @@ export function mentionCandidates(
   if (state.query === undefined) {
     return [];
   }
-  return filterMentionMembers(all, state.query.query).slice(0, MENTION_MAX_ROWS);
+  const matches = filterMentionMembers(all, state.query.query);
+  const ais = matches.filter((member) => isAiJid(member.jid));
+  const people = matches.filter((member) => !isAiJid(member.jid));
+  return [...ais, ...people].slice(0, MENTION_MAX_ROWS);
 }
 
 /** Retracks the mentions and the picker after the text changed. */

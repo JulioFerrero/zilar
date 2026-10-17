@@ -648,7 +648,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **T-1839:** `#` tiles in the web group panel.
                 - **T-1840:** the web form keeps the AI's date text ("Fri 17 Oct"). The native date input had emptied it.
               - **Phone interactive cards vs PhoneChoices** (emulator, `dev/blocks`): match.
-              - **Running:** T-1841 (the mock answers `POST /invites`, so the Add dialog's link works in mock mode).
+              - **Live `2a5e23a26`** (13:47 UTC; 6 containers healthy, 0 errors), with T-1832 and T-1836 to T-1841.
+                - **Verified live in "cards test":** "Public topic · 4 members"; AIs 1 (Deepseek, "yours", ⋯); People 3 with the crown on Julio.
+              - **Emulator (mock build of main):**
+                - **The @ list** is filtered to the topic, but its style is off the board → **T-1842**.
+                - **The Add sheet** matches PhoneAdd, except the board's "New AI" row. The phone has no new-AI route, so T-1789 left it out on purpose, and `topic-add-sheet.tsx` is at 400 lines.
+              - **Running (13:55):**
+                - T-1842 (the phone @ list follows PhoneMention: AIs first, 48 px rows, mono handles);
+                - T-1843 (General never reads as done: no green check and no dimmed title. Live "ai test › General" shows the check after an AI reply).
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);
