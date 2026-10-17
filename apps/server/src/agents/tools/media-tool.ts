@@ -1,5 +1,5 @@
 import type { ChatToolDefinition } from './definitions';
-import { FETCH_MEDIA_TOOL } from './schemas';
+import { FETCH_MEDIA_TOOL, SAVE_TEXT_MEDIA_FORMATS, SAVE_TEXT_MEDIA_TOOL } from './schemas';
 
 // T-1873: the `fetch_media` tool definition. The model fetches one https image
 // or file; the server sniffs the real type, stores the bytes and returns the
@@ -31,6 +31,46 @@ export const FETCH_MEDIA_TOOL_DEF: ChatToolDefinition = {
         },
       },
       required: ['url', 'kind'],
+      additionalProperties: false,
+    },
+  },
+};
+
+// T-1883: the `save_text_media` tool definition. The model hands over text it
+// wrote; the server stores it as card media and returns the id for a `file`
+// block, so people get a real download instead of a wall of text.
+const SAVE_TEXT_MEDIA_DESCRIPTION =
+  'Save text you wrote (CSV, plain text, Markdown or JSON; at most 64 KB) as a ' +
+  'file people can download from a card. Returns a media id: put it in a ' +
+  "`file` block's `media`.";
+
+export const SAVE_TEXT_MEDIA_TOOL_DEF: ChatToolDefinition = {
+  type: 'function',
+  function: {
+    name: SAVE_TEXT_MEDIA_TOOL,
+    description: SAVE_TEXT_MEDIA_DESCRIPTION,
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description: 'The display name; the format extension is added when it is missing.',
+        },
+        format: {
+          type: 'string',
+          enum: [...SAVE_TEXT_MEDIA_FORMATS],
+          description: 'The file type: csv, txt, md or json.',
+        },
+        content: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 65536,
+          description: 'The text to save, unchanged.',
+        },
+      },
+      required: ['name', 'format', 'content'],
       additionalProperties: false,
     },
   },

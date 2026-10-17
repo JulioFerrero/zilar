@@ -12,6 +12,7 @@ import {
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
+  SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   isDeskToolName,
@@ -239,6 +240,15 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
       url: parsed.url,
       kind: parsed.kind,
       ...(parsed.name === undefined ? {} : { name: parsed.name }),
+    };
+  }
+  if (parsed.tool === SAVE_TEXT_MEDIA_TOOL) {
+    return {
+      id,
+      tool: SAVE_TEXT_MEDIA_TOOL,
+      name: parsed.name,
+      format: parsed.format,
+      content: parsed.content,
     };
   }
   // T-1409: the desk tools carry their validated args straight to the executor.

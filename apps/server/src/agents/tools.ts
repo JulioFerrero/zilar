@@ -26,6 +26,7 @@ export {
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
+  SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   WRITE_TOOL,
@@ -44,18 +45,19 @@ export {
   RememberArgsSchema,
   RequestActionArgsSchema,
   RevertPersonaArgsSchema,
+  SaveTextMediaArgsSchema,
   TaskStatusArgsSchema,
   UpdatePersonaArgsSchema,
   WriteArgsSchema,
   isDeskToolName,
 } from './tools/schemas';
-export type { DeskToolName, ParsedToolArguments } from './tools/schemas';
+export type { DeskToolName, ParsedToolArguments, SaveTextMediaFormat } from './tools/schemas';
 
 export { TOOL_NAME_MAX_LENGTH, parseToolArguments, safeToolName } from './tools/parse';
 
 export type { ChatToolDefinition } from './tools/definitions';
 export { POST_BLOCKS_TOOL_DEF } from './tools/blocks-tool';
-export { FETCH_MEDIA_TOOL_DEF } from './tools/media-tool';
+export { FETCH_MEDIA_TOOL_DEF, SAVE_TEXT_MEDIA_TOOL_DEF } from './tools/media-tool';
 export { deskToolDefinitions } from './tools/desk-definitions';
 export {
   ASK_PEOPLE_TOOL_DEF,

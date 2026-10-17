@@ -14,7 +14,7 @@ import {
 } from './schemas';
 import { deskToolDefinitions } from './desk-definitions';
 import { POST_BLOCKS_TOOL_DEF } from './blocks-tool';
-import { FETCH_MEDIA_TOOL_DEF } from './media-tool';
+import { FETCH_MEDIA_TOOL_DEF, SAVE_TEXT_MEDIA_TOOL_DEF } from './media-tool';
 
 export interface ChatToolDefinition {
   type: 'function';
@@ -319,7 +319,13 @@ export function buildTools(
   // T-1800: the owner's DM offers `post_blocks` too, so a card request gets a
   // card instead of plain text. The executor sends it as a `chat` message.
   // T-1873: `fetch_media` rides with it, so a card can cite a fetched file.
-  const withBlocks = [...base, POST_BLOCKS_TOOL_DEF, FETCH_MEDIA_TOOL_DEF];
+  // T-1883: `save_text_media` sits right after it, for a file the model wrote.
+  const withBlocks = [
+    ...base,
+    POST_BLOCKS_TOOL_DEF,
+    FETCH_MEDIA_TOOL_DEF,
+    SAVE_TEXT_MEDIA_TOOL_DEF,
+  ];
   return withTaskTitles(
     opts?.desk === true ? [...withBlocks, ...deskToolDefinitions()] : withBlocks,
   );
@@ -351,7 +357,13 @@ export function buildGroupTools(
     opts?.askPeople === true ? [...withDelegation, ASK_PEOPLE_TOOL_DEF] : withDelegation;
   // T-1758: `post_blocks` is offered on every group turn, routine runs
   // included, so it needs no flag. T-1873: `fetch_media` rides with it.
-  const withBlocks = [...withAskPeople, POST_BLOCKS_TOOL_DEF, FETCH_MEDIA_TOOL_DEF];
+  // T-1883: `save_text_media` sits right after it.
+  const withBlocks = [
+    ...withAskPeople,
+    POST_BLOCKS_TOOL_DEF,
+    FETCH_MEDIA_TOOL_DEF,
+    SAVE_TEXT_MEDIA_TOOL_DEF,
+  ];
   return withTaskTitles(
     opts?.desk === true ? [...withBlocks, ...deskToolDefinitions()] : withBlocks,
   );

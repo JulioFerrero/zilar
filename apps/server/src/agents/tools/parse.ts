@@ -31,6 +31,8 @@ import {
   RememberArgsSchema,
   RequestActionArgsSchema,
   RevertPersonaArgsSchema,
+  SAVE_TEXT_MEDIA_TOOL,
+  SaveTextMediaArgsSchema,
   TASK_STATUS_TOOL,
   TaskStatusArgsSchema,
   UPDATE_PERSONA_TOOL,
@@ -109,6 +111,7 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== ASK_PEOPLE_TOOL &&
     toolName !== POST_BLOCKS_TOOL &&
     toolName !== FETCH_MEDIA_TOOL &&
+    toolName !== SAVE_TEXT_MEDIA_TOOL &&
     !isDeskToolName(toolName)
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
@@ -228,6 +231,19 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       url: parsed.value.url,
       kind: parsed.value.kind,
       ...(parsed.value.name === undefined ? {} : { name: parsed.value.name }),
+    };
+  }
+  if (toolName === SAVE_TEXT_MEDIA_TOOL) {
+    const parsed = decodeToolArguments(SaveTextMediaArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: SAVE_TEXT_MEDIA_TOOL,
+      name: parsed.value.name,
+      format: parsed.value.format,
+      content: parsed.value.content,
     };
   }
   if (toolName === BASH_TOOL) {

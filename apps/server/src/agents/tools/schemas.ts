@@ -22,6 +22,10 @@ export const POST_BLOCKS_TOOL = 'post_blocks';
 // under the chat's media key, so the model can cite the id in an `images` or
 // `file` block. Offered wherever `post_blocks` is.
 export const FETCH_MEDIA_TOOL = 'fetch_media';
+// T-1883: the `save_text_media` tool stores text the model wrote (CSV, plain
+// text, Markdown or JSON) as card media, so a card can offer it as a download.
+// Offered wherever `fetch_media` is, and both share one per-turn budget.
+export const SAVE_TEXT_MEDIA_TOOL = 'save_text_media';
 
 const ASK_PEOPLE_QUESTION_MAX_LENGTH = 140;
 const ASK_PEOPLE_OPTION_MIN = 2;
@@ -43,6 +47,15 @@ const POST_BLOCKS_BLOCK_MAX = 6;
 // longer before the fetch.
 const FETCH_MEDIA_URL_MAX_LENGTH = 2048;
 const FETCH_MEDIA_NAME_MAX_LENGTH = 100;
+
+// T-1883: the `save_text_media` caps. The content limit matches the runner's
+// 65,536-byte check, and the four formats map to fixed mimes there.
+const SAVE_TEXT_MEDIA_NAME_MAX_LENGTH = 100;
+const SAVE_TEXT_MEDIA_CONTENT_MAX_LENGTH = 65_536;
+
+export const SAVE_TEXT_MEDIA_FORMATS = ['csv', 'txt', 'md', 'json'] as const;
+
+export type SaveTextMediaFormat = (typeof SAVE_TEXT_MEDIA_FORMATS)[number];
 
 // T-1409: the desk tools, offered only when the AI has a cloud computer. The
 // names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's
@@ -252,6 +265,20 @@ export const FetchMediaArgsSchema = struct({
   name: Schema.optional(Schema.Trim.check(Schema.isMaxLength(FETCH_MEDIA_NAME_MAX_LENGTH))),
 });
 
+// T-1883: the `save_text_media` arguments: the display name without its
+// extension (the runner appends it), one of four formats and the text itself.
+export const SaveTextMediaArgsSchema = struct({
+  name: Schema.Trim.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(SAVE_TEXT_MEDIA_NAME_MAX_LENGTH),
+  ),
+  format: Schema.Literals(SAVE_TEXT_MEDIA_FORMATS),
+  content: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(SAVE_TEXT_MEDIA_CONTENT_MAX_LENGTH),
+  ),
+});
+
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }
@@ -285,5 +312,12 @@ export type ParsedToolArguments =
       blocks: unknown[];
     }
   | { ok: true; tool: typeof FETCH_MEDIA_TOOL; url: string; kind: 'image' | 'file'; name?: string }
+  | {
+      ok: true;
+      tool: typeof SAVE_TEXT_MEDIA_TOOL;
+      name: string;
+      format: SaveTextMediaFormat;
+      content: string;
+    }
   | { ok: true; tool: DeskToolName; args: Record<string, unknown> }
   | { ok: false; reason: string };

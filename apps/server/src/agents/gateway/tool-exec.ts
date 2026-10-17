@@ -17,6 +17,7 @@ import {
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
+  SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
 } from '../tools';
@@ -29,6 +30,7 @@ import {
 import { createAskPeopleRunner } from './ask-people';
 import { createPostBlocksRunner } from './post-blocks';
 import { runFetchMedia } from './fetch-media';
+import { runSaveTextMedia } from './save-text-media';
 import { recordCard } from '../../message-blocks/cards';
 import { getCardMedia } from '../../card-media/service';
 import { createDelegateRunner } from './delegate-run';
@@ -115,9 +117,10 @@ export function createToolExec(ctx: ToolExecContext) {
     // this closure, which is created once per turn, so it resets with the
     // turn.
     let savedFacts = 0;
-    // T-1873: at most four `fetch_media` calls per turn, so one model cannot
-    // pull unbounded data through the server. The counter resets with the turn.
-    let fetchedMedia = 0;
+    // T-1873: at most four media calls per turn, so one model cannot pull
+    // unbounded data through the server. T-1883 shares the counter between
+    // `fetch_media` and `save_text_media`. It resets with the turn.
+    let mediaThisTurn = 0;
     const execute = Effect.fnUntraced(function* (
       call: ValidToolCall,
     ): Effect.fn.Return<ToolExecution> {
@@ -152,7 +155,8 @@ export function createToolExec(ctx: ToolExecContext) {
           call.tool !== REQUEST_ACTION_TOOL &&
           call.tool !== ASK_PEOPLE_TOOL &&
           call.tool !== POST_BLOCKS_TOOL &&
-          call.tool !== FETCH_MEDIA_TOOL
+          call.tool !== FETCH_MEDIA_TOOL &&
+          call.tool !== SAVE_TEXT_MEDIA_TOOL
         ) {
           return { content: 'invalid: unknown tool' };
         }
@@ -241,18 +245,19 @@ export function createToolExec(ctx: ToolExecContext) {
           topicId: context.topicId,
         });
       }
-      if (call.tool === FETCH_MEDIA_TOOL) {
-        // Offered wherever `post_blocks` is: a group turn names the room, the
-        // owner's DM names the AI's own JID (never the owner's), and any other
-        // context-free turn stays an unknown tool.
+      if (call.tool === FETCH_MEDIA_TOOL || call.tool === SAVE_TEXT_MEDIA_TOOL) {
+        // Both are offered wherever `post_blocks` is: a group turn names the
+        // room, the owner's DM names the AI's own JID (never the owner's), and
+        // any other context-free turn stays an unknown tool.
         if (context === undefined && options?.dmJid === undefined) {
           return { content: 'invalid: unknown tool' };
         }
-        if (fetchedMedia >= 4) {
-          logger.info({ aiId, tool: call.tool, ok: false }, 'AI fetch_media');
+        if (mediaThisTurn >= 4) {
+          const label = call.tool === FETCH_MEDIA_TOOL ? 'AI fetch_media' : 'AI save_text_media';
+          logger.info({ aiId, tool: call.tool, ok: false }, label);
           return { content: 'error: at most 4 media per turn' };
         }
-        fetchedMedia += 1;
+        mediaThisTurn += 1;
         const chat =
           context === undefined
             ? { roomJid: session.aiJid }
@@ -261,7 +266,11 @@ export function createToolExec(ctx: ToolExecContext) {
                 groupId: context.groupId,
                 topicId: context.topicId,
               };
-        return yield* Effect.promise(() => runFetchMedia(deps, session, call, chat));
+        return yield* Effect.promise(() =>
+          call.tool === FETCH_MEDIA_TOOL
+            ? runFetchMedia(deps, session, call, chat)
+            : runSaveTextMedia(deps, session, call, chat),
+        );
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         yield* Effect.promise(() => setPersonaFromChat(deps.db, aiId, call.persona));

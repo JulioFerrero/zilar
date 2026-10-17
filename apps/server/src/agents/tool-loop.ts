@@ -25,10 +25,12 @@ import {
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
+  SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   type ChatToolDefinition,
   type DeskToolName,
+  type SaveTextMediaFormat,
 } from './tools';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
@@ -86,6 +88,15 @@ export type ValidToolCall =
       url: string;
       kind: 'image' | 'file';
       name?: string;
+    }
+  // T-1883: `save_text_media` stores text the model wrote under the chat's
+  // media key and returns its media id, like `fetch_media` does for a URL.
+  | {
+      id: string;
+      tool: typeof SAVE_TEXT_MEDIA_TOOL;
+      name: string;
+      format: SaveTextMediaFormat;
+      content: string;
     }
   // T-1409: the desk tools. `args` is the already-validated argument object;
   // the daemon validates it again.
