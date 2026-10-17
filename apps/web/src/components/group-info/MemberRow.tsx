@@ -5,6 +5,7 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { EntityAvatar } from '../EntityAvatar';
 import { HandleSuffix } from '../HandleSuffix';
+import { PersonLink } from '../personLink';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
 
@@ -68,31 +69,41 @@ export function MemberRow({
 
   return (
     <div className="flex min-h-14 items-center gap-3 px-3 py-2">
-      <EntityAvatar person={member} size={36} />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-[14px]">
-            {member.name} <HandleSuffix handle={member.handle} />
+      <PersonLink
+        target={{ userId: member.userId, handle: member.handle }}
+        name={member.name}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-[10px]"
+      >
+        <EntityAvatar person={member} size={36} />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate text-[14px]">
+              {member.name} <HandleSuffix handle={member.handle} />
+            </span>
+            {member.role === 'owner' && (
+              <Crown
+                className="size-[14px] shrink-0 text-[#e5b84b]"
+                role="img"
+                aria-label="Owner"
+              />
+            )}
+            {member.role === 'admin' && (
+              <Shield
+                className="size-[14px] shrink-0 text-muted-foreground"
+                role="img"
+                aria-label="Admin"
+              />
+            )}
           </span>
-          {member.role === 'owner' && (
-            <Crown className="size-[14px] shrink-0 text-[#e5b84b]" role="img" aria-label="Owner" />
-          )}
-          {member.role === 'admin' && (
-            <Shield
-              className="size-[14px] shrink-0 text-muted-foreground"
-              role="img"
-              aria-label="Admin"
-            />
+          {roles.length > 0 && (
+            <span className="flex flex-wrap gap-1">
+              {roles.map((role) => (
+                <RoleChip key={role.id} name={role.name} />
+              ))}
+            </span>
           )}
         </span>
-        {roles.length > 0 && (
-          <span className="flex flex-wrap gap-1">
-            {roles.map((role) => (
-              <RoleChip key={role.id} name={role.name} />
-            ))}
-          </span>
-        )}
-      </span>
+      </PersonLink>
 
       {(transferable || removable) && (
         <>

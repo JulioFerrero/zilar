@@ -12,6 +12,7 @@ import { RoutineHeader } from './message/RoutineHeader';
 import { hidesBodyText } from './message/QuestionCard';
 import { MessageTombstone } from './message/MessageTombstone';
 import { bubbleFlags, draftAnimates } from './message/bubbleFlags';
+import { PersonLink } from './personLink';
 import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
@@ -206,7 +207,9 @@ export const MessageBubble = memo(function MessageBubble({
       {!own &&
         chat.kind === 'group' &&
         (lastInGroup ? (
-          <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
+          <PersonLink target={{ jid: message.senderId }} name={message.senderName}>
+            <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
+          </PersonLink>
         ) : (
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}

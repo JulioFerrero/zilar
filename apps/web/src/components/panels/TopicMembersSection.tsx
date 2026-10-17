@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ApiFailure } from '@/lib/effect/errors';
 import type { GroupDetail, TopicMember } from '@/lib/api';
 import { EntityAvatar } from '../EntityAvatar';
+import { PersonLink } from '../personLink';
 import { Menu, MenuItem } from '../ui/menu';
 import { StateMessage } from '../ui/state-message';
 import { TopicOptionsKey, useRemoveMember } from './TopicActionButtons';
@@ -104,32 +105,38 @@ function MemberItem({
   const canRemove = isManager && member.userId !== me;
   return (
     <div className="flex min-h-[44px] items-center gap-2.5 pl-2.5 pr-2">
-      <EntityAvatar
-        person={{
-          userId: member.userId,
-          name: member.name,
-          avatarUrl: detail?.avatarUrl,
-        }}
-        size={28}
-      />
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate text-[14px]">
-          {member.name}
-          {member.userId === me && <span className="text-muted-foreground"> (you)</span>}
-        </span>
-        {detail?.role === 'owner' && (
-          <Crown
-            className="size-[15px] shrink-0 text-muted-foreground"
-            role="img"
-            aria-label="Owner"
-          />
-        )}
-        {detail?.role === 'admin' && (
-          <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-            admin
+      <PersonLink
+        target={{ userId: member.userId, handle: detail?.handle }}
+        name={member.name}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px]"
+      >
+        <EntityAvatar
+          person={{
+            userId: member.userId,
+            name: member.name,
+            avatarUrl: detail?.avatarUrl,
+          }}
+          size={28}
+        />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="min-w-0 truncate text-[14px]">
+            {member.name}
+            {member.userId === me && <span className="text-muted-foreground"> (you)</span>}
           </span>
-        )}
-      </span>
+          {detail?.role === 'owner' && (
+            <Crown
+              className="size-[15px] shrink-0 text-muted-foreground"
+              role="img"
+              aria-label="Owner"
+            />
+          )}
+          {detail?.role === 'admin' && (
+            <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
+              admin
+            </span>
+          )}
+        </span>
+      </PersonLink>
       {canRemove && (
         <Menu
           open={menuOpen}

@@ -7,6 +7,7 @@ import {
 } from '@zilar/chat-core';
 import { AiBadge } from '../AiBadge';
 import { MessageTicks } from '../MessageTicks';
+import { PersonLink } from '../personLink';
 import { cn } from '@/lib/utils';
 
 export function MessageMeta({
@@ -47,8 +48,14 @@ export function MessageSender({ message, className }: { message: UiMessage; clas
       className={cn('flex items-center gap-1.5 text-[14px] leading-5 font-semibold', className)}
       style={{ color: senderColor(message.senderId) }}
     >
-      <span className="truncate">{message.senderName}</span>
-      {isAiJid(message.senderId) && <AiBadge />}
+      <PersonLink
+        target={{ jid: message.senderId }}
+        name={message.senderName}
+        className="flex min-w-0 items-center gap-1.5 rounded-[6px]"
+      >
+        <span className="truncate">{message.senderName}</span>
+        {isAiJid(message.senderId) && <AiBadge />}
+      </PersonLink>
     </div>
   );
 }
