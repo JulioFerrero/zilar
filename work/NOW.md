@@ -789,7 +789,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1909 (`sessionGone` clears the message cache; phone `joinGroups` type);
                 - T-1910 (`/share` resets on a new share);
                 - T-1912 (a resumed stream skips the room rejoin).
-              - **Deploy blocked, 19:21:** "Production images" failed for `0f8e4a2` with `ENOENT /repo/patches/expo-share-intent@8.0.1.patch`. The Dockerfiles don't copy `patches/` before `pnpm install`. Live stays on `8e87ff0`. **T-1917 (urgent)** adds `COPY patches ./patches` to the server, web, site and desk-agent Dockerfiles.
+              - **Deploy blocked, 19:21:** "Production images" failed for `0f8e4a2` with `ENOENT /repo/patches/expo-share-intent@8.0.1.patch`. The Dockerfiles don't copy `patches/` before `pnpm install`. Live stays on `8e87ff0`. **T-1917 (urgent)** adds `COPY patches ./patches` to the server, web, site and desk-agent Dockerfiles; merged and pushed as `5e0247a` (19:28).
+
+                Images still failed at 19:33: `pnpm --filter @zilar/server deploy --prod` → `ERR_PNPM_UNUSED_PATCH` (the patch is phone-only). **T-1918 (urgent)** sets `allowUnusedPatches: true`, with a local `pnpm deploy` check. The lesson: a pnpm patch also needs the Docker `COPY` and must be allowed unused in filtered deploys.
               - **Held:**
                 - T-1911 (list error bars float as pills);
                 - T-1913 (web pins from the cache);

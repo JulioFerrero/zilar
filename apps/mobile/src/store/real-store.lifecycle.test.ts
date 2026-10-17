@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatListModel } from '../lib/chat-list';
 import { parseChatsList } from '../lib/chat-api-schemas';
 import { readChatListCache } from '../lib/chat-list-cache';
+import type { Pin, PinsApi } from '../lib/pins-api';
 
 // A writable stand-in for the cache file: the read/write go through
 // `expo-file-system/legacy` behind a dynamic import, so the real native module
@@ -314,6 +315,75 @@ describe('mobile store lifecycle (T-0918)', () => {
     expect(store.getState().contacts).toEqual([]);
     expect(store.getState().me).toBeUndefined();
     expect(store.getState().status).toBe('offline');
+  });
+
+  it('stop() (sign-out) clears the pins of the previous user (T-1916)', async () => {
+    const { store } = storeWith();
+
+    store.getState().start();
+    await waitFor(() => store.getState().chatsLoad === 'loaded');
+
+    // A DM's chat id is the peer's JID, so without a teardown the next user's
+    // DM with the same peer would find the previous user's pins in the map.
+    store.getState().seedCachedPins({
+      [ANA]: [
+        {
+          id: 'p-1',
+          chat: ANA,
+          messageId: 'm-1',
+          senderName: 'Ana',
+          text: 'hola',
+          kind: 'text',
+          pinnedBy: 'u-ana',
+          pinnedAt: '2026-09-28T11:59:00Z',
+        },
+      ],
+    });
+    expect(store.getState().pins(ANA)).toHaveLength(1);
+
+    store.getState().stop();
+
+    expect(store.getState().pins(ANA)).toEqual([]);
+  });
+
+  it('a pins load that lands after stop() does not republish them (T-1916)', async () => {
+    // refreshPins runs detached from the session scope, so `stop()` cannot
+    // cancel it. Its answer must not put the previous user's pins back after
+    // the teardown cleared them.
+    let resolvePins!: (pins: Pin[]) => void;
+    const pinsApi = {
+      listPins: vi.fn(
+        () =>
+          new Promise<Pin[]>((resolve) => {
+            resolvePins = resolve;
+          }),
+      ),
+    } as unknown as PinsApi;
+    const { store } = storeWith({ pinsApi });
+
+    store.getState().start();
+    await waitFor(() => store.getState().chatsLoad === 'loaded');
+
+    store.getState().refreshPins(ANA);
+    await flush();
+    expect(pinsApi.listPins).toHaveBeenCalledTimes(1);
+
+    store.getState().stop();
+    resolvePins([
+      {
+        id: 'p-late',
+        chat: ANA,
+        messageId: 'm-late',
+        senderName: 'Ana',
+        text: 'hola',
+        kind: 'text',
+        pinnedBy: 'u-ana',
+        pinnedAt: '2026-09-28T11:59:00Z',
+      },
+    ]);
+    await flush();
+
+    expect(store.getState().pins(ANA)).toEqual([]);
   });
 
   it('retries the connection on the delay ladder when connect() rejects', async () => {

@@ -14,6 +14,8 @@ export interface UserStateDeps {
   readonly ownedAis: { id: string; name: string }[] | undefined;
   readonly ledger: MessageLedger;
   readonly events: Events;
+  /** Drops the session's pins on teardown (T-1916). */
+  readonly clearPins?: () => void;
 }
 
 export interface UserState {
@@ -51,7 +53,7 @@ export interface UserState {
  * the previous user's chats, contacts or messages.
  */
 export function makeUserState(deps: UserStateDeps): UserState {
-  const { locals, s, set, ownedAis, ledger, events } = deps;
+  const { locals, s, set, ownedAis, ledger, events, clearPins } = deps;
 
   const initialUserState = (): ReturnType<UserState['initialUserState']> => ({
     currentUserId: CURRENT_USER_ID,
@@ -81,6 +83,7 @@ export function makeUserState(deps: UserStateDeps): UserState {
   function teardown(): void {
     events.clearTimers();
     locals.pinsPollEnabled = false;
+    clearPins?.();
     s.core = undefined;
     for (const chatId of Object.keys(locals.cursors)) {
       delete locals.cursors[chatId];

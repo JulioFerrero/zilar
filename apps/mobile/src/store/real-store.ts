@@ -316,6 +316,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       ownedAis: ports.ownedAis,
       ledger: helpers.ledger,
       events,
+      clearPins: () => pins.clear(),
     });
 
     return {

@@ -47,6 +47,8 @@ export interface Pins {
   readonly actions: PinActions;
   /** Loads the pins of a chat; a failure shows `pinsError` only when `loud`. */
   loadPins(chatId: string, loud: boolean): Effect.Effect<void, never, Ports>;
+  /** Drops every pin of the session, so the next user starts empty (T-1916). */
+  clear(): void;
 }
 
 /** Pins (T-0135) and the media panel (T-0436); the pin logic is the core's. */
@@ -59,6 +61,11 @@ export function makePins(ctx: StoreCtx): Pins {
   const pinsByChat = new Map<string, Pin[]>();
   const pinsRevisionByChat = new Map<string, number>();
   let pinsRevision = 0;
+  // T-1916: bumped by `clear()`. User loads run detached from the session
+  // scope, so a response that lands after sign-out would republish the previous
+  // user's pins; a load carries the epoch it started in and drops its result
+  // when the epoch moved on.
+  let pinsEpoch = 0;
 
   // Publishes one chat's pins and bumps its revision. A successful load or
   // pin/unpin clears the chat's inline error; the core sets the errors.
@@ -80,9 +87,28 @@ export function makePins(ctx: StoreCtx): Pins {
   };
 
   // A failure surfaces as `pinsError` for an explicit load and stays silent
-  // on the background tick (the next tick retries).
+  // on the background tick (the next tick retries). The store pins the epoch
+  // of the call, so a stale answer writes nothing after `clear()`.
   const loadPins = (chatId: string, loud: boolean): Effect.Effect<void, never, Ports> =>
-    loadPinsCore(ctx.coreCtx, pinsApi, store, chatId, loud);
+    loadPinsCore(ctx.coreCtx, pinsApi, storeAt(pinsEpoch), chatId, loud);
+
+  // The pins core reads and writes through this store; `publish` and `setError`
+  // are dropped when the call belongs to a session that has since signed out.
+  function storeAt(atEpoch: number): PinsStore {
+    return {
+      ...store,
+      publish: (chatId, pins) => {
+        if (atEpoch === pinsEpoch) {
+          publishPins(chatId, pins);
+        }
+      },
+      setError: (error) => {
+        if (atEpoch === pinsEpoch) {
+          set({ pinsError: error });
+        }
+      },
+    };
+  }
 
   // Whether the viewer may pin in a chat: either side of a DM; for topics
   // a group owner/admin whose detail has loaded (roles ride `getGroup`).
@@ -151,11 +177,11 @@ export function makePins(ctx: StoreCtx): Pins {
           if (!canPinIn(chatId)) {
             return yield* Effect.fail(new Error('You cannot pin here.'));
           }
-          yield* pinMessageCore(ctx.coreCtx, pinsApi, store, chatId, messageId);
+          yield* pinMessageCore(ctx.coreCtx, pinsApi, storeAt(pinsEpoch), chatId, messageId);
         }),
       ),
     unpinMessage: (chatId, pinId) =>
-      ctx.run(unpinMessageCore(ctx.coreCtx, pinsApi, store, chatId, pinId)),
+      ctx.run(unpinMessageCore(ctx.coreCtx, pinsApi, storeAt(pinsEpoch), chatId, pinId)),
     dismissPinsError: () => {
       set({ pinsError: undefined });
     },
@@ -177,5 +203,16 @@ export function makePins(ctx: StoreCtx): Pins {
       ),
   };
 
-  return { actions, loadPins };
+  // T-1916: sign-out drops the per-chat pins, so the next user on the same
+  // install never sees the previous user's pins (a DM's chat id is the peer's
+  // JID). The bump also invalidates a load or pin call still in flight. This
+  // writes no state: the caller must follow with a `set()` for selectors to
+  // re-fire (teardown resets the user state right after).
+  function clear(): void {
+    pinsEpoch += 1;
+    pinsByChat.clear();
+    pinsRevisionByChat.clear();
+  }
+
+  return { actions, loadPins, clear };
 }
