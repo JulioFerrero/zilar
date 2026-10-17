@@ -29,6 +29,7 @@ function ChatsList() {
   const router = useRouter();
   const params = useLocalSearchParams<{ searchChat?: string }>();
   const chats = useChatStore((state) => state.chats);
+  const myUserId = useChatStore((state) => state.currentUserId);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const reloadChats = useChatStore((state) => state.reloadChats);
   const search = useChatStore((state) => state.search);
@@ -89,8 +90,8 @@ function ChatsList() {
     [activeFolder, folders],
   );
   const { rows: visibleRows } = useMemo(
-    () => chatListModel(chats, { folder: activeFolderDef, search }),
-    [chats, activeFolderDef, search],
+    () => chatListModel(chats, { folder: activeFolderDef, search, myUserId }),
+    [chats, activeFolderDef, search, myUserId],
   );
   const counts = useMemo(() => {
     const next: Record<string, number> = { all: unreadCount(chats, undefined) };

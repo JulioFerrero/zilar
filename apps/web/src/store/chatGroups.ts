@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { chatSortTime, folderUnreadTotal, sortTopics } from '@zilar/chat-core';
+import { chatSortTime, folderUnreadTotal, isUnjoinedTopic, sortTopics } from '@zilar/chat-core';
 import type { ChatStoreState } from './store';
 import { activeFolderOf, matchesFolder } from './selectors';
 
@@ -43,6 +43,11 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
     // Archived toggle shows them. Per-user archived DMs/AIs live in the
     // bottom Archived list instead.
     if (chat.topic === undefined && chat.archived === true) {
+      continue;
+    }
+    // T-1829: a topic the user has not joined lives under the group's "Other
+    // topics" with Join, not in the chat list.
+    if (isUnjoinedTopic(chat.topic, state.currentUserId)) {
       continue;
     }
     if (!matchesFolder(chat, activeFolderOf(state))) {

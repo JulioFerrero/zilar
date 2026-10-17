@@ -1,4 +1,4 @@
-import { chatSortTime, type ChatFolder, type ChatSummary } from '@zilar/chat-core';
+import { chatSortTime, isUnjoinedTopic, type ChatFolder, type ChatSummary } from '@zilar/chat-core';
 
 import { archivedChats, sortChatPinnedFirst, unarchivedChats } from './chat-prefs';
 import { filterChats } from './filter';
@@ -28,9 +28,10 @@ export interface ChatListModel {
 
 export function chatListModel(
   chats: readonly ChatSummary[],
-  options: { folder: ChatFolder | undefined; search: string },
+  options: { folder: ChatFolder | undefined; search: string; myUserId?: string },
 ): ChatListModel {
-  const filtered = filterChats(chats, options);
+  const joined = chats.filter((chat) => !isUnjoinedTopic(chat.topic, options.myUserId ?? ''));
+  const filtered = filterChats(joined, options);
   const listed = unarchivedChats(filtered);
   const pinned = sortChatPinnedFirst(listed);
   const byGroup = groupTopicChats(pinned);

@@ -62,6 +62,21 @@ export function isTopicJoined(
 }
 
 /**
+ * T-1829: whether a known topic is one the user has not joined. The chat list
+ * hides those (they live under "Other topics" with Join), so it needs the
+ * opposite default from `isTopicJoined`: an unknown member list shows.
+ */
+export function isUnjoinedTopic(
+  topic: { isGeneral: boolean; memberIds?: readonly string[] } | undefined,
+  userId: string,
+): boolean {
+  if (!topic || topic.isGeneral || !topic.memberIds || userId === '') {
+    return false;
+  }
+  return !topic.memberIds.includes(userId);
+}
+
+/**
  * T-1777: whether a person or an AI is in a topic. General is everyone's;
  * otherwise a person is in when listed in `memberIds` and an AI when listed in
  * `ais`. Older servers omit both lists, which reads as "not in".

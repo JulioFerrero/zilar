@@ -204,6 +204,11 @@ export function listChatsFor(
         scopes.set(entry.chatJid, { kind: 'room', room: entry.chatJid.toLowerCase() });
         lookups.push({ chatJid: entry.chatJid, roomJid: entry.chatJid });
         for (const topic of entry.topics) {
+          // T-1829: a topic the caller has not joined lives under "Other
+          // topics" with Join, so it adds no unread, preview or mark.
+          if (!topic.isGeneral && !(topic.memberIds ?? []).includes(user.id)) {
+            continue;
+          }
           scopes.set(topic.chatJid, { kind: 'room', room: topic.chatJid.toLowerCase() });
           lookups.push({ chatJid: topic.chatJid, roomJid: topic.chatJid });
         }

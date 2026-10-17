@@ -12,6 +12,7 @@ import { Text } from '@/components/ui/text';
 import type { ToastMessage } from '@/components/ui/toast';
 import { chatListModel } from '@/lib/chat-list';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText, type LoadState } from '@/store/types';
 
 type ChatListPageProps = {
@@ -61,9 +62,10 @@ export function ChatListPage({
   onStartChat,
   onRequestsToast,
 }: ChatListPageProps) {
+  const myUserId = useChatStore((state) => state.currentUserId);
   const { rows, archived } = useMemo(
-    () => chatListModel(chats, { folder, search }),
-    [chats, folder, search],
+    () => chatListModel(chats, { folder, search, myUserId }),
+    [chats, folder, search, myUserId],
   );
   const listView = chatsListView(chatsLoad, chatsCount);
   // Requests are DMs, so they show in All chats and the Personal (dm) folder,

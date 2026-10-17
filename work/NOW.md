@@ -617,13 +617,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - `owner_ai_id` is still read in `apps/server/src/topics/{ais,members,patch,service,views}.ts` and `groups/ais.ts`.
                 - **Order:** clients stop reading the three fields, a release ships, and only then the drop migration. Julio's 10-15 decisions keep `link_url`/`link_label` and `follow_paused_at`.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
+              - **Live `b882b15e4`** (12:18 UTC; 6 containers healthy, 0 errors), with:
+                - T-1809 (DM cards plan);
+                - T-1824 (DM cards server);
+                - T-1825 (DM cards clients);
+                - T-1826 (question match by origin id);
+                - T-1827 (AIs may post interactive cards in their owner's DM; also fixes `apps/runner/tsconfig.json`, which missed xmpp-core's ambient types and failed typecheck on a cold Turbo cache).
+                - **Verified live:** the "Pizza or sushi" question now shows Sushi filled, Pizza dimmed and "You answered" after a reload.
+                - **Not tried live:** an interactive card in a DM, because I don't write in Julio's DMs. **Julio: in your DM with Deepseek, ask "ask me with buttons: …"**, tap one, then reload.
               - **T-1809 merged** (the DM interactive cards plan, `docs/plan/dm-interactive-cards.md`, Option A; the lead's corrections are in its Review).
-              - **Running (11:46):**
-                - T-1824 (DM cards server: record, owner-only access, chat correction);
-                - T-1825 (DM cards clients: `originId` on messages; DM answers send it with a plain reply).
-              - **Next:**
-                - T-1826 (question match by `originId`, after T-1825);
-                - then lift T-1803's DM refusal once T-1824 and T-1825 are live and tested in Julio's DM. That needs his OK to message there, or a test DM of `@claude_test`'s own AI.
+              - **Running (12:35):**
+                - T-1828 (audit only: the safe order to drop `topics.kind`/`status`/`owner_ai_id`, AI work T8);
+                - T-1829 (a public topic you haven't joined leaves your chat list and unread counts; it stays under Other topics with Join).
+                - **The lead decided T-1829 alone,** from the README rule (public = seen under Other topics) and Julio's "new public topics start with nobody". If Julio prefers Telegram-style "every topic in the list", revert T-1829.
               - **For Julio:**
                 - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check, and a scheduled run can't fetch prices without a computer yet (see the routines note above). It's the only interactive kind left; `images` and `file` wait for the media plan.
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
@@ -804,7 +810,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **Old Running list:**
     - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.
   - **Phone follow-ups:**
-    - a failed channel delete says "group";
+    - ~~a failed channel delete says "group"~~ (fixed: `apps/mobile/src/components/chat/group-manage-section.tsx:89` uses the noun; checked 10-17);
     - offline from a cold start, a group link with no topics shows the empty shell.
   - **Next:**
     - the Coolify-mode installer, after T-1584 and T-1585;
