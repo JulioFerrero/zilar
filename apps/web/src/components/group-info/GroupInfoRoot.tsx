@@ -29,6 +29,7 @@ import { ListRow } from '../ui/list-row';
 import { Menu, MenuItem } from '../ui/menu';
 import { PanelKey } from '../ui/panel-key';
 import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
+import { TopicsSection } from './TopicsSection';
 
 /** The pages of the group info panel; `root` is the page itself (T-1494). */
 export type GroupInfoPageId =
@@ -220,6 +221,9 @@ export function GroupInfoRoot({
               />
             )}
           </nav>
+
+          {/* T-1786: Your/Other topics, split by the caller's membership. */}
+          <TopicsSection chat={chat} onClose={onClose} />
 
           <nav
             aria-label="Content"

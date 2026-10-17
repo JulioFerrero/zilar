@@ -49,6 +49,7 @@ export function handleTopics(data: MockData, request: MockHttpRequest): Response
     return undefined;
   }
   if (sub === 'archive' && request.method === 'POST') return archiveTopic(data, topic);
+  if (sub === 'join' && request.method === 'POST') return joinTopicRoute(data, topic);
   if (sub === 'members') return handleTopicMembers(data, topic, subId, request);
   if (sub === 'ais') return handleTopicAis(data, topic, subId, request);
   if (sub === 'roles' && request.method === 'PUT') return setTopicRoles(data, topic, request);
@@ -155,6 +156,25 @@ function archiveTopic(data: MockData, topic: MockTopic): Response {
     return badRequest('invalid_request', 'General cannot be archived');
   }
   const updated = { ...topic, archived: true };
+  data.putTopic(updated);
+  return jsonResponse(topicView(data, updated));
+}
+
+// T-1786: the caller joins a public topic themselves. Mirrors the real route
+// (`apps/server/src/topics/members.ts`): General holds everyone, so it rejects,
+// and a private topic already contains anyone who can see it, so it is a no-op;
+// only a real public join adds the caller.
+function joinTopicRoute(data: MockData, topic: MockTopic): Response {
+  if (topic.isGeneral) {
+    return badRequest('is_general', 'Everyone in the group is in General');
+  }
+  if (topic.visibility === 'private') {
+    return jsonResponse(topicView(data, topic));
+  }
+  const memberIds = topic.memberIds.includes(data.me.id)
+    ? [...topic.memberIds]
+    : [...topic.memberIds, data.me.id];
+  const updated = { ...topic, memberIds };
   data.putTopic(updated);
   return jsonResponse(topicView(data, updated));
 }

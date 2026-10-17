@@ -30,6 +30,7 @@ import {
   setTopicRoles,
 } from './groups';
 import { addGroupMembers, removeGroupMember, transferGroupOwner } from './groupSettings';
+import { joinTopic } from './topics';
 import type { StoreLocals } from './locals';
 import type { PortsShape } from './ports';
 import type { Lifetime } from './runtime';
@@ -45,6 +46,7 @@ export type GroupActions = Pick<
   | 'addTopicAi'
   | 'removeTopicAi'
   | 'addTopicMember'
+  | 'joinTopic'
   | 'removeTopicMember'
   | 'setTopicRoles'
   | 'refreshTopicRow'
@@ -95,6 +97,7 @@ export function makeGroupActions(deps: GroupActionsDeps): GroupActions {
     addTopicAi: (chatId, aiId) => rt.runPromise(addTopicAi(ctx, chatId, aiId)),
     removeTopicAi: (chatId, aiId) => rt.runPromise(removeTopicAi(ctx, chatId, aiId)),
     addTopicMember: (chatId, userId) => rt.runPromise(addTopicMember(ctx, chatId, userId)),
+    joinTopic: (chatId) => rt.runPromise(joinTopic(ctx, chatId)),
     removeTopicMember: (chatId, userId) => rt.runPromise(removeTopicMember(ctx, chatId, userId)),
     setTopicRoles: (chatId, input) => rt.runPromise(setTopicRoles(ctx, chatId, input)),
     // T-0130 (review): re-reads the chat list and reports whether the

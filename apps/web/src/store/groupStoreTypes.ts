@@ -53,6 +53,11 @@ export interface ChatStoreGroupApi {
   removeTopicAi: (chatId: string, aiId: string) => Promise<void>;
   /** Adds a person to a private topic and refreshes the row. Rejects on failure. */
   addTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /**
+   * T-1786: the caller joins a public topic of the group and refreshes its
+   * row. Rejects on failure.
+   */
+  joinTopic: (chatId: string) => Promise<void>;
   /** Removes a person from a private topic. Rejects on failure. */
   removeTopicMember: (chatId: string, userId: string) => Promise<void>;
   /**

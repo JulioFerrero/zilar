@@ -111,6 +111,15 @@ export const addTopicMember = (
     );
   });
 
+// T-1786: the caller joins a public topic themselves. The row is repainted
+// from the server's answer, so a joined topic moves from Other topics to Your
+// topics on the group screen.
+export const joinTopic = (ctx: StoreCtx, chatId: string): Effect.Effect<void, unknown, Ports> =>
+  Effect.gen(function* () {
+    const { api } = yield* Ports;
+    yield* changeTopic(ctx, actionStore(ctx), chatId, (topicId) => api.joinTopic(topicId));
+  });
+
 // ONE DELETE. A 404 here does not always mean the topic is gone: the server
 // also 404s for a user who is not a member (e.g. a stale member list, or a
 // second click on Remove). Rethrow as-is; the caller re-checks the row via

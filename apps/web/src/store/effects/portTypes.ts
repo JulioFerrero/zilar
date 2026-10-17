@@ -102,6 +102,8 @@ export interface ApiClient {
   listTopicMembers(topicId: string): Promise<TopicMember[]>;
   addTopicMember(topicId: string, userId: string): Promise<Topic>;
   removeTopicMember(topicId: string, userId: string): Promise<Topic>;
+  /** T-1786: the caller joins a public topic themselves. */
+  joinTopic(topicId: string): Promise<Topic>;
   listTopicAis(topicId: string): Promise<TopicAi[]>;
   addTopicAi(topicId: string, aiId: string): Promise<Topic>;
   removeTopicAi(topicId: string, aiId: string): Promise<Topic>;

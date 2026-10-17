@@ -108,6 +108,12 @@ export function addTopicMember(id: string, userId: string): Promise<Topic> {
   return callApi((client) => client.topics.addMember({ params: { id }, payload: { userId } }));
 }
 
+// T-1786: the caller joins a public topic themselves. A private topic is a
+// no-op (its members already see it); General is rejected (400 is_general).
+export function joinTopic(id: string): Promise<Topic> {
+  return callApi((client) => client.topics.join({ params: { id } }));
+}
+
 export function removeTopicMember(id: string, userId: string): Promise<Topic> {
   return callApi((client) => client.topics.removeMember({ params: { id, userId } }));
 }

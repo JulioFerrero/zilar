@@ -182,6 +182,9 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     addTopicMember: vi.fn(async () => {
       throw new Error('not implemented');
     }),
+    joinTopic: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
     removeTopicMember: vi.fn(async () => {
       throw new Error('not implemented');
     }),

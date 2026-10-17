@@ -139,6 +139,7 @@ export {
   archiveTopic,
   createTopic,
   getTopic,
+  joinTopic,
   listGroupTopics,
   listTopicAis,
   listTopicMembers,
