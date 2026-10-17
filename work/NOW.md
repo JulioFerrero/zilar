@@ -711,13 +711,35 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Alert card:** T-1864 (plan: post the card, then `routine.schedule` carries `alert_card`) and T-1869 (`post_blocks` returns the card id).
                 - **Media:** T-1862 (fetch, sniff, strip, store) and T-1867 (web `images`/`file` blocks; Cosmos matches the board).
                 - **Phone:** T-1865 (dead code removed).
-              - **Merged and held:** T-1870 (routines store the alert link on create).
-              - **Running (16:35):**
-                - T-1859 (phone person links; I sent a fix round so an occupant JID never opens the group);
-                - T-1868 (phone media blocks);
-                - T-1871 (`routine.schedule` + `alert_card`);
-                - T-1872 (media M4: a card's media ids must be the AI's own, from this chat);
-                - T-1873 (`fetch_media` tool). **Merge T-1873 only after T-1872.**
+              - **Live `ede830142` (16:47):** 0 errors.
+                - **Alert card, complete on the server:**
+                  - T-1870/T-1871: the AI posts the alert card, then `routine.schedule` carries `alert_card`, and the link is written on approval;
+                  - T-1878: a linked routine posts only at or above the threshold;
+                  - T-1875: the guide teaches the alert card (tool form).
+                - **Media:**
+                  - T-1872: a card's ids must be the AI's own, from this chat;
+                  - T-1873: the `fetch_media` tool;
+                  - T-1868: the phone `images`/`file` blocks (emulator checked).
+                - **Easy-life:** T-1859 (phone: tap a person opens them; emulator checked) and T-1874 (web Alt+↑/↓ switches chats; mock checked).
+                - **Verified live in "cards test":**
+                  - asked to show `https://www.gstatic.com/webp/gallery/1.jpg`, Deepseek posted an image card with the photo;
+                  - a Wikimedia photo failed: one URL was 14 MB, a thumb size gives 400, and Wikimedia also refuses requests without a User-Agent. That last one is fixed in T-1881.
+              - **Merged and held (push about 17:15):**
+                - T-1877 (phone @mention chips open the person; code review, as the mock has no mentions);
+                - T-1876 (phone card photos open in the photo viewer; emulator checked);
+                - T-1879 (the card guide teaches image and file cards);
+                - T-1881 (`fetch_media` User-Agent and reason log).
+              - **Running (17:00):**
+                - T-1880 (the alert card's "Checked … · now …" note on each run);
+                - T-1882 (People and AIs rows open the person, phone + web AI rows);
+                - T-1883 (`save_text_media`: an AI-written CSV/text file card).
+              - **Next APK checks:** tap a person and an @mention chip; the People page; card photos open the viewer.
+              - **For Julio to finish (the alert, live 17:00 in "cards test"):** "@Deepseek tell me when Bitcoin goes above $90,000" produced three cards:
+                1. "Allow btc-price to use the web";
+                2. the alert card (Bitcoin above $90,000, switch on);
+                3. the routine approval "Bitcoin above $90,000 · every 15 minutes".
+                - **I didn't approve:** granting hosts and starting a routine are your calls.
+                - **If you approve both,** the run stays quiet below $90,000. Changing the threshold or the switch on the card drives the routine, and only you (the manager) can.
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);

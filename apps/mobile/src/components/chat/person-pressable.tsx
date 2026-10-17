@@ -24,10 +24,12 @@ export function usePersonRoute(target: PersonTarget): PersonLinkRoute | undefine
 export function PersonPressable({
   target,
   name,
+  className,
   children,
 }: {
   target: PersonTarget;
   name: string;
+  className?: string;
   children: ReactNode;
 }) {
   const route = usePersonRoute(target);
@@ -46,6 +48,7 @@ export function PersonPressable({
       accessibilityLabel={`Open ${name}`}
       hitSlop={6}
       onPress={() => router.push(route)}
+      className={className}
       {...longPress}
     >
       {children}

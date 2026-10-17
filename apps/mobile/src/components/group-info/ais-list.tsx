@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { PersonPressable } from '@/components/chat/person-pressable';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -73,14 +74,20 @@ export function GroupAisList({ groupId, ais, isManager }: GroupAisListProps) {
         <InfoRowGroup>
           {ais.map((ai) => (
             <View key={ai.aiId} className="min-h-[48px] flex-row items-center gap-3 px-3 py-2">
-              <EntityAvatar
-                person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
-                size={40}
-                ai
-              />
-              <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
-                {ai.name}
-              </Text>
+              <PersonPressable
+                target={{ jid: ai.jid }}
+                name={ai.name}
+                className="min-w-0 flex-1 flex-row items-center gap-3"
+              >
+                <EntityAvatar
+                  person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
+                  size={40}
+                  ai
+                />
+                <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
+                  {ai.name}
+                </Text>
+              </PersonPressable>
               {ai.ownerId === me || isManager ? (
                 <IconButton
                   label={`Options for ${ai.name}`}
