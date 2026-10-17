@@ -199,3 +199,11 @@ started from a clean tree and re-checked that state instead of redoing it:
   ```
 
 - Status stays `review`.
+
+## Review (written by Claude)
+
+Merged on 2026-10-17. The packet matches HEAD `48e0aa122`, after 2 auto rounds.
+- **The doc already keeps the real `owner`** until D (§3), so the remaining should-fix is resolved; the test-count nit stays as is.
+- **Verdict:** v0.2.6/v0.2.7 decode `kind`, `status` and `owner` as required fields. Dropping them before a release that tolerates their absence would empty every group's topic list on those phones.
+- **Order:** A (clients tolerate absence; contract fields optional; drop the dead reads and the create "Type" chip) → B (phone release) → C (server stops) → D (drop migration, a DB-schema task).
+- **A is next.**
