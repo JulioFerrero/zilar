@@ -1858,3 +1858,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1846](T-1846-group-bans.md) | SG-8: removed members can't rejoin on their own | 2026-10-17 |
 | [T-1848](T-1848-alert-answer.md) | alert card answers record the switch and threshold | 2026-10-17 |
 | [T-1847](T-1847-card-media-store.md) | card media store: dir, table and per-AI quota | 2026-10-17 |
+| [T-1849](T-1849-web-alert-block.md) | web draws the alert card | 2026-10-17 |

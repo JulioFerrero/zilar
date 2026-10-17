@@ -1,4 +1,5 @@
 import type {
+  AlertBlock as AlertBlockData,
   ButtonsBlock as ButtonsBlockData,
   ChecklistBlock as ChecklistBlockData,
   ChoiceBlock as ChoiceBlockData,
@@ -7,6 +8,7 @@ import type {
   RatingBlock as RatingBlockData,
 } from '@zilar/protocol';
 import { type ReactNode } from 'react';
+import { AlertBlock } from './AlertBlock';
 import { ButtonsBlock } from './ButtonsBlock';
 import { ChecklistBlock } from './ChecklistBlock';
 import { ChoiceBlock } from './ChoiceBlock';
@@ -116,6 +118,22 @@ const SUMMARY_OPEN: RatingBlockData = {
   max: 5,
 };
 
+// `WebChoices.dc.html:150-166`.
+const BTC_ALERT: AlertBlockData = {
+  kind: 'alert',
+  id: 'btc-alert',
+  title: 'Tell me when BTC goes above',
+  field: { label: 'Price', value: '$90,000' },
+  on: true,
+  note: 'Checked every 5 min · now $82,302',
+};
+
+const BTC_ALERT_OFF: AlertBlockData = {
+  ...BTC_ALERT,
+  id: 'btc-alert-off',
+  on: false,
+};
+
 // `WebProgress.dc.html:43-59`, now tappable.
 const GROCERIES: ChecklistBlockData = {
   kind: 'checklist',
@@ -171,6 +189,16 @@ export default {
             </Card>
             <Card time="20:14">
               <RatingBlock block={SUMMARY_OPEN} />
+            </Card>
+          </div>
+        </Example>
+        <Example label="18 · ALERT RULE">
+          <div className="flex flex-col gap-4">
+            <Card time="09:01">
+              <AlertBlock block={BTC_ALERT} showHeading />
+            </Card>
+            <Card time="09:01">
+              <AlertBlock block={BTC_ALERT_OFF} showHeading />
             </Card>
           </div>
         </Example>

@@ -21,7 +21,7 @@ import { StatusBlock } from './StatusBlock';
 
 /**
  * The block kinds this build can draw; the rest are skipped (T-1755). The
- * choice kinds (13-17) are interactive and answer through `BlockRespond`.
+ * choice kinds (13-18) are interactive and answer through `BlockRespond`.
  */
 function renderBlock(block: Block, showHeading: boolean): ReactNode {
   switch (block.kind) {
@@ -42,6 +42,7 @@ function renderBlock(block: Block, showHeading: boolean): ReactNode {
     case 'choice':
     case 'form':
     case 'rating':
+    case 'alert':
       return renderChoiceBlock(block, showHeading);
     case 'stats':
     case 'table':
