@@ -630,7 +630,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1828: `docs/audit/topic-old-shape-removal.md`. Released phones require `kind`/`status`/`owner`, so the order is A (clients tolerate them) → B (phone release) → C (server stops) → D (drop migration).
                 - T-1829: topics you haven't joined leave the chat list and unread counts. Live check: Julio's "ai test" still lists General, cards test and Financial.
                 - T-1830: push goes only to a topic's members; General still reaches the whole group.
-              - **Running (12:50):** T-1831 (T8 step A: the clients let go of `kind`/`status`/`owner` and the dead "Type" chips on both new-topic forms; the server still sends all three).
+              - **T-1831 merged and held** (T8 step A). Web mock check: New topic shows Name, Who can see it and the new hint, with no Type row; creating "QA probe" works and it starts with only its creator.
+              - **Phone smoke of main (mock, 13:00):** PASS for `/group/g-devteam`, the Ideas Join view and `/dev/blocks`. The group screen still listed topics you haven't joined → **T-1833, running**.
+              - **Running (13:05):**
+                - T-1832 (plan only: the alert card and routines);
+                - T-1833 (the phone group screen lists your topics only).
               - **Next phone release (v0.2.8)** should carry T-1831; only after that can step C start.
               - **Earlier:**
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.

@@ -1841,3 +1841,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1828](T-1828-topic-old-shape-audit.md) | audit: safe order to drop the old topic shape | 2026-10-17 |
 | [T-1830](T-1830-push-topic-members.md) | push only to a topic's members | 2026-10-17 |
 | [T-1831](T-1831-topic-old-shape-step-a.md) | clients let go of topic kind, status and owner | 2026-10-17 |
+| [T-1833](T-1833-phone-group-joined-topics.md) | phone group screen lists your topics only | 2026-10-17 |

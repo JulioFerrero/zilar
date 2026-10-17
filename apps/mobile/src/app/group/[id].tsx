@@ -1,3 +1,4 @@
+import { isUnjoinedTopic } from '@zilar/chat-core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { useEffect, useMemo, useState } from 'react';
@@ -89,9 +90,12 @@ function GroupTopics() {
   // Every hook below stays above the early return (enforced by the oxlint
   // `react/rules-of-hooks` rule on `src/app`; the keyed remount and roles
   // load are covered by `components/chat/group-screen-sheets.test.tsx`).
+  // T-1833: the list shows the topics you're in, like web's sidebar after
+  // T-1829. Unjoined ones live under Group info › Other topics; everything
+  // above (General lookup, create gate, channel feed) keeps the full list.
   const { active: activeTopics, archived: archivedTopics } = useMemo(
-    () => splitGroupTopics(topics),
-    [topics],
+    () => splitGroupTopics(topics.filter((chat) => !isUnjoinedTopic(chat.topic, currentUserId))),
+    [topics, currentUserId],
   );
 
   const members = useMemo(() => groupDetail?.members ?? [], [groupDetail]);
