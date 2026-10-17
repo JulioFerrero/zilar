@@ -48,7 +48,7 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
     <View
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
-      className="flex-row items-center gap-1.5 px-2 py-1.5"
+      className="max-w-full flex-row items-center gap-1.5 rounded-full border border-divider bg-surface-raised px-3 py-1"
     >
       <EntityAvatar
         person={{ id: first.aiId, name: first.name, avatarUrl: first.avatarUrl }}

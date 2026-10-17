@@ -302,6 +302,7 @@ export function MessageList({
     return <EmptyChat chat={chat} />;
   }
 
+  // T-1905: a topic keeps a fixed gap under its newest message for the AI pill.
   return (
     <View className="flex-1">
       <FlatList
@@ -334,7 +335,10 @@ export function MessageList({
             }),
           );
         }}
-        contentContainerStyle={{ paddingVertical: 8 }}
+        contentContainerStyle={{
+          paddingTop: chat.topic !== undefined ? 44 : 8,
+          paddingBottom: 8,
+        }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         // Older pages sit at the inverted list's end, so reaching it asks for the

@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { AiStatusLine } from '@/components/chat/ai-status-line';
 import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { systemConfirmsCopy } from '@/components/chat/chat-notice-context';
 import { Composer } from '@/components/chat/composer';
@@ -246,7 +245,6 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
         />
       ) : variant === 'composer' ? (
         <>
-          <AiStatusLine chat={chat} />
           {notInTopic.length > 0 ? (
             <View className="mb-2 flex-col items-center gap-1.5 px-3">
               {notInTopic.map((entry) => (

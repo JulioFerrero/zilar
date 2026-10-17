@@ -1916,3 +1916,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1907](T-1907-screens-keep-data.md) | phone AIs, Explore, Me and profiles keep content on focus | 2026-10-17 |
 | [T-1902](T-1902-history-own-room.md) | a topic's history waits only for its own room | 2026-10-17 |
 | [T-1903](T-1903-web-message-cache.md) | web opens chats from a local copy of recent messages | 2026-10-17 |
+| [T-1905](T-1905-ai-status-no-resize.md) | the AI status pill never moves the thread | 2026-10-17 |

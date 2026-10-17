@@ -294,7 +294,11 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
               <ChannelComposerBar chat={chat} />
             ) : (
               <>
-                <AiStatusLine chat={chat} />
+                <div className="relative z-10 h-0">
+                  <div className="absolute inset-x-0 bottom-1.5 flex justify-center px-3 wide:px-8">
+                    <AiStatusLine chat={chat} />
+                  </div>
+                </div>
                 <Composer
                   chatId={chat.id}
                   replyTo={replyTo}

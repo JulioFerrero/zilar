@@ -53,7 +53,7 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
   return (
     <div
       role="status"
-      className="flex min-w-0 shrink-0 flex-nowrap items-center gap-2 overflow-hidden px-3 py-1.5 text-[13px] whitespace-nowrap text-muted-foreground wide:px-8"
+      className="flex min-w-0 max-w-full flex-nowrap items-center gap-2 overflow-hidden rounded-full border border-border bg-surface-raised/95 px-3 py-1 text-[13px] whitespace-nowrap text-muted-foreground shadow-sm backdrop-blur"
     >
       {shown.map((entry, index) => {
         const questionId = entry.questionId;

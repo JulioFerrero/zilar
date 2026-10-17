@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { AiStatusLine } from '@/components/chat/ai-status-line';
 import { ChatBackground } from '@/components/chat/chat-background';
 import { ChatComposerDock } from '@/components/chat/chat-composer-dock';
 import { ChatHeaderBar } from '@/components/chat/chat-header-bar';
@@ -197,7 +198,15 @@ function Chat() {
           <TopicJoinView key={chat.id} chat={chat} />
         ) : (
           <>
-            <ChatThread screen={screen} chat={chat} />
+            <View className="flex-1">
+              <ChatThread screen={screen} chat={chat} />
+              <View
+                pointerEvents="box-none"
+                className="absolute bottom-1.5 left-0 right-0 items-center px-3"
+              >
+                <AiStatusLine chat={chat} />
+              </View>
+            </View>
             <ChatComposerDock screen={screen} chat={chat} variant="composer" />
           </>
         )}
