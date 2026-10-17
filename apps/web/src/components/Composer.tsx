@@ -1,4 +1,10 @@
-import { canEditMessage, composerPlaceholder, type ReplyRef } from '@zilar/chat-core';
+import {
+  canEditMessage,
+  composerPlaceholder,
+  mentionInTopic,
+  type ReplyRef,
+  type UiMention,
+} from '@zilar/chat-core';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ComposerControls } from './composer/ComposerControls';
 import { useFormatShortcut } from './composer/formatShortcut';
@@ -8,7 +14,24 @@ import { beginEdit, endEdit, useDraftValue } from './composer/useDraftValue';
 import { useMentions } from './composer/useMentions';
 import { useRecordingLifecycle } from './composer/useRecordingLifecycle';
 import { useVoiceRecorder } from './composer/useVoiceRecorder';
+import { AddToTopicRow } from './topic/TopicNotInRow';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+/** T-1783: a sent mention of someone who is not in the open topic. */
+interface TopicNotIn {
+  jid: string;
+  name: string;
+  kind: 'person' | 'ai';
+  /** The AI's `aiId` or the person's `userId`, for the Add call. */
+  id: string;
+  avatarUrl?: string;
+}
+
+/** The localpart of a jid, lowercased (`Ana@x` → `ana`). */
+function jidLocalpart(jid: string): string {
+  const at = jid.indexOf('@');
+  return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
+}
 
 export function Composer({
   chatId,
@@ -29,6 +52,9 @@ export function Composer({
   const [value, setValue] = useDraftValue(chatId);
   // The chat the tracked mentions belong to, so a chat switch resets them below.
   const [trackedChatId, setTrackedChatId] = useState(chatId);
+  // T-1783: the mentions of people outside the open topic that the last send
+  // put on screen. Each row owns its Add call (AddToTopicRow).
+  const [notInTopic, setNotInTopic] = useState<TopicNotIn[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // The message being edited, in this chat only.
   const editing = useChatSelector((s) => {
@@ -66,6 +92,7 @@ export function Composer({
     setTrackedChatId(chatId);
     mentions.reset();
     attachments.reset();
+    setNotInTopic([]);
   }
 
   const placeholder = composerPlaceholder(chat?.title);
@@ -105,6 +132,61 @@ export function Composer({
 
   useRecordingLifecycle({ chatId, voice });
 
+  // T-1783: after a send in a topic, show the sender the mentions of people
+  // who are not in it. A General topic, a non-topic chat and an older server
+  // whose `memberIds` is missing produce no rows.
+  const surfaceNotInTopic = (sent: readonly UiMention[]): void => {
+    const topic = chat?.topic;
+    if (topic === undefined || sent.length === 0) {
+      setNotInTopic([]);
+      return;
+    }
+    const state = storeApi.getState();
+    const detail = state.groupInfo(chatId);
+    const aiIdByJid = new Map<string, string>();
+    for (const ai of detail?.ais ?? []) {
+      aiIdByJid.set(ai.jid, ai.aiId);
+    }
+    const missing: TopicNotIn[] = [];
+    const seen = new Set<string>();
+    for (const mention of sent) {
+      if (seen.has(mention.jid) || mentionInTopic(topic, mention.jid, aiIdByJid)) {
+        continue;
+      }
+      seen.add(mention.jid);
+      const aiId = aiIdByJid.get(mention.jid);
+      if (aiId !== undefined) {
+        const ai = detail?.ais.find((entry) => entry.aiId === aiId);
+        missing.push({
+          jid: mention.jid,
+          name: mention.name,
+          kind: 'ai',
+          id: aiId,
+          ...(ai?.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+        });
+        continue;
+      }
+      const member = detail?.members.find(
+        (entry) => entry.userId.toLowerCase() === jidLocalpart(mention.jid),
+      );
+      missing.push({
+        jid: mention.jid,
+        name: mention.name,
+        kind: 'person',
+        id: member?.userId ?? jidLocalpart(mention.jid),
+        ...(member?.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+      });
+    }
+    setNotInTopic(missing);
+  };
+
+  // T-1783: the Add key's call for one entry; its group half is added first on
+  // the server (T-1769). The row drops itself through `onAdded` on success.
+  const addToTopic = (entry: TopicNotIn): Promise<void> =>
+    entry.kind === 'ai'
+      ? storeApi.getState().addTopicAi(chatId, entry.id)
+      : storeApi.getState().addTopicMember(chatId, entry.id);
+
   const send = (options?: SendPendingOptions): void => {
     if (attachment !== undefined) {
       attachments.sendPending(options);
@@ -121,6 +203,7 @@ export function Composer({
       ...(replyTo === undefined ? {} : { replyTo }),
       ...(mentions.mentions.length === 0 ? {} : { mentions: mentions.mentions }),
     });
+    surfaceNotInTopic(mentions.mentions);
     setValue('');
     setMentions([]);
     setPicker(undefined);
@@ -212,6 +295,22 @@ export function Composer({
       onPaste={attachments.onPaste}
       className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5"
     >
+      {notInTopic.length > 0 && (
+        <div className="mb-2 flex flex-col items-center gap-1.5">
+          {notInTopic.map((entry) => (
+            <AddToTopicRow
+              key={entry.jid}
+              name={entry.name}
+              avatarUrl={entry.avatarUrl}
+              topicTitle={chat?.title ?? ''}
+              add={() => addToTopic(entry)}
+              onAdded={() =>
+                setNotInTopic((previous) => previous.filter((item) => item.jid !== entry.jid))
+              }
+            />
+          ))}
+        </div>
+      )}
       <ComposerControls
         mentions={mentions}
         attachments={attachments}

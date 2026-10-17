@@ -3,6 +3,7 @@ import {
   findMentionQuery,
   insertMention,
   isMentionOfMe,
+  mentionInTopic,
   rebaseMentions,
   type MentionMember,
   type UiMention,
@@ -68,11 +69,19 @@ export function useMentions({
   // paused stanza never goes to a chat we never composed in.
   const typingChatRef = useRef<string | undefined>(undefined);
 
+  const state = storeApi.getState();
+  // T-1783: in a topic the @ list offers only who is in it. General, DMs and
+  // topics on an older server (no `memberIds`) are not filtered.
+  const topic = isGroup ? state.chats.find((entry) => entry.id === chatId)?.topic : undefined;
+  const aiIdByJid = new Map<string, string>();
+  for (const ai of isGroup ? (state.groupInfo(chatId)?.ais ?? []) : []) {
+    aiIdByJid.set(ai.jid, ai.aiId);
+  }
   const members = isGroup
-    ? storeApi
-        .getState()
+    ? state
         .groupMembers(chatId)
         .filter((member) => !isMentionOfMe(member.jid, meJid))
+        .filter((member) => topic === undefined || mentionInTopic(topic, member.jid, aiIdByJid))
     : [];
   const candidates =
     picker === undefined

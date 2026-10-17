@@ -81,3 +81,28 @@ export function inTopic(
     ? (topic.memberIds ?? []).includes(entity.id)
     : (topic.ais ?? []).some((ai) => ai.id === entity.id);
 }
+
+/**
+ * T-1783: whether the sender may mention this jid in this topic. General is
+ * everyone's, and a topic an older server built without `memberIds` is not
+ * filtered (hiding is not an option for a mention that already happened). An
+ * AI is looked up by its id from `aiIdByJid` (a jid-to-`aiId` map the caller
+ * builds from the group detail); any other jid is a person, matched by the
+ * jid's localpart against `memberIds`.
+ */
+export function mentionInTopic(
+  topic: { isGeneral: boolean; memberIds?: readonly string[]; ais?: readonly { id: string }[] },
+  jid: string,
+  aiIdByJid: ReadonlyMap<string, string>,
+): boolean {
+  if (topic.isGeneral || topic.memberIds === undefined) {
+    return true;
+  }
+  const aiId = aiIdByJid.get(jid);
+  if (aiId !== undefined) {
+    return inTopic(topic, { kind: 'ai', id: aiId });
+  }
+  const at = jid.indexOf('@');
+  const localpart = (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
+  return topic.memberIds.some((id) => id.toLowerCase() === localpart);
+}
