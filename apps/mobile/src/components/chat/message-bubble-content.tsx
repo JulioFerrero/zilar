@@ -86,6 +86,8 @@ export type { MessageBubbleProps };
 
 type MessageBubbleContentProps = {
   message: UiMessage;
+  /** A group chat: a card there answers with a mention; a direct chat does not. */
+  isGroup: boolean;
   outgoing: boolean;
   generating: boolean;
   showSenderName: boolean;
@@ -110,6 +112,7 @@ type MessageBubbleContentProps = {
 /** The per-kind body of a bubble, inside the bubble's pressable surface. */
 export function MessageBubbleContent({
   message,
+  isGroup,
   outgoing,
   generating,
   showSenderName,
@@ -199,7 +202,9 @@ export function MessageBubbleContent({
               outgoing
                 ? undefined
                 : {
-                    messageId: message.id,
+                    // A direct chat records its card under the origin id (T-1825).
+                    messageId: isGroup ? message.id : (message.originId ?? message.id),
+                    direct: !isGroup,
                     chatId: message.chatId,
                     aiName: message.senderName,
                     aiJid: message.senderId,

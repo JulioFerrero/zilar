@@ -1834,3 +1834,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1822](T-1822-poll-my-votes.md) | a poll remembers the viewer's own votes | 2026-10-17 |
 | [T-1809](T-1809-dm-interactive-cards-plan.md) | plan: interactive cards in an AI's DM | 2026-10-17 |
 | [T-1824](T-1824-dm-cards-server.md) | DM cards server: record, owner-only answers, chat correction | 2026-10-17 |
+| [T-1825](T-1825-dm-cards-clients.md) | DM cards clients: origin id and plain replies | 2026-10-17 |

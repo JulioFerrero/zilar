@@ -168,17 +168,22 @@ export function BlockCard({
             setShown(next);
             setFailed(false);
             if (request.reply !== undefined) {
-              sendText(respond.chatId, `@${respond.aiName} ${request.reply}`, {
-                replyTo: { id: respond.messageId, senderName: respond.aiName },
-                mentions: [
-                  {
-                    jid: respond.aiJid,
-                    name: respond.aiName,
-                    begin: 0,
-                    end: respond.aiName.length + 1,
-                  },
-                ],
-              });
+              const replyTo = { id: respond.messageId, senderName: respond.aiName };
+              if (respond.direct === true) {
+                sendText(respond.chatId, request.reply, { replyTo });
+              } else {
+                sendText(respond.chatId, `@${respond.aiName} ${request.reply}`, {
+                  replyTo,
+                  mentions: [
+                    {
+                      jid: respond.aiJid,
+                      name: respond.aiName,
+                      begin: 0,
+                      end: respond.aiName.length + 1,
+                    },
+                  ],
+                });
+              }
             }
             request.onSettled?.(true);
           }),

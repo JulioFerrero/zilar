@@ -67,6 +67,8 @@ export interface UiMention {
 
 export interface UiMessage {
   id: string;
+  /** The XEP-0359 origin id when the stanza had one; a DM card is recorded under it. */
+  originId?: string | undefined;
   chatId: string;
   senderId: string;
   senderName: string;

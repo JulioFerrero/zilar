@@ -833,3 +833,14 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     expect(h.chats()[0]?.unread).toBe(1);
   });
 });
+
+describe('the message ledger: origin ids on UiMessage', () => {
+  it('carries the origin id of the stanza on the UI message', () => {
+    const h = harness();
+    h.receive(
+      stanza({ id: 'stanza-1', originId: 'origin-1', fromJid: BOB, outgoing: false, body: 'hi' }),
+    );
+
+    expect(h.messages()[0]?.originId).toBe('origin-1');
+  });
+});

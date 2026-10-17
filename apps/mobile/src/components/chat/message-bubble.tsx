@@ -163,6 +163,7 @@ function MessageBubbleImpl({
     <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
       <MessageBubbleContent
         message={message}
+        isGroup={isGroup}
         outgoing={outgoing}
         generating={generating}
         showSenderName={showSenderName}

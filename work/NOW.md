@@ -616,6 +616,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1826 (question match by `originId`, after T-1825);
                 - then lift T-1803's DM refusal once T-1824 and T-1825 are live and tested in Julio's DM. That needs his OK to message there, or a test DM of `@claude_test`'s own AI.
               - **For Julio:**
+                - **The `alert` card (18 · ALERT RULE: "Tell me when BTC goes above", a switch, "Checked every 5 min") isn't built.** It promises a scheduled check, and a scheduled run can't fetch prices without a computer yet (see the routines note above). It's the only interactive kind left; `images` and `file` wait for the media plan.
                 - **The media plan** (`docs/plan/message-blocks-media.md` §7) needs his answers to questions 1–7 (a new storage volume, approval, quotas, retention). Nothing launches before that.
                 - **Try a card in your DM with an AI** (T-1800). I don't send messages in your DMs.
                 - **Disk:** the Mac's data volume was at 98% (12 GB free). I deleted only my own iOS build caches in the job folder, so it's now about 22 GB free. `zilar-phone-build` (8.5 GB) and `~/.gradle` (6.7 GB) are the next big items.

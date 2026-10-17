@@ -155,6 +155,9 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     if (body !== undefined) {
       ui.text = body;
     }
+    if (message.originId !== undefined) {
+      ui.originId = message.originId;
+    }
     if (message.album !== undefined) {
       ui.album = message.album;
     }

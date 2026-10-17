@@ -14,6 +14,8 @@ export interface BlockRespondTarget {
   chatId: string;
   aiName: string;
   aiJid: string;
+  /** A direct chat (T-1825): the reply is plain text, with no mention. */
+  direct?: boolean;
 }
 
 /**
