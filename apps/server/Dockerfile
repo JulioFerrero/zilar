@@ -21,6 +21,8 @@ WORKDIR /repo
 
 # Dependency manifests first so this layer is cached until they change.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+# pnpm applies patchedDependencies from pnpm-workspace.yaml during install.
+COPY patches ./patches
 COPY apps/server/package.json apps/server/
 COPY packages/api-contract/package.json packages/api-contract/
 COPY packages/desk/package.json packages/desk/

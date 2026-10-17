@@ -789,7 +789,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1909 (`sessionGone` clears the message cache; phone `joinGroups` type);
                 - T-1910 (`/share` resets on a new share);
                 - T-1912 (a resumed stream skips the room rejoin).
-              - **Held:** T-1911 (list error bars float as pills).
+              - **Deploy blocked, 19:21:** "Production images" failed for `0f8e4a2` with `ENOENT /repo/patches/expo-share-intent@8.0.1.patch`. The Dockerfiles don't copy `patches/` before `pnpm install`. Live stays on `8e87ff0`. **T-1917 (urgent)** adds `COPY patches ./patches` to the server, web, site and desk-agent Dockerfiles.
+              - **Held:**
+                - T-1911 (list error bars float as pills);
+                - T-1913 (web pins from the cache);
+                - T-1914 (phone pins from the offline cache).
+              - **Running:**
+                - T-1915 (splash waits for the cached paint);
+                - T-1916 (sign-out clears the phone pins);
+                - T-1917.
               - **Running:**
                 - T-1913 (web pins from the cache);
                 - T-1914 (phone pins from the offline cache).

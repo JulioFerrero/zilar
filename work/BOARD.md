@@ -1924,3 +1924,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1911](T-1911-list-errors-float.md) | chat list errors float as a pill, chats never move | 2026-10-17 |
 | [T-1913](T-1913-web-pins-cache.md) | web pinned banner paints from the local cache | 2026-10-17 |
 | [T-1914](T-1914-phone-pins-cache.md) | phone pinned banner paints from the offline cache | 2026-10-17 |
+| [T-1917](T-1917-docker-copy-patches.md) | Docker builds copy the pnpm patches before install | 2026-10-17 |

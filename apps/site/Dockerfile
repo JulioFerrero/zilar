@@ -14,6 +14,8 @@ WORKDIR /repo
 
 # Dependency manifests first so this layer is cached until they change.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+# pnpm applies patchedDependencies from pnpm-workspace.yaml during install.
+COPY patches ./patches
 COPY apps/site/package.json apps/site/
 
 RUN pnpm install --frozen-lockfile --filter @zilar/site...
