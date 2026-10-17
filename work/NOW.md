@@ -552,6 +552,21 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - B9 (the respond route), then B10/B11;
                 - the live cards test in "cards test";
                 - the emulator check of the phone screens (not while Julio is at the PC).
+            - **State at 09:25 UTC:**
+              - **Live `b24fc0e81`** (pushed 09:14; health OK at 09:17:40, about 1 min down during the swap):
+                - all 6 containers are healthy, with 0 errors and only the 3 usual "AI is offline" startup warnings;
+                - `/api/me`, `/api/chats`, the topic preview and join routes, and `POST /api/blocks/respond` answer 401 signed out.
+                - It carries T-1787, T-1791, T-1786, T-1789, T-1781, T-1793, T-1792 (B9 respond route) and T-1794.
+              - **The live cards test is done:** 20 requests. Checked live after the deploy, the Earth vs Mars table now fits, with text columns left-aligned and no repeated title.
+              - **Running:**
+                - T-1795 (B10, web interactive cards);
+                - T-1796 (B11, phone interactive cards);
+                - T-1797 (W9, web Join preview, Mute and Leave);
+                - T-1798 (W10, phone twin).
+              - **Next:**
+                - a small guide task: omit an unknown change, put extra place facts in `subtitle`, and no generic step labels;
+                - B12 (the guide offers the interactive kinds) after B10/B11;
+                - flip `PUBLIC_TOPICS_START_EMPTY` after W9/W10, and fix the empty Other topics in mock mode.
             - **State at 08:55 UTC:**
               - **Merged and held (not pushed):** T-1787 (W8), T-1791 (B8b), T-1786 (W7) and T-1789 (W6b, after a rebase conflict).
               - **T-1781 (phone charts):** a rebase conflict in `dev-blocks-screen.tsx` was sent to the worker; continue the rebase and merge.
