@@ -5,6 +5,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import type { TopicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';
+import { PersonLink } from '../personLink';
 import { Menu, MenuItem } from '../ui/menu';
 import { StateMessage } from '../ui/state-message';
 import { TopicOptionsKey, useRemoveAi } from './TopicActionButtons';
@@ -97,13 +98,29 @@ function AiRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { removing, runRemove } = useRemoveAi({ remove: removeAi, onError });
-  return (
-    <div className="flex min-h-[44px] items-center gap-2.5 pl-2.5 pr-2">
+  // T-1885: a row with a JID opens the AI, like the people rows already do.
+  const person = (
+    <>
       <EntityAvatar person={{ id: ai.id, name: ai.name, avatarUrl: picture }} size={28} ai />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate text-[14px]">{ai.name}</span>
         <AiBadge />
       </span>
+    </>
+  );
+  return (
+    <div className="flex min-h-[44px] items-center gap-2.5 pl-2.5 pr-2">
+      {ai.jid === undefined ? (
+        person
+      ) : (
+        <PersonLink
+          target={{ jid: ai.jid }}
+          name={ai.name}
+          className="flex min-w-0 flex-1 items-center gap-2.5"
+        >
+          {person}
+        </PersonLink>
+      )}
       {ownerLabel !== undefined && (
         <span className="shrink-0 text-[12px] text-muted-foreground">{ownerLabel}</span>
       )}

@@ -237,7 +237,14 @@ function handleTopicAis(
   if (subId === undefined) {
     if (request.method === 'GET') {
       return jsonResponse({
-        ais: topic.aiIds.map((aiId) => ({ id: aiId, name: aiName(data, aiId) })),
+        ais: topic.aiIds.map((aiId) => {
+          const jid = data.ais.find((ai) => ai.id === aiId)?.jid;
+          return {
+            id: aiId,
+            name: aiName(data, aiId),
+            ...(jid === undefined ? {} : { jid }),
+          };
+        }),
       });
     }
     if (request.method === 'POST') return addTopicAi(data, topic, request);

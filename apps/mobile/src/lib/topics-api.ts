@@ -31,6 +31,8 @@ export interface TopicAi {
   name: string;
   /** T-1764: the AI's picture, absent when it has none. */
   avatarUrl?: string;
+  /** T-1885: the AI's bare JID, so a row can open it; absent from older servers. */
+  jid?: string;
 }
 
 export interface Topic {

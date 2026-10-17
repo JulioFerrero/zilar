@@ -86,4 +86,6 @@ export interface TopicAiView {
   name: string;
   /** T-1764: the AI's picture; omitted when it has none. */
   avatarUrl?: string;
+  /** T-1885: the AI's JID, so its row can open the AI's chat. */
+  jid?: string;
 }

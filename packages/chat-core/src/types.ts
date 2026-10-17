@@ -147,6 +147,8 @@ export interface TopicInfoAi {
   id: string;
   name: string;
   avatarUrl?: string;
+  /** T-1885: the AI's bare JID, so a row can open it; absent from older servers. */
+  jid?: string;
 }
 
 /**

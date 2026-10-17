@@ -164,7 +164,7 @@ export async function listTopicAis(db: ServerDatabase, topicId: string): Promise
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string; name: string }>`SELECT a.id, a.name
+      return yield* sql<{ id: string; name: string; jid: string }>`SELECT a.id, a.name, a.jid
         FROM topic_ais ta
         INNER JOIN ais a ON a.id = ta.ai_id
         WHERE ta.topic_id = ${topicId}`;
@@ -247,7 +247,12 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
           ? Effect.succeed([] as Array<{ id: string; name: string }>)
           : sql<{ id: string; name: string }>`SELECT id, name FROM ais
                 WHERE id IN ${sql.in(ownerAiIds)}`,
-        sql<{ topicId: string; id: string; name: string }>`SELECT ta.topic_id, a.id, a.name
+        sql<{
+          topicId: string;
+          id: string;
+          name: string;
+          jid: string;
+        }>`SELECT ta.topic_id, a.id, a.name, a.jid
             FROM topic_ais ta
             INNER JOIN ais a ON a.id = ta.ai_id
             WHERE ta.topic_id IN ${sql.in(topicIds)}`,
@@ -349,7 +354,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
       topic.id,
       withAiAvatars(
         (aisByTopic.get(topic.id) ?? [])
-          .map((row) => ({ id: row.id, name: row.name }))
+          .map((row) => ({ id: row.id, name: row.name, jid: row.jid }))
           .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
         aiPictures,
       ),

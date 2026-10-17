@@ -18,7 +18,7 @@ import { Text } from '@/components/ui/text';
 import type { GroupDetail } from '@/lib/chat-api';
 import { ACCENT_FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import type { CustomGroupRole } from '@/lib/roles-api';
-import type { ApproverRole, PatchTopicInput, TopicRole } from '@/lib/topics-api';
+import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -166,11 +166,13 @@ export function TopicInfoSheet({
   const topic = chat?.topic;
   // T-1834: General is the whole group, so its AIs are the group's
   // (`group_ais`); a General topic has no `topic_ais` rows of its own.
-  const ais =
+  // T-1885: the rows carry the AI's JID, so each one can open the AI.
+  const ais: TopicAi[] =
     topic?.isGeneral === true
       ? (detail?.ais ?? []).map((ai) => ({
           id: ai.aiId,
           name: ai.name,
+          jid: ai.jid,
           ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
         }))
       : (topic?.ais ?? []);
@@ -237,8 +239,10 @@ export function TopicInfoSheet({
               <InfoGroup>
                 {ais.map((ai) => {
                   const owner = aiOwnerLabel(ai.id, detail, myUserId);
-                  return (
-                    <View key={ai.id} className="min-h-[52px] flex-row items-center gap-3 px-3">
+                  // T-1885: the avatar and the name open the AI; the owner
+                  // label and the memory key stay outside the tap.
+                  const person = (
+                    <>
                       <EntityAvatar
                         person={{
                           id: ai.id,
@@ -254,6 +258,21 @@ export function TopicInfoSheet({
                         </Text>
                         <AiBadge />
                       </View>
+                    </>
+                  );
+                  return (
+                    <View key={ai.id} className="min-h-[52px] flex-row items-center gap-3 px-3">
+                      {ai.jid === undefined ? (
+                        person
+                      ) : (
+                        <PersonPressable
+                          target={{ jid: ai.jid }}
+                          name={ai.name}
+                          className="min-w-0 flex-1 flex-row items-center gap-3"
+                        >
+                          {person}
+                        </PersonPressable>
+                      )}
                       {owner === undefined ? null : (
                         <Text className="shrink-0 text-[13px] text-muted-foreground">{owner}</Text>
                       )}

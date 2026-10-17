@@ -14,7 +14,7 @@ export async function listGeneralAis(db: ServerDatabase, groupId: string): Promi
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string; name: string }>`SELECT a.id, a.name
+      return yield* sql<{ id: string; name: string; jid: string }>`SELECT a.id, a.name, a.jid
         FROM group_ais ga
         INNER JOIN ais a ON a.id = ga.ai_id
         WHERE ga.group_id = ${groupId}`;

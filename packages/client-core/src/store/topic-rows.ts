@@ -59,6 +59,7 @@ function topicInfoOf(topic: Topic): TopicInfo {
       id: ai.id,
       name: ai.name,
       ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+      ...(ai.jid === undefined ? {} : { jid: ai.jid }),
     })),
   };
 }

@@ -173,6 +173,9 @@ export const TopicAi = mutableStruct({
   name: Schema.String,
   /** T-1764: the AI's picture; omitted when it has none. */
   avatarUrl: Schema.optional(Schema.String),
+  /** T-1885: the AI's JID, so its row can open the AI's chat; omitted by old
+   * servers. */
+  jid: Schema.optional(Schema.String),
 });
 
 export type TopicAi = typeof TopicAi.Type;

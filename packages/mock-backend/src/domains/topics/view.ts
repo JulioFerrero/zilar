@@ -71,9 +71,11 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     memberIds,
     ais: topic.aiIds.map((aiId) => {
       const avatarUrl = source.aiAvatarUrl(aiId);
+      const jid = source.aiJid(aiId);
       return {
         id: aiId,
         name: source.aiName(aiId),
+        ...(jid === undefined ? {} : { jid }),
         ...(avatarUrl === undefined ? {} : { avatarUrl }),
       };
     }),
