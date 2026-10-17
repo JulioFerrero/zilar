@@ -1902,3 +1902,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1890](T-1890-card-media-volume.md) | card media on the avatar volume (media D1) | 2026-10-17 |
 | [T-1891](T-1891-share-intent-native.md) | phone: expo-share-intent and its Android share filters | 2026-10-17 |
 | [T-1894](T-1894-chat-picker-list.md) | phone: one chat picker for Forward and Share | 2026-10-17 |
+| [T-1892](T-1892-share-draft-parser.md) | phone: share payload parser (untrusted input boundary) | 2026-10-17 |
