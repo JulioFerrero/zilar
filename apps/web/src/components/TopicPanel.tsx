@@ -169,6 +169,10 @@ function TopicPanelBody({
     return groupMembers.find((member) => member.userId === ownerId)?.name ?? 'someone';
   };
   const canRemoveAi = (aiId: string): boolean => {
+    // T-1834: an AI leaves General only by leaving the group, in the group panel.
+    if (topic.isGeneral === true) {
+      return false;
+    }
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     return ownerId === me || isManager;
   };

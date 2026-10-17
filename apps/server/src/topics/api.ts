@@ -41,6 +41,7 @@ import {
   visibleTopics,
 } from './access';
 import { withTopicActivity } from './ai-activity';
+import { listGeneralAis } from './general-ais';
 import {
   addTopicAi,
   addTopicMember,
@@ -308,6 +309,7 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
         ),
       )
       // T-0109: AIs in non-General topics.
+      // T-1834: General lists the group's AIs, since it has no `topic_ais` rows.
       .handle(
         'listAis',
         handler(logger, (request, user) =>
@@ -315,7 +317,11 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             const topic = yield* Effect.promise(() =>
               requireVisibleTopic(deps.db, request.params.id, user.id),
             );
-            const ais = yield* Effect.promise(() => listTopicAis(deps.db, topic.id));
+            const ais = yield* Effect.promise(() =>
+              topic.isGeneral
+                ? listGeneralAis(deps.db, topic.groupId)
+                : listTopicAis(deps.db, topic.id),
+            );
             return { ais };
           }),
         ),

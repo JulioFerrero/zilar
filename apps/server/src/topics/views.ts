@@ -141,7 +141,7 @@ export async function toTopicView(
 
 // T-1764: the avatar urls of a set of AIs, in one query for the whole set, so
 // a read attaches each picture without a query per AI.
-async function aiAvatarUrls(
+export async function aiAvatarUrls(
   db: ServerDatabase,
   aiIds: readonly string[],
 ): Promise<Map<string, string>> {
@@ -150,7 +150,7 @@ async function aiAvatarUrls(
 }
 
 // Attaches `avatarUrl` to each AI that has a picture, from the map above.
-function withAiAvatars(ais: TopicAiView[], urls: Map<string, string>): TopicAiView[] {
+export function withAiAvatars(ais: TopicAiView[], urls: Map<string, string>): TopicAiView[] {
   return ais.map((ai) => {
     const url = urls.get(ai.id);
     return url === undefined ? ai : { ...ai, avatarUrl: url };

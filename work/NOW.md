@@ -632,9 +632,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1830: push goes only to a topic's members; General still reaches the whole group.
               - **T-1831 merged and held** (T8 step A). Web mock check: New topic shows Name, Who can see it and the new hint, with no Type row; creating "QA probe" works and it starts with only its creator.
               - **Phone smoke of main (mock, 13:00):** PASS for `/group/g-devteam`, the Ideas Join view and `/dev/blocks`. The group screen still listed topics you haven't joined → **T-1833, running**.
-              - **Running (13:05):**
-                - T-1832 (plan only: the alert card and routines);
-                - T-1833 (the phone group screen lists your topics only).
+              - **T-1833 merged and held.** Phone smoke of main: `/group/g-devteam` shows "6 members, 5 topics" with the 5 joined topics, and Group info lists the same 5 under Your topics.
+              - **Running (13:02):** T-1832 (plan only: the alert card and routines).
               - **Next phone release (v0.2.8)** should carry T-1831; only after that can step C start.
               - **Earlier:**
                 - **T-1829 merged and held.** Checked in web mock mode on main: the Dev team sidebar shows the 5 joined topics, Ideas is only under Other topics, and Join moves it into the sidebar and Your topics.

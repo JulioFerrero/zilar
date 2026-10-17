@@ -157,7 +157,16 @@ export function TopicInfoSheet({
   onAdd,
 }: TopicInfoSheetProps) {
   const topic = chat?.topic;
-  const ais = topic?.ais ?? [];
+  // T-1834: General is the whole group, so its AIs are the group's
+  // (`group_ais`); a General topic has no `topic_ais` rows of its own.
+  const ais =
+    topic?.isGeneral === true
+      ? (detail?.ais ?? []).map((ai) => ({
+          id: ai.aiId,
+          name: ai.name,
+          ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+        }))
+      : (topic?.ais ?? []);
   const groupMembers: TopicLinePerson[] = (detail?.members ?? []).map((member) => ({
     id: member.userId,
     name: member.name,
