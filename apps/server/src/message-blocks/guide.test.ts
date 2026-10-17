@@ -9,6 +9,9 @@ import {
   INTERACTIVE_KINDS,
   INTERACTIVE_RULES,
   INTERACTIVE_SHAPES,
+  MEDIA_KINDS,
+  MEDIA_RULES,
+  MEDIA_SHAPES,
   cardGuide,
 } from './guide';
 
@@ -48,5 +51,20 @@ describe('card guide', () => {
     }
     expect(description).toContain(INTERACTIVE_RULES);
     expect(TOOL_GUIDE).not.toContain(INTERACTIVE_RULES);
+  });
+
+  // T-1879: only `post_blocks` cards may carry media, so the media kinds and
+  // the `fetch_media` rule are taught there and never to a saved tool.
+  it('offers the media kinds in post_blocks only', () => {
+    const description = POST_BLOCKS_TOOL_DEF.function.description;
+    for (const kind of MEDIA_KINDS) {
+      expect(literalKinds).toContain(kind);
+      expect(MEDIA_SHAPES).toContain(`kind=${kind} `);
+      expect(description).toContain(`kind=${kind} `);
+      expect(TOOL_GUIDE).not.toContain(`kind=${kind} `);
+      expect(CARD_KINDS).not.toContain(kind);
+    }
+    expect(description).toContain(MEDIA_RULES);
+    expect(TOOL_GUIDE).not.toContain(MEDIA_RULES);
   });
 });

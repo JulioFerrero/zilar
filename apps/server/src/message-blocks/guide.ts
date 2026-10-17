@@ -131,10 +131,36 @@ export const INTERACTIVE_SHAPES = [
   'kind=alert {id,title,field:{label,value},on:boolean,note?}',
 ].join('\n');
 
+// The media kinds: a photo or an uploaded file. Like the interactive kinds they
+// belong to `post_blocks` cards only (a saved-tool or routine card drops them),
+// so the saved-tool guide stays without them.
+export const MEDIA_KINDS: readonly Block['kind'][] = ['images', 'file'];
+
+export const MEDIA_RULES = [
+  'To show a photo or offer a file, first call `fetch_media` with its https URL, then put the returned media id in the card, never the URL.',
+  '`images` takes 1-4 ids in `items` (set `extra` to how many more there are).',
+  '`file` takes one id in `media`, with `name`, `size` (e.g. `12 KB`), `format` (e.g. `CSV`) and optional `rows`.',
+].join('\n');
+
+export const MEDIA_SHAPES = [
+  'kind=images {items:[1-4]mediaId,extra?}',
+  'kind=file {media:mediaId,name,size,format,rows?}',
+].join('\n');
+
 export function cardGuide(opts?: { interactive?: boolean }): string {
   const guide = CARD_RULES + '\n' + CARD_SHAPES;
   if (opts?.interactive !== true) {
     return guide;
   }
-  return guide + '\n' + INTERACTIVE_RULES + '\n' + INTERACTIVE_SHAPES;
+  return (
+    guide +
+    '\n' +
+    INTERACTIVE_RULES +
+    '\n' +
+    INTERACTIVE_SHAPES +
+    '\n' +
+    MEDIA_RULES +
+    '\n' +
+    MEDIA_SHAPES
+  );
 }
