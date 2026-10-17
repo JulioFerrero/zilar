@@ -154,7 +154,7 @@ function PreviewRow({ message }: { message: TopicPreviewMessage }) {
         </div>
       )}
       {blocks !== undefined && <BlockCard data={blocks} footer={time} />}
-      {progress !== undefined && <ProgressCard progress={progress} />}
+      {progress !== undefined && <ProgressCard progress={progress} readOnly />}
       {asText && (
         <>
           <span className="whitespace-pre-wrap break-words">{message.body}</span>

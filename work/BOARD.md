@@ -1818,3 +1818,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1807](T-1807-web-join-preview-cards.md) | web Join preview draws AI cards | 2026-10-17 |
 | [T-1808](T-1808-mock-topic-preview.md) | mock topic preview route and Ideas thread | 2026-10-17 |
 | [T-1810](T-1810-blocks-correction-applies.md) | block card corrections reach the client ledger | 2026-10-17 |
+| [T-1811](T-1811-join-view-guards.md) | Join view waits for ids; preview progress is read-only | 2026-10-17 |

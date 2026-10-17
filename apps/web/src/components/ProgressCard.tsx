@@ -96,8 +96,18 @@ function StepIcon({
  * The task card: one collapsed line (state icon, title, elapsed) that expands
  * to the step checklist and the summary. Without `steps` it falls back to the
  * old `stage`/`detail` shape, so an old server still renders (T-1419).
+ *
+ * T-1811: `readOnly` draws a card the viewer does not own — the topic Join
+ * preview. It keeps the checklist but never offers Stop and never reads the
+ * viewer's AI list.
  */
-export function ProgressCard({ progress }: { progress: Progress }) {
+export function ProgressCard({
+  progress,
+  readOnly = false,
+}: {
+  progress: Progress;
+  readOnly?: boolean;
+}) {
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -124,16 +134,20 @@ export function ProgressCard({ progress }: { progress: Progress }) {
   // T-1422: the Stop button shows only for a working card the viewer can stop:
   // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
   // the viewer's own `GET /api/ais` list). The chat id is the open chat's.
+  // T-1811: a read-only card skips that read entirely.
   const chatJid = useChatSelector((state) => state.activeChatId);
   const [ownedResult] = useQuery(
     () =>
-      fromApi(() => listAis()).pipe(
-        Effect.map((list) => list.find((ai) => ai.jid === progress.ai) ?? null),
-      ),
-    [progress.ai],
+      readOnly
+        ? Effect.succeed(null)
+        : fromApi(() => listAis()).pipe(
+            Effect.map((list) => list.find((ai) => ai.jid === progress.ai) ?? null),
+          ),
+    [progress.ai, readOnly],
   );
   const ownedAi = AsyncResult.isSuccess(ownedResult) ? ownedResult.value : null;
-  const stoppable = isLive(progress.state) && progress.can_stop === true && ownedAi !== null;
+  const stoppable =
+    !readOnly && isLive(progress.state) && progress.can_stop === true && ownedAi !== null;
   // The card the stop was tapped on: "Stopping…" lasts until the next edit
   // arrives, which changes `progress` and clears this.
   const [stoppedFor, setStoppedFor] = useState<Progress | null>(null);

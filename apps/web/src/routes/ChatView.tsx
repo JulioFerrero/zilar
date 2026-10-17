@@ -219,10 +219,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   // T-1797: a public topic the viewer has not joined reads read-only, with one
   // Join key instead of the composer (W9). General is everyone's topic.
+  // T-1811: while the viewer's id or the member list is unknown, keep the
+  // normal thread — a member must never see a Join key.
   const joinPreview =
     chat.topic !== undefined &&
     chat.topic.visibility === 'public' &&
     chat.topic.isGeneral !== true &&
+    currentUserId !== '' &&
+    chat.topic.memberIds !== undefined &&
     !isTopicJoined(chat.topic, currentUserId);
 
   // Pins load when the chat opens (the store also refreshes them on focus

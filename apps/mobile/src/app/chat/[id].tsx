@@ -76,12 +76,14 @@ function Chat() {
 
   // T-1798: a public topic the caller has not joined shows its recent messages
   // read-only with one Join key instead of the thread and the composer. An
-  // unknown caller id keeps the normal thread (never a wrong Join key).
+  // unknown caller id or member list keeps the normal thread (never a wrong
+  // Join key).
   const joinPreview =
     chat.topic !== undefined &&
     chat.topic.visibility === 'public' &&
     !chat.topic.isGeneral &&
     screen.myUserId !== '' &&
+    chat.topic.memberIds !== undefined &&
     !isTopicJoined(chat.topic, screen.myUserId);
 
   if (!isTopic) {
