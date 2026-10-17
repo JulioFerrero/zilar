@@ -607,6 +607,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - the Join view for "Ideas" shows its 4 messages (T-1808, T-1812);
                 - the B11 choice cards match `PhoneChoices.dc.html`;
                 - preview bubbles had square corners and a card inside a bubble → **T-1814, running**.
+              - **AI work T8 (drop `topics.kind`, `status`, `owner_ai_id`) is not ready, even after v0.2.7:**
+                - The phone in this release still decodes `owner` (`apps/mobile/src/lib/topics-api.ts:45`), and the contract still exports `TOPIC_KINDS`/`TOPIC_STATUSES` (`packages/api-contract/src/topics.ts:38-46`).
+                - `owner_ai_id` is still read in `apps/server/src/topics/{ais,members,patch,service,views}.ts` and `groups/ais.ts`.
+                - **Order:** clients stop reading the three fields, a release ships, and only then the drop migration. Julio's 10-15 decisions keep `link_url`/`link_label` and `follow_paused_at`.
               - **Topic-people open question 3 is already handled:** a routine skips when its AI has left the topic room (`apps/server/src/routines/execute.ts:134`, `preflight.ts:27-53`).
               - **T-1809 merged** (the DM interactive cards plan, `docs/plan/dm-interactive-cards.md`, Option A; the lead's corrections are in its Review).
               - **Running (11:46):**

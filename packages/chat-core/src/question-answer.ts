@@ -3,12 +3,20 @@
  * stored on the card: a chip tap sends a normal reply that quotes the question,
  * and the server closes the question on that first reply. A reply is always
  * newer than the question, so loaded history holds both together.
+ * T-1826: the reply may quote the origin id its tapper had live, while the
+ * reloaded question carries its archive id, so both ids count.
  */
 import type { UiMessage } from './types';
 
-/** Whether `message` is an answer to `question`: a reply that quotes it from someone else. */
+/**
+ * Whether `message` is an answer to `question`: a reply that quotes it, by its
+ * id or its origin id, from someone else.
+ */
 export function isQuestionAnswer(message: UiMessage, question: UiMessage): boolean {
-  return message.replyTo?.id === question.id && message.senderId !== question.senderId;
+  const quotedId = message.replyTo?.id;
+  const quotesQuestion =
+    quotedId === question.id || (question.originId !== undefined && quotedId === question.originId);
+  return quotesQuestion && message.senderId !== question.senderId;
 }
 
 /**
