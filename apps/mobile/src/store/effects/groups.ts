@@ -34,6 +34,7 @@ export type GroupActions = Pick<
   | 'removeTopicAi'
   | 'addTopicMember'
   | 'removeTopicMember'
+  | 'joinTopic'
   | 'leaveTopic'
   | 'listTopicMembers'
   | 'listTopicAis'

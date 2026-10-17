@@ -118,6 +118,12 @@ export function makeGroupActions(
           topics.addTopicMember(topicId, userId),
         ),
       ),
+    // T-1787: joins the caller to a public topic, mirroring addTopicMember:
+    // the route's answer repaints the row, so it moves to Your topics.
+    joinTopic: (chatId) =>
+      ctx.run(
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) => topics.joinTopic(topicId)),
+      ),
     removeTopicMember: (chatId, userId) => ctx.run(removeTopicMemberEffect(chatId, userId)),
     leaveTopic: (chatId) =>
       ctx.run(

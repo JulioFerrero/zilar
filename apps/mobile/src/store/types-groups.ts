@@ -90,6 +90,11 @@ export interface ChatStoreGroups {
   addTopicMember: (chatId: string, userId: string) => Promise<void>;
   /** Removes a person from a private topic. Rejects on failure. */
   removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /**
+   * Joins the caller to a public topic (T-1760 server, T-1787 phone), then
+   * refreshes the row so it moves to Your topics. Rejects on failure.
+   */
+  joinTopic: (chatId: string) => Promise<void>;
   /** Leaves a private topic. Rejects on failure. */
   leaveTopic: (chatId: string) => Promise<void>;
   /** Reads the members of a private topic (public topics read the group). */

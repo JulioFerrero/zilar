@@ -7,13 +7,14 @@
  * builds; the route only loads it behind `__DEV__`.
  */
 import { ChevronLeft, MoreVertical, Search } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { type ComponentProps, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
 import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
+import { TopicsSection } from '@/components/group-info/topics-section';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
@@ -32,6 +33,82 @@ const PEOPLE: readonly TopicLinePerson[] = [
 ];
 
 const AIS: readonly TopicLinePerson[] = [{ id: 'ai-deepseek', name: 'Deepseek' }];
+
+// T-1787: the group screen's topic lists, the board's sample data
+// (`PhoneGroup.dc.html:64-107`): General, two joined topics and two others.
+type DevTopic = ComponentProps<typeof TopicsSection>['topics'][number];
+
+const GROUP_MEMBERS = [
+  { userId: 'p1', name: 'JULITO' },
+  { userId: 'p2', name: 'Marta' },
+  { userId: 'p3', name: 'Luis' },
+  { userId: 'p4', name: 'Ana' },
+  { userId: 'p5', name: 'Pablo' },
+  { userId: 'p6', name: 'Sofia' },
+];
+
+const GROUP_AIS = [
+  { aiId: 'ai-deepseek', name: 'Deepseek' },
+  { aiId: 'ai-claude', name: 'Claude' },
+];
+
+const GROUP_TOPICS: readonly DevTopic[] = [
+  {
+    id: 'general',
+    title: 'General',
+    muted: false,
+    topic: { isGeneral: true, visibility: 'public', archived: false },
+  },
+  {
+    id: 'financial',
+    title: 'Financial',
+    muted: false,
+    topic: {
+      isGeneral: false,
+      visibility: 'public',
+      archived: false,
+      memberIds: ['p1', 'p2', 'p3', 'p4'],
+      ais: [{ id: 'ai-deepseek', name: 'Deepseek' }],
+    },
+  },
+  {
+    id: 'design',
+    title: 'Design',
+    muted: true,
+    topic: {
+      isGeneral: false,
+      visibility: 'private',
+      archived: false,
+      memberIds: ['p1', 'p2'],
+      ais: [{ id: 'ai-claude', name: 'Claude' }],
+    },
+  },
+  {
+    id: 'marketing',
+    title: 'Marketing',
+    muted: false,
+    memberCount: 6,
+    topic: {
+      isGeneral: false,
+      visibility: 'public',
+      archived: false,
+      memberIds: ['p2', 'p3', 'p4', 'p5', 'p6'],
+      ais: [{ id: 'ai-claude', name: 'Claude' }],
+    },
+  },
+  {
+    id: 'random',
+    title: 'Random',
+    muted: false,
+    memberCount: 3,
+    topic: {
+      isGeneral: false,
+      visibility: 'public',
+      archived: false,
+      memberIds: ['p2', 'p3'],
+    },
+  },
+];
 
 type State = { label: string; writers: readonly string[] };
 
@@ -102,6 +179,24 @@ export default function TopicHeaderDevScreen() {
                 </HeaderPreview>
               </View>
             ))}
+          </View>
+
+          <Text variant="h3" color="#ededed" className="mt-10">
+            Group topics
+          </Text>
+          <Text className="mt-1 text-[13px] text-[#8a8a8a]">
+            Your topics and Other topics, one per board example.
+          </Text>
+          <View className="mt-5 gap-3 px-1">
+            <TopicsSection
+              topics={GROUP_TOPICS}
+              currentUserId="p1"
+              members={GROUP_MEMBERS}
+              ais={GROUP_AIS}
+              onOpenTopic={noop}
+              onNewTopic={noop}
+              onJoinTopic={() => Promise.resolve()}
+            />
           </View>
         </ScrollView>
       </SafeAreaView>

@@ -1,0 +1,341 @@
+import { isTopicJoined } from '@zilar/chat-core';
+import { palette } from '@zilar/ui-tokens';
+import { BellOff, ChevronRight, Lock, Plus } from 'lucide-react-native';
+import { useState } from 'react';
+import { Pressable, View } from 'react-native';
+
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { InfoRowGroup } from '@/components/group-info/info-row';
+import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/icon-tile';
+import { Text } from '@/components/ui/text';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { runInBackground } from '@/lib/effect/run-in-background';
+
+/**
+ * The group screen's topic lists (T-1787), after `PhoneGroup.dc.html:64-107`:
+ * Your topics (General and the joined ones, then New topic) and Other topics
+ * (the group's public topics the caller has not joined, each with a Join key).
+ * The rows come from the group's topic chat rows; the section is a thin view,
+ * the route owns the data and the writes.
+ */
+
+/** The 22 px stack circle, its ring and the board's 7 px overlap. */
+const STACK_SIZE = 22;
+const STACK_RING = 2;
+const STACK_OVERLAP = -7;
+const STACK_MAX = 4;
+
+type SectionPerson = { id: string; name: string; avatarUrl?: string };
+
+type SectionTopic = {
+  id: string;
+  title: string;
+  muted: boolean;
+  archived?: boolean | undefined;
+  /** The chat row's topic count, the subtitle's fallback when no ids are listed. */
+  memberCount?: number | undefined;
+  topic?: {
+    isGeneral: boolean;
+    visibility: 'public' | 'private';
+    archived: boolean;
+    memberIds?: string[] | undefined;
+    ais?: readonly SectionPerson[] | undefined;
+  };
+};
+
+type SectionMember = { userId: string; name: string; avatarUrl?: string | undefined };
+
+type TopicsSectionProps = {
+  /** The group's topic rows, sorted by `sortTopics`. */
+  topics: readonly SectionTopic[];
+  currentUserId: string;
+  /** The group's people, for the subtitle names, the General stack and seeds. */
+  members: readonly SectionMember[];
+  /** The group's AIs, for the General stack. */
+  ais: readonly { aiId: string; name: string; avatarUrl?: string | undefined }[];
+  onOpenTopic: (chatId: string) => void;
+  onNewTopic: () => void;
+  onJoinTopic: (chatId: string) => Promise<void>;
+};
+
+/** The overlapping circles: up to four people or AIs, ringed in the row's colour. */
+function Stack({ people }: { people: readonly SectionPerson[] }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="flex-row items-center"
+    >
+      {people.map((person, index) => (
+        <View
+          key={person.id}
+          style={{
+            width: STACK_SIZE,
+            height: STACK_SIZE,
+            borderRadius: STACK_SIZE / 2,
+            borderWidth: STACK_RING,
+            borderColor: palette.surface,
+            overflow: 'hidden',
+            marginLeft: index === 0 ? 0 : STACK_OVERLAP,
+          }}
+        >
+          <EntityAvatar
+            person={{
+              id: person.id,
+              name: person.name,
+              ...(person.avatarUrl === undefined ? {} : { avatarUrl: person.avatarUrl }),
+            }}
+            size={STACK_SIZE - STACK_RING * 2}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** The 34 px tile: a lock for a private topic, `#` otherwise. */
+function GlyphTile({ isPrivate }: { isPrivate: boolean }) {
+  return (
+    <View className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-border-strong bg-surface-raised">
+      {isPrivate ? (
+        <Lock size={15} color={ICON} />
+      ) : (
+        <Text color={ICON} className="text-[16px] font-semibold">
+          #
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function personOf(member: SectionMember): SectionPerson {
+  return {
+    id: member.userId,
+    name: member.name,
+    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+  };
+}
+
+/** The subtitle: "Everyone" for General; "N people · <AI>"; private names 2 people. */
+function subtitleFor(chat: SectionTopic, membersById: Map<string, SectionMember>): string {
+  const info = chat.topic;
+  if (info === undefined) {
+    return '';
+  }
+  if (info.isGeneral) {
+    return 'Everyone';
+  }
+  const ai = info.ais?.[0]?.name;
+  if (info.visibility === 'private') {
+    const names = (info.memberIds ?? [])
+      .map((id) => membersById.get(id)?.name)
+      .filter((name): name is string => name !== undefined)
+      .slice(0, 2);
+    if (names.length > 0) {
+      return ai === undefined ? names.join(', ') : `${names.join(', ')} · ${ai}`;
+    }
+  }
+  const count = info.memberIds?.length ?? chat.memberCount ?? 0;
+  const people = `${count} ${count === 1 ? 'person' : 'people'}`;
+  return ai === undefined ? people : `${people} · ${ai}`;
+}
+
+/** The row's stack: General reads the whole group; otherwise its members then AIs. */
+function stackFor(
+  chat: SectionTopic,
+  members: readonly SectionMember[],
+  ais: readonly { aiId: string; name: string; avatarUrl?: string | undefined }[],
+  membersById: Map<string, SectionMember>,
+): SectionPerson[] {
+  const info = chat.topic;
+  if (info === undefined) {
+    return [];
+  }
+  const people = info.isGeneral
+    ? members.map(personOf)
+    : (info.memberIds ?? [])
+        .map((id) => membersById.get(id))
+        .filter((member): member is SectionMember => member !== undefined)
+        .map(personOf);
+  const aiPeople = info.isGeneral
+    ? ais.map((ai) => ({
+        id: ai.aiId,
+        name: ai.name,
+        ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+      }))
+    : (info.ais ?? []);
+  return [...people, ...aiPeople].slice(0, STACK_MAX);
+}
+
+/** One of Your topics: glyph, name and subtitle, the muted mark, the stack, a chevron. */
+function YourTopicRow({
+  chat,
+  subtitle,
+  stack,
+  onOpen,
+}: {
+  chat: SectionTopic;
+  subtitle: string;
+  stack: readonly SectionPerson[];
+  onOpen: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${chat.title}`}
+      onPress={onOpen}
+      className="min-h-[56px] flex-row items-center gap-3 px-3 active:bg-surface-raised"
+    >
+      <GlyphTile isPrivate={chat.topic?.visibility === 'private'} />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text numberOfLines={1} className="text-[15px] text-foreground">
+          {chat.title}
+        </Text>
+        <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+          {subtitle}
+        </Text>
+      </View>
+      {chat.muted ? <BellOff size={15} color={MUTED_FOREGROUND} /> : null}
+      {stack.length > 0 ? <Stack people={stack} /> : null}
+      <ChevronRight size={14} color={MUTED_FOREGROUND} />
+    </Pressable>
+  );
+}
+
+/** One of Other topics: the same row, opening the topic, plus the Join key. */
+function OtherTopicRow({
+  chat,
+  subtitle,
+  onOpen,
+  onJoin,
+}: {
+  chat: SectionTopic;
+  subtitle: string;
+  onOpen: () => void;
+  onJoin: (chatId: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const join = () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setFailed(false);
+    runInBackground(() => onJoin(chat.id), {
+      onFailure: () => setFailed(true),
+      onSettled: () => setBusy(false),
+    });
+  };
+
+  return (
+    <View className="min-h-[56px] flex-row items-center gap-3 px-3">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${chat.title}`}
+        onPress={onOpen}
+        className="min-w-0 flex-1 flex-row items-center gap-3"
+      >
+        <GlyphTile isPrivate={chat.topic?.visibility === 'private'} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text numberOfLines={1} className="text-[15px] text-foreground">
+            {chat.title}
+          </Text>
+          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+            {subtitle}
+          </Text>
+        </View>
+      </Pressable>
+      <Button
+        variant="key"
+        disabled={busy}
+        accessibilityLabel={`Join ${chat.title}`}
+        onPress={join}
+        className="h-8 rounded-[10px] px-3.5"
+      >
+        <Text>{busy ? 'Joining…' : failed ? "Couldn't join" : 'Join'}</Text>
+      </Button>
+    </View>
+  );
+}
+
+/** The New topic key that ends Your topics, opening `NewTopicSheet`. */
+function NewTopicRow({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="New topic"
+      onPress={onPress}
+      className="min-h-[56px] flex-row items-center gap-3 px-3 active:bg-surface-raised"
+    >
+      <IconTile>
+        <Plus size={16} color={ICON} />
+      </IconTile>
+      <Text className="min-w-0 flex-1 text-[15px] text-foreground">New topic</Text>
+    </Pressable>
+  );
+}
+
+export function TopicsSection({
+  topics,
+  currentUserId,
+  members,
+  ais,
+  onOpenTopic,
+  onNewTopic,
+  onJoinTopic,
+}: TopicsSectionProps) {
+  if (topics.length === 0) {
+    return null;
+  }
+  const membersById = new Map(members.map((member) => [member.userId, member]));
+  // Archived topics (manager- or per-user) leave both lists, like the topics screen.
+  const active = topics.filter((chat) => chat.topic?.archived !== true && chat.archived !== true);
+  const your = active.filter(
+    (chat) => chat.topic !== undefined && isTopicJoined(chat.topic, currentUserId),
+  );
+  const other = active.filter(
+    (chat) => chat.topic?.visibility === 'public' && !isTopicJoined(chat.topic, currentUserId),
+  );
+
+  return (
+    <>
+      {your.length > 0 ? (
+        <View className="gap-2">
+          <Text className="px-1 text-[13px] font-semibold text-muted-foreground">Your topics</Text>
+          <InfoRowGroup>
+            {your.map((chat) => (
+              <YourTopicRow
+                key={chat.id}
+                chat={chat}
+                subtitle={subtitleFor(chat, membersById)}
+                stack={stackFor(chat, members, ais, membersById)}
+                onOpen={() => onOpenTopic(chat.id)}
+              />
+            ))}
+            <NewTopicRow onPress={onNewTopic} />
+          </InfoRowGroup>
+        </View>
+      ) : null}
+
+      {other.length > 0 ? (
+        <View className="gap-2">
+          <Text className="px-1 text-[13px] font-semibold text-muted-foreground">Other topics</Text>
+          <InfoRowGroup>
+            {other.map((chat) => (
+              <OtherTopicRow
+                key={chat.id}
+                chat={chat}
+                subtitle={subtitleFor(chat, membersById)}
+                onOpen={() => onOpenTopic(chat.id)}
+                onJoin={onJoinTopic}
+              />
+            ))}
+          </InfoRowGroup>
+        </View>
+      ) : null}
+    </>
+  );
+}

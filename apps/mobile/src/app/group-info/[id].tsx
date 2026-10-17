@@ -7,7 +7,9 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { useGroupManage } from '@/components/chat/group-manage-section';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
+import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
 import { useGroupInviteLinks } from '@/components/chat/use-group-invite-links';
+import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { useGroupRoles } from '@/components/chat/use-group-roles';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
@@ -28,7 +30,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { goBackOrHome } from '@/lib/navigation';
-import { topicsOfGroup } from '@/lib/topics';
+import { mayCreateTopic, topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function GroupInfoScreen() {
@@ -49,6 +51,8 @@ function GroupInfo() {
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const contacts = useChatStore((state) => state.contacts);
+  const ownedAis = useChatStore((state) => state.ownedAis);
+  const joinTopic = useChatStore((state) => state.joinTopic);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
@@ -86,6 +90,17 @@ function GroupInfo() {
   const roles = useGroupRoles(groupId, members);
   const links = useGroupInviteLinks(groupId);
   const visibility = useGroupVisibility(groupId);
+  // T-1787: the New topic row's sheet (the same hook the group screen uses).
+  const myAisInGroup = useMemo(
+    () => groupAis.filter((ai) => ownedAis.some((owned) => owned.id === ai.aiId)),
+    [groupAis, ownedAis],
+  );
+  const canCreate = mayCreateTopic({
+    members,
+    meUserId: currentUserId,
+    membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
+  });
+  const newTopic = useGroupNewTopic({ groupChatId: groupChatId ?? '', myAis: myAisInGroup });
   // T-1573: the Content rows' sheets (media and pins, chat-scoped) and the
   // pins count; the always-allowed rules feed the root count and the page.
   const content = useGroupContent(groupChatId);
@@ -163,6 +178,10 @@ function GroupInfo() {
     aisCount: groupDetail === undefined ? undefined : groupAis.length,
     pinsCount: content.pinsCount,
     allowedCount: groupRules.status === 'ready' ? groupRules.rules.length : undefined,
+    topics,
+    currentUserId,
+    groupMembers: members,
+    groupAis,
     isManager,
     isOwner,
     onBack: () => goBackOrHome(router),
@@ -183,6 +202,15 @@ function GroupInfo() {
     onOpenTools: () => setPage('tools'),
     onOpenActivity: openActivity,
     onOpenAllowed: openAllowed,
+    onOpenTopic: (chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } }),
+    // T-1787: the New topic row opens the sheet only behind the same gate as
+    // the group screen's "+": managers, or members when the switch is on.
+    onNewTopic: () => {
+      if (canCreate && groupChatId !== undefined) {
+        newTopic.open();
+      }
+    },
+    onJoinTopic: (chatId) => joinTopic(chatId),
   };
 
   const membersProps: ComponentProps<typeof MembersPage> = {
@@ -350,6 +378,20 @@ function GroupInfo() {
       />
 
       <GroupContentSheets content={content} />
+
+      {/* T-1787: the New topic row's sheet, created on the group's own row. */}
+      <NewTopicSheet
+        key={newTopic.visible ? 'open' : 'closed'}
+        visible={newTopic.visible}
+        groupTitle={groupTitle}
+        members={members}
+        myAis={myAisInGroup}
+        meUserId={currentUserId}
+        busy={newTopic.busy}
+        error={newTopic.error}
+        onCreate={newTopic.create}
+        onClose={newTopic.close}
+      />
     </>
   );
 }

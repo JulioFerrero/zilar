@@ -1,3 +1,4 @@
+import type { ChatSummary } from '@zilar/chat-core';
 import {
   Activity,
   Bot,
@@ -17,8 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { InfoKeys } from '@/components/group-info/info-keys';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
+import { TopicsSection } from '@/components/group-info/topics-section';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import type { GroupAi, GroupMember } from '@/lib/chat-api';
 import { ICON } from '@/lib/colors';
 
 type GroupInfoRootProps = {
@@ -37,6 +40,13 @@ type GroupInfoRootProps = {
   pinsCount: number | undefined;
   /** The group's always-allowed rules; `undefined` when not loaded. */
   allowedCount: number | undefined;
+  /** The group's topic rows, for the Your/Other topics lists (T-1787). */
+  topics: readonly ChatSummary[];
+  /** The signed-in user's id, for the joined split and the subtitle names. */
+  currentUserId: string;
+  /** The group's people and AIs, for the subtitle names, the stacks and seeds. */
+  groupMembers: readonly GroupMember[];
+  groupAis: readonly GroupAi[];
   isManager: boolean;
   isOwner: boolean;
   onBack: () => void;
@@ -53,6 +63,9 @@ type GroupInfoRootProps = {
   onOpenTools: () => void;
   onOpenActivity: () => void;
   onOpenAllowed: () => void;
+  onOpenTopic: (chatId: string) => void;
+  onNewTopic: () => void;
+  onJoinTopic: (chatId: string) => Promise<void>;
 };
 
 const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member' : 'members'}`;
@@ -76,6 +89,10 @@ export function GroupInfoRoot({
   aisCount,
   pinsCount,
   allowedCount,
+  topics,
+  currentUserId,
+  groupMembers,
+  groupAis,
   isManager,
   isOwner,
   onBack,
@@ -92,6 +109,9 @@ export function GroupInfoRoot({
   onOpenTools,
   onOpenActivity,
   onOpenAllowed,
+  onOpenTopic,
+  onNewTopic,
+  onJoinTopic,
 }: GroupInfoRootProps) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -137,6 +157,17 @@ export function GroupInfoRoot({
             <InfoRow icon={Bot} label="AIs" count={aisCount} onPress={onOpenAis} />
             {isManager ? <InfoRow icon={Link2} label="Invite links" onPress={onOpenLinks} /> : null}
           </InfoRowGroup>
+
+          {/* T-1787: Your topics and Other topics, after `PhoneGroup.dc.html:64-107`. */}
+          <TopicsSection
+            topics={topics}
+            currentUserId={currentUserId}
+            members={groupMembers}
+            ais={groupAis}
+            onOpenTopic={onOpenTopic}
+            onNewTopic={onNewTopic}
+            onJoinTopic={onJoinTopic}
+          />
 
           {/* T-1573: the Content group, between People and Settings, after
               `Phone.dc.html:64-90`. Activity and Always allowed are for

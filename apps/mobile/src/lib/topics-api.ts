@@ -116,6 +116,8 @@ export interface TopicsApi {
   listTopicMembers(id: string): Promise<TopicMember[]>;
   addTopicMember(id: string, userId: string): Promise<Topic>;
   removeTopicMember(id: string, userId: string): Promise<Topic>;
+  /** T-1760/T-1787: joins the caller to a public topic the group lists. */
+  joinTopic(id: string): Promise<Topic>;
   listTopicAis(id: string): Promise<TopicAi[]>;
   addTopicAi(id: string, aiId: string): Promise<Topic>;
   removeTopicAi(id: string, aiId: string): Promise<Topic>;
@@ -228,6 +230,7 @@ export function createTopicsApi(
       runApi(client.topics.addMember({ params: { id }, payload: { userId } })).then(toTopic),
     removeTopicMember: (id, userId) =>
       runApi(client.topics.removeMember({ params: { id, userId } })).then(toTopic),
+    joinTopic: (id) => runApi(client.topics.join({ params: { id } })).then(toTopic),
     listTopicAis: (id) => runApi(client.topics.listAis({ params: { id } })).then(({ ais }) => ais),
     addTopicAi: (id, aiId) =>
       runApi(client.topics.addAi({ params: { id }, payload: { aiId } })).then(toTopic),
