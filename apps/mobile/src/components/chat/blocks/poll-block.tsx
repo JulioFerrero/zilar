@@ -1,6 +1,7 @@
+// effect-plain: a presentational control; the block card owns the request.
 import type { PollBlock as PollBlockData } from '@zilar/protocol';
 import { ChartColumn, Check } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import {
@@ -11,6 +12,7 @@ import {
 } from '@/components/chat/blocks/block-respond';
 import { TABULAR } from '@/components/chat/blocks/figure-block';
 import { Text } from '@/components/ui/text';
+import { myBlockPicks } from '@/lib/blocks-api';
 import { cn } from '@/lib/utils';
 
 type Option = PollBlockData['options'][number];
@@ -27,15 +29,40 @@ function votesOf(option: Option): number {
  */
 export function PollBlock({ block }: { block: PollBlockData }) {
   const respond = useBlockRespond();
+  const messageId = respond?.messageId;
+  const tapped = useRef(false);
   const [mine, setMine] = useState<readonly string[]>([]);
   const total = block.votes ?? block.options.reduce((sum, option) => sum + votesOf(option), 0);
   const disabled = respond === null || respond.pending;
+
+  // T-1822: the card carries counts only, so the viewer's own picks come from
+  // the server once. A tap before the answer lands wins over it.
+  useEffect(() => {
+    if (messageId === undefined) {
+      return;
+    }
+    let active = true;
+    void myBlockPicks(messageId)
+      .then((picks) => {
+        const own = picks[block.id];
+        if (active && !tapped.current && own !== undefined) {
+          setMine([...own]);
+        }
+      })
+      .catch(() => {
+        // The poll starts blank, as before; answering still works.
+      });
+    return () => {
+      active = false;
+    };
+  }, [messageId, block.id]);
 
   const press = (option: Option): void => {
     if (respond === null || respond.pending) {
       return;
     }
     const previous = mine;
+    tapped.current = true;
     const multiple = block.multiple === true;
     const next = multiple
       ? mine.includes(option.id)

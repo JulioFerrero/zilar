@@ -1,7 +1,8 @@
 // effect-plain: a presentational control; the block card owns the request.
 import type { PollBlock as PollBlockData } from '@zilar/protocol';
 import { ChartColumn, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { myBlockPicks } from '@/lib/api/blocks';
 import { cn } from '@/lib/utils';
 import { useBlockRespond } from './BlockRespond';
 
@@ -41,11 +42,36 @@ export function PollBlock({
   initialSelection?: readonly string[];
 }) {
   const respond = useBlockRespond();
+  const messageId = respond?.messageId;
+  const hasInitialSelection = initialSelection !== undefined;
+  const tapped = useRef(false);
   const [counts, setCounts] = useState(() => countsOf(block));
   const [total, setTotal] = useState(() => totalOf(block, countsOf(block)));
   const [mine, setMine] = useState<string[]>(() => [...(initialSelection ?? [])]);
   const [seenBlock, setSeenBlock] = useState(block);
   const [busy, setBusy] = useState(false);
+
+  // T-1822: the card data carries counts only, so the viewer's own picks come
+  // from the server once. A tap before the answer lands wins over it.
+  useEffect(() => {
+    if (messageId === undefined || hasInitialSelection) {
+      return;
+    }
+    let active = true;
+    void myBlockPicks(messageId)
+      .then((picks) => {
+        const own = picks[block.id];
+        if (active && !tapped.current && own !== undefined) {
+          setMine([...own]);
+        }
+      })
+      .catch(() => {
+        // The poll starts blank, as before; answering still works.
+      });
+    return () => {
+      active = false;
+    };
+  }, [messageId, hasInitialSelection, block.id]);
 
   // React's prop-sync pattern: the room correction replaces the recorded counts;
   // the viewer's own pick stays local (the protocol has no viewer field).
@@ -73,6 +99,7 @@ export function PollBlock({
       }
     }
     const previous = { mine, counts, total };
+    tapped.current = true;
     setMine(next);
     setCounts(nextCounts);
     setTotal(Math.max(0, total + next.length - mine.length));

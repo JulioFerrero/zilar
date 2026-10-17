@@ -3,7 +3,7 @@ import type { BlocksData } from '@zilar/protocol';
 import { createTestContext, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';
-import { respondToCard, type CardRespondDeps, type CorrectCardInput } from './respond';
+import { respondToCard, myPicks, type CardRespondDeps, type CorrectCardInput } from './respond';
 
 // T-1792: a member's tap must reach the card, be stored and corrected in the
 // room; a stranger must not learn the card exists, and nothing may be written
@@ -38,9 +38,26 @@ describe('card respond', () => {
     ],
   };
 
+  const pollData: BlocksData = {
+    fallback: 'Lunch',
+    blocks: [
+      {
+        kind: 'poll',
+        id: 'poll-1',
+        question: 'Where do we eat?',
+        multiple: true,
+        options: [
+          { id: 'a', label: 'Pizza' },
+          { id: 'b', label: 'Tacos' },
+        ],
+      },
+    ],
+  };
+
   async function setup(): Promise<{
     deps: CardRespondDeps;
     aiId: string;
+    ownerId: string;
     memberId: string;
     outsiderId: string;
   }> {
@@ -65,9 +82,18 @@ describe('card respond', () => {
       roomJid,
       data: cardData,
     });
+    await recordCard(context.db, {
+      originId: 'poll-origin',
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      roomJid,
+      data: pollData,
+    });
     return {
       deps: { db: context.db, logger: context.logger, correctInRoom },
       aiId,
+      ownerId,
       memberId,
       outsiderId,
     };
@@ -126,6 +152,30 @@ describe('card respond', () => {
       originalId: 'origin-1',
       text: 'Packing list',
       payload: { v: 0, type: 'blocks', data: result.data },
+    });
+  });
+
+  it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {
+    const { deps, ownerId, memberId, outsiderId } = await setup();
+    const vote = (userId: string, optionIds: string[]) =>
+      respondToCard(deps, userId, {
+        messageId: 'poll-origin',
+        blockId: 'poll-1',
+        value: { optionIds },
+      });
+
+    await vote(memberId, ['a', 'b']);
+    await vote(ownerId, ['b']);
+
+    await expect(myPicks(context.db, memberId, 'poll-origin')).resolves.toEqual({
+      picks: { 'poll-1': ['a', 'b'] },
+    });
+    await expect(myPicks(context.db, ownerId, 'poll-origin')).resolves.toEqual({
+      picks: { 'poll-1': ['b'] },
+    });
+    await expect(myPicks(context.db, outsiderId, 'poll-origin')).rejects.toMatchObject({
+      status: 404,
+      code: 'card_not_found',
     });
   });
 });

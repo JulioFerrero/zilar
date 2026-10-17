@@ -30,3 +30,12 @@ export async function respondToBlock(payload: BlocksRespondPayload): Promise<Blo
   }
   return decoded.value;
 }
+
+/**
+ * T-1822: the viewer's own picks on a card, keyed by poll block id. A poll
+ * starts from them after a reload, so a re-vote never drops an earlier option.
+ */
+export async function myBlockPicks(messageId: string): Promise<Record<string, readonly string[]>> {
+  const { picks } = await runApi(blocksClient()['message-blocks'].mine({ query: { messageId } }));
+  return picks;
+}

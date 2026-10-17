@@ -236,6 +236,36 @@ async function correctCard(
   }
 }
 
+// The viewer's own poll picks for one card, keyed by block. Same access as
+// an answer: a card the caller may not see answers the same 404.
+export async function myPicks(
+  db: ServerDatabase,
+  userId: string,
+  messageId: string,
+): Promise<{ picks: Record<string, string[]> }> {
+  const card = await findCard(db, messageId);
+  if (card === null) {
+    throw cardNotFound();
+  }
+  await requireCardAccess(db, card, userId);
+
+  const pollBlockIds = new Set(
+    cardDataOf(card)
+      .blocks.filter((block) => block.kind === 'poll')
+      .map((block) => blockIdOf(block)),
+  );
+  const picks: Record<string, string[]> = {};
+  for (const row of await listResponses(db, card.originId)) {
+    if (row.actorId !== userId || row.itemId === '' || !pollBlockIds.has(row.blockId)) {
+      continue;
+    }
+    const options = picks[row.blockId] ?? [];
+    options.push(row.itemId);
+    picks[row.blockId] = options;
+  }
+  return { picks };
+}
+
 export async function respondToCard(
   deps: CardRespondDeps,
   userId: string,

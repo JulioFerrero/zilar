@@ -21,7 +21,7 @@ import {
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { respondToCard, type CorrectCardInput } from './respond';
+import { respondToCard, myPicks, type CorrectCardInput } from './respond';
 
 export const BLOCKS_RESPOND_RATE_LIMIT_MAX = 120;
 export const BLOCKS_RESPOND_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -71,21 +71,26 @@ export function createMessageBlocksApi(deps: MessageBlocksApiDependencies): Effe
     });
 
   const groupLayer = HttpApiBuilder.group(MessageBlocksApi, 'message-blocks', (handlers) =>
-    handlers.handle(
-      'respond',
-      handler(logger, (request, user) => {
-        const corrector = deps.getGateway?.() ?? null;
-        return respondToCard(
-          {
-            db: deps.db,
-            logger,
-            ...(corrector === null ? {} : { correctInRoom: corrector.correctInRoom }),
-          },
-          user.id,
-          request.payload,
-        );
-      }),
-    ),
+    handlers
+      .handle(
+        'respond',
+        handler(logger, (request, user) => {
+          const corrector = deps.getGateway?.() ?? null;
+          return respondToCard(
+            {
+              db: deps.db,
+              logger,
+              ...(corrector === null ? {} : { correctInRoom: corrector.correctInRoom }),
+            },
+            user.id,
+            request.payload,
+          );
+        }),
+      )
+      .handle(
+        'mine',
+        handler(logger, (request, user) => myPicks(deps.db, user.id, request.query.messageId)),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(MessageBlocksApi).pipe(

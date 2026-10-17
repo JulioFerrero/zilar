@@ -10,7 +10,7 @@
 // it again with `BlocksDataSchema`.
 
 import { Schema } from 'effect';
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { BlocksRespondRateLimit, SchemaErrors, Session } from './middleware';
 
 export const BLOCKS_RESPOND_ID_MAX = 256;
@@ -55,12 +55,28 @@ export const BlocksRespondResult = Schema.Struct({ data: Schema.Unknown });
 
 export type BlocksRespondResult = typeof BlocksRespondResult.Type;
 
+/** The card whose own poll picks the viewer asks for. */
+export const BlocksMyPicksQuery = Schema.Struct({ messageId: IdText });
+
+export type BlocksMyPicksQuery = typeof BlocksMyPicksQuery.Type;
+
+/** The viewer's picks, keyed by the poll block they belong to. */
+export const BlocksMyPicksResult = Schema.Struct({
+  picks: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+});
+
+export type BlocksMyPicksResult = typeof BlocksMyPicksResult.Type;
+
 export const MessageBlocksGroup = HttpApiGroup.make('message-blocks')
   .add(
     HttpApiEndpoint.post('respond', '/blocks/respond', {
       payload: BlocksRespondPayload,
       success: BlocksRespondResult,
     }).middleware(BlocksRespondRateLimit),
+    HttpApiEndpoint.get('mine', '/blocks/mine', {
+      query: BlocksMyPicksQuery,
+      success: BlocksMyPicksResult,
+    }).annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' }),
   )
   .middleware(Session)
   .middleware(SchemaErrors)

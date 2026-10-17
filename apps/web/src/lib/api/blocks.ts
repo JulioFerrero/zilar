@@ -22,3 +22,14 @@ export function respondToBlock(payload: BlocksRespondPayload): Promise<BlocksDat
     return decoded.success;
   });
 }
+
+/**
+ * T-1822: the viewer's own picks on a card, keyed by poll block id. The poll
+ * starts from them after a reload, so a re-vote sends the whole set and the
+ * server never drops an earlier option.
+ */
+export function myBlockPicks(messageId: string): Promise<Record<string, readonly string[]>> {
+  return callApi((client) => client['message-blocks'].mine({ query: { messageId } })).then(
+    ({ picks }) => picks,
+  );
+}
