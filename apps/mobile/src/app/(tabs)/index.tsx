@@ -144,11 +144,6 @@ function ChatsList() {
     router.push({ pathname: '/chat/[id]', params: { id: chatId } });
   };
 
-  const openRequests = () => {
-    closeSearch();
-    router.push('/settings/requests');
-  };
-
   const openSearchGroup = (groupId: string) => {
     closeSearch();
     router.push({ pathname: '/group/[id]', params: { id: groupId } });
@@ -168,7 +163,6 @@ function ChatsList() {
         myJid={me?.jid ?? undefined}
         submitRequest={submitRequest}
         onOpenChat={openChat}
-        onOpenRequests={openRequests}
         onOpenGroup={openSearchGroup}
         chatMatches={chatMatches}
         openActions={actions.openActions}
@@ -191,7 +185,6 @@ function ChatsList() {
         myJid={me?.jid ?? undefined}
         submitRequest={submitRequest}
         onOpenChat={openChat}
-        onOpenRequests={openRequests}
       />
     );
   }

@@ -1871,3 +1871,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1861](T-1861-web-mention-links.md) | web: @mention chips open the person | 2026-10-17 |
 | [T-1860](T-1860-alert-manager-only.md) | only the routine's manager answers a linked alert | 2026-10-17 |
 | [T-1863](T-1863-web-double-click-reply.md) | web: double-click a message to reply | 2026-10-17 |
+| [T-1865](T-1865-phone-search-cleanup.md) | phone: drop dead search actions and the AIs page wrapper | 2026-10-17 |

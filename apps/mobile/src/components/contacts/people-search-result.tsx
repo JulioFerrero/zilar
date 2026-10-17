@@ -31,7 +31,6 @@ export function PeopleSearchResult({
   /** The viewer's own bare JID, for the DM domain. */
   myJid: string | null | undefined;
   onMessage: (chatId: string) => void;
-  onOpenRequests: () => void;
   /** Bumped by the search field's Enter key to look up at once. */
   submitRequest?: number | undefined;
 }) {

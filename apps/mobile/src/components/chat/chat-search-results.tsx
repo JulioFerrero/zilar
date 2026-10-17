@@ -36,7 +36,6 @@ export function ChatSearchResults({
   myJid,
   submitRequest,
   onOpenChat,
-  onOpenRequests,
   onOpenGroup,
   chatMatches,
   openActions,
@@ -55,7 +54,6 @@ export function ChatSearchResults({
   myJid: string | undefined;
   submitRequest: number;
   onOpenChat: (chatId: string) => void;
-  onOpenRequests: () => void;
   onOpenGroup: (groupId: string) => void;
   chatMatches: ChatListRow[];
   openActions: (id: string) => void;
@@ -100,7 +98,6 @@ export function ChatSearchResults({
           chats={chats}
           myJid={myJid}
           onMessage={onOpenChat}
-          onOpenRequests={onOpenRequests}
           submitRequest={submitRequest}
         />
       ) : (
@@ -152,7 +149,6 @@ export function ChatPeopleResults({
   myJid,
   submitRequest,
   onOpenChat,
-  onOpenRequests,
 }: {
   searchHeader: ReactNode;
   contactsApi: ContactsApi;
@@ -161,7 +157,6 @@ export function ChatPeopleResults({
   myJid: string | undefined;
   submitRequest: number;
   onOpenChat: (chatId: string) => void;
-  onOpenRequests: () => void;
 }) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -173,7 +168,6 @@ export function ChatPeopleResults({
           chats={chats}
           myJid={myJid}
           onMessage={onOpenChat}
-          onOpenRequests={onOpenRequests}
           submitRequest={submitRequest}
         />
       </ScrollView>

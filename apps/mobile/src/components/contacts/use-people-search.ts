@@ -1,19 +1,12 @@
-import { Effect } from 'effect';
 import { useEffect, useReducer, useRef, useState } from 'react';
 
-import { ContactsApiError, domainOfJid, type ContactsApi } from '../../lib/contacts-api';
-import {
-  actOnProfileRequestEffect,
-  addContactSendFailure,
-  resolveContactChat,
-} from './add-contact';
-import { performBlockEffect, performUnblockEffect } from './blocks';
+import { domainOfJid, type ContactsApi } from '../../lib/contacts-api';
+import { resolveContactChat } from './add-contact';
 import { PeopleSearchController, type PeopleSearchView } from './people-search';
 
 /**
  * The `@handle` people search for the chat-list search bar (T-0193): the
- * debounced exact lookup plus the card actions, behaving exactly like the
- * add-contact flow (including refreshing the row after the action).
+ * debounced exact lookup, and opening a contact's DM without a refetch.
  * `submitRequest` is bumped by the search field's Enter key to look up at
  * once.
  */
@@ -28,23 +21,13 @@ export function usePeopleSearch(options: {
   submitRequest?: number | undefined;
 }): {
   view: PeopleSearchView;
-  busy: boolean;
   actionError: string | null;
-  lookupNow: () => void;
-  send: () => void;
-  cancelRequest: () => void;
-  acceptRequest: () => void;
-  declineRequest: () => void;
-  block: () => void;
-  unblock: () => void;
   openMessage: () => void;
 } {
   const { api, text, chats, myJid, onMessage, submitRequest } = options;
   const [, force] = useReducer((count: number) => count + 1, 0);
   const [controller] = useState(() => new PeopleSearchController({ api, onChange: force }));
-  const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const busyRef = useRef(false);
 
   useEffect(() => {
     controller.setApi(api);
@@ -69,114 +52,9 @@ export function usePeopleSearch(options: {
     }
   }, [controller, submitRequest]);
 
-  const runAction = (work: Effect.Effect<void, unknown>): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusy(true);
-    setActionError(null);
-    Effect.runFork(
-      work.pipe(
-        Effect.catch((error: unknown) =>
-          Effect.sync(() => {
-            setActionError(actionErrorFor(error));
-          }),
-        ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            busyRef.current = false;
-            setBusy(false);
-          }),
-        ),
-      ),
-    );
-  };
-
-  const actOnRequest = (work: (id: string) => Promise<unknown>): void => {
-    const target = controller.actionTarget();
-    if (target === null) {
-      return;
-    }
-    const active = target.profile;
-    runAction(
-      actOnProfileRequestEffect(
-        api,
-        { userId: active.userId, handle: target.handle },
-        work,
-        (found) => controller.setFound(found, false),
-        // Nothing to do: setFound(found, false) above already clears `sent`,
-        // and writing `active` here would overwrite the refreshed profile.
-        () => undefined,
-      ),
-    );
-  };
-
   return {
     view: controller.view,
-    busy,
     actionError,
-    lookupNow: () => controller.lookupNow(),
-    send: () => {
-      const target = controller.actionTarget();
-      if (target === null) {
-        return;
-      }
-      const active = target.profile;
-      runAction(
-        Effect.tryPromise({
-          try: () => api.sendContactRequest(active.handle),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.map((created) => {
-            if (created.incoming === true) {
-              controller.setFound({ ...active, relation: 'request_received' }, false);
-            } else {
-              controller.setFound(active, true);
-            }
-          }),
-        ),
-      );
-    },
-    cancelRequest: () => actOnRequest((id) => api.cancelContactRequest(id)),
-    acceptRequest: () => actOnRequest((id) => api.acceptContactRequest(id)),
-    declineRequest: () => actOnRequest((id) => api.declineContactRequest(id)),
-    block: () => {
-      const target = controller.actionTarget();
-      if (target === null) {
-        return;
-      }
-      const active = target.profile;
-      runAction(
-        performBlockEffect(api, active.userId, () => {
-          controller.setFound({ ...active, relation: 'blocked' }, false);
-        }).pipe(
-          Effect.map((failure) => {
-            if (failure !== null) {
-              setActionError(failure);
-            }
-          }),
-        ),
-      );
-    },
-    unblock: () => {
-      const target = controller.actionTarget();
-      if (target === null) {
-        return;
-      }
-      const active = target.profile;
-      runAction(
-        performUnblockEffect(api, active.userId, () => {
-          controller.setFound({ ...active, relation: 'none' }, false);
-        }).pipe(
-          Effect.map((failure) => {
-            if (failure !== null) {
-              setActionError(failure);
-            }
-          }),
-        ),
-      );
-    },
     openMessage: () => {
       const target = controller.actionTarget();
       if (target === null) {
@@ -190,11 +68,4 @@ export function usePeopleSearch(options: {
       onMessage(chatId);
     },
   };
-}
-
-function actionErrorFor(error: unknown): string {
-  if (error instanceof ContactsApiError && error.status === 404) {
-    return 'That request is no longer here.';
-  }
-  return addContactSendFailure(error);
 }

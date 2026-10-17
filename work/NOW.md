@@ -692,6 +692,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - the snippet stops drawing bigger than the sender (nested phone `Text` applied its own size).
                 - **T-1855 (web, running):** the same header removal on web.
               - **Also running:** T-1853 (media M2, `GET /api/card-media/:id`, owner-only for DM cards).
+              - **Live `c4c13a577` (15:56) and `f184f16b3` (16:05):** 6 containers healthy, 0 errors, 75 migrations (0073 `card_media`, 0074 the routine alert link). `/api/card-media/x` gives 401 signed out.
+                - **The web easy-life fixes, live:**
+                  - **T-1851:** clicking a person's avatar or name opens them. Verified: Deepseek's avatar opens its chat.
+                  - **T-1852:** the header avatar and the people line open the panel.
+                  - **T-1861:** @mention chips open the person. Verified: the @Deepseek chip opens its chat.
+                  - **T-1855:** message search has no repeated header.
+                - **Phone, merged (next APK):**
+                  - **T-1854:** Julio's `@iryna` fix: one compact person row and clean message hits (emulator checked).
+                  - **T-1858:** one "People and AIs" row and page (emulator checked).
+                - **Web T-1857:** one "People and AIs" row and page, after two screenshot fix rounds.
+                - **Alert card:** T-1856 (the link and the answer effect) and T-1860 (manager-only, audited).
+                - **Media:** T-1853 (the read route).
+              - **Merged and held:** T-1863 (web: double-click a message to reply; mock checked).
+              - **Running (16:15):**
+                - T-1859 (phone person links);
+                - T-1862 (media M3a, fetch/sniff/strip);
+                - T-1864 (plan: how an alert card links to a routine that needs approval first; a gap I found);
+                - T-1865 (phone dead-code cleanup).
               - **Phone release v0.2.8 is ready when Julio wants it.** It carries:
                 - the DM card answers (T-1825);
                 - the question origin-id match (T-1826);

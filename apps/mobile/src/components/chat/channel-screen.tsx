@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
 import { Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
+import { ChevronLeft } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Share } from 'react-native';
+import { ScrollView, Share, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelMoreMenu } from '@/components/channel-info/more-menu';
@@ -19,15 +21,18 @@ import {
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
 import { ActivityPage } from '@/components/group-info/activity-page';
-import { AisPage } from '@/components/group-info/ais-page';
+import { GroupAisList } from '@/components/group-info/ais-list';
 import { AllowedPage, useGroupRules } from '@/components/group-info/allowed-page';
 import { GroupContentSheets, useGroupContent } from '@/components/group-info/group-info-pages';
+import { IconButton } from '@/components/ui/icon-button';
+import { Text } from '@/components/ui/text';
 import {
   channelDescription,
   channelSubscriberCount,
   channelViewerRole,
   mayManageChannel,
 } from '@/lib/channels';
+import { ICON } from '@/lib/colors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import { WEB_HOST } from '@/lib/web-host';
@@ -186,12 +191,18 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
 
   if (page === 'ais') {
     return (
-      <AisPage
-        groupId={groupId}
-        ais={groupDetail?.ais ?? []}
-        isManager={isManager}
-        onBack={closePage}
-      />
+      <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+        <View className="h-14 flex-row items-center gap-2 px-3">
+          <IconButton label="Back" onPress={closePage}>
+            <ChevronLeft size={18} color={ICON} />
+          </IconButton>
+          <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">AIs</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          <GroupAisList groupId={groupId} ais={groupDetail?.ais ?? []} isManager={isManager} />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
