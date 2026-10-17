@@ -1,7 +1,10 @@
 import { formatTime, senderColor, type ChatSummary } from '@zilar/chat-core';
 import type { TopicPreviewMessage } from '@zilar/api-contract';
+import { isValid, PayloadSchema } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { useState } from 'react';
+import { ProgressCard } from '@/components/ProgressCard';
+import { BlockCard } from '@/components/message/blocks/BlockCard';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { getTopicPreview } from '@/lib/api';
@@ -9,6 +12,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
+import { cn } from '@/lib/utils';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PreviewState =
@@ -76,26 +80,7 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
               </p>
             )}
             {preview.status === 'ready' &&
-              preview.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className="bubble-in flex max-w-[min(560px,100%)] flex-col gap-0.5 self-start rounded-[14px] rounded-bl-[4px] px-3 py-2 text-[14px] leading-[1.5]"
-                >
-                  <span
-                    className="truncate text-[12px] font-semibold"
-                    style={{ color: senderColor(message.nick) }}
-                  >
-                    {message.nick}
-                  </span>
-                  <span className="whitespace-pre-wrap break-words">{message.body}</span>
-                  <time
-                    dateTime={message.at}
-                    className="font-mono self-end text-[10px] tabular-nums text-bubble-in-meta"
-                  >
-                    {formatTime(new Date(message.at))}
-                  </time>
-                </div>
-              ))}
+              preview.messages.map((message) => <PreviewRow key={message.id} message={message} />)}
           </div>
         </div>
       </div>
@@ -114,6 +99,68 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One preview row. A row may carry the decoded `<agent>` payload, so the card
+ * kinds the thread draws are drawn here too instead of showing a blank or
+ * fallback-text bubble (T-1807, the web twin of T-1798).
+ */
+function PreviewRow({ message }: { message: TopicPreviewMessage }) {
+  const payload = isValid(PayloadSchema)(message.payload) ? message.payload : undefined;
+  const blocks = payload?.type === 'blocks' ? payload.data : undefined;
+  const progress = payload?.type === 'progress' ? payload.data : undefined;
+  const asText = blocks === undefined && progress === undefined;
+  // A row with neither a drawable card nor text has nothing to show.
+  if (asText && message.body === '') {
+    return null;
+  }
+
+  const time = (
+    <time
+      dateTime={message.at}
+      className="font-mono self-end text-[10px] tabular-nums text-bubble-in-meta"
+    >
+      {formatTime(new Date(message.at))}
+    </time>
+  );
+
+  return (
+    <div
+      className={cn(
+        'flex max-w-[min(560px,100%)] flex-col self-start',
+        // A card is its own surface, as in the thread: no bubble box around it.
+        asText &&
+          'bubble-in gap-0.5 rounded-[14px] rounded-bl-[4px] px-3 py-2 text-[14px] leading-[1.5]',
+      )}
+    >
+      {asText ? (
+        <span
+          className="truncate text-[12px] font-semibold"
+          style={{ color: senderColor(message.nick) }}
+        >
+          {message.nick}
+        </span>
+      ) : (
+        // The thread's standalone card keeps the sender over the card with
+        // `MessageSender`'s classes plus its `px-3 pt-2` wrapper.
+        <div
+          className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
+          style={{ color: senderColor(message.nick) }}
+        >
+          <span className="truncate">{message.nick}</span>
+        </div>
+      )}
+      {blocks !== undefined && <BlockCard data={blocks} footer={time} />}
+      {progress !== undefined && <ProgressCard progress={progress} />}
+      {asText && (
+        <>
+          <span className="whitespace-pre-wrap break-words">{message.body}</span>
+          {time}
+        </>
+      )}
     </div>
   );
 }

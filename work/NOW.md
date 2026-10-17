@@ -556,7 +556,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **State at 10:05 UTC:**
               - **Live `aefac1968`** (09:52 UTC; 6 containers healthy, 0 errors, routes 401 signed out): T-1799 (guide nits), T-1805 (phone dev catalogs in mock builds), T-1801 (mock topic members), T-1800 (`post_blocks` in DMs), T-1804 (media plan) and T-1798 (W10 phone Join, Mute and Leave).
               - **Merged and held:** T-1806 (the approval-scope test was stale since T-1762; fixed the seed), T-1797 (W9 web Join, Mute and Leave) and T-1795 (B10 web interactive cards).
-              - **Running at 10:30:**
+              - **Running at 10:00:**
                 - T-1796 (B11 phone; lead round: re-tap no-op, form failure);
                 - T-1802 (the flip; three stale tests allowed);
                 - T-1803 (B12 guide, plus a DM guard that refuses interactive kinds in DMs);
