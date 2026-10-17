@@ -1828,3 +1828,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1818](T-1818-public-topic-hint.md) | public topic hint: anyone can find and join it | 2026-10-17 |
 | [T-1819](T-1819-panel-rows-dont-shrink.md) | panel rows keep their height | 2026-10-17 |
 | [T-1815](T-1815-form-answer-persists.md) | a sent form keeps its answer | 2026-10-17 |
+| [T-1820](T-1820-card-answer-error.md) | a failed card answer says so | 2026-10-17 |

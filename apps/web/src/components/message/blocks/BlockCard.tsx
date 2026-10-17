@@ -87,12 +87,14 @@ export function BlockCard({
 }) {
   const [shown, setShown] = useState(data);
   const [seenData, setSeenData] = useState(data);
+  const [failed, setFailed] = useState(false);
   const shownRef = useRef(data);
 
   // React's prop-sync pattern: the room correction replaces the drawn card.
   if (data !== seenData) {
     setSeenData(data);
     setShown(data);
+    setFailed(false);
   }
 
   useEffect(() => {
@@ -118,10 +120,12 @@ export function BlockCard({
         });
         shownRef.current = next;
         setShown(next);
+        setFailed(false);
         return next;
       } catch {
         shownRef.current = previous;
         setShown(previous);
+        setFailed(true);
         return null;
       }
     },
@@ -148,14 +152,22 @@ export function BlockCard({
   // icon, the line and the time inline, 12/14 padding and no footer underneath.
   const lone = !hasHeader && rendered.length === 1 ? rendered[0]?.block : undefined;
   const compactCallout = lone !== undefined && lone.kind === 'callout' ? lone : undefined;
+  const errorLine = failed ? (
+    <p role="alert" className="mt-1 text-[12px] text-danger">
+      Could not send. Try again.
+    </p>
+  ) : null;
   if (compactCallout !== undefined) {
     return (
-      <div className="flex w-full min-w-[280px] max-w-[380px] flex-row items-center gap-3 rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] py-[12px] text-[14px] leading-[20px] text-[#ededed]">
-        <div className="min-w-0 flex-1">
-          <CalloutBlock block={compactCallout} />
+      <>
+        <div className="flex w-full min-w-[280px] max-w-[380px] flex-row items-center gap-3 rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] py-[12px] text-[14px] leading-[20px] text-[#ededed]">
+          <div className="min-w-0 flex-1">
+            <CalloutBlock block={compactCallout} />
+          </div>
+          {footer}
         </div>
-        {footer}
-      </div>
+        {errorLine}
+      </>
     );
   }
   return (
@@ -184,6 +196,7 @@ export function BlockCard({
 
         {footer !== undefined && <div className="flex justify-end">{footer}</div>}
       </div>
+      {errorLine}
     </BlockRespondContext.Provider>
   );
 }

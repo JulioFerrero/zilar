@@ -54,7 +54,6 @@ function numberValue(text: string | undefined): number {
 export function FormBlock({ block }: { block: FormBlockData }) {
   const respond = useBlockRespond();
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(block.fields));
-  const [failed, setFailed] = useState(false);
   const [answered, setAnswered] = useState<Answer | undefined>(() => sentAnswer(block));
   // A room correction's values win; adjust during render rather than in an
   // effect, as `use-chat-screen.ts:131` does. A send made in this view keeps
@@ -63,7 +62,6 @@ export function FormBlock({ block }: { block: FormBlockData }) {
   if (valuesFrom !== block) {
     setValuesFrom(block);
     setValues(initialValues(block.fields));
-    setFailed(false);
     const next = sentAnswer(block);
     if (next !== undefined) {
       setAnswered((current) => (current?.mine === true ? current : next));
@@ -73,7 +71,6 @@ export function FormBlock({ block }: { block: FormBlockData }) {
 
   const setValue = (id: string, text: string): void => {
     setValues((previous) => ({ ...previous, [id]: text.slice(0, VALUE_MAX) }));
-    setFailed(false);
   };
 
   const step = (field: Field, delta: number): void => {
@@ -87,7 +84,6 @@ export function FormBlock({ block }: { block: FormBlockData }) {
     const reply = block.fields
       .map((field) => `${field.label}: ${values[field.id] ?? ''}`)
       .join(', ');
-    setFailed(false);
     respond.submit({
       blockId: block.id,
       value: { fields: values },
@@ -95,9 +91,7 @@ export function FormBlock({ block }: { block: FormBlockData }) {
       onSettled: (ok) => {
         if (ok) {
           setAnswered((current) => current ?? { at: new Date(), mine: true });
-          return;
         }
-        setFailed(true);
       },
     });
   };
@@ -212,9 +206,6 @@ export function FormBlock({ block }: { block: FormBlockData }) {
         <View className="flex-row justify-end">{submitKey}</View>
       )}
       {answeredRow}
-      {failed ? (
-        <Text className="text-[13px] font-semibold text-danger">Could not send. Try again.</Text>
-      ) : null}
     </View>
   );
 }

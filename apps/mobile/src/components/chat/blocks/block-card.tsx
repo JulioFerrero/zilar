@@ -138,9 +138,11 @@ export function BlockCard({
   // The prop wins whenever the room correction replaces the card: adjust during
   // render (React's derived-state pattern), as `use-chat-screen.ts:131` does.
   const [shownFrom, setShownFrom] = useState(data);
+  const [failed, setFailed] = useState(false);
   if (shownFrom !== data) {
     setShownFrom(data);
     setShown(data);
+    setFailed(false);
   }
   const [pending, setPending] = useState(false);
   const sendText = useChatStore((state) => state.sendText);
@@ -164,6 +166,7 @@ export function BlockCard({
         Effect.tap((next) =>
           Effect.sync(() => {
             setShown(next);
+            setFailed(false);
             if (request.reply !== undefined) {
               sendText(respond.chatId, `@${respond.aiName} ${request.reply}`, {
                 replyTo: { id: respond.messageId, senderName: respond.aiName },
@@ -183,6 +186,7 @@ export function BlockCard({
         Effect.catch(() =>
           Effect.sync(() => {
             setShown(previous);
+            setFailed(true);
             request.onSettled?.(false);
           }),
         ),
@@ -202,37 +206,48 @@ export function BlockCard({
   // no footer row underneath. Every other card keeps the stacked layout.
   const only = blocks.length === 1 ? blocks[0] : undefined;
   const compactCallout = !hasHeader && only?.kind === 'callout' ? only : undefined;
+  const errorLine = failed ? (
+    <Text accessibilityRole="alert" className="mt-1 text-[13px] font-semibold text-danger">
+      Could not send. Try again.
+    </Text>
+  ) : null;
   return (
     <BlockRespondContext.Provider value={respondValue}>
       {compactCallout !== undefined ? (
-        <View className="w-full min-w-[260px] max-w-[340px] flex-row items-center gap-3 rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] py-[12px]">
-          <TextClassContext.Provider value="text-[15px] leading-[21px]">
-            <View className="min-w-0 flex-1">
-              <CalloutBlock block={compactCallout} />
-            </View>
-          </TextClassContext.Provider>
-          {footer === undefined ? null : footer}
-        </View>
+        <>
+          <View className="w-full min-w-[260px] max-w-[340px] flex-row items-center gap-3 rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] py-[12px]">
+            <TextClassContext.Provider value="text-[15px] leading-[21px]">
+              <View className="min-w-0 flex-1">
+                <CalloutBlock block={compactCallout} />
+              </View>
+            </TextClassContext.Provider>
+            {footer === undefined ? null : footer}
+          </View>
+          {errorLine}
+        </>
       ) : (
-        <View className="w-full min-w-[260px] max-w-[340px] gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px]">
-          <TextClassContext.Provider value="text-[15px] leading-[21px]">
-            {hasHeader ? (
-              <BlockHeader icon={shown.icon} title={shown.title} meta={shown.meta} />
-            ) : null}
-            {blocks.length === 0 ? (
-              <Text numberOfLines={8}>{shown.fallback}</Text>
-            ) : (
-              blocks.map((block, index) => (
-                <Fragment key={`${block.kind}-${index}`}>
-                  {index === 0 ? null : <View className="h-px bg-[#232323]" />}
-                  <BlockBody block={block} showHeading={!hasHeader} />
-                </Fragment>
-              ))
-            )}
-          </TextClassContext.Provider>
-          {/* The footer stays outside the body text context: its time keeps its own size. */}
-          {footer === undefined ? null : <View className="items-end">{footer}</View>}
-        </View>
+        <>
+          <View className="w-full min-w-[260px] max-w-[340px] gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px]">
+            <TextClassContext.Provider value="text-[15px] leading-[21px]">
+              {hasHeader ? (
+                <BlockHeader icon={shown.icon} title={shown.title} meta={shown.meta} />
+              ) : null}
+              {blocks.length === 0 ? (
+                <Text numberOfLines={8}>{shown.fallback}</Text>
+              ) : (
+                blocks.map((block, index) => (
+                  <Fragment key={`${block.kind}-${index}`}>
+                    {index === 0 ? null : <View className="h-px bg-[#232323]" />}
+                    <BlockBody block={block} showHeading={!hasHeader} />
+                  </Fragment>
+                ))
+              )}
+            </TextClassContext.Provider>
+            {/* The footer stays outside the body text context: its time keeps its own size. */}
+            {footer === undefined ? null : <View className="items-end">{footer}</View>}
+          </View>
+          {errorLine}
+        </>
       )}
     </BlockRespondContext.Provider>
   );
