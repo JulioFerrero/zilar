@@ -7,6 +7,7 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { TopicDoneRow } from '@/components/chat/topic-done-row';
 import { TopicInfoRoles } from '@/components/chat/topic-info-roles';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
+import { TopicMuteLeave } from '@/components/chat/topic-mute-leave';
 import { memberPerson, type TopicLinePerson } from '@/components/chat/topic-people-line';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -81,10 +82,10 @@ type TopicInfoSheetProps = {
   /** The signed-in user id, to mark the caller's own row. */
   myUserId: string;
   canArchive: boolean;
-  isMember: boolean;
   busy: boolean;
   error: string;
-  onLeave: () => void;
+  /** Closes the sheet and opens the Leave confirm (T-1798). */
+  onAskLeave: () => void;
   onArchive: () => void;
   onClose: () => void;
   /** The roles attached to this topic (empty until the first load). */
@@ -124,8 +125,8 @@ type TopicInfoSheetProps = {
  * T-1785 after `PhonePeople.dc.html`: the topic header, an optional
  * "Add people or AIs" key, the AIs with their owner labels and the topic's
  * people from `memberIds` (the group's members on General). The topic link,
- * the error line, the roles block and Archive / Leave stay below. The screen
- * loads the data; the sheet only renders it.
+ * the error line, the roles block, Mute / Leave and Archive stay below. The
+ * screen loads the data; the sheet only renders it.
  */
 export function TopicInfoSheet({
   chat,
@@ -133,10 +134,9 @@ export function TopicInfoSheet({
   detail,
   myUserId,
   canArchive,
-  isMember,
   busy,
   error,
-  onLeave,
+  onAskLeave,
   onArchive,
   onClose,
   roles,
@@ -316,18 +316,10 @@ export function TopicInfoSheet({
 
           <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />
 
-          <View className="flex-row justify-end gap-2">
-            {topic.visibility === 'private' && isMember && !topic.isGeneral ? (
-              <Button
-                variant="ghost"
-                accessibilityLabel="Leave topic"
-                disabled={busy}
-                onPress={onLeave}
-              >
-                <Text>Leave</Text>
-              </Button>
-            ) : null}
-            {canArchive ? (
+          <TopicMuteLeave chat={chat} myUserId={myUserId} disabled={busy} onAskLeave={onAskLeave} />
+
+          {canArchive ? (
+            <View className="flex-row justify-end gap-2">
               <Button
                 variant="destructive"
                 accessibilityLabel="Archive topic"
@@ -336,8 +328,8 @@ export function TopicInfoSheet({
               >
                 <Text>{busy ? 'Working…' : 'Archive'}</Text>
               </Button>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </BottomSheet>

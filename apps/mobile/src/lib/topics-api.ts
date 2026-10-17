@@ -6,6 +6,7 @@ import {
   Topic as TopicSchema,
   trimTopicText,
   type Topic as ContractTopic,
+  type TopicPreviewMessage,
 } from '@zilar/api-contract';
 import type { TopicKind, TopicOwner, TopicStatus, TopicVisibility } from '@zilar/chat-core';
 
@@ -22,6 +23,8 @@ import { createApiClient } from './effect/api-client';
  */
 
 export type { TopicKind, TopicStatus, TopicVisibility, TopicOwner };
+/** The one preview row shape (T-1798), re-exported for callers of the port. */
+export type { TopicPreviewMessage };
 
 export interface TopicAi {
   id: string;
@@ -118,6 +121,8 @@ export interface TopicsApi {
   removeTopicMember(id: string, userId: string): Promise<Topic>;
   /** T-1760/T-1787: joins the caller to a public topic the group lists. */
   joinTopic(id: string): Promise<Topic>;
+  /** T-1798: the recent messages of a public topic, oldest first. */
+  topicPreview(id: string): Promise<TopicPreviewMessage[]>;
   listTopicAis(id: string): Promise<TopicAi[]>;
   addTopicAi(id: string, aiId: string): Promise<Topic>;
   removeTopicAi(id: string, aiId: string): Promise<Topic>;
@@ -231,6 +236,8 @@ export function createTopicsApi(
     removeTopicMember: (id, userId) =>
       runApi(client.topics.removeMember({ params: { id, userId } })).then(toTopic),
     joinTopic: (id) => runApi(client.topics.join({ params: { id } })).then(toTopic),
+    topicPreview: (id) =>
+      runApi(client.topics.preview({ params: { id } })).then(({ messages }) => messages),
     listTopicAis: (id) => runApi(client.topics.listAis({ params: { id } })).then(({ ais }) => ais),
     addTopicAi: (id, aiId) =>
       runApi(client.topics.addAi({ params: { id }, payload: { aiId } })).then(toTopic),

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
+import { LeaveTopicSheet } from '@/components/chat/leave-topic-sheet';
 import { TopicAddSheet } from '@/components/chat/topic-add-sheet';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
@@ -28,6 +29,7 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const addTopicAi = useChatStore((state) => state.addTopicAi);
 
   const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   // The Add sheet replaces the info sheet (the board's Close returns to the
   // topic): one native sheet is presented at a time, like the AI memory sheet.
   const [addOpen, setAddOpen] = useState(false);
@@ -56,10 +58,19 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
     screen.setInfoBusy(true);
     screen.setInfoError('');
     runInBackground(() => removeTopicMember(chat.id, screen.myUserId), {
-      onSuccess: () => screen.setInfoOpen(false),
+      onSuccess: () => {
+        screen.setInfoOpen(false);
+        setConfirmingLeave(false);
+      },
       onFailure: () => screen.setInfoError('Could not leave the topic. Try again.'),
       onSettled: () => screen.setInfoBusy(false),
     });
+  };
+
+  const onAskLeave = () => {
+    screen.setInfoError('');
+    screen.setInfoOpen(false);
+    setConfirmingLeave(true);
   };
 
   const onArchive = () => {
@@ -103,10 +114,9 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
         detail={screen.detail}
         myUserId={screen.myUserId}
         canArchive={screen.canArchiveInfo}
-        isMember={screen.isPrivateMember}
         busy={screen.infoBusy}
         error={screen.infoError}
-        onLeave={onLeave}
+        onAskLeave={onAskLeave}
         onArchive={onAskArchive}
         onClose={() => {
           if (!screen.infoBusy) {
@@ -139,6 +149,19 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
           screen.setInfoOpen(false);
           screen.setMemoryAi(ai);
         }}
+      />
+      <LeaveTopicSheet
+        chat={confirmingLeave ? chat : null}
+        groupTitle={screen.groupName}
+        busy={screen.infoBusy}
+        error={screen.infoError}
+        onCancel={() => {
+          if (!screen.infoBusy) {
+            setConfirmingLeave(false);
+            screen.setInfoError('');
+          }
+        }}
+        onLeave={onLeave}
       />
       <TopicAddSheet
         chat={addOpen ? chat : null}

@@ -1,3 +1,4 @@
+import { isTopicJoined } from '@zilar/chat-core';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import { composerBarFor } from '@/components/chat/composer-mentions';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { TopicInfoHost } from '@/components/chat/topic-info-host';
+import { TopicJoinView } from '@/components/chat/topic-join-view';
 import { useChatScreen } from '@/components/chat/use-chat-screen';
 import { StateMessage } from '@/components/ui/state-message';
 import { goBackOrHome } from '@/lib/navigation';
@@ -71,6 +73,16 @@ function Chat() {
     openInfo,
     openGroup,
   } = screen;
+
+  // T-1798: a public topic the caller has not joined shows its recent messages
+  // read-only with one Join key instead of the thread and the composer. An
+  // unknown caller id keeps the normal thread (never a wrong Join key).
+  const joinPreview =
+    chat.topic !== undefined &&
+    chat.topic.visibility === 'public' &&
+    !chat.topic.isGeneral &&
+    screen.myUserId !== '' &&
+    !isTopicJoined(chat.topic, screen.myUserId);
 
   if (!isTopic) {
     // A legacy group row (older server, no topics) uses the full composer
@@ -179,8 +191,14 @@ function Chat() {
         onDismissError={() => dismissPinsError()}
       />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <ChatThread screen={screen} chat={chat} />
-        <ChatComposerDock screen={screen} chat={chat} variant="composer" />
+        {joinPreview ? (
+          <TopicJoinView key={chat.id} chat={chat} />
+        ) : (
+          <>
+            <ChatThread screen={screen} chat={chat} />
+            <ChatComposerDock screen={screen} chat={chat} variant="composer" />
+          </>
+        )}
       </KeyboardAvoidingView>
       <TopicInfoHost screen={screen} chat={chat} />
       <ChatOverlays screen={screen} chat={chat} />
