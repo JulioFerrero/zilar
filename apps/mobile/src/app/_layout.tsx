@@ -31,6 +31,7 @@ import { mobileRuntime } from '@/lib/effect/runtime';
 import { startAppUpdateChecks } from '@/lib/use-app-update';
 import { setActiveChatId } from '@/lib/push/active-chat';
 import { NotificationRouter } from '@/lib/push/tap';
+import { waitForCachePaint } from '@/lib/startup-paint';
 import { markStartup } from '@/lib/startup-timing';
 import { NAV_THEME } from '@/lib/theme';
 import { ChatStoreProvider, useChatStoreApi } from '@/store/chat-store-provider';
@@ -44,6 +45,11 @@ const bestEffort = (call: () => Promise<unknown>): Effect.Effect<void> =>
 // How long the root may wait for the primary font before it renders anyway
 // (PERF-12); the secondary faces keep loading in the background.
 const FONT_READY_CAP_MS = 1_000;
+
+// T-1915: after the fonts, the splash may wait this long for the cached chat
+// list and messages to paint, so the first frame of a cold start (including a
+// notification tap into a chat) is content rather than a skeleton.
+const CACHE_PAINT_CAP_MS = 400;
 
 // D24 is dark only: keep the splash up until the primary Geist face is loaded,
 // then force dark whatever the system setting is.
@@ -136,10 +142,21 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsReady) {
-      markStartup('fonts-ready');
-      Effect.runFork(bestEffort(() => SplashScreen.hideAsync()));
+    if (!fontsReady) {
+      return;
     }
+    // T-1915: hold the splash until the store has painted the cached list and
+    // messages, capped so a start that never marks (signed out) still shows.
+    let cancelled = false;
+    markStartup('fonts-ready');
+    void waitForCachePaint(CACHE_PAINT_CAP_MS).then(() => {
+      if (!cancelled) {
+        Effect.runFork(bestEffort(() => SplashScreen.hideAsync()));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [fontsReady]);
 
   if (!fontsReady) {

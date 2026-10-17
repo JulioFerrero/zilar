@@ -30,6 +30,7 @@ import {
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { dismissChatNotifications, syncBadge } from '../../lib/push/badge';
+import { markCachePainted } from '../../lib/startup-paint';
 import type { ChatStoreState, LoadState } from '../types';
 import type { StoreCtx } from './runtime';
 
@@ -104,28 +105,26 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   // stays the existing chat-list cache's job (PERF-12). The owner id is the
   // signed-in user's; a file left by another user is ignored here and the next
   // save (after the boot) replaces it.
-  const hydrateOfflineCache = (): void => {
-    void (async () => {
-      const userId = await offline.sessionUserId();
-      if (userId === undefined || userId === '') {
-        return;
+  const hydrateOfflineCache = async (): Promise<void> => {
+    const userId = await offline.sessionUserId();
+    if (userId === undefined || userId === '') {
+      return;
+    }
+    const cached = await offline.cache.hydrate(userId);
+    if (cached === null) {
+      return;
+    }
+    const state = get();
+    const messagesByChat = { ...state.messagesByChat };
+    for (const [chatId, list] of Object.entries(cached.messages)) {
+      if (messagesByChat[chatId] === undefined) {
+        messagesByChat[chatId] = list;
       }
-      const cached = await offline.cache.hydrate(userId);
-      if (cached === null) {
-        return;
-      }
-      const state = get();
-      const messagesByChat = { ...state.messagesByChat };
-      for (const [chatId, list] of Object.entries(cached.messages)) {
-        if (messagesByChat[chatId] === undefined) {
-          messagesByChat[chatId] = list;
-        }
-      }
-      set({ currentUserId: userId, messagesByChat });
-      // T-1914: the cached pins paint the open chat's banner before the pins
-      // answer, so the thread does not drop; the normal load replaces them.
-      get().seedCachedPins(cached.pins ?? {});
-    })();
+    }
+    set({ currentUserId: userId, messagesByChat });
+    // T-1914: the cached pins paint the open chat's banner before the pins
+    // answer, so the thread does not drop; the normal load replaces them.
+    get().seedCachedPins(cached.pins ?? {});
   };
 
   const appHooks: StoreAppHooks = {
@@ -152,14 +151,21 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
         // PERF-12: paint the saved list before `/api/chats` answers. The read
         // is async (a file), so this lands as a first paint and the boot
         // replaces it with fresh data right after.
-        void readChatListCache().then((cached) => {
+        const paintChatList = readChatListCache().then((cached) => {
           if (cached === null || get().chats.length > 0) {
             return;
           }
           lifecycleCtx.cachedUserId = cached.userId;
           set({ chats: cached.chats, chatsLoad: 'loaded' });
         });
-        hydrateOfflineCache();
+        // T-1915: the splash stays up until both reads have landed (or their
+        // cap), so the first frame after it is content, not a skeleton.
+        void Promise.allSettled([paintChatList, hydrateOfflineCache()]).then(() => {
+          markCachePainted();
+        });
+      } else {
+        // A non-cold start already has the painted state in memory.
+        markCachePainted();
       }
       // F1: `background` starts a 10 s grace that suspends the session, so
       // ejabberd pushes while the app is away; `active` cancels the grace
