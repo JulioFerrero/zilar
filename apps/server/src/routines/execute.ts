@@ -15,7 +15,10 @@
 //    (`trigger: 'routine'`, the routine's `input`).
 // 5. Success posts `"<title>\n<output.text>"` (trimmed to 4 000 chars)
 //    through `post`; a `false` answer means the AI is stopped or not in
-//    the room, so `skipped` with no failure count.
+//    the room, so `skipped` with no failure count. A routine linked to an
+//    alert card posts only when `output.data.value` reaches
+//    `input.threshold` (T-1878): below it the run is `ok` and silent, and
+//    a missing number on either side is a failure.
 // 6. Failure increments `consecutive_failures`; the 3rd in a row pauses
 //    with the fixed notice. Tool error text and logs never reach the chat
 //    (they stay in `ai_tool_runs`).
@@ -32,6 +35,7 @@ import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
+import { alertVerdict } from './alert-run';
 import { executePromptRoutine, type PromptRunner } from './execute-prompt';
 import {
   markOk,
@@ -180,6 +184,7 @@ export async function executeRoutine(
   let outputText: string | null = null;
   let outputBlocks: unknown = undefined;
   let outputCard: unknown = undefined;
+  let outputData: unknown = undefined;
   try {
     const { result } = await runToolVersion(
       { db, runner: ports.runTool },
@@ -193,6 +198,7 @@ export async function executeRoutine(
     outputText = result.output.text;
     outputBlocks = result.output.blocks;
     outputCard = result.output.card;
+    outputData = result.output.data;
   } catch (error) {
     // `runToolVersion` throws `ai_not_active` when the AI stopped between
     // the step-1 check and the run, and `not_found` when the tool was
@@ -209,6 +215,22 @@ export async function executeRoutine(
     options.logger.warn({ routineId: row.id }, 'routine tool runner threw');
     await recordFailure(db, options, ports, row, at, startedAt);
     return;
+  }
+
+  // T-1878: a routine linked to an alert card reads the tool's numeric
+  // `data.value` and compares it with the card's threshold. No number on
+  // either side is a failure; below the threshold the run is `ok` and posts
+  // nothing.
+  if (row.alertCardId != null) {
+    const verdict = alertVerdict(row.input, outputData);
+    if (verdict.kind === 'error') {
+      await recordFailure(db, options, ports, row, at, startedAt);
+      return;
+    }
+    if (verdict.kind === 'quiet') {
+      await markOk(db, options, row, at, startedAt);
+      return;
+    }
   }
 
   // Step 5: post the output as the AI. `false` (or a throw) means the AI

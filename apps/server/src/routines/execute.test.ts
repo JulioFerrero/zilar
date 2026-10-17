@@ -39,22 +39,32 @@ async function seedTool(context: TestContext, aiId: string, createdBy: string): 
 
 async function seedRoutine(
   context: TestContext,
-  input: { aiId: string; toolId: string; createdBy: string },
+  input: {
+    aiId: string;
+    toolId: string;
+    createdBy: string;
+    routineInput?: unknown;
+    alertCardId?: string;
+  },
 ): Promise<RoutineRow> {
   const id = randomUUID();
   const rows = await testSql(context)(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
+      const routineInput =
+        input.routineInput === undefined ? null : JSON.stringify(input.routineInput);
       return yield* sql<RoutineRow>`INSERT INTO routines (
         id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
         approved_hosts, status, paused_reason, next_run_at, last_run_at,
-        last_status, consecutive_failures, created_by, created_at, updated_at,
-        deleted_at
+        last_status, consecutive_failures, alert_card_id, created_by, created_at,
+        updated_at, deleted_at
       ) VALUES (
         ${id}, ${input.aiId}, NULL, NULL, ${input.toolId}, 'Digest',
-        ${JSON.stringify({ kind: 'interval', everyMinutes: 60 })}::jsonb, NULL,
+        ${JSON.stringify({ kind: 'interval', everyMinutes: 60 })}::jsonb,
+        ${routineInput}::jsonb,
         '[]'::jsonb, 'active', NULL, ${NOW.toISOString()}, NULL, NULL, 0,
-        ${input.createdBy}, ${NOW.toISOString()}, ${NOW.toISOString()}, NULL
+        ${input.alertCardId ?? null}, ${input.createdBy}, ${NOW.toISOString()},
+        ${NOW.toISOString()}, NULL
       )
       RETURNING *`;
     }),
@@ -64,6 +74,20 @@ async function seedRoutine(
     throw new Error('routine row missing');
   }
   return row;
+}
+
+async function readRoutineState(
+  context: TestContext,
+  id: string,
+): Promise<{ lastStatus: string | null; consecutiveFailures: number } | undefined> {
+  const rows = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ lastStatus: string | null; consecutiveFailures: number }>`
+        SELECT last_status, consecutive_failures FROM routines WHERE id = ${id}`;
+    }),
+  );
+  return rows[0];
 }
 
 describe('executeRoutine post retry', () => {
@@ -122,5 +146,70 @@ describe('executeRoutine post retry', () => {
       }),
     );
     expect(rows[0]?.lastStatus).toBe('ok');
+  });
+});
+
+describe('executeRoutine alert threshold', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('posts only at or above the threshold and fails without a number', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const toolId = await seedTool(context, aiId, ownerId);
+    const row = await seedRoutine(context, {
+      aiId,
+      toolId,
+      createdBy: ownerId,
+      routineInput: { threshold: 90000 },
+      alertCardId: randomUUID(),
+    });
+
+    let data: unknown = { value: 82302 };
+    let posts = 0;
+    const run = () =>
+      executeRoutine(
+        {
+          runTool: async () => ({
+            ok: true,
+            output: { text: 'ran', data },
+            logs: '',
+            durationMs: 1,
+            fetchCount: 0,
+          }),
+          post: async () => {
+            posts += 1;
+            return true;
+          },
+        },
+        row,
+        { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
+      );
+
+    await run();
+    expect(posts).toBe(0);
+    expect(await readRoutineState(context, row.id)).toMatchObject({
+      lastStatus: 'ok',
+      consecutiveFailures: 0,
+    });
+
+    data = { value: 91000 };
+    await run();
+    expect(posts).toBe(1);
+
+    data = {};
+    await run();
+    expect(posts).toBe(1);
+    expect(await readRoutineState(context, row.id)).toMatchObject({
+      lastStatus: 'error',
+      consecutiveFailures: 1,
+    });
   });
 });
