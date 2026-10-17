@@ -200,3 +200,18 @@ size: every changed source file is within 400 lines
 GATE PASS
 ```
 
+## Review (written by Claude)
+
+Merged on code review. Checked on 2026-10-17:
+- The packet matches HEAD `1f52f3cfe`, after 2 autopilot rounds and one lead round.
+- **Behaviour:**
+  - the rating uses the server's 1..max `selected`;
+  - a re-tap of the selected rating or option is a no-op, so there's no second @AI reply;
+  - a failed form send shows "Could not send. Try again.";
+  - `BlockCard` keeps local data and resets on correction;
+  - decision kinds send the @AI reply.
+- **The branch's mock build predates T-1805,** so `/dev/blocks` couldn't open there. The emulator comparison with `PhoneChoices.dc.html` runs on main right after this merge, and any visual gap becomes a follow-up. Phone code ships only in the next APK.
+- **Nits left:**
+  - each star reports `checked` up to the choice;
+  - other kinds revert silently on failure, unlike the form.
+
