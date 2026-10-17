@@ -5,6 +5,7 @@ import { EntityAvatar } from './EntityAvatar';
 import { ForwardedHeader } from './ForwardedHeader';
 import { AttachmentBody } from './message/AttachmentBody';
 import { BigEmoji } from './message/BigEmoji';
+import { doubleClickReply } from './message/doubleClickReply';
 import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
 import { MessageSender } from './message/MessageMeta';
 import { MessageTextBody } from './message/MessageTextBody';
@@ -186,6 +187,7 @@ export const MessageBubble = memo(function MessageBubble({
             }
           : undefined
       }
+      onDoubleClick={generating || selecting ? undefined : doubleClickReply(() => onReply(message))}
       className={cn(
         'group relative flex items-end gap-1.5',
         own ? 'flex-row-reverse' : 'flex-row',
