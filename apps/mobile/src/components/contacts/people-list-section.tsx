@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
-import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
-import type { ContactsApi, HandleProfile } from '@/lib/contacts-api';
+import type { ContactsApi } from '@/lib/contacts-api';
 
+import { PersonRow } from './person-row';
 import { usePeoplePrefixSearch } from './use-people-prefix-search';
 
 /**
@@ -52,27 +52,5 @@ export function PeopleListSection({ api, text }: { api: ContactsApi; text: strin
           ))
         : null}
     </View>
-  );
-}
-
-/** One person row: avatar, name and `@handle`, like web's `PersonRow`. */
-function PersonRow({ entry, onOpen }: { entry: HandleProfile; onOpen: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${entry.name}`}
-      onPress={onOpen}
-      className="flex-row items-center gap-3 rounded-[12px] px-[10px] py-2 active:bg-surface-raised"
-    >
-      <EntityAvatar person={entry} size={40} />
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[14px] font-semibold text-foreground">
-          {entry.name}
-        </Text>
-        <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-          @{entry.handle}
-        </Text>
-      </View>
-    </Pressable>
   );
 }

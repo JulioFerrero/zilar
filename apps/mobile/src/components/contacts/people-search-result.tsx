@@ -2,19 +2,19 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import type { ContactsApi } from '@/lib/contacts-api';
+import type { ContactRelation, ContactsApi } from '@/lib/contacts-api';
 
-import { ProfileCard } from './profile-card';
 import { NO_PERSON_MESSAGE, PEOPLE_RATE_LIMITED_MESSAGE, peopleHandleFor } from './people-search';
+import { PersonRow } from './person-row';
 import { usePeopleSearch } from './use-people-search';
 
 /**
  * The People section above the chat-list search results (T-0193): when the
  * trimmed search text starts with `@` and the rest is a valid handle, one
- * row for that person — avatar, name, `@handle`, and the action for the
- * relation the lookup returns. An unknown handle shows one muted line; a
- * shorter or invalid handle shows nothing. Tapping the name or the avatar
- * opens `/u/<handle>`.
+ * compact person row — avatar, name, `@handle` and a muted relation hint. An
+ * unknown handle shows one muted line; a shorter or invalid handle shows
+ * nothing. A contact's row opens the DM, the viewer's own row does nothing,
+ * and every other relation opens `/u/<handle>` (T-1854).
  */
 export function PeopleSearchResult({
   api,
@@ -22,7 +22,6 @@ export function PeopleSearchResult({
   chats,
   myJid,
   onMessage,
-  onOpenRequests,
   submitRequest,
 }: {
   api: ContactsApi;
@@ -68,26 +67,45 @@ export function PeopleSearchResult({
         </Text>
       ) : null}
       {view.status === 'found' ? (
-        <View className="px-[10px] pb-2">
-          <ProfileCard
-            profile={view.profile}
-            sent={view.sent}
-            busy={search.busy}
-            error={search.actionError}
-            onSend={search.send}
-            onCancel={search.cancelRequest}
-            onAccept={search.acceptRequest}
-            onDecline={search.declineRequest}
-            onMessage={search.openMessage}
-            onOpenRequests={onOpenRequests}
-            onBlock={search.block}
-            onUnblock={search.unblock}
-            onOpenProfile={() =>
-              router.push({ pathname: '/u/[handle]', params: { handle: view.profile.handle } })
+        <View className="pb-2">
+          <PersonRow
+            entry={view.profile}
+            hint={relationHint(view.profile.relation)}
+            onOpen={
+              view.profile.relation === 'self'
+                ? undefined
+                : view.profile.relation === 'contact'
+                  ? search.openMessage
+                  : () =>
+                      router.push({
+                        pathname: '/u/[handle]',
+                        params: { handle: view.profile.handle },
+                      })
             }
           />
+          {search.actionError === null ? null : (
+            <Text accessibilityRole="alert" className="px-[10px] text-[13px] text-danger">
+              {search.actionError}
+            </Text>
+          )}
         </View>
       ) : null}
     </View>
   );
+}
+
+/** The muted right-side hint for the relation, or none. */
+function relationHint(relation: ContactRelation): string | undefined {
+  switch (relation) {
+    case 'request_sent':
+      return 'Requested';
+    case 'request_received':
+      return 'Wants to connect';
+    case 'blocked':
+      return 'Blocked';
+    case 'self':
+      return 'You';
+    default:
+      return undefined;
+  }
 }

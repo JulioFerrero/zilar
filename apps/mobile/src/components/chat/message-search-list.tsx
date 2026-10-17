@@ -194,19 +194,6 @@ function MessageSearchGroups({
       </Text>
       {groups.map((group) => (
         <View key={`group:${group.chatJid}`}>
-          <View className="flex-row items-center gap-2 px-[10px] pb-0.5 pt-1.5">
-            <EntityAvatar
-              chat={{
-                id: group.chatJid,
-                title: group.title,
-                avatarUrl: byId.get(group.chatJid)?.avatarUrl,
-              }}
-              size={20}
-            />
-            <Text numberOfLines={1} className="text-[12px] font-medium text-muted-foreground">
-              {group.title}
-            </Text>
-          </View>
           {group.items.map((item) => {
             const chat = byId.get(item.chatJid);
             // A topic hit shows `Group › Topic` (web does the same); the

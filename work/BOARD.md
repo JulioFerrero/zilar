@@ -1864,3 +1864,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1852](T-1852-web-header-opens-panel.md) | web header avatar and people line open the panel | 2026-10-17 |
 | [T-1855](T-1855-web-search-group-header.md) | web message search drops the repeated chat header | 2026-10-17 |
 | [T-1856](T-1856-alert-routine-link.md) | alert card answers drive a linked routine | 2026-10-17 |
+| [T-1854](T-1854-phone-search-results.md) | phone search: compact person row, cleaner message hits | 2026-10-17 |

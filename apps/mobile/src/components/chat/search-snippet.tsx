@@ -27,13 +27,15 @@ export function SearchSnippet({
         part.mark ? (
           <Text
             key={index}
-            className="rounded-[3px] text-foreground"
+            className="rounded-[3px] text-[13px] text-foreground"
             style={{ backgroundColor: MARK_BACKGROUND }}
           >
             {part.text}
           </Text>
         ) : (
-          <Text key={index}>{part.text}</Text>
+          <Text key={index} className="text-[13px] text-muted-foreground">
+            {part.text}
+          </Text>
         ),
       )}
     </Text>
@@ -44,7 +46,7 @@ export function SearchSnippet({
 export function SearchHitLine({ item }: { item: SearchItem }) {
   return (
     <View className="mt-0.5 flex-row items-baseline gap-1.5">
-      <Text numberOfLines={1} className="shrink-0 text-[13px] text-[#d4d4d4]">
+      <Text numberOfLines={1} className="shrink-0 text-[13px] text-foreground">
         {item.senderName}
       </Text>
       <View className="min-w-0 flex-1">
