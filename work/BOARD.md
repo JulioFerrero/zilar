@@ -1854,3 +1854,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1842](T-1842-phone-mention-board.md) | phone @ list follows its board | 2026-10-17 |
 | [T-1844](T-1844-web-mention-parity.md) | web @ list matches the phone | 2026-10-17 |
 | [T-1843](T-1843-general-never-done.md) | General never reads as done | 2026-10-17 |
+| [T-1845](T-1845-phone-viewer-share.md) | phone photo viewer can share | 2026-10-17 |

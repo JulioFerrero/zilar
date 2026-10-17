@@ -1,6 +1,6 @@
 import { parseUrl, type ViewerPhoto } from '@zilar/chat-core';
 import { Image } from 'expo-image';
-import { Download, X } from 'lucide-react-native';
+import { Download, Share2, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -17,8 +17,10 @@ import { Gallery, type VerticalPullOptions } from 'react-native-zoom-toolkit';
 import { Text } from '@/components/ui/text';
 import { useMediaSource } from '@/lib/media-source';
 import { SAVE_FAILED_MESSAGE, SAVED_MESSAGE, savePhoto } from '@/lib/save-photo';
+import { SHARE_FAILED_MESSAGE, sharePhoto } from '@/lib/share-photo';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type ShareState = 'idle' | 'sharing' | 'error';
 
 /** A downward pull past this many pixels closes the viewer on release. */
 const CLOSE_DISTANCE = 120;
@@ -114,7 +116,8 @@ function ViewerImage({ chatId, photo, trustedHosts, width, height }: ViewerImage
  * The full-screen photo viewer (T-1341) on `react-native-zoom-toolkit`'s
  * `Gallery`: a swipe carousel with per-photo pinch, pan and double-tap zoom,
  * a "3 / 12" counter, a Save button that stores the photo on screen in the
- * phone's gallery, and a pull-down to dismiss. A single tap toggles the
+ * phone's gallery, a Share button that opens the system share sheet with it,
+ * and a pull-down to dismiss. A single tap toggles the
  * overlay. The modal content has its own `GestureHandlerRootView`: gestures
  * don't fire inside an RN `Modal` on Android without one. A photo off the
  * trusted hosts is shown blank: its bytes are never fetched.
@@ -136,6 +139,10 @@ export function AttachmentViewer({
     index: 0,
     state: 'idle',
   });
+  const [share, setShare] = useState<{ index: number; state: ShareState }>({
+    index: 0,
+    state: 'idle',
+  });
   const pullY = useSharedValue(0);
   const closing = useSharedValue(false);
   // A plain object so the worklets read and write the shared values through it;
@@ -147,9 +154,10 @@ export function AttachmentViewer({
   // the Save button stays disabled.
   const url = photo === undefined ? undefined : viewableUrl(photo.url, trustedHosts);
   const source = useMediaSource(chatId, url ?? '', url !== undefined);
-  // A save line belongs to the photo it was started on, so stepping to the next
-  // photo hides it without an effect.
+  // A save or share line belongs to the photo it was started on, so stepping to
+  // the next photo hides it without an effect.
   const saveState = save.index === index ? save.state : 'idle';
+  const shareState = share.index === index ? share.state : 'idle';
 
   const handleIndexChange = useCallback((next: number) => setIndex(next), []);
   const handleTap = useCallback(() => setChrome((visible) => !visible), []);
@@ -190,14 +198,32 @@ export function AttachmentViewer({
     if (source === undefined || saveState === 'saving') {
       return;
     }
+    setShare({ index, state: 'idle' });
     setSave({ index, state: 'saving' });
     savePhoto(source, (result) => {
       setSave({ index, state: result.status === 'saved' ? 'saved' : 'error' });
     });
   };
 
+  const onShare = (): void => {
+    if (source === undefined || shareState === 'sharing') {
+      return;
+    }
+    setSave({ index, state: 'idle' });
+    setShare({ index, state: 'sharing' });
+    sharePhoto(source, (result) => {
+      setShare({ index, state: result.status === 'shared' ? 'idle' : 'error' });
+    });
+  };
+
   const message =
-    saveState === 'saved' ? SAVED_MESSAGE : saveState === 'error' ? SAVE_FAILED_MESSAGE : undefined;
+    shareState === 'error'
+      ? SHARE_FAILED_MESSAGE
+      : saveState === 'saved'
+        ? SAVED_MESSAGE
+        : saveState === 'error'
+          ? SAVE_FAILED_MESSAGE
+          : undefined;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -233,6 +259,15 @@ export function AttachmentViewer({
                 className="items-center justify-center rounded-full bg-surface p-2 active:opacity-80"
               >
                 <Download size={22} color="#ffffff" />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Share photo"
+                disabled={source === undefined || shareState === 'sharing'}
+                onPress={onShare}
+                className="items-center justify-center rounded-full bg-surface p-2 active:opacity-80"
+              >
+                <Share2 size={22} color="#ffffff" />
               </Pressable>
               <Pressable
                 accessibilityRole="button"

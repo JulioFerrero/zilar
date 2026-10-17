@@ -23,14 +23,14 @@ export type SaveResult = { status: 'saved' } | { status: 'error'; message: strin
 const FAILED: SaveResult = { status: 'error', message: SAVE_FAILED_MESSAGE };
 
 /** A unique cache name with a usable extension, taken from the loaded URL. */
-function cacheFileName(uri: string): string {
+export function cacheFileName(uri: string): string {
   const path = parseUrl(uri)?.pathname ?? '';
   const extension = /\.[A-Za-z0-9]{1,5}$/.exec(path)?.[0] ?? '.jpg';
   return `zilar-photo-${Date.now()}${extension}`;
 }
 
 /** Deletes the temporary cache file; an already-missing file is not an error. */
-function deleteQuietly(file: File): void {
+export function deleteQuietly(file: File): void {
   try {
     file.delete();
   } catch {
