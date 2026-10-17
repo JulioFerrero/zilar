@@ -110,9 +110,6 @@ function TopicPanelBody({
       member.userId !== me && !membersState.members.some((item) => item.userId === member.userId),
   );
   const groupAis = info?.ais ?? [];
-  // T-1492: AIs count as members, like in `GroupPanel`.
-  const memberCount =
-    info === undefined ? (chat.memberCount ?? 0) : info.members.length + info.ais.length;
   const myAisInGroup = myAis.filter((ai) => groupAis.some((item) => item.aiId === ai.id));
   const addableAis = myAisInGroup.filter((ai) => !aisState.ais.some((item) => item.id === ai.id));
 
@@ -176,10 +173,10 @@ function TopicPanelBody({
     return ownerId === me || isManager;
   };
   const headerSuffix =
-    isPrivate && membersState.status === 'ready'
-      ? ` · ${membersState.members.length} members`
-      : !isPrivate && info !== undefined
-        ? ` · All ${memberCount} members`
+    topic.isGeneral === true
+      ? ' · Everyone'
+      : membersState.status === 'ready'
+        ? ` · ${membersState.members.length} members`
         : '';
   const visibilityBusy = isWaiting(visibilityState);
   // T-1534: any member who can see the topic may mark it done or reopen it.
@@ -218,10 +215,10 @@ function TopicPanelBody({
           </Button>
 
           <TopicMembersSection
-            isPrivate={isPrivate}
+            listsMembers={topic.isGeneral !== true}
             state={membersState}
             groupMembers={groupMembers}
-            allMembersText={`All ${memberCount} members of ${groupTitle} can read and write here.`}
+            allMembersText={`Everyone in ${groupTitle} can read and write here.`}
             me={me}
             isManager={isManager}
             onRetry={() => refreshMembers()}

@@ -1824,3 +1824,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1814](T-1814-phone-preview-bubbles.md) | phone Join preview rows look like the thread | 2026-10-17 |
 | [T-1813](T-1813-buttons-answer-persists.md) | a buttons card keeps its answer | 2026-10-17 |
 | [T-1816](T-1816-web-preview-avatars.md) | web Join preview rows show sender avatars | 2026-10-17 |
+| [T-1817](T-1817-web-public-topic-members.md) | web panel lists a public topic's members | 2026-10-17 |

@@ -15,13 +15,13 @@ export type MembersState = {
 };
 
 /**
- * The Members section: the private topic's list with Remove for managers, or
- * the "all members can read" line for a public one. Leave moved to the panel's
+ * The Members section: a topic's member list with Remove for managers, or the
+ * "everyone in the group" line for General (T-1817). Leave moved to the panel's
  * bottom group (T-1797). The add pickers moved to the one "Add people or AIs"
  * dialog (T-1784).
  */
 export function TopicMembersSection({
-  isPrivate,
+  listsMembers,
   state,
   groupMembers,
   allMembersText,
@@ -31,7 +31,7 @@ export function TopicMembersSection({
   removeMember,
   onError,
 }: {
-  isPrivate: boolean;
+  listsMembers: boolean;
   state: MembersState;
   groupMembers: GroupMemberRow[];
   allMembersText: string;
@@ -44,7 +44,7 @@ export function TopicMembersSection({
   return (
     <section aria-label="Members" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
-      {isPrivate ? (
+      {listsMembers ? (
         <>
           {state.status === 'loading' && (
             <StateMessage kind="loading" size="inline" title="Loading…" />
