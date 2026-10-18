@@ -3,13 +3,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { STICKERS_MAX_PER_PACK } from '@zilar/api-contract';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { convertibleKind, defaultConverter } from './convert';
 import { probeStickerBytes, STICKER_MAX_BYTES, type StickerImageInfo } from './image';
 import { emojiSchema, type StickerRow, type StickersServiceDeps } from './schemas';
-import { resolveStorageDir } from './storage';
+import { resolveStorageDir, reservePackSlot } from './storage';
 
 // Validates (the same magic-byte probe as uploads) and stores one imported
 // sticker. A moving file (a video `.webm`) is converted to an animated WebP
@@ -61,24 +60,10 @@ export async function storeImportedSticker(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
-            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
-            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
-              FROM stickers WHERE pack_id = ${packId}`;
-            if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
-              return yield* Effect.fail(
-                new HttpError(
-                  400,
-                  'pack_full',
-                  `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
-                ),
-              );
-            }
-            const [top] = yield* sql<{ position: number }>`SELECT position FROM stickers
-              WHERE pack_id = ${packId}
-              ORDER BY position DESC LIMIT 1`;
+            const position = yield* reservePackSlot(sql, packId);
             const stored = yield* sql<{ id: string }>`INSERT INTO stickers
                 (id, pack_id, position, emoji, mime, width, height, bytes, storage_key, source_id)
-              VALUES (${id}, ${packId}, ${(top?.position ?? -1) + 1}, ${emoji}, ${info.mime},
+              VALUES (${id}, ${packId}, ${position}, ${emoji}, ${info.mime},
                 ${info.width}, ${info.height}, ${bytes.byteLength}, ${storageKey}, ${item.sourceId})
               ON CONFLICT DO NOTHING RETURNING id`;
             inserted = stored.length > 0;

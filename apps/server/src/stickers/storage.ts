@@ -154,6 +154,24 @@ export function escapeLike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+// T-2062: the pack lock, cap and next position shared by an upload and an import.
+export function reservePackSlot(sql: SqlClient.SqlClient, packId: string) {
+  return Effect.gen(function* () {
+    yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
+    const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+      FROM stickers WHERE pack_id = ${packId}`;
+    if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
+      return yield* Effect.fail(
+        new HttpError(400, 'pack_full', `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`),
+      );
+    }
+    const [top] = yield* sql<{ position: number }>`SELECT position FROM stickers
+      WHERE pack_id = ${packId}
+      ORDER BY position DESC LIMIT 1`;
+    return (top?.position ?? -1) + 1;
+  });
+}
+
 export async function uploadSticker(
   deps: StickersServiceDeps,
   packId: string,
@@ -193,24 +211,10 @@ export async function uploadSticker(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
-            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
-            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
-              FROM stickers WHERE pack_id = ${packId}`;
-            if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
-              return yield* Effect.fail(
-                new HttpError(
-                  400,
-                  'pack_full',
-                  `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
-                ),
-              );
-            }
-            const [top] = yield* sql<{ position: number }>`SELECT position FROM stickers
-              WHERE pack_id = ${packId}
-              ORDER BY position DESC LIMIT 1`;
+            const position = yield* reservePackSlot(sql, packId);
             yield* sql`INSERT INTO stickers
                 (id, pack_id, position, emoji, mime, width, height, bytes, storage_key)
-              VALUES (${id}, ${packId}, ${(top?.position ?? -1) + 1}, ${emojiParsed.value ?? null},
+              VALUES (${id}, ${packId}, ${position}, ${emojiParsed.value ?? null},
                 ${info.mime}, ${info.width}, ${info.height}, ${bytes.byteLength}, ${storageKey})`;
             yield* sql`UPDATE sticker_packs SET updated_at = ${new Date().toISOString()}
               WHERE id = ${packId}`;

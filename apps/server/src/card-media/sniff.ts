@@ -44,6 +44,23 @@ const SOF_MARKERS = new Set([
   0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
 ]);
 
+// T-2062: the marker read shared by the sniffer and the stripper.
+export function readJpegMarker(
+  bytes: Uint8Array,
+  offset: number,
+): { marker: number; offset: number } | null {
+  if (bytes[offset] !== 0xff) return null;
+  let marker = bytes[offset + 1];
+  if (marker === undefined) return null;
+  offset += 2;
+  while (marker === 0xff) {
+    marker = bytes[offset];
+    if (marker === undefined) return null;
+    offset += 1;
+  }
+  return { marker, offset };
+}
+
 // JPEG: walk the marker segments up to the first SOFn. Its payload holds the
 // 1-byte precision, then 2-byte height and 2-byte width.
 function sniffJpeg(bytes: Uint8Array): SniffedImage | null {
@@ -52,21 +69,12 @@ function sniffJpeg(bytes: Uint8Array): SniffedImage | null {
   }
   let offset = 2;
   while (offset < bytes.length) {
-    if (bytes[offset] !== 0xff) {
+    const found = readJpegMarker(bytes, offset);
+    if (found === null) {
       return null;
     }
-    let marker = bytes[offset + 1];
-    if (marker === undefined) {
-      return null;
-    }
-    offset += 2;
-    while (marker === 0xff) {
-      marker = bytes[offset];
-      if (marker === undefined) {
-        return null;
-      }
-      offset += 1;
-    }
+    const { marker } = found;
+    offset = found.offset;
     // TEM and the restart markers carry no length.
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       continue;

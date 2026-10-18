@@ -23,13 +23,14 @@ import {
   type PendingMessage,
   type ScheduledTurnOutcome,
 } from './contracts';
-import { loadActiveAi, loadOwnerName } from './db';
+import { loadOwnerName } from './db';
 import { loadModelTarget } from './model-target';
 import { type DeskTurnContext } from './desk-exec';
 import { runDmTurnInput } from './dm-turn-input';
 import type { RequestActionContext } from './group-turn';
 import { openTurnLog } from '../log/append';
 import { settleFor } from './scheduled-settle';
+import { startTurn } from './turn-start';
 import { reportDmTurnDefect } from './turn-defect';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
@@ -131,24 +132,8 @@ export function createDmTurn(ctx: DmTurnContext) {
     batch: PendingMessage[],
     settle: (outcome: ScheduledTurnOutcome) => void,
   ): Effect.fn.Return<void> {
-    // T-1657 (audit G2): the turn starts now, so a scheduled item's runner
-    // starts its timeout here instead of at enqueue.
-    for (const item of batch) {
-      item.scheduled?.onStart?.();
-    }
-    // The owner JID comes from the database, never from the message. The AI
-    // id below is the gateway's own: it keyed this session, so the connection
-    // lookup can never be aimed at an id taken from message content.
-    const ai = yield* Effect.promise(() => loadActiveAi(deps.db, session.aiId)).pipe(
-      Effect.catchDefect(() => Effect.succeed(null)),
-    );
-    if (ai === null) {
-      yield* Effect.promise(() => disconnectAi(session.aiId)).pipe(
-        Effect.catchDefect(() => Effect.void),
-      );
-      settle('offline');
-      return;
-    }
+    const ai = yield* startTurn({ db: deps.db, disconnectAi }, session, batch, settle);
+    if (ai === null) return;
     const ownerJid = jidFor(localpartFor(ai.owner), deps.xmpp.domain);
     const ownerBare = bareJid(ownerJid);
     // The owner always wins; a scheduled routine's synthetic trigger counts as

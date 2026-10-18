@@ -4,7 +4,7 @@
 // walker cannot follow returns `null`, and the caller refuses the file rather
 // than storing bytes it could not clean.
 import { readU16BE, readU32BE, readU32LE, writeU32LE } from '../media-bytes';
-import type { ImageMime } from './sniff';
+import { readJpegMarker, type ImageMime } from './sniff';
 
 const PNG_DROP = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt']);
 const JPEG_KEEP_APP = new Set([0xe0, 0xe2]);
@@ -117,21 +117,10 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
     }
 
     const start = offset;
-    if (bytes[offset] !== 0xff) {
-      return null;
-    }
-    let marker = bytes[offset + 1];
-    if (marker === undefined) {
-      return null;
-    }
-    offset += 2;
-    while (marker === 0xff) {
-      marker = bytes[offset];
-      if (marker === undefined) {
-        return null;
-      }
-      offset += 1;
-    }
+    const found = readJpegMarker(bytes, offset);
+    if (found === null) return null;
+    const { marker } = found;
+    offset = found.offset;
     if (marker === 0x00) {
       return null;
     }
