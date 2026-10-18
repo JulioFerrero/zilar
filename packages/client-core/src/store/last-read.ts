@@ -1,12 +1,10 @@
-// Reads the last-read map a user's storage saved. Kept apart from the boot in
-// `lifecycle.ts`; anything unusable reads as none.
+// Reads the last-read map a user's storage saved; anything unusable reads as none.
 import { Effect, Exit, Schema } from 'effect';
 import { type KeyValue } from './ports';
 import { LAST_READ_PREFIX } from './reads';
 
 const parseJson = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 
-/** The last-read message ids saved for a user; anything unusable reads as none. */
 export const readLastRead = (
   storage: KeyValue | null,
   userId: string,

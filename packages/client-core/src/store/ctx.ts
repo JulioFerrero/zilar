@@ -1,7 +1,3 @@
-// What the core's store modules share about one chat store: the state accessors,
-// the ports, the lifetime, the message ledger, the app hooks, and the mutable
-// bookkeeping the store keeps beside its state. Each app's own context extends
-// this one, so an app module and a core module take the same value.
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore } from '@zilar/xmpp-core';
@@ -9,26 +5,21 @@ import type { LedgerPatch, LedgerState, MessageLedger } from './ledger';
 import type { Lifetime } from './lifetime';
 import type { CoreContact, CoreMe, CorePorts } from './ports';
 
-/** The people typing in one chat. */
 export interface CoreTyping {
   names: string[];
-  /** T-1406: the latest AI status text in the chat, when one is live. */
   status?: string;
 }
 
-/** The live AI draft of one chat: the latest cumulative reply text. */
 export interface CoreDraft {
   turnId: string;
   text: string;
 }
 
-/** An inline error under one chat, from a failed message action. */
 export interface CoreActionError {
   chatId: string;
   message: string;
 }
 
-/** The part of a store's state the core reads; both apps' states satisfy it. */
 export interface CoreState extends LedgerState {
   readonly currentUserId: string;
   /** The open chat: `undefined` on web, `null` on mobile when none is open. */
@@ -36,11 +27,9 @@ export interface CoreState extends LedgerState {
   readonly typing: Record<string, CoreTyping>;
   readonly drafts: Record<string, CoreDraft>;
   readonly finishedDraftMessages: Record<string, string>;
-  /** An inline error under one chat, from a failed message or send action. */
   readonly actionError?: CoreActionError | undefined;
 }
 
-/** The part of a store's state the core writes. */
 export interface CorePatch extends LedgerPatch {
   typing?: Record<string, CoreTyping>;
   drafts?: Record<string, CoreDraft>;
@@ -51,43 +40,30 @@ export interface CorePatch extends LedgerPatch {
 export type CoreSet = (update: CorePatch | ((state: CoreState) => CorePatch)) => void;
 
 /**
- * App code the core calls and that stays per app until a later task moves it:
- * the badge and push notifications (web only), group members (phase 2), draft
- * turns (T8) and the bytes kept for a Retry (T10). Each one returns at once.
+ * App code the core calls that stays per app: badge and push notifications (web), group
+ * members, draft turns and the bytes kept for a Retry. Each one returns at once.
  */
 export interface CoreHooks {
-  /** Re-syncs the app badge from the current chats, in the background. */
   readonly syncBadge: () => void;
-  /** Dismisses the chat's push notifications, in the background. */
   readonly dismissChatNotifications: (chatId: string) => void;
-  /** Starts loading the members of a group chat, once per chat. */
   readonly loadGroupMembers: (chatId: string) => void;
-  /** The AI's final message arrived: remember its turn, stop the chat's draft timer. */
   readonly finishDraftTurn: (chatId: string, turnId: string) => void;
-  /** Drops the bytes kept for a Retry of this message id, if any. */
   readonly forgetRetryBytes: (messageId: string) => void;
-  /**
-   * Shows an in-tab browser notification for an unread incoming message (web,
-   * T-1145). Mobile leaves it unset, so it does nothing there.
-   */
+  /** Shows an in-tab browser notification for an unread message (web); mobile leaves it unset. */
   readonly notifyIncoming?: (chatId: string, message: UiMessage) => void;
   /**
-   * The group rooms joined in this session (T-1902), the same set as the
-   * store context's `joinedRooms`. The mobile history adapter rebuilds the
-   * context and reads it here.
+   * The group rooms joined in this session, the same set as the context's `joinedRooms`;
+   * the mobile history adapter rebuilds the context and reads it here.
    */
   readonly joinedRooms?: Set<string>;
 }
 
-/** How `joinGroups` treats the pending chat and reports the rooms it joins (T-1902). */
 export interface JoinGroupsHooks {
   /** A group chat to join before the rest: the chat the user is opening. */
   first?: string | undefined;
-  /** Called after each room joins, with that room's chat id. A failed join reports nothing. */
   onJoined?: ((chatId: string) => void) | undefined;
 }
 
-/** What the lifecycle hands the app to write into its own state on boot. */
 export interface BootInput {
   readonly me: CoreMe;
   readonly freshRows: ChatSummary[];
@@ -98,42 +74,24 @@ export interface BootInput {
   readonly prefs: readonly unknown[];
 }
 
-/**
- * The app hooks the T8 polling and lifecycle modules call, beside `CoreHooks`.
- * Every one returns at once; the app forks the work itself (web does), so the
- * core never needs the app's own `Ports` service to run them.
- */
+/** The app hooks the polling and lifecycle modules call; every one returns at once. */
 export interface StoreAppHooks extends CoreHooks {
-  /** Writes the XMPP connection status into the app's state. */
   readonly setStatus: (status: ConnectionStatus) => void;
-  /** Paints the cached chat list and arms `pagehide`, once per store (web). */
   readonly prepareStart: () => void;
-  /** Shows the chat list as loading/ready/error (web `chatsState`, mobile `chatsLoad`). */
   readonly setChatsLoad: (load: 'loading' | 'ready' | 'error') => void;
-  /** Writes the boot result into the app's state: me, chats, contacts, prefs. */
   readonly applyBoot: (input: BootInput) => void;
-  /** Records the group id of every chat row (web Kernel). */
   readonly rememberGroupIds: (entries: readonly unknown[]) => void;
-  /** Schedules the debounced chat-list refresh (web history). */
   readonly scheduleChatsRefresh: () => void;
-  /** Re-fetches the chat list now (web history). */
   readonly refreshChats: () => void;
-  /** Refreshes the open chat's pins now (web pins). */
   readonly refreshActiveChatPins: (chatId: string) => void;
-  /** Joins new group rooms and loads their members (web groupMembers).
-   * Resolves once the joins are done, so group history waits for them.
-   * `hooks.first` is joined first and `hooks.onJoined` reports each room. */
+  /** Joins new group rooms and loads their members; resolves once the joins are done,
+   * so group history waits for them. `hooks.first` is joined first. */
   readonly joinGroups: (core: XmppCore, me: unknown, hooks?: JoinGroupsHooks) => Promise<void>;
-  /** Saves the painted chat list to storage and syncs the badge (web reads). */
   readonly saveChatList: () => void;
-  /** Loads the default chat background (web prefs), fire and forget. */
   readonly refreshDefaultBackground: () => void;
-  /** Loads the app's chat folders into its state at boot (mobile), fire and
-   * forget. Web fetches folders outside the store, so it leaves this unset. */
+  /** Loads the app's chat folders at boot (mobile); web fetches them outside the store. */
   readonly loadFolders?: () => void;
-  /** Publishes the media hosts trusted from the latest XMPP token. */
   readonly setMediaTrustedHosts: (hosts: ReadonlySet<string> | undefined) => void;
-  /** Clears the app's per-session state on `stop()` (web `sendRuns`, ...). */
   readonly applyStop: () => void;
 }
 
@@ -145,38 +103,29 @@ export interface CoreCtx {
   readonly k: MessageLedger;
   readonly fx: CoreHooks;
 
-  /** The connected XMPP core of the current session. */
   core: XmppCore | undefined;
   /**
-   * T-1449: the last connection status client-core wrote to the app, kept here
-   * so the polling loops can slow down while XMPP pushes changes live.
-   * Undefined before the first write.
+   * The last connection status written to the app, kept here so the polling loops can
+   * slow down while XMPP pushes changes live. Undefined before the first write.
    */
   connectionStatus?: ConnectionStatus | undefined;
-  /** The last message read in each chat, by chat id. */
   lastRead: Record<string, string>;
-  /** The user whose last-read map is loaded, and saved under their key. */
   lastReadUserId: string | undefined;
-  /** Optimistic ids waiting for their server echo, by echo signature. */
   readonly pendingOutgoing: Map<string, string[]>;
   /**
-   * Texts waiting for their ack or their resend (F4, honest ticks): one per
-   * store instance, memory only. The apps create it with the store; the core
-   * lifecycle flushes it on online and `reset()` clears it on sign-out, so
-   * one user's queue never goes out as another user. Undefined on contexts
-   * that never send text through the core.
+   * Texts waiting for their ack or their resend: memory only, one per store instance. The
+   * lifecycle flushes it on online and `reset()` clears it on sign-out, so one user's queue
+   * never goes out as another user.
    */
   outbox?: import('./send/outbox').TextOutbox | undefined;
 }
 
-/** One Promise call as an Effect; a rejection (or a sync throw) keeps its value as the failure. */
 export const fromPromise = <A>(thunk: () => Promise<A>): Effect.Effect<A, unknown> =>
   Effect.tryPromise({ try: () => thunk(), catch: (error) => error });
 
 /**
- * T-1449: writes the connection status to the app and remembers it on the ctx
- * (`ctx.connectionStatus`) for the poll gate, in one place. Desktop and mobile
- * build their ctx with `StoreAppHooks`, so both contexts take this.
+ * Writes the connection status to the app and remembers it on the ctx for the poll gate,
+ * in one place.
  */
 export function setConnectionStatus(
   ctx: CoreCtx & { readonly fx: StoreAppHooks },

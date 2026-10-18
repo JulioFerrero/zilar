@@ -1,7 +1,4 @@
-// T-1547: the topic half of `chat-rows.ts`, split out so both stay under the
-// line limit. It maps one group's validated topics to their chat rows and takes
-// its row fields and shared helpers from `row-helpers.ts`; `chat-rows.ts`
-// imports this file, never the other way.
+// The topic half of `chat-rows.ts`: maps one group's validated topics to their chat rows.
 import type { ChatSummary, TopicAiActivity, TopicAiState, TopicInfo } from '@zilar/chat-core';
 import { Exit, Schema } from 'effect';
 import { Topic as TopicSchema, type GroupBackground, type Topic } from '@zilar/api-contract';
@@ -13,16 +10,14 @@ import {
   type ServerRowFields,
 } from './row-helpers';
 
-/** A topic row the viewer may see; a malformed row decodes to `null` and is dropped. */
 function topicOf(raw: unknown): Topic | null {
   const decoded = Schema.decodeUnknownExit(TopicSchema)(raw);
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 /**
- * The validated topics of one group entry: a malformed row is dropped, never
- * rendered. An entry without `topics` (older server) yields none, so the group
- * keeps its single legacy row.
+ * The validated topics of one group entry: a malformed row is dropped, never rendered;
+ * an entry without `topics` (older server) yields none, so the group keeps its legacy row.
  */
 export function chatEntryTopics(entry: {
   readonly topics?: readonly unknown[] | undefined;
@@ -52,8 +47,8 @@ function topicInfoOf(topic: Topic): TopicInfo {
     linkUrl: topic.linkUrl,
     linkLabel: topic.linkLabel,
     activity: topicActivityOf(topic),
-    // T-1777: the topic's people and AIs, so both apps can paint them. An
-    // older server omits `memberIds`; the AIs always come with an `ais` array.
+    // The topic's people and AIs; an older server omits `memberIds`, and the AIs always
+    // come with an `ais` array.
     ...(topic.memberIds === undefined ? {} : { memberIds: [...topic.memberIds] }),
     ais: topic.ais.map((ai) => ({
       id: ai.id,
@@ -64,9 +59,8 @@ function topicInfoOf(topic: Topic): TopicInfo {
   };
 }
 
-// T-1514: the AI activity of one topic. A missing field (an older server) or an
-// entry with an unknown state (a newer one) is left out; the known three keep,
-// in the server's order.
+// The AI activity of one topic: a missing field (older server) or an unknown state
+// (newer) is left out; the known three keep the server's order.
 function topicActivityOf(topic: Topic): TopicAiActivity[] {
   const rows: TopicAiActivity[] = [];
   for (const entry of topic.activity ?? []) {
@@ -89,10 +83,9 @@ function isTopicAiState(state: string): state is TopicAiState {
 }
 
 /**
- * One topic becomes its own chat row (T-0111), keyed by the topic's room JID.
- * The General topic keeps the group's old chat id, so existing `/c/<jid>`
- * deep links open it. T-0124: a channel's General topic is its feed, so the
- * row carries the channel fields too.
+ * One topic becomes its own chat row, keyed by its room JID; the General topic keeps the
+ * group's chat id so existing `/c/<jid>` links open it, and a channel's General row carries
+ * the channel fields.
  */
 export function summaryForTopic(
   groupTitle: string,
@@ -126,13 +119,9 @@ export function summaryForTopic(
     muted: false,
     memberCount: topic.memberCount,
     onlineCount: 0,
-    // T-0164: topic rows keep their group's visibility + handle, so the
-    // header and the list paint the "Public" label on topics too.
     visibility,
     handle,
-    // T-0165: topic rows keep their group's picture too.
     ...(avatarUrl === undefined ? {} : { avatarUrl }),
-    // T-0466: topic rows keep their group's shared background too.
     ...(groupBackground === undefined ? {} : { groupBackground }),
     ...(lastMessage === undefined ? {} : { lastMessage }),
     ...(createdAt === undefined ? {} : { createdAt }),

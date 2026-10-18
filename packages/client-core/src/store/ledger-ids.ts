@@ -1,8 +1,5 @@
-// The ledger's id side tables: alias roots the store looks a message up by,
-// linking a local optimistic id to the server id it resolved to, migrating the
-// per-message tables when two ids merge, and resolving the id an edit or
-// reaction must name. Moved unchanged from `store/ledger.ts` (size split); the
-// maps themselves stay in `createMessageLedger` and arrive through `deps.maps`.
+// The ledger's id side tables: alias roots, local-to-server links, table migration when
+// two ids merge, and the id an edit or reaction must name.
 import type { ChatSummary, EditAuthor, EditsState, ReactionsState } from '@zilar/chat-core';
 import { isSameAuthor, mergeEdits, mergeTargets } from '@zilar/chat-core';
 import { listFor } from './ledger-signatures';
@@ -28,9 +25,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     cards: messageCards,
   } = deps.maps;
 
-  // A message may be known under its optimistic local id and later under its
-  // server id. The alias map keeps the two linked so a status change can be
-  // applied to whichever form is currently in the store.
+  // A message may be known under its optimistic local id and later its server id; the
+  // alias map keeps the two linked so a status change reaches whichever form is stored.
   function aliasRoot(id: string): string {
     let current = id;
     let next = messageAliases.get(current);
@@ -49,9 +45,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     const rootRight = aliasRoot(right);
     if (rootLeft !== rootRight) {
       messageAliases.set(rootRight, rootLeft);
-      // Reactions were stored under whichever id was known when they
-      // arrived; move them onto the surviving root so the alias-aware
-      // lookup finds them.
+      // Reactions were stored under whichever id was known when they arrived; move them
+      // onto the surviving root so the alias lookup finds them.
       migrateReactionTargets(rootRight, rootLeft);
       migrateEditTargets(rootRight, rootLeft);
       migrateCardEntries(rootRight, rootLeft);
@@ -76,8 +71,6 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     messageAuthors.set(from, value);
   }
 
-  // Copies the value stored under `from` (when any) onto `to`, keeping both
-  // keys readable; used for the per-message side tables when two ids merge.
   function migrateIdMap<T>(map: Map<string, T>, from: string, to: string): void {
     const value = map.get(from);
     if (value === undefined) {
@@ -107,8 +100,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     }
   }
 
-  // Keeps the newest card update when two message ids turn out to be one, like
-  // `mergeEdits` does for edit state.
+  // Keeps the newest card update when two ids turn out to be one, like `mergeEdits` does
+  // for edit state.
   function migrateCardEntries(from: string, to: string): void {
     const source = messageCards.get(from);
     if (source === undefined) {
@@ -145,22 +138,20 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     return aliasRoot(left) === aliasRoot(right);
   }
 
-  // Remembers the server id that a local optimistic id resolved to, so a
-  // reaction sent after the echo can name the target everyone else knows.
+  // Remembers the server id a local optimistic id resolved to, so a later reaction can
+  // name the target everyone knows.
   function linkLocalToServer(localId: string, serverId: string): void {
     if (localId !== serverId) {
       messageServerIds.set(localId, serverId);
-      // Also under the alias root so an action that already canonicalised
-      // (e.g. a chip tap before the echo) resolves to the server id.
+      // Also under the alias root, so an action that already canonicalised (e.g. a chip
+      // tap before the echo) resolves.
       messageServerIds.set(aliasRoot(localId), serverId);
     }
   }
 
-  // The same link for a send's ack, which names the sender-generated id. In a
-  // group, reactions must name the room's stanza id (XEP-0444), which only the
-  // echo carries: when the echo came first and filed it, the later ack keeps
-  // it. When the ack comes first, the echo overwrites the ack's id as before.
-  // A DM links the ack's id either way, as before.
+  // The same link for a send's ack. In a group, reactions must name the room's stanza id
+  // (XEP-0444), which only the echo carries: when the echo came first, the ack keeps it;
+  // when the ack came first, the echo overwrites.
   function linkAckToServer(chat: ChatSummary, localId: string, serverId: string): void {
     if (
       chat.kind === 'group' &&
@@ -171,9 +162,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     linkLocalToServer(localId, serverId);
   }
 
-  // The id to put on the wire for a message: the server (or archive) id when
-  // it is known, else the message id itself. A still-unacked `local-*` id has
-  // no server id yet and cannot be named, so it resolves to undefined.
+  // The id to put on the wire: the server (or archive) id when known, else the message
+  // id. A still-unacked `local-*` id cannot be named.
   function wireTargetFor(messageId: string): string | undefined {
     const root = aliasRoot(messageId);
     const server = messageServerIds.get(root);
@@ -183,27 +173,18 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     return root.startsWith('local-') ? undefined : root;
   }
 
-  // Remembers the author as the stanza described it, under both its own id
-  // and its alias root, so a later edit can be authorized without the
-  // original stanza.
+  // Remembers the author under both its own id and its alias root, so a later edit can be
+  // authorized without the original stanza.
   function rememberAuthor(messageId: string, author: EditAuthor): void {
     messageAuthors.set(messageId, author);
     messageAuthors.set(aliasRoot(messageId), author);
   }
 
-  // Remembers the sender-generated origin id of a message and, when the chat
-  // and sender are known, uses it to link two ids that name one message. A
-  // text whose delivery is unknown is resent with the same origin id (T-1216),
-  // and the server can archive it twice with two different stanza-ids
-  // (`resolve-sender.ts` `messageId`); aliasing the second id to the first
-  // makes `sameMessage` true, so the page dedupe in `history.ts` drops the
-  // second copy. The scope is `chatId` and `sender` because origin ids are
-  // client-generated: another sender can reuse one, and must never merge with
-  // it. Incoming and history messages record it here (`toUiMessage`,
-  // `ledger-incoming.ts`). A correction or a retraction names its target by
-  // origin id but is never a second copy: `isEditStanza` keeps it out of this
-  // path (`ledger-signatures.ts`, and its callers in `incoming.ts` and
-  // `history.ts`), so it only updates edit state.
+  // Remembers a message's sender-generated origin id and links the two ids that name one
+  // message: a resend keeps its origin id and the server can archive it twice with
+  // different stanza-ids, so aliasing makes `sameMessage` true and the history dedupe drops
+  // the second copy. Scoped to chat and sender because origin ids are client-generated.
+  // A correction or retraction names its target by origin id but is never a second copy.
   function rememberOriginId(
     messageId: string,
     originId: string,
@@ -218,10 +199,9 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     const key = `${chatId}|${originId}`;
     const claim = messageOriginClaims.get(key);
     if (claim === undefined) {
-      // The first message of this origin id in this chat. An origin id is
-      // client-generated, so it may name another sender's message id: linking
-      // then would attach its author to this message, and a later correction
-      // or retraction could take that message over. Keep them separate.
+      // The first message of this origin id in this chat. An origin id is client-generated
+      // and may name another sender's message: linking would let a later correction take it
+      // over.
       const originAuthor = authorFor(originId);
       if (
         originAuthor !== undefined &&
@@ -229,17 +209,14 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
       ) {
         return;
       }
-      // Link its two ids.
       if (originId !== messageId) {
         linkMessageIds(originId, messageId);
       }
     } else if (claim.sender === sender) {
-      // A resend of the same sender's message: alias it to the first copy.
       if (!sameMessage(claim.root, messageId)) {
         linkMessageIds(claim.root, messageId);
       }
     } else {
-      // Another sender reused this origin id: never alias across senders.
       return;
     }
     messageOriginClaims.set(key, { sender, root: aliasRoot(messageId) });
@@ -258,15 +235,15 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     return messageAuthors.get(aliasRoot(messageId)) ?? messageAuthors.get(messageId);
   }
 
-  // The id a correction must name: the original sender-generated id, in DMs
-  // and in groups alike (XEP-0308).
+  // The id a correction must name: the original sender-generated id, in DMs and groups
+  // alike (XEP-0308).
   function correctionTargetFor(messageId: string): string | undefined {
     const root = aliasRoot(messageId);
     return messageOriginIds.get(root) ?? messageOriginIds.get(messageId);
   }
 
-  // The id a retraction must name: the origin id in a DM, the stanza-id in a
-  // group (XEP-0424). A still-unacked group message has no stanza-id yet.
+  // The id a retraction must name: the origin id in a DM, the stanza-id in a group
+  // (XEP-0424); a still-unacked group message has none.
   function retractionTargetFor(chat: ChatSummary, messageId: string): string | undefined {
     if (chat.kind === 'group') {
       const message = listFor(get(), chat.id).find((item) => sameMessage(item.id, messageId));
@@ -276,12 +253,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     return correctionTargetFor(messageId);
   }
 
-  // PERF-13: drops every entry of the messages a chat just pruned from its
-  // `messagesByChat` (`prune.ts`, PERF-3), so the ledger's per-message maps
-  // (`aliases`, `serverIds`, `originIds`, `originClaims`, `authors`,
-  // `baseTexts` and `cards`, all in `LedgerMaps`) do not grow for the life of
-  // the session.
-  // `messageIds` are the dropped bubble ids as stored.
+  // Drops every per-message map entry of a chat's pruned messages, so the ledger's maps do
+  // not grow for the life of the session.
   function forgetMessages(chatId: string, messageIds: readonly string[]): void {
     if (messageIds.length === 0) {
       return;
@@ -291,8 +264,8 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     for (const root of roots) {
       ids.add(root);
     }
-    // An alias goes when it names a forgotten id or when it points at one, so
-    // no later lookup resolves a pruned message to a surviving root.
+    // An alias goes when it names a forgotten id or points at one, so no later lookup
+    // resolves a pruned message.
     for (const [alias, target] of messageAliases) {
       if (ids.has(alias) || roots.has(target)) {
         messageAliases.delete(alias);
@@ -305,7 +278,6 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
       messageAuthors.delete(id);
       messageBaseTexts.delete(id);
       messageCards.delete(id);
-      // The claim is keyed by chat and origin id (`rememberOriginId`).
       if (originId !== undefined) {
         messageOriginClaims.delete(`${chatId}|${originId}`);
       }

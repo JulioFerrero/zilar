@@ -1,7 +1,5 @@
-// The ledger's identity helpers: who "me" is, whether a stanza is my own, the
-// group member and room occupant names behind a sender, a display name that
-// never falls back to a JID localpart, and a reactor's display name. Moved
-// unchanged from `store/ledger.ts` (size split).
+// The ledger's identity helpers: who "me" is, whether a stanza is my own, sender display
+// names (never a JID localpart) and reactor names.
 import { userLocalpartOf as sharedUserLocalpartOf } from '@zilar/chat-core';
 import type { LedgerStanza, LedgerState, MessageLedgerDeps } from './ledger-types';
 
@@ -68,8 +66,6 @@ export function createLedgerIdentity({ get, deps }: LedgerIdentityDeps) {
     return 'Someone';
   }
 
-  // A reactor's display name: "You" for me, the DM title for a DM, else the
-  // group member, the room occupant, or "Someone".
   function reactorName(chatId: string, reactorJid: string): string {
     const mine = myJid();
     if (mine !== undefined && reactorJid === mine) {

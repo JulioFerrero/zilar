@@ -1,12 +1,10 @@
 import type { TaskStep, TaskStepAction } from '@zilar/api-contract';
 import type { Progress } from '@zilar/protocol';
 
-/** One rendered row: the server's step, or a card step when the log is gone. */
 export interface DisplayStep {
   id: string;
   label: string;
   state: TaskStep['state'];
-  /** Absent on a card-only fallback step, which carries no duration. */
   durationMs: number | null;
   approved: boolean;
   actions: readonly TaskStepAction[];
@@ -23,7 +21,6 @@ export function toDisplayStep(step: TaskStep): DisplayStep {
   };
 }
 
-/** The card's own steps, with no actions, when the log is empty or gone. */
 export function fallbackSteps(card: Progress | undefined): DisplayStep[] {
   return (card?.steps ?? []).map((step) => ({
     id: step.id,
@@ -36,9 +33,8 @@ export function fallbackSteps(card: Progress | undefined): DisplayStep[] {
 }
 
 /**
- * The rows the steps view shows: the loaded ones when there are any; the
- * card's own steps when the log is gone (a 404, or loaded but empty); nothing
- * while loading or after another failure.
+ * The rows the steps view shows: the loaded ones when there are any; the card's own steps
+ * when the log is gone or empty; nothing while loading or after another failure.
  */
 export function stepsView(
   loaded: readonly TaskStep[] | undefined,
@@ -59,7 +55,6 @@ export function stepsView(
   };
 }
 
-/** The step holding the first failed action, which starts open. */
 export function defaultOpenStepId(steps: readonly DisplayStep[]): string | null {
   return steps.find((step) => step.actions.some((action) => !action.ok))?.id ?? null;
 }

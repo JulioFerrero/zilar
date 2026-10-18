@@ -15,9 +15,8 @@ export type StoreApi<T> = {
   registry: AtomRegistry.AtomRegistry;
 };
 
-// A store whose whole state lives in one registry atom. The actions still see
-// a synchronous `set` / `get`, and `subscribe` keeps the `(state, prevState)`
-// contract and its skip-on-unchanged rule.
+// A store whose whole state lives in one registry atom; actions still see a synchronous
+// `set`/`get`, and `subscribe` keeps the `(state, prevState)` contract.
 export function createAtomStore<T>(
   initializer: (setState: SetState<T>, getState: () => T, api: StoreApi<T>) => T,
   providedRegistry?: AtomRegistry.AtomRegistry,
@@ -37,9 +36,8 @@ export function createAtomStore<T>(
     };
   };
 
-  // Reading through the closure (instead of a captured value) keeps the atom
-  // correct even if its registry node is disposed while no React reader holds
-  // it. Writing updates the closure and the node in one step.
+  // Reading through the closure (instead of a captured value) keeps the atom correct
+  // even if its node is disposed; writing updates the closure and the node in one step.
   const atom = Atom.writable<T, T>(
     () => state,
     (ctx, next) => {
@@ -74,9 +72,8 @@ export function createAtomStore<T>(
 }
 
 /**
- * Reads `selector(state)` from a store and re-renders only when `Object.is` on
- * the result changes (zustand v5's `useStore`). `useSyncExternalStore` also
- * avoids a per-render derived atom for an inline selector.
+ * Reads `selector(state)` and re-renders only when `Object.is` on the result changes;
+ * `useSyncExternalStore` also avoids a per-render derived atom.
  */
 export function useStoreSelector<T, U>(store: StoreApi<T>, selector: (state: T) => U): U {
   return useSyncExternalStore(
@@ -86,8 +83,6 @@ export function useStoreSelector<T, U>(store: StoreApi<T>, selector: (state: T) 
   );
 }
 
-// The zustand `UseBoundStore` shape: a callable hook `(selector) => selected`
-// plus the store api attached to the function.
 export type UseBoundStore<T> = {
   (): T;
   <U>(selector: (state: T) => U): U;

@@ -2073,3 +2073,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2071](T-2071-phone-auth-card.md) | phone: one AuthCard shell for the sign-up screens | 2026-10-18 |
 | [T-2058](T-2058-server-shared-helpers.md) | server: queryRecord, chat access, topic visibility, index once | 2026-10-18 |
 | [T-2076](T-2076-comments-phone-store-app-ais.md) | comments: phone store, routes and AIs (-1,854) | 2026-10-18 |
+| [T-2075](T-2075-comments-client-core.md) | comments: client-core (-1,071) | 2026-10-18 |

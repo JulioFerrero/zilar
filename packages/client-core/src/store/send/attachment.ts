@@ -46,10 +46,6 @@ function validAlbum(album: AlbumRef | undefined): AlbumRef | undefined {
   return album;
 }
 
-/**
- * The upload steps of an attachment, re-runnable from a Retry: read the image
- * size when it is one, PUT the bytes, then send the payload message.
- */
 function runAttachmentUpload(
   ctx: SendCtx,
   chat: ChatSummary,
@@ -65,8 +61,8 @@ function runAttachmentUpload(
     ctx.k.markSendFailed(chat.id, localId, 'network');
     return;
   }
-  // The peer can resolve the quote only by the shared wire id; the local id
-  // only exists on this device.
+  // The peer can resolve the quote only by the shared wire id; the local id only exists
+  // on this device.
   const quote = wireReply(ctx, replyTo);
   const run = newRun();
   armSendTimeout(ctx, chat.id, localId, run);
@@ -80,8 +76,8 @@ function runAttachmentUpload(
         (fraction) => setUploadProgress(ctx, chat.id, localId, fraction),
         localId,
       );
-      // A cancel removed the bubble while the slot request or the PUT was in
-      // flight: the bytes may be up, but nothing must be sent.
+      // A cancel removed the bubble while the slot request or the PUT was in flight: the
+      // bytes may be up, but nothing must be sent.
       if (!messageAlive(ctx, chat.id, localId)) {
         settleSendTimeout(ctx, localId, run);
         return;
@@ -111,8 +107,8 @@ function runAttachmentUpload(
         }),
       );
       linkSent(ctx, chat, localId, sent.id);
-      // A retried attempt may own this message now: only this run's own
-      // success settles it, drops the timer and the kept bytes.
+      // A retried attempt may own this message now: only this run's own success settles it,
+      // drops the timer and the kept bytes.
       if (!isCurrentSendRun(ctx, localId, run)) {
         return;
       }
@@ -123,8 +119,8 @@ function runAttachmentUpload(
       Effect.catchCause((cause) =>
         Effect.sync(() => {
           clearUploadProgress(ctx, chat.id, localId);
-          // Keep the local bytes so the bubble can offer a Retry. Pre-timeout
-          // code read only the `failed` flag; keep it in sync.
+          // Keep the local bytes so the bubble can offer a Retry; the `failed` flag mirrors
+          // the status.
           settleFailure(ctx, chat.id, localId, run, cause, () =>
             ctx.k.markAttachmentFailed(chat.id, localId),
           );
@@ -189,9 +185,8 @@ export function retryAttachment(ctx: SendCtx, chatId: string, messageId: string)
   const message = ctx.k
     .listFor(ctx.get(), chatId)
     .find((item) => ctx.k.sameMessage(item.id, messageId));
-  // Like `retryVoice`: only a `failed` bubble may relaunch the pipeline, so a
-  // double Retry click cannot double-send (the first click flips the bubble
-  // back to `sending`, and the second returns here).
+  // Like `retryVoice`: only a `failed` bubble relaunches the pipeline, so a double Retry
+  // click cannot double-send.
   if (message === undefined || message.status !== 'failed') {
     return;
   }

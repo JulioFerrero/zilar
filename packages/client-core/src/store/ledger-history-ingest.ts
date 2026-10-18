@@ -1,6 +1,5 @@
-// Recording the edits a stanza carries, and ingesting a history page as one
-// batch: every reaction and edit of the page is applied to a working copy of
-// the state, and the result lands in one store update with the merged page.
+// Ingesting a history page as one batch: every reaction and edit is applied to a working
+// copy, and the result lands in one store update with the merged page.
 import { Effect } from 'effect';
 import type { EditUpdate } from '@zilar/chat-core';
 import { applyEdit, emptyEdits, isSameAuthor } from '@zilar/chat-core';
@@ -22,13 +21,11 @@ interface EditRecorderDeps {
   readonly get: () => LedgerState;
   readonly set: LedgerSet;
   readonly ids: LedgerIds;
-  /** The task-card updates a correction carries, newest order wins. */
   readonly cards: Map<string, CardEdit>;
 }
 
 export interface RecordedEdit {
   readonly update: EditUpdate | undefined;
-  /** Whether the update changed the target's edit state. */
   readonly applied: boolean;
 }
 
@@ -48,8 +45,8 @@ export function createEditRecorder(deps: EditRecorderDeps) {
       };
     }
     if (message.correction !== undefined) {
-      // A correction without a body has no new text: ignore it rather than
-      // blanking the original.
+      // A correction without a body has no new text: ignore it rather than blanking the
+      // original.
       if (message.body === undefined) {
         return undefined;
       }
@@ -68,9 +65,8 @@ export function createEditRecorder(deps: EditRecorderDeps) {
     return undefined;
   }
 
-  // A correction carrying a progress or blocks payload replaces its target's
-  // card (T-1419, T-1810 for block card answers). A body-less one still counts:
-  // the card is the whole update. Any other payload type is not a card edit.
+  // A correction carrying a progress or blocks payload replaces its target's card; a
+  // body-less one still counts, since the card is the whole update.
   function cardEditFor(message: LedgerStanza): CardEdit | undefined {
     const correction = message.correction;
     const payload = message.payload;
@@ -85,10 +81,8 @@ export function createEditRecorder(deps: EditRecorderDeps) {
     };
   }
 
-  // Remembers a card update under the alias root of its target, so it lands on
-  // whichever id the message is stored under. An update from another author is
-  // ignored, like a text correction, and an older stanza order never overwrites
-  // a newer one.
+  // Remembers a card update under the alias root of its target; an update from another
+  // author is ignored, and an older stanza never overwrites a newer one.
   function rememberCard(targetId: string, entry: CardEdit): void {
     const targetAuthor = authorFor(targetId);
     if (targetAuthor !== undefined && !isSameAuthor(targetAuthor, entry.author)) {
@@ -102,8 +96,8 @@ export function createEditRecorder(deps: EditRecorderDeps) {
     cards.set(root, entry);
   }
 
-  // `applyEdit` returns a fresh object even for a stale order or a redelivered
-  // duplicate stanza, so whether the edit state changed is compared.
+  // `applyEdit` returns a fresh object even for a stale order or duplicate, so the edit
+  // state itself is compared.
   function applyEditState(chatId: string, update: EditUpdate): boolean {
     const target = authorFor(update.targetId);
     const before = get().edits[chatId]?.targets[update.targetId];
@@ -117,8 +111,6 @@ export function createEditRecorder(deps: EditRecorderDeps) {
     return target !== undefined && correctionChanged(before, after);
   }
 
-  // Records the card and the edit state a stanza carries, without refreshing
-  // the loaded messages: a history page records every stanza, refreshes once.
   function recordEdit(message: LedgerStanza): RecordedEdit {
     const card = cardEditFor(message);
     if (card !== undefined && message.correction !== undefined) {
@@ -141,9 +133,8 @@ interface HistoryIngestDeps {
 export function createHistoryIngest(deps: HistoryIngestDeps) {
   const { recorder, edits } = deps;
 
-  // History never bumps a routine chat (T-1722): an old page read back at boot
-  // or on open must not reorder or inflate. Every edit is recorded first and
-  // the loaded messages are re-attached once per chat.
+  // History never bumps a routine chat: an old page read back at boot or on open must not
+  // reorder or inflate.
   function ingestHistoryEdits(messages: readonly LedgerStanza[]): void {
     const chats = new Set<string>();
     for (const message of messages) {
@@ -164,7 +155,6 @@ export function createHistoryIngest(deps: HistoryIngestDeps) {
   return { ingestHistoryEdits };
 }
 
-/** The state a batch reads and writes: the working copy while one runs. */
 export interface LedgerBatchView {
   readonly get: () => LedgerState;
   readonly set: LedgerSet;
@@ -173,10 +163,8 @@ export interface LedgerBatchView {
 const LEDGER_KEYS = ['messagesByChat', 'chats', 'edits', 'reactions'] as const;
 
 /**
- * A working copy of the ledger's state. Outside a batch `get` and `set` are the
- * store's own. Inside `collect`, `set` writes to the copy (reads see it) and
- * nothing reaches the store: `collect` returns what changed, for the caller to
- * commit in one update.
+ * A working copy of the ledger's state. Inside `collect`, `set` writes to the copy and
+ * nothing reaches the store; `collect` returns what changed.
  */
 export function createLedgerBatch(store: LedgerBatchView) {
   let working: LedgerState | undefined;
@@ -236,9 +224,8 @@ export function createLedgerBatch(store: LedgerBatchView) {
 export type LedgerBatch = ReturnType<typeof createLedgerBatch>;
 
 /**
- * Merges an older history page into the loaded list in O(page + loaded): a
- * message that is already loaded keeps its loaded copy, and the list is sorted
- * only when the concatenation is not already in order.
+ * Merges an older page into the loaded list in O(page + loaded): an already loaded message
+ * keeps its copy, and the list is sorted only when the concatenation is not in order.
  */
 export function mergeOlderPage(
   aliasRoot: (id: string) => string,

@@ -1,22 +1,15 @@
 import { Effect } from 'effect';
 import type { ApiFailure } from './errors';
 
-/**
- * Builds an app's `fromApi`: it lifts one api Promise call into an Effect,
- * mapping a rejection with the app's own `toApiFailure`. The signal aborts
- * when the Effect is interrupted; the api functions do not take it yet, so
- * callers usually ignore it: `fromApi(() => getMe())`.
- */
+/** Lifts one api Promise call into an Effect that fails with the app's `toApiFailure`. */
 export const makeFromApi =
   (toApiFailure: (cause: unknown) => ApiFailure) =>
   <A>(call: (signal: AbortSignal) => Promise<A>): Effect.Effect<A, ApiFailure> =>
     Effect.tryPromise({ try: call, catch: toApiFailure });
 
 /**
- * Runs one Effect a caller may cancel. An abort rejects with the
- * `DOMException` named `AbortError`, as a `fetch` abort does, whether the
- * signal was already aborted, fires during the Effect, or fires before the
- * value is returned; every other failure is kept.
+ * Runs one Effect a caller may cancel. An abort rejects with `AbortError`, as a
+ * `fetch` abort does; every other failure is kept.
  */
 export async function runApiAbortable<A, E>(
   effect: Effect.Effect<A, E>,

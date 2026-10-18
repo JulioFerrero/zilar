@@ -1,7 +1,3 @@
-// The shapes the message ledger works with: the stanza it reads, the message it
-// stores, the slice of store state it reads and writes, the callbacks it needs
-// from its store, and the id side tables it keeps. Moved unchanged from
-// `store/ledger.ts` (size split).
 import type {
   ChatSummary,
   EditAuthor,
@@ -13,14 +9,10 @@ import type {
 import type { Payload } from '@zilar/protocol';
 import type { ChatMessage } from '@zilar/xmpp-core';
 
-/** A received stanza as the ledger reads it: `ChatMessage` without `kind`, which it never reads. */
 export type LedgerStanza = Omit<ChatMessage, 'kind'>;
 
-/**
- * A stored chat message: the shared `UiMessage` plus mobile's local-only
- * upload state (`apps/mobile/src/lib/types.ts` `MobileMessage`). Web never
- * sets the two upload fields, so its messages pass through unchanged.
- */
+/** A stored chat message: the shared `UiMessage` plus mobile's local-only upload state;
+ * web never sets the two upload fields. */
 export type StoreMessage = UiMessage & {
   localUri?: string | undefined;
   uploadProgress?: number | undefined;
@@ -31,7 +23,6 @@ export interface LedgerContact {
   readonly name: string;
 }
 
-/** The part of a store's state the ledger reads; both apps' states satisfy it. */
 export interface LedgerState {
   readonly messagesByChat: Readonly<Record<string, StoreMessage[]>>;
   readonly chats: ChatSummary[];
@@ -41,7 +32,6 @@ export interface LedgerState {
   readonly me?: { readonly jid?: string | null | undefined } | null | undefined;
 }
 
-/** The part of a store's state the ledger writes. */
 export interface LedgerPatch {
   messagesByChat?: Record<string, StoreMessage[]>;
   chats?: ChatSummary[];
@@ -54,19 +44,14 @@ export type LedgerSet = (update: LedgerPatch | ((state: LedgerState) => LedgerPa
 export interface MessageLedgerDeps {
   readonly get: () => LedgerState;
   readonly set: LedgerSet;
-  /** The group member name behind a lowercased user id, in one chat. */
   readonly memberName: (chatId: string, localpart: string) => string | undefined;
-  /** The MUC nick of a room occupant (by real or room JID), when connected. */
   readonly occupantNick: (chatId: string, fromJid: string) => string | undefined;
-  /** The XMPP token of the latest session, for the media allow-list. */
   readonly mediaToken: () => MediaTokenShape | undefined;
 }
 
 /**
- * The message id that first claimed an origin id in one chat, and the sender
- * that claimed it. A resend reuses its origin id, so a second archive row of
- * the same sender aliases to the first; another sender's reused origin id must
- * not (`rememberOriginId`, `ledger-ids.ts`).
+ * The message id that first claimed an origin id in one chat, and its sender: a resend
+ * aliases to the first, but another sender's reused origin id must not.
  */
 export interface OriginClaim {
   readonly sender: string;
@@ -74,9 +59,8 @@ export interface OriginClaim {
 }
 
 /**
- * The card a correction replaces its target with (T-1419): the full progress
- * payload, the author the update must come from like a text correction, and the
- * stanza order that decides the newest.
+ * The card a correction replaces its target with: the payload, the author the update must
+ * come from, and the stanza order that decides the newest.
  */
 export interface CardEdit {
   readonly order: number;
@@ -84,14 +68,6 @@ export interface CardEdit {
   readonly payload: Payload;
 }
 
-/**
- * The id side tables the ledger keeps for a store's lifetime: the optimistic
- * local id to server id aliases, the resolved server ids, the sender-generated
- * origin ids and their per-chat claims, the authors as their stanzas described
- * them, the base texts a reverted edit restores, and the task-card updates a
- * correction carries. They are created by `createMessageLedger` and shared with
- * the moved id module.
- */
 export interface LedgerMaps {
   readonly aliases: Map<string, string>;
   readonly serverIds: Map<string, string>;

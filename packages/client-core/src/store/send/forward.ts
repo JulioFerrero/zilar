@@ -22,10 +22,9 @@ import {
 import { coreKind } from '../rows';
 import { sendText } from './text';
 
-// The room identity a forward may carry (T-0414): only a public group or
-// topic has a room JID safe to reveal. A DM/AI chat has no room JID, and a
-// private topic (or private group) must omit both so the target never learns a
-// room it may not see (forwarding plan §3.1/§3.6).
+// The room identity a forward may carry: only a public group or topic has a room JID
+// safe to reveal. A private topic or group must omit both, so the target never learns a
+// room it may not see.
 function forwardPublicRoomFor(source: ChatSummary | undefined): ChatSummary | undefined {
   if (source === undefined || source.kind !== 'group') {
     return undefined;
@@ -34,11 +33,9 @@ function forwardPublicRoomFor(source: ChatSummary | undefined): ChatSummary | un
   return visibility === 'public' ? source : undefined;
 }
 
-// The origin header of one forwarded copy. Reusing a message's own `forward`
-// keeps the first author on a forward of a forward. Otherwise it is built from
-// the source message; `ForwardOriginSchema` caps over-long names and rejects a
-// bad timestamp, and such a message is skipped instead of putting junk on the
-// wire.
+// The origin header of one forwarded copy. Reusing a message's own `forward` keeps the
+// first author on a forward of a forward; otherwise it is built from the source, and a
+// bad timestamp skips the message instead of putting junk on the wire.
 function forwardOriginFor(ctx: SendCtx, message: UiMessage): ForwardOrigin | undefined {
   if (message.forward !== undefined) {
     return isValid(ForwardOriginSchema)(message.forward) ? message.forward : undefined;
@@ -60,8 +57,6 @@ function forwardOriginFor(ctx: SendCtx, message: UiMessage): ForwardOrigin | und
   return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
 }
 
-// One forwarded copy's send: the same deadline/status machinery as voice and
-// attachments, with a fixed user-safe reason on failure.
 function runForwardSend(
   ctx: SendCtx,
   target: ChatSummary,
@@ -110,9 +105,8 @@ export function forwardMessages(
   options?: { comment?: string },
 ): void {
   const comment = options?.comment?.trim();
-  // The copies worth forwarding do not depend on the target: pick them once,
-  // then regroup any source album per target below (T-1273). Grouping the sent
-  // copies (not the input) keeps `count` equal to what actually arrives.
+  // The copies worth forwarding are picked once; any source album is regrouped per target
+  // below. Grouping the sent copies keeps `count` equal to what actually arrives.
   const copies = messages.flatMap((message) => {
     if (
       message.deleted === true ||
@@ -160,8 +154,8 @@ export function forwardMessages(
         ...(payload === undefined ? {} : forwardedUiFieldsFor(payload)),
         ...(album === undefined ? {} : { album }),
       };
-      // Key the echo queue exactly as the matching normal send does, so the
-      // server echo links to this bubble instead of duplicating it.
+      // Key the echo queue exactly as the matching normal send does, so the server echo
+      // links to this bubble instead of duplicating it.
       const signature =
         payload !== undefined && payload.type === 'sticker'
           ? ctx.k.stickerSignatureFor(targetId, body, payload.data.sticker_id, undefined)
@@ -175,8 +169,8 @@ export function forwardMessages(
       queued = true;
       runForwardSend(ctx, target, localId, body, payload, origin, album);
     }
-    // The comment is a separate normal text message, only when this target
-    // received at least one copy.
+    // The comment is a separate normal text message, only when this target received at
+    // least one copy.
     if (queued && comment !== undefined && comment.length > 0) {
       sendText(ctx, targetId, comment);
     }

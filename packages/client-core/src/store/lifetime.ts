@@ -1,58 +1,37 @@
-// The lifetime of one chat store: a store Scope that lives from `start()` to
-// `stop()`, and inside it one session Scope per boot attempt (`start()` and
-// every "retry"). Fibers forked into a Scope are interrupted when it closes, so
-// no timer, loop, listener or connection outlives the lifetime that owns it.
-//
-// The runners start the fiber at once (its synchronous part runs inline, as an
-// `async` function's did), unlike `Effect.forkIn`, which starts a tick later.
-//
-// A fiber interrupted from outside never runs `Effect.catchCause` or
-// `Effect.catch` handlers (probed on effect 4.0.2), so a rollback handler is
-// safe to put on a forked task.
+// The lifetime of one chat store: a store Scope from `start()` to `stop()`, and one
+// session Scope per boot attempt. A fiber interrupted from outside never runs catch
+// handlers, so a rollback handler is safe on a forked task.
 import { type Context, Effect, Exit, FiberMap, FiberSet, Scope, type Fiber } from 'effect';
 
 export type Task<R> = Effect.Effect<unknown, unknown, R>;
 
-/** A Scope plus the runners that tie fibers to it. */
 export interface Fibers<R> {
   readonly scope: Scope.Closeable;
-  /** Starts `task` now; it is interrupted when the scope closes. */
   readonly fork: (task: Task<R>) => Fiber.Fiber<unknown, never>;
-  /** Like `fork`, but a task with the same key is interrupted first. */
   readonly forkKeyed: (key: string, task: Task<R>) => Fiber.Fiber<unknown, never>;
-  /** Interrupts the task with this key, if any. */
   readonly cancel: (key: string) => void;
   readonly has: (key: string) => boolean;
-  /** Runs `finalizer` when the scope closes. */
   readonly onClose: (finalizer: Effect.Effect<unknown>) => void;
-  /** False once the scope has closed. */
   readonly isOpen: () => boolean;
 }
 
 export interface Lifetime<R> {
-  /** Starts `task` now, tied to nothing. */
   readonly runDetached: (task: Task<R>) => void;
   readonly runPromise: <A, E>(task: Effect.Effect<A, E, R>) => Promise<A>;
-  /** Fibers of the store Scope (opened on first use, reopened after `closeStore`). */
   readonly fork: (task: Task<R>) => Fiber.Fiber<unknown, never>;
   readonly forkKeyed: (key: string, task: Task<R>) => Fiber.Fiber<unknown, never>;
   readonly cancel: (key: string) => void;
   readonly has: (key: string) => boolean;
-  /** Runs `finalizer` when the store Scope closes. */
   readonly onStoreClose: (finalizer: Effect.Effect<unknown>) => void;
   readonly isStoreOpen: () => boolean;
-  /** The store Scope itself (opened on first use), for code that forks into a raw Scope. */
   readonly storeScope: () => Scope.Closeable;
-  /** The current session, or undefined before `start()` and after `stop()`. */
   readonly session: () => Fibers<R> | undefined;
-  /** Closes the current session and opens a new one inside the store Scope. */
   readonly beginSession: () => Fibers<R>;
-  /** Closes the session and the store Scope: every fiber is interrupted. */
   readonly closeStore: () => void;
 }
 
-// A forked task that fails must not vanish silently, and must not take the
-// store down: the failure is logged and the fiber ends.
+// A forked task that fails is logged and the fiber ends: it does not vanish silently or
+// take the store down.
 const guarded = <R>(task: Task<R>): Effect.Effect<unknown, never, R> =>
   task.pipe(Effect.catchCause((cause) => Effect.logError('chat store task failed', cause)));
 

@@ -1,16 +1,3 @@
-// The message ledger shared by the web and mobile chat stores: message ids and
-// their aliases, origin ids, authors and base texts, edits, reactions,
-// mentions, previews, reply quotes, sender and reactor names, the mapping of a
-// received stanza to a bubble, and the mutators every send and receive path
-// goes through. It reads and writes the store state through `get` and `set`,
-// and reads back its own writes (`refreshEdits`, `migrateReactionTargets`), so
-// the store must keep a synchronous `set`.
-//
-// This is the barrel: the ledger's pieces live in `ledger-types.ts`,
-// `ledger-signatures.ts`, `ledger-ids.ts`, `ledger-edits.ts`,
-// `ledger-mutators.ts`, `ledger-identity.ts`, `ledger-reactions.ts`,
-// `ledger-incoming.ts` and `ledger-history-ingest.ts`, and are assembled here. Moved unchanged from the
-// former single file (size split).
 import { createLedgerEdits } from './ledger-edits';
 import {
   createEditRecorder,
@@ -47,9 +34,8 @@ export { isEditStanza, isReactionOnly, listFor, previewFor, signatureFor, sticke
 export type MessageLedger = ReturnType<typeof createMessageLedger>;
 
 export function createMessageLedger(deps: MessageLedgerDeps) {
-  // Every ledger piece reads and writes through the batch, so a history page can
-  // collect all of its updates into one (`collectPage`); outside a batch these
-  // are the store's own `get` and `set`.
+  // Every ledger piece reads and writes through the batch, so a history page can collect
+  // all of its updates into one (`collectPage`).
   const batch = createLedgerBatch(deps);
   const { get, set } = batch;
 
@@ -65,8 +51,8 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     cards: new Map(),
   };
 
-  // `ids` needs the edit and reaction refresh paths, which are built after it;
-  // the wrappers defer to them so the two do not have to be created in order.
+  // `ids` needs the edit and reaction refresh paths built after it; the wrappers defer to
+  // them so creation order does not matter.
   const ids = createLedgerIds({
     get,
     set,
@@ -95,7 +81,6 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
 
   return {
     reset,
-    /** Read by the store's sign-out, which clears them. */
     messageAuthors: maps.authors,
     messageOriginIds: maps.originIds,
     messageBaseTexts: maps.baseTexts,

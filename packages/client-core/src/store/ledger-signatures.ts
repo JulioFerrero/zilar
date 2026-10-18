@@ -1,7 +1,3 @@
-// Pure helpers over a ledger stanza or message: the echo signature a send is
-// queued under, whether a stanza is a reaction-only message or an edit, the
-// stored list for a chat, the author a stanza describes and the list preview of
-// a deleted message. Moved unchanged from `store/ledger.ts` (size split).
 import type { EditAuthor, ReplyRef } from '@zilar/chat-core';
 import { jidLocal } from '@zilar/protocol';
 import type { LedgerStanza, LedgerState, StoreMessage } from './ledger-types';
@@ -10,17 +6,14 @@ export function mentionLocalpart(jid: string): string {
   return jidLocal(jid);
 }
 
-// The echo signature is over the logical text: the sender queues the typed
-// text, and the echo arrives with the XEP-0461 fallback quote already
-// stripped by the decoder, so the two agree. A body that itself starts with
-// "> " matches its own echo the same way on both sides.
+// The echo signature is over the logical text: the sender queues the typed text and the
+// echo arrives with the fallback quote stripped, so the two agree.
 export function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
   return `${chatId}|${body}|${replyTo?.id ?? ''}`;
 }
 
-// Sticker sends share one emoji body per pack ("🐱" for every cat), so the
-// echo queue is keyed by sticker id too — otherwise two quick stickers
-// with the same emoji can link the wrong server id.
+// Sticker sends share one emoji body per pack, so the echo queue is keyed by sticker id
+// too; otherwise two quick stickers can link the wrong server id.
 export function stickerSignatureFor(
   chatId: string,
   body: string,
@@ -30,17 +23,15 @@ export function stickerSignatureFor(
   return `${signatureFor(chatId, body, replyTo)}|sticker:${stickerId}`;
 }
 
-// A reactions message is swallowed only when it is truly body-less and
-// payload-less: one that also carries a body or a payload is a normal
-// message that happens to update reactions too.
+// A reactions message is swallowed only when it is truly body-less and payload-less.
 export function isReactionOnly(message: LedgerStanza): boolean {
   return (
     message.reactions !== undefined && message.body === undefined && message.payload === undefined
   );
 }
 
-// A XEP-0308 correction or a XEP-0424 retraction is never a chat message:
-// it edits another message and never renders as a bubble.
+// A XEP-0308 correction or XEP-0424 retraction is never a chat message: it edits another
+// and never renders.
 export function isEditStanza(message: LedgerStanza): boolean {
   return message.correction !== undefined || message.retraction !== undefined;
 }
@@ -56,8 +47,8 @@ export function authorOfChatMessage(message: LedgerStanza): EditAuthor {
   return author;
 }
 
-// The list preview of a deleted message; the message itself carries no
-// text, but the chat row says what happened.
+// The list preview of a deleted message: the message carries no text, but the chat row
+// says what happened.
 export function previewFor(message: StoreMessage): StoreMessage {
   return message.deleted === true ? { ...message, text: 'Message deleted' } : message;
 }

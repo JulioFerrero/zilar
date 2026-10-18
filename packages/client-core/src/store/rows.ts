@@ -1,4 +1,3 @@
-// Pure row helpers shared by the web and mobile chat stores. No state, no Effect.
 import {
   chatSortTime,
   type ChatSummary,
@@ -6,8 +5,8 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 
-// Finished turn ids are remembered only to ignore a late `draft`. The set is
-// capped so it cannot grow for the life of the app session.
+// Finished turn ids are remembered only to ignore a late `draft`, and the set is capped so
+// it cannot grow for the life of the app session.
 export const FINISHED_TURNS_MAX = 50;
 
 export function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
@@ -19,12 +18,9 @@ export function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
 }
 
 /**
- * The chat list after a refresh: the rows discovered by this refresh plus the
- * ones already known, ordered together by recency. A new row with no preview
- * and no creation time sorts with the oldest instead of jumping to the top for
- * one tick only to sink again on the next sort (UI-12); a just-created row
- * carries its creation time (T-1318), so it leads the list right away, like
- * Telegram.
+ * The chat list after a refresh: new rows plus known ones, ordered by recency. A new row
+ * with no preview and no creation time sorts with the oldest instead of jumping to the top
+ * for one tick; a just-created row carries its creation time and leads like Telegram.
  */
 export function orderChatRows(
   fresh: readonly ChatSummary[],
@@ -33,12 +29,10 @@ export function orderChatRows(
   return sortByRecency([...fresh, ...kept]);
 }
 
-/** The XMPP chat kind of a chat row. */
 export function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
 }
 
-/** Drops the `failed` flag without leaving an `undefined` value behind. */
 export function clearFailure(message: UiMessage): UiMessage {
   if (message.failed === undefined && message.failureReason === undefined) {
     return message;
@@ -49,7 +43,6 @@ export function clearFailure(message: UiMessage): UiMessage {
   return next;
 }
 
-/** Moves one chat row to the top of the list, keeping the others in order. */
 export function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary[] {
   const index = chats.findIndex((chat) => chat.id === chatId);
   if (index <= 0) {
@@ -63,10 +56,9 @@ export function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary
   return next;
 }
 
-// A status only moves forward: sending -> sent -> delivered -> read. A late
-// echo or send confirmation must never downgrade a message the peer already
-// read. `failed` is outside the ladder: `advanceStatus` never moves into or
-// out of it by accident, only an explicit retry does.
+// A status only moves forward: sending -> sent -> delivered -> read; a late echo must never
+// downgrade a message the peer already read. `failed` is outside the ladder: only an
+// explicit retry moves into or out of it.
 const STATUS_RANK: Record<MessageStatus, number> = {
   sending: 0,
   sent: 1,
@@ -82,8 +74,7 @@ export function advanceStatus(current: MessageStatus, next: MessageStatus): Mess
   return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
 }
 
-// Records which final message took over a draft's turn, capped like the
-// finished-turn set. Insertion order is the cap order.
+// Records which final message took over a draft's turn, capped like the finished-turn set.
 export function rememberFinishedDraftMessage(
   record: Record<string, string>,
   messageId: string,

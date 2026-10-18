@@ -3,29 +3,23 @@ import type { AlbumRef, ChatSummary, ReplyRef, UiMention } from '@zilar/chat-cor
 import type { CoreCtx } from '../ctx';
 import type { CorePorts, SendPorts } from '../ports';
 
-/** One send attempt of a message; `settled` completes when the attempt is over. */
 export interface SendRun {
   readonly settled: Deferred.Deferred<void>;
 }
 
-/** What one send call needs: the core context, the send ports and the memory
- * the pipeline keeps beside the state (its sequence, the open runs and the
- * bytes kept for a Retry). */
+/** What one send call needs: the core context, the send ports and the memory kept
+ * beside the state (the sequence, open runs and retry bytes). */
 export interface SendCtx extends CoreCtx {
   readonly ports: CorePorts & SendPorts;
-  /** The counter behind the optimistic `local-N` ids. */
   sequence: number;
-  /** The current send attempt of a message, by its alias root. */
   readonly sendRuns: Map<string, SendRun>;
-  /** An outgoing attachment's bytes, kept for a Retry after a failed upload. */
   readonly pendingAttachments: Map<string, unknown>;
-  /** An outgoing voice recording's bytes, kept for a Retry after a failed send. */
   readonly pendingVoices: Map<string, unknown>;
-  /** Texts waiting for their ack or their resend (F4, `send/outbox.ts`);
-   * memory only. Lives on the core context the apps create with the store. */
+  /** Texts waiting for their ack or resend (F4), memory only; lives on the core context
+   * the apps create with the store. */
   readonly outbox?: import('./outbox').TextOutbox | undefined;
-  /** Whether a plain text send (no reply, no mentions) passes no options at all
-   * (`undefined`, mobile) instead of an empty object (`{}`, web, the default). */
+  /** Whether a plain text send passes no options at all (`undefined`, mobile) instead of
+   * an empty object (`{}`, web, the default). */
   readonly omitEmptyTextOptions?: boolean | undefined;
 }
 
@@ -37,7 +31,6 @@ export interface SendTextOptions {
 export interface SendAttachmentOptions {
   readonly caption?: string | undefined;
   readonly replyTo?: ReplyRef | undefined;
-  /** Album membership (`urn:zilar:album:0`) for a photo sent as part of a pick. */
   readonly album?: AlbumRef | undefined;
 }
 
@@ -56,16 +49,14 @@ const nextLocalId = (ctx: SendCtx): string => {
   return `local-${ctx.sequence}`;
 };
 
-// A reply names the id both sides share: the wire id the reactions path already
-// computes (the origin id in a DM, the room stanza-id in a group), falling back
-// to the local id when it is not known yet.
+// A reply names the id both sides share: the wire id (the origin id in a DM, the room
+// stanza-id in a group), falling back to the local id when it is not known yet.
 function wireReply(ctx: SendCtx, replyTo: ReplyRef | undefined): ReplyRef | undefined {
   return replyTo === undefined
     ? undefined
     : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
 }
 
-// Queues the optimistic id under the signature the server echo will carry.
 const queueOutgoing = (ctx: SendCtx, signature: string, localId: string): void => {
   const queue = ctx.pendingOutgoing.get(signature) ?? [];
   queue.push(localId);
@@ -79,17 +70,16 @@ const rememberMyAuthor = (ctx: SendCtx, localId: string): void => {
   }
 };
 
-// A later validated send clears this chat's stale error banner (R20): mobile's
-// rule, now shared so web does it too.
+// A later validated send clears this chat's stale error banner; web and mobile
+// share the rule.
 function clearActionError(ctx: SendCtx, chatId: string): void {
   ctx.set((state) => ({
     actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
   }));
 }
 
-// The upload progress of one message (T-0150, moved from mobile's store in T10):
-// web has no progress UI and ignores the port's `onProgress`, so this only ever
-// writes on mobile. `clear` is a no-op when the message carries no progress.
+// The upload progress of one message: web has no progress UI and ignores the port's
+// callback, so this only ever writes on mobile. `clear` is a no-op without progress.
 function setUploadProgress(
   ctx: SendCtx,
   chatId: string,
@@ -132,9 +122,8 @@ function clearUploadProgress(ctx: SendCtx, chatId: string, messageId: string): v
   }));
 }
 
-// What a stanza send that succeeded changes: the ids are linked even when a
-// retry owns the message now. In a group, a stanza id the echo already filed
-// stays the wire target (`linkAckToServer`).
+// What a successful stanza send changes: the ids are linked even when a retry owns the
+// message now. In a group, a stanza id the echo already filed stays the wire target.
 const linkSent = (ctx: SendCtx, chat: ChatSummary, localId: string, serverId: string): void => {
   ctx.k.linkMessageIds(localId, serverId);
   ctx.k.linkAckToServer(chat, localId, serverId);

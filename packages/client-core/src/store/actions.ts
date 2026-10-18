@@ -1,6 +1,5 @@
-// Actions on a message that is already in the chat: reacting, editing and
-// deleting for everyone, and the typing signal. Each one paints its result
-// first and undoes it when the stanza send fails.
+// Message actions (react, edit, delete, typing): each paints its result first and
+// undoes it when the stanza send fails.
 import { Effect } from 'effect';
 import {
   applyEdit,
@@ -15,10 +14,7 @@ import {
 import { fromPromise, type CoreCtx } from './ctx';
 import { coreKind } from './rows';
 
-/**
- * Toggles my reaction of `emoji` on a message and sends my complete set
- * (XEP-0444). Optimistic; it reverts when the send fails.
- */
+/** Toggles my reaction of `emoji` (XEP-0444) optimistically; reverts when the send fails. */
 export function react(ctx: CoreCtx, chatId: string, messageId: string, emoji: string): void {
   const { k } = ctx;
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
@@ -26,9 +22,8 @@ export function react(ctx: CoreCtx, chatId: string, messageId: string, emoji: st
   if (chat === undefined || mine === undefined) {
     return;
   }
-  // The local key is alias-resolved; the wire target must be the server id
-  // everyone else knows. An unacked message has none yet, so reacting would
-  // send a target nobody could match: do nothing until it has one.
+  // The wire target must be the server id everyone knows; an unacked message has none,
+  // so do nothing until it has one.
   const targetId = k.aliasRoot(messageId);
   const wireTarget = k.wireTargetFor(messageId);
   const currentCore = ctx.core;
@@ -45,7 +40,6 @@ export function react(ctx: CoreCtx, chatId: string, messageId: string, emoji: st
   apply(next);
   ctx.rt.fork(
     fromPromise(() => currentCore.sendReactions(chatId, coreKind(chat), wireTarget, next)).pipe(
-      // The send failed: undo the optimistic toggle.
       Effect.catchCause(() => Effect.sync(() => apply(current))),
     ),
   );
@@ -63,8 +57,8 @@ export function editMessage(ctx: CoreCtx, chatId: string, messageId: string, tex
   if (message === undefined || !canEditMessage(message, ctx.get().currentUserId, ctx.ports.now())) {
     return;
   }
-  // The UI already blocks a no-op edit; the store does too, so no stanza is
-  // ever sent for an unchanged text.
+  // The UI already blocks a no-op edit; the store does too, so no stanza is sent for
+  // unchanged text.
   if (message.text === trimmed) {
     return;
   }

@@ -5,49 +5,33 @@ import { type SendCtx, linkSent } from './context';
 import { fromPromise } from '../ctx';
 import { coreKind } from '../rows';
 
-// The text outbox (F4, honest ticks): texts whose stanza send failed
-// (`NotOnline` or any send error) or that stream management reported lost
-// (`unacked`) wait here in memory, keyed by the message's local id. The next
-// transition into `online` resends each one with the same message id (the
-// ledger already linked local and server ids, and the echo path dedupes on
-// them). After 3 failed attempts, or 10 minutes without an ack, the bubble
-// becomes `failed` with the existing failed shape, so Retry and Delete work
-// like any other failed send.
+// The text outbox: texts whose send failed or that stream management reported lost wait in
+// memory, keyed by local id. The next transition into `online` resends each with the same
+// message id (the ledger links local and server ids, and the echo path dedupes). After 3
+// failed attempts, or 10 minutes without an ack, the bubble becomes `failed`, so Retry and
+// Delete work as usual.
 
-/** Attempts before a waiting text is marked `failed`. */
 export const OUTBOX_MAX_ATTEMPTS = 3;
 
-/** How long a text may wait for its ack before it is marked `failed`. */
 export const OUTBOX_MAX_WAIT_MS = 10 * 60_000;
 
 export type OutboxEntry = {
-  /** The chat the text belongs to. */
   chatId: string;
-  /** The optimistic local id (the bubble's id, and the alias root). */
   localId: string;
-  /** The stanza/server id the last attempt sent under. */
   stanzaId: string | undefined;
-  /** Failed attempts so far. */
   attempts: number;
-  /** Set when stream management loses the stanza (`unacked`, a new session):
-   * the stanza may never have reached the server, so the next online
-   * resends it. Unset on a plain offline queue (no `stanzaId`) or after
-   * the resend: a resume never resends. */
+  /** Set when stream management loses the stanza (a new session): the next online resends
+   * it. Unset on a plain offline queue or after the resend, so a resume never resends. */
   awaitingResend: boolean;
   /** When the text first entered the outbox (for the 10-minute cap). */
   firstQueuedAt: number;
-  /** The text and mentions of the original `sendText` call. */
   text: string;
   mentions: readonly UiMention[];
-  /** The `<reply/>` target id of the original `sendText` call, if any. */
   replyToId: string | undefined;
-  /** The quote `text` of the original reply, for the XEP-0461 fallback. */
   replyToText: string | undefined;
-  /** Rebuilds the send options of the original `sendText` call. */
   sendOptions: () => SendMessageOptions | undefined;
 };
 
-/** The outbox the send context carries: memory only, cleared on `reset()`. */
 export type TextOutbox = Map<string, OutboxEntry>;
 
 export function createTextOutbox(): TextOutbox {
@@ -56,11 +40,9 @@ export function createTextOutbox(): TextOutbox {
 
 const outboxId = (localId: string): string => localId;
 
-// Records a text whose send failed, or re-records one stream management lost.
-// A text the outbox already holds keeps its attempt count and first-queued
-// time: each failed send is one attempt, and `acked` drops the entry. A new
-// entry arms its wait cap on the store's runtime fork, so the bubble becomes
-// `failed` even when no flush ever runs.
+// Records a text whose send failed, or re-records one stream management lost; an entry
+// already held keeps its attempt count and first-queued time. A new entry arms its wait cap
+// on the store's runtime fork, so it fails even when no flush runs.
 export function outboxFailed(
   ctx: SendCtx,
   chatId: string,
@@ -119,8 +101,8 @@ export function outboxFailed(
   armOutboxWaitCap(ctx, chatId, localId);
 }
 
-// Drops a text the server confirmed: an `acked` for its stanza id settles the
-// bubble, whatever attempt sent it.
+// Drops a confirmed text: an ack for its stanza id settles the bubble, whatever attempt
+// sent it.
 export function outboxAcked(ctx: SendCtx, outbox: TextOutbox, stanzaId: string): void {
   for (const [key, entry] of outbox) {
     if (entry.stanzaId !== stanzaId && !ctx.k.sameMessage(entry.localId, stanzaId)) {
@@ -132,18 +114,16 @@ export function outboxAcked(ctx: SendCtx, outbox: TextOutbox, stanzaId: string):
   }
 }
 
-// A lost stanza (`unacked`) resets the bubble to `sending` for the rebound
-// resend below, which retries it under the same stanza id; the caps still
-// bound the wait. A resume never calls this: its `h` covers the stanza,
-// and the library emits `ack` for it instead (T-1216).
+// A lost stanza resets the bubble to `sending` for the rebound resend, under the same
+// stanza id. A resume never calls this: its `h` covers the stanza and the library emits
+// `ack` instead.
 export function outboxUnacked(ctx: SendCtx, outbox: TextOutbox, stanzaId: string): void {
   for (const entry of outbox.values()) {
     if (entry.stanzaId !== stanzaId && !ctx.k.sameMessage(entry.localId, stanzaId)) {
       continue;
     }
-    // A bubble an ack or the echo already settled must not go back to
-    // `sending` and be resent: the stanza reached the server, so re-sending
-    // it would archive a second row under the same id (T-1216).
+    // A bubble an ack or the echo already settled must not go back to `sending`: re-sending
+    // would archive a second row under the same id.
     const message = ctx.k
       .listFor(ctx.get(), entry.chatId)
       .find((item) => ctx.k.sameMessage(item.id, entry.localId));
@@ -155,11 +135,9 @@ export function outboxUnacked(ctx: SendCtx, outbox: TextOutbox, stanzaId: string
   }
 }
 
-// A fresh session replaced the stream without resuming it (`rebound`): every
-// stanza the outbox sent on the old stream may be lost, so the next online
-// flush resends each one once under the same id (the receiver dedupes on
-// `<origin-id/>`). A bubble an ack or the echo already settled is left alone.
-// A resume never calls this: its `h` covers the queued stanzas.
+// A fresh session replaced the stream (`rebound`): every stanza sent on the old stream may
+// be lost, so the next online flush resends each once under the same id (the receiver
+// dedupes on `<origin-id/>`). A settled bubble is left alone; a resume never calls this.
 export function outboxRebound(ctx: SendCtx): void {
   const outbox = ctx.outbox;
   if (outbox === undefined) {
@@ -179,12 +157,9 @@ export function outboxRebound(ctx: SendCtx): void {
   }
 }
 
-// Arms the wait cap of a text the outbox just queued: once
-// `OUTBOX_MAX_WAIT_MS` has passed with no flush failing it first, the bubble
-// becomes `failed` (the same shape and Retry path as any other failed send),
-// even when no flush ever runs. Keyed by the entry's local id on the store's
-// runtime fork, so a newer entry with the same key replaces an older timer;
-// `acked` (which drops the entry) cancels it.
+// Arms the wait cap of a newly queued text: once `OUTBOX_MAX_WAIT_MS` passes with no
+// flush failing it, the bubble becomes `failed` even when no flush runs. Keyed by local id,
+// so a newer entry replaces an older timer; `acked` cancels it.
 const outboxTimerKey = (localId: string): string => `outbox:${localId}`;
 
 function armOutboxWaitCap(ctx: SendCtx, chatId: string, localId: string): void {
@@ -208,8 +183,8 @@ function armOutboxWaitCap(ctx: SendCtx, chatId: string, localId: string): void {
           const message = ctx.k
             .listFor(ctx.get(), live.chatId)
             .find((item) => ctx.k.sameMessage(item.id, live.localId));
-          // Only a bubble still `sending` moves: one that an `acked` settled
-          // drops its entry (and its timer), and `failed` stays failed.
+          // Only a bubble still `sending` moves: a settled one drops its entry and timer,
+          // and `failed` stays failed.
           if (message?.status !== 'sending') {
             return;
           }
@@ -220,8 +195,8 @@ function armOutboxWaitCap(ctx: SendCtx, chatId: string, localId: string): void {
   );
 }
 
-// Snoozes a bubble past its caps: `failed` with the same shape (and the same
-// Retry path) as a failed voice or attachment send.
+// Snoozes a bubble past its caps: `failed` with the same shape and Retry path as a failed
+// voice or attachment send.
 function failOutboxEntry(
   ctx: SendCtx,
   outbox: TextOutbox,
@@ -233,10 +208,8 @@ function failOutboxEntry(
   ctx.k.markSendFailed(chat.id, entry.localId, 'network');
 }
 
-// One resend of a waiting text: the same stanza id the first send used, so
-// the echo path dedupes it and the receiver sees it once (`<origin-id/>`
-// matches, and the stanza `id` it carries is identical). A failure records
-// one more attempt (the caps decide); the ack or the echo settles the bubble.
+// One resend under the same stanza id, so the echo path dedupes it and the receiver sees
+// it once. A failure records one more attempt; the ack or the echo settles the bubble.
 function resendOutboxEntry(
   ctx: SendCtx,
   outbox: TextOutbox,
@@ -254,9 +227,8 @@ function resendOutboxEntry(
     outbox.delete(outboxId(entry.localId));
     return;
   }
-  // A resend of a plain text passes no options at all on mobile (`{}` on
-  // web); with a `stanzaId` the resend carries the first send's id, so the
-  // receiver dedupes on it.
+  // A resend of a plain text passes no options on mobile (`{}` on web); with a `stanzaId`
+  // it carries the first send's id, so the receiver dedupes on it.
   const sendOptions: SendMessageOptions | undefined =
     entry.replyToId === undefined &&
     entry.mentions.length === 0 &&
@@ -298,15 +270,11 @@ function resendOutboxEntry(
 }
 
 /**
- * Resends waiting texts on the transition into `online`. An entry goes out
- * again only when its stanza never reached a live stream: one the send
- * never attempted (`stanzaId` unset, offline queue) or one a new session
- * replaced (`awaitingResend`, set by `outboxUnacked`). An entry whose
- * stanza went out on the resumed session is never resent: the server's `h`
- * covered it, and a resend under the same id still archives a second row
- * (T-1216). Entries past their caps become `failed` instead; a missing
- * chat or core keeps the entry for the next flush. Called from the
- * lifecycle's online listener.
+ * Resends waiting texts on the transition into `online`: only an entry whose stanza never
+ * reached a live stream goes out (an offline queue or a `rebound`); one the resumed
+ * session covered is never resent, because a resend under the same id archives a second
+ * row. Entries past their caps become `failed`; a missing chat or core keeps them for the
+ * next flush.
  */
 export function flushOutbox(ctx: SendCtx, now: number): void {
   const outbox = ctx.outbox;
@@ -329,8 +297,8 @@ export function flushOutbox(ctx: SendCtx, now: number): void {
       outbox.delete(outboxId(entry.localId));
       continue;
     }
-    // No resend without a reason: the entry's stanza went out on the live
-    // stream and its ack (or echo) is still on the way.
+    // No resend without a reason: the stanza went out on the live stream and its ack (or
+    // echo) is still on the way.
     if (entry.stanzaId !== undefined && entry.awaitingResend !== true) {
       continue;
     }

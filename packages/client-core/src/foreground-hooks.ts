@@ -1,19 +1,12 @@
-// The platform-independent half of two UI timers (share plan W1-d): the
-// client-version check and the contact-requests poll. Each app passes its own
-// `onForeground` adapter and its own health/API calls.
 import { isClientOutdated } from '@zilar/protocol';
 import { Effect, Schedule } from 'effect';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-/** Subscribes `cb` to the app coming back to the foreground; returns an unsubscribe. */
 export type OnForeground = (cb: () => void) => () => void;
 
-/** Check `/health` at most once every ten minutes. */
 const CHECK_INTERVAL_MS = 10 * 60 * 1000;
-/** The contact-requests poll interval. */
 const REFRESH_MS = 60 * 1000;
 
-/** Reads `minClientProtocol` from a `/health` body; any other shape is undefined. */
 export function readMinClientProtocol(raw: unknown): string | undefined {
   if (typeof raw !== 'object' || raw === null) {
     return undefined;
@@ -22,7 +15,6 @@ export function readMinClientProtocol(raw: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-/** The server's minimum protocol, or undefined when `/health` cannot be read. */
 const fetchMinClientProtocol = (
   fetchHealth: () => Promise<Response>,
 ): Promise<string | undefined> =>
@@ -38,8 +30,8 @@ const fetchMinClientProtocol = (
   );
 
 /**
- * True when this build is older than the server's minimum protocol. It checks
- * at boot and on every foreground, at most once per ten minutes.
+ * True when this build is older than the server's minimum protocol; checked at boot
+ * and on every foreground.
  */
 export function useClientVersionCheck(
   fetchHealth: () => Promise<Response>,
@@ -83,8 +75,8 @@ const refreshEffect = <T>(
   );
 
 /**
- * Loads a list once, again every 60 seconds, and on every foreground. A failed
- * call keeps the previous list; `reload` refreshes at once.
+ * Loads a list once, every 60 seconds and on every foreground. A failed call keeps
+ * the previous list; `reload` refreshes at once.
  */
 export function useContactRequestsPoll<T>(
   list: () => Promise<T[]>,

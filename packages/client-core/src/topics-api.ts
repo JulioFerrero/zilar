@@ -1,8 +1,5 @@
-// effect-plain: Promise port over the contract; each app's `call` owns the
-// Effect edge (T-2048).
-// The shared topics calls: web and phone each supply a `call` that runs one
-// contract request over their own transport, so endpoints and normalisation
-// live once.
+// effect-plain: Promise port over the contract; each app's `call` owns the Effect edge.
+// The shared topics calls: web and phone each supply the transport.
 import type { Effect } from 'effect';
 import {
   omitUndefined,
@@ -19,8 +16,8 @@ import {
 } from '@zilar/api-contract';
 
 /**
- * A topic as the apps use it: the contract row with `roles` and
- * `approverRole` always present (an older server omits them, read as none).
+ * A topic as the apps use it: the contract row with `roles` and `approverRole` always
+ * present (an older server omits them, read as none).
  */
 export type Topic = Omit<ContractTopic, 'roles' | 'approverRole'> & {
   roles: TopicRole[];
@@ -45,17 +42,14 @@ export interface PatchTopicInput {
   visibility?: TopicVisibility;
   memberIds?: string[];
   confirmExposeHistory?: boolean;
-  /** T-1521/T-1534: a person marks the topic done (`true`) or reopens it (`false`). */
   done?: boolean;
 }
 
-/** Replaces a private topic's roles and picks its approver role (T-0116). */
 export interface SetTopicRolesInput {
   roleIds: string[];
   approverRoleId: string | null;
 }
 
-/** Web's topic-rules row: the per-group tools list carries each row's `topicId`. */
 export type TopicTool = ToolListItem;
 
 type TopicsCall = <A, E>(call: (client: ZilarClient) => Effect.Effect<A, E>) => Promise<A>;
@@ -65,8 +59,8 @@ function toTopic(value: ContractTopic): Topic {
 }
 
 /**
- * The topics API of both apps, over the caller's `call`. The server trims
- * `name`, `linkUrl` and `linkLabel`; every full topic response is normalised.
+ * The topics API of both apps, over the caller's `call`. The server trims `name`,
+ * `linkUrl` and `linkLabel`; every full topic response is normalised.
  */
 export function makeTopicsApi(call: TopicsCall) {
   function topic<E>(
@@ -96,11 +90,8 @@ export function makeTopicsApi(call: TopicsCall) {
       call((c) => c.topics.members({ params: { id } })).then(({ members }) => members),
     addTopicMember: (id: string, userId: string) =>
       topic((c) => c.topics.addMember({ params: { id }, payload: { userId } })),
-    // T-1786: the caller joins a public topic themselves; General is rejected.
     joinTopic: (id: string) => topic((c) => c.topics.join({ params: { id } })),
-    // T-1797: recent messages of an unjoined public topic, oldest first.
     getTopicPreview,
-    /** The phone's name for `getTopicPreview`. */
     topicPreview: getTopicPreview,
     removeTopicMember: (id: string, userId: string) =>
       topic((c) => c.topics.removeMember({ params: { id, userId } })),

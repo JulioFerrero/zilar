@@ -15,7 +15,6 @@ export type PeopleSearchState<P> =
   | { status: 'rate_limited'; query: string }
   | { status: 'error'; query: string };
 
-/** Rate limited on a 429, the error line on any other failure. */
 export const peopleFailureState = <P>(query: string, failure: ApiFailure): PeopleSearchState<P> =>
   failure.status === 429 || failure.code === 'rate_limited'
     ? { status: 'rate_limited', query }

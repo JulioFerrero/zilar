@@ -5,33 +5,23 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { interruptFiber } from './use-delayed';
 
 /**
- * The plain logic behind the `@handle` exact lookup on both apps, kept pure
- * and testable in Node: the hook only wires timers and React state to this.
- *
- * Typing `@handle` in a search field looks the person up with the server's
- * exact-handle lookup. The lookup is exact only (the server has no partial
- * search) and rate limited, so it waits 900 ms after the last keystroke,
- * fires at once on Enter, never repeats the same handle in a row, and never
- * retries a 429 by itself. A text that does not start with `@` never calls
- * the lookup. The typed text is never logged; every error shown is a fixed
- * sentence, never the server's raw message.
+ * The plain logic behind the `@handle` exact lookup. The lookup is exact and rate
+ * limited, so it waits 900 ms after the last keystroke, fires at once on Enter, never
+ * repeats the same handle in a row and never retries a 429 by itself. The typed text
+ * is never logged, and every error is a fixed sentence, never the server's message.
  */
 
 export { PEOPLE_SEARCH_DEBOUNCE_MS };
 
-/** The single plain "no user" line for an unknown handle. */
 export const NO_PERSON_MESSAGE = 'No one with that username.';
 
-/** The fixed notice for a rate-limited lookup, shown once, never retried. */
 export const PEOPLE_RATE_LIMITED_MESSAGE = 'Too many searches, try again in a few minutes.';
 
-/** The fixed notice for any other lookup failure. */
 export const PEOPLE_LOOKUP_ERROR_MESSAGE = 'Could not look up that username. Try again.';
 
 /**
- * The handle to look up for the search text, or null when the text must not
- * look up: anything that does not start with `@`, or an empty handle. The
- * normalisation is trim, strip one `@` and lowercase.
+ * The handle to look up, or null when the text does not start with `@` or the handle
+ * is empty. Normalised with trim, one `@` stripped and lowercased.
  */
 export function peopleHandleFor(text: string): string | null {
   const trimmed = text.trim();
@@ -50,7 +40,6 @@ export type PeopleSearchView<P> =
   | { status: 'rateLimited' }
   | { status: 'error'; message: string };
 
-/** A clock seam so tests can drive the controller deterministically. */
 export interface PeopleSearchScheduler {
   setTimeout: (callback: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
@@ -72,11 +61,9 @@ const defaultScheduler: PeopleSearchScheduler = {
 };
 
 /**
- * The request state machine behind `usePeopleHandleSearch`. `setText` restarts
- * the debounce; `lookupNow` fires at once for Enter. The last requested
- * handle is cached: the same handle in a row never looks up twice — a new
- * lookup runs only once the text changes to a different handle. A late
- * answer after a newer request is dropped by its request id.
+ * The request state machine: `setText` restarts the debounce, `lookupNow` fires at
+ * once. The same handle in a row never looks up twice, and a late answer after a newer
+ * request is dropped by its request id.
  */
 export class PeopleSearchController<P> {
   private lookup: (handle: string) => Promise<P>;
@@ -111,7 +98,6 @@ export class PeopleSearchController<P> {
     this.refresh();
   }
 
-  /** Looks up at once (Enter), skipping the debounce. */
   lookupNow(): void {
     if (this.disposed) {
       return;
@@ -135,9 +121,8 @@ export class PeopleSearchController<P> {
   }
 
   /**
-   * Picks the controller up again after a StrictMode unmount and remount:
-   * dispose cleared the debounce and froze `setText`, so the current text is
-   * searched again from scratch.
+   * Picks the controller up after a StrictMode unmount and remount: dispose froze
+   * `setText` and cleared the debounce, so the current text is searched again.
    */
   resume(): void {
     this.disposed = false;
@@ -209,10 +194,8 @@ export class PeopleSearchController<P> {
 }
 
 /**
- * The `@handle` lookup tied to a component: the debounced exact lookup over
- * the latest `lookup` (callers may pass a new lambda each render).
- * `submitRequest` is bumped by the search field's Enter key to look up at
- * once.
+ * The `@handle` lookup tied to a component; `submitRequest` is bumped by the search
+ * field's Enter key to look up at once.
  */
 export function usePeopleHandleSearch<P>(
   lookup: (handle: string) => Promise<P>,
@@ -235,8 +218,7 @@ export function usePeopleHandleSearch<P>(
     return () => controller.dispose();
   }, [controller]);
 
-  // The search field's Enter key: look up at once instead of waiting out the
-  // debounce. The initial zero never submits (the debounce owns first paint).
+  // The search field's Enter key: look up at once; the initial zero never submits.
   const lastSubmit = useRef(0);
   useEffect(() => {
     if (submitRequest === undefined || submitRequest === lastSubmit.current) {

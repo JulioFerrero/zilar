@@ -1,7 +1,3 @@
-// The ledger's reaction state: the chips shown on a message, applying a
-// reaction update and re-attaching the chips to the loaded messages, and
-// ingesting a reaction stanza or a slice of history. Moved unchanged from
-// `store/ledger.ts` (size split).
 import type { ReactionsState, UiReaction } from '@zilar/chat-core';
 import {
   applyReaction,
@@ -33,8 +29,6 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
     return sharedReactionChips(state, chatId, messageId, { aliasRoot, myJid, reactorName });
   }
 
-  // Re-attaches the current chips to every loaded message of a chat after a
-  // reaction update changed the derived state.
   function refreshReactions(chatId: string): void {
     const state = get();
     const list = state.messagesByChat[chatId];
@@ -62,9 +56,8 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
     set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
   }
 
-  // Records one reaction update in the derived state. The target is
-  // canonicalised through the alias map so it matches whatever id the message
-  // is currently known by.
+  // Records one reaction update; the target is canonicalised through the alias map to
+  // match the id the message is known by.
   function recordReaction(
     chatId: string,
     targetId: string,
@@ -85,7 +78,6 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
     }));
   }
 
-  // Applies one reaction update and refreshes the loaded messages.
   function applyReactionUpdate(
     chatId: string,
     targetId: string,
@@ -114,16 +106,16 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
     return true;
   }
 
-  // A reaction update is not a chat message: it only changes reaction state,
-  // so it never becomes a bubble or bumps the preview or unread count.
+  // A reaction update is not a chat message: it never becomes a bubble or bumps the
+  // preview or unread.
   function ingestReaction(message: LedgerStanza): void {
     if (recordStanza(message)) {
       refreshReactions(message.chatJid);
     }
   }
 
-  // A history slice records every update first and re-attaches the chips once
-  // per chat, so the loaded list is walked once, not once per stanza.
+  // A history slice records every update first and re-attaches the chips once per chat,
+  // so the list is walked once.
   function ingestHistoryReactions(messages: readonly LedgerStanza[]): void {
     const chats = new Set<string>();
     for (const message of messages) {

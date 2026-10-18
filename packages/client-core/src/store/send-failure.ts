@@ -1,10 +1,9 @@
 import type { SendFailureReason } from '@zilar/chat-core';
 
 /**
- * Maps any send-pipeline error to a fixed user-safe `SendFailureReason`
- * (T-0168). Raw error text, URLs and tokens never reach the UI or the logs:
- * the tables below read only the error class (`VoiceError`/`AttachmentError`
- * code, HTTP status, offline state).
+ * Maps any send-pipeline error to a fixed user-safe reason. Raw error text, URLs and
+ * tokens never reach the UI or the logs: only the error class, HTTP status and offline
+ * state are read.
  */
 export function sendFailureReasonFor(error: unknown, offline: boolean): SendFailureReason {
   if (offline) {
@@ -51,7 +50,6 @@ export function sendFailureReasonFor(error: unknown, offline: boolean): SendFail
   return 'network';
 }
 
-/** The typed `code` of a `VoiceError`/`AttachmentError`, or `''`. */
 function errorCodeOf(error: unknown): string {
   if (error !== null && typeof error === 'object' && 'code' in error) {
     const code = (error as { code?: unknown }).code;
@@ -60,7 +58,6 @@ function errorCodeOf(error: unknown): string {
   return '';
 }
 
-/** The HTTP status of an `ApiError`, or undefined. */
 function httpStatusOf(error: unknown): number | undefined {
   if (error !== null && typeof error === 'object' && 'status' in error) {
     const status = (error as { status?: unknown }).status;

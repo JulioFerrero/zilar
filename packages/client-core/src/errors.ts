@@ -1,11 +1,8 @@
 import { Data } from 'effect';
 import { makeFromApi } from './api-effect';
 
-/**
- * The typed failure of an api call lifted into Effect. It mirrors each app's
- * api error field for field, so a caller that matches on `code` or `status`
- * behaves the same.
- */
+/** The typed failure of an api call; it mirrors each app's api error field for
+ * field, so a caller matching on `code` or `status` behaves the same. */
 export class ApiFailure extends Data.TaggedError('ApiFailure')<{
   readonly status: number;
   readonly code: string;
@@ -19,11 +16,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 /**
- * Maps anything a rejected *-api.ts call can throw to an ApiFailure. Any error
- * with a numeric `status` and string `code` and `message` (whatever its
- * class) keeps its fields and message, and a record `detail` when it has one;
- * any other value becomes a generic failure, so the thrown text never reaches
- * a message.
+ * Maps anything a rejected *-api.ts call throws to an ApiFailure. A numeric `status`
+ * with string `code` and `message` keeps its fields; any other value becomes a
+ * generic failure, so the thrown text never reaches a message.
  */
 export const toApiFailure = (cause: unknown): ApiFailure => {
   if (
@@ -48,5 +43,4 @@ export const isApiFailureCode =
   (failure: ApiFailure): boolean =>
     failure.code === code;
 
-/** Lifts one api Promise call into an Effect that fails with an ApiFailure. */
 export const fromApi = makeFromApi(toApiFailure);

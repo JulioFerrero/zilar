@@ -1,9 +1,6 @@
-// The offline message-cache codec, shared by web and phone (T-2019, W1-g).
-// Both apps keep the newest messages of the recent chats so a cold start
-// paints the open chat at once (web: T-1903, phone: T-1313). The file and
-// storage seams stay per app; this module owns the format: the version, the
-// per-chat row cap, which rows may be cached, the local-URL strip, the dates
-// and the pins. It is display data only, never credentials or media bytes.
+// The offline message-cache codec shared by web and phone: version, per-chat cap, which
+// rows may be cached, the local-URL strip, dates and pins. Display data only, never
+// credentials or media bytes.
 import { Pin as PinSchema, type Pin } from '@zilar/api-contract';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { Result, Schema } from 'effect';
@@ -12,21 +9,18 @@ import { struct } from '@zilar/protocol';
 const CACHE_VERSION = 1;
 const MAX_CACHED_MESSAGES = 50;
 
-/** The cache's contents: one signed-in user's recent messages and their pins. */
 export interface MessageCacheSnapshot {
   userId: string;
   messages: Record<string, UiMessage[]>;
-  /** The pinned banner of a cached chat paints before the pins answer (T-1914). */
   pins?: Record<string, readonly Pin[]>;
 }
 
 export interface EncodeMessageCacheOptions {
   /**
-   * URL prefixes that only work on this device (`file://` on phone,
-   * `blob://` on web), so the media pointing at them must never be stored.
+   * URL prefixes that only work on this device (`file://` on phone, `blob://` on web), so
+   * media pointing at them must never be stored.
    */
   localUrlPrefixes: readonly string[];
-  /** The serialized payload's byte cap; the oldest chats go first. */
   maxBytes?: number;
 }
 
@@ -40,11 +34,10 @@ interface KeptChat {
   readonly pins: Pin[];
 }
 
-// Unknown keys are kept, like the chat-list cache's schema: a newer build may
-// add fields to a cached row and an older cache must still paint it.
+// Unknown keys are kept, like the chat-list cache: a newer build may add fields and an
+// older cache must still paint it.
 const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 
-// A message is written with its dates as ISO strings; nothing else changes.
 const cachedMessageSchema = Schema.StructWithRest(
   struct({
     id: Schema.String,
@@ -66,9 +59,8 @@ const cacheSchema = struct({
   pins: Schema.optional(Schema.Unknown),
 });
 
-// The mobile-only fields the cache must drop: the `file://` preview and the
-// upload progress live beside the shared `UiMessage` (`MobileMessage`), never
-// on the wire, so they must never reach the file.
+// The mobile-only fields the cache must drop: the `file://` preview and the upload
+// progress live beside `UiMessage` and must never reach the file.
 type LocalOnlyFields = { localUri?: string | undefined; uploadProgress?: number | undefined };
 
 function isLocalUrl(url: string, prefixes: readonly string[]): boolean {
@@ -76,11 +68,9 @@ function isLocalUrl(url: string, prefixes: readonly string[]): boolean {
 }
 
 /**
- * Whether a message may be cached. A `local-*` id is a still-unacked optimistic
- * send: the ledger's `wireTargetFor` (`store/ledger-ids.ts`) reports no server
- * id for one, so on restart the server echo would show the message twice (once
- * under each id). A `sending` or `failed` one is in flight or broken: keeping
- * it would show a clock or a Retry that can never settle.
+ * Whether a message may be cached. A `local-*` id is a still-unacked optimistic send, so
+ * on restart the server echo would show it twice; a `sending` or `failed` one would show a
+ * clock or a Retry that can never settle.
  */
 function isCacheable(message: UiMessage): boolean {
   return (
@@ -88,7 +78,6 @@ function isCacheable(message: UiMessage): boolean {
   );
 }
 
-/** Drops the local-only upload fields and any local preview url they left behind. */
 function stripLocalFields(message: UiMessage, prefixes: readonly string[]): UiMessage {
   const {
     localUri: _localUri,
@@ -108,7 +97,6 @@ function stripLocalFields(message: UiMessage, prefixes: readonly string[]): UiMe
   return cleaned;
 }
 
-/** Encodes one message; only the dates need the string form. */
 function encodeMessage(message: UiMessage, prefixes: readonly string[]): EncodedMessage {
   const cleaned = stripLocalFields(message, prefixes);
   return {
@@ -119,8 +107,8 @@ function encodeMessage(message: UiMessage, prefixes: readonly string[]): Encoded
 }
 
 /**
- * Decodes the cached pins: a missing or unusable value reads as `{}`, and a
- * bad chat entry or pin row is dropped without discarding the rest.
+ * Decodes the cached pins: a missing or unusable value reads as `{}`, and a bad entry is
+ * dropped without discarding the rest.
  */
 function decodePins(raw: unknown): CachedPins {
   const record = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Unknown))(raw);
@@ -190,9 +178,8 @@ function byteLength(value: string): number {
 }
 
 /**
- * The chats to keep: the first `max` in display order, plus the chat currently
- * open when it falls outside them (a topic, or a chat opened from a
- * notification), so it starts from the local copy too.
+ * The chats to keep: the first `max` in display order, plus the chat currently open when
+ * it falls outside them, so it starts from the local copy too.
  */
 export function selectCachedChats(
   chats: readonly ChatSummary[],
@@ -225,9 +212,8 @@ function keptChats(snapshot: MessageCacheSnapshot, prefixes: readonly string[]):
 }
 
 /**
- * Shrinks the payload to `maxBytes`: the record is in newest-first order, so
- * the oldest chats sit at the end and go first; a single chat that still
- * overflows loses its oldest rows, and pins go before the last rows.
+ * Shrinks the payload to `maxBytes`: the record is newest-first, so the oldest chats go
+ * first; a single chat loses its oldest rows, and pins go before the last rows.
  */
 function fitToBytes(userId: string, kept: KeptChat[], maxBytes: number): string {
   let json = serialize(userId, kept);
@@ -250,17 +236,11 @@ function fitToBytes(userId: string, kept: KeptChat[], maxBytes: number): string 
     }
   }
   if (byteLength(json) > maxBytes) {
-    // A single message over the cap is not worth keeping anything for.
     json = serialize(userId, []);
   }
   return json;
 }
 
-/**
- * Encodes a snapshot as the cache file's JSON: settled messages only, the
- * newest 50 per chat, `createdAt` and `editedAt` as ISO strings, local media
- * dropped. `maxBytes` drops the oldest chats first when given.
- */
 export function encodeMessageCache(
   snapshot: MessageCacheSnapshot,
   options: EncodeMessageCacheOptions,
@@ -273,9 +253,8 @@ export function encodeMessageCache(
 }
 
 /**
- * Parses the cache for `userId`, or null when it is unusable, another user's
- * or another version. A corrupt, truncated or older file reads as "none", so
- * it can never break the start.
+ * Parses the cache for `userId`, or null when it is unusable, another user's or another
+ * version; a corrupt or truncated file reads as "none", so it can never break the start.
  */
 export function decodeMessageCache(raw: string, userId: string): MessageCacheSnapshot | null {
   let parsed: unknown;

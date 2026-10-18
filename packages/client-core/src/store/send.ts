@@ -1,19 +1,8 @@
-// Sending: text, voice, attachments, stickers and forwards, with the retry and
-// delete paths of a failed bubble. Each send inserts an optimistic bubble at
-// once, then runs the pipeline as a fiber of the store Scope. A voice,
-// attachment or forward send also gets a 60 s deadline (`timeoutOrElse`) that
-// marks it failed with `timed_out`; the run token pairs each deadline with its
-// pipeline, so a retry's deadline and a previous run's late result agree on
-// which outcome counts.
-//
-// The pipeline reads the app's `bytes` and `voice` ports (`SendPorts`); the
-// text, sticker and forward shapes are shared verbatim. Text sends keep their
-// behaviour (D-1): a failed text stays `sending`.
-//
-// This is the barrel: the pieces live in `send/context.ts`, `send/pipeline.ts`,
-// `send/text.ts`, `send/voice.ts`, `send/attachment.ts`, `send/sticker.ts`,
-// `send/forward.ts` and `send/failed.ts`, and are assembled here. Moved
-// unchanged from the former single file (size split).
+// Sending: text, voice, attachments, stickers and forwards, plus the retry and delete paths
+// of a failed bubble. Each send inserts an optimistic bubble at once, then runs the pipeline
+// as a store fiber; a voice, attachment or forward send also gets a 60 s deadline whose run
+// token pairs it with its pipeline, so a retry's deadline and an older run's late result
+// agree on which outcome counts.
 export type {
   SendAttachmentOptions,
   SendCtx,

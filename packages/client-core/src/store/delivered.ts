@@ -1,21 +1,16 @@
-// The delivered tick, client side (T-1238). A connected device confirms the
-// messages it holds over HTTP (`PUT /api/chats/:jid/delivered`), and the
-// sender's app applies the mark `/api/chats` reports. Delivery is named by the
-// origin id (the wire id, `docs/plan/delivered-tick.md` §4); the server keeps
-// the max and ignores the caller's own messages, so confirming a preview is
-// always safe. The queue lives beside the state (keyed by the store context),
-// like the typing slots: the core context itself never carries it.
+// The delivered tick: a connected device confirms the messages it holds over HTTP and the
+// sender applies the mark `/api/chats` reports. The mark is named by the origin id; the server
+// keeps the max and ignores the caller's own messages, so confirming a preview is always safe.
+// The queue lives beside the state, keyed by the store context.
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { CoreCtx } from './ctx';
 import { advanceStatus } from './rows';
 
-/** The debounce between a chat's confirmations and its one HTTP call. */
 export const MARK_DELIVERED_DEBOUNCE_MS = 1_000;
 /** One confirmation call carries at most this many ids (the server's cap). */
 export const MARK_DELIVERED_MAX = 50;
 
-/** Origin ids queued per chat, per store context. */
 const pendingDelivered = new WeakMap<CoreCtx, Map<string, string[]>>();
 
 function queueOf(ctx: CoreCtx): Map<string, string[]> {
@@ -33,9 +28,8 @@ function isArchiveId(value: string): boolean {
 }
 
 /**
- * Compares two decimal archive ids as strings: length first, then
- * lexicographically. Never `BigInt` (the T-1198 lesson: binding a BigInt to
- * postgres.js broke production).
+ * Compares two decimal archive ids as strings: length first, then lexicographically.
+ * Never `BigInt`: binding one to postgres.js broke production.
  */
 export function compareArchiveIds(left: string, right: string): number {
   if (left.length !== right.length) {
@@ -45,11 +39,9 @@ export function compareArchiveIds(left: string, right: string): number {
 }
 
 /**
- * Confirms one received message for `chatId`: the origin id joins the chat's
- * queue, and one HTTP call carries the chat's ids after a 1 s quiet period (a
- * newer confirm replaces the pending wait, so the latest id wins, the way
- * `recordRead` debounces). Own messages are ignored by the server. Errors are
- * ignored.
+ * Confirms one received message: its origin id joins the chat's queue, and one HTTP call
+ * carries the ids after a 1 s quiet period (a newer confirm replaces the pending wait). Own
+ * messages are ignored by the server; errors are ignored.
  */
 export function confirmDelivered(ctx: CoreCtx, chatId: string, originId: string): void {
   if (originId === '') {
@@ -73,7 +65,6 @@ export function confirmDelivered(ctx: CoreCtx, chatId: string, originId: string)
   );
 }
 
-// Sends the chat's queued ids (newest last) and drops them; best effort.
 function flushDelivered(ctx: CoreCtx, chatId: string): Effect.Effect<void> {
   const send = ctx.ports.api.markChatDelivered;
   const ids = queueOf(ctx).get(chatId);
@@ -88,11 +79,8 @@ function flushDelivered(ctx: CoreCtx, chatId: string): Effect.Effect<void> {
   );
 }
 
-// The archive id of one of my messages: its own id when numeric (a server
-// stanza id), else the server id the ledger linked to it. An own echo records
-// that link (`linkLocalToServer`, `incoming.ts`) and `wireTargetFor` reads it
-// back; a message with no known archive id is left alone. Exported so T-1247's
-// delete-for-me reuses the same lookup.
+// The archive id of one of my messages: its own id when numeric, else the server id the
+// ledger linked to it (`linkLocalToServer` records that link). No known id means leave it alone.
 export function archiveIdOf(ctx: CoreCtx, message: UiMessage): string | undefined {
   if (isArchiveId(message.id)) {
     return message.id;
@@ -102,10 +90,8 @@ export function archiveIdOf(ctx: CoreCtx, message: UiMessage): string | undefine
 }
 
 /**
- * Moves my own messages of `chatId` whose archive id is at or below the server
- * mark to `status`, through `advanceStatus`: a message further along the ladder
- * keeps its status and a later message stays `sent`. A non-numeric mark is
- * ignored.
+ * Moves my own messages at or below the server mark to `status`; a message further along
+ * the ladder keeps its status. A non-numeric mark is ignored.
  */
 export function applyStatusUntil(
   ctx: CoreCtx,
@@ -145,19 +131,13 @@ export function applyStatusUntil(
 }
 
 /**
- * Moves my own messages of `chatId` whose archive id is at or below the server
- * mark to `delivered`, through `advanceStatus`: a `read` message stays `read`
- * and a later message stays `sent`. A non-numeric mark is ignored.
+ * Moves my own messages at or below the mark to `delivered`; a `read` message stays `read`.
+ * A non-numeric mark is ignored.
  */
 export function applyDeliveredUntil(ctx: CoreCtx, chatId: string, until: string): void {
   applyStatusUntil(ctx, chatId, until, 'delivered');
 }
 
-/**
- * Applies one fresh `/api/chats` row: confirm the newest preview (its `id` is
- * the origin id) and apply the delivered mark the row carries. The shared
- * per-row helper both apps call from their chat-list merge.
- */
 export function applyChatDelivery(ctx: CoreCtx, row: ChatSummary): void {
   if (row.lastMessage !== undefined) {
     confirmDelivered(ctx, row.id, row.lastMessage.id);
@@ -167,8 +147,8 @@ export function applyChatDelivery(ctx: CoreCtx, row: ChatSummary): void {
   }
 }
 
-// Keeps the chat summary's delivered mark forward only, so a history page that
-// loads after a live notice still applies it (T-1245).
+// Keep the chat summary's delivered mark forward only, so a history page loaded later still
+// applies it.
 function storeDeliveredUntil(ctx: CoreCtx, chatId: string, until: string): void {
   if (!isArchiveId(until)) {
     return;
@@ -184,12 +164,7 @@ function storeDeliveredUntil(ctx: CoreCtx, chatId: string, until: string): void 
   }));
 }
 
-/**
- * Applies one live delivered notice the server pushed for one chat (T-1245):
- * moves my own messages at or below the mark to `delivered` and stores the
- * mark on the chat summary. Wired to the core's `deliveredMark` event in
- * `lifecycle.ts`.
- */
+/** Applies one live delivered notice the server pushed for one chat. */
 export function handleDeliveredMark(ctx: CoreCtx, event: { chatJid: string; until: string }): void {
   applyDeliveredUntil(ctx, event.chatJid, event.until);
   storeDeliveredUntil(ctx, event.chatJid, event.until);

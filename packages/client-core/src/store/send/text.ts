@@ -20,7 +20,6 @@ export function sendText(
   const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
   const localId = nextLocalId(ctx);
   const replyTo = options?.replyTo;
-  // The echo carries this same wire id, so the signature below is keyed on it too.
   const quote = wireReply(ctx, replyTo);
   const message: UiMessage = {
     id: localId,
@@ -40,9 +39,8 @@ export function sendText(
 
   const current = ctx.core;
   if (current === undefined) {
-    // No core yet (boot in flight, or a failed token): queue the text anyway,
-    // so the next online resends it instead of leaving the bubble `sending`
-    // for good. Hosts without an outbox keep the old behaviour.
+    // No core yet (boot in flight, or a failed token): queue the text anyway, so the next
+    // online resends it instead of leaving the bubble `sending` for good.
     if (ctx.outbox !== undefined) {
       outboxFailed(
         ctx,
@@ -58,8 +56,8 @@ export function sendText(
     }
     return;
   }
-  // The core passes `{}` for a plain text (web's pinned shape); mobile sets
-  // `omitEmptyTextOptions` so its plain texts stay `undefined`.
+  // The core passes `{}` for a plain text (web's shape); mobile sets
+  // `omitEmptyTextOptions`, so its plain texts stay `undefined`.
   const sendOptions =
     replyTo === undefined && mentions.length === 0 && ctx.omitEmptyTextOptions === true
       ? undefined
@@ -87,10 +85,8 @@ export function sendText(
       Effect.andThen((sent) =>
         Effect.sync(() => {
           linkSent(ctx, chat, localId, sent.id);
-          // The stanza reached the server, but the honest `sent` tick waits
-          // for the stream-management ack (or the echo, whichever lands
-          // first; both move the bubble forward only). Hosts without an
-          // outbox keep the old tick.
+          // The stanza reached the server, but the honest `sent` tick waits for the
+          // stream-management ack or the echo.
           if (ctx.outbox === undefined) {
             ctx.k.updateMessageStatus(chatId, localId, 'sent');
           } else {
@@ -108,8 +104,8 @@ export function sendText(
           }
         }),
       ),
-      // The send failed (`NotOnline` or a socket error): the bubble stays
-      // `sending` and the outbox resends it on the next online.
+      // The send failed (`NotOnline` or a socket error): the bubble stays `sending` and
+      // the outbox resends it on the next online.
       Effect.catchCause(() =>
         Effect.sync(() => {
           if (ctx.outbox !== undefined) {
@@ -131,9 +127,8 @@ export function sendText(
   );
 }
 
-// Marks the bubble `sent` once stream management confirms its stanza id: the
-// server has the stanza, so the tick is honest. Runs from the core's `acked`
-// listener (wired in the lifecycle's `subscribeToCore`).
+// Marks the bubble `sent` once stream management confirms its stanza id; runs from the
+// core's `acked` listener.
 export function ackText(ctx: SendCtx, stanzaId: string): void {
   if (ctx.outbox === undefined) {
     return;
@@ -141,11 +136,9 @@ export function ackText(ctx: SendCtx, stanzaId: string): void {
   outboxAcked(ctx, ctx.outbox, stanzaId);
 }
 
-// Requeues a bubble stream management lost without an ack (`unacked`): the
-// next online resends it once, under the same stanza id. Runs from the
-// core's `unacked` listener (wired in the lifecycle's `subscribeToCore`).
-// A resume never fires this (its `h` covers the queued stanzas), so a
-// stanza the server already has is never resent (T-1216).
+// Requeues a bubble stream management lost without an ack: the next online resends it
+// once under the same id. A resume never fires this (its `h` covers the stanzas), so a
+// stanza the server already has is never resent.
 export function unackText(ctx: SendCtx, stanzaId: string): void {
   if (ctx.outbox === undefined) {
     return;

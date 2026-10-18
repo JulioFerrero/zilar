@@ -1,6 +1,3 @@
-// The XMPP connect block: the connect retry schedule, the core listeners and
-// the connect attempt itself. Split from `lifecycle.ts`, which is at its line
-// budget.
 import { Effect, Exit, Scope } from 'effect';
 import { trustedMediaHosts } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
@@ -24,12 +21,10 @@ import type { CoreMe, CoreXmppToken } from './ports';
 import { onAuthFailed } from './session-check';
 import { sortByRecency } from './rows';
 
-// Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 
-// After a failed token or login, try again with growing waits instead of
-// staying offline until a reload (a 429 on the token route used to leave
-// the app on "Waiting for network…" for good).
+// After a failed token or login, retry with growing waits instead of staying offline
+// until a reload.
 const scheduleConnectRetry = (
   ctx: LifecycleCtx,
   session: Fibers<never>,
@@ -60,8 +55,7 @@ const scheduleConnectRetry = (
     );
   });
 
-// Listeners are plain callbacks: the core calls them synchronously, in the
-// order it emits, which the store (and its tests) rely on.
+// Listeners are called synchronously in emit order, which the store and its tests rely on.
 function subscribeToCore(
   ctx: LifecycleCtx,
   current: XmppCore,
@@ -75,14 +69,13 @@ function subscribeToCore(
         flushOnline(ctx);
       }
     }),
-    // A revoked session (signed out elsewhere) answers 401 here (T-1223):
-    // `sessionGone` signs out to login instead of retrying for ever.
+    // A revoked session (signed out elsewhere) answers 401: sign out to login instead of
+    // retrying for ever.
     current.on('authFailed', () => {
       onAuthFailed(ctx, session, me, scheduleConnectRetry);
     }),
     current.on('acked', ({ stanzaId }) => ackText(ctx as unknown as SendCtx, stanzaId)),
     current.on('unacked', ({ stanzaId }) => unackText(ctx as unknown as SendCtx, stanzaId)),
-    // A fresh session (a `rebound`) may have lost in-flight texts: mark them to resend.
     current.on('rebound', () => markReboundOutbox(ctx)),
     current.on('message', (message) => handleMessage(ctx, message)),
     current.on('typing', (event) => handleTyping(ctx, event)),
@@ -90,13 +83,12 @@ function subscribeToCore(
     current.on('deliveredMark', (event) => handleDeliveredMark(ctx, event)),
     current.on('occupants', (event) => handleOccupants(ctx, event)),
     current.on('presence', (event) => handlePresence(ctx, event)),
-    // A group invitation or a roster push means the chat list changed on the
-    // server: refetch it, join any new group rooms and load their preview.
-    // PERF-11: a push burst (one per member) is coalesced into one refresh.
+    // A group invitation or roster push means the chat list changed on the server:
+    // refetch it and join any new rooms. A push burst is coalesced into one refresh.
     current.on('invited', () => scheduleChatsRefreshBurst(ctx)),
     current.on('roster', () => scheduleChatsRefreshBurst(ctx)),
-    // The server removed me from a room (kick, ban or affiliation change):
-    // the chat list changed on the server, the same as above.
+    // The server removed me from a room (kick, ban or affiliation change): the chat list
+    // changed too.
     current.on('removed', () => scheduleChatsRefreshBurst(ctx)),
   ];
   return () => {
@@ -114,8 +106,8 @@ export const connectXmpp = (
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { api, createXmpp } = ctx.ports;
-    // `boot` fetches the token beside the boot fetches (T-1944); a retry has
-    // none and asks for a fresh one.
+    // `boot` fetches the token beside the boot fetches; a retry has none and asks for a
+    // fresh one.
     const tokenExit = yield* prefetchedToken ?? Effect.exit(fromPromise(() => api.getXmppToken()));
     if (Exit.isFailure(tokenExit)) {
       setConnectionStatus(ctx, 'offline');
@@ -127,8 +119,6 @@ export const connectXmpp = (
     ctx.mediaToken = { service: token.service, domain: token.domain };
     ctx.fx.setMediaTrustedHosts(trustedMediaHosts(ctx.mediaToken));
 
-    // The first connect uses the token fetched above; every reconnect asks
-    // for a fresh one.
     const nextToken = Effect.gen(function* () {
       if (firstToken !== undefined) {
         const fresh = firstToken;

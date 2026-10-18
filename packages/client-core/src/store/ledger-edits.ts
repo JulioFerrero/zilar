@@ -1,8 +1,3 @@
-// The ledger's edit state: applying a correction or retraction from a stanza,
-// resolving edits that arrived before their target, re-attaching the current
-// edit state to the loaded messages and their reply quotes, and restoring a
-// message or its edit state after a failed send. Recording what a stanza
-// carries, and ingesting history, live in `ledger-history-ingest.ts`.
 import type { EditsState, ReplyRef } from '@zilar/chat-core';
 import { editsFor, isSameAuthor, mentionsEqual, resolveEdits } from '@zilar/chat-core';
 import type { Payload } from '@zilar/protocol';
@@ -20,7 +15,6 @@ interface LedgerEditsDeps {
   readonly ids: LedgerIds;
   readonly incoming: LedgerIncoming;
   readonly recorder: EditRecorder;
-  /** The task-card updates a correction carries, newest order wins. */
   readonly cards: Map<string, CardEdit>;
 }
 
@@ -30,12 +24,10 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
   const { mapMentions } = deps.incoming;
   const routineBump = createRoutineBump({ get, set, sameMessage, render: withEdits });
 
-  // A correction or retraction message only changes edit state; it never
-  // touches the preview or the unread count. A correction may also carry a
-  // task-card payload, which is remembered even when its body is empty. A live
-  // routine correction is the one exception (T-1722): it bumps its chat, but
-  // only when it arrives live — `ingestHistoryEdits` never bumps, so an old page
-  // read back at boot or on open never reorders or inflates.
+  // A correction or retraction only changes edit state; it never touches the preview or
+  // the unread count. A correction may carry a task card, remembered even with an empty
+  // body. A live routine correction is the one exception: it bumps its chat, but
+  // `ingestHistoryEdits` never bumps.
   function ingestEdit(message: LedgerStanza): void {
     const { update, applied } = recorder.recordEdit(message);
     if (update !== undefined) {
@@ -52,7 +44,6 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     }
   }
 
-  // Applies the edits that arrived before their target message was loaded.
   function resolvePendingEdits(chatId: string): void {
     const chatEdits = get().edits[chatId];
     if (chatEdits === undefined) {
@@ -78,8 +69,8 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     set((state) => ({ edits: { ...state.edits, [chatId]: next } }));
   }
 
-  // The task card a correction carries for one message, when the update comes
-  // from the original's author like a text correction does.
+  // The task card a correction carries, only when the update comes from the original's
+  // author like a text correction does.
   function cardFor(message: StoreMessage): Payload | undefined {
     const entry = cards.get(aliasRoot(message.id));
     if (entry === undefined) {
@@ -92,9 +83,8 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return entry.payload;
   }
 
-  // Applies one message's current edit state. A deleted message keeps only
-  // its place and identity (a retraction also drops the local upload state);
-  // a corrected one shows the new text and mentions.
+  // Applies one message's current edit state: a deleted message keeps only its place and
+  // identity; a corrected one shows the new text and mentions.
   function applyTextEdits(message: StoreMessage, chatId: string): StoreMessage {
     const chatEdits = get().edits[chatId];
     const state = chatEdits === undefined ? undefined : editsFor(chatEdits, aliasRoot(message.id));
@@ -200,9 +190,8 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return edited.card === card ? edited : { ...edited, card };
   }
 
-  // A reply quote follows its target: the corrected text, or "Deleted
-  // message" once the target was retracted. `referenced` is the target, found
-  // through the list's index by alias root.
+  // A reply quote follows its target, found through the list's index by alias root: its
+  // corrected text, or "Deleted message" once retracted.
   function withReplyQuote(
     message: StoreMessage,
     referenced: StoreMessage | undefined,
@@ -224,8 +213,8 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return { ...message, replyTo };
   }
 
-  // The first index of each message by alias root, so a reply or the preview
-  // finds its target without scanning the list.
+  // The first index of each message by alias root, so a reply or the preview finds its
+  // target without scanning the list.
   function indexByRoot(list: readonly StoreMessage[]): Map<string, number> {
     const index = new Map<string, number>();
     list.forEach((message, position) => {
@@ -237,8 +226,6 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return index;
   }
 
-  // Re-attaches the current edit state to every loaded message of a chat and
-  // follows reply quotes and the preview.
   function refreshEdits(chatId: string): void {
     const state = get();
     const list = listFor(state, chatId);
@@ -295,8 +282,8 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     refreshEdits(chatId);
   }
 
-  // Puts a message back exactly as it was before an optimistic edit or delete,
-  // so a failed send restores the fields a retraction had stripped.
+  // Puts a message back exactly as before an optimistic edit or delete, so a failed send
+  // restores the fields a retraction stripped.
   function restoreMessage(chatId: string, snapshot: StoreMessage): void {
     set((state) => ({
       messagesByChat: {

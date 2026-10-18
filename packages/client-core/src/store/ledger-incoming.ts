@@ -1,7 +1,3 @@
-// Turns a received stanza into a stored bubble: the media sanitising, the
-// mention mapping, the display name, the preview/reply quote, the reaction
-// chips, and appending the message to its chat and the chat list. Moved
-// unchanged from `store/ledger.ts` (size split).
 import type { MediaTokenShape, UiMention, VoiceMeta } from '@zilar/chat-core';
 import { isTrustedMediaUrl, sanitizeIncomingAttachment, trustedMediaHosts } from '@zilar/chat-core';
 import { permittedCard, UNSUPPORTED_MESSAGE_TEXT } from './ai-cards';
@@ -34,10 +30,9 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
   const { reactionChips } = ledger.reactions;
 
   /**
-   * An incoming voice message on an untrusted host would make `<audio
-   * preload="metadata">` fetch whatever URL a chat peer put in the payload,
-   * leaking the viewer's IP just like an image would. Drop the URL: the bubble
-   * still shows the waveform and the duration, but nothing is fetched.
+   * Incoming voice on an untrusted host would make `<audio preload="metadata">` fetch
+   * whatever URL a peer put in the payload, leaking the viewer's IP as an image would.
+   * Drop the URL: the bubble still shows the waveform and the duration.
    */
   function sanitizeIncomingVoice(voice: VoiceMeta, token: MediaTokenShape | undefined): VoiceMeta {
     if (voice.url === undefined) {
@@ -52,8 +47,8 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     return stripped;
   }
 
-  // Maps the usable mentions of a message to names: the known group member,
-  // else the text the range covers, else the JID's localpart.
+  // Maps the usable mentions to names: the known member, else the text the range
+  // covers, else the JID's localpart.
   function mapMentions(
     chatId: string,
     mentions: readonly { jid: string; begin?: number; end?: number }[],
@@ -78,14 +73,13 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     if (body === undefined || mentions === undefined) {
       return [];
     }
-    // The decoded body already has the reply fallback stripped and the
-    // mention offsets moved past it, so they map as-is.
+    // The decoded body already has the reply fallback stripped and the mention offsets
+    // moved past it, so they map as-is.
     return mapMentions(message.chatJid, mentions, body);
   }
 
-  // A name for a reply's wire `to` JID when its target is not loaded, from the
-  // same sources `senderNameFor` reads for a sender (`ledger-identity.ts:45`):
-  // me, a contact, or a group member.
+  // A name for a reply's wire `to` JID when its target is not loaded, from the same
+  // sources `senderNameFor` reads: me, a contact, or a group member.
   function nameForReplyTo(chatId: string, jid: string): string | undefined {
     const me = myJid();
     if (me !== undefined && jid === me) {
@@ -98,10 +92,8 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     return groupMemberNameFor(chatId, jid);
   }
 
-  // The sender name and excerpt a reply quote resolves to, from the loaded
-  // messages of the chat or from the page being mapped: history maps a whole
-  // page before inserting it, so a target on the same page is not in the store
-  // yet (T-1333).
+  // The sender name and excerpt a reply quote resolves to, from loaded messages or from
+  // the page being mapped: history maps a whole page before inserting it.
   function replyReferenceFor(
     chatId: string,
     replyTo: { readonly id: string },
@@ -130,17 +122,13 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     page?: readonly LedgerStanza[],
   ): StoreMessage {
     const senderId = message.outgoing ? meId : message.fromJid;
-    // The stanza id and the sender-generated id name the same message: record
-    // the origin id under the chat and sender so a correction (which always
-    // names the origin id) resolves even when the message is stored under its
-    // archive stanza-id, and so a second archived row of the same resend
-    // aliases to the first copy (`rememberOriginId`).
+    // The stanza id and the sender-generated id name the same message: record the origin
+    // id under chat and sender so a correction resolves, and a second archived row of the
+    // same resend aliases to the first copy.
     rememberAuthor(message.id, authorOfChatMessage(message));
     if (message.originId !== undefined) {
       rememberOriginId(message.id, message.originId, message.chatJid, senderId);
     }
-    // The decoded body already has the XEP-0461 fallback quote stripped;
-    // the reply bar renders the quote from `replyTo`.
     const body = message.body;
     if (body !== undefined) {
       rememberBaseText(message.id, body);
@@ -164,15 +152,11 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     }
     const replyTo = message.replyTo;
     if (replyTo !== undefined) {
-      // Alias-aware: a reply names the message by the id both sides share (the
-      // origin id in a DM, the room stanza-id in a group), which may differ
-      // from the id it is stored under here. The page is checked too, because
-      // history maps a whole page before inserting it. With no match, the
-      // fallback quote parsed off the wire is used (UI-6).
+      // Alias-aware: a reply names the message by the id both sides share, which may differ
+      // from its stored id; the page is checked too. With no match, use the wire fallback quote.
       const reference = replyReferenceFor(message.chatJid, replyTo, page);
-      // With no loaded target, the wire `to` JID still names the sender (the
-      // same lookup `senderNameFor` uses) and gives the quote a sender id to
-      // colour by (T-1333).
+      // With no loaded target, the wire `to` JID still names the sender and gives the quote a
+      // sender id to colour by.
       const senderName =
         reference?.senderName ??
         (replyTo.to === undefined ? undefined : nameForReplyTo(message.chatJid, replyTo.to));
@@ -198,14 +182,10 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
       } else if (message.payload.type === 'attachment') {
         ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
       } else {
-        // Every other payload is a card the bubble renders from `message.card`:
-        // progress, approval request, sticker and the rest. This mirrors the
-        // optimistic send and forward mapping (`forwardedUiFieldsFor`), so a
-        // received card and its own echo land on the same fields. A sticker is
-        // kept as-is; its same-origin check happens at render time. T-2001: an
-        // AI-only card from anyone but an AI is dropped, and a body-less
-        // message shows the fixed unsupported sentence instead of an empty
-        // bubble.
+        // Every other payload is a card the bubble renders from `message.card`, mirroring
+        // the optimistic send and forward mapping so a received card and its echo land on the
+        // same fields. A sticker is kept as-is (checked at render). An AI-only card from a
+        // person is dropped, and a body-less message shows the fixed unsupported sentence.
         const card = permittedCard(message.payload, senderId);
         if (card !== undefined) {
           ui.card = card;

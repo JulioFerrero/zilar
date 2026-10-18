@@ -1,20 +1,14 @@
-// Pins of a chat, shared by both stores: loading the list, and pinning or
-// unpinning a message optimistically with a rollback and one fixed error text
-// per operation (R13). Where the pins and their errors live differs per store
-// (web: atoms, mobile: a closure), so a small `PinsStore` adapter keeps the
-// behaviour in one place while each store binds it to its own state.
+// Pins of a chat shared by both stores: loading, and pinning or unpinning optimistically
+// with a rollback and one fixed error per operation. Where pins live differs per store, so
+// a small `PinsStore` adapter keeps the behaviour in one place.
 import { Cause, Effect, Exit } from 'effect';
 import type { Pin, PinKind } from '@zilar/api-contract';
 import { fromPromise, type CoreCtx } from './ctx';
 
-/** The one pin failure text (web's; both apps use it, Q4/R13). */
 export const PIN_ERROR = 'Could not pin the message. Try again.';
-/** The one unpin failure text (web's; both apps use it, Q4/R13). */
 export const UNPIN_ERROR = 'Could not unpin the message. Try again.';
-/** The loud pins-load failure text (mobile's; web loads pins silently). */
 export const PINS_LOAD_ERROR = 'Could not load pins. Try again.';
 
-/** The display-only snapshot the server stores for one pinned message. */
 export interface PinMessageInput {
   readonly chat: string;
   readonly messageId: string;
@@ -23,31 +17,25 @@ export interface PinMessageInput {
   readonly kind: PinKind;
 }
 
-/** The pins API both apps' clients satisfy. */
 export interface PinsApi {
   listPins(chat: string): Promise<readonly Pin[]>;
   pinMessage(input: PinMessageInput): Promise<Pin>;
-  /** Web answers nothing, mobile echoes the removed row. */
   unpinMessage(id: string): Promise<void | { readonly id: string }>;
 }
 
-/** One pins error, shown inline under the chat. */
 export interface PinsError {
   readonly chatId: string;
   readonly message: string;
 }
 
-/** Where one store keeps its pins and the viewer id. */
 export interface PinsStore {
   pins(chatId: string): readonly Pin[];
   publish(chatId: string, pins: readonly Pin[]): void;
-  /** Marks the chat's pins as loaded (web's `pinsReady`; mobile has no flag). */
   markReady(chatId: string): void;
   setError(error: PinsError | undefined): void;
   currentUserId(): string;
 }
 
-/** The message fields a pin snapshot reads; both apps' `UiMessage` satisfy it. */
 export interface PinSource {
   readonly id: string;
   readonly senderName: string;
@@ -59,7 +47,6 @@ export interface PinSource {
   readonly attachment?: { readonly kind?: string | undefined } | undefined;
 }
 
-/** The kind of a pin snapshot, from the message's payload (web's precedence). */
 export function pinKindFor(
   message: Pick<PinSource, 'image' | 'voice' | 'card' | 'attachment'>,
 ): PinKind {
@@ -78,7 +65,6 @@ export function pinKindFor(
   return 'text';
 }
 
-/** The display-only text of a pin: the message text, or empty for a payload. */
 export function pinTextFor(message: Pick<PinSource, 'text' | 'deleted'>, kind: PinKind): string {
   if (message.deleted === true) {
     return 'Message deleted';
@@ -86,7 +72,6 @@ export function pinTextFor(message: Pick<PinSource, 'text' | 'deleted'>, kind: P
   return kind === 'text' ? (message.text ?? '').slice(0, 300) : '';
 }
 
-/** The snapshot the server stores for a pin of `message`. */
 export function pinSnapshotFor(chatId: string, message: PinSource): PinMessageInput {
   const kind = pinKindFor(message);
   return {
@@ -99,10 +84,9 @@ export function pinSnapshotFor(chatId: string, message: PinSource): PinMessageIn
 }
 
 /**
- * Applies the media-panel trust rule (T-0434, T-0436): an `image` or `gif` on
- * an untrusted host loses its `url`, so the panel never auto-loads it. With no
- * trust function nothing is trusted. `resolve` turns a server-relative url
- * into an absolute one before the check (native); other kinds keep it.
+ * Applies the media-panel trust rule: an `image` or `gif` on an untrusted host loses its
+ * `url`, so the panel never auto-loads it. With no trust function nothing is trusted;
+ * `resolve` makes a server-relative url absolute before the check (native).
  */
 export function sanitizeMediaItems<T extends { kind: string; url?: string | undefined }>(
   items: readonly T[],
@@ -124,7 +108,6 @@ export function sanitizeMediaItems<T extends { kind: string; url?: string | unde
 const isRemovedPin = (value: void | { readonly id: string }): value is { readonly id: string } =>
   typeof value === 'object' && value !== null && typeof value.id === 'string';
 
-/** Loads the pins of `chatId`; a failure is silent unless `loud`. */
 export function loadPins(
   _ctx: CoreCtx,
   api: PinsApi,
@@ -149,7 +132,6 @@ export function loadPins(
   );
 }
 
-/** Pins a loaded message: the pin shows at once and is replaced by the saved one. */
 export function pinMessage(
   ctx: CoreCtx,
   api: PinsApi,
@@ -190,7 +172,6 @@ export function pinMessage(
   });
 }
 
-/** Unpins a message: the pin leaves at once and comes back if the server refuses. */
 export function unpinMessage(
   _ctx: CoreCtx,
   api: PinsApi,
@@ -211,9 +192,8 @@ export function unpinMessage(
       store.setError({ chatId, message: UNPIN_ERROR });
       return yield* Effect.fail(Cause.squash(removed.cause));
     }
-    // Mobile echoes the removed row; web answers nothing. Dropping the echo id
-    // covers a pin the optimistic list did not know about; a same-id echo is
-    // already gone, so nothing is republished in the common case.
+    // Mobile echoes the removed row; web answers nothing. Dropping the echo id covers a pin
+    // the optimistic list did not know about; a same-id echo is already gone.
     const echoed = removed.value;
     if (isRemovedPin(echoed) && echoed.id !== pinId) {
       store.publish(

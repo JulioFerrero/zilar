@@ -14,7 +14,6 @@ import type { SendCtx, SendStickerInput, SendTextOptions } from './context';
 import { fromPromise } from '../ctx';
 import { coreKind } from '../rows';
 
-/** The send step of a sticker, re-runnable from a Retry: only the stanza is (re)sent. */
 function runStickerSend(
   ctx: SendCtx,
   chat: ChatSummary,
@@ -28,7 +27,6 @@ function runStickerSend(
     ctx.k.markSendFailed(chat.id, localId, 'network');
     return;
   }
-  // The shared wire id (origin id in a DM, room stanza-id in a group).
   const quote = wireReply(ctx, replyTo);
   ctx.rt.fork(
     fromPromise(() =>
@@ -65,9 +63,8 @@ export function sendSticker(
   if (chat === undefined) {
     return;
   }
-  // The choice may come from tampered localStorage recents or drifted pack
-  // rows: validate before the optimistic insert, because `encodePayload`
-  // throws synchronously on an invalid payload and would otherwise leave a
+  // The choice may come from tampered localStorage recents or drifted pack rows: validate
+  // before the optimistic insert, or `encodePayload` throws synchronously and leaves a
   // stuck `sending` bubble with no retry.
   const data = {
     pack_id: sticker.packId,
@@ -125,9 +122,8 @@ export function retrySticker(ctx: SendCtx, chatId: string, messageId: string): v
     .find((item) => ctx.k.sameMessage(item.id, messageId));
   const payload =
     message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
-  // Like `retryAttachment` and `retryVoice`: only a `failed` bubble may
-  // relaunch the send, so a double Retry click cannot double-send (the first
-  // click flips the bubble back to `sending`, and the second returns here).
+  // Like the other retries: only a `failed` bubble may relaunch, so a double Retry click
+  // cannot double-send.
   if (message === undefined || payload === undefined || message.status !== 'failed') {
     return;
   }
@@ -135,10 +131,9 @@ export function retrySticker(ctx: SendCtx, chatId: string, messageId: string): v
     ctx.k.markSendFailed(chatId, messageId, 'network');
     return;
   }
-  // A retried sticker is a send too: a stale error banner clears (R20) and the
-  // bubble leaves `failed` for `sending` like every other retry (UI-14). No
-  // echo entry is re-enqueued: a failed first send was never echoed, so its
-  // queued id is still there for a later identical sticker.
+  // A retried sticker clears a stale error banner and leaves `failed` for `sending` like
+  // every retry. No echo entry is re-enqueued: the failed first send was never echoed, so
+  // its queued id is still there.
   ctx.set((state) => ({
     actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
   }));

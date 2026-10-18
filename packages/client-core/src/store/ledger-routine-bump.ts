@@ -1,18 +1,14 @@
-// T-1722: the routine-edit bump. A correction that carries a `routine` payload
-// (T-1721) moves its chat to the top with the edited text as its preview, like
-// a new incoming message, and counts as unread unless the edit is my own. Kept
-// beside `ledger-edits.ts` so that file stays under 400 lines.
+// The routine-edit bump: a correction carrying a `routine` payload moves its chat to the
+// top with the edited text as preview, and counts as unread unless the edit is my own.
 import type { EditAuthor, TargetEdits } from '@zilar/chat-core';
 import { listFor, previewFor } from './ledger-signatures';
 import type { LedgerSet, LedgerState, StoreMessage } from './ledger-types';
 import { moveChatToTop } from './rows';
 
 /**
- * Whether a correction actually changed the target's stored edit state.
- * `applyEdit` returns a fresh state object even for a stale-order correction and
- * for a byte-identical re-apply, so a redelivered stanza (an XMPP stream
- * resumption) would look like a change and bump the chat again. Compare the
- * stored correction instead: the same text and order means nothing changed.
+ * Whether a correction actually changed the target's edit state. `applyEdit` returns a
+ * fresh object even for a stale-order or byte-identical re-apply, so a stream resumption
+ * would look like a change and bump again; compare the stored correction instead.
  */
 export function correctionChanged(
   before: TargetEdits | undefined,
@@ -29,23 +25,20 @@ export function correctionChanged(
 interface RoutineBumpDeps {
   readonly get: () => LedgerState;
   readonly set: LedgerSet;
-  /** Whether two message ids name the same message (`ledger-ids.ts`). */
   readonly sameMessage: (left: string, right: string) => boolean;
-  /** The rendered message with its current edit state applied (`withEdits`). */
   readonly render: (message: StoreMessage, chatId: string) => StoreMessage;
 }
 
 export function createRoutineBump(deps: RoutineBumpDeps) {
   const { get, set } = deps;
 
-  // The same test `incoming.ts` uses for a live message: my own JID.
   function isMine(author: EditAuthor): boolean {
     const mine = get().me?.jid;
     return mine !== undefined && mine !== null && mine !== '' && author.jid === mine;
   }
 
-  // Moves the chat to the top with the edited target as its preview, and raises
-  // its unread count the way a new message from someone else does.
+  // Moves the chat to the top with the edited target as its preview, raising its unread
+  // like a new message from someone else.
   function bumpRoutineChat(chatId: string, targetId: string, author: EditAuthor): void {
     const mine = isMine(author);
     const target = listFor(get(), chatId).find((item) => deps.sameMessage(item.id, targetId));

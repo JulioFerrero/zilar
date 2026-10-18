@@ -1,5 +1,3 @@
-// A core context over a plain in-memory state, for the core's own tests. The
-// ledger is the real one; the XMPP core and the app hooks are spies.
 import type { ChatSummary } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { Context } from 'effect';

@@ -24,12 +24,9 @@ import type { VoiceInput } from '../ports';
 import { coreKind } from '../rows';
 
 /**
- * The voice pipeline, re-runnable from a Retry (T-0168): convert, PUT the
- * bytes, then send the payload message. Every failure — conversion, upload or
- * the final send — lands the bubble in `failed` with a fixed user-safe reason,
- * never a clock forever. The recording's bytes stay in `pendingVoices` until
- * the stanza send succeeds, so a Retry re-runs the same pipeline from the
- * retained bytes.
+ * The voice pipeline, re-runnable from a Retry: convert, PUT the bytes, then send the
+ * payload. Every failure lands the bubble in `failed` with a fixed user-safe reason, never
+ * a clock forever; the bytes stay until the send succeeds, so a Retry re-runs from them.
  */
 function runVoiceSend(
   ctx: SendCtx,
@@ -43,15 +40,14 @@ function runVoiceSend(
     ctx.k.markSendFailed(chat.id, localId, 'network');
     return;
   }
-  // The shared wire id (origin id in a DM, room stanza-id in a group).
   const quote = wireReply(ctx, replyTo);
   const run = newRun();
   armSendTimeout(ctx, chat.id, localId, run);
   ctx.rt.fork(
     Effect.gen(function* () {
       const converted = yield* ctx.ports.voice.convert(input);
-      // A cancel during `convert` (or the upload below) removed the bubble: the
-      // pipeline stops before it converts further, uploads or sends.
+      // A cancel during `convert` or the upload removed the bubble: stop before converting
+      // further, uploading or sending.
       if (!messageAlive(ctx, chat.id, localId)) {
         settleSendTimeout(ctx, localId, run);
         return;
@@ -88,8 +84,8 @@ function runVoiceSend(
         }),
       );
       linkSent(ctx, chat, localId, sent.id);
-      // A retried attempt may own this message now: only this run's own
-      // success settles it, drops the timer and the kept bytes.
+      // A retried attempt may own this message now: only this run's own success settles it
+      // and drops the timer and the kept bytes.
       if (!isCurrentSendRun(ctx, localId, run)) {
         return;
       }
@@ -98,8 +94,8 @@ function runVoiceSend(
       ctx.pendingVoices.delete(localId);
       ctx.pendingVoices.delete(ctx.k.aliasRoot(localId));
     }).pipe(
-      // The optimistic bubble keeps its local audio; the failure shows
-      // "Not sent" with Retry and Delete instead of a clock.
+      // The bubble keeps its local audio; the failure shows "Not sent" with Retry and
+      // Delete instead of a clock.
       Effect.catchCause((cause) =>
         Effect.sync(() => {
           clearUploadProgress(ctx, chat.id, localId);

@@ -1,18 +1,15 @@
-// The preview pass after a connect or a resume: fills the chat-list rows the
-// server's chat list left empty, at a bounded concurrency so one reconnect is
-// not one unbounded MAM burst (PERF-1).
+// The preview pass after a connect or resume: fills empty chat-list rows at a bounded
+// concurrency, so one reconnect is not one unbounded MAM burst.
 import { Effect } from 'effect';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { loadPreview, type HistoryCtx } from './history';
 
-/** How many chat previews load at once after a (re)connect. */
 export const PREVIEW_CONCURRENCY = 4;
 
 /**
- * Loads the newest message of every chat that still needs it. A chat whose
- * list row already carries a `lastMessage` and whose cursor is known is
- * skipped: the server's chat list (T-1198) sent its preview. The rest run
- * `PREVIEW_CONCURRENCY` at a time.
+ * Loads the newest message of every chat that still needs it; a row that already carries
+ * `lastMessage` and a known cursor is skipped. The rest run `PREVIEW_CONCURRENCY` at a
+ * time.
  */
 export const loadPreviews = (ctx: HistoryCtx, current: XmppCore): Effect.Effect<void> =>
   Effect.suspend(() =>

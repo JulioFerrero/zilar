@@ -1,10 +1,5 @@
-// The mutators every send and receive path goes through: status, voice and
-// attachment updates, send-failure and retry transitions, failed-message
-// removal and the sticker/attachment failure flags. Each keeps the message and,
-// where the original did, the chat-list preview in step through
-// `patchMessageAndLast`. Moved unchanged from `store/ledger.ts` (size split);
-// the shared list-map + preview-mirror blocks are deduplicated per the split
-// plan.
+// The mutators every send and receive path goes through: status, voice, attachment,
+// failure and retry updates, each keeping the chat-list preview in step.
 import type { Attachment, MessageStatus, SendFailureReason, VoiceMeta } from '@zilar/chat-core';
 import { advanceStatus, clearFailure, sortMessages } from './rows';
 import type { LedgerIds } from './ledger-ids';
@@ -20,8 +15,8 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
   const { set } = deps;
   const { sameMessage } = deps.ids;
 
-  // Updates a message in the open conversation and, when it is the same
-  // message, in the chat list preview, so the two always agree.
+  // Updates a message in the open conversation and, when it is the same message, in the
+  // chat-list preview, so the two agree.
   function patchMessageAndLast(
     chatId: string,
     messageId: string,
@@ -48,8 +43,8 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     });
   }
 
-  // Updates a message in the open conversation only, for the flags whose
-  // original never mirrored to the chat-list preview.
+  // Updates a message in the open conversation only, for flags whose original never
+  // mirrored to the preview.
   function patchMessage(
     chatId: string,
     messageId: string,
@@ -65,8 +60,8 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     }));
   }
 
-  // Updates a message's status in the open conversation and, when it is the
-  // same message, in the chat list preview, so the two always agree.
+  // Updates a message's status in the open conversation and, when it is the same message,
+  // in the chat-list preview.
   function updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void {
     patchMessageAndLast(chatId, messageId, (item) => ({
       ...item,
@@ -74,14 +69,10 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     }));
   }
 
-  // Swaps the placeholder voice metadata of an optimistic message for the
-  // server's duration, waveform and upload URL.
   function updateMessageVoice(chatId: string, messageId: string, voice: VoiceMeta): void {
     patchMessageAndLast(chatId, messageId, (item) => ({ ...item, voice }));
   }
 
-  // Swaps an optimistic attachment for the uploaded one: the served URL plus
-  // any dimensions read from the local file.
   function updateMessageAttachment(
     chatId: string,
     messageId: string,
@@ -90,12 +81,9 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     patchMessageAndLast(chatId, messageId, (item) => ({ ...clearFailure(item), attachment }));
   }
 
-  // A failed voice or attachment send (T-0168): the bubble leaves
-  // `sending` for `failed` with a fixed user-safe reason, keeping its local
-  // blob/file so it can be retried. The `failed` flag mirrors the status
-  // for readers that only check it. A failure never moves a message that
-  // already settled (`sent`/`read`/`failed`): a late hang racing a success
-  // must not downgrade it.
+  // A failed voice or attachment send leaves `sending` for `failed` with a fixed reason,
+  // keeping its local blob for a retry and mirroring the flag. A message that already
+  // settled never moves: a late hang racing a success must not downgrade it.
   function markSendFailed(chatId: string, messageId: string, reason: SendFailureReason): void {
     patchMessageAndLast(chatId, messageId, (item) =>
       item.status === 'sending'
@@ -104,28 +92,24 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     );
   }
 
-  // Clears a bubble's send-failure state (status back to `sending`-ladder
-  // shape, flags dropped) without touching its content: used when a server
-  // echo proves the stanza was delivered after all. Only `failed` bubbles
-  // move; anything else is left alone.
+  // Clears a bubble's send-failure state without touching its content, when an echo proves
+  // the stanza was delivered; only `failed` bubbles move.
   function clearSendFailure(chatId: string, messageId: string): void {
     patchMessageAndLast(chatId, messageId, (item) =>
       item.status === 'failed' ? { ...clearFailure(item), status: 'sent' as const } : item,
     );
   }
 
-  // Moves a failed bubble back to `sending` for an explicit retry (T-0168).
-  // Only `failed` messages move: this is the one path that may leave that
-  // status, so `advanceStatus` can stay closed to it.
+  // Moves a failed bubble back to `sending` for an explicit retry; this is the one path
+  // that may leave `failed`.
   function markSendRetrying(chatId: string, messageId: string): void {
     patchMessageAndLast(chatId, messageId, (item) =>
       item.status === 'failed' ? { ...clearFailure(item), status: 'sending' as const } : item,
     );
   }
 
-  // Removes a failed local bubble (T-0168): the send never reached the
-  // server, so there is nothing to retract — only a local message still in
-  // `failed` status may go. The store drops its kept bytes first.
+  // Removes a failed local bubble: the send never reached the server, so there is nothing
+  // to retract; only `failed` may go.
   function removeFailedMessage(chatId: string, messageId: string): void {
     set((state) => {
       const next = listFor(state, chatId).filter(
@@ -156,8 +140,8 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     });
   }
 
-  // A failed upload keeps the message and its local bytes, but shows a Retry
-  // instead of a silent "sending" state.
+  // A failed upload keeps the message and its bytes but shows a Retry instead of a silent
+  // "sending" state.
   function markAttachmentFailed(chatId: string, messageId: string): void {
     patchMessage(chatId, messageId, (item) => ({ ...item, failed: true }));
   }

@@ -1,5 +1,5 @@
-// The chat-list cache codec, shared by web and phone (T-2027, W1-f): the version,
-// the cap, the schemas, the dropped live fields and the dates; storage stays per app.
+// The chat-list cache codec shared by web and phone: version, cap, schemas, dates;
+// storage stays per app.
 import type { ChatSummary } from '@zilar/chat-core';
 import { Result, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
@@ -42,8 +42,7 @@ const cacheSchema = struct({
   chats: Schema.mutable(Schema.Array(cachedChatSchema)),
 });
 
-// A cached `Date` arrives as a string; a valid one becomes a `Date`, anything
-// else is dropped, so no caller can `.getTime()` it (T-1479).
+// A cached `Date` arrives as a string; a valid one becomes a `Date`, else it is dropped.
 function rehydrateDate(value: unknown): Date | undefined {
   if (typeof value !== 'string') {
     return undefined;
@@ -52,7 +51,6 @@ function rehydrateDate(value: unknown): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-/** The cached list for `userId`, or undefined on a wrong version, owner or JSON. */
 export function decodeChatListCache(
   raw: string,
   userId?: string,
@@ -93,7 +91,6 @@ export function decodeChatListCache(
   }
 }
 
-/** Encodes the newest `MAX_CACHED_CHATS` chats, without the live fields. */
 export function encodeChatListCache(userId: string, chats: readonly ChatSummary[]): string {
   return JSON.stringify({
     version: CACHE_VERSION,
@@ -104,7 +101,7 @@ export function encodeChatListCache(userId: string, chats: readonly ChatSummary[
       online: undefined,
       onlineCount: undefined,
       lastSeenAt: undefined,
-      // T-1406: `aiStatus` is live too; never paint a stale "working".
+      // `aiStatus` is live too; never paint a stale "working".
       aiStatus: undefined,
       lastMessage:
         chat.lastMessage === undefined

@@ -1,33 +1,28 @@
-// The outside world of the chat store core: the clock, whether the user can see
-// the app, the key-value storage, the API the lifecycle boots with, the XMPP
-// factory, the AI draft stream, the app badge and the behaviour flags. Each app
-// builds these from its own adapters (web: `apps/web/src/store/effects/ports.ts`).
+// The outside world of the chat store core: clock, visibility, storage, the boot API, the
+// XMPP factory, the draft stream, the badge and the flags; each app builds these from its
+// own adapters (web: `apps/web/src/store/effects/ports.ts`).
 import type { Effect } from 'effect';
 import type { ChatSummary } from '@zilar/chat-core';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import type { SessionCheck } from './session-check';
 
-/** Synchronous key-value storage (`localStorage` on web), or none. */
 export interface KeyValue {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
 
-/** What the lifecycle reads of the signed-in user. */
 export interface CoreMe {
   readonly id: string;
   readonly name: string;
   readonly jid?: string | null | undefined;
 }
 
-/** What the lifecycle reads of a contact. */
 export interface CoreContact {
   readonly jid: string;
   readonly name: string;
 }
 
-/** What the lifecycle reads of an XMPP token. */
 export interface CoreXmppToken {
   readonly jid: string;
   readonly token: string;
@@ -35,55 +30,42 @@ export interface CoreXmppToken {
   readonly domain: string;
 }
 
-/**
- * The API calls the lifecycle makes. A `/api/chats` entry stays `unknown`
- * here: each app maps it through `rows` (the app's own `ChatEntry`).
- */
+/** The API calls the lifecycle makes. A `/api/chats` entry stays `unknown` here: each
+ * app maps it through its own rows. */
 export interface CoreApi {
   getMe(): Promise<CoreMe>;
   getChats(): Promise<readonly unknown[]>;
   getContacts(): Promise<readonly CoreContact[]>;
   getXmppToken(): Promise<CoreXmppToken>;
-  /** Optional: an app without it reads no prefs (mobile `chatPrefs` is optional). */
   listChatPrefs?(): Promise<readonly unknown[]>;
   /**
-   * Optional: stores the caller's read mark (`PUT /api/chats/:jid/read`).
-   * The id must be numeric (an archive id); the core only calls it with
-   * all-digit ids. Best effort: failures are ignored.
+   * Optional: stores the caller's read mark (`PUT /api/chats/:jid/read`); the id must be
+   * numeric (an archive id). Best effort: failures are ignored.
    */
   markChatRead?(jid: string, messageId: string): Promise<unknown>;
   /**
-   * Optional: confirms the caller's device holds these messages (`PUT
-   * /api/chats/:jid/delivered`). The ids are origin ids (the wire id,
-   * `docs/plan/delivered-tick.md` §4), 1 to 50 per call. Best effort: failures
-   * are ignored, and the server ignores the caller's own messages.
+   * Optional: confirms this device holds these messages (`PUT /api/chats/:jid/delivered`);
+   * the ids are origin ids, 1 to 50 per call. Best effort, and the server ignores the
+   * caller's own messages.
    */
   markChatDelivered?(jid: string, originIds: string[]): Promise<unknown>;
-  /**
-   * Optional: deletes one message from the caller's own copy of a DM (T-1247,
-   * `DELETE /api/chats/:jid/messages/:archiveId`). The id is the archive id.
-   */
+  /** Optional: deletes one message from the caller's own copy of a DM (`DELETE
+   * /api/chats/:jid/messages/:archiveId`); the id is the archive id. */
   deleteMessageForMe?(jid: string, archiveId: string): Promise<unknown>;
-  /**
-   * Optional: clears the caller's own copy of a DM's history (T-1247,
-   * `DELETE /api/chats/:jid/history`). The peer's copy is untouched.
-   */
+  /** Optional: clears the caller's own copy of a DM's history (`DELETE
+   * /api/chats/:jid/history`); the peer's copy is untouched. */
   clearChatHistory?(jid: string): Promise<unknown>;
 }
 
-/** How an app maps its own `/api/chats` entry to the shared chat summaries. */
 export interface ChatRows {
   summariesFor(entry: unknown): ChatSummary[];
 }
 
-/** True while the user can see the app, plus a focus subscription. */
 export interface Visibility {
   isVisible(): boolean;
-  /** Window focus on web, AppState `active` on mobile. Returns the unsubscribe. */
   onFocus(handler: () => void): () => void;
 }
 
-/** One live AI draft event from the drafts stream. */
 export type DraftHubEvent =
   | {
       readonly type: 'draft';
@@ -98,28 +80,21 @@ export type DraftHubEvent =
       readonly outcome: 'sent' | 'failed';
     };
 
-/** Opens the draft stream; the returned function closes it. */
 export type OpenDraftStream = (onEvent: (event: DraftHubEvent) => void) => () => void;
 
-/** The app badge and the push notifications; both are best effort. */
 export interface Notifications {
   syncBadge(chats: readonly ChatSummary[]): void;
   dismissChat(chatId: string): void;
 }
 
-/** Behaviour switches that differ per app (plan section 4, R7/R8). */
 export interface StoreFlags {
-  /** Retry the connection after a failure with growing waits (R7). */
   connectRetry: boolean;
-  /** Reconnect when the app becomes visible again (R8, mobile). */
   reconnectOnResume: boolean;
 }
 
 export interface CorePorts {
   readonly now: () => Date;
-  /** True while the user can see the app: the tab is visible, the app is active. */
   readonly isVisible: () => boolean;
-  /** Where the last-read map is saved, or null to keep it in memory only. */
   readonly storage: KeyValue | null;
   readonly api: CoreApi;
   readonly rows: ChatRows;
@@ -129,16 +104,13 @@ export interface CorePorts {
   readonly notifications: Notifications;
   readonly flags: StoreFlags;
   /**
-   * Asks `GET /api/me` whether the server session still exists after an
-   * `authFailed` (T-1223): `valid` keeps retrying, `gone` signs out, and
-   * `unknown` (any other status, or a network error) keeps retrying.
+   * Asks `GET /api/me` whether the server session still exists after an `authFailed`:
+   * `valid` keeps retrying, `gone` signs out, `unknown` keeps retrying.
    */
   checkSession?(): Promise<SessionCheck>;
-  /** Signs out after `checkSession` answered `gone`, so the user lands on login. */
   sessionGone?(): void;
 }
 
-/** One file on its way out, as the send pipeline describes it (T10). */
 export interface OutgoingBytesData {
   readonly kind: 'image' | 'file';
   readonly name: string;
@@ -146,12 +118,11 @@ export interface OutgoingBytesData {
   readonly mime: string;
   readonly width?: number | undefined;
   readonly height?: number | undefined;
-  /** A local preview URL (`blob:` on web, a file URI on mobile), never on the wire. */
   readonly localUrl?: string | undefined;
 }
 
-/** The bytes of an outgoing file: classify, measure, upload with progress and
- * cancel (T10, plan section 4). Web has no cancel; mobile returns no size. */
+/** The bytes of an outgoing file: classify, measure, upload with progress and cancel; web
+ * has no cancel, mobile returns no size. */
 export interface OutgoingBytes {
   describe(file: unknown): OutgoingBytesData;
   measure(file: unknown): Effect.Effect<{ width: number; height: number } | undefined, unknown>;
@@ -164,7 +135,6 @@ export interface OutgoingBytes {
   cancel?(key: string): void;
 }
 
-/** One voice recording on its way out (T10). The bytes stay opaque to the core. */
 export interface VoiceInput {
   readonly bytes: unknown;
   readonly durationMs: number;
@@ -172,7 +142,6 @@ export interface VoiceInput {
   readonly localUrl?: string | undefined;
 }
 
-/** The voice pipeline: convert a recording, then upload the audio (T10). */
 export interface VoiceOut {
   convert(recording: VoiceInput): Effect.Effect<{ durationMs: number; audio: unknown }, unknown>;
   upload(
@@ -183,10 +152,6 @@ export interface VoiceOut {
   ): Effect.Effect<string, unknown>;
 }
 
-/**
- * The send pipeline's own ports, beside `CorePorts` (T10, plan section 4).
- * Mobile adopts them in its own task, so they are not on `CorePorts` yet.
- */
 export interface SendPorts {
   readonly bytes: OutgoingBytes;
   readonly voice: VoiceOut;
@@ -207,8 +172,6 @@ const inertApi: CoreApi = {
   },
 };
 
-/** The ports of a core test: a fixed clock, a visible app, no storage or app
- * adapters, unless supplied. */
 export function testCorePorts(fakes: Partial<CorePorts> = {}): CorePorts {
   return {
     now: fakes.now ?? ((): Date => new Date(0)),

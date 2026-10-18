@@ -1,9 +1,6 @@
-// What the XMPP core tells the store: messages (new, echoed, corrections,
-// reactions), typing, read markers, room occupants and presence. The core
-// calls these listeners synchronously, in the order it emits, and the store
-// updates its state before the next event arrives, so they stay plain
-// callbacks over the shared `ctx`. The timers and the best-effort work they
-// start (the typing clear, the badge) run as fibers.
+// What the XMPP core tells the store: messages, typing, read markers, room occupants and
+// presence. The core calls these listeners synchronously in emit order, so the store updates
+// before the next event; the timers they start run as fibers.
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { isAiJid } from '@zilar/protocol';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
@@ -21,11 +18,10 @@ import {
 } from './rows';
 import { addTyper, clearChatTyping, removeTyper, setStatus, TYPING_CLEAR_MS } from './typing';
 
-// A typing line clears this long after the last composing event: still
-// exported from the incoming path, so the apps' re-export keeps working.
+// A typing line clears this long after the last composing event; still exported from here
+// so the apps' re-export keeps working.
 export { TYPING_CLEAR_MS };
 
-/** How long a chat refresh waits after the last update event. */
 export const CHAT_REFRESH_DEBOUNCE_MS = 500;
 
 // Reconciles our optimistic message with the server echo. Sticker echoes carry
@@ -48,11 +44,8 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
   if (localId !== undefined) {
     k.linkMessageIds(localId, ui.id);
     k.linkLocalToServer(localId, ui.id);
-    // An echo is proof the stanza reached the server: a bubble the pipeline had
-    // marked `failed` reached it after all, so it moves to `sent` and its
-    // kept retry bytes can go, whichever pipeline stored them. `advanceStatus`
-    // below still guards against a later `sending`/`failed` update downgrading
-    // it again.
+    // An echo is proof the stanza reached the server: a bubble marked `failed` moves to
+    // `sent` and its retry bytes can go. `advanceStatus` still stops a later downgrade.
     k.clearSendFailure(chatId, ui.id);
     k.updateMessageStatus(chatId, ui.id, 'sent');
     const root = k.aliasRoot(localId);
@@ -82,16 +75,13 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
       ),
     };
   });
-  // The reconcile above wrote the raw echo, so an edit made after the ack (and
-  // filed under the optimistic id) is gone from the bubble. Re-apply the three
-  // the incoming path does below. A correction or a reaction-only stanza
-  // returned before this point, so neither reaches here.
+  // The reconcile wrote the raw echo, so an edit filed under the optimistic id is gone;
+  // re-apply it. A correction or reaction-only stanza returned earlier.
   k.resolvePendingEdits(chatId);
   k.refreshEdits(chatId);
   k.refreshReactions(chatId);
-  // A carbon of my own message from another device (`localId` undefined: no
-  // optimistic bubble on this device) means I read the chat there, so the
-  // badge here goes. Sends no displayed marker.
+  // A carbon of my own message from another device means I read the chat there, so the
+  // badge here goes; it sends no displayed marker.
   if (localId === undefined) {
     recordRead(ctx, chatId, ui.id);
   }
@@ -100,11 +90,8 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
 export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
   const { k } = ctx;
   if (isAiActivityMessage(message)) scheduleActivityRefresh(ctx);
-  // A correction or a retraction is never a chat message: it edits another
-  // one, so it is ingested and returns before any rendering. A routine edit in
-  // the chat I'm looking at is read, like a live message there (the same test
-  // below): the edit path never reaches the unread test, so its bump would
-  // otherwise add one unread a minute while I watch.
+  // A correction or retraction is never a chat message; it edits another and returns before
+  // rendering. A routine edit in the chat I'm reading is read, so it never bumps unread.
   if (k.isEditStanza(message)) {
     k.ingestEdit(message);
     if (
@@ -116,10 +103,8 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     }
     return;
   }
-  // A reactions message that is only that (no body, no payload) must never
-  // render as a bubble or move the chat list preview. A message that also
-  // carries a body or payload is a normal message: its reactions are ingested
-  // and it is rendered as usual.
+  // A reactions-only message must never render or move the preview; one that also carries
+  // a body or payload is a normal message.
   if (message.reactions !== undefined) {
     k.ingestReaction(message);
     if (k.isReactionOnly(message)) {
@@ -135,28 +120,22 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     return;
   }
 
-  // A resend arrives live with a new stanza-id but the same origin id
-  // (T-1216): `toUiMessage` above already recorded this stanza's origin id
-  // and aliased it to the first copy (`ledger-incoming.ts`), so a chat that
-  // already holds a `sameMessage` with a different id has this bubble. Drop
-  // the copy before any side effect: no second bubble, no unread bump, no
-  // preview move.
+  // A resend arrives live with a new stanza-id but the same origin id, already aliased to
+  // the first copy: drop it before any side effect.
   const existing = k.listFor(ctx.get(), chatId);
   if (existing.some((item) => item.id !== ui.id && k.sameMessage(item.id, ui.id))) {
     return;
   }
 
-  // Holding this received message is proof of delivery (T-1238): confirm it
-  // over HTTP, debounced per chat. An AI-only DM has no peer device, so its
-  // call is skipped to save it (the server ignores the caller's own rows).
+  // Holding this message proves delivery, so confirm it (debounced per chat); an AI-only DM
+  // has no peer device, so its call is skipped.
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   if (message.originId !== undefined && chat?.isAI !== true) {
     confirmDelivered(ctx, chatId, message.originId);
   }
 
-  // A peer's message proves they stopped typing: the line must go with the
-  // bubble, not up to five seconds after it. In a group only that sender's
-  // name goes; in a DM the whole line goes.
+  // A peer's message proves they stopped typing: drop the line now, not up to five seconds
+  // later.
   if (chat !== undefined && chat.kind === 'group') {
     removeTyper(ctx, chatId, message.fromJid);
   } else {
@@ -165,9 +144,8 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
 
   const active = ctx.get().activeChatId === chatId && ctx.ports.isVisible();
   const isRead = active;
-  // An album's first photo bumps the badge; its later photos share the album
-  // id with a message already in the list from the same sender, so they add
-  // nothing — the album counts once (T-1272).
+  // An album counts once: later photos share the album id with a message already in the
+  // list from the same sender.
   const albumId = ui.album?.id;
   const laterAlbumPhoto =
     albumId !== undefined &&
@@ -200,7 +178,6 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     // leaves the screen, so there is no gap and no duplicate.
     drafts:
       draft !== undefined && finishesDraft ? withoutDraft(state.drafts, chatId) : state.drafts,
-    // Remember the turn so the bubble keeps revealing on the draft's key.
     finishedDraftMessages:
       draft !== undefined && finishesDraft
         ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
@@ -233,9 +210,9 @@ export function handleTyping(
     outgoing: boolean;
   },
 ): void {
-  // A MUC reflects my own chat states back to me. When the sender cannot be
-  // resolved to a real JID, xmpp-core marks the reflection `outgoing` and keeps
-  // the full room JID, so the JID check alone is not enough.
+  // A MUC reflects my own chat states back. When the sender cannot be resolved to a real
+  // JID, xmpp-core marks it `outgoing` and keeps the full room JID, so the JID check alone
+  // is not enough.
   if (event.outgoing || ctx.k.isOwnSender(event.fromJid)) {
     return;
   }
@@ -248,14 +225,12 @@ export function handleTyping(
   } as ChatMessage);
   if (event.state === 'composing') {
     addTyper(ctx, chatId, event.fromJid, name);
-    // T-1406: only an AI sender may carry a status text. A human client can
-    // otherwise send `composing` plus an arbitrary stage and spoof the AI
-    // status line in a DM or a group, so the sender decides, not the field.
+    // Only an AI sender may carry a status text: a human client could otherwise spoof the
+    // AI status line, so the sender decides, not the field.
     if (event.status !== undefined && isAiJid(event.fromJid)) {
       setStatus(ctx, chatId, event.fromJid, event.status);
     }
   } else {
-    // `paused`/`active` clears the status too.
     removeTyper(ctx, chatId, event.fromJid);
   }
 }
@@ -284,9 +259,8 @@ export function handleOccupants(
     }
     const onlineCount = event.occupants.filter((occupant) => occupant.available).length;
     const memberCount = Math.max(chat.memberCount ?? 0, event.occupants.length);
-    // PERF-7: a MUC presence burst repeats the same counts, and rebuilding
-    // `chats` would re-render every subscriber of the list. Nothing visible
-    // changed: return `state` itself, which the store skips (same object).
+    // A presence burst repeats the same counts; rebuilding `chats` would re-render every
+    // subscriber. Return `state` itself when nothing visible changed.
     if (chat.onlineCount === onlineCount && chat.memberCount === memberCount) {
       return state;
     }
@@ -296,16 +270,14 @@ export function handleOccupants(
   });
 }
 
-/** The same instant, so a repeated stamped presence does not re-stamp. */
 function sameInstant(left: Date | undefined, right: Date): boolean {
   return left !== undefined && left.getTime() === right.getTime();
 }
 
 /**
- * The chat after one presence event, or the very same object when the event
- * changes nothing visible (PERF-7: a repeated availability must not rebuild
- * `chats`). Without a delay stamp, only a real online-to-offline transition
- * re-stamps `lastSeenAt`.
+ * The chat after one presence event, or the very same object when the event changes
+ * nothing visible (a repeated availability must not rebuild `chats`). Without a delay
+ * stamp, only a real online-to-offline transition re-stamps `lastSeenAt`.
  */
 function chatAfterPresence(ctx: CoreCtx, chat: ChatSummary, event: PresenceEvent): ChatSummary {
   if (event.available) {
