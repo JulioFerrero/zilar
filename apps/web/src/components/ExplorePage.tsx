@@ -1,5 +1,5 @@
 import { Data, Effect } from 'effect';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ApiError,
@@ -13,9 +13,9 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from '@/components/EntityAvatar';
+import { SETTINGS_COLUMN } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Dialog } from '@/components/ui/dialog';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SearchField } from '@/components/ui/search-field';
 
@@ -26,8 +26,6 @@ const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: 'group', label: 'Groups' },
   { value: 'channel', label: 'Channels' },
 ];
-
-const PAGE_TITLE = 'Explore public groups and channels';
 
 /** A chat-store call rejected with a plain Error: the sentence is the store's own. */
 class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
@@ -55,17 +53,16 @@ const searchInput = (query: string, kind: KindFilter): SearchDirectoryInput => (
 });
 
 /**
- * Explore (T-0164): an overlay reachable from the chat list, the + new chat
- * menu and the empty state. Searches public groups and channels only (by
- * handle or title prefix, at least 2 characters; empty lists the newest),
- * with a Groups / Channels filter. Each row shows the title, `@handle`,
- * description, member count and a Join button (or Open when already
- * joined). Empty and error states are real messages, never blank.
+ * Explore (T-0164, T-1972): the page body reachable from the chat list, the
+ * + new chat menu and the empty state. Searches public groups and channels
+ * only (by handle or title prefix, at least 2 characters; empty lists the
+ * newest), with a Groups / Channels filter. Each row shows the title,
+ * `@handle`, description, member count and a Join button (or Open when
+ * already joined). Empty and error states are real messages, never blank.
  */
-export function ExplorePage({ onClose }: { onClose: () => void }) {
+export function ExploreContent({ onDone }: { onDone: () => void }) {
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
-  const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
@@ -126,8 +123,8 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
   );
 
   // Already joined: open the group chat. The General chat keeps the group's
-  // chat id, resolved from the painted list like JoinPage does. The dialog
-  // closes only after the id is known, so the navigation is never cut short.
+  // chat id, resolved from the painted list like JoinPage does. The page
+  // leaves only after the id is known, so the navigation is never cut short.
   const openGroup = (entry: DirectoryEntry): Effect.Effect<void> =>
     Effect.tryPromise({
       try: () => storeApi.getState().refreshGeneralTopic(entry.id),
@@ -136,7 +133,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       Effect.orElseSucceed(() => undefined),
       Effect.tap((chatId) =>
         Effect.sync(() => {
-          onClose();
+          onDone();
           navigate(chatId === undefined ? '/' : `/c/${encodeURIComponent(chatId)}`);
         }),
       ),
@@ -152,7 +149,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       Effect.tap((chatId) =>
         Effect.sync(() => {
           storeApi.getState().refreshChats();
-          onClose();
+          onDone();
           navigate(chatId === undefined ? '/' : `/c/${encodeURIComponent(chatId)}`);
         }),
       ),
@@ -166,47 +163,28 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Explore"
-      ariaLabel={PAGE_TITLE}
-      size="md"
-      initialFocusRef={searchRef}
-      actions={
-        <Button type="button" size="lg" onClick={onClose}>
-          Close
-        </Button>
-      }
-    >
-      <p className="mt-1 text-[14px] text-muted-foreground">
-        Public groups and channels anyone can join.
-      </p>
+    <div className={SETTINGS_COLUMN}>
       <SearchField
-        ref={searchRef}
         value={query}
         maxLength={100}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search by name or @handle"
         aria-label="Search public groups and channels"
-        className="mt-3"
       />
-      <div className="mt-2">
-        <SegmentedControl
-          mode="radio"
-          ariaLabel="Kind filter"
-          options={KIND_OPTIONS}
-          value={kind}
-          onChange={(next) => {
-            const match = KIND_OPTIONS.find((option) => option.value === next);
-            if (match !== undefined) {
-              setKind(match.value);
-            }
-          }}
-        />
-      </div>
+      <SegmentedControl
+        mode="radio"
+        ariaLabel="Kind filter"
+        options={KIND_OPTIONS}
+        value={kind}
+        onChange={(next) => {
+          const match = KIND_OPTIONS.find((option) => option.value === next);
+          if (match !== undefined) {
+            setKind(match.value);
+          }
+        }}
+      />
 
-      <div aria-live="polite" className="mt-3 min-h-0 flex-1 overflow-y-auto">
+      <div aria-live="polite">
         {state === 'loading' && <StateMessage kind="loading" title="Searching…" />}
         {state === 'error' && (
           <StateMessage
@@ -283,7 +261,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
           </p>
         )}
       </div>
-    </Dialog>
+    </div>
   );
 }
 

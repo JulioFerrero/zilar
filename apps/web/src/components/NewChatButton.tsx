@@ -1,6 +1,6 @@
 import { Bot, Compass, Hash, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ExplorePage } from './ExplorePage';
+import { useNavigate } from 'react-router';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
@@ -13,7 +13,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic' | 'explore';
+type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic';
 
 /** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton({
@@ -21,11 +21,12 @@ export function NewChatButton({
   onExplore,
 }: {
   defaultGroupId?: string;
-  // T-0164: reaching the Explore directory from the + new chat menu. When
-  // provided, the menu entry delegates to the owner (ChatList's overlay);
-  // otherwise the button renders its own overlay.
+  // T-0164, T-1972: reaching the Explore page from the + new chat menu. An
+  // owner (the chat list) supplies the navigation; the button renders the
+  // page's menu entry itself otherwise.
   onExplore?: () => void;
 } = {}) {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
   // "New topic" from a group header pre-selects that group; the menu asks
@@ -79,7 +80,7 @@ export function NewChatButton({
     if (onExplore !== undefined) {
       onExplore();
     } else {
-      setDialog('explore');
+      navigate('/explore');
     }
   };
 
@@ -210,7 +211,6 @@ export function NewChatButton({
 
       {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}
       {dialog === 'channel' && <NewGroupDialog onClose={closeDialog} channel />}
-      {dialog === 'explore' && <ExplorePage onClose={closeDialog} />}
       {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
       {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
       {dialog === 'topic' &&

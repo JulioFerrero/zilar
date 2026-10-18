@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { ChatListBody } from './chatList/ChatListBody';
 import { ChatListMenu } from './chatList/ChatListMenu';
 import {
@@ -10,7 +11,6 @@ import {
   statusLabel,
 } from './chatList/rowsSelector';
 import { ConfirmDialog } from './ConfirmDialog';
-import { ExplorePage } from './ExplorePage';
 import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
@@ -33,6 +33,7 @@ import {
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
   const storeApi = useChatStoreApi();
+  const navigate = useNavigate();
   const selectRows = useMemo(() => createRowsSelector(), []);
   const rows = useChatSelector(selectRows);
   const storeChatCount = useChatSelector((s) => s.chats.length);
@@ -43,8 +44,6 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
-  // T-0164: the Explore overlay (public groups and channels to join).
-  const [exploreOpen, setExploreOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [newTopicChatId, setNewTopicChatId] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
@@ -124,7 +123,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       onOpenChange={setMenuOpen}
       isWide={isWide}
       onInvite={() => setInviteOpen(true)}
-      onExplore={() => setExploreOpen(true)}
+      onExplore={() => navigate('/explore')}
       onSignOut={signOut}
       isServerOwner={isServerOwner}
       incomingRequests={incomingRequests}
@@ -184,13 +183,12 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           showArchived={showArchived}
           onToggleShowArchived={() => setShowArchived((value) => !value)}
           onInvite={() => setInviteOpen(true)}
-          onExplore={() => setExploreOpen(true)}
+          onExplore={() => navigate('/explore')}
           onOpenNewTopic={setNewTopicChatId}
         />
       </div>
-      <NewChatButton onExplore={() => setExploreOpen(true)} />
+      <NewChatButton onExplore={() => navigate('/explore')} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
-      {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
       {newTopicChatId !== undefined && (
         <NewTopicDialog groupId={newTopicChatId} onClose={() => setNewTopicChatId(undefined)} />
       )}
