@@ -17,6 +17,8 @@ export interface MessageListRowProps {
   chat: ChatSummary;
   meId: string;
   meJid: string | undefined;
+  /** The pin on this row's message, from the list's one pin map (T-2011). */
+  pinId: string | undefined;
   onReply: (message: UiMessage) => void;
   onForward: ((message: UiMessage) => void) | undefined;
   selectionIds: ReadonlySet<string> | undefined;
@@ -62,6 +64,7 @@ export function MessageListRow({
   chat,
   meId,
   meJid,
+  pinId,
   onReply,
   onForward,
   selectionIds,
@@ -90,6 +93,7 @@ export function MessageListRow({
         lastInGroup={item.lastInGroup}
         currentUserId={meId}
         meJid={meJid}
+        pinId={pinId}
         onReply={onReply}
         {...(onForward === undefined ? {} : { onForward })}
         selecting={selecting}

@@ -35,8 +35,18 @@ export function EntityAvatar({
   className,
 }: EntityAvatarProps) {
   const user = useAuth().user;
-  const contacts = useChatSelector((s) => s.contacts);
-  const chats = useChatSelector((s) => s.chats);
+  // Only the one picture row is read (T-2011): a whole-array subscription
+  // re-renders every avatar on each store write while an AI reply streams.
+  const chatId = chat?.id;
+  const chatAvatarUrl = useChatSelector((s) =>
+    chatId === undefined ? undefined : s.chats.find((entry) => entry.id === chatId)?.avatarUrl,
+  );
+  const personId = person?.userId ?? person?.id;
+  const contactAvatarUrl = useChatSelector((s) =>
+    personId === undefined
+      ? undefined
+      : s.contacts.find((entry) => entry.userId === personId)?.avatarUrl,
+  );
 
   const identity = (() => {
     if (me) {
@@ -47,14 +57,12 @@ export function EntityAvatar({
       });
     }
     if (chat !== undefined && chat !== null) {
-      const row = chats.find((entry) => entry.id === chat.id);
-      return avatarIdentity({ ...chat, avatarUrl: chat.avatarUrl ?? row?.avatarUrl });
+      return avatarIdentity({ ...chat, avatarUrl: chat.avatarUrl ?? chatAvatarUrl });
     }
     if (person !== undefined && person !== null) {
-      const contact = contacts.find((entry) => entry.userId === (person.userId ?? person.id));
       return avatarIdentity({
         ...person,
-        avatarUrl: person.avatarUrl ?? person.image ?? contact?.avatarUrl ?? undefined,
+        avatarUrl: person.avatarUrl ?? person.image ?? contactAvatarUrl ?? undefined,
       });
     }
     return avatarIdentity({ name: '', id: '' });

@@ -58,6 +58,8 @@ export interface MessageBubbleProps {
    * once the reveal is done.
    */
   revealTurnId?: string | undefined;
+  /** The pin on this message, resolved once per list (T-2011). */
+  pinId?: string | undefined;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -75,6 +77,7 @@ export const MessageBubble = memo(function MessageBubble({
   onStartSelect,
   draft = false,
   revealTurnId,
+  pinId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   // A right-click opens the menu at the pointer; the "…" button leaves it
@@ -85,7 +88,6 @@ export const MessageBubble = memo(function MessageBubble({
   const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
   const chatId = chat.id;
   const chatCanPin = useChatSelector((s) => s.canPin(chatId));
-  const pin = useChatSelector((s) => s.pinFor(chatId, message.id));
   // T-1996: the group detail carries a member's picture, the topic row an AI's.
   const groupMembers = useChatSelector((s) => s.groupInfos[chat.id]?.members);
   const senderAvatar = senderAvatarUrl(message.senderId, chat.topic?.ais, groupMembers);
@@ -168,6 +170,32 @@ export const MessageBubble = memo(function MessageBubble({
       />
     );
   }
+
+  // Both bubble layouts share one menu element; only the branch on screen
+  // renders it. The failed sticker branch has no copy or edit items.
+  const messageMenu = (
+    <MessageMenu
+      open={
+        menuOpen && !generating && !selecting && (sticker === undefined || message.failed !== true)
+      }
+      message={message}
+      chatId={chatId}
+      pinId={pinId}
+      menuButtonRef={menuButtonRef}
+      canCopy={sticker === undefined && hasText}
+      canEdit={sticker === undefined && canEdit}
+      canDelete={canDelete}
+      canPin={canPin}
+      canForward={canForward}
+      align={own ? 'right' : 'left'}
+      point={menuPoint}
+      onReply={() => onReply(message)}
+      onForward={() => onForward?.(message)}
+      onSelectMessages={() => onStartSelect?.(message)}
+      onReact={handleReact}
+      onClose={() => setMenuOpen(false)}
+    />
+  );
 
   return (
     <div
@@ -260,25 +288,7 @@ export const MessageBubble = memo(function MessageBubble({
                 />
               )
             )}
-            <MessageMenu
-              open={menuOpen && !generating && message.failed !== true && !selecting}
-              message={message}
-              chatId={chat.id}
-              pinId={pin?.id}
-              menuButtonRef={menuButtonRef}
-              canCopy={false}
-              canEdit={false}
-              canDelete={canDelete}
-              canPin={canPin}
-              canForward={canForward}
-              align={own ? 'right' : 'left'}
-              point={menuPoint}
-              onReply={() => onReply(message)}
-              onForward={() => onForward?.(message)}
-              onSelectMessages={() => onStartSelect?.(message)}
-              onReact={handleReact}
-              onClose={() => setMenuOpen(false)}
-            />
+            {messageMenu}
           </div>
         ) : (
           <div
@@ -371,25 +381,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        <MessageMenu
-          open={menuOpen && !generating && !selecting}
-          message={message}
-          chatId={chat.id}
-          pinId={pin?.id}
-          menuButtonRef={menuButtonRef}
-          canCopy={hasText}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          canPin={canPin}
-          canForward={canForward}
-          align={own ? 'right' : 'left'}
-          point={menuPoint}
-          onReply={() => onReply(message)}
-          onForward={() => onForward?.(message)}
-          onSelectMessages={() => onStartSelect?.(message)}
-          onReact={handleReact}
-          onClose={() => setMenuOpen(false)}
-        />
+        {sticker === undefined ? messageMenu : null}
         {!generating && message.reactions !== undefined && message.reactions.length > 0 && (
           <ReactionChips reactions={message.reactions} own={own} onToggle={handleReact} />
         )}

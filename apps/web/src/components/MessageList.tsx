@@ -62,6 +62,15 @@ export const MessageList = memo(function MessageList({
   // first paint (before ChatView's openChat effect runs) must never flash
   // the empty state.
   const history = useChatSelector((s) => s.historyStateFor(chatId));
+  // T-2011: one pin subscription for the whole list; each row gets its pin id.
+  const pins = useChatSelector((s) => s.pinsByChat[chatId]);
+  const pinIdByMessage = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const pin of pins ?? []) {
+      map.set(pin.messageId, pin.id);
+    }
+    return map;
+  }, [pins]);
   const draft = useChatSelector((s) => s.drafts[chatId]);
   const finishedDraftMessages = useChatSelector((s) => s.finishedDraftMessages);
   const meId = useChatSelector((s) => s.currentUserId);
@@ -223,6 +232,7 @@ export const MessageList = memo(function MessageList({
               chat={chat}
               meId={meId}
               meJid={meJid}
+              pinId={item.kind === 'separator' ? undefined : pinIdByMessage.get(item.message.id)}
               onReply={handleReply}
               onForward={onForward === undefined ? undefined : handleForward}
               selectionIds={selectedIds}
