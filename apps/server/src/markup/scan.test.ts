@@ -10,6 +10,7 @@ import { textWithoutReplyFallback } from '../push/candidates';
 import { parseFeed } from '../web-tools/feed';
 import { extractText } from '../web-tools/html';
 import { parseDuckDuckGo } from '../web-tools/search';
+import { decodeHtmlEntities } from './entities';
 import {
   elementBlocks,
   findCloseTag,
@@ -155,5 +156,13 @@ describe('scan helpers on normal markup', () => {
     const xml =
       '<message><fallback for="urn:xmpp:reply:0"><body start="2" end="5"/></fallback></message>';
     expect(textWithoutReplyFallback('> old\nmy reply', xml)).toBe('my reply');
+  });
+});
+
+describe('decodeHtmlEntities', () => {
+  it('decodes named and numeric references and keeps unknown ones', () => {
+    expect(decodeHtmlEntities('a &amp; b')).toBe('a & b');
+    expect(decodeHtmlEntities('&#x41;')).toBe('A');
+    expect(decodeHtmlEntities('&bogus;')).toBe('&bogus;');
   });
 });

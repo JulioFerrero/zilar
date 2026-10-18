@@ -2039,3 +2039,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2038](T-2038-server-sweep-loop.md) | one server sweep loop replaces three copies | 2026-10-18 |
 | [T-2039](T-2039-web-clone-cleanup.md) | web: one link renderer, attachment footer and row actions | 2026-10-18 |
 | [T-2035](T-2035-history-merge-and-fixes.md) | shared chat-list merge; web keeps prefs; phone prunes on open | 2026-10-18 |
+| [T-2040](T-2040-server-small-dedupes.md) | server: one tool-hosts body and one HTML entity decoder | 2026-10-18 |

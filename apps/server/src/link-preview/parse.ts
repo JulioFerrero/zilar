@@ -2,24 +2,16 @@
 // effect-plain: pure head-metadata parsing; malformed input yields null, no I/O
 //
 // The shared `apps/server/src/web-tools/html.ts` extractor strips the head
-// (it turns a body into plain text) and its entity decoder is private, so
-// this module reads the `<meta>`/`<title>` tags directly and carries its own
-// small decoder for attribute values.
+// (it turns a body into plain text), so this module reads the
+// `<meta>`/`<title>` tags directly and decodes attribute values with the
+// shared entity decoder.
+import { decodeHtmlEntities } from '../markup/entities';
 import { firstElement, nextOpenTag, stripComments } from '../markup/scan';
 
 const MAX_INPUT_CHARS = 256 * 1024;
 const MAX_TITLE_CHARS = 200;
 const MAX_DESCRIPTION_CHARS = 300;
 const MAX_IMAGE_CHARS = 2000;
-
-const ENTITY_MAP: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ',
-};
 
 /** The unfurled head of a page; every field is absent when the page has none. */
 export interface LinkPreviewData {
@@ -103,7 +95,7 @@ function pick(...values: Array<string | undefined>): string | undefined {
 }
 
 function cleanText(value: string): string {
-  return decodeEntities(value).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(value).replace(/\s+/g, ' ').trim();
 }
 
 function cap(value: string | undefined, max: number): string | undefined {
@@ -151,27 +143,4 @@ function readAttributes(tag: string): Map<string, string> {
     attributes.set(name, match[3] ?? match[4] ?? match[5] ?? '');
   }
   return attributes;
-}
-
-function decodeEntities(value: string): string {
-  return value.replace(/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g, (full, body: string) => {
-    const named = ENTITY_MAP[body];
-    if (named !== undefined) {
-      return named;
-    }
-    if (body.startsWith('#')) {
-      const code =
-        body[1] === 'x' || body[1] === 'X'
-          ? Number.parseInt(body.slice(2), 16)
-          : Number.parseInt(body.slice(1), 10);
-      if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return full;
-        }
-      }
-    }
-    return full;
-  });
 }

@@ -6,6 +6,7 @@
 // malformed HTML cannot hang the server; output is plain text the
 // adapters put in `modelText` (never in a summary).
 // effect-plain: pure HTML-to-text extraction; malformed input yields text, no I/O
+import { decodeHtmlEntities } from '../markup/entities';
 import { findCloseTag, nextOpenTag, stripComments, stripTags } from '../markup/scan';
 
 const MAX_HTML_INPUT_CHARS = 2 * 1024 * 1024;
@@ -36,15 +37,6 @@ const BLOCK_ELEMENTS = new Set([
   'br',
   'hr',
 ]);
-
-const ENTITY_MAP: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ',
-};
 
 export function extractText(html: string): string {
   const input = html.length > MAX_HTML_INPUT_CHARS ? html.slice(0, MAX_HTML_INPUT_CHARS) : html;
@@ -149,30 +141,7 @@ function pushText(out: string[], chunk: string, dropped: boolean): void {
   if (dropped) {
     return;
   }
-  out.push(decodeEntities(chunk));
-}
-
-function decodeEntities(value: string): string {
-  return value.replace(/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g, (full, body: string) => {
-    const named = ENTITY_MAP[body];
-    if (named !== undefined) {
-      return named;
-    }
-    if (body.startsWith('#')) {
-      const code =
-        body[1] === 'x' || body[1] === 'X'
-          ? Number.parseInt(body.slice(2), 16)
-          : Number.parseInt(body.slice(1), 10);
-      if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return full;
-        }
-      }
-    }
-    return full;
-  });
+  out.push(decodeHtmlEntities(chunk));
 }
 
 function collapseWhitespace(value: string): string {
@@ -198,7 +167,7 @@ export function anchorParts(fragment: string): AnchorParts | null {
   }
   const closeAt = findCloseTag(fragment, 'a', open.end);
   const inner = closeAt === null ? fragment.slice(open.end) : fragment.slice(open.end, closeAt);
-  const text = collapseWhitespace(decodeEntities(stripTags(inner, ' ')));
+  const text = collapseWhitespace(decodeHtmlEntities(stripTags(inner, ' ')));
   const href = linkHrefOf(`a ${open.attrs}`);
   if (text.length === 0 && href === null) {
     return null;
