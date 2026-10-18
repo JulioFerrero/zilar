@@ -1,6 +1,3 @@
-// Groups, topics, channels, roles and members: the topic effects, the group
-// create flow and the group settings live in their own modules; this barrel
-// keeps every name they used to export available from here.
 export {
   addTopicAi,
   addTopicMember,

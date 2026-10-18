@@ -4,13 +4,8 @@ import { getVoiceTranscriptionStatus } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
 
-/**
- * Whether voice transcription is enabled on this server (T-0170).
- * `GET /api/voice/transcription` answers `{ enabled }` for any signed-in
- * user; the answer is fetched once per session and cached in module state,
- * so every voice message shares one request — like `useIsServerOwner`.
- * Starts as disabled and only switches on after the server says so.
- */
+/** Whether voice transcription is enabled on this server, fetched once and cached; starts
+ * as disabled and only switches on after the server says so. */
 let cached: boolean | undefined;
 
 export function useVoiceTranscriptionEnabled(): boolean {
@@ -35,7 +30,6 @@ const enabledFromServer = (): Effect.Effect<boolean> =>
     ),
   );
 
-/** Forgets the cached answer (tests only). */
 export function resetVoiceTranscriptionCache(): void {
   cached = undefined;
 }

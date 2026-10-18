@@ -1,5 +1,3 @@
-// Group settings and membership: leaving a channel or a group, roles,
-// visibility, the shared background, the AI listener and the group's own AIs.
 import { Effect } from 'effect';
 import {
   changeGroup as changeGroupCore,
@@ -17,9 +15,7 @@ import { refreshChatsOrThrow } from './history';
 import { Ports } from './ports';
 import { fromPromise } from './util';
 
-// T-0124: leaving a channel removes the caller's membership through the member
-// route (the same route admins use to remove others). The list refreshes
-// itself away; the caller navigates away.
+// Leaving a channel removes the caller's membership through the route admins also use.
 export const leaveChannel = (ctx: StoreCtx, chatId: string): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
@@ -35,8 +31,7 @@ export const leaveChannel = (ctx: StoreCtx, chatId: string): Effect.Effect<void,
     );
   });
 
-// T-1183: owners and admins add contacts to a group. The detail refreshes from
-// the server's answer and the list refreshes too, so member counts match.
+// Owners and admins add contacts; the detail and list refresh so counts match.
 export const addGroupMembers = (
   ctx: StoreCtx,
   chatId: string,
@@ -52,8 +47,7 @@ export const addGroupMembers = (
     );
   });
 
-// T-1183: owners and admins remove another member through the member route
-// (removing yourself is `leaveChannel`). The detail and the list refresh.
+// Owners and admins remove another member (removing yourself is leaveChannel).
 export const removeGroupMember = (
   ctx: StoreCtx,
   chatId: string,
@@ -70,9 +64,7 @@ export const removeGroupMember = (
     );
   });
 
-// T-1190: the owner hands the group to another member through the owner route.
-// The detail refreshes from the server's answer, so the caller (now an admin)
-// sees Leave group; the list refreshes too, so myRole matches server truth.
+// The owner hands the group over; the detail and list refresh so myRole matches.
 export const transferGroupOwner = (
   ctx: StoreCtx,
   chatId: string,
@@ -88,11 +80,8 @@ export const transferGroupOwner = (
     );
   });
 
-// T-0124: promote/demote through the role route (owner only). The detail
-// refreshes, so the panel updates at once; the chat list refreshes too, so the
-// acting device's rows (myRole, counts) match server truth and the composer
-// bar flips. The target's own device converges on the next list refresh (60s
-// poll / focus), like every other membership change in the app.
+// Promote/demote through the role route (owner only); the detail and list refresh, so the
+// acting device matches server truth. The target converges on the next list refresh.
 export const changeChannelRole = (
   ctx: StoreCtx,
   chatId: string,
@@ -126,8 +115,7 @@ export const setMembersCanCreateTopics = (
     );
   });
 
-// T-0466: owners/admins set the group's shared background; the detail refresh
-// repaints every chat of the group at once.
+// The detail refresh repaints every chat of the group at once.
 export const setGroupBackground = (
   ctx: StoreCtx,
   chatId: string,
@@ -144,8 +132,7 @@ export const setGroupBackground = (
     );
   });
 
-// T-0478: owners/admins turn the group's AI listener on/off or set its
-// eagerness; the detail refresh repaints the panel.
+// The detail refresh repaints the panel.
 export const setGroupListener = (
   ctx: StoreCtx,
   chatId: string,
@@ -162,9 +149,7 @@ export const setGroupListener = (
     );
   });
 
-// T-0164: the owner flips a group public (with a handle) or back to private.
-// The detail refreshes from server truth (like the role change), so the panel,
-// the label and the share link update at once.
+// The detail refreshes from server truth, so the panel, label and share link update at once.
 export const setGroupVisibility = (
   ctx: StoreCtx,
   chatId: string,
@@ -181,10 +166,8 @@ export const setGroupVisibility = (
     );
   });
 
-// T-0164: joins a public group with one request, then opens it: the list
-// refreshes (the new membership arrives) and the General chat id resolves from
-// the painted rows, falling back to undefined when the list has not caught up
-// yet (the caller navigates home instead).
+// Joins with one request, refreshes the list and resolves General from the painted rows,
+// falling back to undefined when the list has not caught up.
 export const joinPublicGroup = (
   ctx: StoreCtx,
   groupId: string,

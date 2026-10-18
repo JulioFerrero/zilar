@@ -19,8 +19,8 @@ type AvailabilityCheck =
 
 const IDLE_CHECK: AvailabilityCheck = { state: 'idle' };
 
-// The debounce is the 300 ms sleep: useQuery interrupts it when the input
-// changes. A rate limit shows its own text; any other failure shows nothing.
+// The 300 ms sleep is the debounce; useQuery interrupts it when the input changes. A rate
+// limit shows its own text, any other failure shows nothing.
 const checkAvailability = (handle: string): Effect.Effect<AvailabilityCheck> =>
   handle === ''
     ? Effect.succeed(IDLE_CHECK)
@@ -45,20 +45,17 @@ class SaveFailed extends Data.TaggedError('SaveFailed') {}
 
 type ClaimFailure = UsernameMissing | SaveFailed | ApiFailure;
 
-// An ApiError keeps its code and message; anything else thrown is a SaveFailed.
 const liftCall = <A,>(call: () => Promise<A>): Effect.Effect<A, ApiFailure | SaveFailed> =>
   Effect.tryPromise({
     try: call,
     catch: (cause) => (cause instanceof ApiError ? toApiFailure(cause) : new SaveFailed()),
   });
 
-/** Onboarding step after the name step: pick a unique `@username`. */
 export function HandlePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  // The suggestion fills when the user arrives (name/email may resolve
-  // after mount) while the input is untouched; typing wins forever after.
+  // The suggestion fills while the input is untouched; typing wins forever after.
   const [handle, setHandle] = useState(() =>
     auth.user === undefined ? '' : suggestHandleFor(auth.user.name, auth.user.email),
   );
@@ -72,8 +69,7 @@ export function HandlePage() {
   }
   const trimmed = handle.trim();
 
-  // Debounced live availability for the typed handle: the 300 ms sleep is the
-  // debounce, and useQuery interrupts it when the input changes.
+  // Debounced live availability: the 300 ms sleep is the debounce, interrupted on a new input.
   const [checkResult] = useQuery(() => checkAvailability(trimmed), [trimmed]);
   const check: AvailabilityCheck = AsyncResult.isSuccess(checkResult)
     ? checkResult.value
@@ -81,8 +77,7 @@ export function HandlePage() {
 
   const next = (location.state as { next?: string } | null)?.next;
 
-  // A second submit while the call waits is dropped (mode 'ignore'). After a
-  // success the button stays disabled while the page navigates away.
+  // A second submit while the call waits is dropped; after success the button stays disabled.
   const [claimState, runClaim] = useAction<void, void, ClaimFailure>(
     (): Effect.Effect<void, ClaimFailure> =>
       trimmed === ''
@@ -102,10 +97,8 @@ export function HandlePage() {
   };
 
   const skip = (): void => {
-    // "Skip for now" really skips: record the dismissal for this browser
-    // session (kept separate from any claim), so the gate does not ask
-    // again until the next session. New users in the onboarding flow still
-    // reach this step via the name page's chain, not the gate.
+    // Skip records the dismissal for this browser session, so the gate does not ask again;
+    // new users still reach this step through the name page's chain, not the gate.
     if (auth.user !== undefined) {
       dismissHandleGate(auth.user.id);
     }

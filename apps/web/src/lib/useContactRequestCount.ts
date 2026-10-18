@@ -4,12 +4,8 @@ import { listContactRequests } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 
-/**
- * The incoming contact-request count for the badge where contacts are
- * shown. `null` means "unknown or failed" — the caller shows no badge.
- * Refetched on window focus and every 60 seconds (no realtime channel in
- * this task).
- */
+/** The incoming count for the badge; null means unknown or failed, so no badge shows.
+ * Refetched on focus and every 60 seconds. */
 const REFRESH_MS = 60 * 1000;
 
 /** One fetch; a failed call leaves the previous count in place. */
@@ -23,8 +19,7 @@ const refreshCount = (setCount: (count: number) => void): Effect.Effect<void> =>
 
 export function useContactRequestCount(enabled: boolean): number | null {
   const [count, setCount] = useState<number | null>(null);
-  // The timed loop and the focus refresh are separate runs, so a focus
-  // never cancels the loop.
+  // The timed loop and the focus refresh are separate runs, so a focus never cancels the loop.
   const [, startLoop, loopControls] = useAction<Effect.Effect<unknown>, unknown, never>(
     (effect) => effect,
   );

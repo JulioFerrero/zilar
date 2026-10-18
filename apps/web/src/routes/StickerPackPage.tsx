@@ -23,7 +23,6 @@ import {
   stickerPackUrl,
 } from '@/components/sticker/pageActions';
 
-/** One contract sticker as the panel thumbnail takes it. */
 function toChoice(sticker: Sticker): StickerChoice {
   return {
     stickerId: sticker.id,
@@ -36,13 +35,8 @@ function toChoice(sticker: Sticker): StickerChoice {
   };
 }
 
-/**
- * The page a pack link opens (T-1497): `/stickers/<packId>`. It follows
- * `WebPack.dc.html`: a Back key, the title, Share and Add, then the count and
- * owner, the copyable link and the sticker grid. Anyone signed in who has the
- * link may open and add the pack; an unknown or someone else's imported pack
- * answers the same "not available".
- */
+/** The page a pack link opens. Anyone signed in who has the link may open and add the pack;
+ * an unknown pack and someone else's imported pack answer the same not available. */
 export function StickerPackPage() {
   const params = useParams<{ packId?: string }>();
   const packId = params.packId ?? '';
@@ -51,8 +45,7 @@ export function StickerPackPage() {
   const show = useToast();
 
   const [packState, reloadPack] = useQuery(() => loadPackDetail(packId), [packId]);
-  // The in-panel state the Add/Remove keys switch locally, before the refetch.
-  // It records the pack it applies to, so a link to another pack ignores it.
+  // The in-panel state Add/Remove switch locally; it records its pack, so another link ignores it.
   const [panelOverride, setPanelOverride] = useState<
     { packId: string; inPanel: boolean } | undefined
   >(undefined);
@@ -90,8 +83,7 @@ export function StickerPackPage() {
   const inPanel =
     panelOverride?.packId === packId ? panelOverride.inPanel : (pack?.inPanel ?? false);
 
-  // Back goes to where the page came from; a fresh link (no history) falls
-  // back to the sticker settings.
+  // Back goes to where the page came from; a fresh link falls back to the sticker settings.
   const goBack = (): void => {
     if (window.history.length > 1) {
       navigate(-1);

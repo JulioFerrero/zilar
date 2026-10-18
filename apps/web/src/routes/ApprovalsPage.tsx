@@ -18,19 +18,13 @@ const REFRESH_INTERVAL_MS = 30_000;
 const NOTICE_TIMEOUT_MS = 3000;
 const STALE_NOTICE_TIMEOUT_MS = 5000;
 
-/**
- * Settings → Approvals. One inbox for every pending AI request the viewer
- * can decide, newest first, with Approve and Deny and no standing rules.
- */
 export function ApprovalsPage() {
   const navigate = useNavigate();
   const [notice, setNotice] = useState('');
-  // Requests decided in this session: a list response that was already in
-  // flight when the decision landed must not bring their rows back.
+  // Requests decided in this session: an in-flight list must not bring their rows back.
   const [decidedIds, setDecidedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [list, refresh] = useQuery(() => fromApi(() => listApprovals()), []);
-  // The notice stays while its timer runs. A new notice replaces the timer,
-  // as clearing the old timeout did before.
+  // The notice stays while its timer runs; a new notice replaces the timer.
   const [noticeTimer, startNoticeTimer] = useAction(
     (durationMs: number) => Effect.sleep(durationMs),
     { mode: 'replace' },
@@ -44,8 +38,7 @@ export function ApprovalsPage() {
     setDecidedIds((ids) => new Set(ids).add(id));
   };
 
-  // 30 s background refresh while the page is open. The first run comes one
-  // interval after mount; unmounting interrupts it.
+  // 30 s background refresh while the page is open; unmounting interrupts it.
   useQuery(
     () =>
       Effect.sync(() => refresh()).pipe(
@@ -55,8 +48,7 @@ export function ApprovalsPage() {
     [],
   );
 
-  // Refresh when the tab regains focus so coming back from another window
-  // picks up anything decided elsewhere.
+  // Refresh on focus so coming back from another window picks up decisions made elsewhere.
   useEffect(() => {
     const onFocus = (): void => {
       refresh();

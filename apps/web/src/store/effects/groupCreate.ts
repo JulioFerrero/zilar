@@ -1,5 +1,3 @@
-// Group and channel creation: repainting the chat list from the server after a
-// create and opening the new chat, plus the invite link used to add people.
 import { Effect } from 'effect';
 import {
   createGroupChannel as createGroupChannelAction,
@@ -21,8 +19,8 @@ type CreateOptions = {
   handle?: string;
 };
 
-// Repaints the chat list from the server after a create (keeping what is
-// already painted) and answers the new group's chat JID (R15).
+// Repaints the chat list from the server after a create (keeping what is painted) and
+// answers the new group's chat JID.
 const repaintCreatedGroup = (
   ctx: StoreCtx,
   api: ApiClient,
@@ -65,8 +63,6 @@ const repaintCreatedGroup = (
     return entries.find((entry) => entry.kind === 'group' && entry.groupId === detail.id)?.chatJid;
   });
 
-// Joins the new group's room, loads its members and opens the chat: web's half
-// of the create (R15).
 const openCreatedGroup = (ctx: StoreCtx, chatJid: string): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const me = ctx.get().me;
@@ -78,10 +74,7 @@ const openCreatedGroup = (ctx: StoreCtx, chatJid: string): Effect.Effect<void, u
     yield* openHistory(ctx, chatJid);
   });
 
-// T-0124: channels share the create/list/refresh flow with groups (the detail
-// carries `kind`, the chat list paints the feed row). T-0164: `visibility:
-// 'public'` + `handle` creates the channel with its directory entry in one
-// transaction.
+// visibility public with a handle creates the channel and its directory entry in one transaction.
 export const createChannel = (
   ctx: StoreCtx,
   title: string,
@@ -113,9 +106,7 @@ export const createChannel = (
     );
   });
 
-// T-0124: channels share this entry point (the dialog passes `kind` and
-// `description` through the same call). T-0164: `visibility: 'public'` +
-// `handle` creates the group with its directory entry in one transaction.
+// visibility public with a handle creates the group and its directory entry in one transaction.
 export const createGroup = (
   ctx: StoreCtx,
   title: string,

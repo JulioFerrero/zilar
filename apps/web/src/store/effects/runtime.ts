@@ -1,5 +1,3 @@
-// The lifetime of one chat store (store Scope, session Scopes, keyed fibers)
-// lives in `@zilar/client-core/store`. This file binds it to web's `Ports`.
 import { makeLifetime as makeCoreLifetime } from '@zilar/client-core/store';
 import type {
   Fibers as CoreFibers,

@@ -1,7 +1,6 @@
 import { Effect, Schema } from 'effect';
 
-// The push handle stored at this device (T-0119): a JSON `{ id, node }` in
-// localStorage, read and written through the narrow surface below.
+// The push handle stored at this device: a JSON { id, node } in localStorage.
 
 const DEVICE_KEY = 'zilar:pushDevice';
 

@@ -1,15 +1,7 @@
-// effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
+// effect-plain: the promise edge over the Effect client.
 import { Machine, type MachineStatus, type PairingCode } from '@zilar/api-contract';
 import { callApi } from '@/lib/effect/api-client';
 
-// --- Machines (T-0070) ---------------------------------------------------
-// The wire contract lives in apps/server/src/machines/api.ts and
-// service.ts. `ApiError` carries the server's `code` and `status`, so callers
-// can branch without parsing the message again. `online` is optional so the
-// schema works before T-0071 (the runner hub) lands.
-
-// The schemas and endpoints live in `@zilar/api-contract` (`machines.ts`,
-// T-0895).
 export type { Machine, MachineStatus, PairingCode };
 export { Machine as machineSchema };
 

@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
+// effect-plain: the promise edge over the Effect client.
 import {
   type AiMemoryFact,
   type LinkPreview,
@@ -11,10 +11,7 @@ import {
 } from '@zilar/api-contract';
 import { callApi, callApiAbortable } from '@/lib/effect/api-client';
 
-// --- Pinned messages (T-0114) ------------------------------------------------
-// The contract (schemas and endpoints) lives in `@zilar/api-contract`
-// (`pins.ts`, T-0864); these functions are thin wrappers over the derived
-// client. Pins arrive newest first.
+// Pins arrive newest first.
 
 export type { Pin, PinKind };
 
@@ -30,8 +27,7 @@ export function listPins(chat: string): Promise<Pin[]> {
   return callApi((client) => client.pins.list({ query: { chat } })).then((body) => [...body.pins]);
 }
 
-// The server trims `senderName`; the contract encodes the trimmed form, so
-// the client trims before sending.
+// The contract encodes the trimmed senderName, so the client trims before sending.
 export function pinMessage(input: PinMessageInput): Promise<Pin> {
   return callApi((client) =>
     client.pins.create({ payload: { ...input, senderName: input.senderName.trim() } }),
@@ -42,11 +38,8 @@ export async function unpinMessage(id: string): Promise<void> {
   await callApi((client) => client.pins.remove({ params: { id } }));
 }
 
-// --- AI memory (T-0443) ------------------------------------------------------
-// The wire contract lives in apps/server/src/agents/memory/api.ts. `chat`
-// is the DM peer's bare JID (the AI's JID in a DM); `aiId` is the AI's id. The
-// server answers the pinned facts and the cover lines; `canChange` is false
-// for a room member who may only view.
+// chat is the DM peer's bare JID and aiId the AI's id; canChange is false for a room
+// member who may only view.
 
 export interface AiMemory {
   facts: AiMemoryFact[];
@@ -73,15 +66,10 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
   await callApi((client) => client.aiMemory.clear({ payload: { chat, ai: aiId } }));
 }
 
-// --- Media gallery (T-0434) --------------------------------------------------
-// The wire contract lives in apps/server/src/media/api.ts. `chat` is a room
-// bare JID for groups/topics, or a DM peer's bare JID. `type` maps to a panel
-// tab; `before` is the `next` cursor of the previous page (microseconds as a
-// string). Items arrive newest first.
+// chat is a room bare JID for groups/topics, or a DM peer's bare JID. before is the
+// previous page's next cursor (microseconds as a string); items arrive newest first.
 
-// The schemas and the query keys live in `@zilar/api-contract` (`media.ts`,
-// T-0895). The server decodes the query by hand, after its archive check and
-// limiter, so every key travels as a plain string.
+// The server decodes the query by hand, so every key travels as a plain string.
 export type { MediaItem, MediaPage, MediaTab };
 
 export interface ListChatMediaInput {
@@ -104,19 +92,15 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
   ).then((page) => ({ items: [...page.items], next: page.next }));
 }
 
-// --- Link previews (T-1234) ------------------------------------------------
-// The wire contract lives in packages/api-contract/src/link-preview.ts. The
-// server unfurls one pasted URL through its sandbox guard and answers 204
-// (no body) when the page has nothing to show. A module-level cache plus
-// in-flight dedupe keeps a list re-render from refetching the same URL.
+// Answers 204 when the page has nothing to show; a module-level cache plus in-flight
+// dedupe stops a list re-render from refetching the same URL.
 
 export type { LinkPreview };
 
 const linkPreviewCache = new Map<string, LinkPreview | null>();
 const linkPreviewInFlight = new Map<string, Promise<LinkPreview | null>>();
 
-/** The unfurled head, or `null` when the page has nothing (204) or the call
- * fails. A hit is cached for the session. */
+/** The unfurled head, or null when the page has nothing or the call fails; hits are cached. */
 export function linkPreview(url: string): Promise<LinkPreview | null> {
   const cached = linkPreviewCache.get(url);
   if (cached !== undefined) {
@@ -146,10 +130,7 @@ export function resetLinkPreviewCache(): void {
   linkPreviewInFlight.clear();
 }
 
-// --- Message search (T-0117) -----------------------------------------------
-// The wire contract lives in packages/api-contract/src/search.ts. Snippets
-// arrive as plain text plus `marks` ranges; the client highlights with
-// spans and never renders HTML.
+// Snippets arrive as plain text plus marks ranges; the client highlights with spans, never HTML.
 
 export type { SearchItem };
 
@@ -164,8 +145,7 @@ export interface SearchMessagesInput {
 export function searchMessages(
   input: SearchMessagesInput,
 ): Promise<{ items: SearchItem[]; nextBefore?: string | undefined }> {
-  // The cursor travels as a string in the app and decodes to a number in the
-  // contract; an empty `chat` or `before` is left out, like before.
+  // The cursor travels as a string and decodes to a number in the contract.
   const query = {
     q: input.q,
     ...(input.chat === undefined || input.chat === '' ? {} : { chat: input.chat }),

@@ -1,13 +1,10 @@
 import { createAuthClient } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
 
-/** Header the server reads to attribute a sign-up to an invite (T-0015/T-0020). */
+/** Header the server reads to attribute a sign-up to an invite. */
 export const INVITE_HEADER = 'x-zilar-invite';
 
-/**
- * Better Auth's browser client. Requests are same-origin, because the Vite dev
- * server proxies `/api` to the server and cookies stay first-party.
- */
+// Same-origin requests: Vite proxies /api, so cookies stay first-party.
 export const authClient = createAuthClient({
   plugins: [emailOTPClient()],
 });

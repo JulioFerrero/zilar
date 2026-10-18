@@ -1,7 +1,5 @@
-// The port interfaces of the web chat store: `ApiClient` (one method per API
-// call) and `StorageLike`, the storage surface the store reads and writes
-// through. They moved here unchanged from `./ports` so that file stays under
-// its line budget; `ports.ts` re-exports both types.
+// The port interfaces of the web chat store: one ApiClient method per API call and the
+// storage surface; ports.ts re-exports both types.
 import type {
   ChatEntry,
   ChatPref,
@@ -42,29 +40,24 @@ export interface ApiClient {
   getContacts(): Promise<Contact[]>;
   getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
-  /** Stores the caller's read mark (T-1207); the id must be numeric. Optional
-   * so existing fakes keep working; the core only calls it when present. */
+  /** Stores the caller's read mark; the id must be numeric. Optional so fakes keep working. */
   markChatRead?(jid: string, messageId: string): Promise<void>;
-  /** Confirms the caller's device holds these messages (T-1238); the ids are
-   * origin ids, 1 to 50 per call. Optional so fakes keep working. */
+  /** Confirms the device holds these origin ids, 1 to 50 per call. Optional for fakes. */
   markChatDelivered?(jid: string, originIds: string[]): Promise<void>;
-  /** Deletes one message from the caller's own copy of a DM (T-1247).
-   * Optional so fakes keep working. */
+  /** Deletes one message from the caller's own copy of a DM. Optional so fakes keep working. */
   deleteMessageForMe?(jid: string, archiveId: string): Promise<void>;
-  /** Clears the caller's own copy of a DM's history (T-1247). Optional. */
   clearChatHistory?(jid: string): Promise<void>;
   createGroup(input: {
     title: string;
     memberIds: string[];
     kind?: 'group' | 'channel';
     description?: string;
-    // T-0164: `public` creates the group with a handle in one transaction.
+    // public creates the group with a handle in one transaction.
     visibility?: 'private' | 'public';
     handle?: string;
   }): Promise<GroupDetail>;
   listGroupMembers(groupId: string): Promise<GroupMember[]>;
-  // T-0164: public visibility with a handle (directory + open join), the
-  // Explore search, the exact by-handle lookup, and the one-tap join.
+  // Public visibility with a handle, the Explore search, the exact lookup and the one-tap join.
   setGroupVisibility(
     groupId: string,
     input: { visibility: 'private' | 'public'; handle?: string },
@@ -102,7 +95,6 @@ export interface ApiClient {
   listTopicMembers(topicId: string): Promise<TopicMember[]>;
   addTopicMember(topicId: string, userId: string): Promise<Topic>;
   removeTopicMember(topicId: string, userId: string): Promise<Topic>;
-  /** T-1786: the caller joins a public topic themselves. */
   joinTopic(topicId: string): Promise<Topic>;
   listTopicAis(topicId: string): Promise<TopicAi[]>;
   addTopicAi(topicId: string, aiId: string): Promise<Topic>;

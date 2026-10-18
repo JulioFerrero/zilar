@@ -1,8 +1,6 @@
-// Per-chat preferences (pin, mute, archive, background) and the default chat
-// background. The write itself lives in the core (`@zilar/client-core/store`);
-// this file binds it to the web state: `chatPrefs` is the saved truth, and the
-// chat summaries carry the optimistic paint. On a failed write the core
-// re-merges the saved rows, so anything that landed meanwhile survives (R11).
+// Per-chat preferences and the global chat background. chatPrefs is the saved truth and the
+// chat summaries carry the optimistic paint; a failed write re-merges the saved rows, so
+// anything that landed meanwhile survives.
 import { Cause, Effect, Exit } from 'effect';
 import { applyChatPrefs } from '@zilar/chat-core';
 import { updatePref as updatePrefCore, type PrefsStore } from '@zilar/client-core/store';
@@ -16,8 +14,8 @@ import { fromPromise, prefsByJid } from './util';
 
 const keyOf = (chatId: string): string => chatId.toLowerCase();
 
-// The optimistic row for a partial write: the patch merged over the chat's
-// saved row, so kept fields never flash off during the PUT flight.
+// The optimistic row for a partial write: the patch merged over the saved row, so kept fields
+// never flash off during the PUT flight.
 function optimisticRow(
   chatId: string,
   saved: readonly ChatPref[],
@@ -50,13 +48,11 @@ function optimisticRow(
   };
 }
 
-/** Binds the core pref write to the web state: `chatPrefs` holds the saved rows. */
 function prefsStore(ctx: StoreCtx): PrefsStore<PutChatPrefInput, ChatPref> {
   return {
     savedRows: () => Object.values(ctx.get().chatPrefs),
     setSavedRows: (rows) => ctx.set({ chatPrefs: prefsByJid([...rows]) }),
-    // Only the chat summaries are painted optimistically; `chatPrefs` stays the
-    // saved truth (updated above on settle, and by every background refresh).
+    // Only the chat summaries are painted optimistically; chatPrefs stays the saved truth.
     paint: (rows) => {
       ctx.set((state) => ({
         chats: applyChatPrefs(state.chats, [...rows], ctx.ports.now().getTime()),
@@ -67,14 +63,10 @@ function prefsStore(ctx: StoreCtx): PrefsStore<PutChatPrefInput, ChatPref> {
   };
 }
 
-/**
- * T-1248: the hand-set unread mark now maps inside the shared `applyChatPrefs`
- * (chat-core), so this is a thin alias, not a second overlay. The boot
- * (`lifecycle.ts`) and group-create callers still import this name.
- */
+/** A thin alias for the shared applyChatPrefs, which maps the hand-set unread mark; callers
+ * still import this name. */
 export const applyPrefsWithUnreadMark = applyChatPrefs;
 
-// T-0113: replaces the pref map and merges it into the painted list.
 export function applyPrefs(ctx: StoreCtx, prefs: ChatPref[]): void {
   const store = prefsStore(ctx);
   store.setSavedRows(prefs);
@@ -99,14 +91,12 @@ export const refreshDefaultBackground = (ctx: StoreCtx): Effect.Effect<void, nev
     const { api } = yield* Ports;
     const session = ctx.rt.session();
     const loaded = yield* Effect.exit(fromPromise(() => api.getChatBackgroundDefault()));
-    // A failed load never blocks the chat list.
     if (Exit.isFailure(loaded) || ctx.rt.session() !== session) {
       return;
     }
     ctx.set({ defaultBackground: loaded.value });
   });
 
-// T-0113: patches one chat's pref optimistically; see `@zilar/client-core/store`.
 const updatePref = (
   ctx: StoreCtx,
   chatId: string,
@@ -143,16 +133,15 @@ export const setArchived = (
 ): Effect.Effect<void, unknown, Ports> =>
   updatePref(ctx, chatId, { archived }).pipe(Effect.andThen(Effect.sync(() => saveChatList(ctx))));
 
-// T-1244: marks a chat unread by hand (the row keeps an unread dot), or clears
-// the mark. Optimistic with rollback, like the other prefs.
+// Marks a chat unread by hand (the row keeps an unread dot), or clears the mark; optimistic
+// with rollback, like the other prefs.
 export const setUnreadMark = (
   ctx: StoreCtx,
   chatId: string,
   unreadMark: boolean,
 ): Effect.Effect<void, unknown, Ports> => updatePref(ctx, chatId, { unreadMark });
 
-// T-0462: pick a preset for one chat (null clears the override, so the chat
-// inherits the caller's global default again).
+// Picks a preset for one chat; null clears the override so the chat inherits the global default.
 export const setChatBackground = (
   ctx: StoreCtx,
   chatId: string,
@@ -164,7 +153,7 @@ export const setChatBackground = (
     backgroundDim: null,
   });
 
-// T-0464: pick an uploaded image for one chat, with the dim percentage.
+// Picks an uploaded image for one chat, with the dim percentage.
 export const setChatBackgroundImage = (
   ctx: StoreCtx,
   chatId: string,
@@ -177,8 +166,7 @@ export const setChatBackgroundImage = (
     backgroundDim: dim,
   });
 
-// T-0462 / T-0464: pick the global default. Optimistic with rollback; the
-// picker paints at once and the saved default replaces the optimistic value.
+// Picks the global default, optimistic with rollback; the saved default replaces it.
 const putDefaultBackground = (
   ctx: StoreCtx,
   optimistic: ChatBackgroundChoice,

@@ -62,7 +62,6 @@ export interface PushEnable {
   sendTest: () => void;
 }
 
-/** The push page's state and actions, moved out of NotificationsPage (T-0119). */
 export function usePushEnable(): PushEnable {
   const storeApi = useChatStoreApi();
   const [loadedStatus, setStatus] = useState<PageStatus>('loading');
@@ -79,8 +78,7 @@ export function usePushEnable(): PushEnable {
   const [errorMessage, setErrorMessage] = useState('');
   const [errorScope, setErrorScope] = useState<'card' | 'test'>('card');
 
-  // The page has one message; its scope decides where it renders: the device
-  // card for its own actions, next to the Test button for a test.
+  // The page has one message; its scope decides where it renders.
   const showCardError = (message: string): void => {
     setErrorScope('card');
     setErrorMessage(message);
@@ -97,8 +95,7 @@ export function usePushEnable(): PushEnable {
     }) === 'supported';
   const status: PageStatus = supported ? loadedStatus : 'unsupported';
 
-  // The first load (and a change of support). Every state change is a setter
-  // call inside the Effect; a failure becomes the page message.
+  // The first load (and a change of support); a failure becomes the page message.
   const loadPage = (): Effect.Effect<void, unknown> => {
     if (!supported) {
       return Effect.void;
@@ -162,8 +159,7 @@ export function usePushEnable(): PushEnable {
       setBusy(false);
       return;
     }
-    // The permission prompt is asked here, inside the click: browsers ignore
-    // it anywhere else. The subscribe step below awaits this same answer.
+    // The permission prompt is asked inside the click: browsers ignore it anywhere else.
     const asked = withPermissionAnswer(browser, browser.Notification.requestPermission());
     runPageAction(
       Effect.gen(function* () {
@@ -172,9 +168,8 @@ export function usePushEnable(): PushEnable {
           subscribeBrowser(asked, config.vapidPublicKey),
         ).pipe(Effect.catchIf(isPushServiceError, () => Effect.succeed(undefined)));
         if (subscribed === undefined) {
-          // No push service here (Helium and other forks), but the permission
-          // was granted: in-tab notifications still work while a tab is open.
-          // That is information, not an error, so no message is set.
+          // No push service here (Helium and other forks), but the permission was granted:
+          // in-tab notifications still work, so this is information, not an error.
           yield* Effect.sync(() => {
             setPermission('granted');
             setOnlyWhileOpen(true);
@@ -189,9 +184,7 @@ export function usePushEnable(): PushEnable {
             userAgent: deviceLabel(),
           }),
         ).pipe(
-          // The server row was never created, but the browser subscription
-          // above is live: remove it so a failed registration leaves no
-          // orphaned PushManager subscription behind (N2).
+          // Remove the live browser subscription so a failed registration leaves no orphan.
           Effect.tapError(() => quietly(attempt(() => unsubscribeBrowser(browser)))),
         );
         yield* attempt(() =>
@@ -199,9 +192,8 @@ export function usePushEnable(): PushEnable {
             .getState()
             .setPushPair({ pushJid: registered.jid, node: registered.node, enable: true }),
         ).pipe(
-          // The enable IQ needs a live XMPP session: without it the device
-          // would never ring, so roll everything back instead of orphaning
-          // it — the server row and the browser subscription (F6).
+          // The enable IQ needs a live XMPP session: without it the device would never ring,
+          // so roll the server row and the browser subscription back instead of orphaning them.
           Effect.tapError(() =>
             quietly(fromApi(() => removePushDevice(registered.id))).pipe(
               Effect.andThen(quietly(attempt(() => unsubscribeBrowser(browser)))),
@@ -267,9 +259,7 @@ export function usePushEnable(): PushEnable {
       fromApi(() => removePushDevice(id)).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            // Removing this device from the list clears the local handle too —
-            // otherwise the page would keep offering Disable/Test for a row that
-            // no longer exists until the next load reconciles it.
+            // Clearing the local handle too, or the page keeps offering Disable/Test for a dead row.
             if (storedDevice !== null && storedDevice.id === id) {
               writeStoredDevice(null);
               setStoredDevice(null);

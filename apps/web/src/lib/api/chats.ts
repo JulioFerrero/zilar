@@ -19,24 +19,16 @@ import { struct } from '@zilar/protocol';
 import { callApi } from '@/lib/effect/api-client';
 import { decodeResponse } from './http';
 
-// The profile and invite schemas live in `@zilar/api-contract` (`auth.ts`,
-// T-0895); their later fields (`handle`, `avatarUrl`, `jid`) are optional so
-// payloads from an older server still parse.
+// Later fields are optional, so payloads from an older server still parse.
 export type Me = AuthMe;
 
 export type { Contact };
 
-// The chats-list entry schema lives in `@zilar/api-contract` (T-0924), the
-// same union mobile decodes: `ChatList.chats` stays `Unknown` there so the
-// server passes entries through unchanged, and this is the schema the web
-// rows are validated with.
+// The same union mobile decodes: entries ride as unknown and are validated here for the web rows.
 export type ChatEntry = typeof chatEntrySchema.Type;
 
-/**
- * The validated topics of a group chat entry: entries that parse as
- * `topicSchema` (malformed ones are dropped). An older server omits
- * `topics` entirely, so the result is empty for it.
- */
+/** The topics that parse: malformed entries are dropped, and an older server's missing
+ * topics give an empty list. */
 export function chatEntryTopics(entry: ChatEntry): Topic[] {
   if (entry.kind !== 'group' || entry.topics === undefined) {
     return [];
@@ -55,7 +47,6 @@ const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)
 
 export type Invite = AuthInvite;
 
-// The schema lives in `@zilar/api-contract` (`xmpp.ts`, T-1111).
 export type XmppToken = XmppTokenResult;
 
 export function getMe(): Promise<Me> {
@@ -65,8 +56,7 @@ export function getMe(): Promise<Me> {
   });
 }
 
-// The contract encodes the trimmed name (the server trimmed it anyway). T-1440:
-// an optional time zone rides the same payload when the browser reported one.
+// The contract encodes the trimmed name; an optional time zone rides the same payload.
 export function updateMe(name: string, timeZone?: string): Promise<Me> {
   return callApi((client) =>
     client.auth.patchMe({
@@ -75,8 +65,7 @@ export function updateMe(name: string, timeZone?: string): Promise<Me> {
   );
 }
 
-// T-1440: report the browser's IANA zone once per app start when it differs
-// from the stored one. Silent and best effort: a failure retries next start.
+// Report the browser's IANA zone once per app start when it differs; silent, retried next start.
 let timeZoneReported = false;
 
 async function reportTimeZoneOnce(me: Me): Promise<void> {
@@ -96,8 +85,7 @@ async function reportTimeZoneOnce(me: Me): Promise<void> {
 }
 
 export async function getChats(): Promise<ChatEntry[]> {
-  // The contract passes the entries through as `unknown`; they are validated
-  // here, and one malformed entry fails the whole list.
+  // Entries arrive as unknown and are validated here; one malformed entry fails the list.
   const body = await callApi((client) => client.chats.list());
   const parsed = decodeResponse(chatsSchema, body);
   if (!parsed.ok) {
@@ -106,45 +94,32 @@ export async function getChats(): Promise<ChatEntry[]> {
   return parsed.value.chats;
 }
 
-/**
- * Stores the caller's read mark for one chat (T-1207): `messageId` must be
- * the archive id (a decimal string of microseconds, the same id MAM gives a
- * message) — the server answers 400 for a non-numeric id, and `lastMessage.id`
- * is the origin id, not a mark. Best effort: callers ignore failures.
- */
+/** messageId is the archive id (a decimal string of microseconds), not lastMessage.id,
+ * which is the origin id; a non-numeric id is a 400. Best effort: callers ignore failures. */
 export function markChatRead(jid: string, messageId: string): Promise<void> {
   return callApi((client) =>
     client.chats.markRead({ params: { jid }, payload: { messageId } }),
   ).then(() => undefined);
 }
 
-/**
- * Confirms the caller's device holds these messages (T-1238): `originIds` are
- * origin ids (the wire id), 1 to 50 per call. Best effort: callers ignore
- * failures, and the server ignores the caller's own messages.
- */
+/** originIds are wire ids, 1 to 50 per call; the server ignores the caller's own messages.
+ * Best effort: callers ignore failures. */
 export function markChatDelivered(jid: string, originIds: string[]): Promise<void> {
   return callApi((client) =>
     client.chats.markDelivered({ params: { jid }, payload: { originIds } }),
   ).then(() => undefined);
 }
 
-/**
- * Deletes one message from the caller's own copy of a DM (T-1247): `archiveId`
- * is the archive id (`DELETE /api/chats/:jid/messages/:archiveId`). Rejects on
- * failure, so the caller keeps its local row.
- */
+/** Deletes one message from the caller's own copy of a DM, by archive id. Rejects on
+ * failure, so the caller keeps its local row. */
 export function deleteMessageForMe(jid: string, archiveId: string): Promise<void> {
   return callApi((client) => client.chats.deleteForMe({ params: { jid, archiveId } })).then(
     () => undefined,
   );
 }
 
-/**
- * Clears the caller's own copy of a DM's history (T-1247,
- * `DELETE /api/chats/:jid/history`). The peer's copy is untouched. Rejects on
- * failure.
- */
+/** Clears the caller's own copy of a DM's history; the peer's copy is untouched. Rejects
+ * on failure. */
 export function clearChatHistory(jid: string): Promise<void> {
   return callApi((client) => client.chats.clearHistory({ params: { jid } })).then(() => undefined);
 }
@@ -153,10 +128,7 @@ export async function getContacts(): Promise<Contact[]> {
   return callApi((client) => client.contacts.list()).then((rows) => [...rows]);
 }
 
-/**
- * Removes `userId` from the caller's contacts in both directions (T-1233).
- * The server answers 404 when the two are not contacts.
- */
+// The server answers 404 when the two are not contacts.
 export async function removeContact(userId: string): Promise<void> {
   await callApi((client) => client.contacts.remove({ params: { userId } }));
 }
@@ -173,25 +145,19 @@ export function getXmppToken(): Promise<XmppToken> {
   return callApi((client) => client.xmpp.token());
 }
 
-// --- Chat preferences (T-0113) -------------------------------------------------
-// Per-user mute/archive/pin rows, synced across devices. The wire contract
-// lives in apps/server/src/chat-prefs/api.ts and service.ts. Muting a
-// group covers its topics (the pref sits on the General room JID and the
-// client applies it to every topic unless the topic has its own row).
+// Muting a group covers its topics: the pref sits on the General room JID, and the client
+// applies it to every topic unless the topic has its own row.
 
-// The schemas live in `@zilar/api-contract` (T-0892). T-0461: the per-chat
-// background fields are all null when the chat inherits the caller's global
-// default.
+// The per-chat background fields are all null when the chat inherits the global default.
 export type { ChatPref };
 
 export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
-  /** T-1244: marks the chat unread by hand (true) or clears the mark (false). */
+  /** Marks the chat unread by hand (true) or clears the mark (false). */
   unreadMark?: boolean | undefined;
-  // T-0462: per-chat background override fields. A null clears that field,
-  // an omitted field leaves it untouched; preset and image are exclusive.
+  // A null clears that field, an omitted field leaves it untouched; preset and image are exclusive.
   backgroundPreset?: string | null | undefined;
   backgroundImageId?: string | null | undefined;
   backgroundDim?: number | null | undefined;
@@ -201,9 +167,8 @@ export function listChatPrefs(): Promise<ChatPref[]> {
   return callApi((client) => client.chatPrefs.list()).then((body) => [...body.prefs]);
 }
 
-// T-0461: the caller's global chat background default (T-0458). `GET
-// /chat-background` returns it under `defaultBackground`; all-null means the
-// caller never chose one, so chats fall back to the slate grid.
+// The caller's global chat background default. All-null means the caller never chose one, so
+// chats fall back to the slate grid.
 export type { ChatBackgroundChoice };
 
 export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
@@ -212,9 +177,7 @@ export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
   );
 }
 
-// The payload encoder checks the preset against the contract's list, so an
-// unknown id fails as `invalid_request` before any request is sent. Fields set
-// to `undefined` are left out, as `JSON.stringify` always did.
+// An unknown preset fails as invalid_request before any request is sent; undefined fields are left out.
 function prefPayload(input: PutChatPrefInput) {
   return omitUndefined({
     ...input,
@@ -222,8 +185,6 @@ function prefPayload(input: PutChatPrefInput) {
   });
 }
 
-// T-0462: write the caller's global background default. The body carries the
-// same three fields as the per-chat patch and the reply is the saved default.
 export function putChatBackgroundDefault(
   input: ChatBackgroundChoice,
 ): Promise<ChatBackgroundChoice> {
@@ -245,12 +206,6 @@ export async function putChatPref(
   return 'prefs' in saved ? null : saved;
 }
 
-// --- Chat folders (T-0237) ---------------------------------------------------
-// Folders come from the server (`apps/server/src/chat-folders/api.ts`);
-// the client only lists and syncs them here (create/rename/delete/reorder
-// UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
-
-// The schemas live in `@zilar/api-contract` (T-0892).
 export type { ApiChatFolder };
 
 export interface CreateChatFolderInput {
@@ -269,16 +224,14 @@ export function listChatFolders(): Promise<ApiChatFolder[]> {
   return callApi((client) => client.chatFolders.list()).then((body) => [...body.folders]);
 }
 
-// The server trims `name`; the contract encodes the trimmed form, so the
-// client trims before sending.
+// The contract encodes the trimmed name, so the client trims before sending.
 export function createChatFolder(input: CreateChatFolderInput): Promise<ApiChatFolder> {
   return callApi((client) =>
     client.chatFolders.create({ payload: { ...omitUndefined(input), name: input.name.trim() } }),
   ).then((body) => body.folder);
 }
 
-// The server trims `name`; the contract encodes the trimmed form, so the
-// client trims before sending.
+// The contract encodes the trimmed name, so the client trims before sending.
 export function patchChatFolder(id: string, input: PatchChatFolderInput): Promise<ApiChatFolder> {
   return callApi((client) =>
     client.chatFolders.update({

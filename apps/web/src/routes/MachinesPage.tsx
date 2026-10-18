@@ -22,17 +22,14 @@ import { EMPTY_CONFIRMING, failureText } from '@/components/machines/machineRowO
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/** Settings → Machines. List, add, approve/deny, rename, revoke, delete. */
 export function MachinesPage() {
   const navigate = useNavigate();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmingState>(EMPTY_CONFIRMING);
   const [showRevoked, setShowRevoked] = useState(false);
-  // T-0091: the owner's AIs, used to label each approved machine row with the
-  // AI whose home machine it is. `null` means the load failed: the row hides
-  // its avatar and the card hides its "AIs: …" line, while the rest of the
-  // page keeps working.
+  // The owner's AIs label each approved machine row with its home AI. null means the load
+  // failed: the row hides its avatar and the card its AIs line, and the page keeps working.
   const [ais, setAis] = useState<PublicAi[] | null>(null);
 
   const [loadState, reload] = useQuery(
@@ -43,10 +40,8 @@ export function MachinesPage() {
     [],
   );
 
-  // T-0091: load the owner's AIs so each machine row can show its AI's picture
-  // and its card can list "AIs: A, B". The load is independent of the machines
-  // load: a failure here just drops those bits, never blocks the page. A
-  // refresh that fails keeps the list it had.
+  // The AI load is independent of the machines load: a failure drops those bits and never
+  // blocks the page; a failed refresh keeps the list it had.
   const loadAis = fromApi(() => listAis()).pipe(
     Effect.tap((list) => Effect.sync(() => setAis(list))),
     Effect.catchTag('ApiFailure', () => Effect.void),
@@ -70,10 +65,8 @@ export function MachinesPage() {
   const approvedMachines = machines.filter((m) => m.status === 'approved');
   const revokedMachines = machines.filter((m) => m.status === 'revoked');
 
-  // T-0091: when an AI's home is unassigned (e.g. on revoke), the server
-  // returns a fresh AI; keep the local AI list in step so the row drops the
-  // picture right away. `ais` being null means the load failed and we skip the
-  // lookup entirely — the row hides its avatar and the card its "AIs: …" line.
+  // Keep the local AI list in step when the server returns a fresh AI (e.g. on revoke), so
+  // the row drops the picture at once; null skips the lookup entirely.
   const aisByMachineId = useMemo(() => {
     const map = new Map<string, PublicAi[]>();
     if (ais === null) {

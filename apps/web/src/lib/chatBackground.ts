@@ -7,12 +7,9 @@ import {
 } from '@zilar/ui-tokens';
 import type { CSSProperties } from 'react';
 
-// T-0461: resolve and paint a chat's effective background. The picker is a
-// later task, so nothing writes these yet; with no choice anywhere every chat
-// resolves to the `slate` preset, which returns no inline style and therefore
-// keeps `--chat-background` from `index.css` exactly as it looks today.
+// The slate preset returns no inline style, so --chat-background from index.css still applies.
 
-/** The per-chat columns shared by `ChatPref` and the global default. */
+/** The per-chat columns shared by ChatPref and the global default. */
 export interface BackgroundFields {
   backgroundPreset?: string | null | undefined;
   backgroundImageId?: string | null | undefined;
@@ -38,8 +35,7 @@ function resolveChoice(
     return undefined;
   }
   if (choice.backgroundPreset !== null && choice.backgroundPreset !== undefined) {
-    // An unknown id can only come from a newer server; paint the default
-    // rather than dropping to no background at all.
+    // An unknown id can only come from a newer server; paint the default instead of nothing.
     return {
       kind: 'preset',
       id: isPresetId(choice.backgroundPreset)
@@ -57,10 +53,8 @@ function resolveChoice(
   return undefined;
 }
 
-/**
- * The chat's look: its own preset or image wins, then the group's shared
- * background, then the caller's global default, else the slate grid.
- */
+/** The chat's look: its own preset or image wins, then the group's shared background, then
+ * the caller's global default, else the slate grid. */
 export function effectiveBackground(
   pref: BackgroundFields | undefined,
   fallback: BackgroundFields | null,
@@ -73,7 +67,7 @@ export function effectiveBackground(
   );
 }
 
-/** The inline style for an effective look; `{}` keeps the CSS default. */
+/** The inline style for an effective look; {} keeps the CSS default. */
 export function chatBackgroundStyle(effective: EffectiveBackground): CSSProperties {
   if (effective.kind === 'preset') {
     if (effective.id === DEFAULT_CHAT_BACKGROUND_PRESET) {

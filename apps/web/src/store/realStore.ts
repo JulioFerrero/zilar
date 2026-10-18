@@ -23,12 +23,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const rt = makeLifetime(ports);
 
   return createAtomStore<ChatStoreState>((set, get) => {
-    // The closure's mutable locals (the handles, caches and per-session maps),
-    // owned by one object so the helpers and the actions share them.
     const locals = createStoreLocals();
 
-    // Every message change goes through this setter, so the local cache is
-    // written about 2 s after the last stanza instead of on every one.
+    // Every message change goes through this setter, so the cache is written about 2 s after
+    // the last stanza instead of on every one.
     let onMessagesChanged: () => void = () => undefined;
     const setWithMessageCache: SetState<ChatStoreState> = (partial, replace) => {
       const before = get().messagesByChat;
@@ -38,8 +36,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     };
 
-    // The ledger, the plain helpers and the context the effect modules and
-    // the actions share (`effects/storeContext.ts`).
     const { ctx } = makeStoreContext({ locals, ports, rt, set: setWithMessageCache, get });
     onMessagesChanged = () => scheduleMessageSave(ctx);
 
@@ -49,8 +45,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       status: 'offline',
       chatsState: 'loading',
       historyState: {},
-      // Unknown means never requested, and the real store never has data
-      // without requesting it: that is still loading, never empty.
+      // Unknown means never requested, and the real store never has data without requesting
+      // it: that is still loading, never empty.
       historyStateFor: (chatId) => get().historyState[chatId] ?? 'loading',
       chats: [],
       contacts: [],
@@ -93,10 +89,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat.kind === 'dm') {
           return true;
         }
-        // A topic manager: a group owner/admin (roles ride the group
-        // detail loaded on open), or the topic creator. The creator edge
-        // without a manager role is enforced by the server; the menu hides
-        // until the detail loads rather than guessing.
+        // A topic manager: a group owner/admin (roles ride the group detail loaded on open),
+        // or the topic creator. The menu hides until the detail loads rather than guessing.
         const role = state.groupInfos[chatId]?.members.find(
           (member) => member.userId === state.currentUserId,
         )?.role;

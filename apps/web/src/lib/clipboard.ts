@@ -3,11 +3,8 @@ import { Data, Effect } from 'effect';
 /** The Clipboard API refused the text; the legacy path runs next. */
 class ClipboardRejected extends Data.TaggedError('ClipboardRejected') {}
 
-/**
- * Copies text to the clipboard. Uses the Clipboard API when available and
- * falls back to a temporary textarea with `document.execCommand`. A defect in
- * the legacy path rejects with the original error, as before.
- */
+/** Uses the Clipboard API when available and falls back to a temporary textarea with
+ * document.execCommand; a defect in the legacy path rejects with the original error. */
 export function copyText(text: string): Promise<void> {
   return Effect.runPromise(copyEffect(text));
 }

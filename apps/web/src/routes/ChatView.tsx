@@ -41,7 +41,7 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
   if (value === 'ai' && chat.isAI) {
     return 'ai';
   }
-  // T-0124: the channel feed opens the channel panel, not the topic panel.
+  // The channel feed opens the channel panel, not the topic panel.
   if (value === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel') {
     return 'topic';
   }
@@ -51,7 +51,7 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
   if (value === 'group' && chat.chatKind === 'channel') {
     return 'group';
   }
-  // T-1323: a DM that is not an AI opens the contact info panel.
+  // A DM that is not an AI opens the contact info panel.
   if (value === 'contact' && chat.kind === 'dm' && !chat.isAI) {
     return 'contact';
   }
@@ -70,24 +70,19 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
     initialPanel(searchParams.get('panel'), chat),
   );
-  // Switching chats closes the open panel, unless the new URL still asks for
-  // one. ChatShell keys ChatView by chat id, but the reset is explicit so the
-  // panel can never leak from one chat to the next.
+  // Switching chats closes the open panel so it can never leak from one chat to the next.
   const [panelChatId, setPanelChatId] = useState(chat.id);
   if (panelChatId !== chat.id) {
     setPanelChatId(chat.id);
     setPanel(initialPanel(searchParams.get('panel'), chat));
   }
-  // The media panel is opened from the header menu, not the URL; it resets
-  // like the info panel when the chat changes so it cannot leak between chats.
+  // The media panel resets like the info panel when the chat changes, so it cannot leak.
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mediaChatId, setMediaChatId] = useState(chat.id);
   if (mediaChatId !== chat.id) {
     setMediaChatId(chat.id);
     setMediaOpen(false);
   }
-  // T-1323: the narrow in-chat search bar replaces the header (WUX-34), so it
-  // lives here; the header and the contact panel's Search key both start it.
   const isWide = useMediaQuery('(min-width: 900px)');
   const [searchOpen, setSearchOpen] = useState(false);
   const startChatSearch = (): void => {
@@ -96,8 +91,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       return;
     }
     storeApi.getState().setSearchChat(chat.id);
-    // The list search box lives outside this view; focus it after a zero-delay
-    // macrotask so the scope chip is already painted.
+    // Focus after a zero-delay macrotask so the scope chip is already painted.
     void runWeb(
       Effect.sleep(0).pipe(
         Effect.andThen(Effect.sync(() => window.dispatchEvent(new Event('zilar:focus-search')))),
@@ -111,9 +105,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     storeApi,
     setForwarding,
   });
-  // Edit mode and reply are exclusive: starting an edit clears the reply. The
-  // reset happens during render (React's "adjust state when a prop changes"),
-  // like the composer's chat-switch reset.
+  // Edit mode and reply are exclusive: starting an edit clears the reply. The reset happens
+  // during render, like the composer's chat-switch reset.
   const [lastEditTarget, setLastEditTarget] = useState(editTarget);
   if (editTarget !== lastEditTarget) {
     setLastEditTarget(editTarget);
@@ -124,16 +117,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   useEffect(() => {
     storeApi.getState().openChat(chat.id);
-    // Leaving the chat (or switching to another one) clears the open chat, so
-    // a message arriving on the list is not marked seen (T-1147).
+    // Leaving the chat clears the open chat, so an arriving message is not marked seen.
     return () => {
       storeApi.getState().closeChat(chat.id);
     };
   }, [storeApi, chat.id]);
 
-  // Typing with nothing focused lands in the composer (WUX-6), as in Telegram:
-  // only a printable key aimed at the page body, with no Ctrl/Meta/Alt, forwards
-  // the focus so the key itself lands in the textarea.
+  // Typing with nothing focused lands in the composer: only a printable key aimed at the
+  // page body, with no Ctrl/Meta/Alt, is forwarded.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.target !== document.body) {
@@ -151,8 +142,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // The message list is memoised, so every callback and prop it gets here has a
-  // stable identity until the thing it depends on changes.
+  // The message list is memoised, so every callback and prop it gets has a stable identity.
   const startReply = useCallback(
     (message: UiMessage): void => {
       storeApi.getState().cancelEdit();
@@ -163,9 +153,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   const forwardOne = useCallback(
     (message: UiMessage): void => {
-      // T-1273: forwarding an album bubble forwards the whole album (its
-      // photos, in `index` order), so it arrives in the target as one grid. A
-      // lone photo, as before, forwards just itself.
+      // Forwarding an album bubble forwards the whole album in index order, as one grid.
       const album = message.album;
       if (album === undefined) {
         setForwarding([message]);
@@ -188,8 +176,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   const notice = topicNotice?.chatId === chat.id ? topicNotice : undefined;
   const pinsPanel = storedPinsPanel?.chatId === chat.id ? storedPinsPanel : undefined;
-  // T-1535: the Steps panel opens only for a card in this chat; a leftover or
-  // bad `steps` param mounts nothing and is dropped. Close keeps the rest.
+  // The Steps panel opens only for a card in this chat; a leftover or bad steps param is dropped.
   const stepsTaskId = searchParams.get('steps');
   const stepsCard = useChatSelector((state) =>
     state.messagesByChat[chat.id]?.some(
@@ -207,11 +194,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     }
   }, [stepsTaskId, stepsCard, closeSteps]);
 
-  // T-1249: the group panel opens for every group, topics included. A topic
-  // row is not the group's chat, so hand the panel the group's General topic
-  // (same groupId); a legacy group row carries no groupId, so fall back to its
-  // kind and keep its own row. The panel reads the group title from the row's
-  // `groupTitle`.
+  // The group panel opens for every group, topics included; a topic row is handed the
+  // group's General topic. A legacy group row carries no groupId, so keep its own row.
   const groupChat =
     chat.groupId !== undefined && chat.topic !== undefined
       ? (chats.find((entry) => entry.groupId === chat.groupId && entry.topic?.isGeneral === true) ??
@@ -220,13 +204,11 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         ? chat
         : undefined;
 
-  // T-1323: a DM that is not an AI opens the contact info panel.
   const contactChat = chat.kind === 'dm' && !chat.isAI ? chat : undefined;
 
-  // T-1797: a public topic the viewer has not joined reads read-only, with one
-  // Join key instead of the composer (W9). General is everyone's topic.
-  // T-1811: while the viewer's id or the member list is unknown, keep the
-  // normal thread — a member must never see a Join key.
+  // A public topic the viewer has not joined reads read-only, with one Join key instead of the
+  // composer. While the viewer's id or the member list is unknown, keep the normal thread so
+  // a member never sees a Join key.
   const joinPreview =
     chat.topic !== undefined &&
     chat.topic.visibility === 'public' &&
@@ -235,8 +217,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     chat.topic.memberIds !== undefined &&
     !isTopicJoined(chat.topic, currentUserId);
 
-  // Pins load when the chat opens (the store also refreshes them on focus
-  // and every 60 s while the chat is open; there is no realtime channel yet).
+  // Pins load when the chat opens; the store refreshes them on focus and every 60 s.
   useEffect(() => {
     void storeApi.getState().loadPins(chat.id);
   }, [storeApi, chat.id]);

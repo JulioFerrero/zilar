@@ -1,7 +1,5 @@
-// Pins of a chat and the chat media panel. Loading pins is best effort: the
-// chat works without them. Pinning and unpinning paint first and roll back
-// when the server refuses; the shared logic (and the two error texts) lives in
-// `@zilar/client-core/store`, this file binds it to the web state.
+// Pins load best effort: the chat works without them. Pinning paints first and rolls back
+// when the server refuses; the shared logic lives in @zilar/client-core/store.
 import { Effect } from 'effect';
 import {
   loadPins as loadPinsCore,
@@ -16,7 +14,6 @@ import type { StoreCtx } from './ctx';
 import { Ports } from './ports';
 import { fromPromise } from './util';
 
-/** Binds the core pins logic to the web state (`pinsByChat`, `pinsReady`, `pinsError`). */
 function pinsStore(ctx: StoreCtx): PinsStore {
   return {
     pins: (chatId) => ctx.get().pinsByChat[chatId] ?? [],
@@ -29,16 +26,15 @@ function pinsStore(ctx: StoreCtx): PinsStore {
   };
 }
 
-/** Loads the pins of `chatId` into the store; a failure is ignored. */
+/** Loads the pins of chatId into the store; a failure is ignored. */
 export const refreshPinsFor = (ctx: StoreCtx, chatId: string): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
     yield* loadPinsCore(ctx, api, pinsStore(ctx), chatId, false);
   });
 
-// An image or GIF item on an untrusted host is downgraded to a file-style item
-// by dropping its `url`, so the panel never auto-loads it (T-0434). With no
-// XMPP token yet, nothing is trusted and every such url is dropped.
+// An image or GIF item on an untrusted host is downgraded to a file-style item by dropping
+// its url, so the panel never auto-loads it; with no XMPP token yet, nothing is trusted.
 const trustedMediaFilter = (ctx: StoreCtx): ((url: string) => boolean) | undefined => {
   const token = ctx.mediaToken;
   if (token === undefined) {
@@ -48,7 +44,6 @@ const trustedMediaFilter = (ctx: StoreCtx): ((url: string) => boolean) | undefin
   return (url) => isTrustedMediaUrl(url, hosts);
 };
 
-/** One page of the chat media panel, with untrusted urls dropped. */
 export const loadChatMedia = (
   ctx: StoreCtx,
   chatId: string,
@@ -89,9 +84,8 @@ export const unpinMessage = (
     yield* unpinMessageCore(ctx, api, pinsStore(ctx), chatId, pinId);
   });
 
-// XEP-0357 enable/disable over the user's own session (ejabberd requires it;
-// there is no admin shortcut). Fails offline or when the core cannot send raw
-// IQs, so the settings page can roll back.
+// XEP-0357 enable/disable over the user's own session (ejabberd requires it; there is no
+// admin shortcut). Fails offline or when the core cannot send raw IQs, so the page rolls back.
 export const setPushPair = (
   ctx: StoreCtx,
   input: { pushJid: string; node: string; enable: boolean },

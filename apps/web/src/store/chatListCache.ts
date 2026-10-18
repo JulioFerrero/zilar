@@ -6,7 +6,6 @@ import type { StorageLike } from './realStore';
 // The last chat list, painted on reload; the payload is the shared client-core codec.
 export const CHAT_LIST_CACHE_KEY = 'zilar:chatList';
 
-/** The cached list for `userId`, or null when there is none or it is unusable. */
 export function readChatListCache(
   storage: StorageLike | null,
   userId?: string,
@@ -33,7 +32,7 @@ export function writeChatListCache(
   try {
     storage.setItem(CHAT_LIST_CACHE_KEY, encodeChatListCache(userId, chats));
   } catch {
-    // A full or blocked localStorage must never break messaging.
+    // Storage failures must never break messaging.
   }
 }
 
@@ -41,6 +40,6 @@ export function clearChatListCache(storage: StorageLike | null): void {
   try {
     storage?.removeItem(CHAT_LIST_CACHE_KEY);
   } catch {
-    // Ignore storage failures on the way out.
+    // Storage failures must never break messaging.
   }
 }

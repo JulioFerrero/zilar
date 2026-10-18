@@ -52,8 +52,8 @@ const ExploreRoute = lazy(() =>
   import('./ExploreRoute').then((m) => ({ default: m.ExploreRoute })),
 );
 
-// The session check usually answers within a frame or two; the text only
-// shows when it is slow, so a reload doesn't flash a "Loading…" page.
+// The session check usually answers within a frame or two; this text only shows when it is
+// slow, so a reload does not flash a Loading page.
 function LoadingScreen() {
   const slow = useDelayed(true, SKELETON_DELAY_MS) === true;
   return (
@@ -89,14 +89,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if ((auth.user?.name ?? '').trim() === '') {
     return <Navigate to="/welcome/name" replace />;
   }
-  // T-0163: people who already have an account but no handle are sent to
-  // the handle step once per browser session at their next visit; skip is
-  // always allowed, so the app works without a handle. Only when the handle
-  // is known-absent (`null`): while the user or `getMe()` is still loading
-  // (`undefined`) the gate does nothing — no Navigate, no flash. The
-  // dismissal lives in `lib/handleGate` (localStorage per user, cleared on
-  // sign-out, with an in-memory fallback) and is honored here, so a skip is
-  // not asked again for that user.
+  // People with an account but no handle are sent to the handle step once per browser
+  // session; skip is allowed. Only when the handle is known-absent (null): while the user
+  // or getMe() is loading (undefined) the gate does nothing, so there is no flash.
   if (
     auth.user !== undefined &&
     auth.user.handle === null &&
@@ -310,9 +305,8 @@ export function AppRoutes() {
   );
 }
 
-// The join page needs the store's chat-list refresh after a successful join
-// plus the General chat id to open; `App` wraps the routes in the provider,
-// so the hook below is valid.
+// The join page needs the store's chat-list refresh after a join plus the General chat id
+// to open; App wraps the routes in the provider, so the hook below is valid.
 function JoinRoute() {
   const storeApi = useChatStoreApi();
   return (
@@ -348,13 +342,8 @@ function DevicesRoute() {
   return <DevicesPage onBack={() => navigate('/settings')} />;
 }
 
-// The `/@handle` gate: react-router cannot match `/@:handle` (a param must
-// be a full segment), so this single-segment route checks the value itself.
-// Values starting with `@` render the handle route (a public group card or
-// the Add contact dialog for a person); anything else (including a bare
-// `/@`) redirects home, exactly like the catch-all below. Static routes
-// (`/login`, `/settings/*`, …) always win over this dynamic one, so no
-// real route is shadowed.
+// react-router cannot match /@:handle (a param must be a full segment), so this route
+// checks the value itself; static routes always win over this dynamic one.
 function AtHandleGate() {
   const params = useParams<{ atHandle?: string }>();
   const value = params.atHandle ?? '';

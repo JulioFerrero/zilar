@@ -1,6 +1,3 @@
-// Topic effects: creating, patching, archiving and leaving a topic, and the
-// membership, AI and role changes that repaint its row from the server's
-// answer.
 import { Effect } from 'effect';
 import {
   changeTopic,
@@ -27,7 +24,7 @@ export const refreshGeneralTopic = (
   Effect.gen(function* () {
     yield* refreshChats(ctx);
     const chats = ctx.get().chats;
-    // A channel's row has no `groupId`/`topic`; `ctx.groupIds` maps its id to the group.
+    // A channel's row has no groupId or topic; ctx.groupIds maps its id to the group.
     return (
       chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id ??
       chats.find((chat) => ctx.groupIds.get(chat.id) === groupId && chat.topic === undefined)?.id
@@ -70,9 +67,7 @@ export const patchTopic = (
       chatId,
       (topicId) => api.patchTopic(topicId, input),
       (topic) => {
-        // A deliberate self-archive moves silently: the header already
-        // navigates to General itself, so the removed-while-open flow must
-        // not add a "no longer available" notice on top of it.
+        // A deliberate self-archive moves silently: the header navigates to General itself.
         if (topic.archived && ctx.get().activeChatId === chatId) {
           ctx.quietArchiveIds.add(chatId);
         }
@@ -114,19 +109,15 @@ export const addTopicMember = (
     );
   });
 
-// T-1786: the caller joins a public topic themselves. The row is repainted
-// from the server's answer, so a joined topic moves from Other topics to Your
-// topics on the group screen.
+// Joins a public topic; the row is repainted from the answer, so it moves to Your topics.
 export const joinTopic = (ctx: StoreCtx, chatId: string): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
     yield* changeTopic(ctx, actionStore(ctx), chatId, (topicId) => api.joinTopic(topicId));
   });
 
-// ONE DELETE. A 404 here does not always mean the topic is gone: the server
-// also 404s for a user who is not a member (e.g. a stale member list, or a
-// second click on Remove). Rethrow as-is; the caller re-checks the row via
-// `refreshTopicRow`.
+// A 404 here does not always mean the topic is gone: the server also 404s for a non-member.
+// Rethrow as-is; the caller re-checks the row via refreshTopicRow.
 export const removeTopicMember = (
   ctx: StoreCtx,
   chatId: string,
@@ -151,10 +142,7 @@ export const setTopicRoles = (
     );
   });
 
-// T-0130 (review): re-reads the chat list and reports whether the topic row
-// is gone, so a member-removal 404 can be told apart from a gone topic (last
-// member removed → archived). A failed refresh throws (instead of reading a
-// stale list as "alive"), so the panel shows the inline removal error.
+// Re-reads the chat list and reports whether the topic row is still there.
 export const refreshTopicRow = (
   ctx: StoreCtx,
   chatId: string,
@@ -165,12 +153,9 @@ export const refreshTopicRow = (
     return !ctx.get().chats.some((chat) => chat.id === chatId || chat.topic?.id === topicId);
   });
 
-// Leaving the last seat archives the topic: the server answers 404 `Topic not
-// found`, and the row refreshes itself away — the caller navigates away. Any
-// other 404 (e.g. "not a member") means nothing left to leave either, but the
-// live row must say so: refresh the list first and swallow only when the topic
-// really disappeared from it. Otherwise rethrow, so the caller shows the
-// normal error instead of navigating away. The core `leaveTopic` keeps this.
+// Leaving the last seat archives the topic, and the row refreshes itself away. Any other
+// 404 means nothing left to leave, but the live row must say so: refresh first and swallow
+// only when the topic really disappeared; otherwise rethrow so the caller shows the error.
 export const leaveTopic = (ctx: StoreCtx, chatId: string): Effect.Effect<void, unknown, Ports> =>
   leaveTopicAction(
     ctx,

@@ -3,8 +3,6 @@ import { ApiError } from '@/lib/api';
 import { ApiFailure } from '@/lib/effect/errors';
 import type { NotificationPermissionState, PushBrowser } from '@/lib/push';
 
-// Effect helpers shared by the notifications page's actions (T-0119).
-
 /** A browser or store Promise. Its own error reaches friendlyError unchanged. */
 export function attempt<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: run, catch: (error: unknown) => error });
@@ -15,11 +13,8 @@ export function quietly<A>(effect: Effect.Effect<A, unknown>): Effect.Effect<voi
   return effect.pipe(Effect.orElseSucceed(() => undefined));
 }
 
-/**
- * Starts a page action in the background. It is not tied to the page's life:
- * leaving the page does not cancel a subscribe, a registration or a rollback
- * in flight. Its failure becomes the page message.
- */
+/** Starts a page action in the background, not tied to the page's life: leaving does not
+ * cancel a subscribe, a registration or a rollback in flight. Its failure becomes the message. */
 export function runPageAction(
   effect: Effect.Effect<void, unknown>,
   showError: (message: string) => void,

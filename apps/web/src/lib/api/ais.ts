@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
+// effect-plain: the promise edge over the Effect client.
 import {
   ApiError,
   ApprovalRule,
@@ -16,15 +16,8 @@ import {
 } from '@zilar/api-contract';
 import { callApi } from '@/lib/effect/api-client';
 
-// --- AIs (T-0032) --------------------------------------------------------
-// The wire contract lives in apps/server/src/ais/api.ts and service.ts.
-// `ApiError` already carries the server's `code` and `status`, so callers can
-// branch without parsing the message again.
-
 export type { AiComputerOptions, AiLimits, AiTemplate, AiUsage };
 
-// The contract's AI with mutable fields, the shape the mock backend and the
-// fixtures build.
 export type PublicAi = { -readonly [K in keyof ContractAi]: ContractAi[K] };
 
 export type Connection = ConnectionView;
@@ -44,10 +37,10 @@ export interface UpdateAiInput {
   limits?: AiLimits;
   model?: string;
   providerConnectionId?: string;
-  // T-0478: the owner's delegation opt-ins.
+  // The owner's delegation opt-ins.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
-  // T-1409/T-1423: where the AI's computer runs.
+  // Where the AI's computer runs.
   computerMode?: 'off' | 'cloud' | 'runner' | 'auto';
 }
 
@@ -60,19 +53,15 @@ export function getAi(id: string): Promise<PublicAi> {
   return callApi((client) => client.ais.detail({ params: { id } }));
 }
 
-// T-1395: the models.dev catalog behind the wizard's model step.
 export function getAiCatalog(): Promise<AiCatalog> {
   return callApi((client) => client.ais.catalog());
 }
 
-// T-1425: whether Zilar cloud desks are available on this server, so the
-// Computer picker can disable the cloud option with a hint.
 export function getComputerOptions(): Promise<AiComputerOptions> {
   return callApi((client) => client.ais.computerOptions());
 }
 
-// The server trims these strings before its length checks; the contract
-// encodes the trimmed form, so they are trimmed here.
+// The contract encodes the trimmed form the server checks length on.
 export function createAi(input: CreateAiInput): Promise<PublicAi> {
   return callApi((client) =>
     client.ais.create({
@@ -114,10 +103,8 @@ export async function deleteAi(id: string): Promise<void> {
   await callApi((client) => client.ais.remove({ params: { id } }));
 }
 
-// T-0080: the owner's kill switch. Both return the fresh public AI so the
-// panel can re-render against the server truth without a second GET. The
-// server answers the same `not_active` 409 when the AI was already in the
-// other terminal state, which the panel treats as a refresh cue.
+// Both return the fresh public AI so the panel re-renders without a second GET; the
+// not_active 409 when the AI was already terminal is a refresh cue.
 export function stopAi(id: string): Promise<PublicAi> {
   return callApi((client) => client.ais.stop({ params: { id } }));
 }
@@ -126,19 +113,14 @@ export function resumeAi(id: string): Promise<PublicAi> {
   return callApi((client) => client.ais.resume({ params: { id } }));
 }
 
-// T-1422: stops the turn running in one chat (not the AI kill switch). `id` is
-// the AI's id and `chatJid` the client chat id the owner sees; the answer says
-// whether a turn was actually running.
+// Stops the turn running in one chat, not the AI kill switch.
 export function stopAiTurn(id: string, chatJid: string): Promise<{ stopped: boolean }> {
   return callApi((client) =>
     client.ais.stopTurn({ params: { id }, payload: { chatJid: chatJid.trim() } }),
   );
 }
 
-// T-0091: set or clear the AI's home machine. `null` clears the assignment
-// (the AI runs on the platform); a machine id assigns it. The server
-// answers the fresh public AI, so the panel re-renders against server
-// truth.
+// null clears the machine assignment: the AI runs on the platform.
 export function setAiMachine(aiId: string, machineId: string | null): Promise<PublicAi> {
   return callApi((client) =>
     client.ais.assignMachine({
@@ -153,16 +135,11 @@ export async function listConnections(): Promise<Connection[]> {
   return [...rows];
 }
 
-// T-0074: `ConnectionsPage` used to call `fetch` directly with its own copy of
-// `request`. Moving those calls here means errors flow through `ApiError` like
-// everywhere else; `ApiError.message` already carries the server's
-// `error.message`, so the page can keep showing it to the user.
-
 export interface CreateConnectionInput {
   provider: string;
   key: string;
   label?: string;
-  /** T-1396: required for `openai-compatible`, refused for every other provider. */
+  /** Required for openai-compatible, refused for every other provider. */
   baseUrl?: string;
 }
 
@@ -197,33 +174,24 @@ export async function deleteConnection(id: string): Promise<void> {
   await callApi((client) => client.connections.remove({ params: { id } }));
 }
 
-// T-1292: replaces the key of an existing connection in place, so the AIs using
-// it keep working; the AI's next turn reads and decrypts the new key. The key
-// is trimmed like at create.
+// Replaces the key in place, so AIs using it keep working; the next turn decrypts the new key.
 export function replaceConnectionKey(id: string, key: string): Promise<Connection> {
   return callApi((client) =>
     client.connections.update({ params: { id }, payload: { key: key.trim() } }),
   );
 }
 
-// --- Approvals (T-0076) ---------------------------------------------------
-// The wire contract lives in apps/server/src/approvals/api.ts and
-// service.ts. Dates arrive as ISO strings; we keep them as strings so the
-// types line up with `ApprovalRequest.expires_at` and we don't have to think
-// about zod's string-to-Date coercion in tests.
+// Dates arrive as ISO strings and stay strings, matching ApprovalRequest.expires_at.
 
 export type { ApprovalDecision, ApprovalStatus, ApprovalRule, PublicApproval };
 
-// Kept under their old names: the shared schemas decode a payload from an
-// older server (a missing topic, `alwaysEligible: false`, no `approverNames`).
+// Old names for schemas that decode a payload from an older server.
 export const publicApprovalSchema = PublicApproval;
 
 export function getApproval(id: string): Promise<PublicApproval> {
   return callApi((client) => client.approvals.detail({ params: { id } }));
 }
 
-// T-0081: the inbox page lists everything pending. The server already filters
-// by pending, unexpired, decidable by the caller, newest first, max 100.
 export async function listApprovals(): Promise<PublicApproval[]> {
   const rows = await callApi((client) => client.approvals.list());
   return [...rows];
@@ -242,11 +210,7 @@ export function decideApproval(
   );
 }
 
-// --- Approval rules (T-0100) ------------------------------------------------
-// The wire contract lives in apps/server/src/approvals/api.ts and
-// rules.ts. Dates arrive as ISO strings, kept as strings like the
-// approvals schemas. The two list routes 404 for a viewer who may not
-// manage the rules, and so does revoke; all three flow through `ApiError`.
+// A viewer who may not manage the rules gets the same 404 from both list routes and revoke.
 
 export const approvalRuleSchema = ApprovalRule;
 

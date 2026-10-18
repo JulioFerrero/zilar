@@ -1,8 +1,4 @@
-// T-0107: tools and routines read model + mutations for the web UI.
-// The wire contract lives in packages/api-contract (`tools.ts`, `routines.ts`,
-// T-0893) and is implemented by apps/server/src/tools/api.ts and
-// apps/server/src/routines/api.ts. Dates arrive as ISO strings and stay
-// strings, like the approvals and audit schemas in api.ts.
+// Dates arrive as ISO strings and stay strings, like the approvals and audit schemas.
 
 import { callApi } from '@/lib/effect/api-client';
 import type {
@@ -18,8 +14,6 @@ import type {
 
 export type { MyRoutine, Routine, ToolDetail, ToolListItem, ToolRun, ToolRunResult, ToolVersion };
 export type { ToolVersionDetail };
-
-// --- Tools ---------------------------------------------------------------
 
 /** Tools of one topic (anyone who can see the topic reads; else 404). */
 export async function listTopicToolDetails(topicId: string): Promise<ToolListItem[]> {
@@ -39,7 +33,6 @@ export async function listAiToolDetails(aiId: string): Promise<ToolListItem[]> {
   return [...rows];
 }
 
-/** One tool with its current source. */
 export function getToolDetail(id: string): Promise<ToolDetail> {
   return callApi((client) => client.tools.detail({ params: { id } }));
 }
@@ -50,7 +43,6 @@ export async function listToolVersions(id: string): Promise<ToolVersion[]> {
   return [...rows];
 }
 
-/** One version with its source. */
 export function getToolVersion(id: string, version: number): Promise<ToolVersionDetail> {
   return callApi((client) => client.tools.version({ params: { id, n: String(version) } }));
 }
@@ -66,11 +58,8 @@ export function revertTool(id: string, version: number): Promise<ToolVersion> {
   return callApi((client) => client.tools.revert({ params: { id }, payload: { version } }));
 }
 
-/**
- * Run the current version now. `input` must serialise to at most 16 KiB
- * (the server answers 400 `invalid_request` above that, like the adapter).
- * Manager only; the server answers 404 for a viewer who may not run it.
- */
+/** Run the current version now. input must serialise to at most 16 KiB (400 above that).
+ * Manager only; the server answers 404 for a viewer who may not run it. */
 export function runToolNow(id: string, input?: unknown): Promise<ToolRunResult> {
   return callApi((client) =>
     client.tools.run({ params: { id }, payload: input === undefined ? {} : { input } }),
@@ -81,13 +70,7 @@ export async function deleteTool(id: string): Promise<void> {
   await callApi((client) => client.tools.remove({ params: { id } }));
 }
 
-// --- Routines ------------------------------------------------------------
-
-/**
- * Every routine of every AI the caller owns, across all their chats, with the
- * AI's name and picture, the chat name and the chat's JID (Settings ›
- * Routines). Running routines come first.
- */
+/** Every routine of every AI the caller owns, with its chat; running routines come first. */
 export async function listMyRoutines(): Promise<MyRoutine[]> {
   const rows = await callApi((client) => client.routines.listMine());
   return [...rows];
@@ -110,10 +93,8 @@ export function pauseRoutine(id: string): Promise<Routine> {
   return callApi((client) => client.routines.pause({ params: { id } }));
 }
 
-/**
- * Resume a paused routine (manager). A routine paused for hosts_changed
- * or awaiting re-approval answers 409 `needs_approval`.
- */
+/** Resume a paused routine (manager); one paused for hosts_changed or awaiting re-approval
+ * answers 409 needs_approval. */
 export function resumeRoutine(id: string): Promise<Routine> {
   return callApi((client) => client.routines.resume({ params: { id } }));
 }

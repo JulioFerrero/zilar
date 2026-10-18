@@ -1,16 +1,8 @@
-/**
- * Avatar crop types (T-1346): the export constants and the `drawImage`
- * arguments for the `AvatarUploader` canvas export. The drag, the wheel and
- * pinch zoom and the clamping now live in react-easy-crop (see
- * `CropDialog`); this file only maps the crop area the Cropper reports to the
- * 256 px export canvas. No DOM here, so tests run in Vitest without a
- * browser.
- */
+// No DOM here, so the crop math runs in Vitest without a browser.
 
 export const AVATAR_EXPORT_SIDE = 256;
 /** The crop dialog's preview box is square; the source fits inside it. */
 export const AVATAR_CROP_VIEW_SIDE = 320;
-/** The zoom range shared by the Cropper and its slider. */
 export const AVATAR_MIN_ZOOM = 1;
 export const AVATAR_MAX_ZOOM = 4;
 
@@ -28,7 +20,6 @@ export interface CropArea {
 }
 
 export interface CropState {
-  /** The Cropper's image position (react-easy-crop's `crop`). */
   crop: { x: number; y: number };
   /** Zoom factor: 1 shows the whole image, higher zooms in. */
   zoom: number;
@@ -36,15 +27,10 @@ export interface CropState {
   area: CropArea | null;
 }
 
-/** The crop state before the Cropper reports its area. */
 export const INITIAL_CROP_STATE: CropState = { crop: { x: 0, y: 0 }, zoom: 1, area: null };
 
-/**
- * The `drawImage` arguments that paint the export: the square the Cropper
- * shows, clamped into the source bounds, scaled to the export canvas. Before
- * the Cropper has reported an area, it falls back to the largest centred
- * square of the source.
- */
+/** The drawImage arguments that paint the export: the square the Cropper shows, clamped into
+ * the source and scaled up; before any area is reported, the largest centred square. */
 export function exportDrawArgs(
   source: CropSource,
   state: CropState,

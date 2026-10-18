@@ -1,8 +1,5 @@
-// T-0464: prepare a picked file for `POST /backgrounds`. The browser resizes
-// the image so its largest side fits 2048 px, re-encodes it to WebP and steps
-// the quality down until the bytes fit 1 MiB; the server validates all of it
-// again. `load` and `encode` are injectable so tests never touch `Image` or a
-// canvas.
+// Resizes so the largest side fits 2048 px, re-encodes WebP and steps the quality down until
+// the bytes fit 1 MiB; the server validates again. load/encode are injectable for tests.
 import { Effect } from 'effect';
 
 /** The smallest side the server accepts (backgrounds run 64-2048 px). */
@@ -25,10 +22,8 @@ export interface LoadedBackground {
   height: number;
 }
 
-/**
- * Scale a size down so its largest side is at most `max`, keeping the ratio.
- * Never scales up, and never returns a fractional or zero side.
- */
+/** Scales a size down so its largest side is at most max, keeping the ratio; never up,
+ * never fractional or zero. */
 export function fitWithin(
   width: number,
   height: number,
@@ -83,13 +78,8 @@ const encodeWithCanvas = (
     });
   });
 
-/**
- * Load a file, reject images under 64 px on either side, resize it to fit
- * 2048 px and encode WebP at 0.85, 0.7 then 0.5 until it is at most 1 MiB.
- * Throws `'too_small'` or `'too_large'` so the caller can show a plain
- * sentence. A rejection from an injected `load` or `encode` passes through
- * unchanged.
- */
+/** Throws 'too_small' or 'too_large' so the caller can show a plain sentence; a rejection
+ * from an injected load or encode passes through unchanged. */
 export function prepareBackgroundImage(
   file: File,
   deps: {

@@ -20,7 +20,6 @@ import { StateMessage } from '@/components/ui/state-message';
 
 type ContactAction = 'accept' | 'decline' | 'cancel';
 
-/** Settings → Requests: incoming (Accept/Decline) and outgoing (Cancel). */
 export function RequestsPage({ onBack }: { onBack: () => void }) {
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | undefined>(undefined);
@@ -93,11 +92,8 @@ export function RequestsPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-/**
- * One request row with its own action, so two rows can be answered at once;
- * a second click on the same row waits for the first. The row unmounts when
- * its request is removed, which is safe: nothing runs after the removal.
- */
+/** One request row with its own action, so two rows can be answered at once. The row
+ * unmounts when its request is removed, which is safe: nothing runs after that. */
 function ContactRow({
   request,
   incoming,

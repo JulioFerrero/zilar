@@ -2,10 +2,8 @@ import { Effect } from 'effect';
 import { promiseOf } from './convert';
 import { WAVEFORM_BUCKETS } from './recorder';
 
-/**
- * Peak buckets for the bubble. Decoding uses `AudioContext`; any failure (or a
- * browser without it, like jsdom) falls back to a quiet flat waveform.
- */
+/** Peak buckets for the bubble. Decoding uses AudioContext; any failure (or a browser
+ * without it, like jsdom) falls back to a quiet flat waveform. */
 export function computeWaveform(blob: Blob, buckets = WAVEFORM_BUCKETS): Promise<number[]> {
   return promiseOf(() => computeWaveformEffect(blob, buckets));
 }

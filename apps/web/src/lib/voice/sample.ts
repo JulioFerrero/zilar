@@ -1,7 +1,5 @@
-/**
- * A short synthesized tone as a WAV data URI. Mock chats use it so their voice
- * bubbles are genuinely playable without shipping an audio asset.
- */
+/** A short synthesized tone as a WAV data URI, so mock chats' voice bubbles are genuinely
+ * playable without shipping an audio asset. */
 export function sampleVoiceDataUrl(durationMs = 900): string {
   const sampleRate = 8000;
   // A placeholder tone does not need to match the label; two seconds is plenty.

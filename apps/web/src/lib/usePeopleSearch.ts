@@ -44,11 +44,8 @@ export function usePeopleSearch(query: string): {
   return { state, updateProfile };
 }
 
-/**
- * The public-groups half of the chat-list search: the same 3-character and
- * debounce rules, up to 5 rows. Any failure hides the section (idle), with no
- * message.
- */
+/** The public-groups half of the chat-list search: 3-character minimum, up to 5 rows;
+ * any failure hides the section. */
 export function useGroupSearch(query: string): GroupSearchState {
   const [state, setState] = useState<GroupSearchState>({ status: 'idle' });
   const latestQuery = useRef('');

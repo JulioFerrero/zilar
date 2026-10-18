@@ -1,6 +1,3 @@
-// The topics part of the web API client: the calls themselves live in
-// `@zilar/client-core` (`topics-api.ts`, T-2048), over `callApi`. This module
-// keeps the names and types web has always imported.
 import {
   Topic as topicSchema,
   type ApproverRole,

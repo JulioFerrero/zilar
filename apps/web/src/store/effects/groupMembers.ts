@@ -1,6 +1,3 @@
-// A group's members: loading the detail once per group, caching it, and
-// joining the group rooms after the connection is up. History and the
-// lifecycle use these without pulling in the group actions.
 import { Effect } from 'effect';
 import type { MentionMember } from '@zilar/chat-core';
 import {
@@ -18,11 +15,8 @@ import { fromPromise } from './util';
 /** The XMPP domain of a JID. */
 export const domainOf = (jid: string): string => jid.slice(jid.indexOf('@') + 1);
 
-/**
- * Caches a group detail and rebuilds the mention members from it, so the
- * picker and the panel agree after a load, an add or a remove. Handles pass
- * through from the detail (T-0169); AIs have none.
- */
+/** Caches a group detail and rebuilds the mention members from it, so the picker and panel
+ * agree after a load, an add or a remove; AIs have no handle. */
 export function applyGroupDetail(
   ctx: StoreCtx,
   chatId: string,
@@ -44,8 +38,7 @@ export function applyGroupDetail(
   }
   ctx.groupMembers.set(chatId, members);
   ctx.groupInfos.set(chatId, detail);
-  // T-0466: the group's shared background paints every chat of that group,
-  // not only the chat the detail was loaded for.
+  // The group's shared background paints every chat of that group, not only this chat.
   const nextBackground = detail.background;
   ctx.set((state) => ({
     groupInfos: { ...state.groupInfos, [chatId]: detail },
@@ -58,15 +51,11 @@ export function applyGroupDetail(
   }));
 }
 
-// The in-flight marks of the group-detail loads, keyed so a group id can never
-// collide with a chat id.
+// The in-flight marks of the group-detail loads, keyed so a group id can never collide with a chat id.
 const groupKey = (groupId: string): string => `group:${groupId}`;
 
-/**
- * The web view of the core's per-group cache (T-0920): the detail map is the
- * chat-keyed `groupInfos`, so the cache is read by `detail.id`; the in-flight
- * marks live in `loadingGroupMembers` under a group key.
- */
+/** The web view of the core's per-group cache: the detail map is chat-keyed, so the cache is
+ * read by detail.id, while the in-flight marks live under a group key. */
 function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
   return {
     cached: (groupId) => {
@@ -90,8 +79,8 @@ function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
         return;
       }
       const domain = domainOf(mine);
-      // Every known row of the group is filled, so a caller that shared an
-      // in-flight load still finds the detail in its own chat-keyed entry.
+      // Every known row of the group is filled, so a caller that shared an in-flight load
+      // still finds the detail in its own chat-keyed entry.
       for (const row of ctx.get().chats) {
         if (row.groupId === detail.id) {
           applyGroupDetail(ctx, row.id, detail, domain);
@@ -101,12 +90,8 @@ function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
   };
 }
 
-/**
- * Loads the members of a group once per group, so a typing indicator or a
- * message from a member who is not a contact can still show a name, and every
- * topic row of the group shares one GET (R14). The mention picker and the
- * group panel read the same list. The AIs the group holds (T-0054) ride along.
- */
+/** Loads a group's members once per group, so a typing indicator or a message from a
+ * non-contact still shows a name, and every topic row shares one GET. */
 export const ensureGroupMembers = (
   ctx: StoreCtx,
   chatId: string,
@@ -123,14 +108,12 @@ export const ensureGroupMembers = (
     }
     const { api } = yield* Ports;
     const detail = yield* ensureGroupDetail(api, groupDetailStore(ctx), groupId, force);
-    // A pure cache hit (or a load another caller started) does not repaint;
-    // fill this chat's entry, which the publish above may not have reached.
+    // A cache hit (or a load another caller started) does not repaint; fill this chat's entry.
     if (detail !== undefined && !ctx.groupInfos.has(chatId)) {
       applyGroupDetail(ctx, chatId, detail, domainOf(mine));
     }
   });
 
-/** Starts loading the members of a group chat without waiting for them. */
 export const loadGroupMembersInBackground = (
   ctx: StoreCtx,
   chatId: string,
@@ -139,8 +122,8 @@ export const loadGroupMembersInBackground = (
   ctx.rt.fork(ensureGroupMembers(ctx, chatId, force));
 };
 
-/** Joins every group room of the painted list and starts loading its members.
- * `hooks.first` joins before the rest; `hooks.onJoined` fires per joined room. */
+/** Joins every group room of the painted list and loads its members; hooks.first joins
+ * before the rest and hooks.onJoined fires per joined room. */
 export const joinGroups = (
   ctx: StoreCtx,
   current: XmppCore,

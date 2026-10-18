@@ -5,7 +5,6 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
-/** Syncs chat folders from the server into the store (T-0237). */
 export function useChatFolders(): void {
   const storeApi = useChatStoreApi();
   // A new sync replaces one still in flight (the newest answer wins).

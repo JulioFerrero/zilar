@@ -8,8 +8,7 @@ import {
 
 export { ApiError };
 
-// The handle rules (shapes, reserved words, suggestions) live in
-// @zilar/protocol and are shared with the server, which is the authority.
+// Shared with the server, which is the authority.
 export {
   HANDLE_MAX_LENGTH,
   HANDLE_MIN_LENGTH,
@@ -22,8 +21,7 @@ export {
   type HandleAvailabilityReason,
 } from '@zilar/protocol';
 
-// The api.ts rejection passes through unchanged: HandlePage matches `ApiError`
-// with `instanceof`, which `fromApi` would replace with an `ApiFailure`.
+// Passed through unchanged: HandlePage matches ApiError with instanceof, which fromApi would replace.
 const passThrough = <A>(call: () => Promise<A>): Promise<A> =>
   Effect.runPromise(
     Effect.tryPromise({

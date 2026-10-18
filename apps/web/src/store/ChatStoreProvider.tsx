@@ -10,8 +10,7 @@ import { startSessionEnable } from '@/lib/push/sessionEnable';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
-// Kept exported from this path for existing callers/tests (T-0069 moved the
-// decision itself to `@/mock/gate`).
+// Kept exported from this path for existing callers and tests; the decision lives in @/mock/gate.
 export { isMockMode };
 
 export function ChatStoreProvider({
@@ -22,8 +21,7 @@ export function ChatStoreProvider({
   children: ReactNode;
 }) {
   const auth = useAuth();
-  // Mock mode builds its store once the fake XMPP core has loaded (task G);
-  // the real build creates it now. A `store` from a test wins over both.
+  // Mock mode builds its store once the fake XMPP core has loaded; a store from a test wins.
   const [created, setCreated] = useState<StoreApi<ChatStoreState> | undefined>(() =>
     store === undefined && !isMockMode() ? createRealChatStore() : undefined,
   );
@@ -35,8 +33,7 @@ export function ChatStoreProvider({
     let cancelled = false;
     void loadMockXmpp().then((createXmpp) => {
       if (!cancelled) {
-        // Mock mode has no draft stream: an `EventSource` would bypass the mock
-        // fetch and 404 against vite, so the port is a no-op.
+        // Mock mode has no draft stream: an EventSource would 404 against vite, so the port is a no-op.
         setCreated(createRealChatStore({ createXmpp, openDrafts: () => () => undefined }));
       }
     });
@@ -47,8 +44,7 @@ export function ChatStoreProvider({
 
   const value = store ?? created;
   const userId = auth.user?.id;
-  // The user the store was started for. A different id on a later run means an
-  // account switch (T-1136): the previous account's state must reset first.
+  // A different user id on a later run means an account switch: the old state resets first.
   const startedUserId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -59,8 +55,7 @@ export function ChatStoreProvider({
     let cancelled = false;
     void (async () => {
       if (userId !== undefined && previousUserId !== undefined && userId !== previousUserId) {
-        // `switchUser` resets and stops the old session, so it must settle
-        // before `start` boots the new one.
+        // switchUser resets and stops the old session, so it must settle before start boots the new one.
         await value.getState().switchUser();
       }
       if (cancelled) {
@@ -75,9 +70,8 @@ export function ChatStoreProvider({
     };
   }, [store, value, auth.status, userId]);
 
-  // Push pair (T-1152): the stored pair belongs to a dead session after a
-  // reload (MP-8), so re-send `<enable/>` on every transition into `online`.
-  // Mock mode keeps nothing. Cleanup unsubscribes with the provider.
+  // The stored push pair belongs to a dead session after a reload, so re-send <enable/> on
+  // every transition into online. Mock mode keeps nothing.
   useEffect(() => {
     if (store !== undefined || value === undefined || isMockMode()) {
       return;
@@ -104,11 +98,8 @@ export function useChatStoreApi(): StoreApi<ChatStoreState> {
   return store;
 }
 
-/**
- * Subscribes to one slice of the store. The component re-renders only when the
- * selected value changes (`Object.is`), so selectors must return stable values:
- * select raw slices and derive with `useMemo`, never build arrays or objects.
- */
+/** Subscribes to one slice of the store. The component re-renders only when the selected
+ * value changes (Object.is), so selectors must return stable values. */
 export function useChatSelector<T>(selector: (state: ChatStoreState) => T): T {
   return useAtomValue(useChatStoreApi().atom, selector);
 }

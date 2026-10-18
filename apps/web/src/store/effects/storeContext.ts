@@ -1,6 +1,3 @@
-// Builds the message ledger, the plain helpers of `realStore.ts` and the
-// `StoreCtx` the effect modules and the actions share, from the store's
-// mutable locals, ports, lifetime and state accessors.
 import {
   createMessageLedger,
   createTextOutbox,
@@ -37,19 +34,14 @@ export interface StoreContextDeps {
   readonly get: () => ChatStoreState;
 }
 
-/**
- * The ledger, the plain helpers (`removeFailedMessage`, `rememberGroupIds`,
- * `nick`) and the `StoreCtx`. The closure's mutable locals are bridged to the
- * names the core modules read, and `x` now reads `locals.x`.
- */
+/** The ledger, the plain helpers (removeFailedMessage, rememberGroupIds, nick) and the
+ * StoreCtx, bridging the closure's locals to the names the core modules read. */
 export function makeStoreContext(deps: StoreContextDeps): {
   ctx: StoreCtx;
   ledger: MessageLedger;
 } {
   const { locals, ports, rt, set, get } = deps;
 
-  // Message ids and aliases, edits, reactions, mentions, sender names and
-  // the message mutators (`@zilar/client-core/store`).
   const ledger = createMessageLedger({
     get,
     set,
@@ -61,7 +53,7 @@ export function makeStoreContext(deps: StoreContextDeps): {
     mediaToken: () => locals.mediaToken,
   });
 
-  // Removes a failed local bubble together with its kept bytes (T-0168).
+  // Removes a failed local bubble together with its kept bytes.
   function removeFailedMessage(chatId: string, messageId: string): void {
     locals.pendingAttachments.delete(ledger.aliasRoot(messageId));
     locals.pendingAttachments.delete(messageId);
@@ -86,8 +78,7 @@ export function makeStoreContext(deps: StoreContextDeps): {
     return me.jid?.split('@')[0] ?? 'me';
   }
 
-  // What the Effect modules share. The accessors read and write the
-  // closure variables the helpers above still use.
+  // What the Effect modules share; the accessors read and write the closure variables.
   const ctx: StoreCtx = {
     get,
     set,
@@ -99,7 +90,6 @@ export function makeStoreContext(deps: StoreContextDeps): {
       rememberGroupIds,
       nick,
     },
-    // The web code the core modules call (`CoreHooks` and `StoreAppHooks`).
     fx: {
       syncBadge: () => ports.notifications.syncBadge(get().chats),
       dismissChatNotifications: (chatId) => ports.notifications.dismissChat(chatId),
@@ -203,10 +193,9 @@ export function makeStoreContext(deps: StoreContextDeps): {
     pendingAttachments: locals.pendingAttachments,
     pendingVoices: locals.pendingVoices,
     sendRuns: locals.sendRuns,
-    // The text outbox (F4, honest ticks): one per store instance. Texts stay
-    // `sending` until the server's stream-management ack marks them `sent`;
-    // the core lifecycle flushes it on online and `reset()` clears it on
-    // sign-out, so one user's queue never goes out as another user.
+    // The text outbox: texts stay sending until the stream-management ack marks them sent.
+    // The lifecycle flushes it on online and reset() clears it on sign-out, so one user's
+    // queue never goes out as another user's.
     outbox: createTextOutbox(),
   };
 

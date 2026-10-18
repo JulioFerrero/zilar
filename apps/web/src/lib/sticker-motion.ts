@@ -1,11 +1,5 @@
-// effect-plain: the byte rules moved to @zilar/chat-core (T-1525); this file
-// only keeps the Blob slice and the async boundary web's prepare flow needs.
-/**
- * Motion sniffing for picked sticker files (T-1501): GIF, video (WebM/MP4/MOV),
- * animated WebP and APNG keep their motion, so the editor must not draw them on
- * a canvas. The kind is read from the bytes only, never from the name or type.
- * At most the first 64 KiB are read.
- */
+// effect-plain: the Blob slice and the async boundary web's prepare flow needs; the byte
+// rules live in @zilar/chat-core.
 import { STICKER_SNIFF_BYTES, sniffMotionBytes, type MotionKind } from '@zilar/chat-core';
 
 export type { MotionKind };

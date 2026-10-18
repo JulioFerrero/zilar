@@ -1,18 +1,12 @@
-// In-tab browser notifications (T-1145): while a Zilar tab is open but hidden,
-// an incoming unread message in an unmuted chat shows a native notification
-// from the page itself. This works even where Web Push cannot (a browser
-// without a push service, e.g. Helium), and its tag collapses with a real Web
-// Push notification for the same message. The pure decision
-// (`inTabNotification`) is unit-tested; the rest only touches browser APIs and
-// runs through the shared web Effect runtime.
+// While a Zilar tab is open but hidden, show a native notification from the page, which works
+// where Web Push cannot; the tag collapses it with a real push for the same message.
 import { Effect } from 'effect';
 import { previewBody, type ChatSummary, type UiMessage } from '@zilar/chat-core';
 import { getPushSettings } from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
 import { permissionStateOf, type NotificationPermissionState } from '@/lib/push';
 
-// The service worker sets no icon; the app icon keeps the in-tab notification
-// looking like the installed app.
+// The service worker sets no icon; this keeps the in-tab notification looking like the app.
 const ICON = '/icons/icon-192.png';
 
 const NEW_MESSAGE = 'New message';
@@ -35,10 +29,7 @@ export interface InTabInput {
   readonly showPreviews: boolean;
 }
 
-/**
- * The pure decision: what to show, or `undefined` when nothing should. It never
- * reads the DOM, so the tests drive it with plain values.
- */
+/** The pure decision: what to show, or undefined when nothing should. It never reads the DOM. */
 export function inTabNotification(input: InTabInput): InTabNotification | undefined {
   const { chat, message, permission, hidden, showPreviews } = input;
   if (permission !== 'granted' || !hidden || chat === undefined || chat.muted) {
@@ -50,16 +41,13 @@ export function inTabNotification(input: InTabInput): InTabNotification | undefi
   return {
     title,
     body: preview === '' ? NEW_MESSAGE : preview,
-    // The origin id the server names as `messageId` in the Web Push payload, so
-    // a push and an in-tab notification for one message collapse into one.
+    // The origin id the server names as messageId in the push payload, so both notifications collapse.
     tag: message.originId ?? chat.id,
     chatId: chat.id,
   };
 }
 
-// The "Show message previews" setting is read once after the store boots and
-// cached here; a failure keeps the safe default (no text). The Notifications
-// page refreshes it when it saves.
+// Cached after boot; a failure keeps the safe default (no text), and the Notifications page refreshes it.
 let showPreviews = false;
 let previewsLoaded = false;
 
@@ -81,7 +69,6 @@ export function loadInTabPreviews(): void {
   );
 }
 
-/** Applies a previews setting the Notifications page just saved. */
 export function setInTabPreviews(value: boolean): void {
   showPreviews = value;
   previewsLoaded = true;
@@ -97,7 +84,6 @@ function currentPermission(): NotificationPermissionState | 'unsupported' {
   });
 }
 
-/** Shows an in-tab notification for one incoming message, if one is due. */
 export function showInTabNotification(chat: ChatSummary | undefined, message: InTabMessage): void {
   const decision = inTabNotification({
     chat,
@@ -121,8 +107,7 @@ function optionsFor(decision: InTabNotification): NotificationOptions & { renoti
   };
 }
 
-// The chat route the service worker's `notificationclick` opens (sw.js
-// `clickUrlFor`), shared so the fallback navigates to the same place.
+// The chat route the service worker's notificationclick opens (sw.js clickUrlFor), shared here.
 function clickUrlFor(chatId: string): string {
   return `/c/${encodeURIComponent(chatId)}`;
 }
@@ -151,8 +136,7 @@ function activeRegistration(): Effect.Effect<ServiceWorkerRegistration | undefin
     if (typeof navigator === 'undefined' || navigator.serviceWorker === undefined) {
       return undefined;
     }
-    // `ready` never settles without a registration, so only wait on it when
-    // one exists; otherwise the page Notification API is the fallback.
+    // ready never settles without a registration, so only wait on it when one exists.
     const existing = yield* Effect.tryPromise(() => navigator.serviceWorker.getRegistration()).pipe(
       Effect.catchCause(() => Effect.succeed(undefined)),
     );

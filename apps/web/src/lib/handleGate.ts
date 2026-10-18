@@ -1,28 +1,19 @@
 import { Effect } from 'effect';
-/**
- * The "asked once" dismissal for the handle gate (T-0163). "Skip for now"
- * records the dismissal in this browser with `localStorage` (T-1435), keyed
- * per user id so a different sign-in on the same browser is asked again.
- * Backed by `localStorage` with an in-memory fallback when storage throws
- * (private mode, blocked cookies); the fallback still covers this page load.
- */
+/** Asked once per user id, so a different sign-in on the same browser is asked again.
+ * Backed by localStorage with an in-memory fallback when storage throws (private mode). */
 const dismissedForUser = new Set<string>();
 
 function dismissalKey(userId: string): string {
   return `zilar:handleGateDismissed:${userId}`;
 }
 
-/**
- * Runs one localStorage step at this sync edge. A storage that throws (or a
- * missing window) gives `fallback`, the same answer as before.
- */
+/** A storage that throws (or a missing window) gives fallback. */
 function storageStep<A>(fallback: A, step: (storage: Storage) => A): A {
   return Effect.runSync(
     Effect.try(() => step(window.localStorage)).pipe(Effect.orElseSucceed(() => fallback)),
   );
 }
 
-/** Every dismissal key currently persisted in `storage`. */
 function dismissalKeys(storage: Storage): string[] {
   const keys: string[] = [];
   for (let index = 0; index < storage.length; index += 1) {
@@ -43,8 +34,7 @@ export function hasDismissedHandleGate(userId: string): boolean {
 
 export function dismissHandleGate(userId: string): void {
   dismissedForUser.add(userId);
-  // Storage may throw (private mode, blocked cookies): the in-memory flag
-  // above still covers this page load.
+  // Storage may throw (private mode, blocked cookies): the in-memory flag still covers this load.
   storageStep(undefined, (storage) => {
     storage.setItem(dismissalKey(userId), '1');
   });
@@ -54,8 +44,7 @@ export function dismissHandleGate(userId: string): void {
 export function resetHandleGateDismissal(userId?: string): void {
   if (userId === undefined) {
     dismissedForUser.clear();
-    // Sign-out clears the persisted dismissals too, so no skipped gate stays
-    // remembered on this browser; only this key prefix, never the whole store.
+    // Sign-out clears the persisted dismissals too, but only this key prefix, never the whole store.
     storageStep(undefined, (storage) => {
       for (const key of dismissalKeys(storage)) {
         storage.removeItem(key);
@@ -64,7 +53,6 @@ export function resetHandleGateDismissal(userId?: string): void {
     return;
   }
   dismissedForUser.delete(userId);
-  // Best effort only.
   storageStep(undefined, (storage) => {
     storage.removeItem(dismissalKey(userId));
   });

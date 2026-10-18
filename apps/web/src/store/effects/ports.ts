@@ -1,8 +1,5 @@
-// The outside world of the web chat store: the HTTP client, storage, the clock,
-// the XMPP factory, the voice and attachment ports, the AI draft stream and the
-// sign-out redirect. The store reads them from one `Ports` service; `PortsLive`
-// is the real adapter set and `PortsTest` fills every port a test did not
-// supply with an inert one, so no test reaches the network by accident.
+// The outside world of the web chat store, read from one Ports service. PortsTest fills every
+// port a test did not supply with an inert one, so no test reaches the network by accident.
 import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type {
@@ -88,50 +85,35 @@ import type { ApiClient, StorageLike } from './portTypes';
 
 export type { ApiClient, StorageLike } from './portTypes';
 
-/** What a caller of `createRealChatStore` may override; every field is optional. */
 export interface RealStoreDeps {
   api?: ApiClient;
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   storage?: StorageLike | null;
   now?: () => Date;
   documentVisible?: () => boolean;
-  /** Conversion + XEP-0363 upload; tests inject fakes. */
   voice?: VoicePort;
-  /** Classification, image sizing + XEP-0363 upload; tests inject fakes. */
   attachments?: AttachmentPort;
-  /** The AI draft SSE stream; tests inject a fake. */
   openDrafts?: OpenDraftStream;
-  /** Leaves for the sign-in page after sign-out; tests inject a fake. */
   goToLogin?: () => void;
-  /** Asks `GET /api/me` whether the session still exists (T-1223); tests inject a fake. */
   checkSession?: () => Promise<SessionCheck>;
-  /** Signs out after `checkSession` answered `gone`; tests inject a fake. */
   sessionGone?: () => void;
 }
 
-/** The resolved ports: every field is present. */
 export interface PortsShape {
   readonly api: ApiClient;
   readonly storage: StorageLike | null;
   readonly now: () => Date;
   readonly isVisible: () => boolean;
   readonly createXmpp: (options: XmppCoreOptions) => XmppCore;
-  /** The raw voice port tests inject; `voice` below is the core-shaped adapter. */
   readonly attachments: AttachmentPort;
-  /** The core send pipeline's file and voice ports (T10). */
   readonly bytes: OutgoingBytes;
   readonly voice: VoiceOut;
   readonly openDrafts: OpenDraftStream;
   readonly goToLogin: () => void;
-  /** Asks `GET /api/me` whether the session still exists after `authFailed` (T-1223). */
   readonly checkSession: () => Promise<SessionCheck>;
-  /**
-   * Signs out after `checkSession` answered `gone`, so the user lands on
-   * login. Runs the existing `signOutStore` flow's server sign-out plus
-   * `goToLogin` (T-1223); tests inject it through deps.
-   */
+  /** Signs out after checkSession answered gone, so the user lands on login; the adapter
+   * runs the persistent half of signOutStore and then goToLogin. */
   sessionGone: () => void;
-  // T-0915: what the core lifecycle, polling and connection retry read.
   readonly rows: ChatRows;
   readonly visibility: Visibility;
   readonly drafts: OpenDraftStream;
@@ -194,7 +176,6 @@ const realApi: ApiClient = {
   unpinMessage: unpinMessageRequest,
 };
 
-/** The live ports, with any field of `deps` replacing its real counterpart. */
 export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
   const attachments = deps.attachments ?? defaultAttachmentPort;
   return {
@@ -208,12 +189,9 @@ export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
     bytes: bytesFromAttachmentPort(attachments),
     openDrafts: deps.openDrafts ?? subscribeToDrafts,
     goToLogin: deps.goToLogin ?? defaultGoToLogin,
-    // `checkSession` asks `GET /api/me` whether the session still exists; the
-    // adapter lives in `@/lib/api` so this file stays under its line budget.
     checkSession: deps.checkSession ?? checkSessionAdapter,
-    // The revoked session lands on the sign-in screen through the persistent
-    // half of the `signOutStore` flow (server sign-out, cache/device clears,
-    // then `/login`); the adapter lives in `@/lib/api` (T-1223).
+    // The revoked session lands on sign-in through the persistent half of signOutStore
+    // (server sign-out, cache and device clears, then /login).
     sessionGone: deps.sessionGone ?? (() => sessionGoneAdapter(deps.goToLogin ?? defaultGoToLogin)),
     rows: realRows,
     visibility: { isVisible: deps.documentVisible ?? defaultVisible, onFocus: defaultOnFocus },
@@ -223,7 +201,6 @@ export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
   };
 }
 
-/** The real adapters: HTTP API, `localStorage`, the real clock and XMPP client. */
 export const portsLayer = (deps: RealStoreDeps = {}): Layer.Layer<Ports> =>
   Layer.sync(Ports, () => resolvePorts(deps));
 

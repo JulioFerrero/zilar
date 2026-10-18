@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
 
-/** Hard cap on a recording, matching the server's `POST /api/voice` limit. */
+/** Hard cap on a recording, matching the server's POST /api/voice limit. */
 export const VOICE_MAX_BYTES = 10 * 1024 * 1024;
 /** Recordings shorter than this are treated as an accidental tap. */
 export const VOICE_MIN_MS = 500;
@@ -48,15 +48,12 @@ export function pickRecorderMime(): string | undefined {
 
 export interface RecordedVoice {
   blob: Blob;
-  /** The container the browser produced, e.g. `audio/webm` or `audio/mp4`. */
+  /** The container the browser produced, e.g. audio/webm or audio/mp4. */
   mimeType: string;
   durationMs: number;
 }
 
-/**
- * A thin wrapper around `MediaRecorder` that stops the microphone tracks and
- * reports how long the user held the button.
- */
+/** A thin MediaRecorder wrapper that stops the microphone tracks and reports the hold time. */
 export class VoiceRecorder {
   readonly #recorder: MediaRecorder;
   readonly #stream: MediaStream;
@@ -101,8 +98,7 @@ export class VoiceRecorder {
       ),
       Effect.try(() => new MediaRecorder(stream)),
     ]).pipe(
-      // Never leave the microphone open (the browser's recording indicator)
-      // when no recorder can be built.
+      // Never leave the microphone open (the browser's recording indicator).
       Effect.tapError(() =>
         Effect.sync(() => {
           for (const track of stream.getTracks()) {
@@ -166,11 +162,8 @@ export class VoiceRecorder {
   }
 }
 
-/**
- * Maps a `getUserMedia` rejection to a `VoiceError` the composer can show.
- * The `DOMException` name tells the cases apart: a denial is actionable
- * (the user blocked the microphone), a missing device is not.
- */
+/** Maps a getUserMedia rejection to a VoiceError. The DOMException name tells the cases
+ * apart: a denial is actionable (the user blocked the microphone), a missing device is not. */
 export function voiceErrorFromGetUserMedia(error: unknown): VoiceError {
   const name = error instanceof DOMException ? error.name : '';
   if (name === 'NotFoundError' || name === 'OverconstrainedError') {

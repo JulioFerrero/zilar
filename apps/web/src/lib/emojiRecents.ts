@@ -1,27 +1,19 @@
 import { Effect, Schema } from 'effect';
 import type { StorageLike } from '@/store/effects/portTypes';
 
-/**
- * Recent emoji (T-1945): the last picked glyphs, kept in `localStorage` as a
- * newest-first array. The rule mirrors the phone's `rememberRecentEmoji`:
- * deduplicated, at most 24. Hostile stored data (wrong shapes, non-strings,
- * huge arrays) is ignored, so a tampered value can never break the panel.
- */
+/** Newest first, deduplicated, at most 24. Hostile stored data (wrong shapes, huge arrays)
+ * is ignored, so a tampered value can never break the panel. */
 export const EMOJI_RECENTS_KEY = 'zilar:emojiRecents';
 export const MAX_RECENT_EMOJI = 24;
 
 // The stored value must be a JSON array; anything else reads as empty.
 const decodeRecents = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Unknown)));
 
-/**
- * Runs one synchronous step (storage, JSON) at this edge. A throw gives
- * `fallback`, so a blocked storage never breaks the panel.
- */
+/** A throw gives fallback, so a blocked storage never breaks the panel. */
 function orFallback<A>(fallback: A, step: () => A): A {
   return Effect.runSync(Effect.try(step).pipe(Effect.orElseSucceed(() => fallback)));
 }
 
-/** Reads the recents; hostile or missing data resolves to an empty list. */
 export function readEmojiRecents(storage: StorageLike | null): string[] {
   if (storage === null) {
     return [];

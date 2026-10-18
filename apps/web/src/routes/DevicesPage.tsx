@@ -14,7 +14,6 @@ import { StateMessage } from '@/components/ui/state-message';
 const SIGN_OUT_ERROR = 'Could not sign out. Try again.';
 const LOAD_ERROR = 'Could not load your devices. Try again.';
 
-/** Settings → Devices: every signed-in session, with a Sign out per other one. */
 export function DevicesPage({ onBack }: { onBack: () => void }) {
   const [devices, refresh] = useQuery(() => fromApi(() => listSessions()), []);
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -22,10 +21,8 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [actionError, setActionError] = useState<string | undefined>(undefined);
 
-  // "Sign out all other devices" loops over the list: the delete route already
-  // removes one session, so no third route is needed. `allSettled` never
-  // rejects, so one failed revoke cannot stop the list reload or leave the
-  // confirm open; the error line shows only when a revoke failed.
+  // Sign out all others loops over the delete route, one session each. allSettled never
+  // rejects, so one failed revoke cannot stop the reload or leave the confirm open.
   const [bulkState, signOutOthers] = useAction((ids: string[]) =>
     fromApi(() => Promise.allSettled(ids.map((id) => revokeSession(id)))).pipe(
       Effect.tap((results) =>
@@ -139,11 +136,8 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-/** The line every row shows: a parsed device and the two timestamps. */
 function DeviceSummary({ session }: { session: AuthSession }) {
   const now = new Date();
-  // The labels come from chat-core's date helpers (packages/chat-core/src/format.ts):
-  // `formatListTime` for "Last active", `formatShortDate` for "Signed in".
   return (
     <span className="min-w-0 flex-1 basis-40 text-[14px]">
       <span className="block truncate text-[15px] font-medium">
@@ -156,7 +150,6 @@ function DeviceSummary({ session }: { session: AuthSession }) {
   );
 }
 
-/** This browser's own session: labelled, with no Sign out. */
 function CurrentDeviceRow({ session }: { session: AuthSession }) {
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
@@ -168,11 +161,8 @@ function CurrentDeviceRow({ session }: { session: AuthSession }) {
   );
 }
 
-/**
- * One other device with its own Sign out, so two rows can be signed out at
- * once; a second click on the same row waits for the first. A removed row
- * returns nothing but stays mounted, like BlockedPage's.
- */
+/** One other device with its own Sign out, so two rows can go at once; a removed row stays
+ * mounted, like BlockedPage's. */
 function OtherDeviceRow({
   session,
   removed,

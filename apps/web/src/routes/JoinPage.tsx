@@ -12,11 +12,10 @@ import { useDelayed } from '@/lib/useDelayed';
 
 class OpenFailed extends Data.TaggedError('OpenFailed') {}
 
-// The invite check usually answers in a frame or two; the spinner only shows
-// when it is slow, so a fast link never flashes a "Checking…" state (WUX-18).
+// The invite check usually answers in a frame or two; the spinner only shows after 400 ms,
+// so a fast link never flashes a checking state.
 const INVITE_CHECKING_DELAY_MS = 400;
 
-/** The centered empty area that becomes a delayed spinner once the check drags. */
 function JoinChecking() {
   const slow = useDelayed(true, INVITE_CHECKING_DELAY_MS) === true;
   return (
@@ -30,7 +29,6 @@ type LoadedPreview =
   | { readonly state: 'ready'; readonly preview: JoinPreview }
   | { readonly state: 'invalid'; readonly preview: undefined };
 
-// Any failure of the preview call means the link is not valid.
 const loadPreview = (token: string): Effect.Effect<LoadedPreview> =>
   fromApi(() => previewJoinLink(token)).pipe(
     Effect.map((preview): LoadedPreview => ({ state: 'ready', preview })),
@@ -39,26 +37,10 @@ const loadPreview = (token: string): Effect.Effect<LoadedPreview> =>
     ),
   );
 
-/**
- * Join-by-link page (T-0115): `/j/:token`. Shows a preview card (group
- * title, member count) and a Join button. A signed-out visitor is sent to
- * the login with `next=/j/<token>` and returns here after sign-in; a
- * signed-in user without a display name sees the name gate inline and joins
- * only after choosing a name (joining nameless would plant a blank member
- * row in the group). After joining (or when the preview already reports
- * membership) the page opens the group chat `/c/<groupId>` — the General
- * chat uses the group id. The preview carries `groupId` only for members,
- * so the stranded-join fallback below navigates to `/` when the list has
- * not refreshed yet.
- *
- * T-0124: the same page joins channels ("Join channel" wording comes from
- * `kind` in the preview — see `joinPreviewSchema`); a channel preview
- * counts subscribers.
- *
- * `openGroupChat`/`refreshChats` are injected by the app shell (the route
- * tests pass stubs); the real `AppRoutes` wires the store, which resolves
- * the General chat id from the painted list.
- */
+/** Join-by-link page: a preview card and a Join button. A signed-out visitor goes to login
+ * with next=/j/<token>. A signed-in user without a name joins only after choosing one, or
+ * the group gets a blank member row; then the page opens the group chat. A channel preview
+ * counts subscribers and the wording comes from its kind. */
 export function JoinPage({
   openGroupChat = () => Promise.resolve(undefined),
   refreshChats = () => {},
@@ -70,9 +52,8 @@ export function JoinPage({
   const auth = useAuth();
   const navigate = useNavigate();
 
-  // The preview loads once the session is known and signed in. Until then
-  // (and for a guest, who sees the sign-in card) the query never answers, so
-  // the state stays 'checking'. A failed preview is 'invalid'.
+  // The preview loads once the session is known and signed in; until then the state stays
+  // checking, and a failed preview is invalid.
   const [previewResult] = useQuery(
     () =>
       token === undefined || auth.status !== 'authenticated' ? Effect.never : loadPreview(token),
@@ -81,10 +62,8 @@ export function JoinPage({
   const loaded = AsyncResult.isSuccess(previewResult) ? previewResult.value : undefined;
   const preview = loaded?.preview;
 
-  // Opens the group chat for a group id: resolves the General chat (the
-  // General chat id is the group id) from the painted list first, so the
-  // new membership had a chance to arrive; falls back to `/` when the
-  // list has not refreshed yet.
+  // Opens the group chat by group id: resolves General from the painted list first, so the
+  // new membership had a chance to arrive; falls back to / when it has not.
   const openGroupEffect = (groupId: string): Effect.Effect<void, OpenFailed> =>
     Effect.try({ try: refreshChats, catch: () => new OpenFailed() }).pipe(
       Effect.andThen(
@@ -101,7 +80,6 @@ export function JoinPage({
       ),
     );
 
-  // "Already a member" opens the group without touching the Join state.
   const [, openGroup] = useAction((groupId: string) => openGroupEffect(groupId));
   const [joinState, runJoin] = useAction((joinToken: string) =>
     fromApi(() => joinByLink(joinToken)).pipe(
@@ -150,10 +128,8 @@ export function JoinPage({
     );
   }
 
-  // A signed-in user without a display name must pick one before joining:
-  // the join would otherwise plant a blank member row in the group. The
-  // gate is inline (not a redirect), so the loaded preview survives the
-  // name step and the token never leaves the page.
+  // A name is required first, or the join plants a blank member row. The gate is inline, so
+  // the loaded preview survives it and the token never leaves the page.
   const needsName = (auth.user?.name ?? '').trim() === '';
 
   if (state === 'checking') {
@@ -182,7 +158,6 @@ export function JoinPage({
     if (busy || preview === undefined || needsName) {
       return;
     }
-    // Already a member: just open the group.
     if (preview.alreadyMember) {
       if (preview.groupId === undefined) {
         navigate('/', { replace: true });

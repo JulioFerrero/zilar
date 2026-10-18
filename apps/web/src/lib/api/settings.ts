@@ -10,16 +10,10 @@ import { struct } from '@zilar/protocol';
 import { callApi } from '@/lib/effect/api-client';
 import { request, uploadBytes } from './http';
 
-// --- Integrations settings (T-0162 + Email follow-up) ----------------------
-// The server owner's key shelf: the Telegram bot token (sticker import)
-// and the sign-in mail sender + Resend key. The token and the key are
-// never returned by the server, not even masked — only `configured` and
-// `source` say whether one is set.
+// The Telegram bot token and the sign-in mail key are never returned, not even masked;
+// only configured and source say whether one is set.
 
-// The schemas and endpoints live in `@zilar/api-contract` (`integrations.ts`,
-// T-0895); these are thin wrappers over the derived client. The contract
-// encodes the trimmed form, so the secrets are trimmed before sending (the
-// server trimmed them anyway).
+// The contract encodes the trimmed form, so secrets are trimmed before sending.
 export type { IntegrationsStatus };
 
 export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
@@ -53,11 +47,8 @@ export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<
   );
 }
 
-// --- Voice transcripts (T-0170) --------------------------------------------
-// Transcription is off by default and configured by the server owner (an
-// OpenAI-compatible endpoint); the web shows "Show transcript" on voice
-// messages only while the server says it is enabled. The per-session cache
-// in `VoiceMessage` keeps a tap from refetching; the server caches per URL.
+// Transcription is off by default and configured by the server owner; the web offers it only
+// while the server says it is enabled.
 export interface SaveVoiceTranscriptionInput {
   baseUrl: string;
   apiKey?: string | undefined;
@@ -90,9 +81,6 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
   await callApi((client) => client.voiceTranscription.removeSettings());
 }
 
-// --- Audit log (T-0079, T-0084) --------------------------------------------
-// The wire contract lives in apps/server/src/audit/api.ts and service.ts.
-
 export type { PublicAuditEntry };
 
 export interface ListAuditPage {
@@ -100,10 +88,8 @@ export interface ListAuditPage {
   next: string | null;
 }
 
-// T-0086: the audit endpoint answers one of `?aiId=…` or `?groupId=…`, never
-// both, and the server answers 400 otherwise. The discriminated union makes
-// "exactly one of the two keys" a compile error: passing both or neither
-// fails type-checking.
+// The server answers exactly one of ?aiId= or ?groupId= and 400 otherwise; the union makes
+// both or neither a compile error.
 export type AuditScope =
   { aiId: string; groupId?: undefined } | { groupId: string; aiId?: undefined };
 
@@ -129,12 +115,8 @@ export async function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
   return { entries: [...page.entries], next: page.next };
 }
 
-// --- First-run setup (T-0161) ------------------------------------------------
-// A fresh server has no users: whoever opens it first finishes the setup
-// screen (Resend key + admin email) and becomes the first admin by
-// completing the emailed sign-in code. The invite code stays in memory in
-// the setup page (never in storage, URL or logs) and rides the sign-up
-// request itself.
+// A fresh server's first visitor finishes setup (Resend key + admin email) and becomes the
+// first admin. The invite code stays in memory (never storage, URL or logs).
 
 const setupStatusSchema = struct({
   needsSetup: Schema.Boolean,
@@ -168,12 +150,8 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
   });
 }
 
-// --- Avatars (T-0165) ------------------------------------------------------
-// Profile pictures for people, AIs, groups and channels. The browser crops
-// and resizes (see `AvatarUploader`); the client uploads the raw bytes and
-// the server validates by magic bytes (static WebP/PNG only, square,
-// 64–512 px, ≤ 256 KB). The response carries the new `url`
-// (`/api/avatars/<id>`), which every list route also serves as `avatarUrl`.
+// The client uploads cropped raw bytes and the server validates by magic bytes (static
+// WebP/PNG, square, 64–512 px, ≤ 256 KB); the reply's url is /api/avatars/<id>.
 const avatarUrlSchema = struct({ url: Schema.String });
 
 export function uploadAvatar(
@@ -195,17 +173,10 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
   });
 }
 
-// --- Chat background images (T-0464) ---------------------------------------
-// Personal wallpapers for the chat background dialog. The client resizes and
-// re-encodes before upload (`lib/background-image.ts`); the server validates
-// by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
-// The schemas live in `@zilar/api-contract` (`backgrounds.ts`, T-0895). The
-// upload stays outside the derived client: it posts raw image bytes.
+// The client resizes and re-encodes before upload; the server validates by magic bytes
+// (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user) and the upload posts raw bytes.
 export type { BackgroundImage, BackgroundListItem };
 
-// A raw-body upload with a mock branch, `apiErrorFromBody` on failure and an
-// Effect Schema parse of the reply, shared with the avatar and sticker
-// uploads through `uploadBytes`.
 export function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   return uploadBytes('POST', '/backgrounds', blob, BackgroundImageSchema);
 }

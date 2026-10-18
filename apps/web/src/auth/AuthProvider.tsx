@@ -14,7 +14,6 @@ export interface AuthUser {
   name: string;
   email: string;
   handle?: string | null | undefined;
-  /** T-0165: the caller's own picture, when set. */
   avatarUrl?: string | undefined;
 }
 
@@ -26,12 +25,11 @@ export interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-// The last user the session check confirmed, kept in `sessionStorage` so a
-// reload while the server is down opens the app instead of `/login` (T-1304).
+// The last user the session check confirmed, kept in sessionStorage, so a reload
+// while the server is down opens the app instead of /login.
 const LAST_USER_KEY = 'zilar:lastUser';
 
-// Only the identity fields are remembered: the handle and picture come from
-// `GET /api/me` and are unknown while the server is unreachable.
+// Only identity fields are remembered: the handle and picture come from GET /api/me.
 const storedUserSchema = struct({
   id: Schema.String,
   name: Schema.String,
@@ -82,11 +80,8 @@ function isOnLoginPage(): boolean {
   }
 }
 
-// The remembered user keeps the chats open while the server is down; the login
-// page has no session to keep. A deliberate sign-out lands there even when its
-// `authClient.signOut()` call failed — the store's `goToLogin` reloads the page
-// — so the cache must not survive it (T-1304). Starting on the login page with
-// the cached user would make `LoginPage` redirect straight back into the app.
+// A deliberate sign-out lands on the login page even when its signOut call failed,
+// so the cache must not survive it: with the cached user, LoginPage redirects back in.
 function rememberedUserAtMount(): AuthUser | undefined {
   if (isOnLoginPage()) {
     clearStoredUser();
@@ -95,7 +90,7 @@ function rememberedUserAtMount(): AuthUser | undefined {
   return readStoredUser();
 }
 
-/** The first session retry waits 1 s; each one doubles, capped at 30 s (T-1304). */
+/** The first session retry waits 1 s; each one doubles, capped at 30 s. */
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 
@@ -107,18 +102,12 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   const { data, isPending, error, refetch } = authClient.useSession();
   const user = data?.user;
   const userId = user?.id;
-  // T-0163: the handle lives on `GET /api/me` (Better Auth's session user
-  // has no handle field), fetched lazily once the session exists. While it
-  // is loading — and if the fetch fails — `handle` stays `undefined` so the
-  // gate does not redirect: a failed `GET /me` must not mean "no handle".
-  // T-0165: the own picture rides the same fetch.
+  // The handle lives on GET /api/me, fetched lazily once the session exists. While it
+  // loads — or if the fetch fails — it stays undefined: no handle is not no handle.
   const [handle, setHandle] = useState<string | null | undefined>(undefined);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
-  // The last user the session check confirmed, in memory plus sessionStorage.
   const [knownUser, setKnownUser] = useState<AuthUser | undefined>(() => rememberedUserAtMount());
-  // The fetch is a query keyed on the user id: a new id or an unmount
-  // interrupts it, so a late answer never lands. A failure is ignored
-  // (failure keeps `handle` undefined — see above).
+  // Keyed on the user id: a new id or an unmount interrupts the fetch, so a late answer never lands.
   useQuery(
     () =>
       userId === undefined
@@ -135,14 +124,12 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     [userId],
   );
   const sessionError = error ?? null;
-  // A session check that fails without a 401 is a transient outage (5xx,
-  // timeout, offline), never a sign-out (T-1304).
+  // A session check that fails without a 401 is a transient outage, never a sign-out.
   const transientError = sessionError !== null && sessionError.status !== 401;
   const isGuest = user === undefined && !isPending && !transientError;
 
-  // Remember the confirmed user in memory and sessionStorage, and drop it on a
-  // real sign-out, so a reload while the server is down stays signed in. The
-  // writes ride a query's Effect, never a synchronous setState in an effect.
+  // Remember the confirmed user and drop it on a real sign-out, so a reload while the
+  // server is down stays signed in. The writes ride a query's Effect, never a setState.
   useQuery(() => {
     if (user !== undefined) {
       const next: AuthUser = { id: user.id, name: user.name ?? '', email: user.email };
@@ -160,10 +147,8 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     return Effect.void;
   }, [userId, user?.name, user?.email, isGuest]);
 
-  // A transient session failure retries `refetch` with the same backoff, so the
-  // app comes back on its own and never falls back to `/login` (T-1304). Only
-  // while no session data is known: with `data` intact, better-auth already
-  // keeps the previous user.
+  // A transient failure retries refetch with the same backoff, so the app comes back on
+  // its own. Only while no session data is known: with data intact, better-auth keeps it.
   const refetchRef = useRef(refetch);
   useEffect(() => {
     refetchRef.current = refetch;
@@ -177,9 +162,7 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     let attempt = 0;
     const schedule = (): void => {
       timer = setTimeout(() => {
-        // `refetch` is better-auth's `fetchSession`, which resolves to `void`
-        // and never rejects (the session atom catches the fetch error), so the
-        // `.finally()` below cannot become an unhandled rejection.
+        // refetch never rejects, so this .finally() cannot become an unhandled rejection.
         void refetchRef.current().finally(() => {
           if (!cancelled) {
             attempt += 1;
@@ -201,8 +184,7 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     runWeb(
       fromApi(() => getMe()).pipe(
         Effect.orElseSucceed(() => null),
-        // A failed refetch keeps the previous handle: failure is not
-        // absence (see the query above).
+        // A failed refetch keeps the previous handle: failure is not absence.
         Effect.tap((me) =>
           me === null
             ? Effect.void
@@ -230,8 +212,7 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   if (liveUser !== undefined) {
     state = { status: 'authenticated', user: liveUser, refetch: refetchUser };
   } else if (transientError) {
-    // Keep the app: the last known user renders, otherwise keep loading. A
-    // server that is merely down never becomes `/login` (T-1304).
+    // A server that is merely down never becomes /login.
     state =
       knownUser !== undefined
         ? { status: 'authenticated', user: knownUser, refetch: refetchUser }
@@ -245,10 +226,8 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }
 
-/**
- * Mock mode needs no session server (T-0069): report the fixed user the mock
- * store uses, so RequireAuth lets the app through without Better Auth.
- */
+/** Mock mode needs no session server: report the fixed user the mock store uses, so
+ * RequireAuth lets the app through without Better Auth. */
 function MockAuthProvider({ children }: { children: ReactNode }) {
   const [state] = useState<AuthState>(() => ({
     status: 'authenticated',
@@ -264,8 +243,7 @@ export function AuthProvider({ children, value }: { children: ReactNode; value?:
   if (value !== undefined) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
   }
-  // The build-time condition (the same as `resolveMockMode` accepts) is inline,
-  // so Vite folds the mock provider and mock/ids out of a production build.
+  // Inline build-time condition, so Vite folds the mock provider and mock ids out of production.
   if (
     (import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.VITE_MOCK === '1') &&
     isMockMode()

@@ -1,7 +1,3 @@
-// The web bindings of the store lifecycle. `start`, `stop` and the chat list
-// retry now live in `@zilar/client-core/store`; this file keeps the web-only
-// adapter code (the cached paint, `pagehide`, the boot state write and
-// sign-out) and binds the core to web's `StoreCtx`.
 import { Effect } from 'effect';
 import {
   reset,
@@ -40,21 +36,15 @@ import { prefsByJid, fromPromise } from './util';
 
 export { CONNECT_RETRY_DELAYS_MS, readLastRead } from '@zilar/client-core/store';
 
-/** Opens a session, paints the cached list and boots (R9: idempotent). */
 export const startStore = (ctx: StoreCtx): Effect.Effect<void> => coreStartStore(ctx);
 
-/** The chat list "retry": a fresh session boots again. */
 export const retryBoot = (ctx: StoreCtx): Effect.Effect<void> => coreRetryBoot(ctx);
 
-/** Closes the store Scope; the message ledger stays (R10). */
+/** Closes the store Scope; the message ledger stays. */
 export const stopStore = (ctx: StoreCtx): Effect.Effect<void> => coreStopStore(ctx);
 
-/**
- * Clears every piece of per-user state: the store session, the message ledger,
- * the caches and the sign-in gate dismissals. `signOutStore` calls it on the
- * way out, and `switchUser` calls it when a different account signs in, so the
- * previous account's chats and per-message caches cannot leak into the new one.
- */
+/** Clears every piece of per-user state: the session, the ledger, the caches and the handle
+ * dismissals, so one account's chats and caches cannot leak into the next. */
 export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
     const { storage } = yield* Ports;
@@ -66,18 +56,14 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     clearEmojiRecents(storage);
     clearMessageCache(storage);
     resetIsServerOwnerCache();
-    // A new sign-in is a new session for the handle gate: clear every
-    // dismissal so the next user is asked again.
+    // A new sign-in is a new session for the handle gate: clear every dismissal.
     resetHandleGateDismissal();
     ctx.cachedUserId = undefined;
-    // A new sign-in is a new user for the push handle too (T-1152): the stored
-    // device belongs to the previous account's server row, so the next account
-    // must re-register instead of re-enabling it. A blocked storage reads as
-    // none either way, and clearing never blocks the reset.
+    // The stored push device belongs to the previous account's server row, so the next
+    // account must re-register instead of re-enabling it; a blocked storage reads as none.
     yield* Effect.try(() => writeStoredDevice(null)).pipe(Effect.ignore);
     const lastReadUserId = ctx.lastReadUserId;
     if (storage !== null && lastReadUserId !== undefined) {
-      // Ignore storage failures on the way out.
       yield* Effect.try(() => storage.removeItem(`${LAST_READ_PREFIX}${lastReadUserId}`)).pipe(
         Effect.ignore,
       );
@@ -108,33 +94,26 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     });
     ctx.groupMembers.clear();
     ctx.groupInfos.clear();
-    // Every id the ledger knows is user scoped too: a message's author,
-    // origin id, base text, alias chain and server-id link must not survive
-    // into the next sign-in. `reset()` clears them all; the manual clears only
-    // covered three maps and missed the alias and server-id ones (UI-13).
+    // Every id the ledger knows is user scoped: an author, origin id, text, alias chain and
+    // server-id link must not survive into the next sign-in, so reset() clears them all.
     ctx.k.reset();
   });
 
 export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
     const { goToLogin } = yield* Ports;
-    // The stored pair outlives the session otherwise (T-1152): disable it
-    // before the store disconnects, best effort with the 2 s timeout inside.
+    // The stored pair outlives the session otherwise, so disable it before the disconnect.
     yield* Effect.promise(() =>
       Effect.runPromise(
         disableSessionPush({ setPushPair: (input) => ctx.get().setPushPair(input) }),
       ),
     ).pipe(Effect.ignore);
     yield* resetUserState(ctx);
-    // The app still clears local state even if sign-out fails.
     yield* fromPromise(() => authClient.signOut()).pipe(Effect.ignore);
     goToLogin();
   });
 
-// --- Adapter code: the web-only parts of the lifecycle the core calls back. ---
-
-// One pending throttled write per store. A sign-out drops it, so it can never
-// recreate the key after the reset removed it.
+// One pending throttled write per store; a sign-out drops it so it cannot recreate the key.
 const messageSaveTimers = new WeakMap<StoreCtx, ReturnType<typeof setTimeout>>();
 
 function cancelScheduledMessageSave(ctx: StoreCtx): void {
@@ -145,7 +124,6 @@ function cancelScheduledMessageSave(ctx: StoreCtx): void {
   }
 }
 
-/** Writes the message cache now (`pagehide`) and drops any pending write. */
 export function saveMessages(ctx: StoreCtx): void {
   cancelScheduledMessageSave(ctx);
   const state = ctx.get();
@@ -158,7 +136,6 @@ export function saveMessages(ctx: StoreCtx): void {
   );
 }
 
-/** Schedules one write about 2 s after the last message change. */
 export function scheduleMessageSave(ctx: StoreCtx): void {
   const state = ctx.get();
   if (state.currentUserId === '' || typeof window === 'undefined') {
@@ -172,7 +149,6 @@ export function scheduleMessageSave(ctx: StoreCtx): void {
   messageSaveTimers.set(ctx, timer);
 }
 
-/** Paints the cached list and arms `pagehide`, once per store. */
 export function prepareStart(ctx: StoreCtx): void {
   const { storage } = ctx.ports;
   if (ctx.get().chats.length === 0) {
@@ -180,19 +156,16 @@ export function prepareStart(ctx: StoreCtx): void {
     if (cached === null) {
       ctx.set({ chatsState: 'loading' });
     } else {
-      // Paint the last list at once; boot replaces it with fresh data.
       ctx.cachedUserId = cached.userId;
       ctx.set({ chats: cached.chats, chatsState: 'ready' });
-      // Then the open chat's last rows, so it is not empty until XMPP
-      // connects. The history page merges over them in place.
+      // Then the open chat's last rows, so it is not empty until XMPP connects.
       const cachedMessages = readMessageCache(storage, cached.userId);
       if (Object.keys(cachedMessages).length > 0) {
         ctx.set((state) => ({
           messagesByChat: { ...state.messagesByChat, ...cachedMessages },
         }));
       }
-      // The cached pins paint the banner with the first frame; the pin load on
-      // open still replaces them. A chat that already has pins keeps them.
+      // The cached pins paint the banner with the first frame; the pin load on open replaces them.
       const cachedPins = readCachedPins(storage, cached.userId);
       const missingPins = Object.fromEntries(
         Object.entries(cachedPins).filter(
@@ -216,7 +189,6 @@ export function prepareStart(ctx: StoreCtx): void {
   }
 }
 
-/** Writes the boot result into web's own state. */
 export function applyBoot(ctx: StoreCtx, input: BootInput): void {
   const prefs = input.prefs as ChatPref[];
   ctx.set({
@@ -233,28 +205,23 @@ export function applyBoot(ctx: StoreCtx, input: BootInput): void {
   });
 }
 
-/** Clears web's per-session state on `stop()`. */
 export function applyStop(ctx: StoreCtx): void {
   ctx.set({ defaultBackground: null, mediaTrustedHosts: undefined });
   ctx.sendRuns.clear();
 }
 
-/** Records the group id of every chat row (web's `rememberGroupIds`). */
 export function rememberGroupIds(ctx: StoreCtx, entries: readonly unknown[]): void {
   ctx.k.rememberGroupIds(entries as Parameters<typeof ctx.k.rememberGroupIds>[0]);
 }
 
-/** Re-fetches the chat list now. */
 export function refreshChatsNow(ctx: StoreCtx): void {
   ctx.rt.fork(refreshChats(ctx));
 }
 
-/** Refreshes the open chat's pins now. */
 export function refreshActiveChatPinsNow(ctx: StoreCtx, chatId: string): void {
   ctx.rt.fork(refreshPinsFor(ctx, chatId));
 }
 
-/** Joins new group rooms and loads their members; resolves when the joins are done. */
 export function joinGroupsNow(
   ctx: StoreCtx,
   core: XmppCore,

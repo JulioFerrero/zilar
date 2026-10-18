@@ -1,20 +1,13 @@
 import { Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
 
-/** How long a PDF's `blob:` URL stays alive after its tab opens. */
+/** How long a PDF's blob: URL stays alive after its tab opens. */
 const OBJECT_URL_TTL_MS = 60_000;
 
-/**
- * Fetches `url` with the session's cookies and opens the bytes in a new tab as
- * an `application/pdf` `blob:` URL, so the browser's own PDF viewer renders
- * them. The server keeps serving every file as an attachment (SEC-1); only the
- * client-side blob turns it into a viewer.
- *
- * Resolves to false when the fetch did not answer 2xx or the browser refused
- * the tab (a popup blocker), so the caller can download the file instead. Only
- * call this for a PDF: forcing the `application/pdf` blob type would otherwise
- * mask the real type of an active file (HTML, SVG).
- */
+/** Fetches with the session's cookies and opens the bytes as an application/pdf blob: URL,
+ * so the browser's PDF viewer renders them (the server always serves attachments). Resolves
+ * false when the fetch or the tab fails. Only for PDFs: forcing the type would mask an
+ * active HTML or SVG file. */
 const openPdfTab = Effect.fnUntraced(function* (url: string): Effect.fn.Return<boolean, unknown> {
   const response = yield* Effect.tryPromise({
     try: () => fetch(url, { credentials: 'same-origin' }),
@@ -38,11 +31,7 @@ const openPdfTab = Effect.fnUntraced(function* (url: string): Effect.fn.Return<b
   return true;
 });
 
-/**
- * Opens a PDF in a new tab, falling back to a download when the tab or the
- * fetch fails. `onSettled` runs once the attempt is over, so the bubble can
- * stop its spinner. Fire-and-forget: the caller has nothing to await.
- */
+/** Falls back to a download when the tab or the fetch fails; onSettled runs once either way. */
 export function openPdfInNewTab(url: string, name: string, onSettled?: () => void): void {
   void runWeb(openPdfTab(url).pipe(Effect.orElseSucceed(() => false))).then(
     (didOpen) => {
@@ -55,11 +44,7 @@ export function openPdfInNewTab(url: string, name: string, onSettled?: () => voi
   );
 }
 
-/**
- * Saves `url` under `name` by clicking a temporary `<a download>`, the same
- * path the old link used. The server's `content-disposition: attachment` does
- * the real work; the attribute only names the saved file.
- */
+/** The server's content-disposition: attachment does the real work; the attribute only names the file. */
 export function downloadFile(url: string, name: string): void {
   const link = document.createElement('a');
   link.href = url;

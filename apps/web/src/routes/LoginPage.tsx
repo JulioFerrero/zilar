@@ -7,20 +7,15 @@ import { getSetupStatus } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
 
-/**
- * Sign-in, with a detour while the server still needs its first-run
- * setup: a fresh server has no users, so the form would be unusable —
- * show a "Finish setting up this server" link to `/setup` instead.
- */
+/** Sign-in, with a detour while the server still needs its first-run setup: the form would
+ * be unusable with no users, so it links to /setup instead. */
 export function LoginPage() {
   const auth = useAuth();
-  // While the status loads, and if it fails, the sign-in form shows.
   const [setupState] = useQuery(() => fromApi(() => getSetupStatus()), []);
   const needsSetup = AsyncResult.isSuccess(setupState) && setupState.value.needsSetup;
 
-  // A signed-in person never sees the form: signing in as someone else needs
-  // a sign-out first, as in Telegram (T-1136). While the status loads the form
-  // stays, so a session restore does not flash a redirect.
+  // A signed-in person never sees the form: signing in as someone else needs a sign-out
+  // first. While the status loads the form stays, so a session restore does not flash.
   if (auth.status === 'authenticated') {
     return <Navigate to="/" replace />;
   }

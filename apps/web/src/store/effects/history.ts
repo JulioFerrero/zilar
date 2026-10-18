@@ -1,6 +1,3 @@
-// The chat list refresh and opening a chat. History itself (previews, the
-// first page, older pages, opening at a message) is in
-// `@zilar/client-core/store`; it is re-exported here for the web modules.
 import { Effect } from 'effect';
 import type { UiMessage } from '@zilar/chat-core';
 import {
@@ -35,11 +32,8 @@ export {
 /** No ids: the stable empty set the reveal reader returns when a chat has none. */
 const NO_REVEALS: ReadonlySet<string> = new Set();
 
-// Jump targets the list must grow its window to include before it scrolls. A
-// search hit, a pin or a reply quote loads the message (openAtMessage); the
-// list renders only its newest window, so the target is recorded here and the
-// window hook (`useMessageWindow`) subscribes and grows to include it. Ids only,
-// chat-keyed, dropped once the list has scrolled to them.
+// Jump targets the list must grow its window to include before it scrolls. The list renders
+// only its newest window, so a target is recorded here and useMessageWindow grows to it.
 const revealTargets = new Map<string, ReadonlySet<string>>();
 const revealListeners = new Set<() => void>();
 
@@ -80,11 +74,8 @@ export function subscribeMessageWindowReveals(listener: () => void): () => void 
   };
 }
 
-/**
- * `openAtMessage` plus the window reveal: after the message is loaded, remember
- * it so the list grows its window to include it before the jump scrolls. The
- * Effect contract is unchanged for the store's callers.
- */
+/** openAtMessage plus the window reveal: after the message loads, remember it so the list
+ * grows to include it before the jump scrolls. */
 export const openAtMessage = (
   ctx: StoreCtx,
   chatId: string,
@@ -94,31 +85,24 @@ export const openAtMessage = (
     Effect.tap(() => Effect.sync(() => requestMessageWindowReveal(chatId, messageId))),
   );
 
-/** Makes `chatId` the open chat and starts what it needs: pins, members, history. */
 export function openChat(ctx: StoreCtx, chatId: string): void {
   ctx.set((state) => ({
     activeChatId: chatId,
-    // Opening another chat dismisses the notice (it belongs to the
-    // previous view); reopening the same chat keeps it.
+    // Opening another chat dismisses its notice; reopening the same chat keeps it.
     topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
   }));
-  // PERF-3: the chat just opened is now the active one, so every other chat
-  // drops to its newest KEEP_INACTIVE messages. Ids of pruned messages stay in
-  // the ledger (PERF-13's fix is a separate task).
+  // The chat just opened is now active, so every other chat drops to its newest KEEP_INACTIVE.
   pruneInactiveChats(ctx, chatId);
-  // Navigating away resolves a pending quiet self-archive: the mark exists so
-  // the disappearance refresh moves silently, but leaving first means no
-  // silent move is wanted — a leaked mark would silence a later, unrelated
-  // removal. Drop every mark except one for the chat just opened.
+  // Drop every quiet-archive mark except the one for the chat just opened: a leaked mark
+  // would silence a later, unrelated removal.
   for (const id of ctx.quietArchiveIds) {
     if (id !== chatId) {
       ctx.quietArchiveIds.delete(id);
     }
   }
   recordRead(ctx, chatId, ctx.lastRead[chatId]);
-  // T-1244: opening a chat clears its manual unread mark at once; the pref
-  // write keeps the server (and the mock) in step even when no numeric read
-  // mark can be sent (a fresh device holds no last-read id).
+  // Opening a chat clears its manual unread mark at once; the pref write keeps the server in
+  // step even when no numeric read mark can be sent (a fresh device holds no last-read id).
   const opening = ctx.get().chats.find((entry) => entry.id === chatId);
   if (opening?.unreadMark === true) {
     ctx.set((state) => ({
@@ -137,12 +121,9 @@ export function openChat(ctx: StoreCtx, chatId: string): void {
   ctx.rt.fork(openHistory(ctx, chatId));
 }
 
-/**
- * A group invitation or a roster push means the chat list changed on the
- * server. Refetch it after a short wait, joining any new group rooms and
- * loading their preview. A new push replaces the pending wait; the refresh
- * itself runs in its own fiber, so a later push cannot interrupt it half way.
- */
+/** A roster push means the chat list changed: refetch after a short wait, joining new
+ * rooms and loading previews. A new push replaces the wait; the refresh runs in its own
+ * fiber so a later push cannot interrupt it half way. */
 export function scheduleChatsRefresh(ctx: StoreCtx): void {
   ctx.rt.forkKeyed(
     'chats-refresh',
@@ -156,21 +137,13 @@ export function scheduleChatsRefresh(ctx: StoreCtx): void {
   );
 }
 
-/**
- * The periodic + focus refresh: refetches `/api/chats` so a topic created,
- * made private, or where I was removed appears or disappears without a
- * reload. Failures are silent; the next tick retries.
- */
+/** The periodic and focus refresh: refetches /api/chats so a created or removed topic
+ * appears without a reload. Failures are silent; the next tick retries. */
 export const refreshChats = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
   refreshChatsOrThrow(ctx).pipe(Effect.catchCause(() => Effect.void));
 
-/**
- * The throwing half of `refreshChats`: fetches the list and merges it,
- * reporting fetch failures to the caller. The background callers (poll,
- * focus, roster) swallow them and retry on the next tick; the row re-check
- * (`refreshTopicRow`) lets them throw instead of reading a stale list as
- * "alive".
- */
+/** The throwing half of refreshChats: fetch and merge, reporting failures. Background
+ * callers swallow them; refreshTopicRow lets them throw instead of reading a stale list. */
 export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api, now } = yield* Ports;
@@ -181,10 +154,8 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
       { concurrency: 'unbounded' },
     );
     if (ctx.rt.session() !== session) {
-      // A newer `start()`/`stop()` superseded this refresh (boot, retry,
-      // sign-out): the list below is stale, so say so instead of merging it —
-      // the caller (`refreshTopicRow`) rejects rather than read stale state
-      // as "topic alive".
+      // A newer start()/stop() superseded this refresh: fail instead of merging a stale list,
+      // so refreshTopicRow cannot read an old state as topic alive.
       return yield* Effect.fail(
         new ApiError(0, 'stale_refresh', 'The chat list refresh was superseded'),
       );
@@ -194,13 +165,11 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
     const known = new Map(previous.map((chat) => [chat.id, chat]));
     const activeChatId = ctx.get().activeChatId;
     const freshRows = entries.flatMap((entry) => summariesFor(entry));
-    // T-1238: confirm the newest preview of every row and apply the delivered
-    // mark the server reports to our own loaded messages.
+    // Confirm the newest preview of every row and apply the delivered mark the server reports.
     for (const row of freshRows) {
       applyChatDelivery(ctx, row);
     }
-    // T-2035: a failed prefs read keeps the last rows, so pins, mutes and
-    // archives survive instead of being wiped until the next good refresh.
+    // A failed prefs read keeps the last rows, so pins, mutes and archives survive.
     const prefs =
       loadedPrefs._tag === 'Some' ? loadedPrefs.value : Object.values(ctx.get().chatPrefs);
     ctx.set({
@@ -208,22 +177,15 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
       ...(loadedPrefs._tag === 'Some' ? { chatPrefs: prefsByJid(prefs) } : {}),
     });
     k.rememberGroupIds(entries);
-    // A topic that disappeared while open (made private, archived, or I was
-    // removed) navigates to the group's General topic with a short notice —
-    // unless the disappearance was just caused by this client on purpose
-    // (e.g. archiving the open topic from its own header): ids in
-    // `quietArchiveIds` move silently.
+    // A topic that disappeared while open navigates to General with a short notice — unless
+    // this client caused it (e.g. archiving from its own header): those move silently.
     const openChatRow =
       activeChatId === undefined
         ? undefined
         : ctx.get().chats.find((chat) => chat.id === activeChatId);
     if (activeChatId !== undefined && openChatRow === undefined) {
-      // A deliberate self-archive moves silently: consume the quiet mark
-      // while resolving this disappearance, whichever branch handles it.
-      // Deleting only inside the General branch leaks the id when General
-      // is absent — or when `applyTopicRow` already dropped the row, so
-      // `was` below is undefined — and the leaked mark would silence a
-      // later, unrelated removal.
+      // Consume the quiet mark in whichever branch handles the disappearance: deleting it only
+      // inside the General branch leaks the id and would silence a later removal.
       const quiet = ctx.quietArchiveIds.has(activeChatId);
       ctx.quietArchiveIds.delete(activeChatId);
       const was = previous.find((chat) => chat.id === activeChatId);

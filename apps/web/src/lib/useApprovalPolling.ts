@@ -13,22 +13,17 @@ export type ApprovalPollingState =
 
 export interface ApprovalPollingResult {
   state: ApprovalPollingState;
-  /**
-   * Push an optimistic state in. The card uses this after a decision so the
-   * buttons vanish at once instead of waiting for the next poll. The next
-   * poll confirms (or corrects) the value.
-   */
+  /** Push an optimistic state in after a decision so the buttons vanish at once; the
+   * next poll confirms or corrects it. */
   apply: (next: ApprovalPollingState) => void;
 }
 
 /** The poll cadence while the card is open and the tab is visible. */
 export const APPROVAL_POLL_INTERVAL_MS = 10_000;
 
-/** A function seam so they can be swapped in tests without touching the DOM. */
+/** A function seam so it can be swapped in tests without touching the DOM. */
 export interface VisibilitySource {
-  /** Tells whether the page is currently visible. */
   isVisible: () => boolean;
-  /** Calls `onVisible` whenever the page becomes visible. Returns an unsubscribe. */
   subscribe: (onVisible: () => void) => () => void;
 }
 
@@ -49,11 +44,7 @@ const defaultVisibility: VisibilitySource = {
   },
 };
 
-/**
- * Kept so existing callers and tests that pass a timer seam still typecheck.
- * The poll no longer reads it: the cadence comes from Effect's `Schedule`, and
- * unmount interrupts it.
- */
+/** Kept so callers that pass a timer seam still typecheck; the poll no longer reads it. */
 export interface TimerSource {
   setInterval: (callback: () => void, ms: number) => number;
   clearInterval: (handle: number) => void;
@@ -65,20 +56,16 @@ const defaultNow = (): number => Date.now();
 
 interface UseApprovalPollingOptions {
   visibility?: VisibilitySource;
-  /** Ignored; see `TimerSource`. */
+  /** Ignored; see TimerSource. */
   timers?: TimerSource;
-  /** Overrides `Date.now()` for deterministic expiry checks. */
+  /** Overrides Date.now() for deterministic expiry checks. */
   now?: () => number;
-  /**
-   * Bump to force the hook to drop its current state and re-fetch from the
-   * start. The card uses this on a manual retry after a hard error.
-   */
+  /** Bump to force the hook to drop its state and re-fetch; the card uses it on a retry. */
   resetKey?: number;
 }
 
-// Two ready states are "the same" when the id, the human-meaningful status
-// and the decidedAt haven't changed. Other fields (summary, expiresAt, …)
-// can shift without changing what the card shows.
+// Two ready states are the same when the id, the status and the decidedAt have not changed;
+// the other fields can shift without changing what the card shows.
 function sameReady(left: ApprovalPollingState, right: ApprovalPollingState): boolean {
   if (left.kind !== 'ready' || right.kind !== 'ready') {
     return false;
@@ -90,21 +77,9 @@ function sameReady(left: ApprovalPollingState, right: ApprovalPollingState): boo
   );
 }
 
-/**
- * Loads `request.id` and re-reads it on a fixed cadence while it is still
- * `pending`, the page is visible, and the request has not passed its
- * `expires_at`. The state stops polling on a non-pending status, a 404 (the
- * viewer cannot decide), the unmount, an id change, and an expiry that flips
- * the last read to `expired`. A failed poll keeps the last good state.
- *
- * The poll runs as Effects: a repeat on `Schedule.fixed`, plus one read when
- * the tab becomes visible again. Unmount, an id change or a reset key
- * interrupts both. `apply` lets callers push an optimistic state (e.g. after
- * a decision) without waiting for the next poll. The effect does not call
- * `setState` synchronously; the loading reset on an id change or a
- * `resetKey` bump is derived during render by comparing the previous key
- * against the current one.
- */
+/** Polls request.id while it is pending, the page is visible and it has not expired. Stops on
+ * a non-pending status, a 404 (the viewer cannot decide), unmount, an id change and expiry;
+ * a failed poll keeps the last good state. The effect never calls setState synchronously. */
 export function useApprovalPolling(
   request: ApprovalRequest,
   options: UseApprovalPollingOptions = {},
@@ -113,9 +88,7 @@ export function useApprovalPolling(
   const now = options.now ?? defaultNow;
 
   const [state, setState] = useState<ApprovalPollingState>({ kind: 'loading' });
-  // `latest` is the cell the poll reads; `apply` (called from event handlers)
-  // writes to it as well so an optimistic update short-circuits further polls
-  // without an effect re-run.
+  // The cell the poll reads; apply writes it too, so an optimistic update short-circuits polls.
   const latestRef = useRef<ApprovalPollingState>({ kind: 'loading' });
 
   const apply = useCallback((next: ApprovalPollingState): void => {
@@ -123,12 +96,8 @@ export function useApprovalPolling(
     setState(next);
   }, []);
 
-  // Reset the visible state to `loading` while keeping the reset out of the
-  // effect body: if the id or the reset key changed this render, the previous
-  // render's key is still in `lastKey`, so we drop both. The setState is
-  // called during render, not inside an effect body (the repo's lint forbids
-  // that). The polling ref is reset inside the effect so it stays out of
-  // oxlint's "refs during render" path.
+  // Reset during render (the repo's lint forbids setState in an effect body), comparing the
+  // previous key; the polling ref resets inside the effect to stay out of oxlint's refs path.
   const resetKey = options.resetKey ?? 0;
   const key = `${request.id}#${resetKey}`;
   const [lastKey, setLastKey] = useState<string>(key);
@@ -137,8 +106,7 @@ export function useApprovalPolling(
     setState({ kind: 'loading' });
   }
 
-  // The timed loop and the visibility read are separate runs, so a visibility
-  // read never restarts the loop.
+  // The timed loop and the visibility read are separate runs, so a focus never restarts the loop.
   const [, startLoop, loopControls] = useAction<Effect.Effect<unknown>, unknown, never>(
     (effect) => effect,
     { mode: 'replace' },
@@ -149,12 +117,10 @@ export function useApprovalPolling(
   );
 
   useEffect(() => {
-    // The id or the reset key changed: drop the cached outcome and start
-    // fresh. This runs on the same tick the visible state was reset above.
+    // The id or the reset key changed: drop the cached outcome and start fresh.
     latestRef.current = { kind: 'loading' };
 
-    // One read. It checks the latest state when it runs (Effect.suspend), so
-    // every tick of the loop sees the outcome of the tick before it.
+    // One read that checks the latest state when it runs, so each tick sees the previous one.
     const readOnce = (): Effect.Effect<void> =>
       Effect.suspend(() => {
         const prior = latestRef.current;
@@ -166,8 +132,7 @@ export function useApprovalPolling(
         }
         const requestExpiresAt = new Date(request.expires_at).getTime();
         const expired = now() >= requestExpiresAt;
-        // An expired request that was never ready is still allowed one final
-        // read; otherwise an expired request with no good state is a no-op.
+        // An expired request that was never ready gets one final read; otherwise it is a no-op.
         if (expired && prior.kind !== 'ready' && prior.kind !== 'loading') {
           return Effect.void;
         }
@@ -182,9 +147,8 @@ export function useApprovalPolling(
               return sameReady(prior, next) ? Effect.void : Effect.sync(() => setState(next));
             },
             onFailure: (failure) => {
-              // A 404 means the viewer cannot decide (or the row is gone): stop
-              // polling entirely. Any other failure keeps the last good state so
-              // a transient hiccup never flips a decided card into an error.
+              // A 404 stops polling; any other failure keeps the last good state, so a hiccup
+              // never flips a decided card into an error.
               if (failure.status === 404) {
                 const next: ApprovalPollingState = { kind: 'notDecidable' };
                 latestRef.current = next;
@@ -202,12 +166,10 @@ export function useApprovalPolling(
         );
       });
 
-    // The first read runs right away; then one read per interval while the
-    // tab is visible (each read checks visibility and expiry itself).
+    // The first read runs right away, then one per interval while the tab is visible.
     startLoop(Effect.repeat(readOnce(), Schedule.fixed(APPROVAL_POLL_INTERVAL_MS)));
 
-    // When the tab becomes visible again, do one immediate read so a decision
-    // made on the phone shows up without waiting for the next tick.
+    // When the tab becomes visible again, read once so a phone-side decision shows up.
     const unsubscribeVisibility = visibility.subscribe(() => {
       readNow(readOnce());
     });

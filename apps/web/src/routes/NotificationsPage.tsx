@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
 
-/** Settings → Notifications. Enable on this device, devices, previews, test. */
 export function NotificationsPage() {
   const navigate = useNavigate();
   const {
@@ -35,9 +34,6 @@ export function NotificationsPage() {
 
   const thisDevice =
     storedDevice === null ? undefined : devices.find((entry) => entry.id === storedDevice.id);
-  // The "This device" card names the state in words (T-0153): the support
-  // check already splits unsupported browsers and servers into their own
-  // page states above, so here only permission and registration remain.
   const cardState: 'Enabled' | 'Not enabled' | 'Blocked by the browser' =
     thisDevice !== undefined
       ? 'Enabled'
@@ -57,8 +53,8 @@ export function NotificationsPage() {
       matchMedia: (query) => window.matchMedia(query),
       standalone: (window.navigator as { standalone?: boolean }).standalone,
     });
-  // The device card and the "only while open" card share the device message;
-  // a test failure stays next to the Test button instead.
+  // The device card and the only-while-open card share the device message; a test failure
+  // stays next to the Test button.
   const cardError = errorScope === 'card' && errorMessage !== '';
 
   return (

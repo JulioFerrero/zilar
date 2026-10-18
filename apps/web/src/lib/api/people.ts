@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
+// effect-plain: the promise edge over the Effect client.
 import {
   HANDLE_CHECK_MAX,
   HANDLE_CHECK_MIN,
@@ -13,16 +13,13 @@ import {
 } from '@zilar/api-contract';
 import { callApi } from '@/lib/effect/api-client';
 
-// --- @usernames and contact requests (T-0163) --------------------------------
-// Every person has a unique `@username`. Adding someone by handle sends a
-// contact request the other person must accept. Handles are stored with the
-// typed casing but compared case-insensitively; there is no prefix search.
+// Handles are stored with the typed casing but compared case-insensitively; there is no
+// prefix search.
 
 export type { HandleCheck, HandleCheckReason };
 
-// The server answers a handle outside 1..64 characters with a success body
-// (`invalid`), but the derived client encodes the query before it sends it.
-// So the same answer is given here, without the round trip.
+// An out-of-range handle (1..64) gets the server's success body (invalid); the derived client
+// encodes the query before sending, so the same answer is given here.
 export function checkHandleKind(handle: string, kind?: 'group'): Promise<HandleCheck> {
   if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
     return Promise.resolve({ available: false, reason: 'invalid' });
@@ -55,8 +52,7 @@ export function lookupByHandle(handle: string): Promise<HandleProfile> {
   return callApi((client) => client.contactRequests.byHandle({ params: { handle } }));
 }
 
-// Telegram-style prefix search over `@username` and display name: up to 10
-// people. A leading `@` in `q` is stripped server-side.
+// At most 10 people; a leading @ is stripped server-side.
 export function searchUsers(q: string): Promise<{ entries: HandleProfile[] }> {
   return callApi((client) => client.contactRequests.search({ query: { q } })).then((body) => ({
     entries: [...body.entries],
@@ -94,9 +90,7 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
   return callApi((client) => client.contactRequests.cancel({ params: { id } }));
 }
 
-// --- Blocked people (T-0235) -------------------------------------------------
-// Silent blocking: the blocked person is not told, and their contact
-// requests never reach the blocker. Writes answer `{ blocked: true/false }`,
+// Silent blocking: the blocked person is not told and their requests never reach the blocker;
 // the list answers newest first.
 
 export type { BlockedPerson };

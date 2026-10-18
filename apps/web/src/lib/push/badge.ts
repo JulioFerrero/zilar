@@ -1,15 +1,9 @@
-// The app badge and notification dismissal half of the browser push code
-// (moved out of `@/lib/push` in T-1695): the badge count, the badge update and
-// the dismissal of a chat's notifications. Like `@/lib/push`, everything here
-// only touches browser APIs, read through narrow injectable surfaces so the
-// tests run with fakes.
+// Everything here only touches browser APIs, read through narrow injectable surfaces for tests.
 import { Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
 import type { ServiceWorkerRegistrationLike } from '@/lib/push';
 
-// The app badge shows the total unread excluding muted chats, where the
-// platform supports it. A zero count clears the badge; anything else is a
-// no-op when the API is missing.
+// Shows total unread excluding muted chats; a zero count clears the badge, and a missing API is a no-op.
 export { totalBadgeUnread } from '@zilar/chat-core';
 interface BadgeSurface {
   setAppBadge?: (count: number) => Promise<void>;
@@ -40,8 +34,7 @@ const updateAppBadgeEffect = (
     if (surface === undefined) {
       return Effect.void;
     }
-    // Browsers may reject (e.g. permission revoked after install): the badge
-    // is decoration, never load-bearing.
+    // Browsers may reject (e.g. permission revoked after install): the badge is decoration.
     return Effect.try(() => badgeCall(surface, unread)).pipe(
       Effect.flatMap((pending) =>
         pending === undefined ? Effect.void : Effect.tryPromise(() => pending),
@@ -50,11 +43,8 @@ const updateAppBadgeEffect = (
     );
   });
 
-// Dismisses the push notifications of a chat once it is read in the app.
-// Tags are per-message (see the dismissal contract in `public/sw.js`), so
-// this enumerates all visible notifications and closes the ones whose
-// `data.chatId` matches — filtering by tag would miss every message-tagged
-// notification in production.
+// Tags are per-message, so this enumerates all visible notifications and closes the ones
+// whose data.chatId matches; filtering by tag would miss every message-tagged one.
 export function dismissChatNotifications(
   chatId: string,
   getRegistration?: () => Promise<ServiceWorkerRegistrationLike | undefined>,

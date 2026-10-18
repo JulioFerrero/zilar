@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
 
-/** Settings → Blocked people: who you blocked, with an Unblock per row. */
 export function BlockedPage({ onBack }: { onBack: () => void }) {
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [unblockError, setUnblockError] = useState<string | undefined>(undefined);
@@ -65,12 +64,8 @@ export function BlockedPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-/**
- * One blocked person with its own Unblock action, so two rows can be
- * unblocked at once; a second click on the same row waits for the first.
- * A removed row returns nothing but stays mounted: the refresh after the
- * unblock still runs to the end, and an unmount would cancel it.
- */
+/** One blocked person with its own Unblock, so two rows can be unblocked at once. A removed
+ * row stays mounted: the refresh after the unblock still runs to the end. */
 function BlockedRow({
   person,
   removed,

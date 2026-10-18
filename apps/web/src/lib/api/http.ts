@@ -13,10 +13,7 @@ export { ApiError };
 
 type ResponseSchema<T> = Schema.Codec<T, unknown>;
 
-/**
- * Decodes one response body with an Effect Schema. The decode is
- * non-strict (unknown keys are dropped).
- */
+/** Decodes one response body with an Effect Schema; non-strict, so unknown keys are dropped. */
 export function decodeResponse<T>(
   schema: ResponseSchema<T>,
   raw: unknown,
@@ -25,7 +22,6 @@ export function decodeResponse<T>(
   return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
 }
 
-/** Reads one response: the JSON body or null, then the error or decoded value. */
 async function readResponse<T>(response: Response, schema: ResponseSchema<T>): Promise<T> {
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -45,7 +41,7 @@ export async function request<T>(
 ): Promise<T> {
   let response: Response;
   if (isMockApiEnabled()) {
-    // Standalone mock mode: answer locally, never touch the network (T-0069).
+    // Standalone mock mode: answer locally, never touch the network.
     response = await (await loadMockRequest())(path, init);
   } else {
     try {
@@ -66,11 +62,8 @@ export async function request<T>(
   return readResponse(response, schema);
 }
 
-/**
- * Posts one prepared file as raw bytes (not multipart) and decodes the reply.
- * Shared by the sticker, avatar and background uploads, which used to carry
- * three copies of this block. Extra headers (e.g. `x-emoji`) ride `headers`.
- */
+// Posts one prepared file as raw bytes, not multipart; extra headers (e.g. x-emoji) ride
+// headers.
 export async function uploadBytes<T>(
   method: 'POST' | 'PUT',
   path: string,

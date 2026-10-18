@@ -8,10 +8,7 @@ const decodeStoredList = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Array(Schema.Unknown)),
 );
 
-/**
- * Runs one localStorage step at this sync edge. A blocked or missing storage
- * gives `fallback`, so the list keeps working without it.
- */
+/** A blocked or missing storage gives fallback, so the list keeps working without it. */
 function storageStep<A>(fallback: A, step: (storage: Storage) => A): A {
   return Effect.runSync(
     Effect.try(() => step(window.localStorage)).pipe(Effect.orElseSucceed(() => fallback)),
@@ -37,12 +34,10 @@ function writeSet(key: string, value: Set<string>): void {
   });
 }
 
-/** The group ids whose sidebar section is collapsed (persisted). */
 export function readCollapsedGroups(): Set<string> {
   return readSet(COLLAPSED_KEY);
 }
 
-/** Toggles one group's collapse and persists it. Returns the new set. */
 export function toggleCollapsedGroup(current: Set<string>, groupId: string): Set<string> {
   const next = new Set(current);
   if (next.has(groupId)) {
@@ -54,12 +49,10 @@ export function toggleCollapsedGroup(current: Set<string>, groupId: string): Set
   return next;
 }
 
-/** The `${groupId}` keys whose "Archived" toggle is open (persisted). */
 export function readArchivedOpen(): Set<string> {
   return readSet(ARCHIVED_KEY);
 }
 
-/** Toggles one group's "Archived" section and persists it. */
 export function toggleArchivedOpen(current: Set<string>, groupId: string): Set<string> {
   const next = new Set(current);
   if (next.has(groupId)) {

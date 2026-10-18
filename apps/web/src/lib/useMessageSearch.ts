@@ -22,14 +22,12 @@ interface SearchInput {
   readonly delayMs: number;
 }
 
-/** The state a finished search settles on, with the query it answered. */
 interface SearchSettled {
   readonly query: string;
   readonly state: MessageSearchState;
 }
 
-// One debounced search. A newer search interrupts this one, and the
-// interruption aborts its request through the signal.
+// One debounced search. A newer search interrupts this one and aborts its request.
 const searchEffect = (input: SearchInput): Effect.Effect<SearchSettled> =>
   Effect.sleep(input.delayMs).pipe(
     Effect.andThen(
@@ -58,17 +56,15 @@ const searchEffect = (input: SearchInput): Effect.Effect<SearchSettled> =>
     ),
   );
 
-// Message search over `GET /api/search`: debounced 250 ms, superseded
-// requests cancelled, hidden entirely when the server answers 501
-// (`search_unavailable`). The hook never sends the query text anywhere
-// except the search endpoint.
+// Debounced 250 ms, superseded requests cancelled, hidden when the server answers 501. The
+// hook never sends the query text anywhere except the search endpoint.
 export function useMessageSearch(query: string, chat?: string): MessageSearchState {
   const active = activeQuery(query);
   const lastActive = useRef<string | null>(null);
   const [result, search, controls] = useAction(searchEffect, { mode: 'replace' });
 
-  // Each change of the query text (or the scope) starts a new search, which
-  // interrupts the one before. Only a query change waits out the debounce.
+  // Each change of the query text (or the scope) starts a new search, which interrupts the
+  // one before. Only a query change waits out the debounce.
   useEffect(() => {
     const delayMs = lastActive.current === active ? 0 : MESSAGE_SEARCH_DEBOUNCE_MS;
     lastActive.current = active;
@@ -82,9 +78,8 @@ export function useMessageSearch(query: string, chat?: string): MessageSearchSta
   if (active === null) {
     return { status: 'idle' };
   }
-  // While the debounce runs (or a new query is in flight), the last settled
-  // answer for an older query is not shown. `unavailable` stays until the
-  // server says otherwise.
+  // While a new search settles, the last answer for an older query is not shown; unavailable
+  // stays until the server says otherwise.
   const settled = Option.getOrUndefined(AsyncResult.value(result));
   if (settled?.state.status === 'unavailable') {
     return settled.state;

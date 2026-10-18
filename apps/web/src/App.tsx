@@ -10,13 +10,10 @@ import { ensureServiceWorker, realPushBrowser, useServiceWorkerUpdate } from '@/
 import { runWeb } from '@/lib/effect/runtime';
 
 export function App() {
-  // A new deploy's worker taking over keeps this page on the old bundle until
-  // Reload (T-1435); a first install is not an update (see the hook).
+  // A new deploy's worker keeps this page on the old bundle until Reload; a first install is not an update.
   const serviceWorkerUpdated = useServiceWorkerUpdate();
 
-  // Registers the app service worker once (push + click + offline page).
-  // Idempotent and harmless in dev: it never caches API or app traffic.
-  // A failed registration is ignored, as before.
+  // Idempotent; never caches API or app traffic, and a failed registration is ignored.
   useEffect(() => {
     const browser = realPushBrowser();
     if (browser !== undefined) {

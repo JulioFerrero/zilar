@@ -13,31 +13,18 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
-/**
- * Settings → Integrations (T-0162 + Email follow-up + T-0170 voice
- * transcription). The server owner's key shelf: an Email card (sign-in
- * sender + Resend key), a Telegram card (bot token for sticker import) and
- * a Voice transcription card (OpenAI-compatible endpoint for on-demand
- * voice transcripts). The page is a generic list of
- * integration cards so a GIF provider key can join later (not built now).
- *
- * The page itself is owner-only: `GET /api/settings/integrations` answers
- * the same 404 as an unknown route for anyone else, so a non-owner (or a
- * failed load) sees the owner note instead of the cards. The token and
- * the key are never shown, not even masked.
- */
+/** The server owner's key shelf: Email, Telegram and voice transcription cards. The page is
+ * owner-only (the same 404 as an unknown route otherwise), and the token and the key are
+ * never shown, not even masked. */
 export function IntegrationsPage() {
   const navigate = useNavigate();
   const [loaded, refresh] = useQuery(() => fromApi(() => getIntegrationsStatus()), []);
-  // A card that saves or removes puts its reloaded part here, so the page shows it at once.
   const [patched, setPatched] = useState<Partial<IntegrationsStatus>>({});
   const data = AsyncResult.isSuccess(loaded) ? { ...loaded.value, ...patched } : undefined;
 
-  // A failed load shows the owner note; while a retry runs, the page is loading again.
   const failed = AsyncResult.isFailure(loaded) && !isWaiting(loaded);
   const failure = failed ? failureOf(loaded) : undefined;
   const status: PageStatus = failed ? 'forbidden' : data === undefined ? 'loading' : 'ready';
-  // 404 (not the owner) and unknown load failures get the note alone; a server answer gets its message and Retry.
   const errorMessage =
     failure !== undefined && failure.code !== 'unknown_error' && failure.status !== 404
       ? friendlyError(failure)

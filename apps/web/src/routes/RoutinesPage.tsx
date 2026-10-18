@@ -15,18 +15,11 @@ import { RoutineRow } from '@/components/routines/RoutineRow';
 
 const REFRESH_INTERVAL_MS = 30_000;
 
-/**
- * Settings → Routines. Every routine of every AI the viewer owns, in Running
- * and Paused groups: the AI's ball, the title with a status dot, the
- * schedule · AI · chat line, and the Ask, Pause or Resume keys. Clicking a row
- * reveals its Delete key.
- */
 export function RoutinesPage() {
   const navigate = useNavigate();
   const [notice, setNotice] = useState('');
   const [list, refresh] = useQuery(() => fromApi(() => listMyRoutines()), []);
 
-  // 30 s background refresh while the page is open, like the Approvals page.
   useQuery(
     () =>
       Effect.sync(() => refresh()).pipe(
@@ -96,7 +89,6 @@ export function RoutinesPage() {
   );
 }
 
-/** One labelled card of routines, with the server's order kept. */
 function RoutineGroup({
   label,
   routines,

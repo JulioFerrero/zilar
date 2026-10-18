@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
+// effect-plain: the promise edge over the Effect client.
 import {
   Sticker as StickerSchema,
   omitUndefined,
@@ -15,13 +15,8 @@ import {
 import { callApi, callApiAbortable } from '@/lib/effect/api-client';
 import { API_BASE, uploadBytes } from './http';
 
-// --- Stickers (T-0120) -----------------------------------------------------
-// User-made packs: the panel lists mine in order (with stickers), discover
-// lists `server`-visible packs, and files are served same-origin so the
-// renderer can auto-load them without leaking the viewer's IP.
-// The schemas and endpoints live in `@zilar/api-contract` (`stickers.ts`,
-// T-0895). `uploadStickerFile` posts raw image bytes, so it stays outside the
-// client and decodes with the contract's reply schema.
+// Files are served same-origin so the renderer can auto-load them without leaking the
+// viewer's IP; uploadStickerFile posts raw bytes and stays outside the derived client.
 export type { Sticker };
 
 // The pack keeps a mutable `stickers` array, the shape its editor takes.
@@ -31,8 +26,6 @@ function toStickerPack(pack: ContractStickerPack): StickerPack {
   return { ...pack, stickers: [...pack.stickers] };
 }
 
-// The pack link (T-1495): a pack plus the owner's handle and whether the
-// caller's panel holds it, as its own page reads it.
 export type StickerPackDetail = Omit<ContractStickerPackDetail, 'stickers'> & {
   stickers: Sticker[];
 };
@@ -83,16 +76,10 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
   await callApi((client) => client.stickers.removePanelPack({ params: { packId } }));
 }
 
-// --- Push notifications (T-0119) -------------------------------------------
-// The wire contract lives in apps/server/src/push/api.ts. The browser
-// registers its Web Push subscription, stores it, then enables the push
-// pair over its own XMPP session (ejabberd requires the enable IQ from the
-// user's session). The device list carries labels and dates only — never
-// the endpoint URL or keys.
+// Enabling push sends the enable IQ over the user's own XMPP session (ejabberd requires it);
+// the device list carries labels and dates only, never the endpoint URL or keys.
 
-// The contract (`@zilar/api-contract`, `push.ts`, T-0895) types the replies and
-// the three payloads; the server decodes those bodies by hand (their step order
-// and error codes are part of the wire).
+// The server decodes these bodies by hand: their step order and error codes are part of the wire.
 export type { PushConfig, PushDevice, RegisteredDevice };
 
 export function getPushConfig(): Promise<PushConfig> {
@@ -167,13 +154,8 @@ export function deletePackSticker(packId: string, stickerId: string): Promise<{ 
   return callApi((client) => client.stickers.deleteSticker({ params: { id: packId, stickerId } }));
 }
 
-/**
- * Uploads one prepared sticker file. Raw bytes (not multipart): the server
- * reads an optional `x-emoji` header, so the client never builds a form.
- * The emoji travels percent-encoded: header values are latin1 ByteStrings,
- * and a raw emoji throws in real `fetch` (`new Headers({'x-emoji':'🐱'})`
- * is a TypeError). The server decodes and validates it.
- */
+/** Raw bytes, not multipart. The emoji travels percent-encoded because header values are
+ * latin1 and a raw emoji throws in fetch: new Headers({'x-emoji':'🐱'}) is a TypeError. */
 export function uploadStickerFile(packId: string, blob: Blob, emoji?: string): Promise<Sticker> {
   const headers: Record<string, string> = {};
   if (emoji !== undefined && emoji !== '') {
@@ -188,8 +170,7 @@ export function uploadStickerFile(packId: string, blob: Blob, emoji?: string): P
   );
 }
 
-// --- Sticker favorites (T-0121) --------------------------------------------
-// One user's starred stickers, at most 200, oldest first.
+// At most 200, oldest first.
 
 export function listStickerFavorites(): Promise<Sticker[]> {
   return callApi((client) => client.stickers.listFavorites()).then((body) => [...body.favorites]);
@@ -203,13 +184,8 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
   await callApi((client) => client.stickers.removeFavorite({ query: { sticker_id: stickerId } }));
 }
 
-// --- Telegram import (T-0123) -------------------------------------------------
-// A public Telegram pack's static stickers, imported into a private Zilar
-// pack through the server (`TELEGRAM_BOT_TOKEN` lives there; the browser
-// never sees it). Animated/video stickers are skipped and counted;
-// `partial` means the request budget ran out — running the import again
-// fills the gaps. Imported packs are personal-use only (`importedFrom` is
-// set, visibility stays private, the UI says so).
+// The Telegram bot token lives on the server; the browser never sees it. Animated and
+// video stickers are skipped, and imported packs stay private (importedFrom is set).
 
 export type TelegramImportResult = Omit<ContractTelegramImportResult, 'pack'> & {
   pack: StickerPack;
@@ -221,17 +197,10 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
   );
 }
 
-// --- GIFs (T-0122) --------------------------------------------------------
-// Privacy-preserving search: the browser never contacts the provider. Every
-// media URL arrives as an opaque `mediaToken` minted for this user; previews
-// and the send path load through the same-origin proxy
-// (`/api/gifs/media/:token`). An unconfigured provider answers 501
-// `gifs_unavailable` and the panel hides the tab.
+// Privacy: the browser never contacts the provider. Media arrives as an opaque mediaToken
+// minted for this user and loads through the same-origin proxy.
 
-// The reply schemas and the query keys live in `@zilar/api-contract`
-// (`gifs.ts`, T-0895). The server decodes the query by hand, after its provider
-// check and limiter, so every key travels as a plain string. A caller may
-// abort a search, so the calls go through `callApiAbortable`.
+// A caller may abort a search, so the calls go through callApiAbortable.
 export type { GifResult };
 
 export interface GifPage {
@@ -261,7 +230,6 @@ export function trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPag
   ).then(toGifPage);
 }
 
-/** The same-origin proxy URL for one GIF result's media. */
 export function gifMediaUrl(mediaToken: string): string {
   return `${API_BASE}/gifs/media/${encodeURIComponent(mediaToken)}`;
 }

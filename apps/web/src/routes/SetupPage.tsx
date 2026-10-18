@@ -39,16 +39,9 @@ function setupErrorText(failure: SetupFailure): string {
   }
 }
 
-/**
- * First-run setup (T-0161) in three steps. Step 1 asks for the admin
- * email; step 2 asks for the Resend key and the sender address and sends
- * all three values to the server in ONE request (the server verifies by
- * emailing the sign-in code with the new key and stores the key only if
- * that send worked). Step 3 is the normal sign-in code step with the
- * email prefilled — carrying the invite code in memory only (never in
- * storage, URL or logs) and sending it with the sign-up request itself.
- * The admin only types the 6-digit code from their inbox.
- */
+/** First-run setup in three steps. Step 2 sends the admin email, the Resend key and the
+ * sender address in one request, and the server stores the key only if its sign-in mail
+ * worked. The invite code stays in memory only (never storage, URL or logs). */
 export function SetupPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [adminEmail, setAdminEmail] = useState('');
@@ -56,7 +49,6 @@ export function SetupPage() {
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [emailError, setEmailError] = useState<string | undefined>(undefined);
 
-  // Retry runs the same query again; while it runs the page shows 'checking'.
   const [setupStatus, retryStatus] = useQuery(
     () => fromApi(() => getSetupStatus()).pipe(Effect.map((result) => result.needsSetup)),
     [],
@@ -70,8 +62,7 @@ export function SetupPage() {
           : 'done'
         : 'statusFailed';
 
-  // The server's answer to the setup request. A second submit while it waits
-  // is dropped (mode 'ignore').
+  // A second submit while the call waits is dropped.
   const [setupState, runSetup, setupControls] = useAction<void, SetupResult, SetupFailure>(
     (): Effect.Effect<SetupResult, SetupFailure> => {
       if (resendApiKey.trim() === '') {
@@ -93,7 +84,6 @@ export function SetupPage() {
   const setupFailure = busy ? undefined : failureOf(setupState);
   const error =
     emailError ?? (setupFailure === undefined ? undefined : setupErrorText(setupFailure));
-  // The invite code stays in memory only (never in storage, URL or logs).
   const inviteCode = AsyncResult.isSuccess(setupState) ? setupState.value.inviteCode : undefined;
 
   if (status === 'checking') {

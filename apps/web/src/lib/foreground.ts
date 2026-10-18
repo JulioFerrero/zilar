@@ -1,6 +1,5 @@
 import type { OnForeground } from '@zilar/client-core';
 
-/** Subscribes to window focus and to the page becoming visible again. */
 export const onForeground: OnForeground = (cb) => {
   const onVisibility = (): void => {
     if (document.visibilityState === 'visible') {

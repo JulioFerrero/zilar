@@ -25,9 +25,7 @@ export function ChatShell() {
   );
   const navigate = useNavigate();
   const isWide = useMediaQuery('(min-width: 900px)');
-  // WUX-33: on a wide layout Esc closes the open chat too. Dialogs and menus
-  // swallow their own Escape before window listeners, but the search box does
-  // not, so skip while a search (text or a scoped chat) is open: the first
+  // On a wide layout Esc closes the open chat too. Skip while a search is open: the first
   // Escape clears it, the next closes the chat.
   const searchOpen = useChatSelector((s) => s.search.trim() !== '' || s.searchChat !== undefined);
   useChatFolders();
@@ -37,8 +35,7 @@ export function ChatShell() {
       if (event.key !== 'Escape' || chatId === undefined) {
         return;
       }
-      // An Escape a dialog, menu or the composer already handled never closes
-      // the chat too.
+      // An Escape a dialog, menu or the composer already handled never closes the chat too.
       if (event.defaultPrevented) {
         return;
       }
@@ -51,9 +48,8 @@ export function ChatShell() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isWide, chatId, navigate, searchOpen]);
 
-  // T-1874: Alt+Up/Down opens the previous/next chat in the list, the way
-  // Telegram desktop does, even while the composer has focus. The rows are the
-  // same links TopicKeyboardNav moves through; no wrap at either end.
+  // Alt+Up/Down opens the previous/next chat in the list, even while the composer has
+  // focus; there is no wrap at either end.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (

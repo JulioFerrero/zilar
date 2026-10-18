@@ -1,6 +1,3 @@
-// The chat, message, pin and preference actions of the web chat store. Each
-// one wraps an effect module with the store's `StoreCtx`, lifetime and state
-// accessors; `realStore.ts` spreads the returned slice into the store state.
 import {
   clearHistory as clearHistoryCore,
   clearSupersededMarker,
@@ -122,7 +119,6 @@ export interface ChatActionsDeps {
   readonly ports: PortsShape;
 }
 
-/** Builds the chat, message, pin and preference actions of one store. */
 export function makeChatActions(deps: ChatActionsDeps): ChatActions {
   const { ctx, rt, set, get } = deps;
 
@@ -138,9 +134,7 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
       if (get().activeChatId === chatId) {
         set({ activeChatId: undefined });
       }
-      // A deferred open must not fire later for a chat that was left: drop
-      // the pending open and its `loading` marker (UI-2, via the existing
-      // `clearSupersededMarker` helper).
+      // A deferred open must not fire later for a chat that was left: drop it and its marker.
       if (ctx.pendingOpenChatId === chatId) {
         ctx.pendingOpenChatId = undefined;
         clearSupersededMarker(ctx, chatId);
@@ -238,8 +232,8 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     setMuted: (chatId, duration) => rt.runPromise(setMuted(ctx, chatId, duration)),
     setArchived: (chatId, archived) => rt.runPromise(setArchived(ctx, chatId, archived)),
     setUnreadMark: (chatId, unreadMark) => rt.runPromise(setUnreadMark(ctx, chatId, unreadMark)),
-    // "Mark as read": the shared `recordRead` clears the count, saves the mark
-    // and sends the server read mark; the pref write clears the manual mark.
+    // Mark as read: recordRead clears the count, saves the mark and sends it; the pref clears
+    // the manual mark.
     markChatRead: (chatId) => {
       const chat = get().chats.find((entry) => entry.id === chatId);
       recordRead(ctx, chatId, chat?.lastMessage?.archiveId ?? ctx.lastRead[chatId]);

@@ -1,8 +1,5 @@
-// The browser-backed port adapters of the web chat store: `localStorage`, the
-// document visibility and focus events, the rows, flags and notifications
-// adapters, the sign-out redirect, and the core `bytes` and `voice` ports over
-// web's attachment and voice ports. `ports.ts` composes them in `resolvePorts`;
-// this module imports types from `./ports` only, so there is no runtime cycle.
+// The browser-backed port adapters of the web chat store; ports.ts composes them in
+// resolvePorts, and this module imports types from ./ports only, so there is no cycle.
 import { Effect } from 'effect';
 import type {
   ChatRows,
@@ -30,10 +27,8 @@ export function defaultVisible(): boolean {
   if (typeof document === 'undefined') {
     return true;
   }
-  // Page visibility is not enough: a visible but unfocused window (a second
-  // monitor) must not mark messages seen (UI-10). jsdom's default document
-  // has `visibilityState: 'prerender'` and no window focus, so treat the
-  // simulated environments as visible.
+  // Page visibility is not enough: a visible but unfocused window (a second monitor) must
+  // not mark messages seen. jsdom's document is prerender and unfocused, so treat it as visible.
   if (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')) {
     return true;
   }
@@ -44,9 +39,8 @@ export function defaultOnFocus(handler: () => void): () => void {
   if (typeof window === 'undefined') {
     return () => {};
   }
-  // Coming back into focus runs the focus handler (which clears the open
-  // chat's unread); listen on both `visibilitychange` and `focus` so a
-  // visible-but-unfocused window marks seen when it is clicked into (UI-10).
+  // Coming back into focus clears the open chat's unread; listen on both visibilitychange and
+  // focus so a visible-but-unfocused window marks seen when it is clicked into.
   const onVisibility = (): void => {
     if (document.visibilityState === 'visible') {
       handler();
@@ -66,7 +60,6 @@ export const realRows: ChatRows = {
 
 export const webFlags: StoreFlags = { connectRetry: true, reconnectOnResume: false };
 
-// The app badge and the push dismiss, best effort (mirrors `effects/badge.ts`).
 export const liveNotifications: Notifications = {
   syncBadge: (chats) => {
     Effect.runFork(
@@ -85,15 +78,15 @@ export function defaultGoToLogin(): void {
   }
 }
 
-// `URL.createObjectURL` is missing in some test environments.
+// URL.createObjectURL is missing in some test environments.
 function objectUrlFor(blob: Blob): string | undefined {
   return Effect.runSync(
     Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
   );
 }
 
-// The core `bytes` port over web's attachment port (T10): classification, the
-// image size and the XEP-0363 upload. Web has no cancel and ignores progress.
+// The core bytes port over web's attachment port: classification, image size and the
+// XEP-0363 upload. Web has no cancel and ignores progress.
 export function bytesFromAttachmentPort(port: AttachmentPort): OutgoingBytes {
   return {
     describe: (file) => {
@@ -112,8 +105,7 @@ export function bytesFromAttachmentPort(port: AttachmentPort): OutgoingBytes {
   };
 }
 
-// The core `voice` port over web's voice port (T10). The recording's bytes are
-// opaque to the core, so this unwraps them.
+// The core voice port over web's voice port; the recording's bytes are opaque to the core.
 export function voiceFromPort(port: VoicePort): VoiceOut {
   return {
     convert: (recording) => fromPromise(() => port.convert(recording.bytes as Blob)),

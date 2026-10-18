@@ -1,10 +1,6 @@
-// The web twin of mobile's `ensurePushPair` (T-1152): ejabberd binds the
-// XEP-0357 pair to the c2s session that sent `<enable/>`, so a reload that
-// opens a new session has a dead pair pushing into a focused tab (MP-8). On
-// every transition into `online`, when `deviceStorage` holds a device and the
-// browser already granted the permission, re-send the enable for its node.
-// The narrow injectable surface mirrors `@/lib/push`, so the tests run with
-// fakes and never touch the real config endpoint.
+// ejabberd binds the XEP-0357 pair to the c2s session that sent <enable/>, so a reload that
+// opens a new session leaves a dead pair pushing into a focused tab. On every transition into
+// online, re-send the enable for the stored device's node.
 import { Duration, Effect } from 'effect';
 import type { PushConfig } from '@/lib/api';
 import { getPushConfig } from '@/lib/api';
@@ -28,20 +24,14 @@ export interface SessionEnableDeps {
   getConfig?: () => Promise<PushConfig>;
 }
 
-// The store pieces `startSessionEnable` reads. `StoreApi<ChatStoreState>`
-// satisfies this, and the test builds a smaller one.
 export interface SessionEnableStore {
   getState: () => { status: string };
   subscribe: (listener: (state: { status: string }) => void) => () => void;
 }
 
-// The push JID comes from the same push-config call the Enable button uses
-// (`usePushEnable.ts` `enableOnThisDevice` reads `getPushConfig()` for the
-// vapid key, and `disableOnThisDevice` reads `config.pushJid`). The page
-// lifetime is one, and the JID never changes under it, so cache it here.
+// The JID never changes under the page's lifetime, so cache it here.
 let cachedPushJid: string | undefined;
 
-/** The cached push JID, fetching it once from the push config on first use. */
 const readPushJid = (getConfig: () => Promise<PushConfig>): Effect.Effect<string, unknown> =>
   cachedPushJid !== undefined
     ? Effect.succeed(cachedPushJid)
@@ -62,12 +52,8 @@ function readPermission(): string {
   return typeof Notification === 'undefined' ? 'default' : Notification.permission;
 }
 
-/**
- * Sends `<enable/>` for the stored device on a fresh session. Needs a pair
- * sender; does nothing without a stored device, without a granted
- * permission, or without a push JID. A failed enable is retried on the next
- * transition into `online` (MP-13).
- */
+/** Does nothing without a stored device, a granted permission and a push JID; a failure
+ * retries on the next transition into online. */
 export const enableSessionPush = Effect.fnUntraced(function* (
   deps: SessionEnableDeps & { setPushPair: SetPushPair },
 ) {
@@ -94,14 +80,9 @@ export const enableSessionPush = Effect.fnUntraced(function* (
   });
 });
 
-/**
- * Sends `<disable/>` for the stored device, best effort with a 2 s timeout
- * for the sign-out path (the stale pair must not ring for a signed-out
- * account). Does nothing without a stored device or without a push JID.
- * The stored handle is always cleared afterwards, like mobile's
- * `unregisterNativePush`: a shared browser must not re-enable the previous
- * user's node on the next account's first transition into `online`.
- */
+/** Best effort with a 2 s timeout for sign-out, so a stale pair must not ring a signed-out
+ * account. The stored handle is always cleared: a shared browser must not re-enable the
+ * previous user's node on the next account's first online. */
 export const disableSessionPush = Effect.fnUntraced(function* (
   deps: SessionEnableDeps & { setPushPair: SetPushPair; timeoutMs?: number },
 ) {
@@ -116,10 +97,7 @@ export const disableSessionPush = Effect.fnUntraced(function* (
   if (device === null) {
     return;
   }
-  // The whole body, config read included, runs under the one timeout: a
-  // stalled push-config response must not hold sign-out past `timeoutMs`.
-  // The `ensuring` clears the handle even when the JID read misses, so the
-  // docstring's "always cleared" holds for every stored device.
+  // The whole body runs under one timeout, and ensuring clears the handle even when the JID read misses.
   yield* Effect.gen(function* () {
     const pushJid = yield* readPushJid(getConfig).pipe(Effect.option);
     if (pushJid._tag === 'None') {
@@ -143,17 +121,11 @@ export const disableSessionPush = Effect.fnUntraced(function* (
   );
 });
 
-/**
- * Re-enables the stored pair on every transition into `online`. A failed
- * enable is logged (never the node) and retried on the next transition
- * (MP-13). Returns the unsubscribe for the provider's effect cleanup.
- */
+/** A failed enable is logged (never the node) and retried on the next transition into online. */
 export function startSessionEnable(
   store: StoreApi<ChatStoreState> | SessionEnableStore,
   deps: SessionEnableDeps = {},
 ): () => void {
-  // The default without an explicit pair sender reads it from the real
-  // store's state; a test passes both store and sender as narrow fakes.
   const { setPushPair = (input) => defaultSetPushPair(store, input), ...rest } = deps;
   const watched = store as SessionEnableStore;
   let online = watched.getState().status === 'online';
@@ -168,10 +140,7 @@ export function startSessionEnable(
   });
 }
 
-/**
- * One transition's re-enable: the enable itself, with its failure logged
- * (never the node) for the next transition's retry (MP-13).
- */
+/** One transition's re-enable, with its failure logged (never the node) for the next retry. */
 const runSessionEnable = (deps: SessionEnableDeps & { setPushPair: SetPushPair }) =>
   enableSessionPush(deps).pipe(
     Effect.tapError((error) =>
@@ -180,7 +149,6 @@ const runSessionEnable = (deps: SessionEnableDeps & { setPushPair: SetPushPair }
     Effect.catchCause(() => Effect.void),
   );
 
-/** The real store's pair sender, for the provider's default wiring. */
 function defaultSetPushPair(
   store: StoreApi<ChatStoreState> | SessionEnableStore,
   input: PushPairInput,

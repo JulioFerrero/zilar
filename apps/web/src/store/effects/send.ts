@@ -1,6 +1,3 @@
-// The send pipeline lives in `@zilar/client-core/store` (T10). This file is the
-// web binding: it maps web's `File`, `VoiceRecording` and `StoreCtx` onto the
-// core functions and keeps the same export names.
 import { Effect } from 'effect';
 import {
   deleteFailedMessage as deleteFailedMessageCore,
@@ -22,7 +19,7 @@ import type {
 } from '../store';
 import type { StoreCtx } from './ctx';
 
-// `URL.createObjectURL` is missing in some test environments.
+// URL.createObjectURL is missing in some test environments.
 const objectUrlFor = (blob: Blob): string | undefined =>
   Effect.runSync(
     Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
@@ -43,7 +40,7 @@ export function sendVoice(
   recording: VoiceRecording,
   options?: SendTextOptions,
 ): void {
-  // R19: the empty-recording check stays in the web facade.
+  // The empty-recording check stays in the web facade.
   if (recording.blob.size === 0) {
     return;
   }
@@ -74,8 +71,7 @@ export function sendAttachment(
   file: File,
   options?: SendAttachmentOptions,
 ): void {
-  // R19: an empty file is refused silently by the web facade, before any
-  // request or optimistic bubble (mobile shows an inline banner instead).
+  // An empty file is refused silently before any request or optimistic bubble.
   if (file.size === 0) {
     return;
   }

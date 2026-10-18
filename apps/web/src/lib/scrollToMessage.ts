@@ -1,8 +1,5 @@
-// Scrolls a loaded message into view: message bubbles carry
-// `data-message-id`, so a search hit can land on its message after the
-// store has loaded the history page containing it. It also plays a short
-// accent pulse, so a jump is visible even when the list cannot scroll (the
-// hit is already on screen) or when two hits sit close together.
+// Message bubbles carry data-message-id, so a search hit can land on its message after the
+// store loads the page; a pulse makes the jump visible even when the list cannot scroll.
 export function scrollToMessage(messageId: string): boolean {
   if (typeof document === 'undefined') {
     return false;
@@ -16,9 +13,8 @@ export function scrollToMessage(messageId: string): boolean {
   return true;
 }
 
-// A one-shot accent outline on the jump target. The Web Animations API keeps
-// it out of the CSS and off the layout; a runtime without it (jsdom) simply
-// skips the pulse.
+// The Web Animations API keeps the pulse out of CSS and off the layout; a runtime without
+// it (jsdom) simply skips it.
 function pulseMessage(element: Element): void {
   if (typeof element.animate !== 'function') {
     return;

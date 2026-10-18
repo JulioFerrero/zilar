@@ -5,7 +5,7 @@ import { onForeground } from '@/lib/foreground';
 import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
 
-// A mock server answers `/health` with 404, so a mock session never shows the banner.
+// A mock server answers /health with 404, so a mock session never shows the banner.
 const healthRequest = (): Promise<Response> =>
   Effect.runPromise(
     Effect.promise(() =>
@@ -15,7 +15,6 @@ const healthRequest = (): Promise<Response> =>
     ),
   );
 
-/** True when this build is older than the server's minimum protocol. */
 export function useClientVersionCheck(): boolean {
   return useSharedClientVersionCheck(healthRequest, onForeground, protocolVersion);
 }

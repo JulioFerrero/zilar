@@ -35,13 +35,8 @@ export function classify(file: File): 'image' | 'file' {
   return classifyMime(file.type);
 }
 
-/**
- * The URL the web should load a file from. A same-origin `/upload/` file is
- * routed through `GET /api/files` (T-0454), where the server checks the session
- * and the chat membership; every other URL — another origin (dev's ejabberd on
- * `:5280`), `blob:`, `data:` or garbage — is returned untouched so it keeps
- * loading directly.
- */
+/** A same-origin /upload/ file is routed through GET /api/files, where the server checks the
+ * session and the chat membership; any other URL is returned untouched so it loads directly. */
 export function mediaSrc(
   chatId: string,
   url: string,
@@ -60,18 +55,15 @@ export function mediaSrc(
   return `/api/files?chat=${encodeURIComponent(chatId)}&url=${encodeURIComponent(url)}`;
 }
 
-/** A best-effort object URL; test environments without it get `undefined`. */
+/** A best-effort object URL; test environments without it get undefined. */
 export function objectUrlFor(blob: Blob): string | undefined {
   return Effect.runSync(
     Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
   );
 }
 
-/**
- * The pixel size of an image, read through an `Image` and an object URL that is
- * always revoked. A decode error or a 5 s timeout resolves `undefined` so the
- * caller omits the dimensions and the bubble still renders.
- */
+/** The pixel size of an image, read through an Image and an object URL that is always
+ * revoked. A decode error or a 5 s timeout resolves undefined so the bubble still renders. */
 export function readImageSize(
   file: File,
   timeoutMs = 5000,
@@ -81,9 +73,6 @@ export function readImageSize(
 
 export type ImageSize = { width: number; height: number };
 
-// Loads the object URL into an `Image`. The load or error handler settles it;
-// the timeout (which interrupts the wait and detaches the handlers) gives
-// `undefined`, so an image that never answers cannot hang the caller.
 const decodeImageSize = (
   objectUrl: string,
   timeoutMs: number,
@@ -127,8 +116,7 @@ export const readImageSizeEffect = (
     ) {
       return Effect.succeed(undefined);
     }
-    // The object URL is always revoked once the image has settled; when it
-    // cannot be created the size is simply omitted.
+    // The object URL is always revoked once the image has settled.
     return Effect.acquireUseRelease(
       Effect.try(() => URL.createObjectURL(file)),
       (objectUrl) => decodeImageSize(objectUrl, timeoutMs),
@@ -136,11 +124,8 @@ export const readImageSizeEffect = (
     ).pipe(Effect.orElseSucceed(() => undefined));
   });
 
-/**
- * Asks for a XEP-0363 slot, PUTs the bytes with the slot's headers and returns
- * the download URL. The cap is enforced before any request is made; a refused
- * or unreachable PUT throws an `AttachmentError`.
- */
+/** Asks for a XEP-0363 slot, PUTs the bytes with the slot's headers and returns the download
+ * URL. The cap is enforced before any request; a refused PUT throws AttachmentError. */
 export function uploadAttachment(
   requester: UploadSlotRequester,
   file: File,
@@ -149,8 +134,7 @@ export function uploadAttachment(
   return runWeb(uploadAttachmentEffect(requester, file, fetchFn));
 }
 
-// A rejection from `requestUploadSlot` is a defect, so the caller sees the
-// original error; only the PUT failures become an `AttachmentError`.
+// Only PUT failures become an AttachmentError; a rejected slot request stays a defect.
 export const uploadAttachmentEffect = Effect.fnUntraced(function* (
   requester: UploadSlotRequester,
   file: File,
@@ -189,7 +173,6 @@ export const uploadAttachmentEffect = Effect.fnUntraced(function* (
   return slot.getUrl;
 });
 
-/** A file chosen in the composer, before it is sent. */
 export interface PendingAttachment {
   file: File;
   kind: 'image' | 'file';

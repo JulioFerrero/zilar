@@ -1,6 +1,4 @@
-// effect-plain: the browser `EventSource` adapter behind the drafts port; a
-// callback transport with a plain setTimeout, not an Effect. The contract,
-// validation and reconnect backoff are shared in `@zilar/client-core/store`.
+// effect-plain: the browser EventSource adapter behind the drafts port, a callback transport.
 import type { DraftHubEvent } from '@zilar/client-core/store';
 import { decodeDraftEvent, draftReconnectDelay } from '@zilar/client-core/store';
 
@@ -9,9 +7,9 @@ export type { OpenDraftStream } from '@zilar/client-core/store';
 /** Same origin as the app: the session cookie is sent automatically. */
 export const DRAFT_STREAM_URL = '/api/drafts/stream';
 
-/** The slice of `EventSource` the client uses. Tests inject a fake. */
+/** The slice of EventSource the client uses. Tests inject a fake. */
 export interface DraftEventSource {
-  /** `EventSource.readyState`: 2 means the browser stopped reconnecting. */
+  /** EventSource.readyState: 2 means the browser stopped reconnecting. */
   readonly readyState: number;
   addEventListener(
     type: 'draft' | 'end' | 'error' | 'open',
@@ -26,14 +24,9 @@ function defaultDraftSource(url: string): DraftEventSource {
   return new EventSource(url);
 }
 
-/**
- * Subscribes to the signed-in user's own AI drafts. Events that fail
- * validation are dropped silently; nothing here throws. An `EventSource` only
- * reconnects on its own after a dropped connection: a non-2xx response (a
- * deploy's 502, a 401) closes it for good, so those are reopened with a
- * jittered backoff (1 s -> 30 s). The returned function cancels a pending
- * retry and closes the current source.
- */
+/** Events that fail validation are dropped silently; nothing here throws. An EventSource
+ * reconnects on its own only after a dropped connection: a non-2xx response closes it for
+ * good, so those are reopened with a jittered backoff (1 s -> 30 s). */
 export function subscribeToDrafts(
   onEvent: (event: DraftHubEvent) => void,
   createSource: (url: string) => DraftEventSource = defaultDraftSource,
@@ -71,13 +64,12 @@ export function subscribeToDrafts(
     try {
       next = createSource(DRAFT_STREAM_URL);
     } catch {
-      // No usable `EventSource`: the app simply behaves as without drafts.
+      // No usable EventSource: the app simply behaves as without drafts.
       return;
     }
     source = next;
 
-    // An open connection proves the stream is healthy, so the next retry
-    // starts at the base delay.
+    // An open connection proves the stream is healthy, so the next retry starts at the base.
     next.addEventListener('open', () => {
       attempt = 0;
     });
@@ -94,8 +86,7 @@ export function subscribeToDrafts(
       }
     });
     next.addEventListener('error', () => {
-      // CONNECTING means the browser will reconnect by itself; only a CLOSED
-      // source (a non-2xx response) needs a fresh `EventSource`.
+      // CONNECTING means the browser will reconnect by itself; only a CLOSED source needs a new one.
       if (next.readyState === EVENT_SOURCE_CLOSED) {
         next.close();
         scheduleRetry();

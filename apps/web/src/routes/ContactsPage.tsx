@@ -19,12 +19,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Menu, MenuItem } from '@/components/ui/menu';
 import { StateMessage } from '@/components/ui/state-message';
 
-/**
- * Settings → Contacts (T-1233): the people you can chat with. A row opens the
- * DM; each row's menu removes the contact after an in-page confirm. The copy
- * button at the top is the same personal link the profile page shows
- * (`ProfileSettingsSection`, the `shareUrl` built from the caller's `@handle`).
- */
+// The personal link at the top is the same one the profile page shows.
 export function ContactsPage({ onBack }: { onBack: () => void }) {
   const auth = useAuth();
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -38,7 +33,7 @@ export function ContactsPage({ onBack }: { onBack: () => void }) {
     ),
   );
 
-  // The profile page's link, byte for byte (T-0163): the host plus `/@handle`.
+  // The profile page's link, byte for byte: the host plus /@handle.
   const shareUrl =
     typeof window === 'undefined' || (auth.user?.handle ?? null) === null
       ? null
@@ -97,12 +92,8 @@ export function ContactsPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-/**
- * One contact: the avatar and name open the DM; the menu's Remove asks first
- * in place, then calls the remove route. A removed row returns nothing but
- * stays mounted: the chat-list refresh after the removal still runs to the
- * end, and an unmount would cancel it (the same shape as `BlockedPage`).
- */
+/** One contact: the avatar and name open the DM; the menu's Remove asks first in place.
+ * A removed row stays mounted so the chat-list refresh after it still runs to the end. */
 function ContactRow({
   person,
   removed,
@@ -122,8 +113,6 @@ function ContactRow({
   const [state, runRemove] = useAction((userId: string) =>
     fromApi(() => removeContact(userId)).pipe(
       Effect.tap(() => Effect.sync(() => onRemoved(userId))),
-      // The chat list holds this person's DM row; refresh it with the store's
-      // own action, the one `JoinRoute` and `ContactProfileRow` call.
       Effect.tap(() => Effect.sync(() => storeApi.getState().refreshChats())),
       Effect.tapError((failure) => Effect.sync(() => onError(friendlyRemoveError(failure)))),
     ),

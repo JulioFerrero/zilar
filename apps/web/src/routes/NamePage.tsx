@@ -9,7 +9,6 @@ import { updateMe } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 
-/** Saving failed after the API call: the session refresh or the redirect. */
 class NameSaveFailed extends Data.TaggedError('NameSaveFailed') {}
 
 export function NamePage() {
@@ -17,7 +16,6 @@ export function NamePage() {
   const location = useLocation();
   const auth = useAuth();
   const [name, setName] = useState(auth.user?.name ?? '');
-  // The "Enter your name" check; the save error comes from the action.
   const [emptyName, setEmptyName] = useState(false);
   const [saveState, save] = useAction((trimmed: string) =>
     fromApi(() => updateMe(trimmed)).pipe(
@@ -27,8 +25,6 @@ export function NamePage() {
       Effect.andThen(
         Effect.try({
           try: () => {
-            // Callers (e.g. the join-by-link page) pass `next` to come back
-            // after the name step; the default chains into the handle step.
             const next = (location.state as { next?: string } | null)?.next;
             navigate(next === undefined ? '/welcome/handle' : next, { replace: true });
           },
@@ -37,8 +33,7 @@ export function NamePage() {
       ),
     ),
   );
-  // A saved name keeps the button off while the redirect happens, as before;
-  // a retry hides the old failure until it fails again.
+  // A saved name keeps the button off while the redirect happens; a retry hides the old failure.
   const busy = isWaiting(saveState) || AsyncResult.isSuccess(saveState);
   const error = emptyName
     ? 'Enter your name'

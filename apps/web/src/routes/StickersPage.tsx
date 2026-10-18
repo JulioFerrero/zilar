@@ -30,14 +30,6 @@ import {
 import { AddedPackRow, DiscoverPackRow, MyPackRow } from '@/components/sticker/PackRows';
 import { FavoriteRow } from '@/components/sticker/FavoriteRow';
 
-/**
- * Settings → Stickers (T-0121, T-1523): three tabs — my packs (drag to
- * reorder), discover (search as you type) and favorites — plus the pack
- * creator/editor.
- */
-
-// The column comes from the shared shell (T-0153); the local constant stays
-// re-exported so existing imports keep working.
 export { SETTINGS_COLUMN };
 export type { PackRowThumb } from '@/components/sticker/PackThumbs';
 
@@ -63,8 +55,7 @@ export function StickersPage() {
   const [actionError, setActionError] = useState('');
   const [editingPackId, setEditingPackId] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
-  // One delete dialog for the page. Each row registers its own delete action
-  // here, so two packs can be deleted at once and a double click is ignored.
+  // One delete dialog for the page; each row registers its own action, so a double click is ignored.
   const [deletingPack, setDeletingPack] = useState<StickerPack | undefined>(undefined);
   const deleteRunners = useRef(new Map<string, () => void>());
   const registerDelete = useCallback((packId: string, run: () => void) => {
@@ -81,19 +72,14 @@ export function StickersPage() {
     setDeletingPack(undefined);
     deleteRunners.current.get(packId)?.();
   };
-  // Telegram import (T-0123, T-0162): the dialog opens from the header and
-  // always stays visible. A 501 only disables the button's usual flow (the
-  // server has no token); the dialog itself shows why. The shared owner
-  // hook decides whether the dialog links the settings page — it starts as
-  // not-owner, so the link never flashes for a non-owner.
+  // The Telegram import dialog stays visible; a 501 only disables the button's usual flow.
+  // The owner link starts hidden, so it never flashes for a non-owner.
   const [importing, setImporting] = useState(false);
   const isServerOwner = useIsServerOwner();
   const setters: PageSetters = { setPacks, setFavorites, setDiscover, setActionError };
 
-  // The first load (and the retry): both lists must answer.
   const [loadState, reloadPage] = useQuery(() => loadPanel(setters), []);
-  // Discover searches as you type: each keystroke restarts the 300 ms wait,
-  // and a new keystroke interrupts the wait or search still running.
+  // Discover searches as you type: each keystroke restarts the 300 ms wait and interrupts a search.
   useQuery(
     () =>
       Effect.sleep(DISCOVER_SEARCH_DEBOUNCE_MS).pipe(Effect.andThen(searchPacks(query, setters))),
@@ -102,7 +88,6 @@ export function StickersPage() {
   const [, runRefresh] = useAction<void, void, never>(() => refreshPanel(setters), {
     mode: 'replace',
   });
-  // Moves are disabled while one runs, so the page-level action never drops a drag.
   const [moveState, runMove] = useAction<{ activeId: string; overId: string }, void, never>(
     ({ activeId, overId }) => dragPack(packs ?? [], activeId, overId, setters),
   );
@@ -316,9 +301,7 @@ export function StickersPage() {
           }}
           onClose={() => setImporting(false)}
           onUnavailable={() => {
-            // The dialog shows the not-set-up state itself; nothing to
-            // hide here. Kept so the entry point learns the feature is
-            // off without closing anything.
+            // The dialog shows the not-set-up state itself; the entry point learns the feature is off.
           }}
           isOwner={isServerOwner}
         />

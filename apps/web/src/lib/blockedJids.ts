@@ -6,10 +6,8 @@ import { listBlockedUsers } from './api';
 
 export { isBlockedSender };
 
-// The lowercased localparts I blocked, kept outside React so every
-// MessageList reads the same set without a prop chain. Loads lazily on
-// first use and on window focus; a failed load keeps the last good set so
-// a flaky network never unhides someone's messages.
+// Kept outside React so every MessageList reads the same set. A failed load keeps the
+// last good set, so a flaky network never unhides someone's messages.
 let blocked: ReadonlySet<string> = new Set();
 // True while the first-use load runs, so mounting many rows loads once.
 let loading = false;
@@ -85,7 +83,6 @@ export function useBlockedJids(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-/** Reload the set after a successful block or unblock. */
 export function refreshBlockedJids(): Promise<void> {
   return reload();
 }

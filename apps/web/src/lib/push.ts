@@ -2,11 +2,7 @@ import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { runWeb } from '@/lib/effect/runtime';
 
-// Browser side of web push (T-0119): PushManager subscription, permission
-// states and the install prompt. The app badge and notification dismissal
-// live in `./push/badge.ts` and are re-exported below. Server calls live in
-// `lib/api.ts`; everything here only touches browser APIs, read through narrow
-// injectable surfaces so the tests run with fakes.
+// Everything here only touches browser APIs, read through narrow injectable surfaces for tests.
 
 export type PushSupport = 'supported' | 'unsupported';
 
@@ -102,8 +98,7 @@ export function realPushBrowser(): PushBrowser | undefined {
   };
 }
 
-// Registers the app service worker (idempotent: the browser returns the
-// existing registration when already registered).
+// Registers the app service worker; the browser returns the existing registration if already registered.
 export function ensureServiceWorker(browser: PushBrowser): Promise<void> {
   return runWeb(ensureServiceWorkerEffect(browser));
 }
@@ -111,13 +106,9 @@ export function ensureServiceWorker(browser: PushBrowser): Promise<void> {
 const ensureServiceWorkerEffect = (browser: PushBrowser): Effect.Effect<void> =>
   Effect.promise(() => browser.serviceWorker.register('/sw.js')).pipe(Effect.asVoid);
 
-/**
- * True once a new deploy's service worker has taken over this page (T-1435):
- * the page keeps running the old bundle, so the caller shows the reload
- * banner. A first install claims this page too, so a page with no previous
- * controller never counts as an update; browsers without service workers stay
- * false as well.
- */
+/** True once a new deploy's service worker has taken over this page: the page keeps running
+ * the old bundle, so the caller shows the reload banner. A first install claims this page
+ * too, so a page with no previous controller never counts as an update. */
 export function useServiceWorkerUpdate(): boolean {
   const [updated, setUpdated] = useState(false);
   useEffect(() => {
@@ -144,9 +135,8 @@ export interface DeviceSubscription {
   keys: { p256dh: string; auth: string };
 }
 
-// The Promise API rejects with the browser's own error: a rejection from a
-// browser promise is a defect here, so the caller still sees that error. The
-// plain `Error`s below keep the class and message the API always rejected with.
+// A browser promise's rejection is a defect, so the caller sees that error; plain Errors keep
+// their class and message.
 const existingSubscription = (
   registration: { pushManager: PushManagerLike } | undefined,
 ): Effect.Effect<PushSubscriptionLike | null | undefined> =>
@@ -242,10 +232,7 @@ export function deviceLabel(userAgent?: string): string {
   return `${os} · ${browser}`;
 }
 
-// Re-exported so every importer of `@/lib/push` keeps working unchanged.
 export { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from './push/badge';
-
-// --- Install prompt ---------------------------------------------------------
 
 export function isIosDevice(userAgent?: string): boolean {
   const agent = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent);
@@ -271,8 +258,6 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-// Captures the browser's install offer for the main menu's Install entry.
-// Returns the captured event for the current render plus a prompt function.
 export function useInstallPrompt(): {
   installEvent: BeforeInstallPromptEvent | null;
   promptInstall: () => Promise<void>;

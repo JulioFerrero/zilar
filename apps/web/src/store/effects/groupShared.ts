@@ -1,6 +1,3 @@
-// Group and topic plumbing shared by the topics and group-settings effects:
-// the group a chat belongs to, the web halves of the shared group and topic
-// actions, and the quiet room join the created topic rows use.
 import { Effect } from 'effect';
 import {
   applyTopicRow as applyTopicRowCore,
@@ -21,8 +18,8 @@ import { fromPromise } from './util';
 export const groupIdOf = (ctx: StoreCtx, chatId: string): string | undefined =>
   ctx.get().chats.find((entry) => entry.id === chatId)?.groupId ?? ctx.groupIds.get(chatId);
 
-// The group id and my XMPP domain, or undefined when either is unknown (the
-// shared actions turn that into the fixed "not available yet" failure).
+// The group id and my XMPP domain, or undefined when either is unknown (the shared actions
+// turn that into the fixed not-available-yet failure).
 const groupTarget = (ctx: StoreCtx, groupId: string | undefined): GroupTarget | undefined => {
   const mine = ctx.k.myJid();
   if (groupId === undefined || mine === undefined) {
@@ -31,9 +28,7 @@ const groupTarget = (ctx: StoreCtx, groupId: string | undefined): GroupTarget | 
   return { groupId, domain: domainOf(mine) };
 };
 
-// The web half of the shared group change (settings, group AIs, channel role):
-// the detail is repainted from the server's answer, and the list is refreshed
-// through web's throwing refresh.
+// The web half of a shared group change: repaint the detail from the answer and refresh the list.
 export const groupChangeStore = (
   ctx: StoreCtx,
   groupId: string | undefined,
@@ -43,7 +38,6 @@ export const groupChangeStore = (
   refreshList: () => refreshChatsOrThrow(ctx),
 });
 
-/** The web half of the core topic-row refresh (R17): `/api/chats` and prefs. */
 const topicRowStore = (ctx: StoreCtx): TopicRowStore => ({
   getChats: () => ctx.ports.api.getChats(),
   summariesFor: (entry) => summariesFor(entry as ChatEntry),
@@ -55,8 +49,6 @@ const topicRowStore = (ctx: StoreCtx): TopicRowStore => ({
 export const applyTopicRow = (ctx: StoreCtx, topic: Topic): Effect.Effect<void, unknown> =>
   applyTopicRowCore(ctx, topicRowStore(ctx), topic);
 
-// The web half of the shared topic actions: the group ids remembered beside
-// the rows, and the topic-row store the shared repaint uses (R17).
 export const actionStore = (ctx: StoreCtx): GroupActionStore => ({
   groupIdFor: (chatId) => ctx.groupIds.get(chatId),
   rows: topicRowStore(ctx),

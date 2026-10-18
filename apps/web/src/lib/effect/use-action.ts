@@ -1,5 +1,3 @@
-// useAction: the one way a component runs a user action. The hook lives in
-// `@zilar/client-core`; this binds it to the web atom runtime.
 import { makeUseAction } from '@zilar/client-core';
 import { webAtomRuntime } from '@/lib/effect/runtime';
 

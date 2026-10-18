@@ -5,7 +5,6 @@ import { runWeb } from '@/lib/effect/runtime';
 import { API_BASE } from '../api';
 import { VOICE_FILENAME, VOICE_MAX_BYTES, VOICE_MIME, VoiceError } from './recorder';
 
-/** Runs an Effect thunk as a Promise; the shared body of the voice wrappers. */
 export const promiseOf = <A, E>(
   effect: () => Effect.Effect<A, E, HttpClient.HttpClient>,
 ): Promise<A> => runWeb(effect());
@@ -13,7 +12,7 @@ export const promiseOf = <A, E>(
 export interface ConvertedVoice {
   /** The AAC/M4A bytes produced by the server. */
   audio: Blob;
-  /** The duration `ffprobe` measured, never the duration the client claimed. */
+  /** The duration ffprobe measured, never the duration the client claimed. */
   durationMs: number;
 }
 
@@ -30,7 +29,6 @@ const errorCode = (response: Response): Effect.Effect<string> =>
     Effect.orElseSucceed(() => 'voice_failed'),
   );
 
-/** Sends a recording to the server and gets back AAC/M4A plus its duration. */
 export function convertVoice(blob: Blob, fetchFn: typeof fetch = fetch): Promise<ConvertedVoice> {
   return promiseOf(() => convertVoiceEffect(blob, fetchFn));
 }
@@ -81,7 +79,6 @@ export interface UploadSlotRequester {
   }): Promise<UploadSlot>;
 }
 
-/** PUTs the converted bytes to the slot and returns the download URL. */
 export function uploadVoice(
   requester: UploadSlotRequester,
   audio: Blob,
@@ -90,8 +87,7 @@ export function uploadVoice(
   return promiseOf(() => uploadVoiceEffect(requester, audio, fetchFn));
 }
 
-// A rejection from `requestUploadSlot` is a defect, so the caller sees the
-// original error; only the PUT failures become a `VoiceError`.
+// Only PUT failures become a VoiceError; a rejected slot request stays a defect.
 export const uploadVoiceEffect = Effect.fnUntraced(function* (
   requester: UploadSlotRequester,
   audio: Blob,

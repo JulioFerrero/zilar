@@ -18,7 +18,6 @@ import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
-/** The count pill the menu uses for requests and approvals. */
 function CountPill({ label, text }: { label: string; text: string }) {
   return (
     <span
@@ -30,11 +29,6 @@ function CountPill({ label, text }: { label: string; text: string }) {
   );
 }
 
-/**
- * Settings → hub: the profile card, the grouped rows shared with mobile
- * (`@zilar/chat-core`) and Sign out. The same six-door menu and folder rail
- * lead here; every `/settings/<page>` page returns to this hub.
- */
 export function SettingsHubPage() {
   const navigate = useNavigate();
   const auth = useAuth();
@@ -42,7 +36,6 @@ export function SettingsHubPage() {
   const isServerOwner = useIsServerOwner();
   const incomingRequests = useContactRequestCount(true);
   const pendingApprovals = usePendingApprovalCount(true);
-  // Running routines for the Routines row's pill; null while unknown or failed.
   const [routines] = useQuery(() => fromApi(() => listMyRoutines()), []);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
@@ -59,9 +52,8 @@ export function SettingsHubPage() {
     : 0;
   const routinesBadge = runningRoutines > 0 ? String(runningRoutines) : null;
 
-  // The profile card above already opens Profile, so the row is hidden from the
-  // Account card. Integrations is owner-only (the same condition as the menu
-  // had); a group whose only row is hidden (Server) drops its empty card.
+  // The profile card already opens Profile, so the row is hidden from the Account card; a
+  // group whose only row is hidden drops its empty card.
   const groups = webSettingsGroups()
     .map((group) => ({
       ...group,

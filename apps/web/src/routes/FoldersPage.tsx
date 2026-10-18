@@ -25,13 +25,10 @@ const TYPE_LABELS: Record<FolderChatType, string> = {
   ai: 'AIs',
 };
 
-/** Settings → Chat folders: list, reorder, create, edit and delete (T-0238). */
 export function FoldersPage({ onBack }: { onBack: () => void }) {
   const folders = useChatSelector((s) => s.folders);
   const storeApi = useChatStoreApi();
-  // ChatShell also mounts this when the page opens from inside the app, but
-  // a direct load (refresh, typed URL) needs the sync here too; mounting
-  // the hook twice is safe.
+  // ChatShell also mounts this when the page opens in-app; a direct load needs the sync here.
   useChatFolders();
   const [editor, setEditor] = useState<{ open: boolean; folder: ChatFolder | null }>({
     open: false,
@@ -39,8 +36,7 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
   });
 
   const atLimit = folders.length >= FOLDERS_MAX;
-  // One reorder at a time: a second one is dropped while the first waits.
-  // On failure the previous order comes back; a success stores the server's order.
+  // One reorder at a time; on failure the previous order comes back, on success the server's.
   const [reorderState, reorder] = useAction((ids: string[]) =>
     fromApi(() => reorderChatFolders(ids)).pipe(
       Effect.tap((ordered) => Effect.sync(() => storeApi.getState().setFolders(ordered))),
