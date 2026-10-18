@@ -1,4 +1,5 @@
 import { runApi, type AuthInvite } from '@zilar/api-contract';
+import { makeChatsApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -19,7 +20,8 @@ export function createInvitesApi(
   apiUrl: string = API_URL,
 ): InvitesApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  const api = makeChatsApi((call) => runApi(call(client)));
   return {
-    createInvite: () => runApi(client.auth.createInvite()),
+    createInvite: api.createInvite,
   };
 }

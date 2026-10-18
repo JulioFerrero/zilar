@@ -2096,3 +2096,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2092](T-2092-tool-json-from-schemas.md) | AI tools: JSON parameters derived from the Effect schemas | 2026-10-18 |
 | [T-2094](T-2094-web-barrels-routes.md) | web: api barrel as export *, one auth layout route, no shims | 2026-10-18 |
 | [T-2101](T-2101-server-dead-code.md) | server: delete public-compat, smoke client, five dead functions | 2026-10-18 |
+| [T-2099](T-2099-api-chats.md) | share: one chats API in client-core for web and phone | 2026-10-18 |
