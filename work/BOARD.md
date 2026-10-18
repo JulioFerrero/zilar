@@ -2003,3 +2003,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2007](T-2007-baremetal-parity.md) | bare metal: contacts-only DMs and one trusted proxy hop | 2026-10-18 |
 | [T-2010](T-2010-room-rights-followups.md) | no MUC owner on group create or hand-over | 2026-10-18 |
 | [T-2005](T-2005-media-input-caps.md) | media caps: stickers, voice, ffmpeg protocols, JPEG strip | 2026-10-18 |
+| [T-2008](T-2008-history-page-one-update.md) | a history page lands in one store update | 2026-10-18 |

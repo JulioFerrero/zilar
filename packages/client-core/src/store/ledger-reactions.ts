@@ -62,10 +62,10 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
     set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
   }
 
-  // Applies one reaction update and refreshes the loaded messages. The target
-  // is canonicalised through the alias map so it matches whatever id the
-  // message is currently known by.
-  function applyReactionUpdate(
+  // Records one reaction update in the derived state. The target is
+  // canonicalised through the alias map so it matches whatever id the message
+  // is currently known by.
+  function recordReaction(
     chatId: string,
     targetId: string,
     reactorJid: string,
@@ -83,30 +83,56 @@ export function createLedgerReactions(deps: LedgerReactionsDeps) {
         }),
       },
     }));
+  }
+
+  // Applies one reaction update and refreshes the loaded messages.
+  function applyReactionUpdate(
+    chatId: string,
+    targetId: string,
+    reactorJid: string,
+    emojis: string[],
+    order: number,
+  ): void {
+    recordReaction(chatId, targetId, reactorJid, emojis, order);
     refreshReactions(chatId);
   }
 
-  // A reaction update is not a chat message: it only changes reaction state,
-  // so it never becomes a bubble or bumps the preview or unread count.
-  function ingestReaction(message: LedgerStanza): void {
+  function recordStanza(message: LedgerStanza): boolean {
     const reactions = message.reactions;
     if (reactions === undefined) {
-      return;
+      return false;
     }
     const mine = myJid();
     const reactorJid = message.outgoing && mine !== undefined ? mine : message.fromJid;
-    applyReactionUpdate(
+    recordReaction(
       message.chatJid,
       reactions.targetId,
       reactorJid,
       reactions.emojis,
       message.timestamp.getTime(),
     );
+    return true;
   }
 
+  // A reaction update is not a chat message: it only changes reaction state,
+  // so it never becomes a bubble or bumps the preview or unread count.
+  function ingestReaction(message: LedgerStanza): void {
+    if (recordStanza(message)) {
+      refreshReactions(message.chatJid);
+    }
+  }
+
+  // A history slice records every update first and re-attaches the chips once
+  // per chat, so the loaded list is walked once, not once per stanza.
   function ingestHistoryReactions(messages: readonly LedgerStanza[]): void {
+    const chats = new Set<string>();
     for (const message of messages) {
-      ingestReaction(message);
+      if (recordStanza(message)) {
+        chats.add(message.chatJid);
+      }
+    }
+    for (const chatId of chats) {
+      refreshReactions(chatId);
     }
   }
 

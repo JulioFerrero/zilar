@@ -8,10 +8,16 @@
 //
 // This is the barrel: the ledger's pieces live in `ledger-types.ts`,
 // `ledger-signatures.ts`, `ledger-ids.ts`, `ledger-edits.ts`,
-// `ledger-mutators.ts`, `ledger-identity.ts`, `ledger-reactions.ts` and
-// `ledger-incoming.ts`, and are assembled here. Moved unchanged from the
+// `ledger-mutators.ts`, `ledger-identity.ts`, `ledger-reactions.ts`,
+// `ledger-incoming.ts` and `ledger-history-ingest.ts`, and are assembled here. Moved unchanged from the
 // former single file (size split).
 import { createLedgerEdits } from './ledger-edits';
+import {
+  createEditRecorder,
+  createHistoryIngest,
+  createLedgerBatch,
+  mergeOlderPage,
+} from './ledger-history-ingest';
 import { createLedgerIdentity } from './ledger-identity';
 import { createLedgerIds } from './ledger-ids';
 import { createLedgerIncoming } from './ledger-incoming';
@@ -25,7 +31,7 @@ import {
   signatureFor,
   stickerSignatureFor,
 } from './ledger-signatures';
-import type { LedgerMaps, MessageLedgerDeps } from './ledger-types';
+import type { LedgerMaps, MessageLedgerDeps, StoreMessage } from './ledger-types';
 
 export type {
   LedgerContact,
@@ -41,7 +47,11 @@ export { isEditStanza, isReactionOnly, listFor, previewFor, signatureFor, sticke
 export type MessageLedger = ReturnType<typeof createMessageLedger>;
 
 export function createMessageLedger(deps: MessageLedgerDeps) {
-  const { get, set } = deps;
+  // Every ledger piece reads and writes through the batch, so a history page can
+  // collect all of its updates into one (`collectPage`); outside a batch these
+  // are the store's own `get` and `set`.
+  const batch = createLedgerBatch(deps);
+  const { get, set } = batch;
 
   // The id side tables the moved modules share; they stay here so the returned
   // object can hand the raw maps to the store's sign-out.
@@ -67,7 +77,9 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
   const identity = createLedgerIdentity({ get, deps });
   const reactions = createLedgerReactions({ get, set, ids, identity });
   const incoming = createLedgerIncoming({ get, set, deps, ids, identity, reactions });
-  const edits = createLedgerEdits({ get, set, ids, incoming, cards: maps.cards });
+  const recorder = createEditRecorder({ get, set, ids, cards: maps.cards });
+  const edits = createLedgerEdits({ get, set, ids, incoming, recorder, cards: maps.cards });
+  const historyIngest = createHistoryIngest({ recorder, edits });
   const mutators = createLedgerMutators({ set, ids });
 
   // Forgets every id the ledger knows, for a store whose sign-out resets it.
@@ -90,7 +102,10 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     listFor,
     sameMessage: ids.sameMessage,
     ingestHistoryReactions: reactions.ingestHistoryReactions,
-    ingestHistoryEdits: edits.ingestHistoryEdits,
+    ingestHistoryEdits: historyIngest.ingestHistoryEdits,
+    collectPage: batch.collect,
+    mergeOlderPage: (loaded: readonly StoreMessage[], page: readonly StoreMessage[]) =>
+      mergeOlderPage(ids.aliasRoot, loaded, page),
     isReactionOnly,
     isEditStanza,
     toUiMessage: incoming.toUiMessage,

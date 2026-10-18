@@ -4,7 +4,7 @@
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
-import { fromPromise } from './ctx';
+import { fromPromise, type CoreCtx, type CoreState } from './ctx';
 import {
   MESSAGE_JUMP_MAX_PAGES,
   PAGE_HISTORY_MAX,
@@ -15,6 +15,7 @@ import {
   waitForHistory,
   type HistoryCtx,
 } from './history-core';
+import type { LedgerBatchView } from './ledger-history-ingest';
 import { applyChatReadMark, recordRead } from './reads';
 import { coreKind, sortMessages } from './rows';
 
@@ -34,6 +35,17 @@ export type {
   HistorySet,
   HistoryState,
 } from './history-core';
+
+// The context a batch runs its read mark against: reads see the working copy
+// and writes go to it, so the mark lands in the page's one update.
+const batchedCtx = (ctx: HistoryCtx, view: LedgerBatchView): CoreCtx => {
+  const get = (): CoreState => ({ ...ctx.get(), ...view.get() });
+  return {
+    ...ctx,
+    get,
+    set: (update) => view.set(typeof update === 'function' ? update(get()) : update),
+  };
+};
 
 /**
  * One backwards history page, shared with `loadOlder` and `openAtMessage`.
@@ -58,32 +70,33 @@ export const loadOlderPage = (
       const page = yield* fromPromise(() =>
         current.loadHistory(chatId, coreKind(chat), { before: cursor, max: PAGE_HISTORY_MAX }),
       );
-      k.ingestHistoryReactions(page.messages);
-      k.ingestHistoryEdits(page.messages);
-      const older = page.messages
-        .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
-        .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
-      k.resolvePendingEdits(chatId);
-      const withEditsApplied = dedupePage(
-        k.sameMessage,
-        older.map((message) => k.withEdits(message, chatId)),
-      );
-      ctx.set((state) => {
-        const loaded = k.listFor(state, chatId);
-        const added = withEditsApplied.filter(
-          (message) => !loaded.some((item) => k.sameMessage(item.id, message.id)),
+      // The whole page lands in one store update: its reactions, its edits,
+      // the merged messages, the read mark and `historyComplete`.
+      const patch = k.collectPage((view) => {
+        k.ingestHistoryReactions(page.messages);
+        k.ingestHistoryEdits(page.messages);
+        const older = page.messages
+          .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
+          .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
+        k.resolvePendingEdits(chatId);
+        const withEditsApplied = dedupePage(
+          k.sameMessage,
+          older.map((message) => k.withEdits(message, chatId)),
         );
-        return {
+        view.set((state) => ({
           messagesByChat: {
             ...state.messagesByChat,
-            [chatId]: sortMessages([...added, ...loaded]),
+            [chatId]: k.mergeOlderPage(k.listFor(state, chatId), withEditsApplied),
           },
-          historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-        };
+        }));
+        k.refreshEdits(chatId);
+        applyChatReadMark(batchedCtx(ctx, view), chatId);
       });
+      ctx.set((state) => ({
+        ...patch,
+        historyComplete: { ...state.historyComplete, [chatId]: page.complete },
+      }));
       ctx.cursors[chatId] = page.first;
-      k.refreshEdits(chatId);
-      applyChatReadMark(ctx, chatId);
     }).pipe(
       // A failed page load leaves the cursor for a later retry.
       Effect.catchCause(() => Effect.void),

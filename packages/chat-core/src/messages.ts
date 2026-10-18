@@ -16,6 +16,12 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
+function dayKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `day:${date.getFullYear()}-${month}-${day}`;
+}
+
 function startsNewGroup(previous: UiMessage | undefined, message: UiMessage): boolean {
   if (previous === undefined) {
     return true;
@@ -67,7 +73,7 @@ export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
 
     const previous = sorted[index - 1];
     if (previous === undefined || !sameDay(previous.createdAt, first.createdAt)) {
-      items.push({ kind: 'separator', id: `separator-${first.id}`, date: first.createdAt });
+      items.push({ kind: 'separator', id: dayKey(first.createdAt), date: first.createdAt });
     }
 
     let end = index;

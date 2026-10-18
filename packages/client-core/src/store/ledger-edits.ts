@@ -1,22 +1,16 @@
-// The ledger's edit state: applying a correction or retraction from a stanza or
-// from history, resolving edits that arrived before their target, re-attaching
-// the current edit state to the loaded messages and their reply quotes, and
-// restoring a message or its edit state after a failed send. Moved unchanged
-// from `store/ledger.ts` (size split).
-import type { EditUpdate, EditsState, ReplyRef } from '@zilar/chat-core';
-import {
-  applyEdit,
-  editsFor,
-  emptyEdits,
-  isSameAuthor,
-  mentionsEqual,
-  resolveEdits,
-} from '@zilar/chat-core';
+// The ledger's edit state: applying a correction or retraction from a stanza,
+// resolving edits that arrived before their target, re-attaching the current
+// edit state to the loaded messages and their reply quotes, and restoring a
+// message or its edit state after a failed send. Recording what a stanza
+// carries, and ingesting history, live in `ledger-history-ingest.ts`.
+import type { EditsState, ReplyRef } from '@zilar/chat-core';
+import { editsFor, isSameAuthor, mentionsEqual, resolveEdits } from '@zilar/chat-core';
 import type { Payload } from '@zilar/protocol';
-import { authorOfChatMessage, isEditStanza, listFor, previewFor } from './ledger-signatures';
+import { listFor, previewFor } from './ledger-signatures';
+import type { EditRecorder } from './ledger-history-ingest';
 import type { LedgerIds } from './ledger-ids';
 import type { LedgerIncoming } from './ledger-incoming';
-import { correctionChanged, createRoutineBump } from './ledger-routine-bump';
+import { createRoutineBump } from './ledger-routine-bump';
 import type { CardEdit, LedgerSet, LedgerState, LedgerStanza, StoreMessage } from './ledger-types';
 
 interface LedgerEditsDeps {
@@ -24,129 +18,36 @@ interface LedgerEditsDeps {
   readonly set: LedgerSet;
   readonly ids: LedgerIds;
   readonly incoming: LedgerIncoming;
+  readonly recorder: EditRecorder;
   /** The task-card updates a correction carries, newest order wins. */
   readonly cards: Map<string, CardEdit>;
 }
 
 export function createLedgerEdits(deps: LedgerEditsDeps) {
-  const { get, set, cards } = deps;
+  const { get, set, cards, recorder } = deps;
   const { aliasRoot, authorFor, baseTextFor, sameMessage } = deps.ids;
   const { mapMentions } = deps.incoming;
   const routineBump = createRoutineBump({ get, set, sameMessage, render: withEdits });
-
-  function editUpdateFor(message: LedgerStanza): EditUpdate | undefined {
-    const order = message.timestamp.getTime();
-    const author = authorOfChatMessage(message);
-    if (message.retraction !== undefined) {
-      return {
-        kind: 'retraction',
-        targetId: aliasRoot(message.retraction.targetId),
-        author,
-        order,
-      };
-    }
-    if (message.correction !== undefined) {
-      // A correction without a body has no new text: ignore it rather than
-      // blanking the original.
-      if (message.body === undefined) {
-        return undefined;
-      }
-      const update: EditUpdate = {
-        kind: 'correction',
-        targetId: aliasRoot(message.correction.targetId),
-        author,
-        text: message.body,
-        order,
-      };
-      if (message.mentions !== undefined && message.mentions.length > 0) {
-        update.mentions = message.mentions;
-      }
-      return update;
-    }
-    return undefined;
-  }
-
-  // A correction carrying a progress or blocks payload replaces its target's
-  // card (T-1419, T-1810 for block card answers). A body-less one still counts:
-  // the card is the whole update. Any other payload type is not a card edit.
-  function cardEditFor(message: LedgerStanza): CardEdit | undefined {
-    const correction = message.correction;
-    const payload = message.payload;
-    const isCard = payload?.type === 'progress' || payload?.type === 'blocks';
-    if (correction === undefined || payload === undefined || !isCard) {
-      return undefined;
-    }
-    return {
-      order: message.timestamp.getTime(),
-      author: authorOfChatMessage(message),
-      payload,
-    };
-  }
-
-  // Remembers a card update under the alias root of its target, so it lands on
-  // whichever id the message is stored under. An update from another author is
-  // ignored, like a text correction, and an older stanza order never overwrites
-  // a newer one.
-  function rememberCard(targetId: string, entry: CardEdit): void {
-    const targetAuthor = authorFor(targetId);
-    if (targetAuthor !== undefined && !isSameAuthor(targetAuthor, entry.author)) {
-      return;
-    }
-    const root = aliasRoot(targetId);
-    const existing = cards.get(root);
-    if (existing !== undefined && existing.order > entry.order) {
-      return;
-    }
-    cards.set(root, entry);
-  }
-
-  // Whether the correction changed the target's edit state. `applyEdit` returns
-  // a fresh object even for a stale order or a redelivered duplicate stanza.
-  function applyEditUpdate(chatId: string, update: EditUpdate): boolean {
-    const target = authorFor(update.targetId);
-    const before = get().edits[chatId]?.targets[update.targetId];
-    set((state) => ({
-      edits: {
-        ...state.edits,
-        [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, target),
-      },
-    }));
-    const after = get().edits[chatId]?.targets[update.targetId];
-    resolvePendingEdits(chatId);
-    refreshEdits(chatId);
-    return target !== undefined && correctionChanged(before, after);
-  }
 
   // A correction or retraction message only changes edit state; it never
   // touches the preview or the unread count. A correction may also carry a
   // task-card payload, which is remembered even when its body is empty. A live
   // routine correction is the one exception (T-1722): it bumps its chat, but
-  // only when it arrives live — `ingestHistoryEdits` passes `bumpRoutine` false,
-  // so an old page read back at boot or on open never reorders or inflates.
-  function ingestEdit(message: LedgerStanza, bumpRoutine = true): void {
-    const card = cardEditFor(message);
-    if (card !== undefined && message.correction !== undefined) {
-      rememberCard(message.correction.targetId, card);
-    }
-    const update = editUpdateFor(message);
+  // only when it arrives live — `ingestHistoryEdits` never bumps, so an old page
+  // read back at boot or on open never reorders or inflates.
+  function ingestEdit(message: LedgerStanza): void {
+    const { update, applied } = recorder.recordEdit(message);
     if (update !== undefined) {
-      const applied = applyEditUpdate(message.chatJid, update);
+      resolvePendingEdits(message.chatJid);
+      refreshEdits(message.chatJid);
       const routine = update.kind === 'correction' && message.payload?.type === 'routine';
-      if (bumpRoutine && applied && routine) {
+      if (applied && routine) {
         routineBump.bumpRoutineChat(message.chatJid, update.targetId, update.author);
       }
       return;
     }
-    if (card !== undefined) {
+    if (recorder.hasCard(message)) {
       refreshEdits(message.chatJid);
-    }
-  }
-
-  function ingestHistoryEdits(messages: readonly LedgerStanza[]): void {
-    for (const message of messages) {
-      if (isEditStanza(message)) {
-        ingestEdit(message, false);
-      }
     }
   }
 
@@ -299,14 +200,14 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
   }
 
   // A reply quote follows its target: the corrected text, or "Deleted
-  // message" once the target was retracted.
-  function withReplyQuote(list: readonly StoreMessage[], message: StoreMessage): StoreMessage {
+  // message" once the target was retracted. `referenced` is the target, found
+  // through the list's index by alias root.
+  function withReplyQuote(
+    message: StoreMessage,
+    referenced: StoreMessage | undefined,
+  ): StoreMessage {
     const quote = message.replyTo;
-    if (quote === undefined) {
-      return message;
-    }
-    const referenced = list.find((item) => sameMessage(item.id, quote.id));
-    if (referenced === undefined) {
+    if (quote === undefined || referenced === undefined) {
       return message;
     }
     const text = referenced.deleted === true ? 'Deleted message' : referenced.text;
@@ -322,6 +223,19 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return { ...message, replyTo };
   }
 
+  // The first index of each message by alias root, so a reply or the preview
+  // finds its target without scanning the list.
+  function indexByRoot(list: readonly StoreMessage[]): Map<string, number> {
+    const index = new Map<string, number>();
+    list.forEach((message, position) => {
+      const root = aliasRoot(message.id);
+      if (!index.has(root)) {
+        index.set(root, position);
+      }
+    });
+    return index;
+  }
+
   // Re-attaches the current edit state to every loaded message of a chat and
   // follows reply quotes and the preview.
   function refreshEdits(chatId: string): void {
@@ -334,11 +248,19 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
       return;
     }
     const edited = list.map((message) => withEdits(message, chatId));
-    const refreshed = edited.map((message) => withReplyQuote(edited, message));
+    const positions = indexByRoot(edited);
+    const find = (messages: readonly StoreMessage[], id: string): StoreMessage | undefined => {
+      const position = positions.get(aliasRoot(id));
+      return position === undefined ? undefined : messages[position];
+    };
+    const refreshed = edited.map((message) =>
+      message.replyTo === undefined
+        ? message
+        : withReplyQuote(message, find(edited, message.replyTo.id)),
+    );
     const listChanged = refreshed.some((message, index) => message !== list[index]);
     const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
-    const lastRefreshed =
-      last === undefined ? undefined : refreshed.find((item) => sameMessage(item.id, last.id));
+    const lastRefreshed = last === undefined ? undefined : find(refreshed, last.id);
     const lastChanged = last !== undefined && lastRefreshed !== undefined && lastRefreshed !== last;
     if (!listChanged && !lastChanged) {
       return;
@@ -387,7 +309,6 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
 
   return {
     ingestEdit,
-    ingestHistoryEdits,
     resolvePendingEdits,
     withEdits,
     refreshEdits,
