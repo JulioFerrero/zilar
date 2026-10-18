@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { useState } from 'react';
+import { approvalSentBy } from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
@@ -13,20 +14,20 @@ import { FieldError } from '@/components/ais/AiPageShell';
 
 export function ApprovalCard({
   request,
+  senderId,
   topicName,
 }: {
   request: ApprovalRequest;
+  /** T-2001: the message sender; the record's `aiId` must belong to it. */
+  senderId: string;
   /** T-0111: the topic the card lives in; the confirm copy names it. */
   topicName?: string;
 }) {
-  // Bumped on a manual retry to force the polling hook to drop its current
-  // state and re-fetch from scratch.
-  const [retryToken, setRetryToken] = useState(0);
   // The polling hook owns the card's read-model state. A non-pending outcome,
   // a 404, an id change, and an unmount all stop further reads; a failed poll
   // keeps the last good state. `apply` lets the card push an optimistic state
   // after a decision so the buttons drop at once.
-  const { state, apply } = useApprovalPolling(request, { resetKey: retryToken });
+  const { state, apply } = useApprovalPolling(request);
   const [inFlight, setInFlight] = useState<null | 'approve' | 'deny' | 'always'>(null);
   // T-0100: the "Always allow" two-step. The first click arms the inline
   // confirmation; `alwaysBlocked` drops the button for the rest of this view
@@ -59,15 +60,6 @@ export function ApprovalCard({
     ),
   );
 
-  const approval = state.kind === 'ready' ? state.approval : null;
-  const pending = approval !== null && approval.status === 'pending' ? approval : null;
-  // T-1723: a routine card's summary holds the title and the schedule; draw
-  // them apart, null for every other card.
-  const routine = routineCardTitle(request.action, request.summary);
-  const retry = (): void => {
-    setRetryToken((value) => value + 1);
-  };
-
   const startDecision = (decision: ApprovalDecision): void => {
     setInFlight(
       decision === 'deny' ? 'deny' : decision === 'approve_always' ? 'always' : 'approve',
@@ -75,25 +67,53 @@ export function ApprovalCard({
     decide(decision);
   };
 
+  // T-2001: the summary, action and AI come from the server's record, never
+  // from the message. Without a loaded record there is no card to act on: the
+  // loading state shows a placeholder, and a failed or missing read shows the
+  // fixed sentence with no buttons.
+  if (state.kind !== 'ready') {
+    return (
+      <div className="bubble-in flex min-w-[260px] flex-col gap-4 rounded-[12px] p-4">
+        {state.kind === 'loading' ? (
+          <div
+            className="h-7 w-32 rounded-md bg-surface-raised"
+            aria-label="Loading approval"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="text-[14px] text-muted-foreground">This request is not available</span>
+        )}
+      </div>
+    );
+  }
+  const approval = state.approval;
+  const pending = approval.status === 'pending' ? approval : null;
+  // T-1723: a routine card's summary holds the title and the schedule; draw
+  // them apart, null for every other card.
+  const routine = routineCardTitle(approval.action, approval.summary);
+  // T-2001: a forged card can name a real approval but must not decide it with
+  // its own buttons. The server's `aiId` has to belong to the message sender.
+  const senderMatches = approvalSentBy(approval.aiId, senderId);
+
   // The server turns a past-due `pending` row into `expired` in its read model
   // (see `toPublicApproval`), so a `pending` status is already "pending and
   // not expired" from the user's perspective. The third button needs the
   // server's eligibility flag too: the polling state is the decidable read
   // model, so a non-decider never gets this far (the hook reports
   // `notDecidable` for them).
-  const showAlways = pending !== null && pending.alwaysEligible && !alwaysBlocked;
+  const showAlways = pending !== null && pending.alwaysEligible && !alwaysBlocked && senderMatches;
   const busy = inFlight !== null;
   // The last failure, hidden while a new decision runs.
   const failure = isWaiting(decisionState) ? undefined : failureOf(decisionState);
   const actionError = failure === undefined ? '' : decisionMessage(failure);
 
   // A decided request is one compact line: an icon and the summary, muted.
-  if (approval !== null && pending === null) {
+  if (pending === null) {
     return (
       <div className="bubble-in flex min-w-[260px] items-center gap-2 rounded-[12px] px-3.5 py-2">
         <DecidedIcon status={approval.status} />
         {routine === null ? (
-          <span className="text-[14px] break-words text-muted-foreground">{request.summary}</span>
+          <span className="text-[14px] break-words text-muted-foreground">{approval.summary}</span>
         ) : (
           <>
             <span className="min-w-0 flex-1 text-[14px] break-words text-muted-foreground">
@@ -117,7 +137,7 @@ export function ApprovalCard({
           </span>
           {routine === null ? (
             <span className="text-[16px] leading-[22px] font-semibold break-words">
-              {request.summary}
+              {approval.summary}
             </span>
           ) : (
             <div className="flex items-center gap-2">
@@ -138,36 +158,8 @@ export function ApprovalCard({
       ) : (
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 text-[16px] leading-[22px] font-semibold break-words">
-            {request.summary}
+            {approval.summary}
           </span>
-          {state.kind === 'notDecidable' && (
-            <Clock
-              className="size-[15px] shrink-0 text-muted-foreground"
-              role="img"
-              aria-label="Waiting for a decision"
-            />
-          )}
-        </div>
-      )}
-
-      {state.kind === 'loading' && (
-        <div
-          className="h-7 w-32 rounded-md bg-surface-raised"
-          aria-label="Loading approval"
-          aria-hidden="true"
-        />
-      )}
-
-      {state.kind === 'error' && (
-        <div className="flex flex-col gap-2">
-          <p className="text-[12px] text-muted-foreground" role="status">
-            Could not load the decision state
-          </p>
-          <div>
-            <Button type="button" size="sm" variant="outline" className="px-3" onClick={retry}>
-              Retry
-            </Button>
-          </div>
         </div>
       )}
 
@@ -177,16 +169,16 @@ export function ApprovalCard({
             <div className="flex flex-col gap-2">
               <p className="text-[12px] leading-4 text-muted-foreground">
                 {topicName !== undefined
-                  ? `Always run ${request.action} without asking, in “${topicName}” only.`
+                  ? `Always run ${pending.action} without asking, in “${topicName}” only.`
                   : pending.groupId === null
-                    ? `Always run ${request.action} without asking, in this chat only.`
-                    : `Always run ${request.action} without asking, in this group only.`}
+                    ? `Always run ${pending.action} without asking, in this chat only.`
+                    : `Always run ${pending.action} without asking, in this group only.`}
               </p>
               <div className="flex gap-2">
                 <Button
                   type="button"
                   size="lg"
-                  disabled={busy}
+                  disabled={busy || !senderMatches}
                   onClick={() => startDecision('approve_always')}
                 >
                   {inFlight === 'always' ? 'Allowing…' : 'Confirm'}
@@ -195,7 +187,7 @@ export function ApprovalCard({
                   type="button"
                   size="lg"
                   variant="outline"
-                  disabled={busy}
+                  disabled={busy || !senderMatches}
                   onClick={() => {
                     setConfirmingAlways(false);
                     decisionControls.reset();
@@ -213,7 +205,7 @@ export function ApprovalCard({
                   size="lg"
                   variant="ghost"
                   className="px-1 text-[13px] font-medium text-muted-foreground"
-                  disabled={busy}
+                  disabled={busy || !senderMatches}
                   onClick={() => {
                     setConfirmingAlways(true);
                     decisionControls.reset();
@@ -227,7 +219,7 @@ export function ApprovalCard({
                 type="button"
                 size="lg"
                 variant="outline"
-                disabled={busy}
+                disabled={busy || !senderMatches}
                 onClick={() => startDecision('deny')}
               >
                 {inFlight === 'deny' ? 'Denying…' : 'Deny'}
@@ -235,7 +227,7 @@ export function ApprovalCard({
               <Button
                 type="button"
                 size="lg"
-                disabled={busy}
+                disabled={busy || !senderMatches}
                 onClick={() => startDecision('approve_once')}
               >
                 {inFlight === 'approve' ? 'Approving…' : 'Approve'}

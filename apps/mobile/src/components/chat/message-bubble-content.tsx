@@ -196,6 +196,7 @@ export function MessageBubbleContent({
           {/* T-1756: a blocks card carries its own time row as its card footer. */}
           <PayloadCard
             card={message.card}
+            senderId={message.senderId}
             footer={
               message.card.type === 'blocks' ? (
                 <BubbleMeta message={message} outgoing={outgoing} color={metaColor} />

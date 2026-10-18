@@ -1,4 +1,5 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
 import { useMemo } from 'react';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ApprovalCard } from '../ApprovalCard';
@@ -65,12 +66,18 @@ export function AttachmentBody({
   // A media bubble is edge to edge (T-1335): the media fills the bubble and its
   // own clip follows the bubble's corners and tail.
   const radius = mediaCorners(mediaTop, !hasText, lastInGroup, own);
+  // T-2001: only an AI may render an approval, question, blocks, routine or
+  // progress card. From a person the bubble shows its plain text instead; a
+  // body-less one shows the fixed unsupported sentence below.
+  const card =
+    message.card !== undefined && isCardAllowedFrom(message.card, message.senderId)
+      ? message.card
+      : undefined;
   // T-1618: a work card stands alone; T-1755: a blocks card is its own surface
   // too. Neither takes the bubble's inner padding box, and each shows its own
   // time instead of the row below the bubble.
   const cardStandsAlone =
-    message.card !== undefined &&
-    (message.card.type === 'progress' || message.card.type === 'blocks');
+    card !== undefined && (card.type === 'progress' || card.type === 'blocks');
   // T-1795: an interactive blocks card answers through the route and, for the
   // decision kinds, sends the @AI reply from this room. A direct chat records
   // the card under its origin id and needs no mention (T-1825), so there the
@@ -296,27 +303,28 @@ export function AttachmentBody({
         </div>
       )}
 
-      {message.card !== undefined && (
+      {card !== undefined && (
         // T-1618: a work card stands alone; T-1755: a blocks card is its own
         // surface too, so neither gets the bubble's inner padding box.
         <div className={cn(!cardStandsAlone && 'px-3 py-1.5')}>
-          {message.card.type === 'progress' && <ProgressCard progress={message.card.data} />}
-          {message.card.type === 'blocks' && (
+          {card.type === 'progress' && <ProgressCard progress={card.data} />}
+          {card.type === 'blocks' && (
             <BlockCard
-              data={message.card.data}
+              data={card.data}
               footer={<MessageMeta message={message} showTicks={own} className="text-[#8a8a8a]" />}
               {...(blockRespond === undefined ? {} : { respond: blockRespond })}
             />
           )}
-          {message.card.type === 'approval.request' && (
+          {card.type === 'approval.request' && (
             <ApprovalCard
-              request={message.card.data}
+              request={card.data}
+              senderId={message.senderId}
               {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
             />
           )}
-          {message.card.type === 'question' && (
+          {card.type === 'question' && (
             <QuestionCard
-              question={message.card.data}
+              question={card.data}
               aiName={message.senderName}
               chatId={chat.id}
               messageId={message.id}
@@ -325,11 +333,19 @@ export function AttachmentBody({
         </div>
       )}
 
+      {/* T-2001: a card a person may not send from a map that kept it (the
+          mock or a fixture) still leaves the body-less bubble one sentence. */}
+      {message.card !== undefined && card === undefined && !hasText && (
+        <div className="px-3 py-1.5 text-[15px] leading-[22px] break-words">
+          {UNSUPPORTED_MESSAGE_TEXT}
+        </div>
+      )}
+
       {!hasText &&
         (message.voice !== undefined ||
           // T-1618: a work card's own timer is its time; no clock or "edited".
           // T-1755: a blocks card shows its own time inside the card, too.
-          (message.card !== undefined && !cardStandsAlone) ||
+          (card !== undefined && !cardStandsAlone) ||
           (attachmentFile && !videoAttachment)) && (
           <div className="flex justify-end px-3 pb-2">
             <MessageMeta

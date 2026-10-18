@@ -6,6 +6,7 @@
 import type { EditsState, ReplyRef } from '@zilar/chat-core';
 import { editsFor, isSameAuthor, mentionsEqual, resolveEdits } from '@zilar/chat-core';
 import type { Payload } from '@zilar/protocol';
+import { isCardAllowedFrom } from './ai-cards';
 import { listFor, previewFor } from './ledger-signatures';
 import type { EditRecorder } from './ledger-history-ingest';
 import type { LedgerIds } from './ledger-ids';
@@ -185,18 +186,18 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return edited;
   }
 
-  // The rendered message: its edit state, then the task card a correction
-  // replaced. A deleted message keeps no card.
+  // The rendered message: its edit state, then the card a correction replaced
+  // when the sender could post it. A deleted message keeps no card.
   function withEdits(message: StoreMessage, chatId: string): StoreMessage {
     const edited = applyTextEdits(message, chatId);
     if (edited.deleted === true) {
       return edited;
     }
     const card = cardFor(edited);
-    if (card === undefined || edited.card === card) {
+    if (card === undefined || !isCardAllowedFrom(card, edited.senderId)) {
       return edited;
     }
-    return { ...edited, card };
+    return edited.card === card ? edited : { ...edited, card };
   }
 
   // A reply quote follows its target: the corrected text, or "Deleted

@@ -18,6 +18,7 @@ import { ANA, NOW, TEAM, testCtx } from './test-ctx';
 
 const ME = 'me@zilar.test';
 const BOB = 'bob@zilar.test';
+const AI = 'ai-dev@zilar.test';
 const EVE = 'eve@zilar.test';
 const ROOM = 'room@groups.zilar.test';
 
@@ -514,14 +515,78 @@ describe('the message ledger: payload cards', () => {
     const progress: Payload = {
       v: 0,
       type: 'progress',
-      data: { ai: BOB, stage: 'Reading pull requests' },
+      data: { ai: AI, stage: 'Reading pull requests' },
     };
     const h = harness();
-    h.receive(stanza({ id: 'progress-1', fromJid: BOB, outgoing: false, payload: progress }));
+    h.receive(stanza({ id: 'progress-1', fromJid: AI, outgoing: false, payload: progress }));
 
     const [bubble] = h.messages();
     expect(bubble?.card).toEqual(progress);
     expect(bubble?.text).toBeUndefined();
+  });
+
+  // T-2001: the same card from a person is plain text, never a card.
+  it('does not map a card from a person', () => {
+    const progress: Payload = {
+      v: 0,
+      type: 'progress',
+      data: { ai: BOB, stage: 'Reading pull requests' },
+    };
+    const h = harness();
+    h.receive(stanza({ id: 'progress-person', fromJid: ANA, outgoing: false, payload: progress }));
+
+    const [bubble] = h.messages();
+    expect(bubble?.card).toBeUndefined();
+    expect(bubble?.text).toBe('Unsupported message');
+  });
+
+  // T-2001: a correction only adds a card its sender could have posted. A
+  // person's correction carrying a routine payload leaves no card behind.
+  it('does not add a routine card from a person correction', () => {
+    const routine: Payload = {
+      v: 0,
+      type: 'routine',
+      data: { id: 'routine-1', title: 'Prices', schedule: 'every 5 min' },
+    };
+    const h = harness();
+    h.receive(stanza({ id: 'person-plain', fromJid: ANA, outgoing: false, body: 'hello' }));
+    h.receive(
+      stanza({
+        id: 'person-routine-fix',
+        fromJid: ANA,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'person-plain' },
+        payload: routine,
+      }),
+    );
+
+    expect(h.messages()[0]?.card).toBeUndefined();
+    expect(h.messages()[0]?.text).toBe('hello');
+  });
+
+  // T-2001: a progress payload is a card edit, so this is the path that used
+  // to put a card on a person's message.
+  it('does not apply a progress card from a person correction', () => {
+    const progress: Payload = {
+      v: 0,
+      type: 'progress',
+      data: { ai: BOB, stage: 'Reading pull requests', state: 'working' },
+    };
+    const h = harness();
+    h.receive(stanza({ id: 'person-progress', fromJid: ANA, outgoing: false, body: 'hello' }));
+    h.receive(
+      stanza({
+        id: 'person-progress-fix',
+        fromJid: ANA,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'person-progress' },
+        payload: progress,
+      }),
+    );
+
+    expect(h.messages()[0]?.card).toBeUndefined();
   });
 
   // T-1419: a correction carrying a progress payload replaces the target's
@@ -530,16 +595,16 @@ describe('the message ledger: payload cards', () => {
     const card = (stage: string, state: 'working' | 'done' = 'working'): Payload => ({
       v: 0,
       type: 'progress',
-      data: { ai: BOB, stage, state },
+      data: { ai: AI, stage, state },
     });
     const h = harness();
-    h.receive(stanza({ id: 'card-1', fromJid: BOB, outgoing: false, payload: card('Working') }));
+    h.receive(stanza({ id: 'card-1', fromJid: AI, outgoing: false, payload: card('Working') }));
 
     // A body-less correction still updates the card.
     h.receive(
       stanza({
         id: 'fix-1',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         correction: { targetId: 'card-1' },
@@ -552,7 +617,7 @@ describe('the message ledger: payload cards', () => {
     h.receive(
       stanza({
         id: 'fix-old',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(4_000),
         correction: { targetId: 'card-1' },
@@ -599,13 +664,13 @@ describe('the message ledger: payload cards', () => {
 
   it('replaces a blocks card with the correction payload', () => {
     const h = harness();
-    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+    h.receive(stanza({ id: 'S1', fromJid: AI, outgoing: false, payload: blocksCard(0) }));
     expect(h.messages()[0]?.card).toEqual(blocksCard(0));
 
     h.receive(
       stanza({
         id: 'fix-blocks',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         correction: { targetId: 'S1' },
@@ -617,7 +682,7 @@ describe('the message ledger: payload cards', () => {
 
   it('ignores a blocks correction from another author', () => {
     const h = harness();
-    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+    h.receive(stanza({ id: 'S1', fromJid: AI, outgoing: false, payload: blocksCard(0) }));
     h.receive(
       stanza({
         id: 'fix-other',
@@ -635,12 +700,12 @@ describe('the message ledger: payload cards', () => {
   // must apply there too.
   it('replaces a blocks card from a correction read back in history', () => {
     const h = harness();
-    h.receive(stanza({ id: 'S1', fromJid: BOB, outgoing: false, payload: blocksCard(0) }));
+    h.receive(stanza({ id: 'S1', fromJid: AI, outgoing: false, payload: blocksCard(0) }));
 
     h.ledger.ingestHistoryEdits([
       stanza({
         id: 'fix-blocks',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         correction: { targetId: 'S1' },
@@ -666,7 +731,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-msg',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         body: 'BTC $67,420',
         payload: routine('Prices'),
@@ -677,7 +742,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-fix',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         body: 'BTC $68,100',
@@ -747,7 +812,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-msg',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         body: 'BTC $67,420',
         payload: routine('Prices'),
@@ -758,7 +823,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.ledger.ingestHistoryEdits([
       stanza({
         id: 'routine-fix',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         body: 'BTC $68,100',
@@ -779,7 +844,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-msg',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         body: 'BTC $67,420',
         payload: routine('Prices'),
@@ -810,7 +875,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-msg',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         body: 'BTC $67,420',
         payload: routine('Prices'),
@@ -818,7 +883,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     );
     const fix = stanza({
       id: 'routine-fix',
-      fromJid: BOB,
+      fromJid: AI,
       outgoing: false,
       timestamp: new Date(6_000),
       body: 'BTC $68,100',
@@ -843,7 +908,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-msg',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         body: 'BTC $67,420',
         payload: routine('Prices'),
@@ -852,7 +917,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-fix',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(6_000),
         body: 'BTC $68,100',
@@ -865,7 +930,7 @@ describe('the message ledger: the routine edit bump (T-1722)', () => {
     h.receive(
       stanza({
         id: 'routine-stale',
-        fromJid: BOB,
+        fromJid: AI,
         outgoing: false,
         timestamp: new Date(3_000),
         body: 'BTC $1',

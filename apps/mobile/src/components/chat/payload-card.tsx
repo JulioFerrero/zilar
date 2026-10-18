@@ -1,5 +1,6 @@
 import type { Payload, Progress, Sticker } from '@zilar/protocol';
 import { StickerSchema, isValid } from '@zilar/protocol';
+import { isCardAllowedFrom } from '@zilar/client-core';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -41,19 +42,34 @@ function ProgressCardSurface({ data }: { data: Progress }) {
 /** Renders the AI card payloads from `@zilar/protocol`. */
 export function PayloadCard({
   card,
+  senderId,
   footer,
   respond,
+  preview = false,
 }: {
   card: Payload;
+  /** T-2001: the sender of the message this card came on; the AI-only gate
+   * needs it. A preview row passes none and keeps its display-only rule. */
+  senderId?: string | undefined;
   footer?: ReactNode;
   /** T-1796: who answers a `blocks` card; absent on own cards. */
   respond?: BlockRespondTarget;
+  /** T-2001: a topic-join preview row has no store message, so it draws only
+   * the display-only cards. */
+  preview?: boolean;
 }) {
+  const previewCard = preview && (card.type === 'blocks' || card.type === 'progress');
+  // T-2001: an AI-only card never renders unless its sender resolves to an AI,
+  // even when a caller bypassed the ledger's mapping (a fixture or a mock row).
+  // An unknown sender fails closed and falls back to text.
+  if (preview ? !previewCard : senderId === undefined || !isCardAllowedFrom(card, senderId)) {
+    return null;
+  }
   switch (card.type) {
     case 'progress':
       return <ProgressCardSurface data={card.data} />;
     case 'approval.request':
-      return <ApprovalCard data={card.data} />;
+      return <ApprovalCard data={card.data} senderId={senderId} />;
     case 'question':
       return <QuestionCard question={card.data} />;
     case 'blocks':

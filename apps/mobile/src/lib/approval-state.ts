@@ -14,7 +14,7 @@ export type ApprovalCardState =
 
 // A 404 means the viewer may not decide this request (or it does not exist):
 // the card then shows no buttons and no error. Any other failure on the first
-// load surfaces the request text with a Retry button.
+// load surfaces the card's unavailable sentence (T-2001) with no buttons.
 const loadCardStateEffect = (
   api: ApprovalsApi,
   approvalId: string,

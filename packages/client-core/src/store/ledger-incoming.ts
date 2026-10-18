@@ -4,6 +4,7 @@
 // unchanged from `store/ledger.ts` (size split).
 import type { MediaTokenShape, UiMention, VoiceMeta } from '@zilar/chat-core';
 import { isTrustedMediaUrl, sanitizeIncomingAttachment, trustedMediaHosts } from '@zilar/chat-core';
+import { permittedCard, UNSUPPORTED_MESSAGE_TEXT } from './ai-cards';
 import { moveChatToTop, sortMessages } from './rows';
 import type { LedgerIds } from './ledger-ids';
 import type { LedgerIdentity } from './ledger-identity';
@@ -201,8 +202,16 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
         // progress, approval request, sticker and the rest. This mirrors the
         // optimistic send and forward mapping (`forwardedUiFieldsFor`), so a
         // received card and its own echo land on the same fields. A sticker is
-        // kept as-is; its same-origin check happens at render time.
-        ui.card = message.payload;
+        // kept as-is; its same-origin check happens at render time. T-2001: an
+        // AI-only card from anyone but an AI is dropped, and a body-less
+        // message shows the fixed unsupported sentence instead of an empty
+        // bubble.
+        const card = permittedCard(message.payload, senderId);
+        if (card !== undefined) {
+          ui.card = card;
+        } else if (ui.text === undefined || ui.text.trim() === '') {
+          ui.text = UNSUPPORTED_MESSAGE_TEXT;
+        }
       }
     }
     const reactions = reactionChips(get().reactions[message.chatJid], message.chatJid, message.id);

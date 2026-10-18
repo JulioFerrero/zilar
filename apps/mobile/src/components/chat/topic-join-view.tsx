@@ -5,7 +5,7 @@ import { FlatList, View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { rawCall } from '@/components/chat/group-action';
-import { PayloadCard, isRenderedCard } from '@/components/chat/payload-card';
+import { PayloadCard } from '@/components/chat/payload-card';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -108,11 +108,15 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
           }}
           renderItem={({ item }) => {
             // A preview row may carry the decoded `<agent>` payload with an
-            // empty body; the thread renders the card types, so the preview
-            // does too instead of leaving a blank bubble. A row with neither a
-            // drawable card nor text has nothing to show and is skipped.
+            // empty body. Like the web twin, only the display-only cards are
+            // drawn here (no sender to check, no respond target); anything
+            // else falls back to the row's text. A row with neither a drawable
+            // card nor text has nothing to show and is skipped.
             const payload = isValid(PayloadSchema)(item.payload) ? item.payload : undefined;
-            const card = payload !== undefined && isRenderedCard(payload) ? payload : undefined;
+            const card =
+              payload !== undefined && (payload.type === 'blocks' || payload.type === 'progress')
+                ? payload
+                : undefined;
             if (card === undefined && item.body === '') {
               return null;
             }
@@ -138,7 +142,11 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
                   // thread: no bubble around them (T-1807, T-1814).
                   <View className="shrink">
                     {senderName}
-                    <PayloadCard card={card} footer={card.type === 'blocks' ? time : undefined} />
+                    <PayloadCard
+                      card={card}
+                      footer={card.type === 'blocks' ? time : undefined}
+                      preview
+                    />
                   </View>
                 ) : (
                   <View className="rounded-[14px] px-3 py-2" style={bubbleStyle('incoming', true)}>
