@@ -2106,3 +2106,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2106](T-2106-fold-phone-rest.md) | phone: fold 85 single-use files into their importer | 2026-10-18 |
 | [T-2111](T-2111-merge-web-a.md) | web: merge message actions menu and sticker grid back | 2026-10-18 |
 | [T-2102](T-2102-fold-web-message.md) | web: fold 32 single-use message files, one block dispatcher | 2026-10-18 |
+| [T-2112](T-2112-store-phase2-plan.md) | docs: store phase 2 plan (prefs, pins, group writes) | 2026-10-18 |
