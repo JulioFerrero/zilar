@@ -17,7 +17,6 @@ import {
   Images,
   Lock,
   Mic,
-  MoreHorizontal,
   Paperclip,
   Pin,
   VolumeX,
@@ -26,7 +25,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { AiActivityMarks } from './topic/AiActivityMarks';
-import { ChatActionsMenu } from './ChatActionsMenu';
+import { RowActions } from './chatList/RowActions';
 import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
@@ -35,7 +34,6 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
 import { Badge } from './ui/badge';
-import { Button } from './ui/button';
 
 const NO_MESSAGES: UiMessage[] = [];
 const NO_NAMES: string[] = [];
@@ -199,26 +197,7 @@ export function TopicRow({
           </span>
         </span>
       </Link>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Chat actions for ${chat.title}`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setMenuOpen((value) => !value);
-        }}
-        className={cn(
-          'pointer-events-none absolute top-1.5 size-6 shrink-0 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100',
-          isWide ? 'right-[10px]' : 'right-4',
-        )}
-      >
-        <MoreHorizontal className="size-4" aria-hidden="true" />
-      </Button>
-      {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
+      <RowActions chat={chat} isWide={isWide} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
     </div>
   );
 }

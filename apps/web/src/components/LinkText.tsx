@@ -6,6 +6,7 @@ import {
   splitMentions,
   type UiMention,
 } from '@zilar/chat-core';
+import type { ReactNode } from 'react';
 import { PersonLink } from './personLink';
 
 /**
@@ -29,7 +30,7 @@ export function LinkText({
   formatted?: boolean | undefined;
 }) {
   if (!formatted) {
-    return <>{renderPlain(text, mentions, meJid, '')}</>;
+    return renderSegments(text, mentions, meJid, '', (leaf, key) => <span key={key}>{leaf}</span>);
   }
 
   return (
@@ -51,17 +52,18 @@ export function LinkText({
           begin: mention.begin - block.start,
           end: mention.end - block.start,
         }));
-        return renderFormatted(block.text, shifted, meJid, `${index}`);
+        return renderSegments(block.text, shifted, meJid, `${index}`, renderFormattedLeaf);
       })}
     </>
   );
 }
 
-function renderPlain(
+function renderSegments(
   text: string,
   mentions: UiMention[] | undefined,
   meJid: string | undefined,
   keyPrefix: string,
+  renderText: (text: string, key: string) => ReactNode,
 ) {
   return splitMentions(text, mentions).map((segment, index) => {
     if (segment.kind === 'mention') {
@@ -95,69 +97,31 @@ function renderPlain(
           {linkSegment.text}
         </a>
       ) : (
-        <span key={`${keyPrefix}-${index}-${linkIndex}`}>{linkSegment.text}</span>
+        renderText(linkSegment.text, `${keyPrefix}-${index}-${linkIndex}`)
       ),
     );
   });
 }
 
-function renderFormatted(
-  text: string,
-  mentions: UiMention[],
-  meJid: string | undefined,
-  keyPrefix: string,
-) {
-  return splitMentions(text, mentions).map((segment, index) => {
-    if (segment.kind === 'mention') {
-      const mine = isMentionOfMe(segment.jid, meJid);
-      if (mine) {
-        return (
-          <span key={`${keyPrefix}-${index}`} className="raised-pill mention-me">
-            {segment.text}
-          </span>
-        );
-      }
-      return (
-        <PersonLink
-          key={`${keyPrefix}-${index}`}
-          target={{ jid: segment.jid }}
-          name={segment.text.replace(/^@/, '')}
-        >
-          <span className="mention-chip">{segment.text}</span>
-        </PersonLink>
-      );
-    }
-    return splitLinks(segment.text).map((linkSegment, linkIndex) =>
-      linkSegment.kind === 'link' ? (
-        <a
-          key={`${keyPrefix}-${index}-${linkIndex}`}
-          href={linkSegment.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-accent underline-offset-2 hover:underline"
-        >
-          {linkSegment.text}
-        </a>
-      ) : (
-        <span key={`${keyPrefix}-${index}-${linkIndex}`}>
-          {parseLightInline(linkSegment.text).map((inline, inlineIndex) =>
-            inline.kind === 'bold' ? (
-              <strong key={inlineIndex}>{inline.text}</strong>
-            ) : inline.kind === 'italic' ? (
-              <em key={inlineIndex}>{inline.text}</em>
-            ) : inline.kind === 'code' ? (
-              <code
-                key={inlineIndex}
-                className="rounded-[4px] border border-edge bg-well px-1 font-mono text-[12.5px]"
-              >
-                {inline.text}
-              </code>
-            ) : (
-              <span key={inlineIndex}>{inline.text}</span>
-            ),
-          )}
-        </span>
-      ),
-    );
-  });
+function renderFormattedLeaf(text: string, key: string) {
+  return (
+    <span key={key}>
+      {parseLightInline(text).map((inline, inlineIndex) =>
+        inline.kind === 'bold' ? (
+          <strong key={inlineIndex}>{inline.text}</strong>
+        ) : inline.kind === 'italic' ? (
+          <em key={inlineIndex}>{inline.text}</em>
+        ) : inline.kind === 'code' ? (
+          <code
+            key={inlineIndex}
+            className="rounded-[4px] border border-edge bg-well px-1 font-mono text-[12.5px]"
+          >
+            {inline.text}
+          </code>
+        ) : (
+          <span key={inlineIndex}>{inline.text}</span>
+        ),
+      )}
+    </span>
+  );
 }

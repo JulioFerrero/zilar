@@ -16,7 +16,6 @@ import {
   Images,
   Megaphone,
   Mic,
-  MoreHorizontal,
   Paperclip,
   Pin,
   VolumeX,
@@ -26,10 +25,9 @@ import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { EntityAvatar } from './EntityAvatar';
-import { ChatActionsMenu } from './ChatActionsMenu';
+import { RowActions } from './chatList/RowActions';
 import { MessageTicks } from './MessageTicks';
 import { Badge } from './ui/badge';
-import { Button } from './ui/button';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { useComposerDraft } from '@/lib/composer-drafts';
@@ -208,26 +206,7 @@ export const ChatListItem = memo(function ChatListItem({
           </div>
         </div>
       </Link>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Chat actions for ${chat.title}`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setMenuOpen((value) => !value);
-        }}
-        className={cn(
-          'pointer-events-none absolute top-1.5 size-6 shrink-0 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100',
-          isWide ? 'right-[10px]' : 'right-4',
-        )}
-      >
-        <MoreHorizontal className="size-4" aria-hidden="true" />
-      </Button>
-      {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
+      <RowActions chat={chat} isWide={isWide} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
     </div>
   );
 });

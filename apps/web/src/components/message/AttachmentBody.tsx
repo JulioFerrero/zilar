@@ -150,6 +150,7 @@ export function AttachmentBody({
       </>
     );
   }
+  const footer: FooterState = { sendFailed, own, chat, message };
   return (
     <>
       {message.image !== undefined && (
@@ -176,30 +177,7 @@ export function AttachmentBody({
             width={message.attachment.width}
             height={message.attachment.height}
           />
-          {sendFailed ? (
-            <div className="px-3">
-              <SendFailure
-                chatId={chat.id}
-                messageId={message.id}
-                reason={message.failureReason}
-                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-              />
-            </div>
-          ) : failed ? (
-            <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
-              <span>Upload failed</span>
-              <button
-                type="button"
-                aria-label="Retry upload"
-                onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                className="font-semibold underline"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            imageOnly && <MediaMetaPill message={message} showTicks={own} />
-          )}
+          <AttachmentFooter footer={footer} failed={failed} showMeta={imageOnly} />
         </div>
       )}
 
@@ -213,30 +191,7 @@ export function AttachmentBody({
               src={mediaSrc(message.chatId, message.attachment.url)}
               className="max-h-[320px] w-full object-cover"
             />
-            {sendFailed ? (
-              <div className="px-3">
-                <SendFailure
-                  chatId={chat.id}
-                  messageId={message.id}
-                  reason={message.failureReason}
-                  onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                />
-              </div>
-            ) : failed ? (
-              <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
-                <span>Upload failed</span>
-                <button
-                  type="button"
-                  aria-label="Retry upload"
-                  onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                  className="font-semibold underline"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              !hasText && <MediaMetaPill message={message} showTicks={own} />
-            )}
+            <AttachmentFooter footer={footer} failed={failed} showMeta={!hasText} />
           </div>
         ) : (
           <div className="px-3 py-1.5">
@@ -248,44 +203,14 @@ export function AttachmentBody({
               failed={failed && !sendFailed}
               onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
             />
-            {sendFailed && (
-              <SendFailure
-                chatId={chat.id}
-                messageId={message.id}
-                reason={message.failureReason}
-                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-              />
-            )}
+            <AttachmentFooter footer={footer} showMeta={false} sendFailurePadding="px-0" />
           </div>
         ))}
 
       {gifVideo && message.attachment !== undefined && (
         <div className={cn('relative overflow-hidden', radius)}>
           <GifMessage chatId={message.chatId} attachment={message.attachment} />
-          {sendFailed ? (
-            <div className="px-3">
-              <SendFailure
-                chatId={chat.id}
-                messageId={message.id}
-                reason={message.failureReason}
-                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-              />
-            </div>
-          ) : failed ? (
-            <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
-              <span>Upload failed</span>
-              <button
-                type="button"
-                aria-label="Retry upload"
-                onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                className="font-semibold underline"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            imageOnly && <MediaMetaPill message={message} showTicks={own} />
-          )}
+          <AttachmentFooter footer={footer} failed={failed} showMeta={imageOnly} />
         </div>
       )}
 
@@ -357,6 +282,57 @@ export function AttachmentBody({
         )}
     </>
   );
+}
+
+type FooterState = {
+  sendFailed: boolean;
+  own: boolean;
+  chat: ChatSummary;
+  message: UiMessage;
+};
+
+/** The three-way footer under a media bubble: not-sent, upload-failed, meta. */
+function AttachmentFooter({
+  footer: { sendFailed, own, chat, message },
+  failed = false,
+  showMeta,
+  sendFailurePadding = 'px-3',
+}: {
+  footer: FooterState;
+  failed?: boolean;
+  showMeta: boolean;
+  sendFailurePadding?: string;
+}) {
+  const storeApi = useChatStoreApi();
+  const retry = () => storeApi.getState().retryAttachment(chat.id, message.id);
+  if (sendFailed) {
+    return (
+      <div className={sendFailurePadding}>
+        <SendFailure
+          chatId={chat.id}
+          messageId={message.id}
+          reason={message.failureReason}
+          onRetry={retry}
+        />
+      </div>
+    );
+  }
+  if (failed) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
+        <span>Upload failed</span>
+        <button
+          type="button"
+          aria-label="Retry upload"
+          onClick={retry}
+          className="font-semibold underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+  return showMeta ? <MediaMetaPill message={message} showTicks={own} /> : null;
 }
 
 /**
