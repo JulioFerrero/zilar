@@ -2,6 +2,7 @@ import { Children, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 
 /** A grouped surface whose direct children are separated by hairline dividers. */
 export function Card({ children }: { children: ReactNode }) {
@@ -14,12 +15,15 @@ export function Card({ children }: { children: ReactNode }) {
   );
 }
 
-/** An uppercase muted section label (11/600, 0.08em tracking). */
-export function SectionLabel({ children }: { children: ReactNode }) {
+/** An uppercase muted section label (12/500, 0.06em tracking). */
+export function SectionLabel({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <Text
       accessibilityRole="header"
-      className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground"
+      className={cn(
+        'px-1 text-[12px] font-medium uppercase tracking-[0.06em] text-muted-foreground',
+        className,
+      )}
     >
       {children}
     </Text>

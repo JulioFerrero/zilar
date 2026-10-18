@@ -13,6 +13,7 @@ import {
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useToolsApi } from '@/components/ais/use-tools-api';
 import { RoutineRow } from '@/components/routines/routine-row';
+import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -240,9 +241,7 @@ function RoutinesBody() {
 function RoutineGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View accessibilityLabel={label} className="gap-2">
-      <Text className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </Text>
+      <SectionLabel>{label}</SectionLabel>
       <View className="overflow-hidden rounded-2xl border border-border bg-surface">
         {children}
       </View>

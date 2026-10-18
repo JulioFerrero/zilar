@@ -1,6 +1,7 @@
 import { CircleMinus, Download, Sticker } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -96,9 +97,7 @@ export function PacksTab({
 
       {added.length > 0 ? (
         <View className="mt-4 gap-2">
-          <Text className="ml-1 text-[12px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-            Added
-          </Text>
+          <SectionLabel>Added</SectionLabel>
           <View className="overflow-hidden rounded-2xl border border-border bg-surface">
             {added.map((pack, index) => (
               <PackCard
