@@ -1,5 +1,5 @@
-import { Schema } from 'effect';
-import { struct } from '@zilar/protocol';
+import { Schema, SchemaGetter } from 'effect';
+import { BlockIconSchema, struct } from '@zilar/protocol';
 
 export const UPDATE_PERSONA_TOOL = 'update_persona';
 export const REVERT_PERSONA_TOOL = 'revert_persona';
@@ -21,7 +21,6 @@ const ASK_PEOPLE_OPTION_MAX_LENGTH = 24;
 
 const POST_BLOCKS_TEXT_MAX_LENGTH = 1000;
 const POST_BLOCKS_TITLE_MAX_LENGTH = 120;
-const POST_BLOCKS_ICON_MAX_LENGTH = 40;
 const POST_BLOCKS_META_MAX_LENGTH = 40;
 const POST_BLOCKS_BLOCK_MIN = 1;
 const POST_BLOCKS_BLOCK_MAX = 6;
@@ -76,9 +75,22 @@ export const ACTION_NAME_MAX_LENGTH = 100;
 // anything outside this set; everything else fails parse.
 const ACTION_NAME_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
+// Trim before the checks so padded input is validated and stored without its
+// padding. A plain `Schema.Trim` would hide those checks from the JSON Schema
+// the model reads.
+const TrimmedString = Schema.String.pipe(
+  Schema.decode({
+    decode: SchemaGetter.transform((value: string) => value.trim()),
+    encode: SchemaGetter.transform((value: string) => value),
+  }),
+);
+
 export const UpdatePersonaArgsSchema = struct({
-  persona: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(PERSONA_MAX_LENGTH)),
-  summary: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(PERSONA_SUMMARY_MAX_LENGTH)),
+  persona: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(PERSONA_MAX_LENGTH)),
+  summary: TrimmedString.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(PERSONA_SUMMARY_MAX_LENGTH),
+  ),
 });
 
 export const RevertPersonaArgsSchema = struct({}).check(
@@ -90,33 +102,33 @@ export const RevertPersonaArgsSchema = struct({}).check(
 );
 
 export const RecallArgsSchema = struct({
-  query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+  query: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
 });
 
 // The block id shape OptMem uses (`64-79`): one open, one close, both capped
 // at 9 digits so an absurd id is a parse failure, never a bad query.
 export const MemoryZoomArgsSchema = struct({
-  block: Schema.String.check(Schema.isPattern(/^\d{1,9}-\d{1,9}$/)),
+  block: Schema.String.check(Schema.isPattern(/^\d{1,9}-\d{1,9}$/u)),
 });
 
 export const RememberArgsSchema = struct({
-  text: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(280)),
+  text: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(280)),
 });
 
 export const DelegateArgsSchema = struct({
-  to: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  objective: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
-  context_summary: Schema.optional(Schema.Trim.check(Schema.isMaxLength(1200))),
+  to: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  objective: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
+  context_summary: Schema.optional(TrimmedString.check(Schema.isMaxLength(1200))),
   acceptance: Schema.optional(
     Schema.mutable(
-      Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+      Schema.Array(TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
     ).check(Schema.isMaxLength(10)),
   ),
-  return_format: Schema.optional(Schema.Trim.check(Schema.isMaxLength(200))),
+  return_format: Schema.optional(TrimmedString.check(Schema.isMaxLength(200))),
 });
 
 export const TaskStatusArgsSchema = struct({
-  task_id: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  task_id: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
 export const DESK_PATH_MAX_LENGTH = 1024;
@@ -124,10 +136,13 @@ export const DESK_COMMAND_MAX_LENGTH = 8000;
 export const DESK_CONTENT_MAX_LENGTH = 1_000_000;
 export const DESK_TIMEOUT_MAX_MS = 600_000;
 
-const deskPath = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(DESK_PATH_MAX_LENGTH));
+const deskPath = TrimmedString.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(DESK_PATH_MAX_LENGTH),
+);
 
 export const BashArgsSchema = struct({
-  command: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(DESK_COMMAND_MAX_LENGTH)),
+  command: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(DESK_COMMAND_MAX_LENGTH)),
   cwd: Schema.optional(deskPath),
   timeout_ms: Schema.optional(
     Schema.Number.check(
@@ -160,9 +175,9 @@ export const EditArgsSchema = struct({
 });
 
 export const GrepArgsSchema = struct({
-  pattern: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  pattern: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
   path: Schema.optional(deskPath),
-  glob: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
+  glob: Schema.optional(TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
   max_results: Schema.optional(
     Schema.Number.check(
       Schema.isInt(),
@@ -173,13 +188,13 @@ export const GrepArgsSchema = struct({
 });
 
 export const GlobArgsSchema = struct({
-  pattern: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+  pattern: TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
   path: Schema.optional(deskPath),
 });
 
 export const GitArgsSchema = struct({
   args: Schema.mutable(
-    Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
+    Schema.Array(TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
   ).check(Schema.isMaxLength(64)),
 });
 
@@ -188,53 +203,71 @@ export const GitArgsSchema = struct({
 // through to the gateway unchanged, but its pattern is checked so a
 // crafted model call cannot smuggle a foreign name into the registry.
 export const RequestActionArgsSchema = struct({
-  action: Schema.Trim.check(
+  action: TrimmedString.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(ACTION_NAME_MAX_LENGTH),
     Schema.isPattern(ACTION_NAME_PATTERN),
   ),
-  args: Schema.Record(Schema.String, Schema.Unknown),
+  // Effect drops `additionalProperties: true` because it is the JSON Schema
+  // default; the model's parameters spell it out, so keep it as an annotation.
+  args: Schema.Record(Schema.String, Schema.Unknown).annotate({ additionalProperties: true }),
 });
 
 export const AskPeopleArgsSchema = struct({
-  question: Schema.Trim.check(
+  question: TrimmedString.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(ASK_PEOPLE_QUESTION_MAX_LENGTH),
   ),
   options: Schema.mutable(
     Schema.Array(
-      Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX_LENGTH)),
+      TrimmedString.check(Schema.isMinLength(1), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX_LENGTH)),
     ),
   ).check(Schema.isMinLength(ASK_PEOPLE_OPTION_MIN), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX)),
 });
 
 export const PostBlocksArgsSchema = struct({
-  text: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(POST_BLOCKS_TEXT_MAX_LENGTH)),
-  title: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_TITLE_MAX_LENGTH))),
-  icon: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_ICON_MAX_LENGTH))),
-  meta: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_META_MAX_LENGTH))),
-  blocks: Schema.mutable(Schema.Array(Schema.Unknown)).check(
+  text: TrimmedString.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(POST_BLOCKS_TEXT_MAX_LENGTH),
+  ).annotate({ description: 'The plain summary shown in previews and notifications.' }),
+  title: Schema.optional(TrimmedString.check(Schema.isMaxLength(POST_BLOCKS_TITLE_MAX_LENGTH))),
+  icon: Schema.optional(Schema.Literals([...BlockIconSchema.literals])),
+  meta: Schema.optional(TrimmedString.check(Schema.isMaxLength(POST_BLOCKS_META_MAX_LENGTH))),
+  blocks: Schema.mutable(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))).check(
     Schema.isMinLength(POST_BLOCKS_BLOCK_MIN),
     Schema.isMaxLength(POST_BLOCKS_BLOCK_MAX),
   ),
 });
 
 export const FetchMediaArgsSchema = struct({
-  url: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(FETCH_MEDIA_URL_MAX_LENGTH)),
-  kind: Schema.Literals(['image', 'file']),
-  name: Schema.optional(Schema.Trim.check(Schema.isMaxLength(FETCH_MEDIA_NAME_MAX_LENGTH))),
+  url: TrimmedString.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FETCH_MEDIA_URL_MAX_LENGTH),
+  ).annotate({ description: 'An https URL.' }),
+  kind: Schema.Literals(['image', 'file']).annotate({
+    description: 'Image media render inline; file media get a download card.',
+  }),
+  name: Schema.optional(
+    TrimmedString.check(Schema.isMaxLength(FETCH_MEDIA_NAME_MAX_LENGTH)).annotate({
+      description: 'The display name people see; defaults to the URL name.',
+    }),
+  ),
 });
 
 export const SaveTextMediaArgsSchema = struct({
-  name: Schema.Trim.check(
+  name: TrimmedString.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(SAVE_TEXT_MEDIA_NAME_MAX_LENGTH),
-  ),
-  format: Schema.Literals(SAVE_TEXT_MEDIA_FORMATS),
+  ).annotate({
+    description: 'The display name; the format extension is added when it is missing.',
+  }),
+  format: Schema.Literals(SAVE_TEXT_MEDIA_FORMATS).annotate({
+    description: 'The file type: csv, txt, md or json.',
+  }),
   content: Schema.String.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(SAVE_TEXT_MEDIA_CONTENT_MAX_LENGTH),
-  ),
+  ).annotate({ description: 'The text to save, unchanged.' }),
 });
 
 export type ParsedToolArguments =
