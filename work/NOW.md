@@ -880,6 +880,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - T-1984: limits on connection writes.
                       - **Audits running on Opus:** T-1985 (2/4, permissions and spend) and T-1986 (3/4, AI computers and tools).
                       - **Next:** audit 4/4, the message pipeline, when a slot frees.
+                    - **Audit totals (summed over every message page and helper session):**
+                      - audit 1: $4.42;
+                      - audit 2: $6.96 for 11 findings (1 high: the monthly cap was never enforced, fixed in T-1989);
+                      - audit 3: $8.90 for 13 findings (1 high: regexes that grow with the square of the input; on the lead's Mac, 160 KB of input took 10.6 s);
+                      - audit 4: T-1987, running.
+                    - **Fixes:**
+                      - merged and held: T-1981, T-1983, T-1984, T-1989;
+                      - in review: T-1982 and T-1988;
+                      - running: T-1990 to T-1995.
+                    - **A3-03 needs Julio:** desk jails share the `desk-net` network, which has inter-container traffic on. Turning ICC off means recreating that network on the live stack.
+                    - **Julio's phone report, 16:34 local:**
+                      - the AI ball in group chats used the name colour, not his chosen picture: T-1996 (web and phone);
+                      - the chat scroll is janky and older messages load slowly: T-1997, an Opus audit that writes `docs/audit/chat-scroll-perf.md`; fix tasks follow.
+                    - **Iryna's iPhone:** v0.2.12 build running (`tmp/ios-0212.sh`).
                     - **Julio's pinned-bar report:**
                       - T-1979 (web): one focus ring, plus a calm not-found note with Unpin;
                       - T-1980 (`anthropic/claude-sonnet-5`): why the card pin's archive id doesn't match its row, plus a fix and a test.
