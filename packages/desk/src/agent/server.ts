@@ -1,9 +1,116 @@
 import { chmodSync, unlinkSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { Exit, Schema } from 'effect';
+import { DeskRefSchema, DeskSpecSchema, DeskToolCallSchema } from '../hands';
+import type { DeskChunk, DeskRef, SnapshotRef } from '../hands';
+import { DeskError } from '../protocol';
 import type { AgentConfig } from './config';
-import type { Lifecycle } from './lifecycle';
-import { AgentRequestSchema, errorInfo, type AgentReply, type AgentRequest } from './wire';
+import type { DeskStatus, Lifecycle } from './lifecycle';
+
+/**
+ * One JSON object per newline; a request names a `method`, a reply carries its `id`.
+ * Requests decode with `onExcessProperty: 'error'`, so a caller can only send the
+ * declared fields — never a host path, an image or a run flag.
+ */
+
+const requestIdSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
+const labelSchema = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,64}$/));
+
+export const AgentRequestSchema = Schema.Union([
+  Schema.Struct({
+    id: requestIdSchema,
+    method: Schema.Literal('provision'),
+    params: Schema.Struct({ spec: DeskSpecSchema }),
+  }),
+  Schema.Struct({
+    id: requestIdSchema,
+    method: Schema.Literal('execute'),
+    params: Schema.Struct({ ref: DeskRefSchema, call: DeskToolCallSchema }),
+  }),
+  Schema.Struct({
+    id: requestIdSchema,
+    method: Schema.Literal('stop'),
+    params: Schema.Struct({ ref: DeskRefSchema, keepWorkspace: Schema.optional(Schema.Boolean) }),
+  }),
+  Schema.Struct({
+    id: requestIdSchema,
+    method: Schema.Literal('snapshot'),
+    params: Schema.Struct({ ref: DeskRefSchema, label: labelSchema }),
+  }),
+  Schema.Struct({ id: requestIdSchema, method: Schema.Literal('status') }),
+  Schema.Struct({ id: requestIdSchema, method: Schema.Literal('stop_all') }),
+]);
+
+export type AgentRequest = typeof AgentRequestSchema.Type;
+
+interface ErrorInfo {
+  readonly code: string;
+  readonly message: string;
+}
+
+interface ErrorReply {
+  readonly id: number;
+  readonly ok: false;
+  readonly error: ErrorInfo;
+}
+
+interface ReadyReply {
+  readonly id: number;
+  readonly ok: true;
+  readonly ref: DeskRef;
+}
+
+interface QueuedReply {
+  readonly id: number;
+  readonly ok: true;
+  readonly queued: true;
+  readonly position: number;
+}
+
+interface OkReply {
+  readonly id: number;
+  readonly ok: true;
+}
+
+interface SnapshotReply {
+  readonly id: number;
+  readonly ok: true;
+  readonly snapshot: SnapshotRef;
+}
+
+interface StatusReply {
+  readonly id: number;
+  readonly ok: true;
+  readonly status: DeskStatus;
+}
+
+interface ChunkReply {
+  readonly id: number;
+  readonly chunk: DeskChunk;
+}
+
+interface DoneReply {
+  readonly id: number;
+  readonly done: true;
+}
+
+export type AgentReply =
+  | ErrorReply
+  | ReadyReply
+  | QueuedReply
+  | OkReply
+  | SnapshotReply
+  | StatusReply
+  | ChunkReply
+  | DoneReply;
+
+/** Maps any failure to the fixed error taxonomy; never raw host text. */
+export function errorInfo(error: unknown): ErrorInfo {
+  if (error instanceof DeskError) {
+    return { code: error.code, message: error.message };
+  }
+  return { code: 'tool_failed', message: 'the desk agent failed' };
+}
 
 export interface AgentServer {
   readonly socketPath: string;

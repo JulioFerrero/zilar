@@ -16,17 +16,221 @@ import {
   type WorkspacePackage,
 } from './plan.js';
 import { gatePassDir, treeKey, writePassRecord } from './pass-record.js';
-import {
-  checkMigrations,
-  migrationNumber,
-  parseMigrationDiff,
-  type MigrationDiff,
-} from './migrations.js';
-import { checkImages } from './images.js';
 import { scopeReport } from './scope.js';
 import { countLines, isSizeChecked, sizeViolations, sizeWarnings, type SizeFile } from './size.js';
-import { taskIdComments } from './comments.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
+
+// Added comment lines that cite a task ID: the task file and the commit already
+// carry that history. Pure: the caller passes `git diff -U0 <base> -- apps packages`.
+
+const TASK_ID = /\bT-\d{3,4}\b/;
+const COMMENT_PREFIXES: readonly string[] = ['//', '/*', '*', '{/*'];
+
+function isComment(line: string): boolean {
+  return COMMENT_PREFIXES.some((prefix) => line.startsWith(prefix));
+}
+
+export function taskIdComments(diff: string): string[] {
+  const hits: string[] = [];
+  let file: string | null = null;
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      file = null;
+      continue;
+    }
+    if (line.startsWith('+++ ')) {
+      const header = line.slice(4);
+      file = header === '/dev/null' ? null : header.replace(/^b\//, '');
+      continue;
+    }
+    if (file === null || !line.startsWith('+')) continue;
+    const text = line.slice(1).trim();
+    if (text.length === 0 || !isComment(text) || !TASK_ID.test(text)) continue;
+    if (!isSizeChecked(file)) continue;
+    hits.push(`${file}: ${text}`);
+  }
+  return hits;
+}
+
+// The migrator skips every id at or below the latest applied one, so a migration
+// numbered below the tip that merges late never runs. A new
+// `apps/server/drizzle/NNNN_*.sql` must continue from the highest number on the base
+// branch; editing an existing one is only a warning.
+
+const MIGRATION_FILE = /^apps\/server\/drizzle\/(\d+)_[^/]*\.sql$/;
+
+interface MigrationDiff {
+  added: string[];
+  modified: string[];
+}
+
+interface MigrationCheckReport {
+  failures: string[];
+  warnings: string[];
+}
+
+export function migrationNumber(file: string): number | undefined {
+  const match = MIGRATION_FILE.exec(file);
+  return match === null ? undefined : Number(match[1]);
+}
+
+function fourDigits(number: number): string {
+  return String(number).padStart(4, '0');
+}
+
+// A rename or copy line carries two paths (`R100\told\tnew`) and lands at a new
+// path, so its destination counts as added: a migration introduced by rename must
+// still pass the sequence check.
+export function parseMigrationDiff(text: string): MigrationDiff {
+  const added = new Set<string>();
+  const modified = new Set<string>();
+  for (const line of text.split('\n')) {
+    const [status = '', first = '', second = ''] = line.split('\t');
+    if (status === 'A') {
+      added.add(first);
+    } else if (status === 'M') {
+      modified.add(first);
+    } else if (status.startsWith('R') || status.startsWith('C')) {
+      added.add(second);
+    }
+  }
+  return { added: [...added].sort(), modified: [...modified].sort() };
+}
+
+export function checkMigrations(diff: MigrationDiff, baseMax: number): MigrationCheckReport {
+  const failures: string[] = [];
+  const added = diff.added
+    .flatMap((file) => {
+      const number = migrationNumber(file);
+      return number === undefined ? [] : [{ file, number }];
+    })
+    .sort((left, right) => left.number - right.number);
+  for (const [index, entry] of added.entries()) {
+    const expected = baseMax + 1 + index;
+    if (entry.number !== expected) {
+      failures.push(
+        `${entry.file}: expected ${fourDigits(expected)}, found ${fourDigits(entry.number)}`,
+      );
+    }
+  }
+  const warnings: string[] = [];
+  for (const file of diff.modified) {
+    if (migrationNumber(file) !== undefined) {
+      warnings.push(
+        `${file} is an existing migration; editing it does not run once it is journaled`,
+      );
+    }
+  }
+  return { failures, warnings };
+}
+
+// A production image copies only the workspace packages its Dockerfile names by hand.
+// This compares, as plain text and without Docker, the `@zilar/*` workspace deps of
+// an app with the `COPY packages/<name>` lines of its Dockerfile.
+
+interface ImageTarget {
+  app: string;
+  manifest: string;
+  dockerfile: string;
+}
+
+const IMAGE_TARGETS: readonly ImageTarget[] = [
+  {
+    app: 'apps/server',
+    manifest: 'apps/server/package.json',
+    dockerfile: 'apps/server/Dockerfile',
+  },
+  { app: 'apps/web', manifest: 'apps/web/package.json', dockerfile: 'apps/web/Dockerfile' },
+];
+
+// The web app reaches @zilar/mock-backend only through the VITE_MOCK branch Vite
+// folds out of a production build, so its image does not copy it.
+const NOT_IN_IMAGE = new Set(['@zilar/mock-backend']);
+
+interface Manifest {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+export function workspaceDeps(manifest: string): string[] {
+  const parsed = JSON.parse(manifest) as Manifest;
+  const names: string[] = [];
+  for (const block of [parsed.dependencies, parsed.devDependencies]) {
+    for (const [name, range] of Object.entries(block ?? {})) {
+      if (name.startsWith('@zilar/') && range.startsWith('workspace:')) {
+        names.push(name);
+      }
+    }
+  }
+  return [...new Set(names)].sort();
+}
+
+// The `packages/<name>` directories a Dockerfile copies whole; a manifest copy
+// (`COPY packages/desk/package.json ...`) names a nested path and is skipped.
+export function copiedPackageDirs(dockerfile: string): Set<string> {
+  const dirs = new Set<string>();
+  for (const line of dockerfile.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] !== 'COPY') {
+      continue;
+    }
+    const source = parts.slice(1).filter((part) => !part.startsWith('--'))[0];
+    if (source !== undefined && /^packages\/[^/]+$/.test(source)) {
+      dirs.add(source);
+    }
+  }
+  return dirs;
+}
+
+function packageDirFor(name: string, workspace: WorkspacePackage[]): string {
+  return (
+    workspace.find((pkg) => pkg.name === name)?.dir ?? `packages/${name.slice('@zilar/'.length)}`
+  );
+}
+
+interface ImageCheckInput {
+  app: string;
+  manifest: string;
+  dockerfile: string;
+  workspace: WorkspacePackage[];
+}
+
+export function checkImagePackages(input: ImageCheckInput): string[] {
+  const copied = copiedPackageDirs(input.dockerfile);
+  const failures: string[] = [];
+  for (const name of workspaceDeps(input.manifest)) {
+    if (NOT_IN_IMAGE.has(name)) {
+      continue;
+    }
+    const dir = packageDirFor(name, input.workspace);
+    if (!copied.has(dir)) {
+      failures.push(`${input.app}/Dockerfile: missing \`COPY ${dir} ${dir}\` for ${name}`);
+    }
+  }
+  return failures;
+}
+
+export function checkImages(
+  workspace: WorkspacePackage[],
+  read: (file: string) => string,
+): string[] {
+  const failures: string[] = [];
+  for (const target of IMAGE_TARGETS) {
+    try {
+      failures.push(
+        ...checkImagePackages({
+          app: target.app,
+          manifest: read(target.manifest),
+          dockerfile: read(target.dockerfile),
+          workspace,
+        }),
+      );
+    } catch {
+      failures.push(`${target.dockerfile}: cannot read ${target.manifest} or the Dockerfile`);
+    }
+  }
+  return failures;
+}
 
 interface RunResult {
   ok: boolean;

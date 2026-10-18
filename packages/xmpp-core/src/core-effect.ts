@@ -1,9 +1,22 @@
-import { type XmppClient, type XmppElement } from '@xmpp/client';
-import { Effect } from 'effect';
+import { type XmppClient, type XmppElement, type XmppStatus } from '@xmpp/client';
+import { Deferred, Effect } from 'effect';
+import { HistoryFailed, IqFailed } from './errors';
 import { makeEventHub, type EventName, type EventPayload, type StoredListener } from './events';
-import { installStreamManagementAck } from './stream-management';
+import { parseMamFin, toHistoryPage } from './mam';
+import { PING_NAMESPACE } from './namespaces';
+import {
+  buildPingResult,
+  decodeMessageStanza,
+  isMamResult,
+  mamResultQueryId,
+  parseDirectInvitation,
+  parseRosterPush,
+  stanzaErrorCondition,
+} from './stanza';
+import { mamResultTrusted } from './stanza/parse-context';
 import { schedule, type Cancel } from './timers';
 import type { XmppCore, XmppCoreEffect, XmppCoreOptions } from './types';
+import type { WakeOutcome } from './types-suspend';
 import {
   SM_ENABLE_TIMEOUT_MS,
   attempt,
@@ -18,11 +31,9 @@ import {
   type CoreDependencies,
   type CoreRuntime,
 } from './core-effect/config';
-import { createLifecycle } from './core-effect/lifecycle';
+import { createLifecycle, type LifecycleApi } from './core-effect/lifecycle';
 import { createOperations } from './core-effect/operations';
 import { createPresence } from './core-effect/presence';
-import { createStanzaRouter } from './core-effect/stanza-router';
-import { createSuspend } from './core-effect/suspend';
 
 export type { ClientFactory, ClientOptions, CoreDependencies } from './core-effect/config';
 
@@ -50,6 +61,313 @@ export type CoreEffect = XmppCoreEffect & { on: XmppCore['on'] };
 const notWired = (): never => {
   throw new Error('core-effect: function not wired');
 };
+
+// XEP-0198, as used by @xmpp/client 0.14. xmpp.js's own inbound counter counts
+// stanzas that arrive before `<enabled/>` and corrects only asynchronously, while our
+// initial `<presence/>` goes out before `<enable/>`; in the same parser batch xmpp.js then
+// acks that pre-enable stanza and ejabberd closes the session with "Client acknowledged more
+// stanzas than sent by server". This counter follows the XEP: zero after `<enabled/>`,
+// continuing after `<resumed/>`, counting only message/presence/iq.
+export const STREAM_MANAGEMENT_NS = 'urn:xmpp:sm:3';
+
+const COUNTED_STANZAS = new Set(['message', 'presence', 'iq']);
+
+export type StreamManagementAck = {
+  /** Stanzas handled since stream management was (re)enabled. */
+  inbound(): number;
+  counting(): boolean;
+  observe(element: XmppElement): void;
+  /** Stops counting new stanzas without losing the current value (disconnect). */
+  stop(): void;
+  /** Rewrites the `h` of an outgoing <a/> or <resume/> with the true count. */
+  correctOutgoing(element: XmppElement): void;
+};
+
+export function createStreamManagementAck(): StreamManagementAck {
+  let inbound = 0;
+  let active = false;
+  return {
+    inbound: () => inbound,
+    counting: () => active,
+    observe(element) {
+      if (element.is('enabled', STREAM_MANAGEMENT_NS)) {
+        // "The counter for the received stanzas ('h') is set to zero and
+        // started after receiving either <enable/> or <enabled/>."
+        inbound = 0;
+        active = true;
+        return;
+      }
+      if (element.is('resumed', STREAM_MANAGEMENT_NS)) {
+        // Resumption continues the previous counter.
+        active = true;
+        return;
+      }
+      if (active && COUNTED_STANZAS.has(element.name)) {
+        inbound += 1;
+      }
+    },
+    stop() {
+      active = false;
+    },
+    correctOutgoing(element) {
+      if (element.is('a', STREAM_MANAGEMENT_NS) || element.is('resume', STREAM_MANAGEMENT_NS)) {
+        element.attrs.h = String(inbound);
+      }
+    },
+  };
+}
+
+// Installs the corrected counter: reads every incoming element, patches the `h` of
+// outgoing `<a/>`/`<resume/>`, and forwards the library's `ack`/`fail` for outgoing
+// `<message/>` stanzas. Nothing when the client has no stream management.
+export function installStreamManagementAck(
+  client: XmppClient,
+  handlers?: {
+    onAcked?: (stanzaId: string) => void;
+    onUnacked?: (stanzaId: string) => void;
+    /** <enabled/> or <resumed/>: this stream now tracks outgoing stanzas. */
+    onReady?: () => void;
+  },
+): void {
+  const sm = (client as XmppClient & { streamManagement?: unknown }).streamManagement;
+  if (sm === undefined || sm === null) return;
+
+  const ack = createStreamManagementAck();
+  client.on('element', (element) => {
+    ack.observe(element);
+    // A stream not (yet) managed tracks no outgoing stanza, so callers wait for this.
+    if (
+      element.is('enabled', STREAM_MANAGEMENT_NS) ||
+      element.is('resumed', STREAM_MANAGEMENT_NS)
+    ) {
+      handlers?.onReady?.();
+    }
+  });
+  client.on('disconnect', () => {
+    ack.stop();
+  });
+  client.on('offline', () => {
+    ack.stop();
+  });
+
+  // The library's middleware emits `ack` and `fail` with the stanza; only `<message/>`
+  // with an `id` is reported.
+  const report = (event: 'ack' | 'fail', stanza: XmppElement): void => {
+    if (!stanza.is('message')) return;
+    const id = stanza.attrs['id'];
+    if (id === undefined) return;
+    if (event === 'ack') {
+      handlers?.onAcked?.(id);
+    } else {
+      handlers?.onUnacked?.(id);
+    }
+  };
+  const emitter = sm as { on?: (event: string, listener: (stanza: XmppElement) => void) => void };
+  emitter.on?.('ack', (stanza) => report('ack', stanza));
+  emitter.on?.('fail', (stanza) => report('fail', stanza));
+
+  const send = client.send.bind(client);
+  client.send = (element) => {
+    ack.correctOutgoing(element);
+    return send(element);
+  };
+}
+
+export type StanzaRouterApi = {
+  handleStanza: (stanza: XmppElement) => void;
+};
+
+function createStanzaRouter(runtime: CoreRuntime): StanzaRouterApi {
+  function handleMamResult(stanza: XmppElement): void {
+    const queryId = mamResultQueryId(stanza);
+    if (queryId === undefined) return;
+    const pending = runtime.pendingQueries.get(queryId);
+    if (pending === undefined) return;
+    const context = runtime.parseContext();
+    if (!mamResultTrusted(stanza, context)) return;
+    const decoded = decodeMessageStanza(stanza, context);
+    if (decoded.message !== undefined) pending.messages.push(decoded.message);
+  }
+
+  function handleIq(stanza: XmppElement): void {
+    const id = stanza.attrs['id'];
+    if (id !== undefined) {
+      // Our own keepalive ping answered (result or error both prove alive).
+      if (runtime.handleKeepaliveReply(id)) return;
+      const pending = runtime.pendingIqs.get(id);
+      if (pending !== undefined) {
+        runtime.pendingIqs.delete(id);
+        if (stanza.attrs['type'] === 'error') {
+          Deferred.doneUnsafe(
+            pending.deferred,
+            Effect.fail(new IqFailed({ condition: stanzaErrorCondition(stanza) })),
+          );
+        } else {
+          Deferred.doneUnsafe(pending.deferred, Effect.succeed(stanza));
+        }
+        return;
+      }
+    }
+
+    // An incoming server ping (XEP-0199) gets an empty result back.
+    if (
+      stanza.attrs['type'] === 'get' &&
+      id !== undefined &&
+      stanza.getChild('ping', PING_NAMESPACE) !== undefined
+    ) {
+      const current = runtime.xmpp;
+      if (current !== undefined) {
+        const from = stanza.attrs['from'];
+        Effect.runFork(runtime.sendQuietly(current, buildPingResult(id, from)));
+      }
+      return;
+    }
+
+    const rosterPush = parseRosterPush(stanza, runtime.options.domain, runtime.meJid);
+    if (rosterPush !== undefined) {
+      runtime.handleRosterPush(rosterPush);
+      return;
+    }
+
+    if (id === undefined) return;
+    for (const [queryId, pending] of runtime.pendingQueries) {
+      if (pending.iqId !== id) continue;
+      runtime.pendingQueries.delete(queryId);
+      if (stanza.attrs['type'] === 'error') {
+        Deferred.doneUnsafe(
+          pending.deferred,
+          Effect.fail(new HistoryFailed({ condition: stanzaErrorCondition(stanza) })),
+        );
+        return;
+      }
+      Deferred.doneUnsafe(
+        pending.deferred,
+        Effect.succeed(toHistoryPage(pending.messages, parseMamFin(stanza))),
+      );
+      return;
+    }
+  }
+
+  function handleStanza(stanza: XmppElement): void {
+    if (stanza.is('message')) {
+      if (isMamResult(stanza)) {
+        handleMamResult(stanza);
+        return;
+      }
+      const invited = parseDirectInvitation(stanza, runtime.options.domain, runtime.mucDomain);
+      if (invited !== undefined) runtime.emitEvent('invited', invited);
+      const decoded = decodeMessageStanza(stanza, runtime.parseContext());
+      if (decoded.message !== undefined) runtime.emitEvent('message', decoded.message);
+      if (decoded.typing !== undefined) runtime.emitEvent('typing', decoded.typing);
+      if (decoded.displayed !== undefined) runtime.emitEvent('displayed', decoded.displayed);
+      if (decoded.deliveredMark !== undefined) {
+        runtime.emitEvent('deliveredMark', decoded.deliveredMark);
+      }
+      return;
+    }
+    if (stanza.is('presence')) {
+      runtime.handlePresence(stanza);
+      return;
+    }
+    if (stanza.is('iq')) {
+      handleIq(stanza);
+    }
+  }
+
+  return { handleStanza };
+}
+
+// `suspend()` parks the session when the app leaves the foreground; `wake()` brings it
+// back. xmpp.js keeps the stream-management id across a `disconnect` and clears it only
+// on `offline`, so `suspend()` ends the socket below the stream layer and `wake()`
+// drives a normal reconnect, which resumes when ejabberd still holds the session.
+// Only what suspend reads of the library client: the ambient client knows
+// start/stop/disconnect but not the socket or the SM state.
+type SuspendableClient = {
+  status: XmppStatus;
+  socket: { end(): void } | null;
+  reconnect: { start(): void; stop(): void };
+  streamManagement?: { id?: string; on(event: string, listener: () => void): unknown } | null;
+};
+
+function asSuspendable(current: XmppClient): SuspendableClient | undefined {
+  const client = current as unknown as SuspendableClient;
+  return typeof client.status === 'string' && client.socket !== undefined ? client : undefined;
+}
+
+// The stream-management id xmpp.js would resume with (`previd`), if any. It
+// survives `disconnect` and is cleared only by `offline` or a fresh bind.
+function streamManagementId(current: XmppClient): string | undefined {
+  const sm = asSuspendable(current)?.streamManagement;
+  const id = sm?.id;
+  return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
+// `start()` throws unless the library is offline, but after `suspend()` the socket just
+// closed, so stepping back to `offline` is the resume without clearing the SM id.
+function readyForRestart(current: XmppClient): void {
+  const client = asSuspendable(current);
+  if (client !== undefined && client.status === 'disconnect') {
+    client.status = 'offline';
+  }
+}
+
+export type SuspendApi = {
+  suspend: () => Effect.Effect<void, Error>;
+  wake: () => Effect.Effect<WakeOutcome, Error>;
+};
+
+function createSuspend(runtime: CoreRuntime, lifecycle: LifecycleApi): SuspendApi {
+  // Whether `suspend()` stopped the reconnect driver; `wake()` restarts it once, so a
+  // foreground without a suspend never stacks listeners.
+  let suspended = false;
+
+  // Stops the reconnect driver, watchdog and keepalive, then ends the socket directly:
+  // no framing close, so ejabberd moves the session to pending and keeps it resumable.
+  const suspend = Effect.fnUntraced(function* (): Effect.fn.Return<void, Error> {
+    const current = runtime.xmpp;
+    runtime.desiredOnline = false;
+    lifecycle.stopWatchdog();
+    lifecycle.stopKeepalive();
+    if (current !== undefined) {
+      const client = asSuspendable(current);
+      if (client !== undefined) {
+        client.reconnect.stop();
+        suspended = true;
+      }
+      if (client?.socket != null) {
+        const socket = client.socket;
+        // A synchronous throw (an already-dead socket) must still leave the
+        // status offline, so a failed close is ignored.
+        yield* attempt(() => Promise.resolve().then(() => socket.end())).pipe(Effect.ignore);
+      }
+    }
+    lifecycle.setStatus('offline');
+  });
+
+  // Reconnects, resuming when ejabberd still holds the session. The driver restarts only
+  // when `suspend()` stopped it; another `start()` would stack a second listener. A resume
+  // keeps the SM id, a fresh bind reports `rebound`.
+  const wake = Effect.fnUntraced(function* (): Effect.fn.Return<WakeOutcome, Error> {
+    const wasSuspended = suspended;
+    suspended = false;
+    const current = runtime.xmpp;
+    if (current === undefined) {
+      yield* lifecycle.connect();
+      return 'rebound';
+    }
+    if (wasSuspended) {
+      asSuspendable(current)?.reconnect.start();
+    }
+    const before = streamManagementId(current);
+    readyForRestart(current);
+    yield* lifecycle.connect();
+    const after = streamManagementId(current);
+    return before !== undefined && after === before ? 'resumed' : 'rebound';
+  });
+
+  return { suspend, wake };
+}
 
 export function createCoreEffect(
   options: XmppCoreOptions,

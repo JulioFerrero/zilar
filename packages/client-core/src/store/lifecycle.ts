@@ -1,10 +1,12 @@
-import { Effect, Exit, Fiber } from 'effect';
+import { Effect, Exit, Fiber, Schema } from 'effect';
 import type { MediaTokenShape } from '@zilar/chat-core';
+import type { XmppCore } from '@zilar/xmpp-core';
 import { connectXmpp } from './connect';
 import { fromPromise, setConnectionStatus, type StoreAppHooks } from './ctx';
 import { flushPending, type HistoryCtx } from './history';
 import { flushOnline, wakeAndResend } from './online';
-import { readLastRead } from './last-read';
+import type { KeyValue } from './ports';
+import { LAST_READ_PREFIX } from './reads';
 import type { Fibers } from './lifetime';
 import {
   clearFinishedTurns,
@@ -14,8 +16,68 @@ import {
   type DraftTurns,
 } from './polling';
 
-export { readLastRead } from './last-read';
-export { suspendStore, wakeCore } from './suspend';
+/** Parks the XMPP session when the app leaves the foreground; a core without
+ * `suspend` stays as it is. Best effort and silent: the next resume reconnects. */
+export const suspendStore = (ctx: { core: XmppCore | undefined }): Effect.Effect<void, unknown> =>
+  Effect.suspend(() => {
+    const current = ctx.core;
+    const suspend = current?.suspend;
+    if (current === undefined || suspend === undefined) {
+      return Effect.void;
+    }
+    return fromPromise(() => suspend()).pipe(
+      Effect.asVoid,
+      Effect.catchCause(() => Effect.void),
+    );
+  });
+
+/**
+ * Brings a core back after a suspend: `wake()` when the core supports it, else a plain
+ * `connect()`. Never trusts a stale `online` status: `wake()` reconnects either way.
+ */
+export const wakeCore = (current: XmppCore): Effect.Effect<void, unknown> => {
+  const wake = current.wake;
+  return wake === undefined
+    ? fromPromise(() => current.connect())
+    : fromPromise(() => wake()).pipe(Effect.asVoid);
+};
+
+// Reads the last-read map a user's storage saved; anything unusable reads as none.
+const parseJson = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
+
+export const readLastRead = (
+  storage: KeyValue | null,
+  userId: string,
+): Effect.Effect<Record<string, string>> => {
+  const none: Record<string, string> = {};
+  if (storage === null) {
+    return Effect.succeed(none);
+  }
+  return Effect.try(() => storage.getItem(`${LAST_READ_PREFIX}${userId}`)).pipe(
+    Effect.map((raw) => {
+      if (raw === null) {
+        return none;
+      }
+      const parsed = parseJson(raw);
+      if (Exit.isFailure(parsed)) {
+        return none;
+      }
+      const value = parsed.value;
+      if (value === null || typeof value !== 'object') {
+        return none;
+      }
+      const result: Record<string, string> = {};
+      for (const [chatId, messageId] of Object.entries(value)) {
+        if (typeof messageId === 'string') {
+          result[chatId] = messageId;
+        }
+      }
+      return result;
+    }),
+    Effect.orElseSucceed(() => none),
+  );
+};
+
 export { flushOnline } from './online';
 export { onAuthFailed, type SessionCheck } from './session-check';
 export { CONNECT_RETRY_DELAYS_MS } from './connect';

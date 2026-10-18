@@ -13,10 +13,10 @@ import {
   type WorkspacePackage,
 } from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
-import { checkMigrations, migrationNumber, parseMigrationDiff } from './migrations.js';
-import { checkImagePackages, checkImages, copiedPackageDirs, workspaceDeps } from './images.js';
+import { checkMigrations, migrationNumber, parseMigrationDiff } from './cli.js';
+import { checkImagePackages, checkImages, copiedPackageDirs, workspaceDeps } from './cli.js';
 import { countLines, isSizeChecked, sizeViolations, sizeWarnings } from './size.js';
-import { taskIdComments } from './comments.js';
+import { taskIdComments } from './cli.js';
 
 const workspace: WorkspacePackage[] = [
   { name: '@zilar/mobile', dir: 'apps/mobile', hasTests: true },

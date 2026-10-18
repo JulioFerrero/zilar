@@ -1,20 +1,189 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from '../autopilot.js';
-import { OpencodeCliClient } from '../client.js';
+import { OpencodeCliClient, type OpenCodeClient } from '../client.js';
 import { doctorWorktreeFor, startDoctorSession } from '../doctor.js';
+import { freshSessionRecord, startFreshWorkerSession } from '../fresh-session.js';
 import { currentHead, RealGitRunner } from '../git.js';
 import { findTaskFile, launchTask, parseLaunchArgs } from '../launch.js';
-import { promptsDir } from '../prompts.js';
-import { replyToWorker } from '../reply.js';
+import { loadPrompt, promptsDir, renderPrompt } from '../prompts.js';
 import { collectSnapshot } from '../collect-snapshot.js';
-import { checkSpec, formatProblems } from '../spec-check.js';
 import { startPrereviewSession } from '../start-prereview.js';
 import { switchModel, switchModelInPlace } from '../switch-model.js';
 import { loadState, stateFilePath, updateState } from '../state.js';
-import { taskFileDir } from '../task-file.js';
+import { parseFrontMatter, taskFileDir } from '../task-file.js';
 import { findRepoRoot } from '../repo-root.js';
 import { flag, flagValue } from './args.js';
+
+interface ReplyDeps {
+  client: OpenCodeClient;
+  statePath: string;
+  promptsDirPath: string;
+  repoRoot: string;
+}
+
+// There is no API to answer a `question` call directly, so the mechanism is interrupt,
+// then re-prompt with the lead's text. With `fresh`, that text opens a new session in
+// the same worktree and the state points at it.
+async function replyToWorker(
+  task: string,
+  promptFile: string,
+  deps: ReplyDeps,
+  options?: { fresh?: boolean },
+): Promise<void> {
+  const state = loadState(deps.statePath);
+  const record = state.tasks[task];
+  if (record === undefined) {
+    throw new Error(`unknown task ${task}: no session in the state file`);
+  }
+  let text: string;
+  try {
+    text = fs.readFileSync(promptFile, 'utf8');
+  } catch {
+    throw new Error(`cannot read prompt file ${promptFile}`);
+  }
+  if (text.trim().length === 0) {
+    throw new Error(`prompt file ${promptFile} is empty`);
+  }
+  if (options?.fresh !== true) {
+    await deps.client.interrupt(record.sessionId);
+    deps.client.promptDetached(record.sessionId, text);
+    return;
+  }
+  // Every local check runs before the interrupt, so a typo never stops the old worker
+  // without a replacement.
+  const file = findTaskFile(record.worktree, task);
+  const fields = parseFrontMatter(
+    fs.readFileSync(path.join(record.worktree, 'work', file), 'utf8'),
+  );
+  const head = renderPrompt(loadPrompt(deps.promptsDirPath, 'fresh'), {
+    TASK: task,
+    TASK_FILE: file,
+    WORKTREE: record.worktree,
+    BRANCH: fields['branch'] ?? '',
+  });
+  const outcome = await deps.client.tryInterrupt(record.sessionId);
+  if (outcome.kind === 'error') {
+    throw new Error(
+      `refusing to reply fresh to ${task}: cannot interrupt the previous session (${record.sessionId}): ${outcome.message}`,
+    );
+  }
+  const previousSessionId = record.sessionId;
+  const { sessionId, model } = await startFreshWorkerSession(
+    { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
+    { task, record, title: `${task} reply`, prompt: `${head}\n\n${text}` },
+  );
+  updateState(deps.statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined && current.sessionId === previousSessionId) {
+      fresh.tasks[task] = freshSessionRecord(current, sessionId, model);
+    }
+  });
+}
+
+// `lead spec-check T-XXXX` reads a task's Spec before a worker starts and reports
+// claims that are not true of the code: invented features, missing files, absent routes.
+
+interface SpecProblem {
+  kind: 'missing-read-first' | 'missing-folder' | 'unknown-route' | 'uncited-web-claim';
+  detail: string;
+}
+
+interface SpecCheckDeps {
+  exists: (relativePath: string) => boolean;
+  serverText: () => string;
+}
+
+function section(text: string, heading: string): string {
+  const match = new RegExp(
+    `^### ${heading}\\s*\\n([\\s\\S]*?)(?=^### |^---\\s*$|^## |$(?![\\s\\S]))`,
+    'm',
+  ).exec(text);
+  return match?.[1] ?? '';
+}
+
+function backticked(text: string): string[] {
+  return [...text.matchAll(/`([^`\n]+)`/g)].map((match) => (match[1] ?? '').trim());
+}
+
+function looksLikePath(token: string): boolean {
+  return /^[\w@.-]+(\/[\w@.[\]()*-]+)+\/?$/.test(token) && !token.includes(' ');
+}
+
+function hasGlob(token: string): boolean {
+  return token.includes('*');
+}
+
+// `docs/a.md#section` and `docs/a.md:12` name the file.
+function bareFile(token: string): string {
+  return token.replace(/[#:][^/]*$/, '');
+}
+
+function checkSpec(taskText: string, deps: SpecCheckDeps): SpecProblem[] {
+  const problems: SpecProblem[] = [];
+  const spec = taskText.split(/^## Report/m)[0] ?? taskText;
+
+  for (const token of backticked(section(spec, 'Read first'))) {
+    if (!looksLikePath(bareFile(token)) || hasGlob(token)) {
+      continue;
+    }
+    if (!deps.exists(bareFile(token))) {
+      problems.push({ kind: 'missing-read-first', detail: token });
+    }
+  }
+
+  for (const token of backticked(section(spec, 'Allowed files'))) {
+    if (!looksLikePath(token)) {
+      continue;
+    }
+    const concrete = token.split('*')[0] ?? token;
+    const folder = concrete.endsWith('/') ? concrete.slice(0, -1) : path.posix.dirname(concrete);
+    // A new folder is fine (a task may create one); a new folder under a
+    // folder that does not exist either is a typo.
+    const parent = path.posix.dirname(folder);
+    const typo = !deps.exists(folder) && parent !== '.' && !deps.exists(parent);
+    if (folder !== '.' && folder !== '' && typo) {
+      problems.push({
+        kind: 'missing-folder',
+        detail: `${token} (neither ${folder} nor its parent exists)`,
+      });
+    }
+  }
+
+  const serverText = deps.serverText();
+  const seen = new Set<string>();
+  for (const match of spec.matchAll(/`(?:GET|POST|PUT|PATCH|DELETE)\s+(\/api\/[^\s`?]+)/g)) {
+    const route = match[1] ?? '';
+    if (seen.has(route)) {
+      continue;
+    }
+    seen.add(route);
+    // Route params differ in name (":handle" vs "{handle}"): compare the static prefix.
+    const prefix = route.replace(/\/[:{][^/]*$/, '').replace(/\/[:{].*$/, '');
+    const relative = prefix.replace(/^\/api/, '');
+    if (!serverText.includes(relative) && !serverText.includes(prefix)) {
+      problems.push({ kind: 'unknown-route', detail: route });
+    }
+  }
+
+  const claimsWeb = /\b(like|as|same as|matches|mirrors|from) (the )?web\b/i.test(spec);
+  if (claimsWeb && !/apps\/web\//.test(spec)) {
+    problems.push({
+      kind: 'uncited-web-claim',
+      detail:
+        'the spec says it matches web but names no apps/web/ file; read the web code and cite it',
+    });
+  }
+  return problems;
+}
+
+function formatProblems(task: string, problems: SpecProblem[]): string {
+  if (problems.length === 0) {
+    return `${task}: spec check passed`;
+  }
+  const lines = problems.map((problem) => `  ${problem.kind}: ${problem.detail}`);
+  return [`${task}: ${problems.length} problem(s) in the spec`, ...lines].join('\n');
+}
 
 export async function runLaunch(args: string[]): Promise<void> {
   const options = parseLaunchArgs(args);

@@ -4,7 +4,7 @@ import {
   STREAM_MANAGEMENT_NS,
   createStreamManagementAck,
   installStreamManagementAck,
-} from './stream-management';
+} from './core-effect';
 
 function nonza(name: string): XmppElement {
   return xml(name, { xmlns: STREAM_MANAGEMENT_NS });

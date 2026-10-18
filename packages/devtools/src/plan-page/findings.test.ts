@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { repoRoot } from '../effect-map/generate.js';
 import { parsePlan } from './collect.js';
 import { collectFindings, parseAuditDoc } from './findings.js';
-import { parseParity } from './parity.js';
+import { parseParity } from './collect.js';
 
 const root = repoRoot();
 

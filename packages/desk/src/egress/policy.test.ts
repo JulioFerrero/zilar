@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkTarget, type ResolveHost } from './policy';
+import { checkTarget, type ResolveHost } from './proxy';
 
 const resolvesTo =
   (...addresses: string[]): ResolveHost =>

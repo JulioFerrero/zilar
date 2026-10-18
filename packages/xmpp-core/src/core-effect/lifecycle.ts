@@ -1,18 +1,177 @@
 import { type XmppClient, type XmppCredentialsProvider, type XmppStatus } from '@xmpp/client';
-import { Deferred, Effect } from 'effect';
+import { Deferred, Duration, Effect } from 'effect';
 import { ConnectTimeout, ConnectionFailed, Disconnected, type XmppCoreError } from '../errors';
-import { buildAvailablePresence, buildCarbonsEnable, buildJoinPresence } from '../stanza';
+import { jidLocalPart } from '../jid';
+import {
+  buildAvailablePresence,
+  buildCarbonsEnable,
+  buildJoinPresence,
+  buildPingRequest,
+} from '../stanza';
 import { schedule } from '../timers';
 import type { ConnectionStatus } from '../types';
 import {
   CONNECT_TIMEOUT_MS,
+  DEFAULT_KEEPALIVE_MS,
+  DEFAULT_KEEPALIVE_TIMEOUT_MS,
+  TOKEN_RETRY_DELAY_MS,
   WATCHDOG_SCHEDULE_MS,
   attempt,
+  isFatalTokenError,
   toError,
   type CoreRuntime,
 } from './config';
-import { createKeepalive } from './keepalive';
-import { createTokenAuth } from './token-auth';
+
+type TokenAuthApi = {
+  credentials: XmppCredentialsProvider;
+};
+
+// The token step of a connect: fetch a fresh token, then hand it to SASL.
+function createTokenAuth(runtime: CoreRuntime): TokenAuthApi {
+  // Calls `getToken` keeping the thrown value as-is: the core compares it by identity.
+  const fetchToken = (): Effect.Effect<{ jid: string; token: string }, unknown> =>
+    Effect.tryPromise({
+      try: () => runtime.options.getToken(),
+      catch: (error) => error,
+    });
+
+  // A fatal-looking error (401/403) may still be transient, so it asks once more after a
+  // short wait; only a second one marks `authFailed`.
+  const authenticateWithFreshToken = Effect.fnUntraced(function* (
+    authenticate: Parameters<XmppCredentialsProvider>[0],
+    mechanisms: string[],
+  ): Effect.fn.Return<void, unknown> {
+    const fresh = yield* fetchToken().pipe(
+      Effect.catch((error) => {
+        if (!isFatalTokenError(error)) {
+          runtime.transientTokenError = error;
+          return Effect.fail(error);
+        }
+        const delay = runtime.options.tokenRetryDelayMs ?? TOKEN_RETRY_DELAY_MS;
+        return Effect.sleep(Duration.millis(delay)).pipe(
+          Effect.andThen(fetchToken()),
+          Effect.catch((retryError) => {
+            if (isFatalTokenError(retryError)) {
+              runtime.authFailed = true;
+            } else {
+              runtime.transientTokenError = retryError;
+            }
+            return Effect.fail(retryError);
+          }),
+        );
+      }),
+    );
+
+    runtime.latestToken = fresh.token;
+    const mechanism = mechanisms.includes('PLAIN') ? 'PLAIN' : mechanisms[0];
+    yield* Effect.tryPromise({
+      try: () =>
+        authenticate({ username: jidLocalPart(fresh.jid), password: fresh.token }, mechanism),
+      catch: (error) => error,
+    });
+  });
+
+  const credentials: XmppCredentialsProvider = (authenticate, mechanisms) =>
+    Effect.runPromise(authenticateWithFreshToken(authenticate, mechanisms));
+
+  return { credentials };
+}
+
+type KeepaliveApi = {
+  stopKeepalive: () => void;
+  startKeepalive: () => void;
+  keepaliveEnabled: () => boolean;
+  handleKeepaliveReply: (id: string) => boolean;
+};
+
+// The XEP-0199 keepalive: while online, ping the server after an idle period and tear
+// the connection down when no reply comes, so the normal path reconnects.
+function createKeepalive(
+  runtime: CoreRuntime,
+  disconnectQuietly: (current: XmppClient) => void,
+): KeepaliveApi {
+  function keepaliveEnabled(): boolean {
+    const idle = runtime.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS;
+    const timeout = runtime.options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS;
+    return idle > 0 && timeout > 0;
+  }
+
+  function stopKeepalive(): void {
+    runtime.keepalivePingId = undefined;
+    if (runtime.keepaliveIdleTimer !== undefined) {
+      runtime.keepaliveIdleTimer();
+      runtime.keepaliveIdleTimer = undefined;
+    }
+    if (runtime.keepaliveReplyTimer !== undefined) {
+      runtime.keepaliveReplyTimer();
+      runtime.keepaliveReplyTimer = undefined;
+    }
+  }
+
+  // Pings after `keepaliveMs` of silence; no reply in `keepaliveTimeoutMs` means dead.
+  function startKeepalive(): void {
+    stopKeepalive();
+    if (!keepaliveEnabled() || !runtime.desiredOnline) return;
+    runtime.keepaliveIdleTimer = schedule(
+      runtime.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS,
+      () => {
+        runtime.keepaliveIdleTimer = undefined;
+        Effect.runFork(sendKeepalivePing());
+      },
+    );
+  }
+
+  const sendKeepalivePing = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+    const current = runtime.xmpp;
+    if (current === undefined || !runtime.desiredOnline || runtime.currentStatus !== 'online') {
+      return;
+    }
+    const id = runtime.generateId();
+    runtime.keepalivePingId = id;
+    const sent = yield* attempt(() =>
+      current.send(buildPingRequest({ id, to: runtime.options.domain })),
+    ).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    );
+    if (!sent) {
+      runtime.keepalivePingId = undefined;
+      reconnectDeadConnection();
+      return;
+    }
+    runtime.keepaliveReplyTimer = schedule(
+      runtime.options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS,
+      () => {
+        runtime.keepaliveReplyTimer = undefined;
+        runtime.keepalivePingId = undefined;
+        reconnectDeadConnection();
+      },
+    );
+  });
+
+  // The keepalive found a dead connection: tear the socket down so the library reconnects
+  // through the normal path.
+  function reconnectDeadConnection(): void {
+    stopKeepalive();
+    const current = runtime.xmpp;
+    if (current === undefined || !runtime.desiredOnline) return;
+    disconnectQuietly(current);
+  }
+
+  function handleKeepaliveReply(id: string): boolean {
+    if (runtime.keepalivePingId === undefined || runtime.keepalivePingId !== id) return false;
+    runtime.keepalivePingId = undefined;
+    if (runtime.keepaliveReplyTimer !== undefined) {
+      runtime.keepaliveReplyTimer();
+      runtime.keepaliveReplyTimer = undefined;
+    }
+    // A result or an error both prove the connection is alive.
+    startKeepalive();
+    return true;
+  }
+
+  return { stopKeepalive, startKeepalive, keepaliveEnabled, handleKeepaliveReply };
+}
 
 export type LifecycleApi = {
   setStatus: (next: ConnectionStatus) => void;

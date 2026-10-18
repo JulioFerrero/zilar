@@ -1,14 +1,18 @@
 import { Schema } from 'effect';
-import { struct } from './common';
+import { IdSchema, IsoDateTimeSchema, struct } from './common';
 import {
   BarsBlockSchema,
   BlockIconSchema,
   FigureBlockSchema,
   GaugeBlockSchema,
+  HttpsUrlSchema,
   LineBlockSchema,
   MAX_BLOCKS,
   MAX_BLOCK_BYTES,
+  MAX_ROWS,
   NumberBlockSchema,
+  NumberText,
+  RatioSchema,
   ShortText,
   StatsBlockSchema,
   TableBlockSchema,
@@ -22,28 +26,185 @@ import {
   PollBlockSchema,
   RatingBlockSchema,
 } from './blocks-choices';
-import {
-  CalloutBlockSchema,
-  EventBlockSchema,
-  FileBlockSchema,
-  ImagesBlockSchema,
-  LinkBlockSchema,
-  PlaceBlockSchema,
-  WeatherBlockSchema,
-} from './blocks-content';
-import {
-  ChecklistBlockSchema,
-  CountdownBlockSchema,
-  ProgressBlockSchema,
-  StatusBlockSchema,
-  TimelineBlockSchema,
-} from './blocks-progress';
 
-// The shared helpers and caps live in `blocks-numbers.ts`, the first group; this file aggregates the four groups so nothing has to import back into it.
+// The shared helpers and caps live in `blocks-numbers.ts`, the first group; this file aggregates the groups so nothing has to import back into it.
 export * from './blocks-numbers';
-export * from './blocks-progress';
+
+export const LinkBlockSchema = struct({
+  kind: Schema.Literal('link'),
+  url: HttpsUrlSchema,
+  site: Schema.optional(ShortText),
+  title: Text,
+  description: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(300)))),
+});
+
+export type LinkBlock = typeof LinkBlockSchema.Type;
+
+// Uploaded media ids, never URLs, so a card cannot be a tracker.
+export const ImagesBlockSchema = struct({
+  kind: Schema.Literal('images'),
+  items: Schema.mutable(Schema.Array(IdSchema)).pipe(
+    Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4)),
+  ),
+  extra: Schema.optional(Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))),
+});
+
+export type ImagesBlock = typeof ImagesBlockSchema.Type;
+
+export const PlaceBlockSchema = struct({
+  kind: Schema.Literal('place'),
+  title: Text,
+  subtitle: Schema.optional(ShortText),
+  map: Schema.optional(IdSchema),
+  url: Schema.optional(HttpsUrlSchema),
+});
+
+export type PlaceBlock = typeof PlaceBlockSchema.Type;
+
+export const WeatherBlockSchema = struct({
+  kind: Schema.Literal('weather'),
+  place: Text,
+  condition: ShortText,
+  high: NumberText,
+  low: NumberText,
+  temp: NumberText,
+  hourly: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        struct({
+          at: ShortText,
+          condition: ShortText,
+          temp: NumberText,
+        }),
+      ),
+    ).pipe(Schema.check(Schema.isMaxLength(6))),
+  ),
+});
+
+export type WeatherBlock = typeof WeatherBlockSchema.Type;
+
+export const EventBlockSchema = struct({
+  kind: Schema.Literal('event'),
+  title: Text,
+  startAt: IsoDateTimeSchema,
+  endAt: IsoDateTimeSchema,
+  detail: Schema.optional(ShortText),
+  calendar: Schema.optional(Schema.Boolean),
+  map: Schema.optional(IdSchema),
+});
+
+export type EventBlock = typeof EventBlockSchema.Type;
+
+// The file's format is `format`, not `kind`, because `kind` is the block discriminator.
+export const FileBlockSchema = struct({
+  kind: Schema.Literal('file'),
+  media: IdSchema,
+  name: Text,
+  size: ShortText,
+  format: ShortText,
+  rows: Schema.optional(NumberText),
+});
+
+export type FileBlock = typeof FileBlockSchema.Type;
+
+export const CalloutBlockSchema = struct({
+  kind: Schema.Literal('callout'),
+  tone: Schema.Literals(['success', 'warning', 'error', 'info']),
+  text: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+});
+
+export type CalloutBlock = typeof CalloutBlockSchema.Type;
+
+export const ChecklistBlockSchema = struct({
+  kind: Schema.Literal('checklist'),
+  id: IdSchema,
+  title: Text,
+  items: Schema.mutable(
+    Schema.Array(
+      struct({
+        id: IdSchema,
+        label: Text,
+        done: Schema.Boolean,
+        by: Schema.optional(Text),
+      }),
+    ),
+  ).pipe(
+    Schema.check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(MAX_ROWS),
+      Schema.makeFilter((items) =>
+        new Set(items.map((item) => item.id)).size === items.length
+          ? undefined
+          : 'checklist item ids must be unique',
+      ),
+    ),
+  ),
+});
+
+export type ChecklistBlock = typeof ChecklistBlockSchema.Type;
+
+export const ProgressBlockSchema = struct({
+  kind: Schema.Literal('progress'),
+  label: Text,
+  ratio: RatioSchema,
+  detail: Schema.optional(ShortText),
+  note: Schema.optional(ShortText),
+});
+
+export type ProgressBlock = typeof ProgressBlockSchema.Type;
+
+export const TimelineBlockSchema = struct({
+  kind: Schema.Literal('timeline'),
+  title: Text,
+  steps: Schema.mutable(
+    Schema.Array(
+      struct({
+        label: Text,
+        at: Schema.optional(ShortText),
+        detail: Schema.optional(ShortText),
+        state: Schema.Literals(['done', 'current', 'todo']),
+      }),
+    ),
+  ).pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(12))),
+});
+
+export type TimelineBlock = typeof TimelineBlockSchema.Type;
+
+// `IsoDateTimeSchema` already pins the shape; the filter additionally drops a target the client's `Date.parse` could not read.
+const TargetAtSchema = IsoDateTimeSchema.pipe(
+  Schema.check(
+    Schema.makeFilter((value) =>
+      Number.isFinite(Date.parse(value)) ? undefined : 'targetAt must be a parsable date-time',
+    ),
+  ),
+);
+
+export const CountdownBlockSchema = struct({
+  kind: Schema.Literal('countdown'),
+  label: Text,
+  targetAt: TargetAtSchema,
+  note: Schema.optional(ShortText),
+});
+
+export type CountdownBlock = typeof CountdownBlockSchema.Type;
+
+export const StatusBlockSchema = struct({
+  kind: Schema.Literal('status'),
+  title: Text,
+  rows: Schema.mutable(
+    Schema.Array(
+      struct({
+        label: Text,
+        status: Schema.Literals(['ok', 'warn', 'bad']),
+        value: Schema.optional(ShortText),
+      }),
+    ),
+  ).pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_ROWS))),
+});
+
+export type StatusBlock = typeof StatusBlockSchema.Type;
+
 export * from './blocks-choices';
-export * from './blocks-content';
 
 export const BlockSchema = Schema.Union([
   FigureBlockSchema,

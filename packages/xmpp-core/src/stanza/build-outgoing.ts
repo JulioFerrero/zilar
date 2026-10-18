@@ -1,6 +1,7 @@
 import { xml, type XmppElement } from '@xmpp/client';
-import { type ForwardOrigin, type Payload } from '@zilar/protocol';
+import { encodePayload, type ForwardOrigin, type Payload } from '@zilar/protocol';
 import {
+  AGENT_NAMESPACE,
   CORRECTION_NAMESPACE,
   FALLBACK_NAMESPACE,
   HINTS_NAMESPACE,
@@ -12,7 +13,6 @@ import {
 } from '../namespaces';
 import type { ChatKind, MentionInput, MessageAlbum } from '../types';
 import { albumElement } from './album';
-import { pushPayloadElement } from './payload-element';
 import { MAX_MENTIONS, codePointLength, codePointOffset } from './reactions';
 
 export {
@@ -82,6 +82,14 @@ function shiftMentions(
     begin: mention.begin + shift,
     end: mention.end + shift,
   }));
+}
+
+function pushPayloadElement(children: XmppElement[], payload: Payload | undefined): void {
+  if (payload === undefined) {
+    return;
+  }
+  children.push(xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(payload)));
+  children.push(xml('store', { xmlns: HINTS_NAMESPACE }));
 }
 
 export function buildMessage(options: {

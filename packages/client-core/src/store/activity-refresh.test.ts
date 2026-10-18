@@ -1,7 +1,7 @@
 import type { Payload } from '@zilar/protocol';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
-import { isAiActivityMessage } from './activity-refresh';
+import { isAiActivityMessage } from './incoming';
 
 const NOW = new Date('2026-10-15T12:00:00Z');
 const ROOM = 'team@rooms.zilar.test';

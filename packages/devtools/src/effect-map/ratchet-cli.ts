@@ -4,8 +4,38 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { isCountedSource, repoRoot } from './generate.js';
-import { ratchetViolations, type RatchetFile, type RatchetViolation } from './ratchet.js';
+import { isCountedSource, repoRoot, sourceFile, type Kind } from './generate.js';
+
+// The Effect ratchet (docs/audit/effect-100-plan.md §4): a changed counted source
+// fails when it is needs-effect on the branch and absent or not on the base. Pure:
+// the caller reads both versions.
+interface RatchetFile {
+  path: string;
+  /** The file on the branch, or null when the branch deleted it. */
+  branchSource: string | null;
+  /** The file on the base, or null when the base does not have it. */
+  baseSource: string | null;
+}
+
+interface RatchetViolation {
+  path: string;
+  signals: string[];
+  firstHit: { line: number; text: string } | null;
+}
+
+const kindOf = (path: string, source: string): Kind => sourceFile(path, source).kind;
+
+function ratchetViolations(files: readonly RatchetFile[]): RatchetViolation[] {
+  return files.flatMap((file) => {
+    if (file.branchSource === null || !isCountedSource(file.path)) return [];
+    if (kindOf(file.path, file.branchSource) !== 'needs-effect') return [];
+    if (file.baseSource !== null && kindOf(file.path, file.baseSource) === 'needs-effect') {
+      return [];
+    }
+    const branch = sourceFile(file.path, file.branchSource);
+    return [{ path: file.path, signals: branch.signals, firstHit: branch.firstHit }];
+  });
+}
 
 // No git call may hang the gate: each one gets this limit and a bounded buffer.
 const GIT_TIMEOUT_MS = 30_000;
