@@ -1,10 +1,22 @@
-import { canAct, type UiMessage } from '@zilar/chat-core';
+import { canAct, QUICK_REACTIONS, type UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
+import {
+  Copy,
+  Download,
+  Forward,
+  ListChecks,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Reply,
+  Trash2,
+} from 'lucide-react';
 import type { RefObject } from 'react';
 import { ConfirmDialog } from '../ConfirmDialog';
-import { MessageActionsMenu } from '../MessageActionsMenu';
 import { EmojiTab } from '../sticker/EmojiTab';
 import { Dialog } from '../ui/dialog';
+import { Menu, MenuEntry, MenuItem } from '../ui/menu';
 import { useToast } from '../ui/toast';
 import { useAlbumMembers } from './AlbumGrid';
 import type { MessageMenuState } from './use-message-menu';
@@ -105,82 +117,167 @@ export function MessageMenuBody({
     fileAttachment === undefined || safeHttpUrl(fileAttachment.url) === undefined
       ? undefined
       : mediaSrc(chatId, fileAttachment.url);
+  const right = align === 'right';
 
   return (
     <>
       {open && (
-        <MessageActionsMenu
-          canCopy={canCopy}
-          canEdit={canEdit && canActNow}
-          canDelete={(canDelete || canDeleteForMe) && canActNow}
-          canReact={canActNow}
-          deleteLabel={deleteLabel}
-          canPin={canPin}
-          isPinned={pinId !== undefined}
-          canForward={canForward}
-          canDownload={fileHref !== undefined}
-          point={point}
-          onReact={(emoji) => {
-            onClose();
-            onReact(emoji);
-          }}
-          onMoreReactions={() => {
-            onClose();
-            menu.openPicker();
-          }}
-          onReply={() => {
-            onClose();
-            onReply();
-          }}
-          onForward={() => {
-            onClose();
-            onForward();
-          }}
-          onDownload={() => {
-            onClose();
-            if (fileHref !== undefined && fileAttachment !== undefined) {
-              downloadFile(fileHref, fileAttachment.name);
+        <Menu
+          open
+          onOpenChange={(next) => {
+            if (!next) {
+              onClose();
             }
           }}
-          onSelectMessages={() => {
-            onClose();
-            onSelectMessages();
-          }}
-          onEdit={() => {
-            onClose();
-            storeApi.getState().startEdit(chatId, message.id);
-          }}
-          onCopy={() => {
-            onClose();
-            show('Copied');
-            void copyText(message.text ?? '');
-          }}
-          onDelete={() => {
-            onClose();
-            menuButtonRef.current?.focus();
-            menu.openConfirm();
-          }}
-          onPin={() => {
-            onClose();
-            runWithFeedback(
-              () => storeApi.getState().pinMessage(chatId, message.id),
-              show,
-              'Pinned',
-            );
-          }}
-          onUnpin={() => {
-            onClose();
-            if (pinId !== undefined) {
-              runWithFeedback(
-                () => storeApi.getState().unpinMessage(chatId, pinId),
-                show,
-                'Unpinned',
-              );
-            }
-          }}
-          onClose={onClose}
-          align={align}
-        />
+          label="Message actions"
+          align={point === undefined ? (right ? 'end' : 'start') : 'start'}
+          sideOffset={0}
+          {...(point === undefined
+            ? {
+                anchorClassName: right ? 'absolute top-6 right-0' : 'absolute top-6 left-0',
+              }
+            : {
+                point,
+              })}
+        >
+          <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
+            {QUICK_REACTIONS.map((emoji) => (
+              <MenuEntry
+                key={emoji}
+                ariaLabel={`React with ${emoji}`}
+                disabled={!canActNow}
+                onSelect={() => {
+                  onClose();
+                  onReact(emoji);
+                }}
+                className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none"
+              >
+                <span aria-hidden="true">{emoji}</span>
+              </MenuEntry>
+            ))}
+            <MenuEntry
+              ariaLabel="More reactions"
+              disabled={!canActNow}
+              onSelect={() => {
+                onClose();
+                menu.openPicker();
+              }}
+              className="key-icon flex size-7 items-center justify-center rounded-full text-muted-foreground"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+            </MenuEntry>
+          </div>
+          <MenuItem
+            onSelect={() => {
+              onClose();
+              onReply();
+            }}
+            icon={Reply}
+          >
+            Reply
+          </MenuItem>
+          {canForward && (
+            <>
+              <MenuItem
+                onSelect={() => {
+                  onClose();
+                  onForward();
+                }}
+                icon={Forward}
+              >
+                Forward
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  onClose();
+                  onSelectMessages();
+                }}
+                icon={ListChecks}
+              >
+                Select
+              </MenuItem>
+            </>
+          )}
+          {canEdit && canActNow && (
+            <MenuItem
+              onSelect={() => {
+                onClose();
+                storeApi.getState().startEdit(chatId, message.id);
+              }}
+              icon={Pencil}
+            >
+              Edit
+            </MenuItem>
+          )}
+          <MenuItem
+            onSelect={() => {
+              onClose();
+              show('Copied');
+              void copyText(message.text ?? '');
+            }}
+            disabled={!canCopy}
+            icon={Copy}
+          >
+            Copy text
+          </MenuItem>
+          {fileHref !== undefined && (
+            <MenuItem
+              onSelect={() => {
+                onClose();
+                if (fileAttachment !== undefined) {
+                  downloadFile(fileHref, fileAttachment.name);
+                }
+              }}
+              icon={Download}
+            >
+              Download
+            </MenuItem>
+          )}
+          <MenuItem
+            onSelect={() => {
+              onClose();
+              menuButtonRef.current?.focus();
+              menu.openConfirm();
+            }}
+            disabled={!((canDelete || canDeleteForMe) && canActNow)}
+            destructive
+            icon={Trash2}
+          >
+            {deleteLabel}
+          </MenuItem>
+          {canPin &&
+            (pinId !== undefined ? (
+              <MenuItem
+                onSelect={() => {
+                  onClose();
+                  if (pinId !== undefined) {
+                    runWithFeedback(
+                      () => storeApi.getState().unpinMessage(chatId, pinId),
+                      show,
+                      'Unpinned',
+                    );
+                  }
+                }}
+                icon={PinOff}
+              >
+                Unpin
+              </MenuItem>
+            ) : (
+              <MenuItem
+                onSelect={() => {
+                  onClose();
+                  runWithFeedback(
+                    () => storeApi.getState().pinMessage(chatId, message.id),
+                    show,
+                    'Pinned',
+                  );
+                }}
+                icon={Pin}
+              >
+                Pin
+              </MenuItem>
+            ))}
+        </Menu>
       )}
       {menu.confirmOpen && isDm && own && (
         <ConfirmDialog
