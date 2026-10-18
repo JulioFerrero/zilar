@@ -13,15 +13,14 @@ import {
   flushPending as flushCore,
   loadOlder as loadOlderCore,
   loadPreview as loadPreviewCore,
-  mergeUnread,
+  mergeChatRows,
   openAtMessage as openAtMessageCore,
   openHistory,
-  orderChatRows,
+  pruneInactiveChats,
 } from '@zilar/client-core/store';
 
 import type { ChatEntry } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
-import { applyChatPrefs } from '../../lib/chat-prefs';
 import { TOPIC_GONE_NOTICE } from '../../lib/topics';
 import { clearUnreadMarkOnOpen } from './events';
 import { makeHistoryCtx } from './history-ctx';
@@ -85,10 +84,10 @@ export function makeHistory(ctx: StoreCtx): History {
     );
   });
 
-  // Merges a fresh chat list: the shared `mergeUnread` rule decides per row,
-  // so a server row at least as new as memory takes the server's `unread` and
-  // `lastMessage` (a read on another device clears here), while a newer
-  // in-memory preview wins. Mute, presence and prefs apply as before.
+  // Merges a fresh chat list through the shared `mergeChatRows`: a server row
+  // at least as new as memory takes the server's `unread` and `lastMessage` (a
+  // read on another device clears here), while a newer in-memory preview wins;
+  // presence and prefs apply as before.
   // Topic entries (T-0112) expand to one row per visible topic; rows that
   // disappeared (made private, archived, or I was removed) vanish here, and
   // the open topic moves to the topics screen with a short, name-free notice.
@@ -106,31 +105,9 @@ export function makeHistory(ctx: StoreCtx): History {
       applyChatDelivery(historyCtx, row);
     }
     const wanted = new Set(rows.map((row) => row.id));
-    const fresh = rows.filter((row) => !known.has(row.id));
-    const kept = rows
-      .filter((row) => known.has(row.id))
-      .map((row) => {
-        const existing = known.get(row.id);
-        if (existing === undefined) {
-          return row;
-        }
-        const merged = mergeUnread(row, existing, activeChatId);
-        return {
-          ...merged,
-          ...(existing.online === undefined ? {} : { online: existing.online }),
-          ...(existing.lastSeenAt === undefined ? {} : { lastSeenAt: existing.lastSeenAt }),
-          ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
-        };
-      });
-    // New chats sort by recency with the rest, so a row that first appears
-    // without a preview does not jump to the top and sink on the next tick
-    // (UI-12).
-    const merged = applyChatPrefs(
-      orderChatRows(fresh, kept),
-      s.chatPrefRows,
-      ports.now().getTime(),
-    );
-    set({ chats: merged });
+    set({
+      chats: mergeChatRows(previous, rows, activeChatId, s.chatPrefRows, ports.now().getTime()),
+    });
     h.rememberGroupIds(entries);
     // A topic that disappeared while open navigates back to its group's
     // topics screen with a short notice that never names the topic.
@@ -291,6 +268,10 @@ export function makeHistory(ctx: StoreCtx): History {
           topicNotice: keepNotice ? state.topicNotice : undefined,
         };
       });
+      // PERF-3: the chat just opened is now the active one, so every other chat
+      // drops to its newest KEEP_INACTIVE messages, like web's `openChat`. The
+      // next open pages the archive again.
+      pruneInactiveChats(historyCtx, chatId);
       h.recordRead(chatId, s.lastRead[chatId]);
       clearUnreadMarkOnOpen(ctx, chatId);
       // The detail first: it fills the cache, so the member-name fallback

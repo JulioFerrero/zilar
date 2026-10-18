@@ -12,10 +12,16 @@
 // name, never a sender id, so `senderId` carries the sender name (display
 // only: the row preview reads `senderName`, never `senderId`). The merge rule
 // (`mergeUnread`) lives here too, so no barrel change is needed.
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import {
+  applyChatPrefs,
+  type ChatPrefRow,
+  type ChatSummary,
+  type UiMessage,
+} from '@zilar/chat-core';
 import type { ChatEntry } from '@zilar/api-contract';
 import { archiveMarkOf, createdAtOf, previewMessageOf, unreadOf } from './row-helpers';
 import type { ServerRowFields } from './row-helpers';
+import { orderChatRows } from './rows';
 import { chatEntryTopics, summaryForTopic } from './topic-rows';
 
 export type { ServerRowFields } from './row-helpers';
@@ -60,6 +66,40 @@ export function mergeUnread(
     return { ...merged, unread: 0 };
   }
   return merged;
+}
+
+/**
+ * The whole chat list after a refresh: the fresh rows merged over memory, then
+ * pinned, muted and archived by the saved prefs. A known row keeps `online`,
+ * `lastSeenAt` and `onlineCount` from memory (XMPP sends presence, the list
+ * answer does not); `mergeUnread` decides the preview and unread count. New
+ * rows sort by recency with the rest (UI-12).
+ */
+export function mergeChatRows(
+  previous: readonly ChatSummary[],
+  freshRows: readonly ChatSummary[],
+  activeChatId: string | null | undefined,
+  prefs: readonly ChatPrefRow[],
+  nowMs: number,
+): ChatSummary[] {
+  const known = new Map(previous.map((chat) => [chat.id, chat]));
+  const fresh = freshRows.filter((row) => !known.has(row.id));
+  const kept = freshRows
+    .filter((row) => known.has(row.id))
+    .map((row) => {
+      const existing = known.get(row.id);
+      if (existing === undefined) {
+        return row;
+      }
+      const merged = mergeUnread(row, existing, activeChatId);
+      return {
+        ...merged,
+        ...(existing.online === undefined ? {} : { online: existing.online }),
+        ...(existing.lastSeenAt === undefined ? {} : { lastSeenAt: existing.lastSeenAt }),
+        ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
+      };
+    });
+  return applyChatPrefs(orderChatRows(fresh, kept), prefs, nowMs);
 }
 
 /** One DM, or one group without topics, maps to a single row. */

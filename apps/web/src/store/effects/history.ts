@@ -8,15 +8,14 @@ import {
   clearSupersededMarker,
   flushPending,
   loadPreview,
+  mergeChatRows,
   openAtMessage as openAtMessageCore,
   openHistory,
-  orderChatRows,
   pruneInactiveChats,
   recordRead,
 } from '@zilar/client-core/store';
-import { applyChatPrefs } from '@/lib/chatPrefs';
-import { ApiError, type ChatPref } from '@/lib/api';
-import { mergeUnread, summariesFor } from './chatRows';
+import { ApiError } from '@/lib/api';
+import { summariesFor } from './chatRows';
 import { CHAT_REFRESH_DEBOUNCE_MS } from './constants';
 import type { StoreCtx } from './ctx';
 import { loadGroupMembersInBackground } from './groupMembers';
@@ -177,13 +176,8 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
     const { api, now } = yield* Ports;
     const { k } = ctx;
     const session = ctx.rt.session();
-    const [entries, prefs] = yield* Effect.all(
-      [
-        fromPromise(() => api.getChats()),
-        fromPromise(() => api.listChatPrefs()).pipe(
-          Effect.catchCause(() => Effect.succeed([] as ChatPref[])),
-        ),
-      ],
+    const [entries, loadedPrefs] = yield* Effect.all(
+      [fromPromise(() => api.getChats()), Effect.option(fromPromise(() => api.listChatPrefs()))],
       { concurrency: 'unbounded' },
     );
     if (ctx.rt.session() !== session) {
@@ -205,32 +199,13 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
     for (const row of freshRows) {
       applyChatDelivery(ctx, row);
     }
-    const fresh = freshRows.filter((row) => !known.has(row.id));
-    const kept = freshRows
-      .filter((row) => known.has(row.id))
-      .map((row) => {
-        const existing = known.get(row.id);
-        if (existing === undefined) {
-          return row;
-        }
-        // The shared `mergeUnread` rule decides per row (the same call
-        // `chatRows.ts` makes): a server row at least as new as memory takes
-        // the server's `unread` and `lastMessage` (a read on another device
-        // clears here), while a newer in-memory preview wins.
-        const merged = mergeUnread(row, existing, activeChatId);
-        return {
-          ...merged,
-          ...(existing.online === undefined ? {} : { online: existing.online }),
-          ...(existing.lastSeenAt === undefined ? {} : { lastSeenAt: existing.lastSeenAt }),
-          ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
-        };
-      });
-    // New chats sort by recency with the rest, so a row that first appears
-    // without a preview does not jump to the top and sink on the next tick
-    // (UI-12).
+    // T-2035: a failed prefs read keeps the last rows, so pins, mutes and
+    // archives survive instead of being wiped until the next good refresh.
+    const prefs =
+      loadedPrefs._tag === 'Some' ? loadedPrefs.value : Object.values(ctx.get().chatPrefs);
     ctx.set({
-      chats: applyChatPrefs(orderChatRows(fresh, kept), prefs, now().getTime()),
-      chatPrefs: prefsByJid(prefs),
+      chats: mergeChatRows(previous, freshRows, activeChatId, prefs, now().getTime()),
+      ...(loadedPrefs._tag === 'Some' ? { chatPrefs: prefsByJid(prefs) } : {}),
     });
     k.rememberGroupIds(entries);
     // A topic that disappeared while open (made private, archived, or I was
