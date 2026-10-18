@@ -1,5 +1,5 @@
-import type { ChatSummary } from '@zilar/chat-core';
-import { Effect, Option, Schema } from 'effect';
+import { httpsTopicUrl, type ChatSummary } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { Link, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -14,25 +14,31 @@ const LABEL_MAX = 40;
 const SAVE_FAILED = 'Could not save. Try again.';
 const INVALID_URL = 'Link must be an https URL.';
 
-/** Only `https:` URLs save and open as links; anything else is rejected. */
-function httpsUrl(url: string | null | undefined): string | undefined {
-  if (url === null || url === undefined) {
-    return undefined;
-  }
-  const trimmed = url.trim();
-  if (trimmed === '') {
-    return undefined;
-  }
-  const parsed = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.URLFromString)(trimmed));
-  return parsed?.protocol === 'https:' ? parsed.toString() : undefined;
-}
-
 /** The row's title: the label when set, else the link's host. */
 function linkTitle(label: string | null, href: string): string {
   if (label !== null && label !== '') {
     return label;
   }
   return new URL(href).hostname;
+}
+
+/**
+ * The shared https rule plus the browser's own parse: chat-core's parser keeps
+ * the phone working without a full `URL`, and a value it accepts but `new URL`
+ * refuses (a link stored by an older release) shows "Add a link" instead of
+ * crashing this panel.
+ */
+function browserHttpsUrl(url: string | null | undefined): string | undefined {
+  const href = httpsTopicUrl(url);
+  if (href === undefined) {
+    return undefined;
+  }
+  try {
+    new URL(href);
+    return href;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -72,7 +78,7 @@ export function TopicLinkRow({
   if (topic === undefined) {
     return null;
   }
-  const href = httpsUrl(topic.linkUrl);
+  const href = browserHttpsUrl(topic.linkUrl);
 
   const startEdit = (): void => {
     onError('');
@@ -84,7 +90,7 @@ export function TopicLinkRow({
   const save = (): void => {
     onError('');
     const trimmed = url.trim();
-    if (trimmed !== '' && httpsUrl(trimmed) === undefined) {
+    if (trimmed !== '' && browserHttpsUrl(trimmed) === undefined) {
       onError(INVALID_URL);
       return;
     }

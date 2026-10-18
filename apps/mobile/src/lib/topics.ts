@@ -1,4 +1,4 @@
-import { parseUrl, sortTopics, type ChatSummary, type TopicInfo } from '@zilar/chat-core';
+import { sortTopics, type ChatSummary } from '@zilar/chat-core';
 
 import type { ChatFolder } from './types';
 
@@ -146,83 +146,9 @@ export function topicInFolder(chat: ChatSummary, folder: ChatFolder): boolean {
   }
 }
 
-/** Only `https:` URLs render as links; anything else is plain text or hidden. */
-export function httpsTopicUrl(url: string | null | undefined): string | undefined {
-  if (url === null || url === undefined) {
-    return undefined;
-  }
-  const trimmed = url.trim();
-  if (trimmed === '') {
-    return undefined;
-  }
-  const parsed = parseUrl(trimmed);
-  if (parsed === undefined) {
-    return undefined;
-  }
-  return parsed.protocol === 'https:' ? parsed.toString() : undefined;
-}
-
-/** The link chip text: the label, else the hostname, else "Add link". */
-export function topicLinkText(topic: TopicInfo | undefined): string {
-  if (topic?.linkLabel !== null && topic?.linkLabel !== undefined && topic.linkLabel !== '') {
-    return topic.linkLabel;
-  }
-  const href = httpsTopicUrl(topic?.linkUrl);
-  if (href !== undefined) {
-    return parseUrl(href)?.hostname ?? href;
-  }
-  return 'Add link';
-}
-
-export type GroupRole = 'owner' | 'admin' | 'member';
-
-export interface GroupMembership {
-  userId: string;
-  name: string;
-  role: GroupRole;
-}
-
-export interface TopicPermissionsInput {
-  members: readonly GroupMembership[];
-  meUserId: string;
-  membersCanCreateTopics: boolean;
-}
-
-function myRole(input: TopicPermissionsInput): GroupRole | undefined {
-  return input.members.find((member) => member.userId === input.meUserId)?.role;
-}
-
-function isManager(role: GroupRole | undefined): boolean {
-  return role === 'owner' || role === 'admin';
-}
-
-/** The viewer may create: owner/admin always, members when the switch is on. */
-export function mayCreateTopic(input: TopicPermissionsInput): boolean {
-  const role = myRole(input);
-  if (role === undefined) {
-    return false;
-  }
-  if (isManager(role)) {
-    return true;
-  }
-  return input.membersCanCreateTopics;
-}
-
-/** The viewer may manage (rename, members, visibility, archive): a manager. */
-export function mayManageTopic(input: TopicPermissionsInput): boolean {
-  return isManager(myRole(input));
-}
-
-/** The viewer may archive: a manager, and never the General topic. */
-export function mayArchiveTopic(
-  input: TopicPermissionsInput,
-  topic: TopicInfo | undefined,
-): boolean {
-  if (topic?.isGeneral === true) {
-    return false;
-  }
-  return mayManageTopic(input);
-}
+export { httpsTopicUrl, topicLinkText } from '@zilar/chat-core';
+export { mayArchiveTopic, mayCreateTopic, mayManageTopic } from '@zilar/chat-core';
+export type { GroupMembership, GroupRole, TopicPermissionsInput } from '@zilar/chat-core';
 
 /** "8 members, 6 topics" for the topics screen header. AIs count as members (T-1552). */
 export function topicsHeaderSubtitle(options: { memberCount: number; topicCount: number }): string {

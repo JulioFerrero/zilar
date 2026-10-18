@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { writingLabel } from './chat-labels';
-import { chatSortTime, inTopic, sortTopics } from './topics';
-import type { ChatSummary } from './types';
+import {
+  chatSortTime,
+  httpsTopicUrl,
+  inTopic,
+  mayArchiveTopic,
+  mayCreateTopic,
+  sortTopics,
+} from './topics';
+import type { ChatSummary, TopicInfo } from './types';
 
 // A row read back from the cache carries its `Date` fields as JSON strings;
 // the comparator must tolerate that instead of throwing (T-1479).
@@ -56,5 +63,78 @@ describe('writingLabel', () => {
 
   it('is undefined when nobody writes', () => {
     expect(writingLabel([])).toBeUndefined();
+  });
+});
+
+describe('httpsTopicUrl', () => {
+  it('keeps an https URL', () => {
+    expect(httpsTopicUrl(' https://chat.zilar.app/topic/42 ')).toBe(
+      'https://chat.zilar.app/topic/42',
+    );
+  });
+
+  it('refuses http, javascript and blank values', () => {
+    expect(httpsTopicUrl('http://chat.zilar.app/topic/42')).toBeUndefined();
+    expect(httpsTopicUrl('javascript:alert(1)')).toBeUndefined();
+    expect(httpsTopicUrl('   ')).toBeUndefined();
+    expect(httpsTopicUrl(undefined)).toBeUndefined();
+  });
+
+  it('refuses an https URL whose host a browser URL would reject', () => {
+    expect(httpsTopicUrl('https://foo bar/')).toBeUndefined();
+    expect(httpsTopicUrl('https://[::1/')).toBeUndefined();
+    expect(httpsTopicUrl('https://[zz]/')).toBeUndefined();
+  });
+
+  it('keeps an https URL with a valid IPv6 host', () => {
+    expect(httpsTopicUrl('https://[::1]/topic/42')).toBe('https://[::1]/topic/42');
+  });
+});
+
+describe('mayCreateTopic', () => {
+  const members = [
+    { userId: 'u-owner', name: 'Owner', role: 'owner' as const },
+    { userId: 'u-admin', name: 'Admin', role: 'admin' as const },
+    { userId: 'u-member', name: 'Member', role: 'member' as const },
+  ];
+
+  it('lets an owner and an admin create', () => {
+    expect(mayCreateTopic({ members, meUserId: 'u-owner', membersCanCreateTopics: false })).toBe(
+      true,
+    );
+    expect(mayCreateTopic({ members, meUserId: 'u-admin', membersCanCreateTopics: false })).toBe(
+      true,
+    );
+  });
+
+  it('lets a member create only when the switch is on', () => {
+    expect(mayCreateTopic({ members, meUserId: 'u-member', membersCanCreateTopics: false })).toBe(
+      false,
+    );
+    expect(mayCreateTopic({ members, meUserId: 'u-member', membersCanCreateTopics: true })).toBe(
+      true,
+    );
+  });
+
+  it('refuses someone who is not a member', () => {
+    expect(mayCreateTopic({ members, meUserId: 'u-outsider', membersCanCreateTopics: true })).toBe(
+      false,
+    );
+  });
+});
+
+describe('mayArchiveTopic', () => {
+  const input = {
+    members: [{ userId: 'u-owner', name: 'Owner', role: 'owner' as const }],
+    meUserId: 'u-owner',
+    membersCanCreateTopics: true,
+  };
+
+  it('refuses General even for an owner', () => {
+    expect(mayArchiveTopic(input, { isGeneral: true } as TopicInfo)).toBe(false);
+  });
+
+  it('allows a manager on any other topic', () => {
+    expect(mayArchiveTopic(input, { isGeneral: false } as TopicInfo)).toBe(true);
   });
 });

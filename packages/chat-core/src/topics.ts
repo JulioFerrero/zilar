@@ -1,4 +1,5 @@
-import type { ChatSummary } from './types';
+import type { ChatSummary, TopicInfo } from './types';
+import { parseUrl } from './url';
 
 /**
  * A date field as a sort stamp, tolerating a raw string a cache left behind:
@@ -120,4 +121,99 @@ export function mentionInTopic(
   const at = jid.indexOf('@');
   const localpart = (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
   return topic.memberIds.some((id) => id.toLowerCase() === localpart);
+}
+
+// A WHATWG host refuses these code points; `parseUrl` is a regex and accepts
+// them (`https://foo bar/`), which web's `new URL(href).hostname` cannot read.
+const FORBIDDEN_HOST_CODEPOINTS = /[\s#/:<>?@[\\\]^|]/;
+const INVALID_PERCENT = /%(?![0-9a-fA-F]{2})/;
+const IPV6_LITERAL = /^\[[0-9a-f:.]*:[0-9a-f:.]*\]$/;
+
+function isBrowserHost(hostname: string): boolean {
+  if (hostname.startsWith('[')) {
+    return IPV6_LITERAL.test(hostname);
+  }
+  return !FORBIDDEN_HOST_CODEPOINTS.test(hostname) && !INVALID_PERCENT.test(hostname);
+}
+
+/**
+ * T-2044: only `https:` URLs render as links; anything else is plain text or
+ * hidden. The host must also be one a browser's `URL` accepts, so a stored
+ * value cannot crash the web panel that reads it with `new URL`.
+ */
+export function httpsTopicUrl(url: string | null | undefined): string | undefined {
+  if (url === null || url === undefined) {
+    return undefined;
+  }
+  const trimmed = url.trim();
+  if (trimmed === '') {
+    return undefined;
+  }
+  const parsed = parseUrl(trimmed);
+  if (parsed === undefined || parsed.protocol !== 'https:') {
+    return undefined;
+  }
+  return isBrowserHost(parsed.hostname) ? parsed.toString() : undefined;
+}
+
+/** T-2044: the link chip text: the label, else the hostname, else "Add link". */
+export function topicLinkText(topic: TopicInfo | undefined): string {
+  if (topic?.linkLabel !== null && topic?.linkLabel !== undefined && topic.linkLabel !== '') {
+    return topic.linkLabel;
+  }
+  const href = httpsTopicUrl(topic?.linkUrl);
+  if (href !== undefined) {
+    return parseUrl(href)?.hostname ?? href;
+  }
+  return 'Add link';
+}
+
+export type GroupRole = 'owner' | 'admin' | 'member';
+
+export interface GroupMembership {
+  userId: string;
+  name: string;
+  role: GroupRole;
+}
+
+export interface TopicPermissionsInput {
+  members: readonly GroupMembership[];
+  meUserId: string;
+  membersCanCreateTopics: boolean;
+}
+
+function myRole(input: TopicPermissionsInput): GroupRole | undefined {
+  return input.members.find((member) => member.userId === input.meUserId)?.role;
+}
+
+function isManager(role: GroupRole | undefined): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
+/** T-2044: the viewer may create: owner/admin always, members when the switch is on. */
+export function mayCreateTopic(input: TopicPermissionsInput): boolean {
+  const role = myRole(input);
+  if (role === undefined) {
+    return false;
+  }
+  if (isManager(role)) {
+    return true;
+  }
+  return input.membersCanCreateTopics;
+}
+
+/** T-2044: the viewer may manage (rename, members, visibility, archive): a manager. */
+export function mayManageTopic(input: TopicPermissionsInput): boolean {
+  return isManager(myRole(input));
+}
+
+/** T-2044: the viewer may archive: a manager, and never the General topic. */
+export function mayArchiveTopic(
+  input: TopicPermissionsInput,
+  topic: TopicInfo | undefined,
+): boolean {
+  if (topic?.isGeneral === true) {
+    return false;
+  }
+  return mayManageTopic(input);
 }

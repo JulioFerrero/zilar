@@ -1,3 +1,4 @@
+import { mayCreateTopic } from '@zilar/chat-core';
 import { Bot, Compass, Hash, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -100,9 +101,12 @@ export function NewChatButton({
       const info = groupInfos[chat.id];
       const role = info?.members.find((member) => member.userId === mine)?.role;
       const mayCreate =
-        role === 'owner' ||
-        role === 'admin' ||
-        (role === 'member' && info?.membersCanCreateTopics === true);
+        info !== undefined &&
+        mayCreateTopic({
+          members: info.members,
+          meUserId: mine,
+          membersCanCreateTopics: info.membersCanCreateTopics === true,
+        });
       // The detail may not have loaded yet: fall back to showing the entry
       // when any non-topic group row exists — the dialog's create call
       // enforces the real permission and reports the failure.
