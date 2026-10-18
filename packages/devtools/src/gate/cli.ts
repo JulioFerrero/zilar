@@ -145,9 +145,12 @@ function sizeReport(root: string, base: string, files: string[]): SizeReport {
   return { warnings: sizeWarnings(inputs), failures: sizeViolations(inputs) };
 }
 
-// Added comment lines in source files that cite a task ID.
+// Added comment lines in source files that cite a task ID. Diffing from the
+// merge base keeps lines that other merged tasks removed on the base out of the
+// additions.
 function commentReport(root: string, base: string): string[] {
-  const diff = run(root, 'git', ['diff', '-U0', base, '--', 'apps', 'packages']).output;
+  const mergeBase = run(root, 'git', ['merge-base', base, 'HEAD']).output.trim();
+  const diff = run(root, 'git', ['diff', '-U0', mergeBase, '--', 'apps', 'packages']).output;
   return taskIdComments(diff);
 }
 
