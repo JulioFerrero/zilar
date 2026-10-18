@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { isDmBlocked } from '../blocks/service';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { SearchOwner } from '../search/service';
@@ -9,6 +10,7 @@ import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, isTopicMember, type TopicRow } from '../topics/access';
 import { findCloseTag, nextOpenTag, openTagAttrs } from '../markup/scan';
 import { albumInfoFromXml } from '../xmpp/album-xml';
+import { senderNamesByJid } from '../xmpp/archive-sender';
 import { localpartFor } from '../xmpp/provisioning';
 import type { ArchiveCandidate } from './archive-scan';
 import type { ResolvedPushMessage } from './payload';
@@ -110,15 +112,32 @@ async function resolveRoomCandidate(
   }
   // The user's own room messages share the same archive scope (sent from
   // another session while this device is offline); only other members'
-  // messages notify. The nick is the stable account localpart — the same
-  // value `syncPushSubscriptionsForUser` subscribes with — never compared
-  // against a display name.
-  if (row.nick !== '' && row.nick === localpartFor(userId)) {
+  // messages notify. Ejabberd stores the real sender's bare JID in
+  // `bare_peer` (the nick is display text a member picks), so that column
+  // decides this. Only a row with no `bare_peer` at all (a legacy or malformed
+  // row) falls back to the nick, case-insensitively.
+  const ownLocalpart = localpartFor(userId);
+  const senderJid = row.barePeer === '' ? null : bareJid(row.barePeer);
+  if (senderJid !== null) {
+    if (senderJid === ownBareJid({ ownLocalpart }, deps.config.xmpp.domain)) {
+      return { status: 'skip' };
+    }
+    // A block is silent, in either direction, even through a shared group.
+    if (await isDmBlocked(deps.db, userId, senderJid)) {
+      return { status: 'skip' };
+    }
+  } else if (row.nick !== '' && row.nick.toLowerCase() === ownLocalpart.toLowerCase()) {
     return { status: 'skip' };
   }
   const now = (deps.now ?? (() => new Date()))();
   if (await isMuted(deps, userId, roomJid, topicRoomGeneralJid(deps, group.roomLocalpart), now)) {
     return { status: 'muted' };
+  }
+  // The name is the real sender's display name from the database; the nick is
+  // only a fallback when our tables have no name for that JID.
+  let senderName = row.nick === '' ? 'Someone' : row.nick;
+  if (senderJid !== null) {
+    senderName = (await senderNamesByJid(deps.db, [senderJid])).get(senderJid) ?? senderName;
   }
   const place = topic.isGeneral ? group.title : `${group.title} › ${topic.name}`;
   return {
@@ -126,7 +145,7 @@ async function resolveRoomCandidate(
     message: {
       chatJid: roomJid,
       chatKind: group.kind === 'channel' ? 'channel' : 'group',
-      senderName: row.nick === '' ? 'Someone' : row.nick,
+      senderName,
       place,
       text,
       messageId: row.originId,

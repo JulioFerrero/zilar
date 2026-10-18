@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { GroupMemberRow } from '../db/rows';
 import type { TopicRow } from '../topics/access';
 import { runSql } from '../effect/sql';
+import { bareJid } from '../jid';
 import { liveAiUiIds } from '../notify/ai-cards';
 import type { SearchOwner } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
@@ -202,7 +203,12 @@ async function notifyRow(
   if (topic === undefined) {
     return;
   }
-  const senderLocalpart = row.nick.toLowerCase();
+  // The nick is display text: the sender's own account localpart comes from
+  // the archived real sender JID in `bare_peer` (T-2004). Only a legacy row
+  // with no `bare_peer` at all falls back to the nick, which then held the
+  // sender's localpart.
+  const senderLocalpart =
+    row.barePeer === '' ? row.nick.toLowerCase() : (bareJid(row.barePeer).split('@')[0] ?? '');
   for (const memberId of await memberIdsForTopic(deps, topic)) {
     try {
       await notifyMemberForRow(deps, memberId, row, senderLocalpart, at, state, liveIds);

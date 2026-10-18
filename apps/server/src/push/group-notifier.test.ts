@@ -82,6 +82,7 @@ function freshState(): GroupNotifierState {
 interface GroupSetup {
   roomJid: string;
   roomLocalpart: string;
+  domain: string;
   memberIds: string[];
 }
 
@@ -108,19 +109,30 @@ async function setupGroup(context: TestContext, memberIds: string[]): Promise<Gr
   }
   const roomLocalpart = topic.roomLocalpart.toLowerCase();
   const roomJid = `${roomLocalpart}@${context.config.xmpp.mucDomain}`.toLowerCase();
-  return { roomJid, roomLocalpart, memberIds: [ownerId, ...memberIds] };
+  return {
+    roomJid,
+    roomLocalpart,
+    domain: context.config.xmpp.domain,
+    memberIds: [ownerId, ...memberIds],
+  };
 }
 
-function groupchatRow(setup: GroupSetup, senderId: string, originId: string): GroupchatRow {
+// `barePeer` is the archived real sender JID; the nick is only display text.
+function groupchatRow(
+  setup: GroupSetup,
+  senderId: string,
+  originId: string,
+  nick = localpartFor(senderId),
+): GroupchatRow {
   return {
     owner: setup.roomJid,
-    barePeer: '',
+    barePeer: `${localpartFor(senderId)}@${setup.domain}`,
     kind: 'groupchat',
-    nick: localpartFor(senderId),
+    nick,
     originId,
     timestamp: ROW_MICROS,
     text: 'the group text',
-    xml: `<message type="groupchat" from="${setup.roomJid}/${localpartFor(senderId)}"><body>the group text</body></message>`,
+    xml: `<message type="groupchat" from="${setup.roomJid}/${nick}"><body>the group text</body></message>`,
     id: 7,
   };
 }
@@ -131,7 +143,7 @@ function albumRow(setup: GroupSetup, senderId: string, index: number): Groupchat
   const nick = localpartFor(senderId);
   return {
     owner: setup.roomJid,
-    barePeer: '',
+    barePeer: `${localpartFor(senderId)}@${setup.domain}`,
     kind: 'groupchat',
     nick,
     originId: `origin-${index}`,
@@ -173,6 +185,52 @@ describe('runGroupNotifierTick', () => {
     await runGroupNotifierTick(deps, freshState());
 
     expect(sent).toEqual([offlineDevice.endpoint]);
+  });
+
+  it("does not push a member's own row even when the nick differs", async () => {
+    const senderId = await seedUser(context);
+    const otherId = await seedUser(context);
+    const setup = await setupGroup(context, [senderId, otherId]);
+    await saveDevice(context.db, cipher, webPushInput(senderId));
+    const otherDevice = await saveDevice(context.db, cipher, webPushInput(otherId));
+
+    // The sender joined under a display nick: `bare_peer`, not the nick,
+    // decides whose row this is.
+    const deps = buildDeps(
+      context,
+      fakeArchive([groupchatRow(setup, senderId, 'origin-nick', 'Someone Else')]),
+    );
+    const sent: string[] = [];
+    deps.service.sender.send = (subscription: { endpoint: string }) => {
+      sent.push(subscription.endpoint);
+      return Promise.resolve({ gone: false });
+    };
+
+    await runGroupNotifierTick(deps, freshState());
+
+    expect(sent).toEqual([otherDevice.endpoint]);
+  });
+
+  it('does not push a legacy own row with no bare_peer when the nick is the sender', async () => {
+    const senderId = await seedUser(context);
+    const otherId = await seedUser(context);
+    const setup = await setupGroup(context, [senderId, otherId]);
+    const senderDevice = await saveDevice(context.db, cipher, webPushInput(senderId));
+    const otherDevice = await saveDevice(context.db, cipher, webPushInput(otherId));
+
+    // An old row has no real sender JID: its nick held the sender's localpart.
+    const legacyRow = { ...groupchatRow(setup, senderId, 'origin-legacy'), barePeer: '' };
+    const deps = buildDeps(context, fakeArchive([legacyRow]));
+    const sent: string[] = [];
+    deps.service.sender.send = (subscription: { endpoint: string }) => {
+      sent.push(subscription.endpoint);
+      return Promise.resolve({ gone: false });
+    };
+
+    await runGroupNotifierTick(deps, freshState());
+
+    expect(sent).toEqual([otherDevice.endpoint]);
+    expect(sent).not.toContain(senderDevice.endpoint);
   });
 
   it('delivers exactly once per device and never repeats on the next tick', async () => {

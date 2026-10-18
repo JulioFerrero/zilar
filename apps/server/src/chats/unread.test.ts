@@ -26,6 +26,22 @@ const ALLOWED: SearchOwner = {
 
 const CHATS: ChatThresholds = [{ jid: CHAT_JID, scope: { kind: 'dm', peer: PEER }, after: '0' }];
 
+const ROOM = `room@muc.${DOMAIN}`;
+const ROOM_CHATS: ChatThresholds = [{ jid: ROOM, scope: { kind: 'room', room: ROOM }, after: '0' }];
+
+function roomRow(originId: string, nick: string, barePeer: string): UnreadRows[number] {
+  return {
+    chatJid: ROOM,
+    barePeer,
+    kind: 'groupchat',
+    nick,
+    originId,
+    timestamp: BigInt(Date.now()) * 1000n,
+    text: 'hello',
+    xml: `<message type="groupchat" from="${ROOM}/someone"><body>hello</body></message>`,
+  };
+}
+
 function dmRow(originId: string, xml: string, text: string | null = null): UnreadRows[number] {
   return {
     chatJid: CHAT_JID,
@@ -68,7 +84,7 @@ describe('summarizeUnread', () => {
       dmRow('plain', plainXml(), 'hello'),
     ];
 
-    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_JID);
 
     expect(answer[CHAT_JID]?.unread).toBe(2);
     expect(answer[CHAT_JID]?.lastMessage?.text).toBe('3 photos');
@@ -78,7 +94,7 @@ describe('summarizeUnread', () => {
   it('keeps a plain newest row as the preview', () => {
     const page: UnreadRows = [dmRow('plain', plainXml(), 'hello'), dmRow('p-0', albumXml(0))];
 
-    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_JID);
 
     expect(answer[CHAT_JID]?.unread).toBe(2);
     expect(answer[CHAT_JID]?.lastMessage?.text).toBe('hello');
@@ -91,7 +107,7 @@ describe('summarizeUnread', () => {
       dmRow('a-0', albumXml(0, 'alb-a')),
     ];
 
-    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_JID);
 
     expect(answer[CHAT_JID]?.unread).toBe(2);
   });
@@ -105,7 +121,7 @@ describe('summarizeUnread', () => {
       dmRow('card', progressXml()),
     ];
 
-    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_JID);
 
     expect(answer[CHAT_JID]?.unread).toBe(1);
     expect(answer[CHAT_JID]?.lastMessage?.id).toBe('answer');
@@ -115,7 +131,7 @@ describe('summarizeUnread', () => {
   it('leaves the badge and the preview alone when the only new row is a card', () => {
     const page: UnreadRows = [dmRow('card', progressXml())];
 
-    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_JID);
 
     // No counted row and no preview: the fallback read below the mark supplies
     // the chat's newest real message (or none), never the card.
@@ -136,5 +152,43 @@ describe('summarizeUnread', () => {
     ];
 
     expect(newestUnskippedRow(rows, CHAT_JID)?.originId).toBe('answer');
+  });
+
+  it('does not count a room row whose nick is the caller but whose bare_peer is another user', () => {
+    const page: UnreadRows = [roomRow('spoofed', OWN_LOCALPART, 'ana@zilar.test')];
+    const names = new Map([['ana@zilar.test', 'Ana']]);
+
+    const answer = summarizeUnread(page, ROOM_CHATS, ALLOWED, OWN_JID, names);
+
+    expect(answer[ROOM]?.unread).toBe(1);
+    expect(answer[ROOM]?.lastMessage?.senderName).toBe('Ana');
+  });
+
+  it('counts a room row as the caller from bare_peer, not from a stranger nick', () => {
+    const page: UnreadRows = [roomRow('mine', 'Pretender', OWN_JID)];
+    const names = new Map([[OWN_JID, 'Me Myself']]);
+
+    const answer = summarizeUnread(page, ROOM_CHATS, ALLOWED, OWN_JID, names);
+
+    // The caller's own message never bumps the badge, even under a stolen nick.
+    expect(answer[ROOM]?.unread).toBe(0);
+    expect(answer[ROOM]?.lastMessage?.senderName).toBe('Me Myself');
+  });
+
+  it('treats a legacy room row with no bare_peer as the caller by its nick', () => {
+    const page: UnreadRows = [roomRow('legacy-mine', OWN_LOCALPART.toUpperCase(), '')];
+
+    const answer = summarizeUnread(page, ROOM_CHATS, ALLOWED, OWN_JID);
+
+    expect(answer[ROOM]?.unread).toBe(0);
+  });
+
+  it('falls back to the nick when no display name exists for the sender JID', () => {
+    const page: UnreadRows = [roomRow('legacy', 'Legacy Nick', 'stranger@zilar.test')];
+
+    const answer = summarizeUnread(page, ROOM_CHATS, ALLOWED, OWN_JID);
+
+    expect(answer[ROOM]?.unread).toBe(1);
+    expect(answer[ROOM]?.lastMessage?.senderName).toBe('Legacy Nick');
   });
 });

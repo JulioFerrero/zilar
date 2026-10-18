@@ -15,7 +15,7 @@ import { liveAiUiIds } from '../notify/ai-cards';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom, timestampToIso } from '../search/snippet';
 import { albumInfoFromXml } from '../xmpp/album-xml';
-import { localpartFor } from '../xmpp/provisioning';
+import { senderNamesByJid } from '../xmpp/archive-sender';
 import {
   buildNewestQuery,
   buildUnreadQuery,
@@ -71,31 +71,51 @@ function labelForRow(text: string | null, xml: string): string {
   return 'File';
 }
 
-// Whether the row was sent by the caller. Room rows name the sender's account
-// localpart in `nick` (push/candidates.ts:86-88); DM rows are matched on the
-// stanza's `from` like the search sender rule (search/snippet.ts:52-58).
+// Whether the row was sent by the caller. A room row names the real sender in
+// `bare_peer`, not in the free-text nick (the nick is display text); DM rows
+// are matched on the stanza's `from` like the search sender rule
+// (search/snippet.ts:52-58). Only a row with no `bare_peer` at all (a legacy or
+// malformed row) falls back to the nick, case-insensitively.
 function isOwnRow(
-  row: Pick<ArchiveUnreadRow, 'kind' | 'nick' | 'xml'>,
-  allowed: SearchOwner,
-  ownLocalpart: string,
-  domain: string,
+  row: Pick<ArchiveUnreadRow, 'kind' | 'nick' | 'barePeer' | 'xml'>,
+  ownJid: string,
 ): boolean {
   if (row.kind === 'groupchat') {
-    return row.nick !== '' && row.nick === ownLocalpart;
+    if (row.barePeer !== '') {
+      return bareJid(row.barePeer) === ownJid;
+    }
+    const ownLocalpart = ownJid.split('@')[0] ?? '';
+    return row.nick !== '' && row.nick.toLowerCase() === ownLocalpart.toLowerCase();
   }
   const from = stanzaFrom(row.xml);
-  return from !== null && bareJid(from) === ownBareJid(allowed, domain);
+  return from !== null && bareJid(from) === ownJid;
 }
 
-function senderNameForPreview(row: ArchiveUnreadRow, allowed: SearchOwner, ownJid: string): string {
+function senderNameForPreview(
+  row: ArchiveUnreadRow,
+  allowed: SearchOwner,
+  ownJid: string,
+  roomNames: ReadonlyMap<string, string>,
+): string {
   if (row.kind === 'groupchat') {
-    return row.nick === '' ? 'Someone' : row.nick;
+    const sender = row.barePeer === '' ? null : bareJid(row.barePeer);
+    const name =
+      sender === null ? undefined : (roomNames.get(sender) ?? allowed.peerNames.get(sender));
+    return name ?? (row.nick === '' ? 'Someone' : row.nick);
   }
   const from = stanzaFrom(row.xml);
   if (from !== null && bareJid(from) === ownJid) {
     return 'You';
   }
   return allowed.peerNames.get(row.barePeer) ?? 'Someone';
+}
+
+// The real sender JIDs of a batch's room rows, for one batched name lookup
+// per read (never one query per row).
+function senderJidsOf(rows: readonly ArchiveUnreadRow[]): string[] {
+  return rows
+    .filter((row) => row.kind === 'groupchat' && row.barePeer !== '')
+    .map((row) => bareJid(row.barePeer));
 }
 
 // Turns one chat's batch read into an unread count and a preview. A resent
@@ -112,9 +132,8 @@ export function summarizeUnread(
   page: ArchiveUnreadRow[],
   chats: ChatThreshold[],
   allowed: SearchOwner,
-  ownLocalpart: string,
   ownJid: string,
-  domain: string,
+  roomNames: ReadonlyMap<string, string> = new Map(),
 ): Record<string, ChatUnread> {
   const answer: Record<string, ChatUnread> = {};
   const counted = new Map<string, Set<string>>();
@@ -137,13 +156,13 @@ export function summarizeUnread(
         lastMessage: {
           id: row.originId,
           text: labelForRow(row.text, row.xml),
-          senderName: senderNameForPreview(row, allowed, ownJid),
+          senderName: senderNameForPreview(row, allowed, ownJid, roomNames),
           at: timestampToIso(row.timestamp),
           archiveId: archiveIdOf(row.timestamp),
         },
       };
     }
-    if (!isOwnRow(row, allowed, ownLocalpart, domain)) {
+    if (!isOwnRow(row, ownJid)) {
       let seen = counted.get(chat.jid);
       if (seen === undefined) {
         seen = new Set<string>();
@@ -151,7 +170,10 @@ export function summarizeUnread(
       }
       const album = albumInfoFromXml(row.xml);
       const identity = album === undefined ? row.originId : `album:${album.id}`;
-      const key = `${row.kind}\u0000${row.barePeer}\u0000${row.nick}\u0000${identity}`;
+      // The dedupe key names the real sender (`bare_peer`) for a room row, so
+      // a resent message still counts once whatever nick the client sent.
+      const senderKey = row.kind === 'groupchat' ? row.barePeer : row.nick;
+      const key = `${row.kind}\u0000${row.barePeer}\u0000${senderKey}\u0000${identity}`;
       if (seen.has(key)) {
         continue;
       }
@@ -182,7 +204,6 @@ export async function unreadForChats(
     return {};
   }
   const allowed = await allowedArchives(db, config, userId);
-  const ownLocalpart = localpartFor(userId);
   const ownJid = ownBareJid(allowed, config.xmpp.domain);
 
   const marks = await runSql(
@@ -232,12 +253,16 @@ export async function unreadForChats(
   }
   const page = (await archive.query(built.text, built.values)) as unknown as ArchiveUnreadRow[];
 
-  const answer = summarizeUnread(page, chats, allowed, ownLocalpart, ownJid, config.xmpp.domain);
+  // One batched display-name lookup for the page's room senders (T-2004),
+  // keyed by the archived `bare_peer`.
+  const pageNames = await senderNamesByJid(db, senderJidsOf(page));
+  const answer = summarizeUnread(page, chats, allowed, ownJid, pageNames);
 
   const missing = chats.filter((chat) => answer[chat.jid]?.lastMessage === undefined);
   const newest = buildNewestQuery(allowed, missing);
   if (newest !== null) {
     const rows = (await archive.query(newest.text, newest.values)) as unknown as ArchiveUnreadRow[];
+    const newestNames = await senderNamesByJid(db, senderJidsOf(rows));
     for (const chat of missing) {
       // Newest first: the first row that is neither live AI UI nor an edit of
       // one is the preview, so a chat the card alone pushed past its mark
@@ -251,7 +276,7 @@ export async function unreadForChats(
         lastMessage: {
           id: row.originId,
           text: labelForRow(row.text, row.xml),
-          senderName: senderNameForPreview(row, allowed, ownJid),
+          senderName: senderNameForPreview(row, allowed, ownJid, newestNames),
           at: timestampToIso(row.timestamp),
           archiveId: archiveIdOf(row.timestamp),
         },

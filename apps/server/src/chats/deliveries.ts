@@ -25,24 +25,26 @@ interface ArchiveDeliveryRow {
   timestamp: number | string | bigint;
   kind: string;
   nick: string;
+  barePeer: string;
   xml: string;
   originId: string;
 }
 
-// Whether the archive row was written by the confirming caller. Room rows
-// name the sender's account localpart in `nick` (push/candidates.ts:86-88),
-// compared case-insensitively: the nick comes from the stanza resource,
-// whose case ejabberd does not preserve, while the account localpart keeps
-// the case provisioning stored. DM rows match on the stanza's `from` like
-// the unread own-row rule (chats/unread.ts `isOwnRow`).
+// Whether the archive row was written by the confirming caller. A room row
+// names the real sender in `bare_peer`, not in the free-text nick (the nick is
+// display text); DM rows match on the stanza's `from` like the unread own-row
+// rule (chats/unread.ts `isOwnRow`). Only a row with no `bare_peer` at all
+// (a legacy or malformed row) falls back to the nick, case-insensitively.
 function isCallerRow(
-  row: Pick<ArchiveDeliveryRow, 'kind' | 'nick' | 'xml'>,
+  row: Pick<ArchiveDeliveryRow, 'kind' | 'nick' | 'barePeer' | 'xml'>,
   allowed: SearchOwner,
-  ownLocalpart: string,
   domain: string,
 ): boolean {
   if (row.kind === 'groupchat') {
-    return row.nick !== '' && row.nick.toLowerCase() === ownLocalpart.toLowerCase();
+    if (row.barePeer !== '') {
+      return bareJid(row.barePeer) === ownBareJid(allowed, domain);
+    }
+    return row.nick !== '' && row.nick.toLowerCase() === allowed.ownLocalpart.toLowerCase();
   }
   const from = stanzaFrom(row.xml);
   return from !== null && bareJid(from) === ownBareJid(allowed, domain);
@@ -85,13 +87,12 @@ export async function archiveTimestampsForOrigins(
   // drivers serialize a JS array parameter as one text value.
   const ids = next(`{${originIds.map((id) => `"${id.replaceAll('"', '""')}"`).join(',')}}`);
   const rows = (await archive.query(
-    `SELECT kind, nick, xml, timestamp, origin_id AS "originId" FROM archive
+    `SELECT kind, nick, bare_peer AS "barePeer", xml, timestamp, origin_id AS "originId" FROM archive
      WHERE ${scopeText} AND origin_id = ANY(${ids})`,
     values,
   )) as unknown as ArchiveDeliveryRow[];
-  const ownLocalpart = allowed.ownLocalpart;
   return rows
-    .filter((row) => !isCallerRow(row, allowed, ownLocalpart, config.xmpp.domain))
+    .filter((row) => !isCallerRow(row, allowed, config.xmpp.domain))
     .map((row) =>
       typeof row.timestamp === 'bigint' ? row.timestamp.toString() : String(row.timestamp),
     );

@@ -41,9 +41,24 @@ function roomJid(context: TestContext, roomLocalpart: string): string {
 interface RoomRowOverrides {
   owner: string;
   nick?: string;
+  barePeer?: string;
   originId?: string;
   text?: string | null;
   xml?: string;
+}
+
+// The archive row's `bare_peer` names a room sender's real JID; the push name
+// comes from that user's `"user".name` (T-2004).
+async function seedAccount(context: TestContext, userId: string): Promise<string> {
+  const jid = `${localpartFor(userId)}@${context.config.xmpp.domain}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO xmpp_accounts (user_id, localpart, jid, provisioned)
+        VALUES (${userId}, ${localpartFor(userId)}, ${jid}, true)`;
+    }),
+  );
+  return jid;
 }
 
 // An archive row as the candidate read selects it: the pool's `ArchiveRow`
@@ -53,7 +68,7 @@ type AlbumRow = ArchiveRow & { text: string | null };
 function roomRow(overrides: RoomRowOverrides): ArchiveCandidate {
   return {
     owner: overrides.owner,
-    barePeer: '',
+    barePeer: overrides.barePeer ?? '',
     kind: 'groupchat',
     nick: overrides.nick ?? 'Someone',
     originId: overrides.originId ?? 'origin-1',
@@ -259,15 +274,119 @@ describe('resolveCandidate', () => {
     });
   });
 
-  it('skips a room message from the user', async () => {
+  it("skips the user's own room row from bare_peer, whatever the nick says", async () => {
     const userId = await seedUser(context);
+    const ownJid = await seedAccount(context, userId);
     const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], []);
     const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
     await addTopicMember(context, topic.id, userId, userId);
     const row = roomRow({
       owner: roomJid(context, topic.roomLocalpart),
-      nick: localpartFor(userId),
+      nick: 'Someone Else',
+      barePeer: ownJid,
     });
+    expect(await resolveCandidate(deps, userId, ownerFor(userId), row)).toEqual({ status: 'skip' });
+  });
+
+  it('skips a legacy own room row with no bare_peer by its nick', async () => {
+    const userId = await seedUser(context);
+    const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], []);
+    const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
+    // An old row has no real sender JID: its nick is the only signal.
+    const row = roomRow({
+      owner: roomJid(context, topic.roomLocalpart),
+      nick: localpartFor(userId).toUpperCase(),
+    });
+
+    expect(await resolveCandidate(deps, userId, ownerFor(userId), row)).toEqual({ status: 'skip' });
+  });
+
+  it("notifies with the real sender's name when the nick is the caller's localpart", async () => {
+    const userId = await seedUser(context, { name: 'Recipient' });
+    const senderId = await seedUser(context, { name: 'Ana Sender' });
+    const senderJid = await seedAccount(context, senderId);
+    const { groupId } = await seedGroup(
+      context,
+      userId,
+      [
+        { userId, role: 'owner' },
+        { userId: senderId, role: 'member' },
+      ],
+      [],
+    );
+    const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
+    const row = roomRow({
+      owner: roomJid(context, topic.roomLocalpart),
+      nick: localpartFor(userId),
+      barePeer: senderJid,
+    });
+
+    const verdict = await resolveCandidate(deps, userId, ownerFor(userId), row);
+
+    expect(verdict).toMatchObject({ status: 'ok', message: { senderName: 'Ana Sender' } });
+  });
+
+  it('ignores a forged muc#user item and trusts bare_peer', async () => {
+    const userId = await seedUser(context, { name: 'Recipient' });
+    const senderId = await seedUser(context, { name: 'Ana Sender' });
+    const senderJid = await seedAccount(context, senderId);
+    const ownJid = await seedAccount(context, userId);
+    const { groupId } = await seedGroup(
+      context,
+      userId,
+      [
+        { userId, role: 'owner' },
+        { userId: senderId, role: 'member' },
+      ],
+      [],
+    );
+    const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
+    // A stanza can claim any item JID; ejabberd stores no such item, and the
+    // real sender is bare_peer.
+    const row = roomRow({
+      owner: roomJid(context, topic.roomLocalpart),
+      nick: 'Ana Sender',
+      barePeer: senderJid,
+      xml: `<message type="groupchat"><body>hello</body><x xmlns='http://jabber.org/protocol/muc#user'><item jid='${ownJid}'/></x></message>`,
+    });
+
+    const verdict = await resolveCandidate(deps, userId, ownerFor(userId), row);
+
+    expect(verdict).toMatchObject({ status: 'ok', message: { senderName: 'Ana Sender' } });
+  });
+
+  it('skips a group message from a blocked sender', async () => {
+    const userId = await seedUser(context);
+    const senderId = await seedUser(context, { name: 'Blocked Sender' });
+    const senderJid = await seedAccount(context, senderId);
+    const { groupId } = await seedGroup(
+      context,
+      userId,
+      [
+        { userId, role: 'owner' },
+        { userId: senderId, role: 'member' },
+      ],
+      [],
+    );
+    const topic = await seedTopic(context, groupId, userId, 'Chat', 'public');
+    await addTopicMember(context, topic.id, userId, userId);
+    // The block runs the other way: either direction is silent.
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id)
+          VALUES (${senderId}, ${userId})`;
+      }),
+    );
+    const row = roomRow({
+      owner: roomJid(context, topic.roomLocalpart),
+      nick: 'Blocked Sender',
+      barePeer: senderJid,
+    });
+
     expect(await resolveCandidate(deps, userId, ownerFor(userId), row)).toEqual({ status: 'skip' });
   });
 

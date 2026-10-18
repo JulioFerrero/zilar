@@ -46,9 +46,15 @@ export function senderNameFor(
   row: ArchiveRow,
   ownBareJid: string,
   peerNames: Map<string, string>,
+  roomNames: ReadonlyMap<string, string> = new Map(),
 ): string {
+  // A room row names the real sender in `bare_peer`, never in the free-text
+  // nick; our tables supply the display name for that JID. The nick is only a
+  // fallback when there is no name, then `Unknown`.
   if (row.kind === 'groupchat') {
-    return row.nick === '' ? 'Unknown' : row.nick;
+    const sender = row.barePeer === '' ? null : bareJid(row.barePeer);
+    const name = sender === null ? undefined : (roomNames.get(sender) ?? peerNames.get(sender));
+    return name ?? (row.nick === '' ? 'Unknown' : row.nick);
   }
   // In a DM archive the caller's own outgoing messages are stored under the
   // same `bare_peer` as incoming ones. The stanza's `from` decides: a `from`
