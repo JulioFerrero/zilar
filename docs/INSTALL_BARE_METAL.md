@@ -181,6 +181,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now zilar-server
 ```
 
+The unit sets `TRUSTED_PROXY_HOPS=1` because the bundled Caddy/nginx
+(§6) is the only proxy in front of the server; a value in
+`/etc/zilar/zilar.env` overrides it.
+
 `systemctl status zilar-server` should show active; the unit restarts
 on failure, runs as the `zilar` user with `NoNewPrivileges`,
 `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, and can write only

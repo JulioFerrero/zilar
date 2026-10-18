@@ -77,11 +77,12 @@ export const serverConfigSchema = Schema.Struct({
   GIF_PROVIDER: Schema.optional(Schema.Literals(['giphy'])),
   GIF_API_KEY: Schema.optional(nonEmptyStringSchema),
   GIF_RATING: literalWithDefault(['g', 'pg', 'pg-13', 'r'] as const, 'pg-13'),
-  // Join limiter behind a proxy (T-0134): how many right-most
-  // `x-forwarded-for` hops to trust when resolving the client IP for the
-  // per-IP join limiter. 0 (default) ignores proxy headers entirely and
-  // uses the socket address; N > 0 takes the Nth address from the right
-  // (an attacker controls the left side). Only the join limiter reads it.
+  // Client IP behind a proxy (T-0134, T-1983): how many right-most
+  // `x-forwarded-for` hops to trust when resolving the client IP. 0
+  // (default) ignores proxy headers entirely and uses the socket address;
+  // N > 0 takes the Nth address from the right (an attacker controls the
+  // left side). The edge reads it for Better Auth (its rate limits and the
+  // stored session IP), and every per-IP limiter reads it too.
   TRUSTED_PROXY_HOPS: withDefault(
     Schema.String.pipe(
       Schema.check(Schema.isPattern(/^-?\d+$/)),

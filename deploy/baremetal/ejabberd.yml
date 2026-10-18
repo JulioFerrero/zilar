@@ -267,6 +267,20 @@ modules:
   mod_admin_extra: {}
   mod_adhoc: {}
   mod_blocking: {}
+  # T-1159 / T-2007: same contacts-only DMs as the Docker config
+  # (`deploy/ejabberd/ejabberd.yml`). A `chat` stanza from a JID with no
+  # roster subscription is dropped before routing and archiving, so a
+  # stranger cannot DM or write into the recipient's MAM, and a block holds
+  # over XMPP. `allow_local_users: false` closes the local-only hole (the
+  # default `true` would let every local stranger through);
+  # `allow_transports: false` because federation is off and no gateway is in
+  # any roster.
+  mod_block_strangers:
+    drop: true
+    log: false
+    allow_local_users: false
+    allow_transports: false
+    captcha: false
   mod_caps: {}
   mod_disco: {}
   mod_last: {}

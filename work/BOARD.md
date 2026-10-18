@@ -2000,3 +2000,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1994](T-1994-media-index-edges.md) | media index: sender-only edits, link caps, no stuck pass | 2026-10-18 |
 | [T-1998](T-1998-desk-network-per-jail.md) | each AI computer jail gets its own private network | 2026-10-18 |
 | [T-1995](T-1995-runner-machines-edges.md) | runner and machine caps, live-conn failures, image check | 2026-10-18 |
+| [T-2007](T-2007-baremetal-parity.md) | bare metal: contacts-only DMs and one trusted proxy hop | 2026-10-18 |

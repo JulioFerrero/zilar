@@ -13,6 +13,8 @@ Group=zilar
 # same entry point as the production image (no build step: tsx runs the
 # TypeScript sources directly).
 WorkingDirectory=/opt/zilar/apps/server
+# The bundled Caddy/nginx is the only proxy; the env file can override it.
+Environment=TRUSTED_PROXY_HOPS=1
 EnvironmentFile=/etc/zilar/zilar.env
 ExecStart=/opt/zilar/apps/server/node_modules/.bin/tsx src/index.ts
 Restart=on-failure
