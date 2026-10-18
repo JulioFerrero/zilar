@@ -3,6 +3,7 @@
 // a small `PinsStore` adapter keeps the behaviour in one place.
 import { Cause, Effect, Exit } from 'effect';
 import type { Pin, PinKind } from '@zilar/api-contract';
+import type { ChatSummary, GroupRole } from '@zilar/chat-core';
 import { fromPromise, type CoreCtx } from './ctx';
 
 export const PIN_ERROR = 'Could not pin the message. Try again.';
@@ -45,6 +46,11 @@ export interface PinSource {
   readonly voice?: unknown;
   readonly card?: unknown;
   readonly attachment?: { readonly kind?: string | undefined } | undefined;
+}
+
+/** A DM is always pin-able; a group or channel needs the owner/admin role from its loaded detail. */
+export function canPinFor(chat: ChatSummary | undefined, role: GroupRole | undefined): boolean {
+  return chat !== undefined && (chat.kind === 'dm' || role === 'owner' || role === 'admin');
 }
 
 export function pinKindFor(

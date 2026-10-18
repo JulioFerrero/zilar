@@ -7,6 +7,7 @@ import { makeLifetime } from './effects/runtime';
 import { scheduleMessageSave } from './effects/lifecycle';
 import { makeStoreContext } from './effects/storeContext';
 import { createAtomStore, type SetState, type StoreApi } from '@zilar/client-core';
+import { canPinFor } from '@zilar/client-core/store';
 import type { ChatStoreState } from './store';
 
 export { CONNECT_RETRY_DELAYS_MS, TOPIC_REFRESH_INTERVAL_MS } from './effects/constants';
@@ -82,19 +83,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       canPin: (chatId) => {
         const state = get();
         const chat = state.chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return false;
-        }
-        // Either side of a DM may pin.
-        if (chat.kind === 'dm') {
-          return true;
-        }
-        // A topic manager: a group owner/admin (roles ride the group detail loaded on open),
-        // or the topic creator. The menu hides until the detail loads rather than guessing.
         const role = state.groupInfos[chatId]?.members.find(
           (member) => member.userId === state.currentUserId,
         )?.role;
-        return role === 'owner' || role === 'admin';
+        return canPinFor(chat, role);
       },
       pinFor: (chatId, messageId) =>
         (get().pinsByChat[chatId] ?? []).find((pin) => pin.messageId === messageId),

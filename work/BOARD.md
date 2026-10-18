@@ -2118,3 +2118,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2119](T-2119-rate-limit-table.md) | server: one rate-limit table for every budget | 2026-10-18 |
 | [T-2115](T-2115-store-group-writes.md) | share: one group write-then-reload path | 2026-10-18 |
 | [T-2116](T-2116-store-prefs.md) | share: one optimistic chat-pref row | 2026-10-18 |
+| [T-2117](T-2117-store-pins.md) | share: one pin rule; owners can pin in channels on phone | 2026-10-18 |

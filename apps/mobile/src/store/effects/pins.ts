@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import {
+  canPinFor,
   loadPins as loadPinsCore,
   pinMessage as pinMessageCore,
   sanitizeMediaItems,
@@ -93,23 +94,14 @@ export function makePins(ctx: StoreCtx): Pins {
     };
   }
 
-  // Either side of a DM; for topics a group owner/admin whose detail has loaded. The topic-creator edge is server-enforced only, like on web.
   function canPinIn(chatId: string): boolean {
     const state = get();
     const chat = state.chats.find((entry) => entry.id === chatId);
-    if (chat === undefined) {
-      return false;
-    }
-    if (chat.kind === 'dm') {
-      return true;
-    }
-    if (chat.topic === undefined || chat.groupId === undefined) {
-      return false;
-    }
-    const detail = s.groupDetails.get(chat.groupId);
+    const groupId = ctx.h.groupIdForChat(chatId);
+    const detail = groupId === undefined ? undefined : s.groupDetails.get(groupId);
     const meId = state.me?.id ?? state.currentUserId;
-    const role = detail?.members.find((member) => member.userId === meId)?.role;
-    return role === 'owner' || role === 'admin';
+    const member = detail?.members.find((entry) => entry.userId === meId);
+    return canPinFor(chat, chat?.myRole ?? member?.role);
   }
 
   const actions: PinActions = {
