@@ -123,7 +123,7 @@ export async function applyActions(
         appendLog(deps.statePath, `${task} switched prereview to ${action.model} in place`);
       }
     } else if (action.kind === 'start-prereview') {
-      const sessionId = await startPrereviewSession(
+      const { sessionId, model } = await startPrereviewSession(
         {
           client: deps.client,
           promptsDirPath: deps.promptsDirPath,
@@ -134,7 +134,12 @@ export async function applyActions(
       );
       current = {
         ...current,
-        prereview: { sessionId, head: action.head, startedAt: new Date().toISOString() },
+        prereview: {
+          sessionId,
+          head: action.head,
+          startedAt: new Date().toISOString(),
+          model,
+        },
         prereviewStalledEscalated: false,
       };
       appendLog(deps.statePath, `${task} started pre-review ${sessionId} for ${action.head}`);

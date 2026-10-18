@@ -5,11 +5,11 @@ import { type OpenCodeClient } from './client.js';
 import type { FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
 import { fallbackModel, FREE_MUSE } from './fallback.js';
-import { isGoPaused, withoutPausedGoModel } from './go-pause.js';
 import { modelLabel } from './models.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import type { SessionState } from './session.js';
-import { reviewModel } from './task-file.js';
+import { loadState, stateFilePath } from './state.js';
+import { reviewSessionModel } from './task-file.js';
 import type { DoctorRecord } from './types.js';
 
 // A quiet main HEAD becomes one audit. Merges landing within the window
@@ -111,27 +111,35 @@ export function ensureDoctorWorktree(deps: DoctorDeps, head: string): string {
   return worktree;
 }
 
+export interface DoctorSession {
+  sessionId: string;
+  model: string;
+}
+
 // Starts a Muse doctor session auditing `head` in the detached worktree.
-// The caller records the returned session id in `state.doctor`.
+// The caller records the returned session id and the model it started on in
+// `state.doctor`.
 export async function startDoctorSession(
   deps: DoctorDeps,
   input: { head: string; since: string },
-): Promise<string> {
+): Promise<DoctorSession> {
   const worktree = ensureDoctorWorktree(deps, input.head);
   const prompt = renderDoctorPrompt(deps.promptsDirPath, {
     head: input.head,
     since: input.since,
     worktree,
   });
+  const state = loadState(stateFilePath());
+  const model = reviewSessionModel(state, { sessionId: state.doctor?.sessionId });
   const sessionId = await deps.client.createSession({
     title: `doctor ${shortHead(input.head)}`,
     agent: 'build',
-    model: withoutPausedGoModel(reviewModel(), isGoPaused()),
+    model,
     directory: worktree,
     permissions: loadRulesFile(path.join(deps.promptsDirPath, 'rules.json')),
   });
   deps.client.promptDetached(sessionId, prompt);
-  return sessionId;
+  return { sessionId, model: `${model.providerID}/${model.id}` };
 }
 
 export type DoctorSessionState = SessionState | 'unknown' | 'none';
@@ -154,6 +162,8 @@ export interface DecideDoctorInput {
   quotaError: boolean;
   // T-1421: true while OpenCode Go is paused; fallbacks then skip Go.
   goPaused: boolean;
+  // T-1942: true while the free listings are paused; fallbacks then skip them.
+  freePaused?: boolean;
 }
 
 export type DoctorAction =
@@ -207,7 +217,11 @@ export function decideDoctor(input: DecideDoctorInput): DoctorAction[] {
     // Once there is nothing to fall back to, the idle checks below run the
     // normal STALLED path.
     if (input.quotaError) {
-      const fallback = fallbackModel(input.doctor.model ?? FREE_MUSE, input.goPaused);
+      const fallback = fallbackModel(
+        input.doctor.model ?? FREE_MUSE,
+        input.goPaused,
+        input.freePaused ?? false,
+      );
       if (fallback !== undefined) {
         actions.push({ kind: 'fallback-doctor', model: fallback });
         escalate(`LEAD: FALLBACK doctor continues on ${modelLabel(fallback)}`);

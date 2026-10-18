@@ -6,31 +6,35 @@ import { describe, expect, it } from 'vitest';
 import { FakeOpenCodeClient } from './client';
 import { RealGitRunner } from './git';
 import { launchTask } from './launch';
+import { FREE_DEEPSEEK_FLASH, GO_DEEPSEEK_FLASH } from './models';
 import { promptsDir } from './prompts';
-import { loadState } from './state';
+import { loadState, saveState } from './state';
+import { newTaskRecord } from './types';
 
 const TASK = 'T-0099';
 const BRANCH = `task/${TASK}-demo`;
 const FILE = `${TASK}-demo.md`;
 
-const TASK_FILE = [
-  '---',
-  `id: ${TASK}`,
-  'title: Demo',
-  'status: in-progress',
-  'milestone: tooling',
-  `branch: ${BRANCH}`,
-  'model: opencode/muse-spark-1.3-contributor-free',
-  'effort: low',
-  'depends_on: []',
-  'estimate: 0.2 day',
-  '---',
-  '',
-  '# T-0099',
-  '',
-  'The spec body.',
-  '',
-].join('\n');
+function taskFile(model: string): string {
+  return [
+    '---',
+    `id: ${TASK}`,
+    'title: Demo',
+    'status: in-progress',
+    'milestone: tooling',
+    `branch: ${BRANCH}`,
+    `model: ${model}`,
+    'effort: low',
+    'depends_on: []',
+    'estimate: 0.2 day',
+    '---',
+    '',
+    '# T-0099',
+    '',
+    'The spec body.',
+    '',
+  ].join('\n');
+}
 
 function git(cwd: string, args: string[]): string {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -43,7 +47,10 @@ function git(cwd: string, args: string[]): string {
 // A main checkout whose task spec is left uncommitted (`committed: false`) or
 // committed on main (`committed: true`). No board row and no spec commit at
 // launch in the untracked case — the shape T-1420 introduces.
-function setup(committed: boolean): { dir: string; repoRoot: string; statePath: string } {
+function setup(
+  committed: boolean,
+  model = 'opencode/muse-spark-1.3-contributor-free',
+): { dir: string; repoRoot: string; statePath: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-launch-'));
   const repoRoot = path.join(dir, 'zilar');
   fs.mkdirSync(repoRoot, { recursive: true });
@@ -54,12 +61,12 @@ function setup(committed: boolean): { dir: string; repoRoot: string; statePath: 
   fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
   fs.writeFileSync(path.join(repoRoot, 'work', 'BOARD.md'), '# Board\n');
   if (committed) {
-    fs.writeFileSync(path.join(repoRoot, 'work', FILE), TASK_FILE);
+    fs.writeFileSync(path.join(repoRoot, 'work', FILE), taskFile(model));
   }
   git(repoRoot, ['add', '.']);
   git(repoRoot, ['commit', '-qm', 'init']);
   if (!committed) {
-    fs.writeFileSync(path.join(repoRoot, 'work', FILE), TASK_FILE);
+    fs.writeFileSync(path.join(repoRoot, 'work', FILE), taskFile(model));
   }
   return { dir, repoRoot, statePath: path.join(dir, 'state.json') };
 }
@@ -79,6 +86,40 @@ function launch(
     },
   );
 }
+
+describe('launchTask with another free session', () => {
+  it('starts on the paid step when another task holds the free slot', async () => {
+    const { dir, repoRoot, statePath } = setup(true, 'auto');
+    const configPath = path.join(dir, 'config.json');
+    fs.writeFileSync(configPath, '{}');
+    saveState(statePath, {
+      version: 1,
+      tasks: {
+        'T-0100': newTaskRecord({
+          task: 'T-0100',
+          sessionId: 'ses_other',
+          worktree: path.join(dir, 'zilar-T-0100'),
+          model: FREE_DEEPSEEK_FLASH,
+          role: 'worker',
+          startedAt: '2026-10-18T00:00:00.000Z',
+        }),
+      },
+      doctor: undefined,
+    });
+    const savedConfig = process.env['ZILAR_LEAD_CONFIG'];
+    process.env['ZILAR_LEAD_CONFIG'] = configPath;
+    try {
+      await launch(repoRoot, statePath);
+    } finally {
+      if (savedConfig === undefined) {
+        delete process.env['ZILAR_LEAD_CONFIG'];
+      } else {
+        process.env['ZILAR_LEAD_CONFIG'] = savedConfig;
+      }
+    }
+    expect(loadState(statePath).tasks[TASK]?.model).toBe(GO_DEEPSEEK_FLASH);
+  });
+});
 
 describe('launchTask from an uncommitted spec', () => {
   it('commits the spec on the task branch and leaves main clean', async () => {

@@ -1,9 +1,11 @@
 import path from 'node:path';
 import type { OpenCodeClient } from './client.js';
+import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
 import { isGoPaused } from './go-pause.js';
 import { readTaskFrontMatter } from './launch.js';
 import { resolveWorkerModel } from './model-schedule.js';
 import { loadRulesFile } from './prompts.js';
+import { freeSessionInUse, loadState, stateFilePath } from './state.js';
 import { splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
@@ -35,6 +37,8 @@ export interface FreshSessionDeps {
   repoRoot: string;
   // Injectable clock for tests of `model: auto` peak-hour resolution.
   now?: () => Date;
+  // The lead state file; defaults to the live one.
+  statePath?: string;
 }
 
 // Opens a fresh worker session in the task's existing worktree and sends it
@@ -50,12 +54,26 @@ export async function startFreshWorkerSession(
     input.task,
   );
   // `model: auto` re-resolves when the fresh session starts: it always picks
-  // the Go DeepSeek Flash now (T-1242), or the metered DeepSeek API while Go is
-  // paused (T-1421). Other models keep the record's model (switch-model may
-  // have moved it onto the paid fallback).
+  // the free DeepSeek Flash (T-1718) unless the free listings are paused, when
+  // it starts on the paid step (T-1942). Other models keep the record's model
+  // (switch-model may have moved it onto the paid fallback).
   const now = deps.now?.() ?? new Date();
-  const resolved = resolveWorkerModel(frontMatterModel, now, isGoPaused(now));
-  const modelString = frontMatterModel === 'auto' ? resolved.model : input.record.model;
+  const goPaused = isGoPaused(now);
+  const freePaused = isFreePaused(now);
+  const resolved = resolveWorkerModel(frontMatterModel, now, goPaused, freePaused);
+  let modelString = frontMatterModel === 'auto' ? resolved.model : input.record.model;
+  // T-1942: one tracked session on a free listing at a time; the task's own
+  // previous session is the one this call replaces, so it does not count.
+  if (
+    isFreeListing(modelString) &&
+    (freePaused ||
+      freeSessionInUse(loadState(deps.statePath ?? stateFilePath()), {
+        task: input.task,
+        sessionId: input.record.sessionId,
+      }))
+  ) {
+    modelString = paidStep(modelString, goPaused) ?? modelString;
+  }
   const model = { ...splitModel(modelString), variant: resolved.effortOverride ?? effort };
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
   const sessionId = await deps.client.createSession({

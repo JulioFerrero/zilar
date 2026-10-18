@@ -6,6 +6,7 @@ import {
   GO_DEEPSEEK_FLASH,
   GO_MUSE,
   PAID_MUSE,
+  isFreeListing,
 } from './models.js';
 
 export {
@@ -29,7 +30,15 @@ export {
 // T-1421: while Go is paused the chain skips every Go listing, so the free
 // DeepSeek Flash and the free GLM Flash go straight to their metered step
 // (the DeepSeek API and the paid Muse).
-export function fallbackModel(model: string, goPaused = false): string | undefined {
+//
+// T-1942: while the free listings are paused (a gateway refusal) the chain must
+// never step onto another free listing. The free Muse then goes straight to the
+// Go Muse (or the paid Muse while Go is paused), not to the free GLM Flash.
+export function fallbackModel(
+  model: string,
+  goPaused = false,
+  freePaused = false,
+): string | undefined {
   if (model === FREE_DEEPSEEK_FLASH) {
     return goPaused ? DEEPSEEK_FLASH : GO_DEEPSEEK_FLASH;
   }
@@ -40,7 +49,14 @@ export function fallbackModel(model: string, goPaused = false): string | undefin
     return goPaused ? PAID_MUSE : GO_MUSE;
   }
   if (model === FREE_MUSE) {
-    return FREE_GLM_FLASH;
+    return freePaused ? (goPaused ? PAID_MUSE : GO_MUSE) : FREE_GLM_FLASH;
   }
-  return model === GO_MUSE ? PAID_MUSE : undefined;
+  if (model === GO_MUSE) {
+    return PAID_MUSE;
+  }
+  // T-1942: a free listing outside the modelled chain (`opencode/beam-free`,
+  // `opencode-go/beam-free`) still moves to the paid Muse step, so a refused
+  // session leaves the listing instead of retrying it in place. `paidStep`
+  // cannot be called here because it delegates back to this function.
+  return isFreeListing(model) ? (goPaused ? PAID_MUSE : GO_MUSE) : undefined;
 }

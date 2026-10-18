@@ -1,3 +1,4 @@
+import { fallbackModel } from './fallback.js';
 import {
   DEEPSEEK_FLASH,
   FREE_DEEPSEEK_FLASH,
@@ -31,15 +32,23 @@ export function isDeepSeekPeak(now: Date): boolean {
 // unchanged so explicit models keep working exactly as before. The moment no
 // longer matters and neither does the Go pause: auto always picks the free
 // DeepSeek V4.1 Flash with `effort: default` (T-1718).
+//
+// T-1942: while the free listings are paused, auto starts on the free DeepSeek
+// Flash's paid step instead (the Go DeepSeek Flash, or the metered DeepSeek API
+// while Go is paused), so a paused lead never touches a free listing.
 export function resolveWorkerModel(
   frontMatterModel: string,
   _now: Date,
-  _goPaused = false,
+  goPaused = false,
+  freePaused = false,
 ): { model: string; effortOverride?: string } {
   if (frontMatterModel !== 'auto') {
     return { model: frontMatterModel };
   }
-  return { model: FREE_DEEPSEEK_FLASH, effortOverride: 'default' };
+  const model = freePaused
+    ? (fallbackModel(FREE_DEEPSEEK_FLASH, goPaused) ?? FREE_DEEPSEEK_FLASH)
+    : FREE_DEEPSEEK_FLASH;
+  return { model, effortOverride: 'default' };
 }
 
 // The reasoning effort a worker session runs at: the schedule's override when

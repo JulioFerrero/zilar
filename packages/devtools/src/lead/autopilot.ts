@@ -9,8 +9,10 @@ import { tickDoctor } from './autopilot/doctor-tick.js';
 import { prereviewInfo, readTaskInfo } from './autopilot/task-info.js';
 import { type OpenCodeClient } from './client.js';
 import { decide } from './decide.js';
+import { isFreePaused, pauseFreeOnRefusal } from './free-pause.js';
 import { currentHead, type GitRunner } from './git.js';
 import { isGoPaused } from './go-pause.js';
+import { FREE_MUSE } from './models.js';
 import {
   parsePermission,
   summarizeSession,
@@ -84,6 +86,12 @@ export async function tickOnce(
       const summary = summarizeSession(
         await deps.client.listMessages(record.sessionId, MESSAGE_LIMIT),
       );
+      // T-1942: a free listing the gateway refused pauses all free listings, so
+      // the decisions below and every later launch skip them. A dry run never
+      // writes the config file.
+      if (!options.dryRun) {
+        pauseFreeOnRefusal(new Date(now), record.model, summary.freeRefusal);
+      }
       const info = readTaskInfo(record.worktree, task);
       if (info === null) {
         const line = `${task}: task file is gone (worktree removed?); skipping`;
@@ -109,6 +117,13 @@ export async function tickOnce(
           prereviewSessionState = summary.state;
           prereviewQuotaError = summary.quotaError;
           prereviewFailed = summary.state === 'idle' && summary.outcome === 'failed';
+          if (!options.dryRun) {
+            pauseFreeOnRefusal(
+              new Date(now),
+              record.prereview.model ?? FREE_MUSE,
+              summary.freeRefusal,
+            );
+          }
         } catch {
           prereviewSessionState = 'unknown';
         }
@@ -128,6 +143,7 @@ export async function tickOnce(
         sessionState: summary.state,
         quotaError: summary.quotaError,
         goPaused: isGoPaused(new Date(now)),
+        freePaused: isFreePaused(new Date(now)),
         questionRunning: summary.questionRunning,
         questionText: summary.questionText,
         questionIds: summary.questionIds,

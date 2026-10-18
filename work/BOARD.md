@@ -1962,3 +1962,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1959](T-1959-phone-one-tap-headers.md) | phone one-tap screens use ScreenHeader | 2026-10-18 |
 | [T-1962](T-1962-web-consistency-leftovers.md) | web info sub-pages, folder track, stickers label | 2026-10-18 |
 | [T-1960](T-1960-phone-settings-headers.md) | phone settings screens use ScreenHeader | 2026-10-18 |
+| [T-1942](T-1942-free-model-guard.md) | free-model guard: pause on refusal, one free session | 2026-10-18 |

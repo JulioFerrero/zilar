@@ -40,6 +40,20 @@ describe('resolveWorkerModel (model: auto)', () => {
       model: FREE_MUSE,
     });
   });
+
+  it('starts on the Go DeepSeek Flash while the free listings are paused (T-1942)', () => {
+    expect(resolveWorkerModel('auto', OFF_PEAK, false, true)).toEqual({
+      model: GO_DEEPSEEK_FLASH,
+      effortOverride: 'default',
+    });
+  });
+
+  it('starts on the metered DeepSeek API while Go is paused too (T-1942)', () => {
+    expect(resolveWorkerModel('auto', OFF_PEAK, true, true)).toEqual({
+      model: DEEPSEEK_FLASH,
+      effortOverride: 'default',
+    });
+  });
 });
 
 describe('fallbackModel', () => {
@@ -57,6 +71,11 @@ describe('fallbackModel', () => {
 
   it('moves the free Muse to the free GLM Flash first (T-1718)', () => {
     expect(fallbackModel(FREE_MUSE)).toBe(FREE_GLM_FLASH);
+  });
+
+  it('never moves onto a free listing while free is paused, even with Go paused (T-1942)', () => {
+    expect(fallbackModel(FREE_MUSE, false, true)).toBe(GO_MUSE);
+    expect(fallbackModel(FREE_MUSE, true, true)).toBe(PAID_MUSE);
   });
 
   it('then moves the free GLM Flash to the Go Muse (T-1718)', () => {

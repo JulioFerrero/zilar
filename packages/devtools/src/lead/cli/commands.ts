@@ -56,7 +56,7 @@ export async function runDoctor(positional: string[], args: string[]): Promise<v
     throw new Error('no previous audit: pass --since <sha>');
   }
   const client = new OpencodeCliClient();
-  const sessionId = await startDoctorSession(
+  const { sessionId, model } = await startDoctorSession(
     { client, runner, promptsDirPath: promptsDir(), repoRoot: root },
     { head, since },
   );
@@ -69,6 +69,7 @@ export async function runDoctor(positional: string[], args: string[]): Promise<v
       startedAt,
       reportedForHead: undefined,
       stalledReportedForHead: undefined,
+      model,
     };
   });
   console.log(`doctor ${sessionId} ${doctorWorktreeFor(root)}`);
@@ -90,7 +91,7 @@ export async function runPrereview(positional: string[]): Promise<void> {
   if (head === undefined) {
     throw new Error(`cannot read HEAD of ${record.worktree}`);
   }
-  const sessionId = await startPrereviewSession(
+  const { sessionId, model } = await startPrereviewSession(
     { client, promptsDirPath: promptsDir(), worktree: record.worktree, task },
     head,
   );
@@ -98,7 +99,7 @@ export async function runPrereview(positional: string[]): Promise<void> {
   updateState(statePath, (fresh) => {
     const current = fresh.tasks[task];
     if (current !== undefined) {
-      current.prereview = { sessionId, head, startedAt };
+      current.prereview = { sessionId, head, startedAt, model };
     }
   });
   console.log(`${task} pre-review ${sessionId} for ${head}`);

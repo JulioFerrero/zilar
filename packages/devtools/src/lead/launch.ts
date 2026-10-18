@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient, type SessionModel } from './client.js';
+import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
 import { isGoPaused } from './go-pause.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
-import { updateState } from './state.js';
+import { freeSessionInUse, loadState, updateState } from './state.js';
 import { resolveWorkerModel } from './model-schedule.js';
 import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
@@ -233,11 +234,21 @@ export async function launchTask(
   }
   const { file, model: modelString, branch, effort } = readTaskFrontMatter(deps.repoRoot, task);
   const now = deps.now?.() ?? new Date();
-  const resolved = resolveWorkerModel(modelString, now, isGoPaused(now));
-  assertAllowedModel(resolved.model);
-  const model = { ...splitModel(resolved.model), variant: resolved.effortOverride ?? effort };
+  const goPaused = isGoPaused(now);
+  const freePaused = isFreePaused(now);
+  const resolved = resolveWorkerModel(modelString, now, goPaused, freePaused);
+  // T-1942: at most one tracked session may run on a free listing. While free
+  // is paused, or while another worker, pre-review or doctor already holds the
+  // free slot, a free pick moves to its paid step (Go, or the metered API while
+  // Go is paused too). The launch line names the model that actually starts.
+  let selected = resolved.model;
+  if (isFreeListing(selected) && (freePaused || freeSessionInUse(loadState(deps.statePath)))) {
+    selected = paidStep(selected, goPaused) ?? selected;
+  }
+  assertAllowedModel(selected);
+  const model = { ...splitModel(selected), variant: resolved.effortOverride ?? effort };
   if (modelString === 'auto') {
-    console.log(`${task} auto -> ${resolved.model}`);
+    console.log(`${task} auto -> ${selected}`);
   }
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {
@@ -296,7 +307,7 @@ export async function launchTask(
       task,
       sessionId,
       worktree,
-      model: resolved.model,
+      model: selected,
       role: 'worker',
       startedAt: new Date().toISOString(),
     });

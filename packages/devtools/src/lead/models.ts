@@ -18,6 +18,20 @@ export const GO_DEEPSEEK_FLASH = 'opencode-go/deepseek-v4.1-flash';
 // the step before the metered Meta listing.
 export const GO_MUSE = 'opencode-go/muse-spark-1.3-contributor';
 
+// T-1942: a free listing is any of the three known free ones plus any other
+// `opencode/*-free` or `opencode-go/*-free` listing. It lives here so both
+// `free-pause.ts` and `fallback.ts` can use it without an import cycle.
+const FREE_LISTING = /^opencode(-go)?\/.*-free$/;
+
+export function isFreeListing(model: string): boolean {
+  return (
+    model === FREE_MUSE ||
+    model === FREE_DEEPSEEK_FLASH ||
+    model === FREE_GLM_FLASH ||
+    FREE_LISTING.test(model)
+  );
+}
+
 // Human-readable labels for escalation lines. Shared so decide.ts and
 // doctor.ts name every model the same way (T-1718). An unknown id falls
 // through unchanged so a stray listing still names itself.

@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Result, Schema } from 'effect';
-import { loadState } from './state.js';
+import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
+import { isGoPaused, withoutPausedGoModel, type ModelRef } from './go-pause.js';
+import { freeSessionInUse, loadState, type FreeSessionScope } from './state.js';
+import type { StateFile } from './types.js';
 import { schemaIssues, taskFrontMatterSchema, type TaskFrontMatter } from './types.js';
+import { GO_MUSE } from './models.js';
 
 // The checkout a command should read a task's file from. A running task's spec
 // lives in its worktree once the task is tracked in `state.json` (a launch from
@@ -88,7 +92,14 @@ export function assertAllowedModel(model: string): void {
 // ZILAR_REVIEW_MODEL when the free listing is rate-limited (the autopilot
 // restarts pick it up on the next call). Read at call time so a restart with
 // the env set is enough.
-export function reviewModel(env: NodeJS.ProcessEnv = process.env): {
+//
+// T-1942: while the free listings are paused the default becomes the paid step
+// of the free Muse, the Go Muse; the caller's `withoutPausedGoModel` turns that
+// into the paid Muse while Go is paused too.
+export function reviewModel(
+  env: NodeJS.ProcessEnv = process.env,
+  freePaused = false,
+): {
   providerID: string;
   id: string;
 } {
@@ -97,7 +108,26 @@ export function reviewModel(env: NodeJS.ProcessEnv = process.env): {
     assertAllowedModel(override);
     return splitModel(override);
   }
-  return { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
+  return splitModel(freePaused ? GO_MUSE : 'opencode/muse-spark-1.3-contributor-free');
+}
+
+// T-1942: the model a pre-review or the doctor starts on. The free Muse while
+// the free listings are open and no other tracked session runs on one;
+// otherwise the paid step from its fallback chain (the Go Muse, or the paid
+// Muse while Go is paused too). `scope` keeps the caller from counting its own
+// session.
+export function reviewSessionModel(state: StateFile, scope: FreeSessionScope = {}): ModelRef {
+  const goPaused = isGoPaused();
+  const freePaused = isFreePaused();
+  let model = withoutPausedGoModel(reviewModel(process.env, freePaused), goPaused);
+  const id = `${model.providerID}/${model.id}`;
+  if (isFreeListing(id) && freeSessionInUse(state, scope)) {
+    const paid = paidStep(id, goPaused);
+    if (paid !== undefined) {
+      model = splitModel(paid);
+    }
+  }
+  return model;
 }
 
 // Returns the text under the "Blocked / needs a decision" subsection of the

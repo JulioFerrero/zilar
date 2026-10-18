@@ -9,6 +9,8 @@ import {
   type StateFile,
   type TaskRecord,
 } from './types.js';
+import { isFreeListing } from './free-pause.js';
+import { FREE_MUSE } from './models.js';
 
 // The state file lives outside the repo so worktree removals and rebases can
 // never touch it. It holds session ids and bookkeeping only: no secrets.
@@ -102,4 +104,40 @@ export function appendLog(statePath: string, line: string): void {
   const stamped = `${new Date().toISOString()} ${line}\n`;
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.appendFileSync(logFilePath(statePath), stamped);
+}
+
+// T-1942: the launch paths ask this before starting a session on a free listing.
+// "Live" here means "tracked": every worker, pre-review and doctor the lead knows
+// about counts, because a merged task is dropped with `lead forget --finished`.
+// The caller skips its own records so a fresh session or a pre-review of the same
+// task does not count itself; a pre-review with no recorded model started on the
+// free Muse, so it counts as free.
+export interface FreeSessionScope {
+  task?: string | undefined;
+  sessionId?: string | undefined;
+}
+
+export function freeSessionInUse(state: StateFile, scope: FreeSessionScope = {}): boolean {
+  for (const [task, record] of Object.entries(state.tasks)) {
+    if (task === scope.task) {
+      continue;
+    }
+    if (record.sessionId !== scope.sessionId && isFreeListing(record.model)) {
+      return true;
+    }
+    const prereview = record.prereview;
+    if (
+      prereview !== undefined &&
+      prereview.sessionId !== scope.sessionId &&
+      isFreeListing(prereview.model ?? FREE_MUSE)
+    ) {
+      return true;
+    }
+  }
+  const doctor = state.doctor;
+  return (
+    doctor !== undefined &&
+    doctor.sessionId !== scope.sessionId &&
+    isFreeListing(doctor.model ?? FREE_MUSE)
+  );
 }

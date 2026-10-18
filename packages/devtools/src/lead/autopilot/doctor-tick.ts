@@ -7,7 +7,9 @@ import {
   startDoctorSession,
   type DoctorAction,
 } from '../doctor.js';
+import { isFreePaused, pauseFreeOnRefusal } from '../free-pause.js';
 import { isGoPaused } from '../go-pause.js';
+import { FREE_MUSE } from '../models.js';
 import { loadPrompt, renderPrompt } from '../prompts.js';
 import { summarizeSession } from '../session.js';
 import { appendLog, loadState, updateState } from '../state.js';
@@ -64,11 +66,18 @@ export async function tickDoctor(
   }
   let sessionState: 'running' | 'idle' | 'unknown' | 'none' = 'none';
   let quotaError = false;
+  let freeRefusal: string | undefined;
   if (doctor !== undefined) {
     try {
       const summary = summarizeSession(await deps.client.listMessages(doctor.sessionId, 5));
       sessionState = summary.state;
       quotaError = summary.quotaError;
+      freeRefusal = summary.freeRefusal;
+      // T-1942: a doctor session on a free listing the gateway refused pauses
+      // all free listings, so the fallback below and later starts skip them.
+      if (!options.dryRun) {
+        pauseFreeOnRefusal(new Date(options.now), doctor.model ?? FREE_MUSE, freeRefusal);
+      }
     } catch {
       sessionState = 'unknown';
     }
@@ -87,6 +96,7 @@ export async function tickDoctor(
     verdict: report.verdict,
     quotaError,
     goPaused: isGoPaused(new Date(options.now)),
+    freePaused: isFreePaused(new Date(options.now)),
   });
   await applyDoctorActions(actions, deps, options.dryRun, doctor);
 }
@@ -154,7 +164,7 @@ async function applyDoctorActions(
       console.log('DRY: would start the doctor');
       continue;
     }
-    const sessionId = await startDoctorSession(
+    const { sessionId, model } = await startDoctorSession(
       {
         client: deps.client,
         runner: deps.runner,
@@ -172,6 +182,7 @@ async function applyDoctorActions(
         startedAt,
         reportedForHead: undefined,
         stalledReportedForHead: undefined,
+        model,
       };
     });
     appendLog(deps.statePath, `doctor started ${sessionId} for ${action.head}`);

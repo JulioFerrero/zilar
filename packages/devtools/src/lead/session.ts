@@ -6,6 +6,10 @@ export interface SessionSummary {
   state: SessionState;
   outcome: string | undefined;
   quotaError: boolean;
+  // T-1942: short text of the newest active free-gateway refusal (403 or
+  // "abuse"/"forbidden"/"model unavailable"), or undefined. The autopilot uses
+  // it to pause the free listings for a while.
+  freeRefusal: string | undefined;
   questionRunning: boolean;
   questionText: string;
   questionIds: string[];
@@ -38,18 +42,25 @@ export function newestMessageMs(messages: unknown[]): number {
   return messages.reduce<number>((newest, message) => Math.max(newest, createdMs(message)), 0);
 }
 
-// Recursively looks for a provider quota failure. OpenCode classifies its own
-// provider errors, and `provider.quota` also covers OpenCode Go's subscription
-// limit: OpenCode maps `GoUsageLimitError` / a usage-limit message to
-// QuotaExceeded (see the `gousagelimiterror` code and the usage-limit message
+// The text OpenCode's free gateway sends when it refuses traffic (T-1942):
+// "Forbidden, OpenCode Free Model Gateway Detect Abuse Traffic", or a listing
+// reported as "Model unavailable".
+const FREE_REFUSAL = /abuse|forbidden|model unavailable/i;
+
+// The provider error that counts as a quota failure. OpenCode classifies its
+// own provider errors, and `provider.quota` also covers OpenCode Go's
+// subscription limit: OpenCode maps `GoUsageLimitError` / a usage-limit message
+// to QuotaExceeded (see the `gousagelimiterror` code and the usage-limit message
 // patterns in the OpenCode 2.0.25 binary). T-1242 also treats a provider rate
 // limit (`provider.rate-limit`), a 429 status, and a `limit`/`quota` message on
 // a provider-typed error as quota, so a Go limit that surfaces one of those
 // ways still moves the worker onto the fallback chain. T-1264 adds an expired
 // or invalid provider credential (`provider.auth`, or a 401 status): that must
 // move work onto the fallback chain like a quota error, or the run stalls
-// silently with nothing to do. The text check only inspects provider-typed
-// objects, so ordinary message or tool text can never match.
+// silently with nothing to do. T-1942 adds a 403 and the free gateway's refusal
+// text: a refused free listing must move on like a 429 instead of stalling.
+// The text check only inspects provider-typed objects, so ordinary message or
+// tool text can never match.
 function containsQuotaError(value: unknown, depth: number): boolean {
   if (depth > 8 || !isRecord(value) || Array.isArray(value)) {
     if (Array.isArray(value) && depth <= 8) {
@@ -63,18 +74,63 @@ function containsQuotaError(value: unknown, depth: number): boolean {
   }
   const status = value['status'];
   if (
-    (status === 401 || status === 402 || status === 429) &&
+    (status === 401 || status === 402 || status === 403 || status === 429) &&
     ('error' in value || 'message' in value || 'code' in value)
   ) {
     return true;
   }
   if (typeof type === 'string' && type.startsWith('provider.')) {
     const text = `${String(value['message'] ?? '')} ${String(value['code'] ?? '')}`;
-    if (/limit|quota/i.test(text)) {
+    if (/limit|quota|abuse|forbidden|model unavailable/i.test(text)) {
       return true;
     }
   }
   return Object.values(value).some((entry) => containsQuotaError(entry, depth + 1));
+}
+
+// The refusal text of a provider-typed free-gateway failure, or undefined.
+function refusalText(value: unknown, depth: number): string | undefined {
+  if (depth > 8 || !isRecord(value) || Array.isArray(value)) {
+    return undefined;
+  }
+  const type = value['type'];
+  const status = value['status'];
+  if (
+    (typeof type === 'string' && type.startsWith('provider.')) ||
+    (status === 403 && ('error' in value || 'message' in value || 'code' in value))
+  ) {
+    const error = value['error'];
+    const message = (
+      isRecord(error) ? `${String(error['message'] ?? '')}` : `${String(value['message'] ?? '')}`
+    ).trim();
+    const code = `${String(value['code'] ?? '')}`.trim();
+    const detail = message.length > 0 ? message : code;
+    if (FREE_REFUSAL.test(message) || FREE_REFUSAL.test(code) || status === 403) {
+      return detail.length > 160 ? `${detail.slice(0, 160)}…` : detail;
+    }
+  }
+  for (const entry of Object.values(value)) {
+    const found = refusalText(entry, depth + 1);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
+}
+
+// The newest refusal that no later reply has cleared, mirroring isQuotaActive:
+// an old refusal followed by an assistant reply no longer pauses anything.
+function isFreeRefusalActive(sortedDesc: unknown[]): string | undefined {
+  for (const message of sortedDesc) {
+    const detail = refusalText(message, 0);
+    if (detail !== undefined) {
+      return detail;
+    }
+    if (isRecord(message) && (message['type'] === 'assistant' || message['type'] === 'error')) {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 // Quota counts as active only while no newer message proves recovery: walk
@@ -166,6 +222,7 @@ export function summarizeSession(messages: unknown[]): SessionSummary {
     state,
     outcome,
     quotaError: isQuotaActive(sorted),
+    freeRefusal: isFreeRefusalActive(sorted),
     questionRunning: questionIds.length > 0,
     questionText: found
       .map((entry) => entry.text)
