@@ -45,9 +45,9 @@ export interface StickerPanelProps {
   gifsTab?: 'show' | 'hide' | undefined;
 }
 
-type Tab = 'stickers' | 'gifs' | 'emoji';
+type Tab = 'emoji' | 'stickers' | 'gifs';
 
-const PANEL_TABS: readonly Tab[] = ['stickers', 'gifs', 'emoji'] as const;
+const PANEL_TABS: readonly Tab[] = ['emoji', 'stickers', 'gifs'] as const;
 
 /** One row from a pack, a favorite or the recents, normalised to a panel choice. */
 function toChoice(source: Sticker | RecentStickerEntry): StickerChoice {
@@ -88,12 +88,12 @@ function favoriteFrom(choice: StickerChoice): Sticker {
 }
 
 /**
- * The sticker panel in the composer (T-0120, GIFs in T-0122): tabs Stickers /
- * GIFs / Emoji, a strip of pack tabs (first: Recent), a 5-column grid of 56
- * px tiles that fit the 344 px panel with no overlap, hover/keyboard focus
- * preview, click sends. The GIFs tab searches through the
- * privacy-preserving proxy; the Emoji tab searches and appends an emoji to the
- * draft.
+ * The sticker panel in the composer (T-0120, GIFs in T-0122): tabs Emoji /
+ * Stickers / GIFs (Emoji first, T-1945), a strip of pack tabs (first: Recent),
+ * a 5-column grid of 56 px tiles that fit the 344 px panel with no overlap,
+ * hover/keyboard focus preview, click sends. The GIFs tab searches through the
+ * privacy-preserving proxy; the Emoji tab is one scrolling picker with a
+ * category bar and appends an emoji to the draft.
  *
  * The dialog is `fixed` to the viewport's bottom-right (`right-4
  * bottom-24`, next to the composer's emoji button) with
@@ -109,7 +109,7 @@ export function StickerPanel({
   onCreate,
   gifsTab,
 }: StickerPanelProps) {
-  const [tab, setTab] = useState<Tab>('stickers');
+  const [tab, setTab] = useState<Tab>('emoji');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
   const [favorites, setFavorites] = useState<Sticker[] | undefined>(undefined);
@@ -119,7 +119,7 @@ export function StickerPanel({
   // once per session and remembers the answer. Shown/hidden are derived during
   // render from the tri-state; the probe settles into the state below (an
   // external-system sync, like the sticker list load), and a tab that
-  // disappears under the active tab falls back to Stickers at render time
+  // disappears under the active tab falls back to Emoji at render time
   // so the panel never shows an empty body.
   // The probe runs in mock mode too (T-1086): the shared mock backend serves
   // trending and search, so the tab is not assumed available.
@@ -143,8 +143,8 @@ export function StickerPanel({
   );
 
   // The visible tab: when the GIF tab disappears under the active tab, the
-  // panel shows Stickers instead of an empty body.
-  const visibleTab: Tab = tab === 'gifs' && gifsEnabled === false ? 'stickers' : tab;
+  // panel shows the Emoji tab instead of an empty body.
+  const visibleTab: Tab = tab === 'gifs' && gifsEnabled === false ? 'emoji' : tab;
 
   // A failed list shows no packs; the panel says so instead of loading forever.
   useQuery(

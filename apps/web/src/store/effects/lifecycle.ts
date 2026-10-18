@@ -14,6 +14,7 @@ import {
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatPref, Contact, Me } from '@/lib/api';
 import { authClient } from '@/lib/auth';
+import { clearEmojiRecents } from '@/lib/emojiRecents';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import { clearChatListCache, readChatListCache } from '../chatListCache';
@@ -62,6 +63,7 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     // A pending throttled save must not recreate the key after the clear.
     cancelScheduledMessageSave(ctx);
     clearChatListCache(storage);
+    clearEmojiRecents(storage);
     clearMessageCache(storage);
     resetIsServerOwnerCache();
     // A new sign-in is a new session for the handle gate: clear every
