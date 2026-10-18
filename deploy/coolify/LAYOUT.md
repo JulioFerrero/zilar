@@ -105,6 +105,28 @@ exactly one public host.
 The paths `/api`, `/xmpp-ws`, `/upload` are exact enough for the apps behind
 them because they existed the same way in `apps/web/Caddyfile`.
 
+## Deploys from CI
+
+`images.yml`'s `deploy` job asks Coolify to pull the new images after a green
+CI run on main publishes `:latest`: a `GET /api/v1/deploy?uuid=<app uuid>`
+against `COOLIFY_URL`, for `zilar-server` first, then for `zilar-web`. The App
+then does a rolling update, so the old container drains while the new one
+starts.
+
+The job reads four repository secrets, which Julio sets at the cutover:
+
+| Secret                    | Holds                                                    |
+| ------------------------- | -------------------------------------------------------- |
+| `COOLIFY_URL`             | the Coolify base URL, e.g. `https://coolify.example.com` |
+| `COOLIFY_DEPLOY_TOKEN`    | an API token with Coolify's **deploy** permission only   |
+| `COOLIFY_SERVER_APP_UUID` | the `zilar-server` App's UUID                            |
+| `COOLIFY_WEB_APP_UUID`    | the `zilar-web` App's UUID                               |
+
+The token needs no other permission: the deploy endpoint is all it calls.
+Until all four secrets are set the job prints
+`Coolify deploy secrets not set; skipping (see deploy/coolify/LAYOUT.md)` and
+succeeds, so green main runs stay green before the cutover.
+
 ## Variables
 
 Every environment variable the three resources read, by name (never a value),
