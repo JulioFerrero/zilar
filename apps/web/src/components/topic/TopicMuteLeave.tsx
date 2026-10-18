@@ -1,13 +1,11 @@
 import { isTopicJoined, type ChatSummary } from '@zilar/chat-core';
 import { Bell, LogOut } from 'lucide-react';
 import { useState } from 'react';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { ListRow } from '../ui/list-row';
 import { Switch } from '../ui/switch';
+import { useMuteToggle } from '../useMuteToggle';
 
 const MUTE_FAILED = 'Could not change the mute. Try again.';
 
@@ -27,15 +25,9 @@ export function TopicMuteLeave({
   leaving: boolean;
   onLeave: () => void;
 }) {
-  const storeApi = useChatStoreApi();
   const currentUserId = useChatSelector((s) => s.currentUserId);
   const [confirming, setConfirming] = useState(false);
-  const [muteState, toggleMute] = useAction<void, void, ApiFailure>(() =>
-    // Muted = mute forever; unmuted = clear, like the channel bar.
-    fromApi(() => storeApi.getState().setMuted(chat.id, chat.muted ? null : 'forever')),
-  );
-  const busy = isWaiting(muteState);
-  const failed = !busy && failureOf(muteState) !== undefined;
+  const { muted, busy, error, toggle } = useMuteToggle(chat);
   const topic = chat.topic;
 
   if (topic === undefined) {
@@ -49,8 +41,8 @@ export function TopicMuteLeave({
         title="Mute"
         trailing={
           <Switch
-            checked={chat.muted}
-            onCheckedChange={() => toggleMute()}
+            checked={muted}
+            onCheckedChange={() => toggle()}
             label={`Mute ${chat.title}`}
             hideLabel
             disabled={busy}
@@ -65,7 +57,7 @@ export function TopicMuteLeave({
           {...(leaving ? {} : { onClick: () => setConfirming(true) })}
         />
       )}
-      {failed && (
+      {error !== undefined && (
         <p role="alert" className="px-2 text-[12px] text-danger">
           {MUTE_FAILED}
         </p>

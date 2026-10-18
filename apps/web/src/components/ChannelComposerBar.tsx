@@ -1,11 +1,9 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Composer } from './Composer';
 import type { ReplyRef } from '@zilar/chat-core';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Button } from '@/components/ui/button';
+import { useMuteToggle } from '@/components/useMuteToggle';
 
 /**
  * The channel feed's bottom bar (T-0124). Admins (owner/admin) see the normal
@@ -25,16 +23,8 @@ export function ChannelComposerBar({
 }) {
   const info = useChatSelector((s) => s.groupInfo(chat.id));
   const currentUserId = useChatSelector((s) => s.currentUserId);
-  const storeApi = useChatStoreApi();
   // A second click while the mute waits is ignored (the hook's default mode).
-  const [muteState, toggleMute] = useAction<void, void, ApiFailure>(() =>
-    // Muted = mute forever; unmuted = clear. The T-0113 durations live in
-    // the chat menu; this bar is the quick toggle.
-    fromApi(() => storeApi.getState().setMuted(chat.id, chat.muted ? null : 'forever')),
-  );
-  const busy = isWaiting(muteState);
-  // The failure shows until the next click, which clears it while it runs.
-  const failed = !busy && failureOf(muteState) !== undefined;
+  const { muted, busy, error, toggle } = useMuteToggle(chat);
 
   // The role rides the chat row (`myRole`) for channels; the group detail
   // backs it up once loaded. Unknown = subscriber (read-only) until proven
@@ -54,17 +44,11 @@ export function ChannelComposerBar({
         <p className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground">
           Only admins can post here
         </p>
-        <Button
-          type="button"
-          variant="ghost"
-          className="shrink-0"
-          disabled={busy}
-          onClick={() => toggleMute()}
-        >
-          {chat.muted ? 'Unmute' : 'Mute'}
+        <Button type="button" variant="ghost" className="shrink-0" disabled={busy} onClick={toggle}>
+          {muted ? 'Unmute' : 'Mute'}
         </Button>
       </div>
-      {failed && (
+      {error !== undefined && (
         <p role="alert" className="mt-1 px-1 text-[12px] text-danger">
           Could not change the mute. Try again.
         </p>

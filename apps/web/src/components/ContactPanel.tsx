@@ -22,7 +22,7 @@ import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { focusComposer } from '@/components/composer/useComposerFocus';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from './EntityAvatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from './ui/button';
@@ -30,9 +30,9 @@ import { ListRow } from './ui/list-row';
 import { PanelKey } from './ui/panel-key';
 import { Sheet } from './ui/sheet';
 import { useToast } from './ui/toast';
+import { useMuteToggle } from './useMuteToggle';
 
 const COPY_TOAST = 'Username copied';
-const MUTE_ERROR = 'Could not update notifications. Try again.';
 const BLOCK_ERROR = 'Could not block. Try again.';
 const UNBLOCK_ERROR = 'Could not unblock. Try again.';
 
@@ -72,7 +72,6 @@ export function ContactPanel({
   onSearch: () => void;
   onOpenMedia: () => void;
 }) {
-  const storeApi = useChatStoreApi();
   const toast = useToast();
   const contacts = useChatSelector((s) => s.contacts);
   const blockedJids = useBlockedJids();
@@ -101,13 +100,7 @@ export function ContactPanel({
   const blocked =
     blockedOverride ?? (profile?.relation === 'blocked' || blockedJids.has(localpartOf(chat.id)));
 
-  const muted = chat.muted === true;
-  const [muteState, runMute] = useAction((next: boolean) =>
-    Effect.tryPromise({
-      try: () => storeApi.getState().setMuted(chat.id, next ? 'forever' : null),
-      catch: () => new ContactFailure({ message: MUTE_ERROR }),
-    }),
-  );
+  const { muted, busy: muteBusy, error: muteError, toggle: toggleMute } = useMuteToggle(chat);
   const [blockState, runBlock] = useAction(
     (input: { action: 'block' | 'unblock'; userId: string }) =>
       fromApi(() =>
@@ -124,12 +117,9 @@ export function ContactPanel({
         Effect.asVoid,
       ),
   );
-  const muteBusy = isWaiting(muteState);
   const blockBusy = isWaiting(blockState);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
-  const error =
-    (muteBusy ? undefined : failureOf(muteState)?.message) ??
-    (blockBusy ? undefined : failureOf(blockState)?.message);
+  const error = muteError ?? (blockBusy ? undefined : failureOf(blockState)?.message);
 
   const status = chatSubtitle(chat, new Date());
   const online = chat.online === true;
@@ -147,13 +137,6 @@ export function ContactPanel({
         ),
       ),
     );
-  };
-
-  const toggleMute = (): void => {
-    if (muteBusy) {
-      return;
-    }
-    runMute(!muted);
   };
 
   const copyHandle = (): void => {

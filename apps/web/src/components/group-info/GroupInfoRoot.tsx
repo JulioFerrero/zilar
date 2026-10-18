@@ -1,5 +1,4 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Effect } from 'effect';
 import {
   Bell,
   BellOff,
@@ -13,9 +12,8 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { PanelFailure } from '../panels/groupPanelOps';
+import { useChatSelector } from '@/store/ChatStoreProvider';
+import { useMuteToggle } from '../useMuteToggle';
 import { EntityAvatar } from '../EntityAvatar';
 import { IconButton } from '../ui/icon-button';
 import { ListRow } from '../ui/list-row';
@@ -41,8 +39,6 @@ export const GROUP_INFO_TITLES: Record<GroupInfoPageId, string> = {
   allowed: 'Always allowed',
   settings: 'Settings',
 };
-
-const MUTE_ERROR = 'Could not update notifications. Try again.';
 
 /**
  * The group info root page (T-1494): the picture, the name and the member
@@ -84,26 +80,10 @@ export function GroupInfoRoot({
   onOpenPage: (page: GroupInfoPageId) => void;
   onAddMembers: () => void;
 }) {
-  const storeApi = useChatStoreApi();
+  const { muted, busy: muteBusy, error: muteError, toggle: toggleMute } = useMuteToggle(chat);
   const pinCount = useChatSelector((s) => s.pinsByChat[chat.id]?.length ?? 0);
-  const muted = chat.muted === true;
   const [moreOpen, setMoreOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const [muteState, runMute] = useAction((next: boolean) =>
-    Effect.tryPromise({
-      try: () => storeApi.getState().setMuted(chat.id, next ? 'forever' : null),
-      catch: () => new PanelFailure({ message: MUTE_ERROR }),
-    }),
-  );
-  const muteBusy = isWaiting(muteState);
-  const muteError = muteBusy ? undefined : failureOf(muteState)?.message;
-
-  const toggleMute = (): void => {
-    if (!muteBusy) {
-      runMute(!muted);
-    }
-  };
 
   return (
     <>

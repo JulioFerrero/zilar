@@ -19,19 +19,19 @@ import {
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { copyText } from '@/lib/clipboard';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useAction } from '@/lib/effect/use-action';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { FieldError } from '../ais/AiPageShell';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { EntityAvatar } from '../EntityAvatar';
 import { ContentNav } from '../group-info/ContentNav';
 import { DeleteGroupDialog } from '../group-info/GroupExit';
-import { PanelFailure } from '../panels/groupPanelOps';
 import { IconButton } from '../ui/icon-button';
 import { ListRow } from '../ui/list-row';
 import { Menu, MenuItem } from '../ui/menu';
 import { PanelKey } from '../ui/panel-key';
 import { useToast } from '../ui/toast';
+import { useMuteToggle } from '../useMuteToggle';
 
 /** The pages of the channel info panel; `root` is the page itself (T-1519). */
 export type ChannelInfoPageId =
@@ -48,8 +48,6 @@ export const CHANNEL_INFO_TITLES: Record<ChannelInfoPageId, string> = {
   allowed: 'Always allowed',
   settings: 'Settings',
 };
-
-const MUTE_ERROR = 'Could not update notifications. Try again.';
 
 /** The count at the right of a row, in mono as the design asks. */
 function count(value: number): ReactNode {
@@ -108,28 +106,12 @@ export function ChannelInfoRoot({
   onOpenMedia: () => void;
   onOpenPage: (page: ChannelInfoPageId) => void;
 }) {
-  const storeApi = useChatStoreApi();
+  const { muted, busy: muteBusy, error: muteError, toggle: toggleMute } = useMuteToggle(chat);
   const toast = useToast();
   const pinCount = useChatSelector((s) => s.pinsByChat[chat.id]?.length ?? 0);
-  const muted = chat.muted === true;
   const [moreOpen, setMoreOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-
-  const [muteState, runMute] = useAction((next: boolean) =>
-    Effect.tryPromise({
-      try: () => storeApi.getState().setMuted(chat.id, next ? 'forever' : null),
-      catch: () => new PanelFailure({ message: MUTE_ERROR }),
-    }),
-  );
-  const muteBusy = isWaiting(muteState);
-  const muteError = muteBusy ? undefined : failureOf(muteState)?.message;
-
-  const toggleMute = (): void => {
-    if (!muteBusy) {
-      runMute(!muted);
-    }
-  };
 
   const shareUrl =
     handle === null
