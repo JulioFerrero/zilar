@@ -39,7 +39,8 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 
 - Use TypeScript in `strict` mode. Don't use `any` unless the spec allows it, and never use `@ts-ignore`.
 - Validate data at boundaries (network, files, env vars) with `zod`.
-- Match the style of the code around you: naming, file layout, comment density.
+- Match the naming and file layout of the code around you. Comments follow docs/COMMENTS.md: write one only for a WHY the code cannot say, and never cite a task ID (the task file and the commit carry the history).
+- 400 lines per file is a soft limit: never split a file only to meet it; only a file over 800 lines must be split.
 - **Don't add dependencies** unless the spec lists them. If you think one is needed, ask in the Report.
 - Keep functions small and names clear. Don't leave dead code or commented-out code.
 - Write English in code, comments and docs.

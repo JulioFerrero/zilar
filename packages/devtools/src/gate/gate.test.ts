@@ -15,7 +15,8 @@ import {
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
 import { checkMigrations, migrationNumber, parseMigrationDiff } from './migrations.js';
 import { checkImagePackages, checkImages, copiedPackageDirs, workspaceDeps } from './images.js';
-import { countLines, isSizeChecked, sizeViolations } from './size.js';
+import { countLines, isSizeChecked, sizeViolations, sizeWarnings } from './size.js';
+import { taskIdComments } from './comments.js';
 
 const workspace: WorkspacePackage[] = [
   { name: '@zilar/mobile', dir: 'apps/mobile', hasTests: true },
@@ -197,30 +198,29 @@ describe('file size check', () => {
   const check = (files: { path: string; lines: number | null; baseLines: number | null }[]) =>
     sizeViolations(files);
 
-  it('fails a new source file of 401 lines', () => {
-    expect(check([{ path: 'apps/server/src/new.ts', lines: 401, baseLines: null }])).toEqual([
-      'apps/server/src/new.ts: 401 lines (main 0); limit 400',
+  it('fails a new source file over the hard limit of 800 lines', () => {
+    expect(check([{ path: 'apps/server/src/new.ts', lines: 801, baseLines: null }])).toEqual([
+      'apps/server/src/new.ts: 801 lines (main 0); limit 800',
     ]);
+    expect(check([{ path: 'apps/server/src/new.ts', lines: 800, baseLines: null }])).toEqual([]);
   });
 
-  it('fails a file that grew from 372 to 439 lines', () => {
-    expect(
-      check([{ path: 'apps/mobile/src/app/ais/[id].tsx', lines: 439, baseLines: 372 }]),
-    ).toEqual(['apps/mobile/src/app/ais/[id].tsx: 439 lines (main 372); limit 400']);
-  });
-
-  it('passes a file already over the limit that did not grow', () => {
-    expect(check([{ path: 'apps/server/src/main.ts', lines: 569, baseLines: 569 }])).toEqual([]);
-  });
-
-  it('fails a file already over the limit that grew by one line', () => {
-    expect(check([{ path: 'apps/server/src/main.ts', lines: 570, baseLines: 569 }])).toEqual([
-      'apps/server/src/main.ts: 570 lines (main 569); limit 400',
+  it('warns a file over the soft limit of 400 without failing it', () => {
+    const files = [{ path: 'apps/mobile/src/app/ais/[id].tsx', lines: 439, baseLines: 372 }];
+    expect(check(files)).toEqual([]);
+    expect(sizeWarnings(files)).toEqual([
+      'apps/mobile/src/app/ais/[id].tsx: 439 lines (main 372); limit 400',
     ]);
+    const atLimit = [{ path: 'apps/server/src/ok.ts', lines: 400, baseLines: null }];
+    expect(check(atLimit)).toEqual([]);
+    expect(sizeWarnings(atLimit)).toEqual([]);
   });
 
-  it('passes a test file of 900 lines', () => {
-    expect(check([{ path: 'apps/server/src/a.test.ts', lines: 900, baseLines: null }])).toEqual([]);
+  it('passes a file already over 800 that did not grow, and fails one that grew', () => {
+    expect(check([{ path: 'apps/server/src/main.ts', lines: 900, baseLines: 900 }])).toEqual([]);
+    expect(check([{ path: 'apps/server/src/main.ts', lines: 901, baseLines: 900 }])).toEqual([
+      'apps/server/src/main.ts: 901 lines (main 900); limit 800',
+    ]);
   });
 
   it('exempts tests, mocks, fixtures, generated and declaration files', () => {
@@ -243,8 +243,43 @@ describe('file size check', () => {
     expect(isSizeChecked('packages/runner-tunnel/src/runner.ts')).toBe(true);
     expect(isSizeChecked('docs/a.ts')).toBe(false);
     expect(isSizeChecked('apps/server/src/main.md')).toBe(false);
+    expect(
+      sizeWarnings([{ path: 'apps/server/src/a.test.ts', lines: 900, baseLines: null }]),
+    ).toEqual([]);
+  });
+});
+
+describe('task IDs in added comments', () => {
+  it('flags an added comment that cites a task ID', () => {
+    const diff = [
+      'diff --git a/apps/server/src/a.ts b/apps/server/src/a.ts',
+      '--- a/apps/server/src/a.ts',
+      '+++ b/apps/server/src/a.ts',
+      '@@ -1,0 +2,2 @@',
+      '+// T-1234: explain the retry',
+      '+const x = 1;',
+    ].join('\n');
+    expect(taskIdComments(diff)).toEqual(['apps/server/src/a.ts: // T-1234: explain the retry']);
   });
 
+  it('ignores a task ID in code and in a test file', () => {
+    const diff = [
+      'diff --git a/apps/server/src/a.ts b/apps/server/src/a.ts',
+      '--- a/apps/server/src/a.ts',
+      '+++ b/apps/server/src/a.ts',
+      '@@ -1,0 +2,1 @@',
+      "+const id = 'T-1234';",
+      'diff --git a/apps/server/src/a.test.ts b/apps/server/src/a.test.ts',
+      '--- a/apps/server/src/a.test.ts',
+      '+++ b/apps/server/src/a.test.ts',
+      '@@ -1,0 +2,1 @@',
+      '+// T-1234: test the retry',
+    ].join('\n');
+    expect(taskIdComments(diff)).toEqual([]);
+  });
+});
+
+describe('countLines', () => {
   it('counts lines without a trailing newline as an extra line', () => {
     expect(countLines('')).toBe(0);
     expect(countLines('a\n')).toBe(1);

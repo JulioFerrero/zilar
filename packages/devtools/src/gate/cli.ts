@@ -24,7 +24,8 @@ import {
 } from './migrations.js';
 import { checkImages } from './images.js';
 import { scopeReport } from './scope.js';
-import { countLines, isSizeChecked, sizeViolations, type SizeFile } from './size.js';
+import { countLines, isSizeChecked, sizeViolations, sizeWarnings, type SizeFile } from './size.js';
+import { taskIdComments } from './comments.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
 interface RunResult {
@@ -123,9 +124,14 @@ function baseLineCount(root: string, base: string, file: string): number | null 
   return result.ok ? countLines(result.output) : null;
 }
 
-// Each changed source file must stay within 400 lines unless the base was already
-// over and the branch did not grow it.
-function sizeReport(root: string, base: string, files: string[]): string[] {
+interface SizeReport {
+  warnings: string[];
+  failures: string[];
+}
+
+// Each changed source file warns over the soft limit of 400 lines and must stay
+// within 800 unless the base was already over and the branch did not grow it.
+function sizeReport(root: string, base: string, files: string[]): SizeReport {
   const inputs: SizeFile[] = [];
   for (const file of files) {
     if (!isSizeChecked(file)) continue;
@@ -136,7 +142,13 @@ function sizeReport(root: string, base: string, files: string[]): string[] {
       baseLines: baseLineCount(root, base, file),
     });
   }
-  return sizeViolations(inputs);
+  return { warnings: sizeWarnings(inputs), failures: sizeViolations(inputs) };
+}
+
+// Added comment lines in source files that cite a task ID.
+function commentReport(root: string, base: string): string[] {
+  const diff = run(root, 'git', ['diff', '-U0', base, '--', 'apps', 'packages']).output;
+  return taskIdComments(diff);
 }
 
 export function readWorkspace(root: string): WorkspacePackage[] {
@@ -310,14 +322,31 @@ function main(): void {
         console.log(`  ${failure}`);
       }
     }
-    const sizeFailures = sizeReport(root, base, files);
-    if (sizeFailures.length === 0) {
-      console.log('size: every changed source file is within 400 lines');
+    const size = sizeReport(root, base, files);
+    for (const warning of size.warnings) {
+      console.log(
+        `WARN  size: ${warning} (soft limit 400; fine when keeping the file whole saves lines)`,
+      );
+    }
+    if (size.failures.length === 0) {
+      console.log('size: no changed source file is over 800 lines');
     } else {
       failed = true;
-      console.log(`FAIL  size: ${sizeFailures.length} changed source file(s) over 400 lines`);
-      for (const failure of sizeFailures) {
+      console.log(`FAIL  size: ${size.failures.length} changed source file(s) over 800 lines`);
+      for (const failure of size.failures) {
         console.log(`  ${failure}`);
+      }
+    }
+    const commentHits = commentReport(root, base);
+    if (commentHits.length === 0) {
+      console.log('comments: no task IDs in added comments');
+    } else {
+      failed = true;
+      console.log(
+        `FAIL  comments: ${commentHits.length} added comment line(s) cite a task ID (docs/COMMENTS.md)`,
+      );
+      for (const hit of commentHits) {
+        console.log(`  ${hit}`);
       }
     }
   } finally {

@@ -1,8 +1,10 @@
-// A source file is capped at 400 lines; tests, mocks, fixtures and generated files
-// are exempt. One over the limit fails unless the base was already over and the
-// branch did not grow it. Pure: the caller reads the working tree and the base.
+// A source file is soft-capped at 400 lines and hard-capped at 800; tests, mocks,
+// fixtures and generated files are exempt. A file over the soft limit only warns.
+// One over the hard limit fails unless the base was already over and the branch
+// did not grow it. Pure: the caller reads the working tree and the base.
 
 export const SIZE_LIMIT = 400;
+export const HARD_SIZE_LIMIT = 800;
 
 const CODE_FILE = /\.(ts|tsx|mjs|js)$/;
 const TEST_OR_SPEC = /\.(test|spec)\.[^./]+$/;
@@ -45,21 +47,37 @@ export interface SizeFile {
   baseLines: number | null;
 }
 
-// The failure message for one file, or null when it is within the rule: at most
-// the limit, or already over it on the base and not grown since.
+function message(file: SizeFile, limit: number): string {
+  return `${file.path}: ${file.lines} lines (main ${file.baseLines ?? 0}); limit ${limit}`;
+}
+
+// The failure message for one file, or null when it is within the hard limit: at
+// most the limit, or already over it on the base and not grown since.
 function violation(file: SizeFile): string | null {
   const { lines, baseLines } = file;
-  if (lines === null || lines <= SIZE_LIMIT) return null;
-  if (baseLines !== null && baseLines > SIZE_LIMIT && lines <= baseLines) return null;
-  return `${file.path}: ${lines} lines (main ${baseLines ?? 0}); limit ${SIZE_LIMIT}`;
+  if (lines === null || lines <= HARD_SIZE_LIMIT) return null;
+  if (baseLines !== null && baseLines > HARD_SIZE_LIMIT && lines <= baseLines) return null;
+  return message(file, HARD_SIZE_LIMIT);
 }
 
 export function sizeViolations(files: readonly SizeFile[]): string[] {
   const failures: string[] = [];
   for (const file of files) {
     if (!isSizeChecked(file.path)) continue;
-    const message = violation(file);
-    if (message !== null) failures.push(message);
+    const failure = violation(file);
+    if (failure !== null) failures.push(failure);
   }
   return failures;
+}
+
+// The warning message for one file over the soft limit and within the hard one.
+export function sizeWarnings(files: readonly SizeFile[]): string[] {
+  const warnings: string[] = [];
+  for (const file of files) {
+    if (!isSizeChecked(file.path)) continue;
+    const { lines } = file;
+    if (lines === null || lines <= SIZE_LIMIT || lines > HARD_SIZE_LIMIT) continue;
+    warnings.push(message(file, SIZE_LIMIT));
+  }
+  return warnings;
 }

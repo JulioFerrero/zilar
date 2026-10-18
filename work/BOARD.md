@@ -2084,3 +2084,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2081](T-2081-comments-chat-core-contract-protocol.md) | comments: chat-core, api-contract, protocol (-1,808) | 2026-10-18 |
 | [T-2089](T-2089-two-ai-room-join.md) | test: two-AI room fixture seeds every AI owner | 2026-10-18 |
 | [T-2083](T-2083-comments-server-agents.md) | comments: server agents (-1,276) | 2026-10-18 |
+| [T-2088](T-2088-gate-soft-size-comments.md) | gate: 400 lines warns, 800 fails; no task IDs in new comments | 2026-10-18 |
