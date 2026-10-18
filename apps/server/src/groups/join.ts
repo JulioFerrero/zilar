@@ -12,7 +12,6 @@ import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
-import { addToPublicTopics } from '../topics/public-compat';
 import { groupOwnerId } from './queries';
 
 export interface JoinPublicGroupDeps {
@@ -148,14 +147,6 @@ export async function finishJoin(
     detail: Record<string, unknown>;
   },
 ): Promise<void> {
-  try {
-    await addToPublicTopics(deps.db, input.groupId, [input.userId]);
-  } catch (error) {
-    deps.logger.warn(
-      { err: error, groupId: input.groupId, userIds: [input.userId] },
-      'could not add the newcomer to the public topics',
-    );
-  }
   await syncPublicTopicsByLink(deps, input.groupId);
   try {
     await deps.adminClient.sendDirectInvitation(input.roomLocalpart, [

@@ -37,10 +37,6 @@ export type StickerProbeError =
   | 'decode_too_large'
   | 'unsupported_layout';
 
-export function isAnimatedImage(bytes: Uint8Array): boolean {
-  return isAnimatedWebp(bytes) || isAnimatedPng(bytes);
-}
-
 export function isAnimatedWebp(bytes: Uint8Array): boolean {
   if (!isWebp(bytes) || bytes.length < 21) {
     return false;

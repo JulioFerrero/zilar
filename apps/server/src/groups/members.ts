@@ -5,7 +5,6 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { dropMemberRoles } from '../roles/service';
-import { addToPublicTopics } from '../topics/public-compat';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
@@ -127,14 +126,6 @@ export async function addGroupMembers(
       );
     } catch (error) {
       throw mapXmppError(error);
-    }
-    try {
-      await addToPublicTopics(db, input.groupId, added);
-    } catch (error) {
-      input.logger.warn(
-        { err: error, groupId: input.groupId, userIds: added },
-        'could not add the new members to the public topics',
-      );
     }
     await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   }

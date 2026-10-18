@@ -4,7 +4,7 @@
 // output is plain text for `modelText`.
 // effect-plain: pure HTML-to-text extraction; malformed input yields text, no I/O
 import { decodeHtmlEntities } from '../markup/entities';
-import { findCloseTag, nextOpenTag, stripComments, stripTags } from '../markup/scan';
+import { stripComments } from '../markup/scan';
 
 const MAX_HTML_INPUT_CHARS = 2 * 1024 * 1024;
 // Attribute regexes only ever read one bounded tag's text.
@@ -145,25 +145,4 @@ function collapseWhitespace(value: string): string {
     .map((line) => line.replace(/[ \t\r\f\v\u00a0]+/g, ' ').trim())
     .filter((line) => line.length > 0)
     .join('\n');
-}
-
-// An anchor's text and href from a search-result fragment.
-export interface AnchorParts {
-  text: string;
-  href: string | null;
-}
-
-export function anchorParts(fragment: string): AnchorParts | null {
-  const open = nextOpenTag(fragment, 'a', 0);
-  if (open === null) {
-    return null;
-  }
-  const closeAt = findCloseTag(fragment, 'a', open.end);
-  const inner = closeAt === null ? fragment.slice(open.end) : fragment.slice(open.end, closeAt);
-  const text = collapseWhitespace(decodeHtmlEntities(stripTags(inner, ' ')));
-  const href = linkHrefOf(`a ${open.attrs}`);
-  if (text.length === 0 && href === null) {
-    return null;
-  }
-  return { text, href };
 }

@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { AiComputerMode } from '@zilar/api-contract';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
@@ -137,14 +137,6 @@ export async function findOwnedAi(
   );
 }
 
-// Gateway-only, with no owner check: never use it from a route.
-export async function findAiForGateway(
-  db: ServerDatabase,
-  aiId: string,
-): Promise<GatewayAiRecord | null> {
-  return runSql(db, findGatewayAiEffect(aiId));
-}
-
 export async function getOwnedAi(
   db: ServerDatabase,
   id: string,
@@ -152,41 +144,6 @@ export async function getOwnedAi(
 ): Promise<PublicAi | null> {
   const row = await findOwnedAi(db, id, ownerId);
   return row ? toPublicAi(row) : null;
-}
-
-// One statement, so a caller inside `sql.withTransaction` reads on the
-// transaction's connection.
-export function findGatewayAiEffect(
-  aiId: string,
-): Effect.Effect<GatewayAiRecord | null, SqlError.SqlError, SqlClient.SqlClient> {
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const [row] = yield* sql<GatewayAiRecord>`SELECT
-      ais.id,
-      ais.name,
-      ais.template,
-      ais.persona,
-      ais.model,
-      ais.jid,
-      ais.status,
-      ais.provider_connection_id,
-      ais.machine_id,
-      ais.computer_mode,
-      ais.created_at,
-      ais.can_delegate,
-      ais.accepts_delegation,
-      ais.localpart,
-      ais.owner,
-      ai_limits.per_day_usd,
-      ai_limits.per_month_usd,
-      provider_connections.provider
-    FROM ais
-    INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
-    INNER JOIN provider_connections ON provider_connections.id = ais.provider_connection_id
-    WHERE ais.id = ${aiId}
-    LIMIT 1`;
-    return row ?? null;
-  });
 }
 
 // The public columns plus the identity routes must never answer with.
@@ -207,12 +164,6 @@ interface AiRecord {
   perMonthUsd: string | null;
   canDelegate: boolean;
   acceptsDelegation: boolean;
-}
-
-// The AI row plus its connection's provider, for the provider-qualified model name.
-interface GatewayAiRecord extends AiRecord {
-  provider: string;
-  owner: string;
 }
 
 type PublicAiRow = Omit<AiRecord, 'localpart'>;

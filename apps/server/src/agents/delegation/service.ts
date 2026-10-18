@@ -271,23 +271,3 @@ export async function finishDelegation(
   );
   return updated.length > 0;
 }
-
-// Only the source may cancel, and only while `working`, by the same single
-// conditional update.
-export async function cancelDelegation(
-  db: ServerDatabase,
-  input: { id: string; aiId: string },
-): Promise<boolean> {
-  const updatedAt = new Date().toISOString();
-  const updated = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`UPDATE ai_delegations
-        SET status = 'canceled', updated_at = ${updatedAt}
-        WHERE id = ${input.id} AND from_ai_id = ${input.aiId} AND status = 'working'
-        RETURNING id`;
-    }),
-  );
-  return updated.length > 0;
-}

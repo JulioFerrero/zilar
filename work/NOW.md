@@ -1072,6 +1072,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - The API layer. Waits for T-2080.
                         - New-AI flow and key-check twins. Wait for T-2077.
                         - 63 re-export-only files.
+                      - **21:35 — source 249,272 lines (from 274,479 at 19:35, −25,207).**
+                        - The comment wave is complete: 16 tasks, −23,243.
+                        - Also merged:
+                          - T-2088: gate warns over 400 and fails over 800, plus the task-ID comment check;
+                          - T-2095: that comment check diffs from the merge base;
+                          - T-2089: two-AI room test fixture (T-1990 made AI membership follow the owner);
+                          - T-2090: phone aliases, shims, `TextDecoder` (−290, emulator OK);
+                          - T-2091: dead web components (−343);
+                          - T-2092: tool JSON from Effect schemas (−175; the original pinned test passes, live with 0 errors);
+                          - T-2094: web api barrel, auth layout route, shims (−533; signed-out → `/login` same as main).
+                        - **Running:**
+                          - T-2093: shared key check;
+                          - T-2096 / T-2097 / T-2099: shared API layer for AIs, stickers and chats;
+                          - T-2100: 14 server barrels, 193 importers;
+                          - T-2101: server dead code.
+                        - **Queued:** T-2098, chat extras API (waits for a phone slot).
                       - **Lead mistake, 20:44:** a failed `cd` ran `git checkout --detach` in the main checkout. Main was restored at once, with nothing lost. Never chain `cd X && git checkout` without checking that X exists.
                       - **Next:**
                         - W3-f: locals and `finishDraftTurn`;

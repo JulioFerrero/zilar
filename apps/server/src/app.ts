@@ -23,12 +23,6 @@ export function setTestAppInviteLinks(overrides: TestInviteLinksOverrides | unde
   testInviteLinksOverrides = overrides;
 }
 
-const mountsByApp = new WeakMap<ZilarEdge, ReadonlyArray<EffectApiMount>>();
-
-export function effectMountsOf(app: ZilarEdge): ReadonlyArray<EffectApiMount> {
-  return mountsByApp.get(app) ?? [];
-}
-
 export function createApp(deps: AppDependencies): ZilarEdge {
   const { db, config, logger, auth } = deps;
   // Bind the `effect/sql` runtime once per database handle before building routes.
@@ -63,6 +57,5 @@ export function createApp(deps: AppDependencies): ZilarEdge {
   const health = healthRoutes(wiring);
 
   const edge = createEdge({ mounts, auth, config, logger, health });
-  mountsByApp.set(edge, mounts);
   return edge;
 }
