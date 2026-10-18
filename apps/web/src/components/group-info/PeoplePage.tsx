@@ -6,13 +6,14 @@ import { FieldError } from '../ais/AiPageShell';
 import { GroupAiSection } from '../panels/GroupAiSection';
 import { GroupRolesSection } from '../panels/GroupRolesSection';
 import type { RolesView } from '../panels/groupPanelOps';
+import { SectionLabel } from '../ui/card';
 
 /** A section label with its count on the right, as the topic panel draws it. */
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <div className="flex items-center justify-between px-0.5 text-[12px] font-semibold text-muted-foreground">
-      <span>{label}</span>
-      <span className="font-mono font-normal">{count}</span>
+    <div className="flex items-center justify-between px-0.5">
+      <SectionLabel>{label}</SectionLabel>
+      <span className="font-mono text-[12px] font-normal text-muted-foreground">{count}</span>
     </div>
   );
 }
@@ -108,16 +109,22 @@ export function PeoplePage({
       {/* T-0116: custom group roles — managers only. Everyone sees the chips
             next to the member names above. */}
       {isManager && (
-        <GroupRolesSection
-          groupId={info.id}
-          members={info.members.map((member) => ({
-            userId: member.userId,
-            name: member.name,
-            ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
-          }))}
-          rolesState={rolesState}
-          onReload={onReloadRoles}
-        />
+        <section className="flex flex-col gap-2">
+          <SectionLabel>Roles</SectionLabel>
+          {/* GroupRolesSection draws its own plain label; this page draws the kit one. */}
+          <div className="[&>section>h2]:hidden">
+            <GroupRolesSection
+              groupId={info.id}
+              members={info.members.map((member) => ({
+                userId: member.userId,
+                name: member.name,
+                ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+              }))}
+              rolesState={rolesState}
+              onReload={onReloadRoles}
+            />
+          </div>
+        </section>
       )}
     </>
   );

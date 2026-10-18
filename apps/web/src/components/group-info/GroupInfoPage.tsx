@@ -28,6 +28,7 @@ export function GroupInfoPage({
         variant="sub"
         title={title}
         onBack={onBack}
+        backLabel={`Back to ${noun} info`}
         right={
           <IconButton aria-label={`Close ${noun} info`} onClick={onClose}>
             <X className="size-4" aria-hidden="true" />

@@ -5,6 +5,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { FieldError } from '../ais/AiPageShell';
 import { EntityAvatar } from '../EntityAvatar';
 import { failureText } from '../panels/channelPanelOps';
+import { SectionLabel } from '../ui/card';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
 import { SearchField } from '../ui/search-field';
@@ -103,7 +104,7 @@ export function ChannelSubscribersPage({
         onChange={(event) => setQuery(event.target.value)}
       />
 
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Admins</h2>
+      <SectionLabel>Admins</SectionLabel>
       <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
         {admins.map((member) => (
           <SubscriberRow
@@ -117,7 +118,7 @@ export function ChannelSubscribersPage({
         ))}
       </div>
 
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Subscribers</h2>
+      <SectionLabel>Subscribers</SectionLabel>
       <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
         {subscribers.map((member) => (
           <SubscriberRow

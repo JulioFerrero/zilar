@@ -4,6 +4,7 @@ import { FieldError } from '../ais/AiPageShell';
 import { EntityAvatar } from '../EntityAvatar';
 import { GroupAiRow } from '../panels/ChannelAdminsSection';
 import { Button } from '../ui/button';
+import { SectionLabel } from '../ui/card';
 
 /**
  * The channel's AIs page (T-1519): today's AIs section, moved behind a subpage.
@@ -45,7 +46,7 @@ export function ChannelAisPage({
 }) {
   return (
     <section aria-label="AIs" className="flex flex-col gap-1">
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs</h2>
+      <SectionLabel>AIs</SectionLabel>
       {ais.length === 0 && (
         <p className="px-2 text-[13px] text-muted-foreground">No AIs post in this channel yet.</p>
       )}

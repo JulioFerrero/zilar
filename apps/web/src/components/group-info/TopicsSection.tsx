@@ -9,6 +9,7 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NewTopicDialog } from '../NewTopicDialog';
 import { PanelFailure } from '../panels/groupPanelOps';
 import { Button } from '../ui/button';
+import { SectionLabel } from '../ui/card';
 import { AvatarStack } from './AvatarStack';
 import type { AvatarStackEntry } from './AvatarStack';
 
@@ -147,7 +148,7 @@ export function TopicsList({
   return (
     <>
       <section className="flex flex-col gap-2">
-        <span className="px-0.5 text-[12px] font-semibold text-muted-foreground">Your topics</span>
+        <SectionLabel>Your topics</SectionLabel>
         <nav
           aria-label="Your topics"
           className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface"
@@ -171,9 +172,7 @@ export function TopicsList({
 
       {otherTopics.length > 0 && (
         <section className="flex flex-col gap-2">
-          <span className="px-0.5 text-[12px] font-semibold text-muted-foreground">
-            Other topics
-          </span>
+          <SectionLabel>Other topics</SectionLabel>
           <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
             {otherTopics.map((chat) => {
               const join = renderJoin?.(chat);
