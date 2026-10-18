@@ -3,7 +3,11 @@
 // anything that landed meanwhile survives.
 import { Cause, Effect, Exit } from 'effect';
 import { applyChatPrefs, mutedUntilFor, type MuteDurationId } from '@zilar/chat-core';
-import { updatePref as updatePrefCore, type PrefsStore } from '@zilar/client-core/store';
+import {
+  updatePref as updatePrefCore,
+  optimisticPrefRow,
+  type PrefsStore,
+} from '@zilar/client-core/store';
 import type { ChatBackgroundChoice, ChatPref, PutChatPrefInput } from '@/lib/api';
 import { syncBadgeInBackground } from './badge';
 import type { StoreCtx } from './ctx';
@@ -11,40 +15,23 @@ import { Ports } from './ports';
 import { saveChatList } from './reads';
 import { fromPromise, prefsByJid } from './util';
 
-const keyOf = (chatId: string): string => chatId.toLowerCase();
+const patchedOrSaved = <T>(patch: T | undefined, saved: T | null | undefined): T | null =>
+  patch !== undefined ? patch : (saved ?? null);
 
-// The optimistic row for a partial write: the patch merged over the saved row, so kept fields
-// never flash off during the PUT flight.
+// The optimistic row for a partial write, with the web-only background columns merged over
+// the saved row too, so they never flash off during the PUT flight.
 function optimisticRow(
   chatId: string,
   saved: readonly ChatPref[],
   patch: PutChatPrefInput,
   nowDate: Date,
 ): ChatPref {
-  const previous = saved.find((row) => keyOf(row.chatJid) === keyOf(chatId));
-  return {
-    chatJid: chatId,
-    mutedUntil: patch.mutedUntil !== undefined ? patch.mutedUntil : (previous?.mutedUntil ?? null),
-    archived: patch.archived !== undefined ? patch.archived : (previous?.archived ?? false),
-    pinnedAt:
-      patch.pinned !== undefined
-        ? patch.pinned
-          ? (previous?.pinnedAt ?? nowDate.toISOString())
-          : null
-        : (previous?.pinnedAt ?? null),
-    unreadMark: patch.unreadMark !== undefined ? patch.unreadMark : (previous?.unreadMark ?? false),
-    backgroundPreset:
-      patch.backgroundPreset !== undefined
-        ? patch.backgroundPreset
-        : (previous?.backgroundPreset ?? null),
-    backgroundImageId:
-      patch.backgroundImageId !== undefined
-        ? patch.backgroundImageId
-        : (previous?.backgroundImageId ?? null),
-    backgroundDim:
-      patch.backgroundDim !== undefined ? patch.backgroundDim : (previous?.backgroundDim ?? null),
-    updatedAt: nowDate.toISOString(),
-  };
+  return optimisticPrefRow(chatId, saved, patch, nowDate, (row, previous) => ({
+    ...row,
+    backgroundPreset: patchedOrSaved(patch.backgroundPreset, previous?.backgroundPreset),
+    backgroundImageId: patchedOrSaved(patch.backgroundImageId, previous?.backgroundImageId),
+    backgroundDim: patchedOrSaved(patch.backgroundDim, previous?.backgroundDim),
+  }));
 }
 
 function prefsStore(ctx: StoreCtx): PrefsStore<PutChatPrefInput, ChatPref> {

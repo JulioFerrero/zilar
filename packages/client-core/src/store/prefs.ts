@@ -9,6 +9,11 @@ export interface PrefsApi<P, R extends ChatPrefRow> {
   putChatPref(chatJid: string, input: P): Promise<R | null>;
 }
 
+export type PrefPatch = {
+  [K in 'mutedUntil' | 'archived' | 'unreadMark']?: ChatPrefRow[K] | undefined;
+} & { pinned?: boolean | undefined };
+export type OptimisticPrefRow = ChatPrefRow & { updatedAt: string };
+
 export interface PrefsStore<P, R extends ChatPrefRow> {
   savedRows(): readonly R[];
   setSavedRows(rows: readonly R[]): void;
@@ -26,6 +31,29 @@ export function withPrefRow<R extends ChatPrefRow>(
 ): R[] {
   const rest = rows.filter((entry) => !sameChat(entry, chatJid));
   return row === null ? rest : [...rest, row];
+}
+
+// Merges a partial patch over the saved row so kept fields never flash off; extend adds extras.
+export function optimisticPrefRow<R extends ChatPrefRow>(
+  chatJid: string,
+  saved: readonly R[],
+  patch: PrefPatch,
+  now: Date,
+  extend?: (row: OptimisticPrefRow, previous: R | undefined) => OptimisticPrefRow,
+): OptimisticPrefRow {
+  const previous = saved.find((row) => sameChat(row, chatJid));
+  const row: OptimisticPrefRow = {
+    chatJid,
+    mutedUntil: patch.mutedUntil !== undefined ? patch.mutedUntil : (previous?.mutedUntil ?? null),
+    archived: patch.archived !== undefined ? patch.archived : (previous?.archived ?? false),
+    pinnedAt:
+      patch.pinned === false
+        ? null
+        : (previous?.pinnedAt ?? (patch.pinned ? now.toISOString() : null)),
+    unreadMark: patch.unreadMark !== undefined ? patch.unreadMark : (previous?.unreadMark ?? false),
+    updatedAt: now.toISOString(),
+  };
+  return extend === undefined ? row : extend(row, previous);
 }
 
 /**

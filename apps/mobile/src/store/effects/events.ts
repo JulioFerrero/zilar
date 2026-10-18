@@ -5,6 +5,7 @@ import {
   deleteForEveryone,
   deleteForMe as deleteForMeCore,
   editMessage,
+  optimisticPrefRow,
   react,
   recordRead,
   setFolders as setFoldersCore,
@@ -13,7 +14,7 @@ import {
 } from '@zilar/client-core/store';
 
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
-import { applyChatPrefs, optimisticPrefRow } from '../../lib/chat-prefs';
+import { applyChatPrefs } from '../../lib/chat-prefs';
 import type { ChatPref, PutChatPrefInput } from '../../lib/chat-prefs-api';
 import type { ChatStoreState } from '../types';
 import { lift, type StoreCtx } from './runtime';
@@ -107,8 +108,7 @@ export function makeEvents(ctx: StoreCtx): Events {
     },
     paint: (rows) =>
       set((state) => ({ chats: applyChatPrefs(state.chats, [...rows], now().getTime()) })),
-    optimisticRow: (chatId, saved, patch, nowDate) =>
-      optimisticPrefRow(chatId, saved, patch, nowDate),
+    optimisticRow: optimisticPrefRow,
   };
 
   const actions: EventActions = {
