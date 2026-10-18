@@ -1985,3 +1985,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1981](T-1981-auth-builtin-routes-hardening.md) | turn off two unused auth routes; export skips session cache | 2026-10-18 |
 | [T-1986](T-1986-claude-audit-ai-computers.md) | AI computers and tools audit (findings private) | 2026-10-18 |
 | [T-1983](T-1983-client-ip-chain.md) | real client IP through the proxy chain for limits and sessions | 2026-10-18 |
+| [T-1985](T-1985-claude-audit-permissions.md) | permissions and spend audit (findings private) | 2026-10-18 |
