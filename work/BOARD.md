@@ -1950,3 +1950,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1940](T-1940-ci-coolify-deploy.md) | CI asks Coolify to deploy server and web after main images | 2026-10-18 |
 | [T-1939](T-1939-core-layout-rehearsal-fixes.md) | core layout fixes from the split rehearsal | 2026-10-18 |
 | [T-1941](T-1941-drop-ci-coolify-deploy.md) | drop the CI Coolify deploy job (no Coolify key in GitHub) | 2026-10-18 |
+| [T-1943](T-1943-compose-fast-start.md) | faster compose start (start_interval, web needs server started) | 2026-10-18 |

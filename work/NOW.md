@@ -815,7 +815,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - T-1936: a dead Recent sticker (file 404) showed a broken image; it now drops out, and pack thumbnails fall back to their emoji (web and phone).
                   - T-1937: the web composer floats over the list, with no solid band. The phone twin isn't specced yet (keyboard risk); web first.
                   - Both merged and held. **Julio: "wait for more reports"** before pushing.
-                - **Zero-downtime (Julio OK'd the re-audit and rehearsal, 10-18):**
+                - **Models (10-18):**
+                  - OpenCode's free gateway refuses every free model ("Detect Abuse Traffic"), and the Go key has expired (Go was already paused until 10-27).
+                  - So workers run on the DeepSeek API and reviews on paid Muse. The autopilot was restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor`.
+                  - T-1942 (free-model guard: a 6 h pause on refusal, at most one free session) is running, on an explicit `deepseek/deepseek-flash`.
+                  - **Beam A/B test (done 10-18):** Julio renewed the Go key, and `opencode-go/beam-free` works; free `beam-free` is still refused.
+                    - All 8 re-runs (T-1950–T-1957) passed the gate, and their reviews came back clean with 0 fix rounds (DeepSeek's originals: 1 needed 2 rounds).
+                    - Worker time averaged 188 s for Beam vs 170 s for DeepSeek; Beam was faster on 4 of 8.
+                    - The diffs take the same approach at a similar size, and 2 are identical.
+                    - Beam's reviewer missed 2 known issues that are in Beam's code too: the T-1931 queue stall and the T-1936 hover preview. So the review counts flatter Beam.
+                    - **Verdict: equal, not better.** The branches are kept (`task/T-195x-ab-beam-*`) and the worktrees removed.
+                  - **Go pause:** `goPausedUntil: 2026-10-27` is still set in `~/.zilar-lead/config.json`, so the chain skips Go. Clearing it is Julio's call.
+                - **Deploy downtime (10-18): Julio chose "only fast stop for everyone"** (no split, no Coolify key; Coolify v5 may bring Compose rolling updates).
+                  - T-1941 dropped the CI key job.
+                  - Last live deploy: 44 s stopping old containers and 8 s starting.
+                  - **Scratch Service from the template (10-18, deleted after):** down 23 s, because each service waited about 5.6 s for the previous one's health check; every container stopped in under 4 s.
+                  - **T-1943 (merged, held):** with `start_interval: 1s` and web → server `service_started`, the scratch went down only 7 s.
+                  - **Next:** on the next live push, run `docker events` for `qccydpow4rw0zcel9yisk44s` on the VPS to split the 44 s per container, then spec the stop fix.
+                - **Zero-downtime split (stopped by Julio 10-18; kept for reference):**
                   - T-1938 (two-servers re-audit) is running.
                   - The split rehearsal is done and deleted. Both rolling deploys lost 0 API requests, and the leader lock hands over cleanly.
                   - 5 must-fixes before the cutover, listed in `docs/deploy/zero-downtime-plan.md` § Split rehearsal; the main one is that `postgres` on the coolify network is Coolify's own database.

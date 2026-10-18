@@ -277,7 +277,8 @@ services:
     restart: unless-stopped
     depends_on:
       server:
-        condition: service_healthy
+        # Web serves the app on its own and only forwards /api, so it starts with the server instead of waiting for it to be healthy (T-1943).
+        condition: service_started
     environment:
       # The one public domain of the install. The web container forwards /api,
       # /xmpp-ws and /upload to the server and ejabberd (apps/web/Caddyfile).
