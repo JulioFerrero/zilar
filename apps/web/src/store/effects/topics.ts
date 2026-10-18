@@ -26,9 +26,12 @@ export const refreshGeneralTopic = (
 ): Effect.Effect<string | undefined, never, Ports> =>
   Effect.gen(function* () {
     yield* refreshChats(ctx);
-    return ctx
-      .get()
-      .chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id;
+    const chats = ctx.get().chats;
+    // A channel's row has no `groupId`/`topic`; `ctx.groupIds` maps its id to the group.
+    return (
+      chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id ??
+      chats.find((chat) => ctx.groupIds.get(chat.id) === groupId && chat.topic === undefined)?.id
+    );
   });
 
 export const createTopic = (
