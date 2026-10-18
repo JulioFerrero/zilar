@@ -5,7 +5,7 @@ import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
-import { parseBlockId } from './tree';
+import { parseBlockId, type Block } from './tree';
 import {
   blockKey,
   formatRow,
@@ -71,20 +71,13 @@ export async function recallMemory(
   );
 }
 
-// Open one summary block into its two halves, each a node summary or its raw
-// rows. An id that is malformed, below the floor or past the log is `null`.
-export async function zoomMemory(
+// Each half is its node summary when built, otherwise its non-deleted rows.
+export async function blockLines(
   db: ServerDatabase,
   aiId: string,
   chatKey: string,
-  blockId: string,
-): Promise<string[] | null> {
-  const block = parseBlockId(blockId);
-  if (block === null) return null;
-
-  const { total, floor } = await memoryRange(db, aiId, chatKey);
-  if (block.lo < floor || block.hi > total) return null;
-
+  block: Block,
+): Promise<string[]> {
   const nodes = await loadNodeMap(db, aiId, chatKey);
   const lines: string[] = [];
   for (const half of halves(block)) {
@@ -99,4 +92,21 @@ export async function zoomMemory(
     }
   }
   return lines;
+}
+
+// Open one summary block into its two halves, each a node summary or its raw
+// rows. An id that is malformed, below the floor or past the log is `null`.
+export async function zoomMemory(
+  db: ServerDatabase,
+  aiId: string,
+  chatKey: string,
+  blockId: string,
+): Promise<string[] | null> {
+  const block = parseBlockId(blockId);
+  if (block === null) return null;
+
+  const { total, floor } = await memoryRange(db, aiId, chatKey);
+  if (block.lo < floor || block.hi > total) return null;
+
+  return blockLines(db, aiId, chatKey, block);
 }

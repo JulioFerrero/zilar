@@ -2067,3 +2067,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2062](T-2062-server-clones-three.md) | server: one turn start, JPEG marker read and pack slot | 2026-10-18 |
 | [T-2066](T-2066-shared-twin-logic.md) | shared steps view, invite code and computer choices | 2026-10-18 |
 | [T-2067](T-2067-shared-handle-errors.md) | one handle-save wording; phone shows next-change date | 2026-10-18 |
+| [T-2068](T-2068-server-clones-four.md) | server: one service-error wrap, join tail, add tail, file read | 2026-10-18 |

@@ -13,6 +13,26 @@ export interface AvatarFile {
   size: number;
 }
 
+export async function readStoredFile(
+  storageDir: string,
+  storageKey: string,
+): Promise<Uint8Array | null> {
+  // The path is built from the stored key only (a `<uuid>.<ext>` written at
+  // upload); the request id never touches the filesystem, so `..` or a
+  // crafted name cannot escape the storage directory. Both sides are
+  // resolved, so a relative `AVATAR_STORAGE_DIR` (or the sticker one) still
+  // compares equal to its own join.
+  const dir = resolveStorageDir(storageDir);
+  const filePath = join(dir, storageKey);
+  if (dirname(filePath) !== dir) return null;
+  const { readFile } = await import('node:fs/promises');
+  try {
+    return new Uint8Array(await readFile(filePath));
+  } catch {
+    return null;
+  }
+}
+
 export async function readAvatarFile(
   deps: AvatarsServiceDeps,
   avatarId: string,
@@ -49,21 +69,7 @@ export async function readAvatarFile(
       return null;
     }
   }
-  // The path is built from the stored key only (a `<uuid>.<ext>` written at
-  // upload); the request id never touches the filesystem, so `..` or a
-  // crafted name cannot escape the storage directory. Both sides are
-  // resolved, so a relative `AVATAR_STORAGE_DIR` still compares equal to
-  // its own join.
-  const storageDir = resolveStorageDir(deps.storageDir);
-  const filePath = join(storageDir, row.storageKey);
-  if (dirname(filePath) !== storageDir) {
-    return null;
-  }
-  const { readFile } = await import('node:fs/promises');
-  try {
-    const data = await readFile(filePath);
-    return { bytes: new Uint8Array(data), mime: row.mime, size: row.bytes ?? data.byteLength };
-  } catch {
-    return null;
-  }
+  const bytes = await readStoredFile(deps.storageDir, row.storageKey);
+  if (!bytes) return null;
+  return { bytes, mime: row.mime, size: row.bytes ?? bytes.byteLength };
 }

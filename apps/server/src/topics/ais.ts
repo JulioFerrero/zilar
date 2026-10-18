@@ -11,6 +11,7 @@ import { emitTopicAi } from '../groups/events';
 import { deleteRoutinesForAiInTopic } from '../routines/service';
 import { deleteToolsForAiInTopicEffect } from '../tools/service';
 import { canManageTopic, canSeeTopic, getTopic, toMissingTopic, type TopicRow } from './access';
+import { finishTopicAdd } from './members';
 import { syncTopicRoom } from './rooms';
 import { toAuditEntry, type TopicServiceDeps } from './schemas';
 
@@ -90,20 +91,9 @@ export async function addTopicAi(
         ON CONFLICT DO NOTHING`;
     }),
   );
-  const updated = await getTopic(deps.db, topic.id);
-  if (!updated) {
-    throw toMissingTopic();
-  }
-  try {
-    await syncTopicRoom(deps, updated);
-  } catch (error) {
-    throw error instanceof HttpError ? error : xmppUnavailable();
-  }
-  if (deps.audit) {
-    await deps.audit.record(
-      toAuditEntry(updated, 'topic.ai_added', input.actorId, { aiId: ai.id }),
-    );
-  }
+  const updated = await finishTopicAdd(deps, topic.id, input.actorId, 'topic.ai_added', {
+    aiId: ai.id,
+  });
   emitTopicAi({ type: 'ai-added', topicId: topic.id, aiId: input.aiId });
   return updated;
 }

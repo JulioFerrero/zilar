@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpError } from '../errors';
+import { withServiceErrors as withServiceErrorsMapped } from '../routines/status-errors';
 import type {
   PublicTool,
   PublicToolRun,
@@ -166,12 +167,7 @@ function mapServiceError(error: unknown): unknown {
   return error;
 }
 
-// Service rejections travel as defects (`Effect.promise`), which `try/catch`
-// inside `Effect.gen` cannot see: map them with `catchDefect` and re-die so
-// the envelope renders the mapped answer. Unknown rejections pass through
-// unchanged and stay a 500, exactly like the old route's unmapped throw.
-export function withServiceErrors<A>(promise: () => Promise<A>): Effect.Effect<A> {
-  return Effect.promise(promise).pipe(
-    Effect.catchDefect((defect) => Effect.die(mapServiceError(defect))),
-  );
-}
+// The shared wrapper with the tools mapper: same transport rules as the
+// routines, only the allowed codes differ.
+export const withServiceErrors = <A>(promise: () => Promise<A>): Effect.Effect<A> =>
+  withServiceErrorsMapped(promise, mapServiceError);

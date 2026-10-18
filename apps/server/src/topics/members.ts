@@ -123,6 +123,32 @@ export async function assertMembersAreGroupMembers(
   }
 }
 
+// The tail shared by the topic adds: reload the row, sync the room (a non-
+// HTTP failure becomes the fixed 503), then audit with the caller's action and
+// detail. Returns the reloaded row for the caller's event and response.
+export async function finishTopicAdd(
+  deps: TopicServiceDeps,
+  topicId: string,
+  actorId: string,
+  action: string,
+  extra: Record<string, unknown> = {},
+  record = true,
+): Promise<TopicRow> {
+  const updated = await getTopic(deps.db, topicId);
+  if (!updated) {
+    throw toMissingTopic();
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError ? error : xmppUnavailable();
+  }
+  if (record && deps.audit) {
+    await deps.audit.record(toAuditEntry(updated, action, actorId, extra));
+  }
+  return updated;
+}
+
 export async function addTopicMember(
   deps: TopicServiceDeps,
   topicId: string,
@@ -156,21 +182,9 @@ export async function addTopicMember(
         ON CONFLICT DO NOTHING`;
     }),
   );
-  const updated = await getTopic(deps.db, topic.id);
-  if (!updated) {
-    throw toMissingTopic();
-  }
-  try {
-    await syncTopicRoom(deps, updated);
-  } catch (error) {
-    throw error instanceof HttpError ? error : xmppUnavailable();
-  }
-  if (deps.audit) {
-    await deps.audit.record(
-      toAuditEntry(updated, 'topic.member_added', actorId, { subjectUserId: targetUserId }),
-    );
-  }
-  return updated;
+  return finishTopicAdd(deps, topic.id, actorId, 'topic.member_added', {
+    subjectUserId: targetUserId,
+  });
 }
 
 // T-1760: a group member joins a public topic themselves. A private topic
@@ -202,21 +216,14 @@ export async function joinTopic(
         RETURNING user_id`;
     }),
   );
-  const updated = await getTopic(deps.db, topic.id);
-  if (!updated) {
-    throw toMissingTopic();
-  }
-  try {
-    await syncTopicRoom(deps, updated);
-  } catch (error) {
-    throw error instanceof HttpError ? error : xmppUnavailable();
-  }
-  if (inserted.length > 0 && deps.audit) {
-    await deps.audit.record(
-      toAuditEntry(updated, 'topic.member_added', actorId, { subjectUserId: actorId }),
-    );
-  }
-  return updated;
+  return finishTopicAdd(
+    deps,
+    topic.id,
+    actorId,
+    'topic.member_added',
+    { subjectUserId: actorId },
+    inserted.length > 0,
+  );
 }
 
 export async function removeTopicMember(

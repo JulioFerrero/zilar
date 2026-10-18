@@ -8,8 +8,8 @@ import { HttpError, xmppUnavailable } from '../errors';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
 import { isBanned, isBannedIn } from '../groups/bans';
 import { groupOwnerId } from '../groups/queries';
+import { finishJoin } from '../groups/join';
 import type { TopicRow } from '../topics/access';
-import { addToPublicTopics } from '../topics/public-compat';
 import { syncTopicRoom } from '../topics/rooms';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { countGroupMembers, findLinkRow, isGroupMember, linkIsUsable, serviceNow } from './queries';
@@ -173,45 +173,14 @@ export async function joinByInviteLink(
   if (!joined) {
     return { groupId: link.groupId, alreadyMember: true };
   }
-  // T-1762: the newcomer joins every existing public topic before the sync
-  // reads the room members. Best effort, like the sync below: the membership
-  // is already committed, so a failure is logged (ids only) and never thrown
-  // (throwing would fail the join while the user is already a member, and the
-  // retry stops at the in-transaction re-check above, so it could never be
-  // repaired).
-  try {
-    await addToPublicTopics(deps.db, link.groupId, [userId]);
-  } catch (error) {
-    deps.logger.warn(
-      { err: error, groupId: link.groupId, userIds: [userId] },
-      'could not add the newcomer to the public topics',
-    );
-  }
-  await syncPublicTopicsByLink(deps, link.groupId);
-  try {
-    await deps.adminClient.sendDirectInvitation(group.roomLocalpart, [
-      jidFor(localpartFor(userId), deps.domain),
-    ]);
-  } catch (error) {
-    deps.logger.warn(
-      { err: error, roomLocalpart: group.roomLocalpart, members: 1 },
-      'could not send the group invitations',
-    );
-  }
-  if (deps.audit) {
-    await deps.audit.record({
-      actorUserId: userId,
-      aiId: null,
-      groupId: link.groupId,
-      action: 'group.joined_by_link',
-      subjectId: link.id,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { linkId: link.id, hint: link.tokenHint },
-    });
-  }
+  await finishJoin(deps, {
+    userId,
+    groupId: link.groupId,
+    roomLocalpart: group.roomLocalpart,
+    action: 'group.joined_by_link',
+    subjectId: link.id,
+    detail: { linkId: link.id, hint: link.tokenHint },
+  });
   return { groupId: link.groupId, alreadyMember: false };
 }
 
@@ -266,14 +235,10 @@ function claimLinkUse(
   });
 }
 
-// The post-commit half of a link join: every public topic room gains the
-// newcomer, then the newcomer is invited to the group room. Link joins
-// ignore the contacts rule on purpose: the link is the introduction. Topic
-// sync is best effort after the commit, like the group flows: a failure is
-// logged with the group id (never a topic name), never thrown.
-// T-0164: shared with the public-group join below (same shape, no link
-// claim and no invitation — the XMPP room affiliation plus the direct
-// invitation below still happen, since the room must learn the newcomer).
+// Every existing public topic room gains the newcomer. Best effort after the
+// commit, like the other group flows: a failure is logged with the group id
+// (never a topic name), never thrown. Link joins ignore the contacts rule on
+// purpose: the link is the introduction.
 export async function syncPublicTopicsByLink(
   deps: InviteLinkServiceDeps,
   groupId: string,

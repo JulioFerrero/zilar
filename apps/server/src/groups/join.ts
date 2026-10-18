@@ -148,45 +148,63 @@ export async function joinPublicGroup(
   if (!joined) {
     return { groupId, alreadyMember: true };
   }
-  // T-1762: the newcomer joins every existing public topic before the sync
-  // reads the room members. Best effort, like the sync below: the membership
-  // is already committed, so a failure is logged (ids only) and never thrown
-  // (throwing would fail the join while the user is already a member, and the
-  // retry stops at the `existing` check above, so it could never be repaired).
+  await finishJoin(linkDeps, {
+    userId,
+    groupId,
+    roomLocalpart: group.roomLocalpart,
+    action: 'group.joined_public',
+    subjectId: groupId,
+    detail: { groupId },
+  });
+  return { groupId, alreadyMember: false };
+}
+
+// The post-commit half of a join, shared by the public and link flows: public
+// topics, the topic rooms, the group invitation, then the audit entry. Each
+// step is best effort after the membership commit, so a failure is logged with
+// ids only and never thrown (a retry would stop at the membership re-check).
+export async function finishJoin(
+  deps: InviteLinkServiceDeps,
+  input: {
+    userId: string;
+    groupId: string;
+    roomLocalpart: string;
+    action: string;
+    subjectId: string;
+    detail: Record<string, unknown>;
+  },
+): Promise<void> {
   try {
-    await addToPublicTopics(deps.db, groupId, [userId]);
+    await addToPublicTopics(deps.db, input.groupId, [input.userId]);
   } catch (error) {
     deps.logger.warn(
-      { err: error, groupId, userIds: [userId] },
+      { err: error, groupId: input.groupId, userIds: [input.userId] },
       'could not add the newcomer to the public topics',
     );
   }
-  await syncPublicTopicsByLink(linkDeps, groupId);
+  await syncPublicTopicsByLink(deps, input.groupId);
   try {
-    await deps.adminClient.sendDirectInvitation(group.roomLocalpart, [
-      jidFor(localpartFor(userId), deps.domain),
+    await deps.adminClient.sendDirectInvitation(input.roomLocalpart, [
+      jidFor(localpartFor(input.userId), deps.domain),
     ]);
   } catch (error) {
     deps.logger.warn(
-      { err: error, roomLocalpart: group.roomLocalpart, members: 1 },
+      { err: error, roomLocalpart: input.roomLocalpart, members: 1 },
       'could not send the group invitations',
     );
   }
-  if (deps.audit) {
-    await deps.audit.record({
-      actorUserId: userId,
-      aiId: null,
-      groupId,
-      action: 'group.joined_public',
-      subjectId: groupId,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { groupId },
-    });
-  }
-  return { groupId, alreadyMember: false };
+  await deps.audit?.record({
+    actorUserId: input.userId,
+    aiId: null,
+    groupId: input.groupId,
+    action: input.action,
+    subjectId: input.subjectId,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: input.detail,
+  });
 }
 
 // The one cap rule, used by the pre-check and the transaction alike:

@@ -22,8 +22,9 @@ function mapServiceError(error: unknown): unknown {
 // inside `Effect.gen` cannot see: map them with `catchDefect` and re-die so
 // the envelope renders the mapped answer. Unknown rejections pass through
 // unchanged and stay a 500, exactly like the old route's unmapped throw.
-export function withServiceErrors<A>(promise: () => Promise<A>): Effect.Effect<A> {
-  return Effect.promise(promise).pipe(
-    Effect.catchDefect((defect) => Effect.die(mapServiceError(defect))),
-  );
+export function withServiceErrors<A>(
+  promise: () => Promise<A>,
+  map: (error: unknown) => unknown = mapServiceError,
+): Effect.Effect<A> {
+  return Effect.promise(promise).pipe(Effect.catchDefect((defect) => Effect.die(map(defect))));
 }

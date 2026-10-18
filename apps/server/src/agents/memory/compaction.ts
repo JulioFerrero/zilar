@@ -6,7 +6,8 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { MEMORY_LINE_MAX, MEMORY_MIN_BLOCK, pending, type Block } from './tree';
-import { blockKey, formatRow, halves, loadNodeMap, loadRows, memoryRange } from './mirror';
+import { blockKey, formatRow, loadNodeMap, loadRows, memoryRange } from './mirror';
+import { blockLines } from './recall';
 
 // The blocks that can be summarised now, smallest first, only above the floor
 // and never past `end` (messages still in the window have no tree yet).
@@ -37,20 +38,7 @@ export async function compactionInput(
     return rows.filter((row) => !row.deleted).map(formatRow);
   }
 
-  const nodes = await loadNodeMap(db, aiId, chatKey);
-  const lines: string[] = [];
-  for (const half of halves(block)) {
-    const summary = nodes.get(blockKey(half));
-    if (summary !== undefined) {
-      lines.push(`#${half.lo}-${half.hi - 1} ${summary}`);
-      continue;
-    }
-    const rows = await loadRows(db, aiId, chatKey, half);
-    for (const row of rows) {
-      if (!row.deleted) lines.push(formatRow(row));
-    }
-  }
-  return lines;
+  return blockLines(db, aiId, chatKey, block);
 }
 
 // Store one node summary, cut to one line. The cut never leaves a lone high

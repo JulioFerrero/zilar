@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { readStoredFile } from '../avatars/read';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import {
@@ -317,21 +318,7 @@ export async function readStickerFile(
   if (!row) {
     return null;
   }
-  // The path is built from the stored key only (a `<uuid>.<ext>` written at
-  // upload); the request id never touches the filesystem, so `..` or a
-  // crafted name cannot escape the storage directory. Both sides are
-  // resolved, so a relative `STICKER_STORAGE_DIR` (e.g. `./data/stickers`)
-  // still compares equal to its own join.
-  const storageDir = resolveStorageDir(deps.storageDir);
-  const filePath = join(storageDir, row.storageKey);
-  if (dirname(filePath) !== storageDir) {
-    return null;
-  }
-  const { readFile } = await import('node:fs/promises');
-  try {
-    const data = await readFile(filePath);
-    return { bytes: new Uint8Array(data), mime: row.mime, size: row.bytes };
-  } catch {
-    return null;
-  }
+  const bytes = await readStoredFile(deps.storageDir, row.storageKey);
+  if (!bytes) return null;
+  return { bytes, mime: row.mime, size: row.bytes };
 }
