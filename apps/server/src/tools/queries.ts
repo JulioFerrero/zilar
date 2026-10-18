@@ -220,6 +220,9 @@ export function enforceToolLimit(
   topicId: string | null,
 ): Effect.Effect<void, SqlError.SqlError | ToolServiceError> {
   return Effect.gen(function* () {
+    // T-1995: the count and the insert share one transaction, so the cap is
+    // read under a lock keyed on the AI and topic.
+    yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`tools:${aiId}:${topicId ?? ''}`}))`;
     const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
     const [row] = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ai_tools
       WHERE ai_id = ${aiId} AND ${topic} AND deleted_at IS NULL`;

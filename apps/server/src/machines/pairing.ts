@@ -11,7 +11,6 @@ import {
   normalizePairingCode,
   PAIRING_CODE_TTL_MS,
 } from './codes';
-import { countMachines, countPendingMachines } from './machines';
 import {
   MachineServiceError,
   MAX_MACHINES_PER_USER,
@@ -41,38 +40,50 @@ export async function createPairingCode(
   ownerUserId: string,
   now: Date,
 ): Promise<{ code: string; expiresAt: Date }> {
-  const active = await countActivePairingCodes(db, ownerUserId, now);
-  if (active >= MAX_PAIRING_CODES_PER_USER) {
-    throw new MachineServiceError(
-      'pairing_code_limit',
-      `At most ${MAX_PAIRING_CODES_PER_USER} unused pairing codes per user`,
-    );
-  }
   const expiresAt = new Date(now.getTime() + PAIRING_CODE_TTL_MS);
-  // A hash collision resolves to a fresh code; with 64 bits of entropy it
-  // will not happen, but the unique constraint makes a retry mandatory.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const code = generatePairingCode();
-    const normalized = normalizePairingCode(code);
-    if (normalized === null) {
-      throw new Error('Generated an invalid pairing code');
-    }
-    const [row] = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<MachinePairingCodeRow>`INSERT INTO machine_pairing_codes
-            (id, owner_user_id, code_hash, expires_at)
-          VALUES (${randomUUID()}, ${ownerUserId}, ${hashPairingCode(normalized)}, ${expiresAt})
-          ON CONFLICT DO NOTHING
-          RETURNING *`;
-      }),
-    );
-    if (row) {
-      return { code, expiresAt };
-    }
-  }
-  throw new Error('Could not generate a unique pairing code');
+  // T-1995: the count and the insert share one transaction under a per-owner
+  // lock, so parallel requests cannot both slip under the cap.
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'machines:' + ownerUserId}))`;
+          const [active] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+            FROM machine_pairing_codes
+            WHERE owner_user_id = ${ownerUserId} AND used_at IS NULL AND expires_at > ${now}`;
+          if (Number(active?.total ?? 0) >= MAX_PAIRING_CODES_PER_USER) {
+            return yield* Effect.fail(
+              new MachineServiceError(
+                'pairing_code_limit',
+                `At most ${MAX_PAIRING_CODES_PER_USER} unused pairing codes per user`,
+              ),
+            );
+          }
+          // A hash collision resolves to a fresh code; with 64 bits of entropy
+          // it will not happen, but the unique constraint makes a retry
+          // mandatory.
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const code = generatePairingCode();
+            const normalized = normalizePairingCode(code);
+            if (normalized === null) {
+              return yield* Effect.die(new Error('Generated an invalid pairing code'));
+            }
+            const [row] = yield* sql<MachinePairingCodeRow>`INSERT INTO machine_pairing_codes
+                (id, owner_user_id, code_hash, expires_at)
+              VALUES (${randomUUID()}, ${ownerUserId}, ${hashPairingCode(normalized)}, ${expiresAt})
+              ON CONFLICT DO NOTHING
+              RETURNING *`;
+            if (row) {
+              return { code, expiresAt };
+            }
+          }
+          return yield* Effect.die(new Error('Could not generate a unique pairing code'));
+        }),
+      );
+    }),
+  );
 }
 
 // Atomically consumes a code: marks it used only when it is still unused and
@@ -103,45 +114,55 @@ export interface PairMachineInput {
   capabilities: Record<string, unknown>;
 }
 
-// Inserts the machine as `pending`. Quotas are checked here so concurrent
-// pairs cannot both slip under the caps; a duplicate public key — including
-// one on a revoked machine, whose row is kept — fails with `key_in_use`.
+// Inserts the machine as `pending`. Quotas are counted and the row inserted in
+// one transaction under a per-owner lock, so concurrent pairs cannot both slip
+// under the caps; a duplicate public key — including one on a revoked machine,
+// whose row is kept — fails with `key_in_use`.
 export async function insertPendingMachine(
   db: ServerDatabase,
   input: PairMachineInput,
 ): Promise<MachineRow> {
-  const [total, pending] = await Promise.all([
-    countMachines(db, input.ownerUserId),
-    countPendingMachines(db, input.ownerUserId),
-  ]);
-  if (total >= MAX_MACHINES_PER_USER) {
-    throw new MachineServiceError(
-      'machine_limit',
-      `At most ${MAX_MACHINES_PER_USER} machines per user`,
-    );
-  }
-  if (pending >= MAX_PENDING_MACHINES_PER_USER) {
-    throw new MachineServiceError(
-      'pending_limit',
-      `At most ${MAX_PENDING_MACHINES_PER_USER} pending machines per user`,
-    );
-  }
   try {
     const [row] = await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<MachineRow>`INSERT INTO machines
-            (id, owner_user_id, name, public_key, capabilities, status)
-          VALUES (
-            ${randomUUID()},
-            ${input.ownerUserId},
-            ${input.name},
-            ${input.publicKey},
-            ${JSON.stringify(input.capabilities)}::jsonb,
-            'pending'
-          )
-          RETURNING *`;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'machines:' + input.ownerUserId}))`;
+            const [counts] = yield* sql<{ total: number; pending: number }>`
+              SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE status = 'pending')::int AS pending
+              FROM machines WHERE owner_user_id = ${input.ownerUserId}`;
+            if (Number(counts?.total ?? 0) >= MAX_MACHINES_PER_USER) {
+              return yield* Effect.fail(
+                new MachineServiceError(
+                  'machine_limit',
+                  `At most ${MAX_MACHINES_PER_USER} machines per user`,
+                ),
+              );
+            }
+            if (Number(counts?.pending ?? 0) >= MAX_PENDING_MACHINES_PER_USER) {
+              return yield* Effect.fail(
+                new MachineServiceError(
+                  'pending_limit',
+                  `At most ${MAX_PENDING_MACHINES_PER_USER} pending machines per user`,
+                ),
+              );
+            }
+            return yield* sql<MachineRow>`INSERT INTO machines
+                (id, owner_user_id, name, public_key, capabilities, status)
+              VALUES (
+                ${randomUUID()},
+                ${input.ownerUserId},
+                ${input.name},
+                ${input.publicKey},
+                ${JSON.stringify(input.capabilities)}::jsonb,
+                'pending'
+              )
+              RETURNING *`;
+          }),
+        );
       }),
     );
     if (!row) {

@@ -32,6 +32,8 @@ const DESK_TASK_WALL_CLOCK_MS = 30 * 60_000;
 export interface DeskClient {
   readonly hands: Hands;
   readonly imageDigest: string;
+  /** A runner computer's owner check, re-run before each runner call. */
+  readonly isUsable?: () => Promise<boolean>;
 }
 
 /** The per-turn desk context: the AI's owner, so `provision` can set it, and
@@ -61,7 +63,11 @@ interface DeskRunnerInput {
   logger: GatewayLogger;
   /** T-1422: the turn's abort signal, forwarded to every `execute` call. */
   signal?: AbortSignal;
+  /** T-1995: re-checked before each runner call; a revoke stops the next one. */
+  isUsable?: () => Promise<boolean>;
 }
+
+const COMPUTER_DISCONNECTED = 'This computer was disconnected.';
 
 // Fixed sentences per daemon error code (never raw host text). `DeskQueued` is
 // the "queued (n ahead)" case and is never a hard failure.
@@ -88,6 +94,9 @@ function errorText(error: DeskError): string {
 export function createDeskRunner(input: DeskRunnerInput): DeskRunner {
   let ref: DeskRef | null = null;
   return async function run(call) {
+    if (input.isUsable !== undefined && !(await input.isUsable())) {
+      return { content: COMPUTER_DISCONNECTED };
+    }
     if (ref === null) {
       try {
         ref = await input.hands.provision({
@@ -131,6 +140,7 @@ export function createTurnDeskRunner(
     ownerUserId: turn.ownerUserId,
     logger,
     ...(turn.signal === undefined ? {} : { signal: turn.signal }),
+    ...(turn.client.isUsable === undefined ? {} : { isUsable: turn.client.isUsable }),
   });
 }
 
@@ -182,8 +192,17 @@ export async function resolveTurnDesk(deps: TurnDeskDeps, input: DeskTurnInput):
       waiting: input.computerMode === 'runner' && resolved.unavailable === 'offline',
     };
   }
+  const machineId = input.machineId;
+  const isUsable =
+    resolved.where === 'runner' && machineId !== null
+      ? () => machineUsableFor(deps.db)(machineId, input.owner)
+      : undefined;
   return {
-    client: { hands: resolved.hands, imageDigest: resolved.imageDigest },
+    client: {
+      hands: resolved.hands,
+      imageDigest: resolved.imageDigest,
+      ...(isUsable === undefined ? {} : { isUsable }),
+    },
     waiting: false,
   };
 }

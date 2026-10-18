@@ -72,19 +72,13 @@ export async function saveToolVersion(
     }),
   );
   if (!existing) {
-    await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* enforceToolLimit(sql, input.aiId, input.topicId);
-      }),
-    );
     const createdResult = await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(
           Effect.gen(function* () {
+            yield* enforceToolLimit(sql, input.aiId, input.topicId);
             const [inserted] = yield* sql<ToolRow>`INSERT INTO ai_tools
                 (id, ai_id, group_id, topic_id, name, description, current_version,
                   created_by, created_at, updated_at)

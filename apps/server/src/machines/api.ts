@@ -62,6 +62,11 @@ export const PAIR_GLOBAL_RATE_LIMIT_MAX = 30;
 export const PAIR_IP_RATE_LIMIT_MAX = 10;
 export const PAIR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
+// T-1995: every owner write (rename, approve, deny, revoke, delete) shares one
+// per-user budget.
+export const MACHINE_WRITE_RATE_LIMIT_MAX = 30;
+export const MACHINE_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
 export interface MachinesApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -112,6 +117,17 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     windowMs: PAIR_RATE_LIMIT_WINDOW_MS,
     now,
   });
+  const writeLimiter = createRateLimiter({
+    max: MACHINE_WRITE_RATE_LIMIT_MAX,
+    windowMs: MACHINE_WRITE_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
+
+  function checkWriteLimit(userId: string): void {
+    if (!writeLimiter.allow(userId)) {
+      throw new HttpError(429, 'rate_limited', 'Too many machine changes, try again later');
+    }
+  }
 
   // `audit.record` stays awaited: a write failure rejects the route just like
   // the old `await`.
@@ -170,6 +186,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'approve',
         handler(logger, async (request, user) => {
+          checkWriteLimit(user.id);
           const id = request.params.id;
           const existing = await findOwnedMachine(deps.db, id, user.id);
           if (!existing) {
@@ -191,6 +208,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'deny',
         handler(logger, async (request, user) => {
+          checkWriteLimit(user.id);
           const id = request.params.id;
           const existing = await findOwnedMachine(deps.db, id, user.id);
           if (!existing) {
@@ -210,6 +228,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'revoke',
         handler(logger, async (request, user) => {
+          checkWriteLimit(user.id);
           const id = request.params.id;
           const existing = await findOwnedMachine(deps.db, id, user.id);
           if (!existing) {
@@ -233,6 +252,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
         handler(logger, (request, user) =>
           Effect.gen(function* () {
             const id = request.params.id;
+            checkWriteLimit(user.id);
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
             );
@@ -260,6 +280,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'remove',
         handler(logger, async (request, user) => {
+          checkWriteLimit(user.id);
           const id = request.params.id;
           const existing = await findOwnedMachine(deps.db, id, user.id);
           if (!existing) {

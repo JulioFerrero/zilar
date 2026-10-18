@@ -35,6 +35,9 @@ export function execFile(
 
 /** Keeps a jail alive; every tool then runs in the daemon via `docker exec`. */
 function keepAliveFlags(image: string): readonly string[] {
+  if (image.startsWith('-')) {
+    throw new Error('the desk image is invalid');
+  }
   return ['--entrypoint', 'sleep', image, 'infinity'];
 }
 

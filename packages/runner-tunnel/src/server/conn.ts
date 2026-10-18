@@ -113,10 +113,19 @@ export function dropConn(rt: ServerRuntime, conn: ServerConn, code: number, reas
       new TunnelClosedError(`connection closed (${code}): ${reason || 'no reason'}`),
     );
   }
-  if (conn.runnerId !== null && rt.live.get(conn.runnerId) === conn) {
-    rt.live.delete(conn.runnerId);
+  if (conn.runnerId !== null) {
+    const wasLive = rt.live.get(conn.runnerId) === conn;
+    if (wasLive) {
+      rt.live.delete(conn.runnerId);
+    }
+    // A connection that only sent `hello` never held the runner's requests;
+    // failing them here would let it break the live connection's desk calls.
+    // A ready connection that a newer one replaced must not fail the requests
+    // that now belong to its successor either.
+    if (wasLive || (conn.state === 'ready' && !rt.live.has(conn.runnerId))) {
+      rt.desk.failRunner(conn.runnerId);
+    }
   }
-  if (conn.runnerId !== null) rt.desk.failRunner(conn.runnerId);
 }
 
 export function closeWith(conn: ServerConn, code: number, reason: string): void {

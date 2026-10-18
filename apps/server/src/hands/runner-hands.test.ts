@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DeskError, DeskQueued, type DeskSpec } from '@zilar/desk';
+import { DeskError, DeskQueued, type DeskChunk, type DeskSpec, type Hands } from '@zilar/desk';
 import type { DeskReplyFrame, DeskRequestFrame } from '@zilar/runner-tunnel';
+import { createDeskRunner, type DeskToolCallValid } from '../agents/gateway/desk-exec';
 import { createRunnerHands, type RunnerDesk } from './runner-hands';
 
 // T-1423: the runner's `Hands` maps each reply frame to the same shape the
@@ -95,5 +96,39 @@ describe('createRunnerHands provision', () => {
       desk_id: 'desk-ai1-p1',
       keep_workspace: true,
     });
+  });
+});
+
+const CALL: DeskToolCallValid = { id: 'call-1', tool: 'bash', args: { command: 'true' } };
+
+function fakeHands(executed: string[]): Hands {
+  return {
+    provision: () => Promise.resolve({ id: 'desk-ai1-p1', key: SPEC.key }),
+    async *execute(): AsyncIterable<DeskChunk> {
+      executed.push('executed');
+      yield { type: 'exit', code: 0, truncated: false };
+    },
+    stop: () => Promise.resolve(),
+    snapshot: () => Promise.reject(new Error('not used')),
+  };
+}
+
+describe('createDeskRunner machine re-check', () => {
+  it('stops the next runner call when the machine is no longer usable', async () => {
+    const executed: string[] = [];
+    let usable = true;
+    const run = createDeskRunner({
+      hands: fakeHands(executed),
+      imageDigest: SPEC.imageDigest,
+      aiId: 'ai1',
+      ownerUserId: 'owner-1',
+      logger: { info: () => {}, warn: () => {} },
+      isUsable: () => Promise.resolve(usable),
+    });
+
+    await expect(run(CALL)).resolves.toMatchObject({ content: 'done' });
+    usable = false;
+    await expect(run(CALL)).resolves.toEqual({ content: 'This computer was disconnected.' });
+    expect(executed).toEqual(['executed']);
   });
 });

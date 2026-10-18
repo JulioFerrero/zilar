@@ -34,7 +34,9 @@ const boundedString = (min: number, max: number): Schema.String =>
 
 const deskIdSchema = boundedString(1, 128);
 const idSchema = boundedString(1, 64);
-const digestSchema = boundedString(1, 256);
+const digestSchema = boundedString(1, 256).check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9./_-]*@sha256:[a-f0-9]{64}$/),
+);
 const hostSchema = boundedString(1, 253);
 const streamIdSchema: Schema.Number = Schema.Number.check(
   Schema.isInt(),
