@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, Share, View } from 'react-native';
+import { Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -9,12 +9,13 @@ import { resolveDmChatId } from '@/components/chat/dm-chat-id';
 import { ContactList } from '@/components/contacts/contact-list';
 import { contactsLoadFailure, performRemoveContact } from '@/components/contacts/contacts';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { RefreshScroll } from '@/components/settings/refresh-scroll';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { MUTED_FOREGROUND } from '@/lib/colors';
 import { domainOfJid, type Contact } from '@/lib/contacts-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
@@ -47,55 +48,18 @@ function ContactsList() {
   const meJid = useChatStore((state) => state.me?.jid ?? undefined);
   const reloadChats = useChatStore((state) => state.reloadChats);
 
-  const [people, setPeople] = useState<Contact[]>([]);
+  const list = useFocusList<Contact[]>(() =>
+    Effect.tryPromise({
+      try: () => api.listContacts(),
+      catch: (loadError: unknown) => contactsLoadFailure(loadError),
+    }),
+  );
+  const status: PageStatus = list.status;
+  const people = list.data ?? [];
+  const { setData, error, refreshing, refresh } = list;
+
   const [handle, setHandle] = useState<string | null>(null);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-
-  // A new load replaces one still running (the focus refresh and Retry).
-  const [, reload] = useAction<void, void, never>(
-    () =>
-      Effect.sync(() => {
-        // A refresh with rows on screen keeps them: the spinner is only for a
-        // screen with nothing to show yet (T-1906).
-        setStatus((current) => (current === 'ready' ? current : 'loading'));
-        setError('');
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => api.listContacts(),
-            catch: (loadError: unknown) => contactsLoadFailure(loadError),
-          }),
-        ),
-        Effect.tap((contacts) =>
-          Effect.sync(() => {
-            setPeople([...contacts]);
-            setStatus('ready');
-            setRefreshing(false);
-          }),
-        ),
-        Effect.catch((message: string) =>
-          Effect.sync(() => {
-            setRefreshing(false);
-            // A failed background refresh keeps the rows; the next focus retries.
-            if (status === 'ready') {
-              return;
-            }
-            setError(message);
-            setStatus('error');
-          }),
-        ),
-      ),
-    { mode: 'replace' },
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
 
   // The share link needs the caller's handle, which the session does not carry
   // (`Me` has no handle); the profile lookup failing only hides the button.
@@ -136,7 +100,7 @@ function ContactsList() {
 
   const removeContact = (userId: string): Promise<string | null> =>
     performRemoveContact(api, userId, () => {
-      setPeople((rows) => rows.filter((row) => row.userId !== userId));
+      setData((rows) => rows?.filter((row) => row.userId !== userId));
     });
 
   // `Share.share` sends the same `https://<host>/@handle` link the web page does.
@@ -158,23 +122,7 @@ function ContactsList() {
         subtitle="The people you can chat with."
         onBack={() => router.back()}
       />
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={() => {
-              setRefreshing(true);
-              reload();
-            }}
-          />
-        }
-      >
+      <RefreshScroll refreshing={refreshing} onRefresh={refresh}>
         <View className="p-4">
           {shareUrl !== null ? (
             <Button
@@ -196,7 +144,7 @@ function ContactsList() {
               action={{
                 label: 'Retry',
                 accessibilityLabel: 'Retry loading contacts',
-                onPress: () => reload(),
+                onPress: () => refresh(),
               }}
             />
           ) : null}
@@ -223,7 +171,7 @@ function ContactsList() {
             </Text>
           ) : null}
         </View>
-      </ScrollView>
+      </RefreshScroll>
       {mock ? (
         <View className="items-center border-t border-divider px-4 py-1">
           <Text className="text-[12px] text-muted-foreground">Mock data</Text>

@@ -1,17 +1,18 @@
 import { Effect } from 'effect';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ban } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { RefreshScroll } from '@/components/settings/refresh-scroll';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 import type { BlockedPerson } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { blockedLoadFailure, performUnblock } from '@/components/contacts/blocks';
@@ -38,53 +39,15 @@ function BlockedList() {
   const router = useRouter();
   const { api, mock } = useContactsApi();
 
-  const [people, setPeople] = useState<BlockedPerson[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [error, setError] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-
-  // A new load replaces one still running (the focus refresh and Retry).
-  const [, reload] = useAction<void, void, never>(
-    () =>
-      Effect.sync(() => {
-        // A refresh with rows on screen keeps them: the spinner is only for a
-        // screen with nothing to show yet (T-1906).
-        setStatus((current) => (current === 'ready' ? current : 'loading'));
-        setError('');
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => api.listBlockedUsers(),
-            catch: (loadError: unknown) => blockedLoadFailure(loadError),
-          }),
-        ),
-        Effect.tap((blocked) =>
-          Effect.sync(() => {
-            setPeople(blocked);
-            setStatus('ready');
-            setRefreshing(false);
-          }),
-        ),
-        Effect.catch((message: string) =>
-          Effect.sync(() => {
-            setRefreshing(false);
-            // A failed background refresh keeps the rows; the next focus retries.
-            if (status === 'ready') {
-              return;
-            }
-            setError(message);
-            setStatus('error');
-          }),
-        ),
-      ),
-    { mode: 'replace' },
+  const list = useFocusList<BlockedPerson[]>(() =>
+    Effect.tryPromise({
+      try: () => api.listBlockedUsers(),
+      catch: (loadError: unknown) => blockedLoadFailure(loadError),
+    }),
   );
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
+  const status: PageStatus = list.status;
+  const people = list.data ?? [];
+  const { setData, error, setError, refreshing, refresh } = list;
 
   // One Unblock: the row drops on success, a failure keeps it and shows the
   // fixed sentence. The row's own action stops a double tap.
@@ -93,7 +56,7 @@ function BlockedList() {
       Effect.andThen(
         Effect.promise(() =>
           performUnblock(api, userId, () => {
-            setPeople((rows) => rows.filter((row) => row.userId !== userId));
+            setData((rows) => rows?.filter((row) => row.userId !== userId));
           }),
         ),
       ),
@@ -115,23 +78,7 @@ function BlockedList() {
         subtitle="They are not told."
         onBack={() => router.back()}
       />
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={() => {
-              setRefreshing(true);
-              reload();
-            }}
-          />
-        }
-      >
+      <RefreshScroll refreshing={refreshing} onRefresh={refresh}>
         <View className="p-4">
           {status === 'loading' ? (
             <StateMessage kind="loading" title="Loading blocked people…" />
@@ -144,7 +91,7 @@ function BlockedList() {
               action={{
                 label: 'Retry',
                 accessibilityLabel: 'Retry loading blocked people',
-                onPress: () => reload(),
+                onPress: () => refresh(),
               }}
             />
           ) : null}
@@ -174,7 +121,7 @@ function BlockedList() {
             </Text>
           ) : null}
         </View>
-      </ScrollView>
+      </RefreshScroll>
       {mock ? (
         <View className="items-center border-t border-divider px-4 py-1">
           <Text className="text-[12px] text-muted-foreground">Mock data</Text>

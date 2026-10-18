@@ -1,11 +1,12 @@
 import { Effect } from 'effect';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ban, UserPlus } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { RefreshScroll } from '@/components/settings/refresh-scroll';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -13,7 +14,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 import type { ContactRequestView } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import {
@@ -25,6 +26,10 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
+
+type Requests = { incoming: ContactRequestView[]; outgoing: ContactRequestView[] };
+
+const EMPTY_REQUESTS: Requests = { incoming: [], outgoing: [] };
 
 /**
  * Settings → Contact requests (T-0182, mirrors the web `RequestsPage`):
@@ -45,59 +50,25 @@ function RequestsList() {
   const router = useRouter();
   const { api, mock } = useContactsApi();
 
-  const [incoming, setIncoming] = useState<ContactRequestView[]>([]);
-  const [outgoing, setOutgoing] = useState<ContactRequestView[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [error, setError] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-
-  // A new load replaces one still running (the focus refresh and Retry).
-  const [, reload] = useAction<void, void, never>(
-    () =>
-      Effect.sync(() => {
-        // A refresh with requests on screen keeps them: the spinner is only for
-        // a screen with nothing to show yet (T-1906).
-        setStatus((current) => (current === 'ready' ? current : 'loading'));
-        setError('');
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => api.listContactRequests(),
-            catch: (loadError: unknown) => requestsLoadFailure(loadError),
-          }),
-        ),
-        Effect.tap((list) =>
-          Effect.sync(() => {
-            setIncoming(list.incoming);
-            setOutgoing(list.outgoing);
-            setStatus('ready');
-            setRefreshing(false);
-          }),
-        ),
-        Effect.catch((message: string) =>
-          Effect.sync(() => {
-            setRefreshing(false);
-            // A failed background refresh keeps the requests; the next focus retries.
-            if (status === 'ready') {
-              return;
-            }
-            setError(message);
-            setStatus('error');
-          }),
-        ),
-      ),
-    { mode: 'replace' },
+  const list = useFocusList<Requests>(() =>
+    Effect.tryPromise({
+      try: () => api.listContactRequests(),
+      catch: (loadError: unknown) => requestsLoadFailure(loadError),
+    }),
   );
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
+  const status: PageStatus = list.status;
+  const { incoming, outgoing } = list.data ?? EMPTY_REQUESTS;
+  const { setData, error, setError, refreshing, refresh } = list;
 
   const remove = (id: string): void => {
-    setIncoming((rows) => rows.filter((row) => row.id !== id));
-    setOutgoing((rows) => rows.filter((row) => row.id !== id));
+    setData((current) =>
+      current === undefined
+        ? current
+        : {
+            incoming: current.incoming.filter((row) => row.id !== id),
+            outgoing: current.outgoing.filter((row) => row.id !== id),
+          },
+    );
   };
 
   // One Accept, Decline or Cancel: the row drops on success, a failure keeps it
@@ -131,23 +102,7 @@ function RequestsList() {
         }
         onBack={() => router.back()}
       />
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={() => {
-              setRefreshing(true);
-              reload();
-            }}
-          />
-        }
-      >
+      <RefreshScroll refreshing={refreshing} onRefresh={refresh}>
         <View className="p-4">
           {status === 'loading' ? <StateMessage kind="loading" title="Loading requests…" /> : null}
 
@@ -158,7 +113,7 @@ function RequestsList() {
               action={{
                 label: 'Retry',
                 accessibilityLabel: 'Retry loading requests',
-                onPress: () => reload(),
+                onPress: () => refresh(),
               }}
             />
           ) : null}
@@ -219,7 +174,7 @@ function RequestsList() {
             </Card>
           </View>
         </View>
-      </ScrollView>
+      </RefreshScroll>
       {mock ? (
         <View className="items-center border-t border-divider px-4 py-1">
           <Text className="text-[12px] text-muted-foreground">Mock data</Text>
