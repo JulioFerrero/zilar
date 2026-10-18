@@ -2021,3 +2021,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2021](T-2021-shared-smooth-text.md) | one streaming-text reveal shared by web and phone | 2026-10-18 |
 | [T-2018](T-2018-phone-one-message-menu.md) | phone chat: one message menu per list, not per row | 2026-10-18 |
 | [T-2025](T-2025-restore-server-xmpp-client.md) | restore @xmpp/client for the server build; gate builds it | 2026-10-18 |
+| [T-2024](T-2024-shared-media-retry.md) | one media-retry hook shared by web and phone | 2026-10-18 |

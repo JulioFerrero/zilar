@@ -12,3 +12,10 @@ export { failureOf, isWaiting, makeUseAction } from './use-action';
 export type { ActionControls, ActionMode, ActionState, UseActionOptions } from './use-action';
 export { makeUseQuery } from './use-query';
 export { useSmoothText } from './use-smooth-text';
+export {
+  isLocalPreviewUrl,
+  useMediaRetry,
+  MEDIA_RETRY_DELAYS_MS,
+  type MediaRetryOptions,
+  type MediaRetryResult,
+} from './use-media-retry';

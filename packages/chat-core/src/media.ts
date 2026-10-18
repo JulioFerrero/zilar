@@ -42,6 +42,14 @@ export function formatFileSize(bytes: number): string {
   return `${rounded} ${units[unit]}`;
 }
 
+/** Appends a cache-busting counter so a retried source is not served from cache. */
+export function withMediaRetry(url: string, retry: number): string {
+  if (retry <= 0 || url === '') {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}retry=${retry}`;
+}
+
 /**
  * Just enough of the XMPP token to build the trusted media set: the WebSocket
  * service URL and the XMPP domain the server issued for this session. Both are
