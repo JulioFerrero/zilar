@@ -104,15 +104,57 @@ function stripPng(bytes: Uint8Array): Uint8Array | null {
   return sawEnd ? concat(parts) : null;
 }
 
-// JPEG: copy the SOI and every segment except APPn, keeping only APP0 (JFIF)
-// and APP2 (ICC). From SOS on, the entropy-coded data is copied verbatim.
+// JPEG: copy the SOI and every header segment except APPn, keeping only APP0
+// (JFIF) and APP2 (ICC) before the first scan. After a scan starts, keep the
+// entropy-coded data, restart markers and every later SOS (progressive JPEGs),
+// drop APPn/COM segments that appear between scans, and stop at the first EOI
+// so trailing metadata never survives.
 function stripJpeg(bytes: Uint8Array): Uint8Array | null {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     return null;
   }
   const parts: Uint8Array[] = [bytes.subarray(0, 2)];
   let offset = 2;
+  let inScan = false;
+  let sawScan = false;
   while (offset < bytes.length) {
+    if (inScan) {
+      // Scan forward for the next marker that starts a segment: 0xFF00 is
+      // stuffed data, 0xFFD0-0xFFD7 are restart markers and 0xFFFF is fill;
+      // all of them stay inside the entropy-coded run.
+      const scanStart = offset;
+      let markerAt = -1;
+      while (offset < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+          offset += 1;
+          continue;
+        }
+        const next = bytes[offset + 1];
+        if (next === undefined) {
+          return null;
+        }
+        if (next === 0x00 || (next >= 0xd0 && next <= 0xd7)) {
+          offset += 2;
+          continue;
+        }
+        if (next === 0xff) {
+          offset += 1;
+          continue;
+        }
+        markerAt = offset;
+        break;
+      }
+      if (markerAt < 0) {
+        return null;
+      }
+      if (markerAt > scanStart) {
+        parts.push(bytes.subarray(scanStart, markerAt));
+      }
+      offset = markerAt;
+      inScan = false;
+      continue;
+    }
+
     const start = offset;
     if (bytes[offset] !== 0xff) {
       return null;
@@ -136,14 +178,6 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
       parts.push(bytes.subarray(start, offset));
       return concat(parts);
     }
-    if (marker === 0xda) {
-      const length = readU16(bytes, offset);
-      if (length === null || length < 2 || offset + length > bytes.length) {
-        return null;
-      }
-      parts.push(bytes.subarray(start, bytes.length));
-      return concat(parts);
-    }
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       parts.push(bytes.subarray(start, offset));
       continue;
@@ -153,8 +187,17 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
       return null;
     }
     const end = offset + length;
+    if (marker === 0xda) {
+      parts.push(bytes.subarray(start, end));
+      offset = end;
+      inScan = true;
+      sawScan = true;
+      continue;
+    }
     const isApp = marker >= 0xe0 && marker <= 0xef;
-    if (!isApp || JPEG_KEEP_APP.has(marker)) {
+    const isCom = marker === 0xfe;
+    const drop = sawScan ? isApp || isCom : isApp && !JPEG_KEEP_APP.has(marker);
+    if (!drop) {
       parts.push(bytes.subarray(start, end));
     }
     offset = end;

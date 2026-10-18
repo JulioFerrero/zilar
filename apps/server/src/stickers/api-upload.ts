@@ -9,7 +9,8 @@
 // soon as the cap is passed. The 201 body carries every `StickerView` field.
 
 import { Effect } from 'effect';
-import { HttpServerRequest } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { requestIdOf } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { STICKER_MAX_UPLOAD_BYTES } from './image';
@@ -34,8 +35,26 @@ export function runUploadSticker(
     let bytes: Uint8Array;
     let emoji: string | undefined;
     if (contentType.includes('multipart/form-data')) {
-      const declared = Number(request.request.headers['content-length'] ?? '');
-      if (Number.isFinite(declared) && declared > STICKER_MAX_UPLOAD_BYTES + 64 * 1024) {
+      // A multipart body is buffered by `formData()` before its size can be
+      // checked, so a declared length is required: a chunked body with none
+      // would otherwise be read whole.
+      const declaredHeader = request.request.headers['content-length'];
+      const declared = declaredHeader === undefined ? Number.NaN : Number(declaredHeader);
+      if (!Number.isFinite(declared) || declared < 0) {
+        // `HttpError` only carries the statuses the API answers with; 411 is
+        // not one of them, so this fixed envelope is returned directly.
+        return HttpServerResponse.jsonUnsafe(
+          {
+            error: {
+              code: 'length_required',
+              message: 'The upload must declare its length',
+              requestId: requestIdOf(request.request),
+            },
+          },
+          { status: 411 },
+        );
+      }
+      if (declared > STICKER_MAX_UPLOAD_BYTES + 64 * 1024) {
         throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
       }
       const webRequest = yield* HttpServerRequest.toWeb(request.request).pipe(Effect.orDie);

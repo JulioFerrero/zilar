@@ -13,12 +13,13 @@
 // answers the old code threw — the network's or provider's text never
 // leaves this module.
 
-import { Cause, Data, Duration, Effect, type Effect as EffectType } from 'effect';
+import { Cause, Data, Duration, Effect, Stream, type Effect as EffectType } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { defaultInternalFetch, type InternalFetchResponse } from '../files/internal-fetch';
+import { readCapped } from '../http/read-capped';
 import { transcribeAudio, TranscriptionProviderError, type TranscriptionFetch } from './provider';
 import type { VoiceTranscriptionSettings } from './settings';
 
@@ -99,10 +100,10 @@ const fetchAudioEffect = Effect.fnUntraced(function* (
   fetchAudio: AudioFetcher,
   internalUrl: string,
   uploadHost: string,
-): EffectType.fn.Return<FetchedAudio, AudioUnavailable> {
+): EffectType.fn.Return<FetchedAudio, AudioUnavailable | VoiceTooLarge> {
   const fetched = yield* Effect.tryPromise({
     try: () => fetchAudio(internalUrl, { host: uploadHost }),
-    catch: () => new AudioUnavailable(),
+    catch: (error) => (error instanceof VoiceTooLarge ? error : new AudioUnavailable()),
   }).pipe(
     Effect.timeoutOrElse({
       duration: Duration.millis(VOICE_FETCH_TIMEOUT_MS),
@@ -284,11 +285,13 @@ export function shareInFlight(): TranscriptionInFlight {
 }
 
 // The internal download leg: same path on ejabberd's API base, 10 MB cap,
-// 20 s timeout. Every fetch-leg failure (transport, abort, non-OK, unreadable
-// body) surfaces as `AudioUnavailableError` — the route maps it to a fixed
-// 502, never a bare 500 and never the network's error text. The content type
-// gates the provider call (`not_audio` without one); the bytes are never
-// logged.
+// 20 s timeout. The declared length is checked before the body is read and
+// the body itself is streamed through `readCapped`, so an over-cap upload is
+// never buffered whole. Every fetch-leg failure (transport, abort, non-OK,
+// unreadable body) surfaces as `AudioUnavailableError` — the route maps it to
+// a fixed 502, never a bare 500 and never the network's error text; an
+// over-cap body is `VoiceTooLarge` (413). The content type gates the provider
+// call (`not_audio` without one); the bytes are never logged.
 export async function defaultAudioFetcher(
   url: string,
   init: AudioFetchInit,
@@ -307,11 +310,26 @@ export async function defaultAudioFetcher(
     throw new AudioUnavailableError();
   }
   const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
-  const buffer = await new Response(response.body).arrayBuffer().catch(() => null);
-  if (buffer === null) {
-    throw new AudioUnavailableError();
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > VOICE_TRANSCRIPT_MAX_BYTES) {
+    await response.body.cancel().catch(() => {});
+    throw new VoiceTooLarge();
   }
-  return { body: new Uint8Array(buffer), contentType };
+  const capped = await Effect.runPromise(
+    readCapped(
+      Stream.fromReadableStream({
+        evaluate: () => response.body,
+        onError: () => new AudioUnavailableError(),
+      }),
+      VOICE_TRANSCRIPT_MAX_BYTES,
+    ),
+  ).catch(() => {
+    throw new AudioUnavailableError();
+  });
+  if (capped === undefined) {
+    throw new VoiceTooLarge();
+  }
+  return { body: capped, contentType };
 }
 
 /** The audio-fetch leg failed (ejabberd down, slow, or refusing): fixed

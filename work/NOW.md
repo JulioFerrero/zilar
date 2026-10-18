@@ -906,7 +906,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - running: T-1999 merged and live; T-2000, T-2001, T-2002 (Sonnet 5.5, room rights) and T-2003;
                       - waiting: T-2004, after T-1988 and T-2003 merge (shared files);
                       - still to spec: stickers caps, web push endpoint, push component, baremetal block_strangers, JPEG trailing Exif, voice caps.
-                    - **Perf audit T-1997** (`docs/audit/chat-scroll-perf.md`) waits for its packet; then W1 (one store update per history page) and W2 (prefetch at 3 screens, no re-render fan-out).
+                    - **Merged and held at 15:32 (10 commits, not pushed):**
+                      - T-1991, T-2000, T-1997 (perf audit doc), T-1988, T-2002, T-1994, T-1998, T-1995, T-2007, T-2010.
+                      - Push them in one batch once T-1992, T-1993, T-2001, T-2003, T-2004, T-2005 and T-2006 land.
+                      - **After the push, check:**
+                        - T-2002's start-up room reconcile (read-only admin calls on one topic room);
+                        - T-1998 desk networks (`docker network ls --filter label=zilar.desk`);
+                        - Julio posts in a channel he admins.
+                    - **Chat scroll perf** (from `docs/audit/chat-scroll-perf.md`):
+                      - running: W1 T-2008 (Sonnet 5.5, client-core), W2 T-2009 (phone) and W5 T-2011 (web);
+                      - W3 (one menu, one gesture) and W4 (row leaves) wait for T-2009, since they share files;
+                      - measure with `dumpsys gfxinfo` before and after.
+                    - **T-1980 (pin jump):** fix round sent. Its pre-review caught two real regressions: pins stored the archive id, and the alias direction would have hidden DM reactions from the other person.
+                    - **Claude credits:** about $40 of $100 spent (audits $33.6, T-1980 $3.5, T-2008 about $1).
                     - **Julio's pinned-bar report:**
                       - T-1979 (web): one focus ring, plus a calm not-found note with Unpin;
                       - T-1980 (`anthropic/claude-sonnet-5`): why the card pin's archive id doesn't match its row, plus a fix and a test.

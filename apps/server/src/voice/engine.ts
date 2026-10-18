@@ -100,7 +100,17 @@ export const probeEffect = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ProbedAudio, NotAudioError | FfmpegError> {
   const result = yield* runCommand(
     ffprobe,
-    ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', inputPath],
+    [
+      '-v',
+      'error',
+      '-print_format',
+      'json',
+      '-show_format',
+      '-show_streams',
+      '-protocol_whitelist',
+      'file,pipe',
+      inputPath,
+    ],
     PROBE_TIMEOUT_MS,
   );
 
@@ -145,6 +155,8 @@ export const convertEffect = Effect.fnUntraced(function* (
     [
       '-nostdin',
       '-y',
+      '-protocol_whitelist',
+      'file,pipe',
       '-i',
       inputPath,
       '-vn',

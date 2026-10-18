@@ -13,7 +13,8 @@
 //   made. The server fetches the audio from ejabberd internally
 //   (`EJABBERD_API_URL` base, same path), enforcing a 10 MB cap and a 20 s
 //   timeout, sends it to the configured endpoint, and caches the result in
-//   `voice_transcripts` keyed by SHA-256 of the URL. A concurrent duplicate
+//   `voice_transcripts` keyed by SHA-256 of the URL's path (query string and
+//   fragment dropped, so `?1` and `?2` share one entry). A concurrent duplicate
 //   request must not double-bill: simultaneous taps share one in-flight
 //   fetch + provider call (an in-process map keyed by the hash), and the
 //   insert re-checks the cache under an advisory lock on the hash (with
@@ -84,7 +85,13 @@ export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
 export { AudioUnavailableError } from './pipeline';
 
 export function voiceTranscriptUrlHash(url: string): string {
-  return createHash('sha256').update(url, 'utf8').digest('hex');
+  // The query string and fragment are not part of the audio's identity: they
+  // are dropped so `?1` and `?2` share one cache entry instead of billing the
+  // provider again for the same recording.
+  const canonical = new URL(url);
+  canonical.search = '';
+  canonical.hash = '';
+  return createHash('sha256').update(canonical.toString(), 'utf8').digest('hex');
 }
 
 export interface VoiceTranscriptionPublicStatus {
@@ -145,7 +152,9 @@ export function toInternalUploadUrl(
     return null;
   }
   const api = new URL(config.xmpp.apiUrl);
-  return `${api.origin}${caller.pathname}${caller.search}`;
+  // The query string and fragment stay on the caller's side: the internal
+  // fetch asks for the same upload by path only.
+  return `${api.origin}${caller.pathname}`;
 }
 
 // https is required unless the host is `localhost` or a private address the

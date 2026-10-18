@@ -10,6 +10,7 @@ import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
 import { ImportTelegramPayload, StickersGroup } from '@zilar/api-contract';
 import { handler } from '../effect/http-core';
 import { HttpError } from '../errors';
+import { readCapped } from '../http/read-capped';
 import { createRateLimiter } from '../rate-limit';
 import { TELEGRAM_IMPORT_RATE_LIMIT_MAX, TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS } from './routes';
 import {
@@ -49,6 +50,10 @@ import {
 import { runUploadSticker, type UploadStickerRequest } from './api-upload';
 import { getPackDetail } from './pack-link';
 import type { StickersApiDependencies } from './api';
+
+// The Telegram import payload is a short pack link; the body is read under
+// this cap so an oversized or endless chunked body is refused before parsing.
+const TELEGRAM_IMPORT_MAX_BODY_BYTES = 64 * 1024;
 
 export function createStickersGroupLayer(
   api: HttpApi.HttpApi<'stickers', typeof StickersGroup>,
@@ -143,7 +148,14 @@ export function createStickersGroupLayer(
             if (token === null) {
               throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
             }
-            const raw = parseJsonOrNull(yield* Effect.orDie(request.request.text));
+            const body = yield* readCapped(
+              request.request.stream,
+              TELEGRAM_IMPORT_MAX_BODY_BYTES,
+            ).pipe(Effect.orDie);
+            if (body === undefined) {
+              throw new HttpError(413, 'request_too_large', 'The import body is too large');
+            }
+            const raw = parseJsonOrNull(new TextDecoder().decode(body));
             const decoded = Schema.decodeUnknownOption(ImportTelegramPayload, STRICT_PAYLOAD)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(
