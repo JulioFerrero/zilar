@@ -2,10 +2,6 @@ import { formatUsd } from '@zilar/chat-core';
 import type { PublicAi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-/**
- * One thin spend meter: a well track with a `#ededed` fill, turning
- * `--danger` at or above 100% (ui-style.md §4).
- */
 function UsageMeter({ label, text, fraction }: { label: string; text: string; fraction: number }) {
   const clamped = Math.min(1, Math.max(0, fraction));
   const over = fraction >= 1;
@@ -32,11 +28,6 @@ function UsageMeter({ label, text, fraction }: { label: string; text: string; fr
   );
 }
 
-/**
- * The AI's spend (T-0058): today's spend and the last 30 days. T-1408: a bound
- * the owner set gets a meter and an "of $limit"; an unset bound shows the spend
- * alone, with no meter.
- */
 export function UsageBlock({ ai }: { ai: PublicAi }) {
   const usage = ai.usage ?? null;
   const perDayUsd = ai.limits.perDayUsd;

@@ -9,13 +9,6 @@ import { PersonLink } from '../personLink';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
 
-/**
- * One member row of the Members page (T-1508, WebMembers.dc.html): the avatar
- * and the name, the owner or admin shown as an icon and never a word, the
- * custom role tags on a second line under the name, and a ⋮ menu with Make
- * admin / Remove admin (the owner only, T-1741), Make owner (the owner only,
- * never on yourself) and Remove (managers only, never on the owner or yourself).
- */
 export function MemberRow({
   member,
   roles,
@@ -178,7 +171,6 @@ export function MemberRow({
   );
 }
 
-/** A small monospace chip for a custom role name. */
 function RoleChip({ name }: { name: string }) {
   return (
     <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">

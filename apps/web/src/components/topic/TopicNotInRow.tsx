@@ -5,14 +5,8 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { Avatar } from '../Avatar';
 import { Button } from '../ui/button';
 
-/** T-1783: how the Add key of an "isn't in this topic" row reads. */
 export type TopicNotInState = 'idle' | 'busy' | 'failed';
 
-/**
- * T-1783: the centred row a sender sees after mentioning someone who is not in
- * the open topic (docs/design/mockups/topic-people/Main.dc.html:55-59). The
- * Add key puts them in the topic; a failure shows a muted line in its place.
- */
 export function TopicNotInRow({
   name,
   avatarUrl,
@@ -46,14 +40,8 @@ export function TopicNotInRow({
   );
 }
 
-/** The Add call of one row failed. */
 class AddToTopicFailed extends Data.TaggedError('AddToTopicFailed') {}
 
-/**
- * T-1783: one "isn't in this topic" row with its own Add call, so two rows can
- * be added while the sender keeps typing (the TopicActionButtons pattern).
- * `onAdded` drops the row once the person or AI is in.
- */
 export function AddToTopicRow({
   name,
   avatarUrl,

@@ -7,21 +7,14 @@ import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 
-/** The form's own check: the key is pasted before anything is sent. */
 class KeyMissing extends Data.TaggedError('KeyMissing') {}
 
 type FormError = KeyMissing | ApiFailure;
 
-/** The server's words for a failure, or the fixed fallback for a call that never reached the server. */
 function messageOf(failure: ApiFailure, fallback: string): string {
   return failure.code === 'unknown_error' ? fallback : failure.message;
 }
 
-/**
- * The inline "Replace key" form for one connection: a password-type input and
- * Save. The server keeps the connection and only swaps the key, so the AIs
- * using it keep working. Success is reported by the row; a failure shows here.
- */
 export function ReplaceKeyForm({
   connectionId,
   onCancel,

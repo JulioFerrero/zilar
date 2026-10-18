@@ -19,7 +19,6 @@ import { getStickerPack, type StickerPackDetail } from '@/lib/api/stickers';
 
 export type PageStatus = 'loading' | 'ready' | 'error';
 
-/** The page state the actions write to: the lists and the one message line. */
 export interface PageSetters {
   readonly setPacks: Dispatch<SetStateAction<StickerPack[] | undefined>>;
   readonly setFavorites: Dispatch<SetStateAction<Sticker[] | undefined>>;
@@ -28,24 +27,21 @@ export interface PageSetters {
 }
 
 /**
- * The text a failed call shows. A call that never got an answer shows the
- * component's fixed sentence (AGENTS.md); an answer shows the server's sentence.
+ * A call that never got an answer shows the component's fixed sentence (a
+ * user-facing error is never raw server text); an answer shows the server's.
  */
 export function failureText(failure: ApiFailure, fallback: string): string {
   return failure.status === 0 ? fallback : failure.message;
 }
 
-/** The pack link, as copied and shared (T-1495, T-1497). */
 export function stickerPackUrl(packId: string): string {
   return `${window.location.origin}/stickers/${encodeURIComponent(packId)}`;
 }
 
-/** The pack link as shown: host plus path, without the scheme. */
 export function stickerPackUrlText(packId: string): string {
   return `${window.location.host}/stickers/${packId}`;
 }
 
-/** Loads the panel and the favorites; both must answer, or the page shows the error. */
 export const loadPanel = (
   setters: Pick<PageSetters, 'setPacks' | 'setFavorites'>,
 ): Effect.Effect<void, ApiFailure> =>
@@ -61,7 +57,6 @@ export const loadPanel = (
     Effect.asVoid,
   );
 
-/** Reads the panel list again. A failed read reports on the message line and keeps the list. */
 export const refreshPanel = (setters: PageSetters): Effect.Effect<void> =>
   fromApi(() => listStickerPacks()).pipe(
     Effect.tap((panel) => Effect.sync(() => setters.setPacks(panel))),
@@ -82,8 +77,8 @@ export const searchPacks = (query: string, setters: PageSetters): Effect.Effect<
   );
 
 export const toggleVisibility = (pack: StickerPack, setters: PageSetters): Effect.Effect<void> => {
-  // Imported packs stay private (personal use): the server refuses the
-  // switch, but the button hides up front so the offer is never made.
+  // Imported packs stay private (personal use): the server refuses the switch,
+  // but the button hides up front so the offer is never made.
   if (pack.importedFrom !== undefined && pack.visibility !== 'server') {
     return Effect.sync(() =>
       setters.setActionError('Imported packs stay private for personal use.'),
@@ -135,11 +130,9 @@ export const removeFromPanel = (packId: string, setters: PageSetters): Effect.Ef
     ),
   );
 
-/** Loads one pack for its link page (T-1497); a 404 fails with `ApiFailure`. */
 export const loadPackDetail = (packId: string): Effect.Effect<StickerPackDetail, ApiFailure> =>
   fromApi(() => getStickerPack(packId));
 
-/** Adds a pack from its link page; the page shows the in-panel state itself. */
 export const addPackToPanel = (packId: string): Effect.Effect<void, ApiFailure> =>
   fromApi(() => addStickerPanelPack(packId));
 
@@ -176,9 +169,8 @@ export const unstarSticker = (stickerId: string, setters: PageSetters): Effect.E
     ),
   );
 
-// Panel order is the panel list order; moving a pack sends the whole
-// new order to the atomic reorder endpoint, so a failure leaves the
-// server order untouched (the UI then restores it too).
+// Moving a pack sends the whole new order to the atomic reorder endpoint, so
+// a failure leaves the server order untouched (the UI then restores it too).
 const reorderPanel = (
   next: StickerPack[],
   previous: StickerPack[],

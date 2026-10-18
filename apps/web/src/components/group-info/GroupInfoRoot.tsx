@@ -25,11 +25,9 @@ import { AvatarStack } from './AvatarStack';
 import type { AvatarStackEntry } from './AvatarStack';
 import { TopicsSection } from './TopicsSection';
 
-/** The pages of the group info panel; `root` is the page itself (T-1494). */
 export type GroupInfoPageId =
   'root' | 'people' | 'links' | 'tools' | 'activity' | 'allowed' | 'settings';
 
-/** The title of each subpage, shown by `GroupInfoPage`. */
 export const GROUP_INFO_TITLES: Record<GroupInfoPageId, string> = {
   root: '',
   people: 'People and AIs',
@@ -40,11 +38,6 @@ export const GROUP_INFO_TITLES: Record<GroupInfoPageId, string> = {
   settings: 'Settings',
 };
 
-/**
- * The group info root page (T-1494): the picture, the name and the member
- * count, the Mute / Search / Add keys, and the grouped lists whose rows open
- * the subpages. One row opens People and AIs (T-1857).
- */
 export function GroupInfoRoot({
   chat,
   title,
@@ -63,15 +56,11 @@ export function GroupInfoRoot({
 }: {
   chat: ChatSummary;
   title: string;
-  /** The group's id, for the More key's Delete group dialog. */
   groupId: string | undefined;
-  /** The members plus AIs count, shown in the row's trailing side. */
   memberCount: number;
-  /** The group's AIs first, then its people, for the row's avatar stack. */
   stack: AvatarStackEntry[];
   isManager: boolean;
   isOwner: boolean;
-  /** A member who is not the owner: show the red Leave group row. */
   canLeave: boolean;
   onClose: () => void;
   onSearch: () => void;
@@ -114,8 +103,6 @@ export function GroupInfoRoot({
           <PanelKey label="Search" icon={Search} onClick={onSearch} />
           {isManager && <PanelKey label="Add" icon={UserPlus} onClick={onAddMembers} />}
           {(isManager || isOwner) && (
-            // Menu needs its own trigger element, so the fourth key carries the
-            // PanelKey layout itself instead of wrapping `PanelKey`.
             <div className="flex w-16 flex-col items-center gap-1.5">
               <Menu
                 open={moreOpen}
@@ -176,7 +163,6 @@ export function GroupInfoRoot({
             />
           </nav>
 
-          {/* T-1786: Your/Other topics, split by the caller's membership. */}
           <TopicsSection chat={chat} onClose={onClose} />
 
           <ContentNav
@@ -209,7 +195,6 @@ export function GroupInfoRoot({
             </nav>
           )}
 
-          {/* The red bottom row: non-owners leave here; the owner deletes from More. */}
           {canLeave && <LeaveGroupRow chatId={chat.id} title={title} onClose={onClose} />}
         </div>
       </div>

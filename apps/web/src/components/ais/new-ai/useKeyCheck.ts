@@ -27,7 +27,6 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
-// The connections client `checkKey` drives.
 const KEY_CHECK_API: KeyCheckApi = {
   createConnection,
   testConnection,
@@ -45,18 +44,10 @@ function catalogViewOf(catalog: AiCatalog | null): CatalogView | null {
 }
 
 export interface UseKeyCheckOptions {
-  /** Called after the provider changes; the New AI flow drops its model draft. */
   onProviderChange?: () => void;
-  /** Called once a check verifies the key; the New AI flow moves to the model step. */
   onVerified?: () => void;
 }
 
-/**
- * The provider choice, the OpenAI-compatible fields and the key field shared by
- * the New AI flow and the Connections page's Add key dialog. The key travels to
- * the server only inside `checkKey`, which creates the connection on the first
- * check and keeps its id; `abandon` drops an unverified created connection.
- */
 export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions = {}) {
   const [connectionsResult] = useQuery(() => fromApi(() => listConnections()), []);
   const [catalogResult] = useQuery(() => fromApi(() => getAiCatalog()), []);
@@ -76,7 +67,6 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
   });
   const [keyError, setKeyError] = useState('');
   const [usingSavedKey, setUsingSavedKey] = useState(false);
-  // The in-flight key check's promise: `abandon` gives it up; an edit drops it.
   const pendingCheck = useRef<Promise<KeyCheckResult> | null>(null);
   const choices = providerChoices(catalogView, connections);
   const isCompatible = providerId === 'openai-compatible';
@@ -89,7 +79,6 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     return Effect.promise(() => pending).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
-          // A newer check, provider switch or abandon cleared the ref: drop it.
           if (pendingCheck.current !== pending) {
             void abandonKeyCheck(KEY_CHECK_API, result);
             return;
@@ -109,13 +98,10 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
 
   const chooseProvider = (id: string): void => {
     setProviderId(id);
-    // A provider switch starts the compatible fields empty, so an endpoint typed
-    // for the previous choice never carries over to the next one.
     setBaseUrl('');
     setCompatibleName('');
-    // OpenAI-compatible never reuses a saved connection: its saved endpoint may
-    // differ from the one the user is about to enter, so the key starts empty
-    // and unverified. Every other provider keeps its newest active connection.
+    // OpenAI-compatible never reuses a saved connection: its endpoint may differ
+    // from the one being entered, so the key starts empty and unverified.
     let saved: Connection | null = null;
     if (id !== 'openai-compatible') {
       saved =
@@ -128,14 +114,12 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     setKeyError('');
     setKeyState({ connectionId: saved?.id ?? null, created: false, verified: saved !== null });
     pendingCheck.current = null;
-    // Leaving the provider abandons an unverified connection its check created.
     void abandonKeyCheck(KEY_CHECK_API, keyState);
     onProviderChange?.();
   };
 
   const setKey = (value: string): void => {
     pendingCheck.current = null;
-    // Editing the key drops any verified connection; the next check re-runs.
     setKeyState((current) =>
       usingSavedKey
         ? { connectionId: null, created: false, verified: false }
@@ -146,14 +130,13 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     setKeyError('');
   };
 
-  // The base URL and the name are fixed when the connection is created, so an
-  // edit needs a fresh connection (a replace would keep the old endpoint).
+  // The base URL and name are fixed when the connection is created, so an
+  // endpoint edit needs a fresh connection (a replace would keep the old one).
   const editCompatible = (apply: () => void): void => {
     apply();
     pendingCheck.current = null;
-    // A verified connection was created with the old endpoint, so
-    // `abandonKeyCheck` leaves it alone: delete it here instead. A saved key
-    // (`created: false`) belongs to the user and is never deleted.
+    // A verified connection was created with the old endpoint, so it is deleted
+    // here; a saved key (`created: false`) belongs to the user and is never deleted.
     if (keyState.verified && keyState.created && keyState.connectionId !== null) {
       void deleteConnection(keyState.connectionId).catch(() => {});
     } else {
@@ -179,9 +162,8 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     });
   };
 
-  // Closing before Create or Save drops what the dialog created, verified or
-  // not: `abandonKeyCheck` leaves a verified connection alone. A saved key
-  // (`created: false`) belongs to the user and is never deleted.
+  // Closing before Create or Save drops what this dialog created, verified or
+  // not; a saved key (`created: false`) belongs to the user and is never deleted.
   const dropCreatedConnection = (state: KeyCheckState): void => {
     if (!state.created || state.connectionId === null) return;
     void deleteConnection(state.connectionId).catch(() => {});
@@ -191,8 +173,6 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     const pending = pendingCheck.current;
     pendingCheck.current = null;
     dropCreatedConnection(keyState);
-    // The check may still create (or already created) a connection; drop its
-    // resolved state too, so nothing is left behind with a live key.
     if (pending !== null) void pending.then((result) => dropCreatedConnection(result));
   };
 
@@ -225,5 +205,4 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
   };
 }
 
-/** The key-check state and actions, shared by both add-key flows. */
 export type KeyCheck = ReturnType<typeof useKeyCheck>;

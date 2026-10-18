@@ -11,7 +11,6 @@ export interface ChipProps {
   children: React.ReactNode;
 }
 
-/** A small pill button (`ui-style.md` §5): reactions, scope and filter chips. */
 export function Chip({
   pressed,
   onClick,

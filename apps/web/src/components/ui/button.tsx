@@ -3,8 +3,6 @@ import { mergeProps } from '@base-ui/react/merge-props';
 import { useRender } from '@base-ui/react/use-render';
 import { cn } from '@/lib/utils';
 
-// The primary key and the icon key carry their own focus ring (ui-style.md §4);
-// the other variants use a plain ring.
 const PLAIN_FOCUS = 'focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none';
 
 const buttonVariants = cva(

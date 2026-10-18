@@ -14,12 +14,6 @@ interface PendingMachineCardProps {
   onConfirmDeny: () => void;
 }
 
-/**
- * The "new machine" card (T-1518): an amber waiting dot and the name, the
- * public-key fingerprint in a big mono well so the owner compares it with what
- * the runner shows, then Deny and Approve. The hardware, the drivers and the
- * sandbox chips live on the machine's own page now.
- */
 export function PendingMachineCard({
   machine,
   approving,
@@ -104,7 +98,6 @@ export function PendingMachineCard({
   );
 }
 
-/** Groups the raw fingerprint in fours for display (`a1b2 c3d4 e5f6 0718`). */
 function groupFingerprint(value: string): string {
   return value.replace(/(.{4})(?=.)/g, '$1 ');
 }

@@ -1,4 +1,3 @@
-// T-0876: the limits rules live in @zilar/chat-core and are shared with mobile.
 import {
   formatLimit,
   MAX_MONTHLY_USD,

@@ -7,9 +7,7 @@ export interface SegmentedOption {
   value: string;
   label: string;
   count?: number;
-  /** A lucide icon drawn before the label; only used by the `choice` tone. */
   icon?: LucideIcon;
-  /** Rendered muted and not selectable; arrow keys skip it. */
   disabled?: boolean;
 }
 
@@ -19,18 +17,9 @@ export interface SegmentedControlProps {
   onChange: (value: string) => void;
   ariaLabel: string;
   mode?: 'tabs' | 'radio';
-  /**
-   * `tab` is the folder track (the active tab is the dark raised segment).
-   * `choice` is the New AI selection: a taller row whose selected option is the
-   * light key (ui-style.md D24 + the approved New AI boards).
-   */
   tone?: 'tab' | 'choice';
 }
 
-/**
- * A well track with the active option raised (`ui-style.md` §5). Arrow keys,
- * Home and End move the selection, following the tablist pattern in §7.
- */
 export function SegmentedControl({
   options,
   value,
@@ -55,7 +44,6 @@ export function SegmentedControl({
     return undefined;
   };
 
-  /** The next enabled option from `from` in `direction`, wrapping once. */
   const enabledFrom = (from: number, direction: 1 | -1): number | undefined => {
     const last = options.length - 1;
     let index = from;

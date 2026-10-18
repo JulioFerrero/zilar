@@ -3,11 +3,6 @@ import type { GroupDetail } from '@/lib/api';
 import { Button } from '../ui/button';
 import { TopicsList } from './TopicsSection';
 
-// Cosmos fixture (T-1786): the group screen's Your/Other topics on the boards'
-// `#0a0a0a` page, next to `docs/design/mockups/topic-people/WebGroup.dc.html:66-109`.
-// Static rows so the lists need no store.
-
-/** The group detail the rows draw names and pictures from. */
 const INFO: GroupDetail = {
   id: 'g-devteam',
   title: 'Dev team',

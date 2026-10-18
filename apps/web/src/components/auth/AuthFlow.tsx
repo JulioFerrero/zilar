@@ -40,11 +40,6 @@ function isEmailValid(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-/**
- * Shared email → code → session flow for both the invite and the login pages.
- * An invite in the URL seeds the code; the invite field appears only once the
- * server says the email has no account, and the code rides along from then on.
- */
 export function AuthFlow({
   inviteCode: inviteCodeProp,
   heading,
@@ -55,9 +50,7 @@ export function AuthFlow({
   inviteCode?: string | undefined;
   heading: string;
   subheading?: string;
-  /** Pre-fills the email (the setup screen already collected it). */
   initialEmail?: string | undefined;
-  /** Starts at the code step (the setup screen already sent the code). */
   initialStep?: 'email' | 'code' | undefined;
 }) {
   const navigate = useNavigate();
@@ -70,23 +63,17 @@ export function AuthFlow({
   const [inviteStep, setInviteStep] = useState(false);
   const [inviteHint, setInviteHint] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  // `busy` is a state the two actions below set and clear themselves, so the
-  // buttons re-enable the moment the server answers (before the session
-  // reads and the redirect), exactly as before.
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  // The invite a request carries. On an email-first flow it rides only once the
-  // server has asked for one; the code-start flow (the first-run setup) already
-  // holds the invite the caller supplied.
   const requestInvite = (): string | undefined => {
     const raw = inviteStep ? inviteCode : initialStep === 'code' ? inviteCodeProp : '';
     const trimmed = (raw ?? '').trim();
     return trimmed === '' ? undefined : trimmed;
   };
 
-  // One second per value of `secondsLeft`: each tick (or a new 30s) restarts
-  // the wait, and an unmount interrupts it.
+  // One second per value of `secondsLeft`: each tick (or a new 30s) restarts the
+  // wait, and an unmount interrupts it.
   useQuery(
     () =>
       secondsLeft <= 0
@@ -163,9 +150,6 @@ export function AuthFlow({
       const session = yield* Effect.promise(() => authClient.getSession());
       const name = session.data?.user.name ?? '';
       const from = (location.state as { from?: string } | null)?.from;
-      // A nameless user picks a name first, then continues to `from` — the
-      // name step reads the same `next` state JoinPage writes. The handle
-      // step follows the name step (HandlePage chains the same way).
       yield* Effect.sync(() =>
         navigate(
           name.trim() === '' ? '/welcome/name' : (from ?? '/'),

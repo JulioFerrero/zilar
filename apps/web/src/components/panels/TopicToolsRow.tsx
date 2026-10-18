@@ -4,11 +4,6 @@ import { cn } from '@/lib/utils';
 import { RoutinesSection } from '../tools/RoutinesSection';
 import { ToolsSection } from '../tools/ToolsSection';
 
-/**
- * T-1784: the "Tools and routines · N · M" row (plan §3.4). N is the topic's
- * tool count; M arrives from `RoutinesSection` once its list loads. Collapsed by
- * default; the row expands the tools and routines lists.
- */
 export function TopicToolsRow({
   topicId,
   groupId,

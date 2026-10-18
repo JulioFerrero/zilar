@@ -3,10 +3,6 @@ import type { ReactNode } from 'react';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ListRow } from '../ui/list-row';
 
-/**
- * The Content rows shared by the group and channel info panels. Group info
- * passes its "Tools and routines" row as `extraRow`, after Pinned messages.
- */
 export function ContentNav({
   chatId,
   pinCount,

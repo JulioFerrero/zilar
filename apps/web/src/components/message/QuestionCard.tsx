@@ -4,12 +4,6 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
-/**
- * A question card (T-1578), a work/progress card (T-1618) and an approval card
- * (T-1716) draw themselves in place of the message's fallback body text: the
- * bubble hides the text, but the text stays on the message for copy, replies
- * and search. Other cards keep theirs.
- */
 export function hidesBodyText(card: { type: string } | undefined): boolean {
   return (
     card?.type === 'question' ||
@@ -20,12 +14,9 @@ export function hidesBodyText(card: { type: string } | undefined): boolean {
 }
 
 /**
- * The AI's question card (T-1578): the question, then its 2-4 reply chips in a
- * wrapping row. A chip sends a normal reply that @mentions the asking AI and
- * quotes the question; after one tap in this session the chips disable, and the
- * server closes the question (step 6). No status words: plain outline pills.
- * T-1821: after a reload the answer is read back from the first reply in the
- * loaded messages that quotes the question, so the card stays answered.
+ * A chip sends a normal reply that @mentions the asking AI and quotes the
+ * question; after one tap the chips disable and the server closes the question.
+ * After a reload the answer is read back from the first reply quoting it.
  */
 export function QuestionCard({
   question,
@@ -34,16 +25,12 @@ export function QuestionCard({
   messageId,
 }: {
   question: Question;
-  /** The asking AI's display name, its mention and the reply quote's sender. */
   aiName: string;
   chatId: string;
-  /** The question message's id, the reply's `replyTo` target. */
   messageId: string;
 }) {
   const storeApi = useChatStoreApi();
   const [answered, setAnswered] = useState(false);
-  // Both selectors return an existing message object or `undefined`, so their
-  // values stay stable across store changes.
   const questionMessage = useChatSelector((state) =>
     state.messages(chatId).find((message) => message.id === messageId),
   );

@@ -20,12 +20,6 @@ const EXPIRED_ANNOUNCE = 'Code expired';
 const COUNTDOWN_TICK_MS = 1000;
 const COPIED_MS = 1500;
 
-/**
- * The "Add machine" dialog: mints a fresh pairing code, shows it big in Geist
- * Mono with a copy key, a live countdown, and the `zilar-runner pair <CODE>`
- * command. The desktop runner is not published yet, so the line below the
- * command says so honestly.
- */
 export function AddMachineDialog({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
@@ -41,8 +35,6 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
   const pairing =
     AsyncResult.isSuccess(pairingState) && !isWaiting(pairingState) ? pairingState.value : null;
 
-  // The countdown is a run per code: it ends at expiry, and a new code, a
-  // close or an unmount interrupts it.
   const expiresAt = pairing?.expiresAt;
   const [countdownState] = useQuery(
     () =>
@@ -64,7 +56,6 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
     ? failureText(failureOf(pairingState), 'Could not create a pairing code.')
     : '';
 
-  // A second click restarts the copy and the "Copied" flash, as before.
   const [, copy] = useAction(
     (code: string) =>
       Effect.promise(() => copyText(code)).pipe(
@@ -181,10 +172,6 @@ function formatRemaining(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-/**
- * Waits one tick, then reports the time left; a tick at or past expiry reports
- * zero and ends the run, which is what turns the dialog to "expired".
- */
 const countDown = Effect.fnUntraced(function* (
   expiresAt: number,
   onTick: (remainingMs: number) => void,
@@ -200,11 +187,6 @@ const countDown = Effect.fnUntraced(function* (
   }
 });
 
-/**
- * The text machineErrorMessage gives for an API answer. fromApi keeps an
- * ApiError's code, status and message; any other throw became the generic
- * unknown_error, which shows this component's fallback sentence instead.
- */
 function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || failure.code === 'unknown_error') {
     return fallback;

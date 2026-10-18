@@ -11,8 +11,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-// The glyphs of the weather board (`WebContent.dc.html:142,150-154`), keyed by
-// the shared `weatherIcon` vocabulary so web and phone draw the same picture.
+// Glyphs keyed by the shared `weatherIcon` vocabulary, so web and phone draw
+// the same picture.
 const ICONS: Record<WeatherIconKey, LucideIcon> = {
   sun: Sun,
   cloud: Cloud,
@@ -23,7 +23,6 @@ const ICONS: Record<WeatherIconKey, LucideIcon> = {
   wind: Wind,
 };
 
-/** 22 · WEATHER: the place, the current reading and up to six hours. */
 export function WeatherBlock({ block }: { block: WeatherBlockData }) {
   const Icon = ICONS[weatherIcon(block.condition)];
   return (

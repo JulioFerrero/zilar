@@ -1,10 +1,8 @@
 import { useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 
-/** The bold marker, as `parseLightInline` reads it. */
 const BOLD = '**';
 /** The italic marker light markdown accepts at word edges (`_…_`, not `*…*`). */
 const ITALIC = '_';
-/** The inline-code marker. */
 const CODE = '`';
 
 export interface FormattedText {
@@ -13,7 +11,6 @@ export interface FormattedText {
   selectionEnd: number;
 }
 
-/** The marker a Ctrl/Cmd+B, +I or +E applies, or nothing for any other chord. */
 function markerFor(event: KeyboardEvent<HTMLTextAreaElement>): string | undefined {
   if (event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) {
     return undefined;
@@ -31,13 +28,6 @@ function markerFor(event: KeyboardEvent<HTMLTextAreaElement>): string | undefine
   return undefined;
 }
 
-/**
- * Wraps the selection in `marker` on both sides, keeping the same text selected.
- * It toggles the marker off when it already wraps the selection: a marker just
- * outside each end, or one at each end inside the selection. An empty selection
- * between markers unwraps too; otherwise it inserts the pair and puts the caret
- * between. Pure and total; it never throws.
- */
 export function applyFormat(
   value: string,
   selectionStart: number,
@@ -89,11 +79,9 @@ export function applyFormat(
 }
 
 /**
- * Handles the Ctrl/Cmd+B, +I and +E shortcuts for a textarea. `onChange` commits
- * the new text (in the composer it is `mentions.onChange`, so tracked mentions
- * rebase too); the hook restores the selection on the textarea in a layout
- * effect, once React has rendered the new value but before the browser paints,
- * so the range lines up with the new text instead of the default end caret.
+ * The hook restores the selection on the textarea in a layout effect, after
+ * React renders the new value but before the browser paints, so the range
+ * lines up with the new text instead of the default end caret.
  */
 export function useFormatShortcut(
   value: string,

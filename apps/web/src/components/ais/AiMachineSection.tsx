@@ -8,9 +8,6 @@ import { useQuery } from '@/lib/effect/use-query';
 import { FieldError } from './AiPageShell';
 import { describeFailure, refetchAi } from './aiPanelOps';
 
-/** T-0091: the AI's home machine. Lists the owner's approved machines plus
- *  "The platform"; a failed list leaves the select disabled on the current
- *  value only, so it can never silently change the AI's home. */
 export function AiMachineSection({
   ai,
   setAi,
@@ -18,36 +15,25 @@ export function AiMachineSection({
   ai: PublicAi;
   setAi: Dispatch<SetStateAction<PublicAi | null>>;
 }) {
-  // T-0091: the home machine dropdown lists the owner's approved machines.
-  // A failure here must not block the rest of the panel: `machines` stays null
-  // so the select can render its disabled "current value only" state.
   const [machineList] = useQuery(() => fromApi(() => listMachines()), []);
   const machines = AsyncResult.isSuccess(machineList) ? machineList.value : null;
 
-  // The approved machines the dropdown may pick from; an unloaded list
-  // means the select is disabled with the current value only.
   const approvedMachines = useMemo(
     () => (machines ?? []).filter((machine) => machine.status === 'approved'),
     [machines],
   );
   const machineOptionsLoaded = machines !== null;
   const currentMachineId = ai.machineId ?? null;
-  // The current value always shows, even if the machine vanished or was
-  // revoked in another tab — without it the dropdown would default to
-  // "The platform", which would be a silent change.
+  // The current value always shows, even if the machine vanished or was revoked
+  // in another tab: without it the select would silently reset to "The platform".
   const knownMachineIds = new Set(approvedMachines.map((machine) => machine.id));
   const currentMachineIsKnown = currentMachineId === null || knownMachineIds.has(currentMachineId);
 
   const [machineError, setMachineError] = useState('');
 
-  // T-0091: set or clear the home machine. The select carries the chosen
-  // value already (`event.target.value`), so on a failure we have to roll
-  // it back to the AI's previous value: the select itself is uncontrolled
-  // and uses `ai.machineId` as the canonical source.
-  // The select only carries approved machines plus "The platform", so a chosen id
-  // is by construction known to the server. Still, the server is the source of
-  // truth; on a 404 (a revoke that raced us) the panel reads the AI again instead
-  // of crashing. A second change while one is in flight is dropped.
+  // The select is uncontrolled and `ai.machineId` is the source of truth: roll
+  // the chosen value back on failure and read the AI again on a 404 (a revoke
+  // that raced us). A second change while one is in flight is dropped.
   const [machineState, runMachine] = useAction<string, void, never>((nextValue) => {
     const previous = ai.machineId ?? null;
     const next = nextValue === '' ? null : nextValue;
@@ -64,8 +50,6 @@ export function AiMachineSection({
       Effect.tap((fresh) => Effect.sync(() => setAi(fresh))),
       Effect.asVoid,
       Effect.catchTag('ApiFailure', (failure) =>
-        // Roll back to the AI's previous value, then read the AI again so the panel
-        // matches the server's view. The inline error stays visible either way.
         Effect.sync(() => {
           setAi((current) => (current === null ? current : { ...current, machineId: previous }));
           setMachineError(describeFailure(failure, 'Could not update the home machine').message);
@@ -77,10 +61,6 @@ export function AiMachineSection({
   const machineSelectDisabled = !machineOptionsLoaded || machineBusy;
 
   return (
-    // A labelled select listing the owner's approved machines plus "The
-    // platform (no machine)". When the machine list could not be loaded, or
-    // the AI is on a machine since revoked in another tab, the select is
-    // disabled and shows the current value only.
     <div className="flex flex-col gap-1">
       <label htmlFor="ai-panel-machine" className="text-[14px] font-medium">
         Runs on

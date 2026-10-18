@@ -23,15 +23,11 @@ export interface StickerGridProps {
   onBrokenRecent?: ((stickerId: string) => void) | undefined;
 }
 
-// The sticker grid: 5 columns of fixed 56 px square tiles inside a
-// min-344px panel (5 x 56 + 4 x 8 gap + 2 x 8 padding = 328 px, leaving
-// room for the scrollbar), so tiles never overlap. The image stays
-// object-contain inside its tile with breathing room (T-0155: `p-1.5`,
-// so the star's backdrop corner never touches the art) and the star is a
-// small corner button fully inside the tile.
+// 5 columns of fixed 56 px tiles inside a min-344px panel (5 x 56 + 4 x 8 gap
+// + 2 x 8 padding = 328 px, leaving room for the scrollbar), so tiles never
+// overlap. `p-1.5` keeps the star's backdrop off the art.
 const TILE_PX = 56;
 
-/** The Stickers tab body: pack tabs, the tile grid, the hover preview and the manage link. */
 export function StickerGrid({
   activeStickers,
   favoriteIds,

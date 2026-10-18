@@ -17,11 +17,6 @@ export type AisState = {
   message: string;
 };
 
-/**
- * The AIs section (WebTopic.dc.html): a counted heading and one grouped card of
- * 44 px rows, each with the AI badge, who added it and a ⋯ menu for memory and
- * Remove. The add pickers moved to the one "Add people or AIs" dialog (T-1784).
- */
 export function TopicAisSection({
   state,
   pictureOf,
@@ -33,9 +28,7 @@ export function TopicAisSection({
   onError,
 }: {
   state: AisState;
-  /** Topic AI rows carry no picture; the group detail knows it. */
   pictureOf: (aiId: string) => string | undefined;
-  /** "yours", "<Name>'s", or nothing when the owner is unknown. */
   ownerLabelOf: (aiId: string) => string | undefined;
   canRemove: (aiId: string) => boolean;
   onRetry: () => void;
@@ -98,7 +91,6 @@ function AiRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { removing, runRemove } = useRemoveAi({ remove: removeAi, onError });
-  // T-1885: a row with a JID opens the AI, like the people rows already do.
   const person = (
     <>
       <EntityAvatar person={{ id: ai.id, name: ai.name, avatarUrl: picture }} size={28} ai />

@@ -27,7 +27,6 @@ function lastRunText(tool: ToolListItem): string {
   return `${status} · ${at.toLocaleDateString()}`;
 }
 
-/** The API's own message, or the fallback for a failure that was not an API answer. */
 function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
     return fallback;
@@ -35,28 +34,16 @@ function failureText(failure: ApiFailure | undefined, fallback: string): string 
   return failure.message;
 }
 
-/**
- * The Tools section of a topic, a group's General, or an AI (T-0107):
- * every tool with name, description, version, hosts (declared, and
- * approved when the API gives it), and last run. Selecting a row opens
- * the detail panel. Actions the API would refuse hide (member vs
- * admin/owner): `canManage` comes from the caller, and a 403/404 from
- * the server shows an inline message instead of crashing.
- */
 export function ToolsSection({
   scope,
   scopeKey,
   canManage,
 }: {
-  /** Exactly one of the three lists, matching the server routes. */
   scope: { topicId: string } | { groupId: string } | { aiId: string };
   scopeKey: string;
-  /** False hides Run/Revert/Delete (a member the API would refuse). */
   canManage: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // `scopeKey` is the stable key: a new scope loads again, a refresh reloads
-  // the scope it was built for.
   const [list, reloadList] = useQuery(() => loadScopeTools(scope), [scopeKey]);
 
   const reload = (): void => {
@@ -75,7 +62,6 @@ export function ToolsSection({
     );
   }
 
-  // A reload shows Loading… again, as the list did before the hook.
   const loading = isWaiting(list) || AsyncResult.isInitial(list);
   const failure = AsyncResult.isFailure(list) && !loading ? failureOf(list) : undefined;
   const status: ListStatus = loading ? 'loading' : AsyncResult.isFailure(list) ? 'error' : 'ready';
@@ -138,9 +124,8 @@ export function ToolsSection({
 
 /**
  * A failure that parses as "no such scope" reads as an empty list (older
- * server, or a strict fetch mock answering 404/[] for the new endpoints),
- * so the section never adds noise to the panel. Any other failure stays
- * the inline error with Retry.
+ * server or a strict fetch mock), so the section never adds noise. Any other
+ * failure stays the inline error with Retry.
  */
 function loadScopeTools(
   scope:

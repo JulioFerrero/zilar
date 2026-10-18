@@ -2,12 +2,6 @@ import type { RoutinePost } from '@zilar/protocol';
 import { Repeat } from 'lucide-react';
 import { Link } from 'react-router';
 
-/**
- * T-1722: the header a routine's live message shows above its text (the
- * approved `WebRoutineLive` board): a repeat icon, the routine title in muted
- * 13 px medium and its schedule in mono 12 px. The whole row links to
- * Settings › Routines.
- */
 export function RoutineHeader({ routine }: { routine: RoutinePost }) {
   return (
     <Link

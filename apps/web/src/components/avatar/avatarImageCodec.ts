@@ -1,8 +1,3 @@
-/**
- * Avatar image codec for `AvatarUploader`: the phases of the picker, the
- * browser decode/encode Effects (with Promise-typed injectable edges) and the
- * preview-URL helpers. Moved unchanged from `AvatarUploader.tsx` (size split).
- */
 import { Data, Effect } from 'effect';
 import { AVATAR_EXPORT_SIDE, exportDrawArgs, type CropState } from '@/lib/avatar-crop';
 
@@ -25,10 +20,8 @@ export type Exporter = (
   mime: 'image/webp' | 'image/png',
 ) => Promise<Blob | null>;
 
-/** The browser could not decode the picked file. */
 export class ImageUnreadable extends Data.TaggedError('ImageUnreadable') {}
 
-/** Decodes the picked file. Interrupting the load clears the image handlers. */
 const loadImageSize = (objectUrl: string): Effect.Effect<ImageSize, ImageUnreadable> =>
   Effect.callback<ImageSize, ImageUnreadable>((resume) => {
     const image = new Image();
@@ -43,7 +36,6 @@ const loadImageSize = (objectUrl: string): Effect.Effect<ImageSize, ImageUnreada
     });
   });
 
-/** Draws the crop onto a canvas and encodes it. A null blob means no encoder. */
 const encodeAvatar = (
   image: HTMLImageElement,
   source: ImageSize,
@@ -78,16 +70,16 @@ const encodeAvatar = (
     );
   });
 
-// The injectable props keep their Promise types (the tests pass Promise
-// fakes), so the browser defaults run their Effects at this edge.
+// The injectable props keep their Promise types (the tests pass Promise fakes),
+// so the browser defaults run their Effects at this edge.
 export const defaultImageLoader: ImageLoader = (objectUrl) =>
   Effect.runPromise(loadImageSize(objectUrl));
 export const defaultExporter: Exporter = (image, source, state, mime) =>
   Effect.runPromise(encodeAvatar(image, source, state, mime));
 
-// jsdom (and some test environments) has no `URL.createObjectURL`: fall
-// back to a synthetic url the injected `imageLoader` fake ignores. The
-// `<img>` still gets a `src`, so production behaviour is unchanged.
+// jsdom (and some test environments) has no `URL.createObjectURL`: fall back
+// to a synthetic url the injected `imageLoader` fake ignores. The `<img>` still
+// gets a `src`, so production behaviour is unchanged.
 let previewCounter = 0;
 
 const syntheticPreviewUrl = (): string => {
@@ -95,13 +87,11 @@ const syntheticPreviewUrl = (): string => {
   return `avatar-preview-${previewCounter}`;
 };
 
-/** The preview URL for a picked file; a browser that refuses it gets the synthetic url. */
 export const previewUrlFor = (file: File): Effect.Effect<string> =>
   typeof URL.createObjectURL === 'function'
     ? Effect.try(() => URL.createObjectURL(file)).pipe(Effect.orElseSucceed(syntheticPreviewUrl))
     : Effect.sync(syntheticPreviewUrl);
 
-/** Best effort: a refused revoke is ignored. */
 export const revokePreviewUrl = (url: string): Effect.Effect<void> =>
   url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function'
     ? Effect.ignore(Effect.try(() => URL.revokeObjectURL(url)))
@@ -114,7 +104,6 @@ export interface PickedCrop {
   crop: CropState;
 }
 
-/** WebP first, then PNG when the browser cannot encode WebP. A null result means neither. */
 export const exportAvatarFile = (
   exporter: Exporter,
   picked: PickedCrop,

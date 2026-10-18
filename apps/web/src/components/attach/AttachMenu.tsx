@@ -3,19 +3,11 @@ import { useRef, useState, type RefObject } from 'react';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
 
-/**
- * The composer's paperclip (T-1324): it opens a small menu, Telegram-style,
- * with "Photo or video" and "File". Each entry clicks one hidden input; the
- * menu itself is the shared `ui/menu`, which closes on Escape or an outside
- * click and returns focus to the paperclip.
- */
 export function AttachMenu({
   onPickMedia,
   onPickFiles,
 }: {
-  /** Files chosen through "Photo or video" (`accept="image/*,video/*"`). */
   onPickMedia: (files: File[]) => void;
-  /** Files chosen through "File" (any type). */
   onPickFiles: (files: File[]) => void;
 }) {
   const [open, setOpen] = useState(false);

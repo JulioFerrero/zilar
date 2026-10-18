@@ -16,11 +16,6 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 
-// T-0100: whose rules to list. Mirrors `AuditScope` in AiActivity: exactly
-// one of the two keys, and the callers guard their own mounting (the AI
-// panel mounts it for the AI owner, the group panel for owners/admins).
-// T-0111: the topic panel passes `topicId` to show one topic's rows only;
-// the subtitle names the topic (rows show `Group › Topic` there).
 export type AlwaysAllowedScope = { aiId: string } | { groupId: string };
 
 function scopeKeyOf(scope: AlwaysAllowedScope, topicId?: string): string {
@@ -32,12 +27,6 @@ function loadScopeRules(scope: AlwaysAllowedScope): Promise<ApprovalRule[]> {
   return 'aiId' in scope ? listAiApprovalRules(scope.aiId) : listGroupApprovalRules(scope.groupId);
 }
 
-/**
- * Resolves a rule's group id to the chat title when the store knows it.
- * Group details are keyed by chat id with the group's id inside, so the
- * lookup walks the known details; unknown ids fall back to plain words.
- * T-0111: a rule with a `topicName` shows `Group › Topic`.
- */
 export function scopeTextFor(
   rule: ApprovalRule,
   groupInfos: Record<string, GroupDetail>,
@@ -55,15 +44,6 @@ export function scopeTextFor(
   return name === undefined || name === '' ? 'In a group' : `In a group › ${name}`;
 }
 
-/**
- * The "Always allowed" list (T-0100): the standing approval rules for one
- * AI or one group, with a one-step revoke per row. Shared by the AI panel
- * and the group panel. Loads once when mounted; never renders blank —
- * loading, empty and error each get their own copy, and a failed load
- * offers Retry. Revoke removes the row on success (a 404 means it is
- * already gone, so the row drops quietly); any other failure keeps the
- * row and shows an inline error.
- */
 export function AlwaysAllowedList({
   scope,
   topicId,
@@ -71,11 +51,8 @@ export function AlwaysAllowedList({
   readOnly = false,
 }: {
   scope: AlwaysAllowedScope;
-  /** T-0111: when set, only this topic's rows show and Revoke hides. */
   topicId?: string;
-  /** T-0111: the topic's display name for the row subtitles. */
   topicName?: string;
-  /** T-0111: the topic panel reads the list without revoke actions. */
   readOnly?: boolean;
 }) {
   const groupInfos = useChatSelector((s) => s.groupInfos);
@@ -84,9 +61,6 @@ export function AlwaysAllowedList({
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const scopeKey = scopeKeyOf(scope, topicId);
-  // Built once per scope key: the list is read again when the key changes or
-  // when Retry calls `reload`. Callers pass a fresh `{ aiId }` literal each
-  // render, so the key, not the object, decides when to load.
   const [list, reload] = useQuery(() => fromApi(() => loadScopeRules(scope)), [scopeKey]);
 
   const dropRule = (id: string): void => {
@@ -223,7 +197,6 @@ export function AlwaysAllowedList({
   );
 }
 
-/** The failed load, or undefined while a Retry is running. */
 function listFailure(
   list: AsyncResult.AsyncResult<ApprovalRule[], ApiFailure>,
 ): ApiFailure | undefined {

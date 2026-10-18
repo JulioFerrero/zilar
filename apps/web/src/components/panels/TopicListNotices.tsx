@@ -1,7 +1,6 @@
 import { Button } from '../ui/button';
 import { FieldError } from '../ais/AiPageShell';
 
-/** A list that failed to load: the message and a Retry button. */
 export function LoadFailed({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col gap-2 px-2">
@@ -13,7 +12,6 @@ export function LoadFailed({ message, onRetry }: { message: string; onRetry: () 
   );
 }
 
-/** A list that is shown but could not be refreshed: the message and a Retry button. */
 export function RefreshFailed({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex items-center gap-2 px-2">
@@ -25,7 +23,6 @@ export function RefreshFailed({ message, onRetry }: { message: string; onRetry: 
   );
 }
 
-/** The "Add people" / "Add my AI" opener and its Cancel, around the picker rows. */
 export function PickerToggle({
   open,
   openLabel,

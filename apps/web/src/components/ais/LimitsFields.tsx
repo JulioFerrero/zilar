@@ -1,7 +1,6 @@
 import { TextInput } from '@/components/ui/text-input';
 import { FieldError } from './AiPageShell';
 
-/** Step 5: the USD daily and monthly caps, with the server's validation rules. */
 export function LimitsFields({
   day,
   month,

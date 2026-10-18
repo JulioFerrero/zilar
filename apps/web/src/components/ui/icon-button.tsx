@@ -6,11 +6,9 @@ export interface IconButtonProps extends React.ComponentProps<'button'> {
   size?: number;
   /** Corner radius in pixels. */
   radius?: number;
-  /** `primary` draws the light accent key, `default` the dark one. */
   variant?: 'default' | 'primary';
 }
 
-/** An icon key (ui-style.md §4). Use with an `aria-label`. */
 export function IconButton({
   className,
   size = 36,
@@ -22,7 +20,6 @@ export function IconButton({
   children,
   ...props
 }: IconButtonProps) {
-  // A hover tooltip comes from the accessible name unless the caller sets one.
   const label = props['aria-label'];
   return (
     <button

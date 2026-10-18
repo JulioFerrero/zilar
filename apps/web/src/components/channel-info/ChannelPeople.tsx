@@ -11,7 +11,6 @@ import { Menu, MenuItem } from '../ui/menu';
 import { SearchField } from '../ui/search-field';
 import { StateMessage } from '../ui/state-message';
 
-/** The owner and admin as icons, never words (WebChannelSubscribers.dc.html). */
 function RoleIcon({ role }: { role: GroupMember['role'] }) {
   if (role === 'owner') {
     return <Crown className="size-[14px] shrink-0 text-[#e5b84b]" role="img" aria-label="Owner" />;
@@ -28,11 +27,6 @@ function RoleIcon({ role }: { role: GroupMember['role'] }) {
   return null;
 }
 
-/**
- * The Admins page (T-1519): one rounded list of who posts in the channel, the
- * owner and admins as icons. Subscribers only get this slice from the server,
- * so their loading, failure and empty states are kept from the old panel.
- */
 export function ChannelAdminsPage({
   admins,
   loading,
@@ -68,11 +62,6 @@ export function ChannelAdminsPage({
   );
 }
 
-/**
- * The Subscribers page (T-1519): a search field, the admins then the rest, each
- * row carrying its role icon, and a ⋮ menu for the owner with Make admin or
- * Remove admin — the word keys and role chips are gone (WebChannelSubscribers).
- */
 export function ChannelSubscribersPage({
   members,
   me,
@@ -137,7 +126,6 @@ export function ChannelSubscribersPage({
   );
 }
 
-/** One subscribers row: avatar, name, role icon, and the owner's ⋮ menu. */
 function SubscriberRow({
   member,
   me,

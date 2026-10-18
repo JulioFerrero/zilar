@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 /**
- * Plain text with line numbers for read-only code and output (T-0107).
- * Renders as text only — string content can never become an element, so
- * `<img onerror>` and `javascript:` strings from tool source or output
- * stay inert. No syntax-highlighter dependency, per the spec.
+ * Plain text with line numbers for read-only code and output. It renders as
+ * text only — string content can never become an element, so `<img onerror>`
+ * and `javascript:` strings from tool source or output stay inert.
  */
 export function CodeBlock({ code, label }: { code: string; label: string }) {
   const lines = code.split('\n');
@@ -32,10 +31,6 @@ export function CodeBlock({ code, label }: { code: string; label: string }) {
   );
 }
 
-/**
- * Long plain-text output truncated with a "Show all" toggle (T-0107).
- * Renders as text, never HTML.
- */
 export function TruncatedText({
   text,
   preview,

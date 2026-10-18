@@ -1,10 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import { IconButton } from './icon-button';
 
-/**
- * One key of an info page's action row (T-1494): the kit's 36 px `IconButton`
- * with its label underneath, in a 64 px column.
- */
 export function PanelKey({
   label,
   icon: Icon,

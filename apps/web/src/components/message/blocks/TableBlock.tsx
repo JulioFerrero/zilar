@@ -3,24 +3,12 @@ import type { TableBlock as TableBlockData } from '@zilar/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-// The board's table (`WebNumbers.dc.html:134-142`): the header rule is `#232323`;
-// a data row carries a `#1c1c1c` rule under it; a total row sits under a rule and
-// is bold in its first and last cells. T-1793: alignment is per column, from
-// `numericColumns` — number columns are right-aligned, mono and tabular; text
-// columns are left-aligned in the body font.
 const HEAD_CELL = 'border-b border-[#232323] pb-[6px] text-[12px] text-[#8a8a8a]';
 const ROW_CELL = 'border-b border-[#1c1c1c] py-[6px]';
 const LAST_ROW_CELL = 'py-[6px]';
 const TOTAL_CELL = 'pt-[6px]';
 const NUMBER = 'text-right font-mono tabular-nums';
 
-/**
- * 04 · TABLE: a header row and the rows, with an optional total row.
- * `showHeading` draws the block's own title when the card has no header. A
- * table wider than the card scrolls sideways; while it does, a right-edge fade
- * says it is cut and 8 px of bottom padding keeps the last row clear of an
- * overlay scrollbar.
- */
 export function TableBlock({
   block,
   showHeading,
@@ -67,8 +55,8 @@ export function TableBlock({
         </div>
       )}
       {/* A table wider than the card scrolls inside its own box instead of
-          stretching the card (`overflow-x` on the wrapper, `min-w-max` on the
-          grid so the columns keep their width). */}
+       * stretching it, so the columns keep their width.
+       */}
       <div className="relative min-w-0">
         <div
           ref={scrollRef}

@@ -2,8 +2,6 @@ import { calloutTone, type BlockTone } from '@zilar/chat-core';
 import type { CalloutBlock as CalloutBlockData } from '@zilar/protocol';
 import { Check, CircleAlert, Info, TriangleAlert, type LucideIcon } from 'lucide-react';
 
-// The callout recipe of the boards (`WebContent.dc.html:105-115`): a tinted
-// circle with the tone's glyph and colour, then the one line of text.
 const CALLOUT: Record<BlockTone, { color: string; background: string; icon: LucideIcon }> = {
   positive: { color: '#4ade80', background: 'rgba(34,197,94,.14)', icon: Check },
   warning: { color: '#fbbf24', background: 'rgba(251,191,36,.14)', icon: TriangleAlert },
@@ -12,11 +10,9 @@ const CALLOUT: Record<BlockTone, { color: string; background: string; icon: Luci
   neutral: { color: '#a1a1a1', background: 'rgba(161,161,161,.12)', icon: Info },
 };
 
-/** 25 · CALLOUT: one tone, one line. */
 export function CalloutBlock({ block }: { block: CalloutBlockData }) {
   // A newer server may add a tone (expand/contract); an unknown one falls back
-  // to the neutral look instead of leaving `tone` undefined and throwing on
-  // `tone.icon`.
+  // to the neutral look instead of throwing on `tone.icon`.
   const tone = CALLOUT[calloutTone(block.tone)] ?? CALLOUT.neutral;
   const Icon = tone.icon;
   return (

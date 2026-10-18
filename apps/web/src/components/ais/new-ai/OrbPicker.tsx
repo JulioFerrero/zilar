@@ -5,11 +5,6 @@ import { ORB_HUES, ORB_RIMS, clampOrbLight, orbDataUri } from '@zilar/chat-core'
 import { cn } from '@/lib/utils';
 import type { NewAiFlow } from './useNewAiFlow';
 
-/**
- * Step 3's orb: a 64 px trigger with an edit badge that opens a Base UI Popover.
- * The popover holds the 14 hue swatches, the 7 rim lights, a draggable light on
- * the big orb, Shuffle and Reset (OrbPicker.dc.html).
- */
 export function OrbPicker({ flow }: { flow: NewAiFlow }) {
   const [open, setOpen] = useState(false);
   const dragging = useRef(false);

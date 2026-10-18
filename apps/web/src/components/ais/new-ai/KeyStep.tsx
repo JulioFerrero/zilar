@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ArrowUpRight, Eye, EyeOff, Lock } from 'lucide-react';
 import type { KeyCheck } from './useKeyCheck';
 
-/** Step 2: the provider key, with a lock, a reveal key and a green dot when it works. */
 export function KeyStep({ keys }: { keys: KeyCheck }) {
   const [revealed, setRevealed] = useState(false);
 

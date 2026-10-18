@@ -18,9 +18,7 @@ import { cn } from '@/lib/utils';
 import { BlobPreview } from './BlobPreview';
 import type { PackEditorItem } from './packEditorModel';
 
-/** The emoji the popover offers; the current one comes first, then these fill the row. */
 const EMOJI_POOL = ['😀', '😂', '😍', '😎', '👍', '🙌', '🔥', '❤️'];
-/** Seven emoji cells, plus the "More emoji" key, fill one row of eight. */
 const EMOJI_SLOTS = 7;
 
 function emojiChoices(current: string): string[] {
@@ -40,11 +38,6 @@ export interface TilePopoverProps {
   onRemove: (key: string) => void;
 }
 
-/**
- * One sticker tile (T-1509): the preview with its emoji, loop and status
- * badges, opening on click a popover with emoji choices, Move left/right and
- * Remove. The open tile carries the white ring of the approved mock.
- */
 export function TilePopover({
   item,
   index,

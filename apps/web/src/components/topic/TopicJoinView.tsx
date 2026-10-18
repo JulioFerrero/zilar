@@ -24,12 +24,6 @@ type PreviewState =
 const LOAD_FAILED = 'Could not load the messages.';
 const JOIN_FAILED = 'Could not join the topic. Try again.';
 
-/**
- * T-1797: a public topic the viewer has not joined (W9). The recent messages
- * read as the chat's incoming bubbles, oldest at the top, and the composer is
- * replaced by one Join key. Joining refreshes the chat row, so `isTopicJoined`
- * turns true and the normal chat takes over.
- */
 export function TopicJoinView({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
   const topic = chat.topic;
@@ -104,17 +98,11 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
   );
 }
 
-/**
- * One preview row. A row may carry the decoded `<agent>` payload, so the card
- * kinds the thread draws are drawn here too instead of showing a blank or
- * fallback-text bubble (T-1807, the web twin of T-1798).
- */
 function PreviewRow({ message }: { message: TopicPreviewMessage }) {
   const payload = isValid(PayloadSchema)(message.payload) ? message.payload : undefined;
   const blocks = payload?.type === 'blocks' ? payload.data : undefined;
   const progress = payload?.type === 'progress' ? payload.data : undefined;
   const asText = blocks === undefined && progress === undefined;
-  // A row with neither a drawable card nor text has nothing to show.
   if (asText && message.body === '') {
     return null;
   }
@@ -134,7 +122,6 @@ function PreviewRow({ message }: { message: TopicPreviewMessage }) {
       <div
         className={cn(
           'flex min-w-0 flex-col',
-          // A card is its own surface, as in the thread: no bubble box around it.
           asText &&
             'bubble-in gap-0.5 rounded-[14px] rounded-bl-[4px] px-3 py-2 text-[14px] leading-[1.5]',
         )}
@@ -147,8 +134,6 @@ function PreviewRow({ message }: { message: TopicPreviewMessage }) {
             {message.nick}
           </span>
         ) : (
-          // The thread's standalone card keeps the sender over the card with
-          // `MessageSender`'s classes plus its `px-3 pt-2` wrapper.
           <div
             className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
             style={{ color: senderColor(message.nick) }}

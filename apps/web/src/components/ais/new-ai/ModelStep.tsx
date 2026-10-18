@@ -8,7 +8,6 @@ const TEMPLATE_OPTIONS = AI_TEMPLATE_OPTIONS.filter((option) => option.id !== 'c
   (option) => ({ value: option.id, label: option.label }),
 );
 
-/** Step 3: the orb, the name, the model and the template. */
 export function ModelStep({ flow }: { flow: NewAiFlow }) {
   return (
     <div className="flex flex-col gap-4">

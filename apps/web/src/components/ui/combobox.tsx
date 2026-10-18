@@ -7,33 +7,25 @@ import { cn } from '@/lib/utils';
 export interface ComboboxOption {
   readonly value: string;
   readonly label: string;
-  /** A trailing status dot. Only `online` today. */
   readonly dot?: 'online';
   readonly icon?: LucideIcon;
 }
 
 export interface ComboboxFooterItem {
   readonly label: string;
-  /** When the field's value equals this, the trigger shows `label`. */
   readonly value?: string;
   readonly onSelect: () => void;
 }
 
 export interface ComboboxProps {
   options: readonly ComboboxOption[];
-  /** The selected value, or `null` for nothing yet. */
   value: string | null;
   onValueChange: (value: string) => void;
-  /** The accessible name of the field, used on the trigger. */
   label: string;
-  /** Shown on the search well at the top of the popup. */
   placeholder?: string;
-  /** Shown on the trigger when nothing is selected. */
   triggerPlaceholder?: string;
-  /** A pinned row after a divider, for example "OpenAI-compatible". */
   footerItem?: ComboboxFooterItem;
   disabled?: boolean;
-  /** Extra classes for the trigger. */
   className?: string;
 }
 
@@ -51,11 +43,6 @@ const ITEM =
 const FOOTER_ITEM =
   'flex h-[34px] shrink-0 items-center gap-2.5 rounded-[8px] px-2.5 text-left text-sm text-muted-foreground outline-none hover:bg-surface-raised';
 
-/**
- * A searchable single-choice field built on Base UI `Combobox`: a well trigger,
- * a menu-surface popup with a search well on top, and 34 px rows. Base UI
- * filters by label, so arrow keys and Enter work over the filtered list.
- */
 export function Combobox({
   options,
   value,

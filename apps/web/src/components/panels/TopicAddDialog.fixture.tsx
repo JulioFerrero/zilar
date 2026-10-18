@@ -15,7 +15,6 @@ const ais: AddAi[] = [
   { id: 'ai-helper', name: 'Helper', inGroup: false },
 ];
 
-/** A settled promise, as the ops' one-call add resolves. */
 const addMember = (_userId: string): Effect.Effect<void, ApiFailure> => Effect.void;
 const addAi = (_aiId: string): Effect.Effect<void, ApiFailure> => Effect.void;
 const createInvite = (): Effect.Effect<string, ApiFailure> =>

@@ -7,13 +7,6 @@ import { TopicRow } from '../TopicRow';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 
-/**
- * One group as a collapsible header row with its topics nested underneath in
- * a 1 px left rail (T-0111): the avatar, the title, "N topics", the
- * aggregated unread, and the newest message time. The chevron toggles the
- * collapse (remembered per group in localStorage); collapsed shows only the
- * header. Archived topics hide under an "Archived (n)" toggle.
- */
 export const GroupHeaderRow = memo(function GroupHeaderRow({
   groupTitle,
   groupId,
@@ -29,7 +22,6 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
 }: {
   groupTitle: string;
   groupId: string;
-  /** The General topic's row: the group header's picture and id. */
   chat: ChatSummary;
   topics: ChatSummary[];
   selectedId: string | undefined;
@@ -38,19 +30,16 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
   archivedOpen: boolean;
   onToggleArchived: (groupId: string) => void;
   isWide?: boolean;
-  /** Opens the new-topic dialog for this group; the value is a chat row id. */
   onOpenNewTopic?: (chatId: string) => void;
 }) {
   // The dialog and the store resolve the group from a chat row id, not the
-  // group id: pass the General topic's row id (every group has one since
-  // T-1090). The first row covers a legacy group whose topics have not loaded.
+  // group id: pass the General topic's row id (every group has one).
   const newTopicChatId = (topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0])?.id;
   const active = topics.filter(
     (topic) => topic.topic?.archived !== true && topic.archived !== true,
   );
-  // Archived topics hide under the "Archived (n)" toggle: manager-archived
-  // ones (archived for everyone) and per-user archived ones (hidden only for
-  // the viewer, T-0113) share the same section — never two toggles.
+  // Manager-archived topics (for everyone) and per-user archived ones (hidden
+  // only for the viewer) share the same "Archived (n)" section, never two toggles.
   const archived = topics.filter(
     (topic) => topic.topic?.archived === true || topic.archived === true,
   );
@@ -61,8 +50,6 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
     .reduce((best, time) => Math.max(best, time), Number.NEGATIVE_INFINITY);
   const selectedInside = topics.some((topic) => topic.id === selectedId);
   const Chevron = collapsed ? ChevronRight : ChevronDown;
-  // The "+" (new topic) button overlays the time on hover/focus, like the row
-  // "more" button: the time hides while the button is shown.
   const showNewTopic = onOpenNewTopic !== undefined && newTopicChatId !== undefined;
 
   return (
@@ -81,10 +68,9 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${groupTitle}, ${active.length} topics`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          {/* The row's `chat` is the General topic's row, whose title is the
-              topic name; seed the orb from the group title so the header
-              matches the group everywhere (T-1334). The picture stays the
-              row's. */}
+          {/* Seed the orb from the group title so the header matches the group
+           * everywhere; the picture stays the row's.
+           */}
           <EntityAvatar chat={{ ...chat, title: groupTitle }} size={isWide ? 44 : 52} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">

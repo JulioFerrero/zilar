@@ -10,17 +10,12 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const UNMUTE_ERROR = 'Could not unmute. Try again.';
-// `mutedUntilFor('forever')` is 100 years out; anything at least this year reads
-// as "always" (chat-core keeps the exact sentinel private).
+// `mutedUntilFor('forever')` is 100 years out; anything at least this far out
+// reads as "always" (chat-core keeps the sentinel private).
 const FOREVER_MUTE_YEAR = 2100;
 
 class UnmuteFailed extends Data.TaggedError('UnmuteFailed') {}
 
-/**
- * WUX-39: Settings → Notifications → Muted chats. Lists every chat (and thread)
- * muted on its own row, with the mute's end, and lets you unmute it with the
- * same store action the row menus use (`setMuted(id, null)`).
- */
 export function MutedChatsSection() {
   const chats = useChatSelector((s) => s.chats);
   const chatPrefs = useChatSelector((s) => s.chatPrefs);
@@ -28,8 +23,8 @@ export function MutedChatsSection() {
   const [error, setError] = useState<string | undefined>(undefined);
 
   // Only rows muted by their own pref are listed: a group mute lives on the
-  // General row and the group's other topics inherit it, so listing every
-  // topic would repeat the group. The General row itself is included.
+  // General row and its other topics inherit it, so listing every topic would
+  // repeat the group. The General row itself is included.
   const muted = useMemo((): ChatSummary[] => {
     return chats.filter((chat) => {
       if (!chat.muted) {
@@ -98,7 +93,6 @@ export function MutedChatsSection() {
   );
 }
 
-/** The mute end shown under a title: `always` or `until 18:00`. */
 function muteEndLabel(mutedUntil: string | null, now: Date): string {
   const date = mutedUntil === null ? undefined : new Date(mutedUntil);
   if (

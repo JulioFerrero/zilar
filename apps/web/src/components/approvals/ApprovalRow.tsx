@@ -12,10 +12,6 @@ interface ApprovalRowProps {
   onDeny: () => void;
 }
 
-/**
- * A pending approval in the inbox: the AI's picture, the summary and
- * "AI · chat", then Deny and Approve as icon keys. No "always allow".
- */
 export function ApprovalRow({ approval, busy, actionError, onApprove, onDeny }: ApprovalRowProps) {
   const disableButtons = busy !== null;
   const where =

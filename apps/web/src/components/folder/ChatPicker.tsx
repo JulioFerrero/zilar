@@ -23,9 +23,9 @@ export function ChatPicker({
   onToggle: (id: string) => void;
 }) {
   const full = picked.length >= FOLDER_CHATS_MAX;
-  // Topics are rows of their group, archived chats are hidden everywhere:
-  // neither can be picked into a folder. Chats that were picked before and
-  // are no longer pickable still show as removable rows below.
+  // Topics are rows of their group and archived chats are hidden everywhere, so
+  // neither can be picked into a folder. Chats picked before and no longer
+  // pickable still show as removable rows below.
   const query = search.trim().toLowerCase();
   const pickable = chats.filter(
     (chat) =>

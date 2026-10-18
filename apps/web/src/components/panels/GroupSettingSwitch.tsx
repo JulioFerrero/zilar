@@ -9,11 +9,6 @@ import { Switch } from '../ui/switch';
 import { messageOf, settingText, storeStep } from './groupPanelOps';
 import type { PanelFailure } from './groupPanelOps';
 
-/**
- * A manager setting row: a title, a switch, optional rows below it, a
- * description, and an inline error. The topic and AI-listener settings were
- * the same `Switch`+`FieldError` pattern before the split.
- */
 export function GroupSettingSwitch({
   ariaLabel,
   title,
@@ -52,7 +47,6 @@ export function GroupSettingSwitch({
   );
 }
 
-/** T-0111: "Members can create topics", with its save action and inline error. */
 export function GroupTopicSetting({
   chatId,
   canCreateTopics,
@@ -79,11 +73,6 @@ export function GroupTopicSetting({
   );
 }
 
-/**
- * T-0478: the AI listener switch and eagerness. Both go through
- * `setGroupListener`; the store refreshes the detail on success and an inline
- * error shows on failure, exactly like the topic switch.
- */
 export function GroupListenerSetting({
   chatId,
   enabled,

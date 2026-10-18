@@ -1,12 +1,6 @@
 import { sendFailureLabel, type SendFailureReason } from '@zilar/chat-core';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
-/**
- * The "Not sent" row under a failed own message (T-0168): a red label with
- * the fixed reason, a Retry button that re-runs the same pipeline from the
- * retained blob, and a Delete button that removes the local bubble. All
- * three are plain buttons, keyboard reachable with accessible names.
- */
 export function SendFailure({
   chatId,
   messageId,

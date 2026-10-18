@@ -13,7 +13,6 @@ interface RevokedRowProps {
   onRemove: (id: string) => void;
 }
 
-/** One revoked machine with its own delete action. */
 export function RevokedRow({ machine, confirmingDelete, onConfirm, onRemove }: RevokedRowProps) {
   const [deleteState, deleteMachineRow, deleteControls, deleteError] = useMachineAction(
     (id: string) =>

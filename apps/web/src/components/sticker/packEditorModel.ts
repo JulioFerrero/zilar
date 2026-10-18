@@ -15,33 +15,26 @@ export type PackEditorItemStatus = 'ready' | 'uploading' | 'done' | 'error';
 export interface PackEditorItem {
   key: string;
   name: string;
-  /** New items only: the prepared bytes (previewed through `BlobPreview`). */
   blob?: Blob | undefined;
-  /** Existing stickers only: the server file URL shown directly. */
   serverUrl?: string | undefined;
   mime: 'image/webp' | 'image/png';
   width: number;
   height: number;
   bytes: number;
-  /** A moving file (GIF, video, animated WebP, APNG): shown with the loop badge. */
   motion?: 'none' | 'animated' | 'video' | undefined;
   emoji: string;
   status: PackEditorItemStatus;
   error?: string | undefined;
-  /** The server id: set for existing stickers, and for new ones once uploaded. */
   stickerId?: string | undefined;
 }
 
 export interface PackEditorProps {
-  /** Absent = create mode (the pack is created first, then stickers upload). */
   packId?: string | undefined;
   initialTitle?: string | undefined;
   initialVisibility?: 'private' | 'server' | undefined;
-  /** The pack's current stickers in edit mode (shown first, removable, reorderable). */
   initialStickers?: Sticker[] | undefined;
   onDone: (packId: string) => void;
   onCancel: () => void;
-  /** Injected in tests so no canvas is touched. */
   prepare?: typeof prepareStickerImage;
   createPack?: typeof createStickerPack;
   uploadFile?: typeof uploadStickerFile;
@@ -52,7 +45,6 @@ export interface PackEditorProps {
 export const PACK_ACCEPT =
   'image/png,image/jpeg,image/webp,image/gif,video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov';
 
-/** The image preparation function, injectable in tests. */
 export type PrepareSticker = typeof prepareStickerImage;
 
 let editorKey = 0;
@@ -61,7 +53,9 @@ export function nextKey(): string {
   return `sticker-${editorKey}`;
 }
 
-/** A single emoji (one grapheme cluster): ZWJ and flag sequences stay whole. */
+/**
+ * A single emoji (one grapheme cluster): ZWJ and flag sequences stay whole.
+ */
 export function takeSingleEmoji(value: string): string {
   if (value === '') {
     return '';
@@ -80,23 +74,16 @@ function describePrepError(error: unknown, name: string): string {
   return `${name}: the image could not be prepared.`;
 }
 
-/**
- * A call that failed. It keeps the thrown value whole, so a row or the form
- * shows the thrown Error's own message, as the editor always did.
- */
 export class CallFailed extends Data.TaggedError('PackCallFailed')<{ readonly error: unknown }> {}
 
-/** Lifts one Promise call (an api.ts function or an injected one) into an Effect. */
 export function call<A>(run: () => Promise<A>): Effect.Effect<A, CallFailed> {
   return Effect.tryPromise({ try: run, catch: (error) => new CallFailed({ error }) });
 }
 
-/** The text of a failed call: the thrown Error's message, else the fixed sentence. */
 export function messageOf(failure: CallFailed, fallback: string): string {
   return failure.error instanceof Error ? failure.error.message : fallback;
 }
 
-/** One picked file, prepared. A failure becomes an error row, never a lost file. */
 function prepareItem(file: File, prepare: PrepareSticker): Effect.Effect<PackEditorItem> {
   const name = file.name !== '' ? file.name : 'image';
   return call(() => prepare(file)).pipe(
@@ -133,12 +120,6 @@ export interface PrepareBatchJob {
   readonly files: File[];
 }
 
-/**
- * The files of one drop, prepared one after another as before. Each drop is
- * its own batch, so two drops still prepare side by side; the batch leaves
- * the list once its last file is in. The Effect starts on mount and stops
- * when the batch unmounts.
- */
 export function PrepareBatch({
   files,
   prepare,
@@ -150,13 +131,10 @@ export function PrepareBatch({
   onPrepared: (item: PackEditorItem) => void;
   onFinished: () => void;
 }) {
-  // The latest prepare prop, kept current on render (the pattern of use-action.ts).
   const latestPrepare = useRef(prepare);
   useLayoutEffect(() => {
     latestPrepare.current = prepare;
   });
-  // The drop starts on mount and reads the prepare function then, so a drop
-  // always uses the prop the editor had when the files were picked.
   useQuery(
     () =>
       Effect.sync(() => latestPrepare.current).pipe(

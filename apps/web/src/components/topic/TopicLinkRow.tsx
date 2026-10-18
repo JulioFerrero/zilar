@@ -14,7 +14,6 @@ const LABEL_MAX = 40;
 const SAVE_FAILED = 'Could not save. Try again.';
 const INVALID_URL = 'Link must be an https URL.';
 
-/** The row's title: the label when set, else the link's host. */
 function linkTitle(label: string | null, href: string): string {
   if (label !== null && label !== '') {
     return label;
@@ -23,10 +22,9 @@ function linkTitle(label: string | null, href: string): string {
 }
 
 /**
- * The shared https rule plus the browser's own parse: chat-core's parser keeps
- * the phone working without a full `URL`, and a value it accepts but `new URL`
- * refuses (a link stored by an older release) shows "Add a link" instead of
- * crashing this panel.
+ * chat-core's parser keeps the phone working without a full `URL`, and a value
+ * it accepts but `new URL` refuses (a link stored by an older release) shows
+ * "Add a link" instead of crashing the panel.
  */
 function browserHttpsUrl(url: string | null | undefined): string | undefined {
   const href = httpsTopicUrl(url);
@@ -41,12 +39,6 @@ function browserHttpsUrl(url: string | null | undefined): string | undefined {
   }
 }
 
-/**
- * The topic's link (T-1534): an editable row in the topic info panel. The
- * label (or the host) opens the URL in a new tab, the pencil edits it, and
- * the form keeps the https check and the 40-character label. Without a link
- * the row adds one, and an existing one can be removed.
- */
 export function TopicLinkRow({
   chat,
   onError,

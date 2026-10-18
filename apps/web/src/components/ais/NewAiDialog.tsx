@@ -11,11 +11,6 @@ import { ProviderStep } from './new-ai/ProviderStep';
 import { SetupStep } from './new-ai/SetupStep';
 import { useNewAiFlow } from './new-ai/useNewAiFlow';
 
-/**
- * The New AI wizard: Provider · Key · Model · Setup, then Create AI. The shell
- * owns the dialog, the step bar and the footer; each step is its own component
- * and the shared state lives in `useNewAiFlow`.
- */
 export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const storeApi = useChatStoreApi();
@@ -32,12 +27,8 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
         unread: 0,
         muted: false,
         online: false,
-        // T-1474: an empty new AI chat sorts by the AI's creation time, so it
-        // leads the list until a message lands.
         createdAt: new Date(created.createdAt),
       };
-      // Show the new AI in the list immediately; the roster refresh reconciles
-      // it a moment later and a chat already there is kept.
       storeApi.setState((state) => ({
         chats: state.chats.some((chat) => chat.id === created.jid)
           ? state.chats

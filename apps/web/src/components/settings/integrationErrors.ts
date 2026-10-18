@@ -3,10 +3,8 @@ import type { ApiFailure } from '@/lib/effect/errors';
 
 export { shownFailure } from '@/lib/effect/use-action';
 
-/** Which of the three page states the integrations page is in. */
 export type PageStatus = 'loading' | 'ready' | 'forbidden';
 
-/** The form's own checks, each one before anything is sent. */
 export class SenderMissing extends Data.TaggedError('SenderMissing') {}
 export class EndpointMissing extends Data.TaggedError('EndpointMissing') {}
 export class TokenMissing extends Data.TaggedError('TokenMissing') {}

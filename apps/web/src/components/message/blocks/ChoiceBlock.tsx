@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useBlockReply, useBlockRespond } from './BlockRespond';
 
-// The board's segmented control (`WebChoices.dc.html:32-34`).
 const SEG = {
   background: '#0c0c0c',
   border: '1px solid #1a1a1a',
@@ -16,11 +15,6 @@ const ON = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.7)',
 };
 
-/**
- * 15 · PICK ONE: the question and a segmented control. The `selected` option is
- * "on"; a tap answers with its 0-based index, takes over at once and sends the
- * option text as the @AI reply.
- */
 export function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
@@ -28,7 +22,6 @@ export function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
   const [seenSelected, setSeenSelected] = useState(block.selected);
   const [busy, setBusy] = useState(false);
 
-  // React's prop-sync pattern: a room correction replaces the local pick.
   if (block.selected !== seenSelected) {
     setSeenSelected(block.selected);
     setSelected(block.selected);

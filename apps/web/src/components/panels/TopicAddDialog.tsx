@@ -13,18 +13,14 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
-/** A person the dialog can add: a group member, or one of the caller's contacts. */
 export interface AddPerson {
-  /** The user id. */
   id: string;
   name: string;
   avatarUrl?: string;
   handle?: string | null;
-  /** True when the person is already in the group (only the topic add remains). */
   inGroup: boolean;
 }
 
-/** An AI the dialog can add: one in the group, or one of the caller's other AIs. */
 export interface AddAi {
   id: string;
   name: string;
@@ -37,13 +33,11 @@ type Outcome = 'added' | 'failed';
 type PersonOutcome = { outcome: Outcome | undefined; person: AddPerson };
 type AiOutcome = { outcome: Outcome | undefined; ai: AddAi };
 
-/** Appends the settled rows a reload dropped, so "Added" stays visible. */
 function mergeRows<T>(live: T[], settled: T[], idOf: (row: T) => string): T[] {
   const seen = new Set(live.map(idOf));
   return [...live, ...settled.filter((row) => !seen.has(idOf(row)))];
 }
 
-/** The right end of a row: Add, "Adding…", "Added", or a retryable "Couldn't add". */
 function AddKey({
   outcome,
   busy,
@@ -60,8 +54,6 @@ function AddKey({
       </span>
     );
   }
-  // A failure keeps the Add key: a tap retries, so a transient error (flaky
-  // network, 429) does not force the user to reopen the dialog.
   return (
     <span className="flex shrink-0 items-center gap-2">
       {outcome === 'failed' && (
@@ -74,11 +66,6 @@ function AddKey({
   );
 }
 
-/**
- * One addable row: a 30 px avatar, the name, an optional `+ joins {group}` tag,
- * and the Add key. `EntityAvatar` reads the store, which the fixture has no, so
- * this uses `Avatar` with the identity the caller already holds.
- */
 function AddRow({
   id,
   name,
@@ -110,7 +97,6 @@ function AddRow({
     ...(avatarUrl === undefined ? {} : { avatarUrl }),
   });
   const retry = (): void => {
-    // Clear the failure before the retry runs: the busy Add key returns.
     onResult(undefined);
     run(id);
   };
@@ -147,7 +133,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** The "Invite with a link" row, as in `InviteDialog`: create on open, Copy. */
 function InviteRow({ createInvite }: { createInvite: () => Effect.Effect<string, ApiFailure> }) {
   const [invite] = useQuery(() => createInvite(), [createInvite]);
   const url = AsyncResult.isSuccess(invite) ? invite.value : undefined;
@@ -193,12 +178,6 @@ function InviteRow({ createInvite }: { createInvite: () => Effect.Effect<string,
   );
 }
 
-/**
- * T-1784: the topic's one "Add people or AIs" dialog (plan §3.4). It lists the
- * group's people and AIs that are not in the topic, and — for a group owner or
- * admin — the caller's contacts and other AIs, who join the group in one step
- * (T-1769). Search filters both tabs; the bottom row invites with a link.
- */
 export function TopicAddDialog({
   topicName,
   groupTitle,
@@ -220,7 +199,6 @@ export function TopicAddDialog({
   addAi: (aiId: string) => Effect.Effect<void, ApiFailure>;
   createInvite: () => Effect.Effect<string, ApiFailure>;
   onClose: () => void;
-  /** The tab shown on open; the fixture uses it to capture the AIs tab. */
   initialTab?: Tab;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -234,7 +212,6 @@ export function TopicAddDialog({
     name.toLowerCase().includes(query) ||
     (handle ?? '').toLowerCase().includes(query);
 
-  // A non-manager only sees the people and AIs already in the group.
   const visiblePeople = mergeRows(
     people,
     Object.values(personOutcomes).map((entry) => entry.person),
@@ -269,7 +246,7 @@ export function TopicAddDialog({
       }}
     >
       <DialogPrimitive.Portal>
-        {/* T-1351: force the scrim, which Base UI drops for a nested dialog. */}
+        {/* Force the scrim, which Base UI drops for a nested dialog. */}
         <DialogPrimitive.Backdrop forceRender className="fixed inset-0 z-40 bg-black/60" />
         <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 pt-24">
           <DialogPrimitive.Popup className="flex w-full max-w-[440px] flex-col gap-3.5 rounded-2xl border border-border bg-panel p-[18px] shadow-[0_30px_60px_-20px_rgba(0,0,0,0.95)] outline-none">

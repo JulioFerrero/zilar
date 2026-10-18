@@ -14,7 +14,6 @@ interface RevokedMachineCardProps {
   onConfirmDelete: () => void;
 }
 
-/** A revoked machine, kept muted in a collapsed section. Delete is destructive. */
 export function RevokedMachineCard({
   machine,
   deleting,

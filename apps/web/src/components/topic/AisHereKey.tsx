@@ -19,28 +19,20 @@ import { IconButton } from '../ui/icon-button';
 import { Menu } from '../ui/menu';
 import { AiActivityMark, AiActivityMarks } from './AiActivityMarks';
 
-/** The Stop call for one AI's turn failed. */
 class StopFailed extends Data.TaggedError('StopFailed') {}
 
-/**
- * The topic header's "AIs here" key (T-1532): the pictures of the AIs at work,
- * opening a popover that lists each one with what it is doing and, for a
- * working AI, Stop. Renders nothing for a topic with no AI activity.
- */
 export function AisHereKey({ chat }: { chat: ChatSummary }) {
   const activity = chat.topic?.activity ?? [];
   const doneAt = chat.topic?.doneAt ?? null;
   const [open, setOpen] = useState(false);
-  // Only an AI the viewer owns can be stopped (T-1532), like the task card
-  // (T-1422). Until the list loads, or when it fails, no entry shows Stop.
+  // Only an AI the viewer owns can be stopped. Until the list loads, or when
+  // it fails, no entry shows Stop.
   const [aisResult] = useQuery(() => fromApi(() => listAis()), []);
   const ownIds = AsyncResult.isSuccess(aisResult)
     ? new Set(aisResult.value.map((ai) => ai.id))
     : undefined;
-  // T-1586: a waiting AI with an open question opens that question card in
-  // this topic instead of going to Approvals, the same jump a search hit makes.
-  // The action lives here, not on the row: closing the popover unmounts the
-  // row and would interrupt the row's own action mid-jump.
+  // The action lives here, not on the row: closing the popover unmounts the row
+  // and would interrupt the row's own action mid-jump.
   const storeApi = useChatStoreApi();
   const [, openQuestion] = useAction((messageId: string) =>
     fromApi(() => storeApi.getState().openAtMessage(chat.id, messageId)).pipe(
@@ -57,7 +49,7 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
   const isGeneral = chat.topic?.isGeneral === true;
   const view = topicActivityView(activity, doneAt, isGeneral);
   // General with only finished AIs has activity but nothing to show or open, so
-  // the key hides instead of drawing an empty button (T-1843).
+  // the key hides instead of drawing an empty button.
   if (view.active.length === 0 && !view.done) {
     return null;
   }
@@ -90,7 +82,6 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
   );
 }
 
-/** One AI in the "AIs here" popover: its picture, name, what it is doing and Stop. */
 function AisHereRow({
   entry,
   chatId,

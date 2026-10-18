@@ -4,18 +4,12 @@ import { Star } from 'lucide-react';
 import { useState } from 'react';
 import { useBlockReply, useBlockRespond } from './BlockRespond';
 
-// The board's dark square key (`WebChoices.dc.html:27`), 36 px and icon-only.
 const KEY_STYLE = {
   border: '1px solid #2a2a2a',
   background: 'linear-gradient(180deg,#1c1c1c,#121212)',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
 };
 
-/**
- * 17 · RATING: the prompt, then `max` dark star keys. Stars up to the chosen one
- * are filled; the rest are outlined. A tap answers with 1..`max` and sends
- * "{n}/{max}" as the @AI reply.
- */
 export function RatingBlock({ block }: { block: RatingBlockData }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
@@ -23,7 +17,6 @@ export function RatingBlock({ block }: { block: RatingBlockData }) {
   const [seenSelected, setSeenSelected] = useState(block.selected);
   const [busy, setBusy] = useState(false);
 
-  // React's prop-sync pattern: a room correction replaces the local pick.
   if (block.selected !== seenSelected) {
     setSeenSelected(block.selected);
     setSelected(block.selected);

@@ -3,9 +3,6 @@ import type { Change, FigureBlock as FigureBlockData } from '@zilar/protocol';
 import { Fragment } from 'react';
 import { cn } from '@/lib/utils';
 
-// The change colours of the boards: up is `#4ade80`, down is `#f87171`; a flat
-// change stays muted. The direction also picks the arrow glyph, because the
-// payload only carries the pre-formatted text (T-1755).
 const CHANGE_COLOR: Record<BlockTone, string> = {
   positive: '#4ade80',
   negative: '#f87171',
@@ -20,10 +17,7 @@ const CHANGE_ARROW: Record<Change['direction'], string> = {
   flat: '—',
 };
 
-/** 01 · FIGURES: label / value rows with an optional change per row. */
 export function FigureBlock({ block }: { block: FigureBlockData }) {
-  // The value column stays aligned whichever way it goes: three columns when
-  // any row has a change, two otherwise (board `WebNumbers.dc.html:42-46`).
   const hasChange = block.rows.some((row) => row.change !== undefined);
   return (
     <div

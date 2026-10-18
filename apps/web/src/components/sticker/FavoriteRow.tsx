@@ -3,7 +3,6 @@ import { useAction } from '@/lib/effect/use-action';
 import type { Sticker } from '@/lib/api';
 import { type PageSetters, unstarSticker } from './pageActions';
 
-/** One favorite sticker with its own Unfavorite action. */
 export function FavoriteRow({ sticker, setters }: { sticker: Sticker; setters: PageSetters }) {
   const [, runUnstar] = useAction<void, void, never>(() => unstarSticker(sticker.id, setters));
   return (

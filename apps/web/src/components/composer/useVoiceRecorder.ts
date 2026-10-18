@@ -43,30 +43,24 @@ export function useVoiceRecorder({
   canSend: boolean;
 }): VoiceRecorderController {
   const [recording, setRecording] = useState(false);
-  /** Click/tap mode: the recording keeps running until Send or Cancel. */
   const [locked, setLocked] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cancelArmed, setCancelArmed] = useState(false);
   const [voiceError, setVoiceError] = useState<string | undefined>(undefined);
-  // Leaving the chat or unmounting while recording stops the microphone
-  // tracks (the browser's recording indicator must go off) and discards the
-  // recording. The recorder cancels itself; the guards below ignore its
-  // late `start()` promise if it resolves afterwards.
+  // Leaving the chat or unmounting while recording stops the microphone tracks
+  // (the browser's recording indicator must go off) and discards the recording.
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
   const recordingRef = useRef(false);
   const chatIdRef = useRef(chatId);
-  // The document pointer listeners below are registered once, so every
-  // callback they reach reads the reply through this ref instead of a
-  // stale mount-time closure.
   const replyRef = useRef(replyTo);
   useEffect(() => {
     chatIdRef.current = chatId;
     replyRef.current = replyTo;
   }, [chatId, replyTo]);
 
-  // Escape cancels a click-mode recording (before the textarea's own
-  // Escape handlers for pickers, attachments, edits and replies).
+  // Escape cancels a click-mode recording, before the textarea's own Escape
+  // handlers for pickers, attachments, edits and replies.
   const cancelRecording = useCallback((): boolean => {
     if (!recordingRef.current) {
       return false;
@@ -85,13 +79,10 @@ export function useVoiceRecorder({
     return true;
   }, []);
 
-  // The permission prompt must never cancel the recording: only an
-  // explicit release after the recorder has started can finish it. The
-  // press is captured in a local so the async `start()` below can tell a
-  // stale prompt (chat switched, composer unmounted) from the live one.
-  // The reply is read through `replyRef` at send time: it may change while
-  // the browser's microphone prompt is showing, and the document pointer
-  // listeners below are registered once with a stale closure.
+  // The permission prompt must never cancel the recording: only an explicit
+  // release after the recorder has started can finish it. The press is captured
+  // in a local so the async `start()` can tell a stale prompt (chat switched,
+  // composer unmounted) from the live one.
   const beginRecording = (startX: number, clickMode: boolean): void => {
     const press: PressState = {
       startX,
@@ -108,7 +99,7 @@ export function useVoiceRecorder({
     if (!clickMode) {
       press.holdTimer = Effect.runFork(
         Effect.sleep(HOLD_MS).pipe(
-          // A press held this long is a hold-to-send: when the recorder starts
+          // A press held this long (400 ms) is a hold-to-send: when the recorder starts
           // it runs in hold mode until release.
           Effect.andThen(
             Effect.sync(() => {
@@ -119,8 +110,7 @@ export function useVoiceRecorder({
       );
     }
     // `runFork` starts the fiber at once, so `VoiceRecorder.start()` still runs
-    // inside the click (the microphone permission needs it); only the wait for
-    // the result is an Effect.
+    // inside the click (the microphone permission needs it).
     fork(
       Effect.tryPromise({
         try: () => VoiceRecorder.start(),
@@ -154,7 +144,6 @@ export function useVoiceRecorder({
     recorder: VoiceRecorder,
     clickMode: boolean,
   ): void => {
-    // The composer unmounted or the chat switched while the prompt was up.
     if (pressRef.current !== press) {
       recorder.cancel();
       return;
@@ -164,26 +153,18 @@ export function useVoiceRecorder({
     setRecording(true);
     setElapsedMs(0);
     if (clickMode) {
-      // Keyboard / assistive-technology activation: no release will arrive,
-      // so the recording runs in click mode with Send and Cancel to finish.
       pressRef.current = null;
       setLocked(true);
       return;
     }
     if (press.released) {
       if (press.hold) {
-        // A long press released during the prompt still sends: it was
-        // always a hold gesture, even though the recorder started late.
         if (press.holdTimer !== undefined) {
           stopTimer(press.holdTimer);
           press.holdTimer = undefined;
         }
         finishRecording(false);
       } else {
-        // A short press released during the prompt: the user clicked while
-        // the browser asked for permission. Keep recording in click mode
-        // instead of silently discarding it. The press is over either way,
-        // so its hold timer is cleared.
         if (press.holdTimer !== undefined) {
           stopTimer(press.holdTimer);
           press.holdTimer = undefined;
@@ -192,19 +173,12 @@ export function useVoiceRecorder({
         setLocked(true);
       }
     } else if (press.hold) {
-      // The hold threshold passed while the prompt was up, with the button
-      // still down: this is a hold-to-send, finished by the release.
     } else {
-      // The recorder beat the hold timer with the button still down: this
-      // may still become a hold or fall back to click mode on release.
     }
   };
 
-  // Stops the recorder and either sends or discards the result. `cancel`
-  // discards (trash button, slide-off, Escape); otherwise the recording is
-  // validated and sent through the store. The reply is read through
-  // `replyRef`, never a closure: the document pointer listeners below are
-  // registered once and would otherwise send a stale mount-time reply.
+  // The reply is read through `replyRef`, never a closure: the document pointer
+  // listeners are registered once and would otherwise send a stale reply.
   const finishRecording = (cancel: boolean): void => {
     const press = pressRef.current;
     const recorder = recorderRef.current;
@@ -260,12 +234,6 @@ export function useVoiceRecorder({
     );
   };
 
-  // Press-and-hold still works for touch and mouse: a press held past
-  // 400 ms sends on release (sliding left cancels instead). A shorter
-  // press falls back to click mode and keeps recording until Send. The
-  // recording starts on pointer-down and ends on pointer-up; a click
-  // without pointer events (keyboard activation) starts a click-mode
-  // recording instead, with Send and Cancel and no hold timer.
   const onMicClick = (): void => {
     if (pressRef.current !== null || canSend || recordingRef.current) {
       return;
@@ -278,12 +246,11 @@ export function useVoiceRecorder({
       return;
     }
     event.preventDefault();
-    // jsdom has no pointer capture: guard the call so the recording still
-    // starts there (and in any browser where capture throws).
+    // jsdom has no pointer capture: guard the call so the recording still starts
+    // there (and in browsers where capture throws).
     const target = event.currentTarget as HTMLElement & {
       setPointerCapture?: (pointerId: number) => void;
     };
-    // Pointer capture is best-effort; the press state still works without it.
     Effect.runSync(
       Effect.ignore(
         Effect.try(() => {
@@ -294,8 +261,6 @@ export function useVoiceRecorder({
     beginRecording(event.clientX, false);
   };
 
-  // The slide-to-cancel gesture while holding: shared with the document
-  // pointer-move listener below.
   const onMicPointerMove = (clientX: number): void => {
     const press = pressRef.current;
     if (press === null || recorderRef.current === null) {
@@ -307,9 +272,6 @@ export function useVoiceRecorder({
   };
 
   const onMicPointerCancel = (): void => {
-    // The system took over the gesture (an alert, a call): keep a started
-    // recording in click mode rather than silently dropping it, but do not
-    // resurrect a prompt that failed before starting.
     const press = pressRef.current;
     if (press?.holdTimer !== undefined) {
       stopTimer(press.holdTimer);

@@ -5,9 +5,6 @@ import { useState } from 'react';
 import { useBlockRespond } from './BlockRespond';
 import { ICON_KEY_STYLE, MAX_FIELD_CHARS, WELL_STYLE } from './choiceStyles';
 
-// The board's on switch (`WebChoices.dc.html:163`): a light track with a dark
-// knob at the right; the off look is the dark icon key with a grey knob at the
-// left.
 const ON_TRACK_STYLE = {
   background: 'linear-gradient(180deg,#ffffff,#d4d4d4)',
   boxShadow: 'inset 0 1px 0 #fff, 0 1px 2px rgba(0,0,0,.8)',
@@ -19,12 +16,6 @@ const ON_KNOB_STYLE = {
 };
 const OFF_KNOB_STYLE = { background: '#8a8a8a', boxShadow: KNOB_SHADOW };
 
-/**
- * 18 · ALERT RULE: the bell and title header, a well showing the threshold and
- * the switch, then the note. The well commits on Enter or blur and the switch
- * on tap; both answer through `BlockRespond` and revert when the request fails.
- * An alert answer is not a decision, so no @AI reply is sent.
- */
 export function AlertBlock({
   block,
   showHeading,
@@ -39,8 +30,6 @@ export function AlertBlock({
   const [seenOn, setSeenOn] = useState(block.on);
   const [busy, setBusy] = useState(false);
 
-  // React's prop-sync pattern: a room correction of the value or the switch
-  // replaces the local state.
   if (block.field.value !== seenValue) {
     setSeenValue(block.field.value);
     setValue(block.field.value);

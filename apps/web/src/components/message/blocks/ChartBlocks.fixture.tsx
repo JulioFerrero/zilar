@@ -2,10 +2,6 @@ import type { BlocksData } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { BlockCard } from './BlockCard';
 
-// Cosmos fixture (T-1771): the board's 05 bars, 06 line and 07 gauge on the
-// boards' `#0a0a0a` page, next to `docs/design/mockups/blocks/WebNumbers.dc.html`.
-
-/** The boards' `.time` (mono 10, `#8a8a8a`) as a plain footer. */
 function Time({ at }: { at: string }) {
   return <span className="font-mono text-[10px] text-[#8a8a8a]">{at}</span>;
 }
@@ -19,7 +15,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// `WebNumbers.dc.html:150-165`.
 const MESSAGES: BlocksData = {
   fallback:
     'Messages per day: 1,284. Mon 142, Tue 188, Wed 161, Thu 203, Fri 256, Sat 97, Sun 237.',
@@ -41,7 +36,6 @@ const MESSAGES: BlocksData = {
   ],
 };
 
-// `WebNumbers.dc.html:67-86`.
 const BITCOIN: BlocksData = {
   fallback: 'Bitcoin, last 24 hours: $82,302, rising from 79,100 to 82,300.',
   blocks: [
@@ -60,7 +54,6 @@ const BITCOIN: BlocksData = {
   ],
 };
 
-// `WebNumbers.dc.html:90-106`.
 const DAILY_LIMIT: BlocksData = {
   fallback: 'Daily limit: $0.62 of $1.00 used, 62 percent. Resets at 00:00.',
   blocks: [

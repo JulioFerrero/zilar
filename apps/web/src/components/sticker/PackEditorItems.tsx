@@ -10,15 +10,9 @@ export interface PackEditorItemsProps {
   onRetry: (key: string) => void;
   onSetEmoji: (key: string, value: string) => void;
   onRemove: (key: string) => void;
-  /** Opens the hidden file picker the Add tile stands for. */
   onPickFiles: () => void;
 }
 
-/**
- * The pack's stickers as a grid of square tiles (T-1509), ending in a dashed
- * Add tile. A tile shows its emoji, a loop badge when it moves, a spinner
- * while it uploads or its error; clicking it opens `TilePopover`.
- */
 export function PackEditorItems({
   items,
   busy,

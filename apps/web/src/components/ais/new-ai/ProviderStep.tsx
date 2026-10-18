@@ -1,7 +1,6 @@
 import { Combobox } from '@/components/ui/combobox';
 import type { KeyCheck } from './useKeyCheck';
 
-/** Step 1: the provider, with an OpenAI-compatible endpoint at the bottom. */
 export function ProviderStep({ keys }: { keys: KeyCheck }) {
   return (
     <div className="flex flex-col gap-4">

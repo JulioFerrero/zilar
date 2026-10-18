@@ -9,7 +9,6 @@ import { Well } from '../ui/well';
 
 const isVideo = (file: File): boolean => file.type.startsWith('video/');
 
-/** The dialog title, Telegram-style: the count and the kind of the pick. */
 function titleFor(attachments: PendingAttachment[]): string {
   const first = attachments[0];
   if (first === undefined) {
@@ -25,7 +24,6 @@ function titleFor(attachments: PendingAttachment[]): string {
   return isVideo(first.file) ? 'Send Video' : 'Send File';
 }
 
-/** One removable preview: a thumbnail when the item has one, an icon otherwise. */
 function PreviewTile({
   attachment,
   previewUrl,
@@ -75,12 +73,6 @@ function PreviewTile({
   );
 }
 
-/**
- * The send dialog for a media pick (T-1324): a grid of previews (a single
- * large one when there is one), each removable, a caption prefilled from the
- * composer, and "Send as files". Send hands the caption and the pick to the
- * composer's existing send path; Escape cancels, Enter sends.
- */
 export function AttachSendDialog({
   attachments,
   previewUrls,

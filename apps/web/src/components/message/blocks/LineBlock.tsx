@@ -1,27 +1,16 @@
 import { compactNumber, linePath } from '@zilar/chat-core';
 import type { LineBlock as LineBlockData } from '@zilar/protocol';
 
-// The board's plot box and gridlines (`WebNumbers.dc.html:73-84`): three dashed
-// rules at the quarter, half and three-quarter of the height.
 const WIDTH = 320;
 const HEIGHT = 110;
-// Vertical breathing room so the end marker never clips when a bound sits on the
-// box edge, the way the board insets its line (`:73-84`).
 const PAD = 4;
 const GRIDLINES = [0.25, 0.5, 0.75].map((fraction) => `M0 ${fraction * HEIGHT}H${WIDTH}`).join('');
 
-// Reads the scaled end point back out of the shared path, so the board's marker
-// dot sits exactly on the last data point.
 function lastPoint(path: string): { x: number; y: number } | null {
   const match = /(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)$/.exec(path);
   return match === null ? null : { x: Number(match[1]), y: Number(match[2]) };
 }
 
-/**
- * 06 · LINE: a sparkline with faint area fill, bounds labels and time labels.
- * `showHeading` draws the block's own title and value when the card has no
- * header.
- */
 export function LineBlock({ block, showHeading }: { block: LineBlockData; showHeading: boolean }) {
   const path = linePath(block.points, WIDTH, HEIGHT - PAD * 2, block.min, block.max);
   const area = path === '' ? '' : `${path} L ${WIDTH} ${HEIGHT - PAD} L 0 ${HEIGHT - PAD} Z`;

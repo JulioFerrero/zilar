@@ -2,7 +2,6 @@ import type { FileBlock as FileBlockData } from '@zilar/protocol';
 import { Download, File } from 'lucide-react';
 import { BLOCK_KEY } from './blockKey';
 
-// The raised file tile of the boards (`WebContent.dc.html:27`).
 const TILE = {
   background: 'linear-gradient(180deg,#2c2c2c,#151515)',
   border: '1px solid #050505',
@@ -10,7 +9,6 @@ const TILE = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.95)',
 };
 
-/** 24 · FILE: the file tile, the name and `size · format · rows`, plus Download. */
 export function FileBlock({ block }: { block: FileBlockData }) {
   const meta = [
     block.size,

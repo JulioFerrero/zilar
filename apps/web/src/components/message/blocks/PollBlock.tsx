@@ -19,7 +19,6 @@ function totalOf(block: PollBlockData, counts: Record<string, number>): number {
   return block.votes ?? Object.values(counts).reduce((sum, count) => sum + count, 0);
 }
 
-/** One tap's new selection: a single option toggles itself off; `multiple` toggles a set. */
 function toggle(mine: readonly string[], optionId: string, multiple: boolean): string[] {
   if (!multiple) {
     return mine.length === 1 && mine[0] === optionId ? [] : [optionId];
@@ -27,18 +26,11 @@ function toggle(mine: readonly string[], optionId: string, multiple: boolean): s
   return mine.includes(optionId) ? mine.filter((id) => id !== optionId) : [...mine, optionId];
 }
 
-/**
- * 14 · POLL: the question header with the vote count, then one tappable row per
- * option with a 6 px track. The viewer's options carry the light fill and a
- * check; the rest stay dim. Taps answer with `optionIds`; the count moves at
- * once and the room correction replaces it with the recorded total.
- */
 export function PollBlock({
   block,
   initialSelection,
 }: {
   block: PollBlockData;
-  /** The options a fixture starts with as the viewer's; a live card starts clean. */
   initialSelection?: readonly string[];
 }) {
   const respond = useBlockRespond();
@@ -51,8 +43,8 @@ export function PollBlock({
   const [seenBlock, setSeenBlock] = useState(block);
   const [busy, setBusy] = useState(false);
 
-  // T-1822: the card data carries counts only, so the viewer's own picks come
-  // from the server once. A tap before the answer lands wins over it.
+  // The card data carries counts only, so the viewer's own picks come from the
+  // server once. A tap before the answer lands wins over it.
   useEffect(() => {
     if (messageId === undefined || hasInitialSelection) {
       return;
@@ -66,15 +58,15 @@ export function PollBlock({
         }
       })
       .catch(() => {
-        // The poll starts blank, as before; answering still works.
+        // The poll starts blank; answering still works.
       });
     return () => {
       active = false;
     };
   }, [messageId, hasInitialSelection, block.id]);
 
-  // React's prop-sync pattern: the room correction replaces the recorded counts;
-  // the viewer's own pick stays local (the protocol has no viewer field).
+  // The room correction replaces the recorded counts; the viewer's own pick
+  // stays local (the protocol has no viewer field).
   if (block !== seenBlock) {
     setSeenBlock(block);
     const next = countsOf(block);

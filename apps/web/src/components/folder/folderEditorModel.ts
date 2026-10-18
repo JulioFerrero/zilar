@@ -14,7 +14,6 @@ export const SECTION_LABEL =
 
 export class FolderDeleteFailed extends Data.TaggedError('FolderDeleteFailed') {}
 
-/** The two writes of this dialog; one action runs them, so they never overlap. */
 export type FolderWrite = 'save' | 'delete';
 
 export function saveErrorMessage(error: ApiFailure): string {

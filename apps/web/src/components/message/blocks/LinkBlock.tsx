@@ -2,8 +2,6 @@ import { linkHost } from '@zilar/chat-core';
 import type { LinkBlock as LinkBlockData } from '@zilar/protocol';
 import { Link } from 'lucide-react';
 
-// The raised key tile of the boards (`WebContent.dc.html:27,46`); the link opens
-// in a new tab with no opener, as a normal external link.
 const TILE = {
   background: 'linear-gradient(180deg,#2c2c2c,#151515)',
   border: '1px solid #050505',
@@ -11,7 +9,6 @@ const TILE = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.95)',
 };
 
-/** 19 · LINK CARD: one https link with its host, title and description. */
 export function LinkBlock({ block }: { block: LinkBlockData }) {
   return (
     <a

@@ -19,7 +19,6 @@ interface CropDialogProps {
   onClose: () => void;
 }
 
-/** True when the Cropper reported the same crop area again. */
 function sameArea(current: CropArea | null, next: CropArea): boolean {
   return (
     current !== null &&
@@ -30,12 +29,6 @@ function sameArea(current: CropArea | null, next: CropArea): boolean {
   );
 }
 
-/**
- * The crop dialog (T-1346): react-easy-crop draws the picked image under a
- * round mask with drag, wheel and pinch zoom, and a zoom slider on top. The
- * parent owns the crop state; the Cropper reports the image position, the
- * zoom and the visible pixel area back through `onCropChange`.
- */
 export function CropDialog({
   crop,
   objectUrl,

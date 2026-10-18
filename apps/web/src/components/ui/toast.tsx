@@ -16,13 +16,6 @@ type Toast = (text: string) => void;
 
 const ToastContext = createContext<Toast | null>(null);
 
-/**
- * A tiny toast context (WUX-30). Wrap the app once and render the single
- * `role="status"` region; `useToast()` returns the `show` function. A newer
- * toast replaces the current one and restarts its timer, so repeated clicks on
- * Copy never pile up. The region stays mounted, so screen readers announce the
- * text when it changes.
- */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [text, setText] = useState<string | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
@@ -62,7 +55,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Shows a toast for a short moment. Must be used inside a `ToastProvider`. */
 export function useToast(): Toast {
   const show = useContext(ToastContext);
   if (show === null) {

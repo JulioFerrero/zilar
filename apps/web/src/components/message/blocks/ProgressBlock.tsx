@@ -2,16 +2,9 @@ import { ratioPercent } from '@zilar/chat-core';
 import type { ProgressBlock as ProgressBlockData } from '@zilar/protocol';
 import { CloudUpload } from 'lucide-react';
 
-// The board's recessed track (`WebProgress.dc.html:25`) and its raised fill
-// (`:26`); the well recipe of D24, drawn at the board's 8 px height (`:72`).
 const TRACK_SHADOW = 'inset 0 1px 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05)';
 const FILL_GRADIENT = 'linear-gradient(180deg,#f5f5f5,#b5b5b5)';
 
-/**
- * 09 · PROGRESS: one bar with the label, the percent and an optional detail and
- * note. `showHeading` hides the block's own label row when the card already
- * draws a header.
- */
 export function ProgressBlock({
   block,
   showHeading,

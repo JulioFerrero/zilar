@@ -4,10 +4,8 @@ import { groupChats, visibleChats, type ChatStoreState } from '@/store/store';
 // A normal (re)connect takes well under this; only a slow one gets a banner.
 export const CONNECTION_BANNER_DELAY_MS = 1500;
 
-// The menu badge caps at 9+; any number bigger than that just reads "9+".
 export const APPROVAL_BADGE_CAP = 9;
 
-/** The install prompt failed or was refused; the menu then offers a retry. */
 export class InstallFailed extends Data.TaggedError('InstallFailed') {}
 
 export interface ChatRows {

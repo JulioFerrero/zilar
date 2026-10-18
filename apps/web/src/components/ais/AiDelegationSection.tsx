@@ -5,9 +5,6 @@ import { Switch } from '@/components/ui/switch';
 import { FieldError } from './AiPageShell';
 import { writeAi } from './aiPanelOps';
 
-/** T-0478: the owner's delegation opt-ins. Each switch saves on its own
- *  through `updateAi`, separate from the main form's Save. On failure the
- *  inline error shows and the switch keeps its old value (never optimistic). */
 export function AiDelegationSection({
   ai,
   setAi,

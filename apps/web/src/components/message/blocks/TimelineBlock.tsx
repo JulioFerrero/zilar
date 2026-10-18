@@ -4,8 +4,6 @@ import { cn } from '@/lib/utils';
 
 type Step = TimelineBlockData['steps'][number];
 
-// The marker of a `done` step (`WebProgress.dc.html:110`): a filled disc with a
-// dark tick.
 function DoneMark() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
@@ -22,7 +20,6 @@ function DoneMark() {
   );
 }
 
-// The marker of the `current` step (`:118`): a light ring with an inner dot.
 function CurrentMark() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
@@ -32,7 +29,6 @@ function CurrentMark() {
   );
 }
 
-// The marker of a `todo` step (`:122`): an empty well disc.
 function TodoMark() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
@@ -41,11 +37,6 @@ function TodoMark() {
   );
 }
 
-/**
- * 10 · TIMELINE: ordered steps, each marked done, current or todo.
- * `showHeading` hides the block's own title row when the card already draws a
- * header.
- */
 export function TimelineBlock({
   block,
   showHeading,
@@ -70,8 +61,6 @@ export function TimelineBlock({
                 {step.state === 'done' ? <DoneMark /> : null}
                 {step.state === 'current' ? <CurrentMark /> : null}
                 {step.state === 'todo' ? <TodoMark /> : null}
-                {/* The connector runs to the next step: light after a done
-                    step, dark otherwise (the board, `:110` vs `:118`). */}
                 {!last && (
                   <span
                     className="w-0.5 flex-1"

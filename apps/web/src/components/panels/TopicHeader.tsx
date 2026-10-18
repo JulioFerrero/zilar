@@ -7,7 +7,6 @@ function visibilityLabel(visibility: 'public' | 'private'): string {
   return visibility === 'public' ? 'Public' : 'Private';
 }
 
-/** The topic sheet's header: avatar, group › title, visibility line and Close. */
 export function TopicHeader({
   chat,
   visibility,
@@ -19,9 +18,7 @@ export function TopicHeader({
   chat: ChatSummary;
   visibility: 'public' | 'private';
   groupTitle: string;
-  /** The member count text after the visibility, or ''. */
   suffix: string;
-  /** Opens the group info panel; when set, the group name is a button. */
   onOpenGroup?: () => void;
   onClose: () => void;
 }) {

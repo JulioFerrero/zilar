@@ -1,6 +1,5 @@
 import { Button } from '../ui/button';
 
-/** Make public / Make private and Archive, for managers of a non-General topic. */
 export function TopicDangerZone({
   isManager,
   isPrivate,

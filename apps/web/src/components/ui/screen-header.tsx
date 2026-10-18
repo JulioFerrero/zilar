@@ -3,22 +3,15 @@ import { ArrowLeft } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 
 export interface ScreenHeaderProps {
-  /** `root` is a top-level screen's title; `sub` is a pushed screen's 64 px row. */
   variant: 'root' | 'sub';
   title: string;
-  /** One muted line under the title. Not drawn when `bare`. */
   subtitle?: string | undefined;
-  /** A sub-screen's back key. */
   onBack?: (() => void) | undefined;
-  /** The back key's accessible name. */
   backLabel?: string | undefined;
-  /** A key at the right end of the row. */
   right?: ReactNode | undefined;
-  /** Sub only: draw the row and let the body own the title. */
   bare?: boolean | undefined;
 }
 
-/** The one header every screen shares (ui-consistency.md §1.1–§1.2, §4.1). */
 export function ScreenHeader({
   variant,
   title,

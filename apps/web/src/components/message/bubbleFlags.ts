@@ -8,7 +8,6 @@ import {
 } from '@zilar/chat-core';
 import { isGifVideoAttachment } from '../GifMessage';
 
-/** The plain values a message bubble's flags are derived from. */
 export interface BubbleFlagsInput {
   message: UiMessage;
   chat: ChatSummary;
@@ -22,16 +21,11 @@ export interface BubbleFlagsInput {
   now: Date;
 }
 
-/**
- * Whether a draft bubble animates. `useSmoothText` needs this before the rest
- * of the flags exist, so it stays a tiny helper beside them.
- */
 export function draftAnimates(draft: boolean, revealTurnId: string | undefined): boolean {
   const beyondDraft = revealTurnId !== undefined && !draft;
   return draft || beyondDraft;
 }
 
-/** Every flag `MessageBubble` renders from. No hooks, no side effects. */
 export function bubbleFlags({
   message,
   chat,
@@ -51,8 +45,8 @@ export function bubbleFlags({
   const beyondDraft = revealTurnId !== undefined && !draft;
   const animate = draft || beyondDraft;
   const generating = draft || (beyondDraft && !done);
-  // Keep the 400 ms transition on any bubble that was ever written live, so
-  // the change to the normal look fades instead of jumping.
+  // Keep the 400 ms transition on any bubble that was ever written live, so the
+  // change to the normal look fades instead of jumping.
   const transitioning = draft || revealTurnId !== undefined;
   const isSending = own && message.status === 'sending';
   const canForward = !deleted && !isSending && !(own && message.failed === true);
@@ -67,24 +61,20 @@ export function bubbleFlags({
     message.attachment === undefined &&
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
-  // A big-emoji message is shown without its bubble, so the sender name would
-  // float on its own; a classic messenger shows only the avatar in that case.
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
-  // Whether the media is the bubble's first element, for the media corners (T-1335).
   const mediaTop = !showSender && message.forward === undefined && message.replyTo === undefined;
   const attachmentImage = message.attachment?.kind === 'image';
-  // GIF-origin videos render inline only on a trusted media URL (the store
-  // sanitizer renames untrusted `gif-` attachments first; the URL check here
-  // is the second layer, so a hostile absolute URL never auto-loads).
+  // GIF-origin videos render inline only on a trusted media URL: the store
+  // sanitizer renames untrusted `gif-` attachments first, and this URL check is
+  // the second layer, so a hostile absolute URL never auto-loads.
   const gifVideo =
     message.attachment !== undefined &&
     message.attachment.kind === 'file' &&
     isGifVideoAttachment(message.attachment, mediaHosts);
   const attachmentFile = message.attachment?.kind === 'file' && !gifVideo;
   const failed = message.failed === true;
-  // A failed own send (T-0168): the bubble left `sending` for `failed` and
-  // shows "Not sent" with Retry and Delete. The legacy `failed` flag without
-  // the status keeps the old rows below, so older bubbles still render.
+  // The legacy `failed` flag without the status keeps the old rows below, so
+  // older bubbles still render.
   const sendFailed = own && message.status === 'failed' && !generating;
   const imageOnly =
     (message.image !== undefined || attachmentImage || gifVideo) &&
@@ -93,10 +83,9 @@ export function bubbleFlags({
     message.voice === undefined &&
     !attachmentFile;
 
-  // Sender-side limits: Edit is for my own text messages under 48 h, Delete for
-  // everyone is for my own messages of any kind. Neither applies to a tombstone.
-  // Pin is for anyone who may pin in the chat (DM either side, topic manager),
-  // on any loaded message that is not deleted.
+  // Edit is for my own text messages under 48 h; Delete for everyone is for my
+  // own messages of any kind. Pin is for anyone who may pin (DM either side,
+  // topic manager) on any loaded message that is not deleted.
   const canEdit =
     !generating &&
     !deleted &&

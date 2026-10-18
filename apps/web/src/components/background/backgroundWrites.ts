@@ -38,8 +38,6 @@ export function createBackgroundWrites({
   setChatBackgroundImage,
   setDefaultBackgroundImage,
 }: BackgroundWriteDeps): BackgroundWrites {
-  // A store write; a rejection shows the save sentence. Each save starts by
-  // clearing the previous save error.
   const persist = (write: () => Promise<void>): Effect.Effect<void> =>
     Effect.sync(() => setError(false)).pipe(
       Effect.andThen(writeSave(write)),
@@ -57,7 +55,7 @@ export function createBackgroundWrites({
     return scope === 'chat' ? setChatBackground(chatId, presetId) : setDefaultBackground(presetId);
   };
 
-  // `targetScope` is passed in rather than read from the render closure so a
+  // `targetScope` is passed in rather than read from the render closure, so a
   // timer scheduled under one scope can never write under another.
   const writeImage = (imageId: string, nextDim: number, targetScope: Scope): Promise<void> => {
     if (isGroup) {
@@ -72,8 +70,8 @@ export function createBackgroundWrites({
       : setDefaultBackgroundImage(imageId, nextDim);
   };
 
-  // The server clears a deleted image from any pref that referenced it; the
-  // store is patched to match so the chat stops painting the now-404 URL.
+  // The server clears a deleted image from any pref that referenced it; patch
+  // the store to match so chats stop painting the now-404 URL.
   const clearDeletedSelection = (id: string): Effect.Effect<void, SaveFailed> => {
     if (isGroup) {
       return groupBackground?.backgroundImageId === id

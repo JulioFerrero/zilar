@@ -5,11 +5,6 @@ import { EntityAvatar } from '../EntityAvatar';
 import { PersonLink } from '../personLink';
 import { Button } from '../ui/button';
 
-/**
- * The shared look of one AI row in a group or channel panel: avatar, name,
- * "Added by" line, an optional extra action and the Remove / confirm / Cancel
- * buttons. The panel owns the remove flow and passes it in.
- */
 export function GroupAiRowView({
   ai,
   addedBy,

@@ -18,9 +18,6 @@ const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
   auto: Sparkles,
 };
 
-/** T-1425: where the AI's computer runs, next to the home-machine picker. One
- *  choice; saving patches `computerMode` right away like the machine picker,
- *  showing the server's message on failure and reverting the choice. */
 export function AiComputerSection({
   ai,
   setAi,
@@ -28,8 +25,8 @@ export function AiComputerSection({
   ai: PublicAi;
   setAi: Dispatch<SetStateAction<PublicAi | null>>;
 }) {
-  // Whether Zilar cloud desks are wired. A pending or failed read reads as
-  // false, so the cloud option stays disabled until the server confirms it.
+  // A pending or failed read reads as false, so the cloud option stays disabled
+  // until the server confirms it.
   const [optionsResult] = useQuery(() => fromApi(() => getComputerOptions()), []);
   const cloud = AsyncResult.isSuccess(optionsResult) ? optionsResult.value.cloud : false;
 
@@ -38,10 +35,6 @@ export function AiComputerSection({
 
   const [computerError, setComputerError] = useState('');
 
-  // The optimistic write, mirroring `AiMachineSection`: the choice shows at
-  // once, the server's fresh AI replaces it on success, and a failure rolls
-  // the choice back and reads the AI again. A second change while one is in
-  // flight is dropped.
   const [computerState, saveComputer] = useAction<AiComputerMode, void, never>((next) => {
     const previous = currentMode;
     if (next === previous) {

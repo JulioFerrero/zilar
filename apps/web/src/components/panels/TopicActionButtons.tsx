@@ -11,10 +11,6 @@ import { failInline } from './topic-failure';
 
 type GroupMemberRow = GroupDetail['members'][number];
 
-/**
- * The ⋯ key that opens a row's options menu (WebTopic.dc.html). It carries no
- * visible word, so the accessible name is the row's name plus "options".
- */
 export function TopicOptionsKey({
   subject,
   ...props
@@ -31,10 +27,6 @@ export function TopicOptionsKey({
   );
 }
 
-/**
- * Removes one member from the topic. The row owns its call, so two rows can run
- * at once, and a second click on the same row is ignored while it waits.
- */
 export function useRemoveMember({
   remove,
   onError,
@@ -56,7 +48,6 @@ export function useRemoveMember({
   };
 }
 
-/** Adds one group member from the picker; one call per row, as useRemoveMember. */
 export function AddMemberButton({
   member,
   add,
@@ -90,7 +81,6 @@ export function AddMemberButton({
   );
 }
 
-/** Removes one AI from the topic, with its own call. */
 export function useRemoveAi({
   remove,
   onError,
@@ -112,7 +102,6 @@ export function useRemoveAi({
   };
 }
 
-/** Adds one of my AIs from the picker, with its own call. */
 export function AddAiButton({
   ai,
   add,

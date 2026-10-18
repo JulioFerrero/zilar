@@ -2,8 +2,6 @@ import type { PublicAi } from '@/lib/api';
 import { AvatarUploader } from '@/components/AvatarUploader';
 import { stripAvatarUrl } from './aiPanelOps';
 
-/** The AI's picture (T-0165), for the AI's owner. Refreshes the panel row
- *  from the uploader's answer so the header shows the new picture at once. */
 export function AiPictureSection({
   ai,
   onChanged,

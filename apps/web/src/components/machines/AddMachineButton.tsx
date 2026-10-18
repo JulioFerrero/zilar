@@ -5,7 +5,6 @@ interface AddMachineButtonProps {
   onClick: () => void;
 }
 
-/** The "Add machine" primary key at the right end of the Machines header (T-1518). */
 export function AddMachineButton({ onClick }: AddMachineButtonProps) {
   return (
     <Button type="button" size="lg" onClick={onClick}>

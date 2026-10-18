@@ -1,4 +1,3 @@
-// The dark secondary key of the boards (`WebContent.dc.html:26,78`).
 export const BLOCK_KEY = {
   background: 'linear-gradient(180deg,#1c1c1c,#121212)',
   border: '1px solid #2a2a2a',

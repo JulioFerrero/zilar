@@ -29,7 +29,6 @@ export interface Mentions {
   setMentions: Dispatch<SetStateAction<UiMention[]>>;
   setPicker: Dispatch<SetStateAction<{ start: number; query: string } | undefined>>;
   setActiveIndex: Dispatch<SetStateAction<number>>;
-  /** Set on a pick or a mention deletion; applied after the value commits. */
   pendingCaretRef: RefObject<number | undefined>;
   candidates: MentionMember[];
   pickerActive: boolean;
@@ -37,7 +36,6 @@ export interface Mentions {
   activeRow: number;
   onChange: (next: string, caret: number) => void;
   pickMention: (member: MentionMember) => void;
-  /** Handles the picker keys and the backspace-over-a-mention key; true when consumed. */
   onMentionKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => boolean;
   reset: () => void;
 }
@@ -62,8 +60,6 @@ export function useMentions({
   const [mentions, setMentions] = useState<UiMention[]>([]);
   const [picker, setPicker] = useState<{ start: number; query: string } | undefined>(undefined);
   const [activeIndex, setActiveIndex] = useState(0);
-  // Set when a pick or a mention deletion decides where the caret goes; applied
-  // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
   const lastTypingRef = useRef(0);
   // The chat a composing event was last sent for, cleared on every stop, so a
@@ -71,8 +67,8 @@ export function useMentions({
   const typingChatRef = useRef<string | undefined>(undefined);
 
   const state = storeApi.getState();
-  // T-1783: in a topic the @ list offers only who is in it. General, DMs and
-  // topics on an older server (no `memberIds`) are not filtered.
+  // In a topic the @ list offers only who is in it. General, DMs and topics on
+  // an older server (no `memberIds`) are not filtered.
   const topic = isGroup ? state.chats.find((entry) => entry.id === chatId)?.topic : undefined;
   const aiIdByJid = new Map<string, string>();
   for (const ai of isGroup ? (state.groupInfo(chatId)?.ais ?? []) : []) {
@@ -85,7 +81,6 @@ export function useMentions({
         .filter((member) => topic === undefined || mentionInTopic(topic, member.jid, aiIdByJid))
     : [];
   const matches = picker === undefined ? [] : filterMentionMembers(members, picker.query);
-  // T-1844: AIs first like the phone (T-1842), each group in its own order, then the row cap.
   const candidates = [
     ...matches.filter((member) => isAiJid(member.jid)),
     ...matches.filter((member) => !isAiJid(member.jid)),
@@ -103,9 +98,6 @@ export function useMentions({
     textareaRef.current?.setSelectionRange(caret, caret);
   }, [value, textareaRef]);
 
-  // Tells the chat the composing line is over: one paused stanza for the chat
-  // we last composed in, then the throttle resets so the next keystroke
-  // composes again at once.
   const stopTypingNow = useCallback((): void => {
     const sent = typingChatRef.current;
     if (sent === undefined) {
@@ -117,8 +109,8 @@ export function useMentions({
   }, [storeApi]);
 
   // A send clears the composer with `setValue('')` without going through
-  // `onChange`, so the value itself is watched: the line stops whenever the
-  // text empties, by backspace or by a send.
+  // `onChange`, so the value itself is watched: the line stops whenever the text
+  // empties, by backspace or by send.
   useEffect(() => {
     if (value.trim().length > 0) {
       return;
@@ -181,14 +173,12 @@ export function useMentions({
       }
       if (event.key === 'Escape') {
         event.preventDefault();
-        // Keep the key from also closing the chat on a narrow layout.
         event.stopPropagation();
         setPicker(undefined);
         return true;
       }
     }
 
-    // Backspace just after or inside a mention removes the whole `@Name` token.
     if (
       event.key === 'Backspace' &&
       mentions.length > 0 &&

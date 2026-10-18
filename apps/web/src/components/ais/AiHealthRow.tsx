@@ -16,15 +16,8 @@ import { formatLimit } from '@/components/ais/limits';
 import { IconButton } from '@/components/ui/icon-button';
 import { Menu, MenuItem } from '@/components/ui/menu';
 
-// The fix link inside the muted line: a bright, underline-on-hover link.
 const FIX_LINK = 'text-accent underline-offset-2 hover:underline';
 
-/**
- * One AI row (T-1510): its picture with a health dot (the status), the name and
- * the "AI" badge, one muted line (model · provider, a failure reason with its
- * fix, or the daily-limit pause), today's spend with its limit bar, and a ⋮
- * menu (Open chat, Edit, Delete with a confirm dialog).
- */
 export function AiHealthRow({
   ai,
   providerName,
@@ -63,8 +56,8 @@ export function AiHealthRow({
   const usage = ai.usage ?? null;
   const dailyLimit = ai.limits.perDayUsd;
 
-  // The helper's input: an older payload may leave `usage`/`lastFailure`
-  // absent, which normalises to `null` under exactOptionalPropertyTypes.
+  // An older payload may leave `usage`/`lastFailure` absent; they normalise to
+  // `null` under exactOptionalPropertyTypes.
   const healthInput: AiHealthInput = {
     status: ai.status,
     limits: ai.limits,
@@ -72,10 +65,9 @@ export function AiHealthRow({
     lastFailure: ai.lastFailure ?? null,
   };
 
-  // The health rules come from @zilar/chat-core (T-1538), shared with the phone.
+  // The health rules come from @zilar/chat-core, shared with the phone.
   const health = aiHealth(healthInput);
 
-  // The health dot: the state's label and colour; first match wins.
   const dot =
     health.state === 'stopped'
       ? { label: 'Stopped', colour: 'bg-subtle-foreground' }
@@ -85,8 +77,6 @@ export function AiHealthRow({
           ? { label: 'Paused by its limit', colour: 'bg-[#f59e0b]' }
           : { label: 'Working', colour: 'bg-online' };
 
-  // One muted line: the model and provider, a failure reason with its fix, or
-  // the daily-limit pause. Stopped and failing win over the pause.
   const mutedLine: ReactNode = (() => {
     if (health.state === 'stopped') {
       return `Stopped · ${ai.model}`;

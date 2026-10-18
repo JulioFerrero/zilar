@@ -29,21 +29,11 @@ function without(id: string, ids: ReadonlySet<string>): ReadonlySet<string> {
   return next;
 }
 
-/**
- * T-1336: one row per incoming contact request at the top of the chat list
- * (All chats and Personal, above the pinned chats), replacing the single
- * `ContactRequestsRow` link (WUX-19). Each row carries Accept and a Decline
- * icon; Accept adds the contact and opens the DM, Decline drops the row for a
- * 5-second Undo window before the call reaches the server. More than three
- * requests collapse into "See all N requests", which opens `/settings/requests`.
- */
 export function RequestRows({ isWide }: { isWide: boolean }) {
   const activeFolderId = useChatSelector((s) => s.activeFolder);
   const folders = useChatSelector((s) => s.folders);
   const folder =
     activeFolderId === 'all' ? undefined : folders.find((entry) => entry.id === activeFolderId);
-  // Requests are DMs, so they show in All chats and the Personal (dm) folder,
-  // never in the AIs folder.
   const showRequests = folder === undefined || folder.includeTypes.includes('dm');
   const { requests, reload } = useContactRequests(showRequests);
   const refreshChats = useChatSelector((s) => s.refreshChats);
@@ -58,7 +48,6 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
   const timerRef = useRef<number | undefined>(undefined);
   const pendingRef = useRef<ContactRequestView | undefined>(undefined);
 
-  // Leaving the list ends the Undo window: the decline goes through at once.
   useEffect(
     () => () => {
       if (timerRef.current !== undefined) {
@@ -79,16 +68,11 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
     void acceptContactRequest(request.id)
       .then(async () => {
         hide(request.id);
-        // The DM already exists on the server for a new contact; refresh the
-        // list so it lands at the top, then open it when its JID is known.
         refreshChats();
         toast(`${request.other.name} added`);
         let jid: string | undefined;
         try {
           const contacts = await getContacts();
-          // Push the new contact into the store so the pickers that read it
-          // (NewMessageDialog, the group add list) see them before the next
-          // boot (finding 1).
           storeApi.setState({ contacts });
           jid = contacts.find((entry) => entry.userId === request.other.userId)?.jid;
         } catch {
@@ -105,8 +89,8 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
       });
   };
 
-  // The decline waits out the Undo window; the row is gone from the list at
-  // once but the request still exists on the server until the timer fires.
+  // The decline waits out the Undo window: the row is gone at once but the
+  // request still exists on the server until the timer fires.
   const commitDecline = (request: ContactRequestView): void => {
     pendingRef.current = undefined;
     setPendingDecline(undefined);
@@ -125,7 +109,7 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
       timerRef.current = undefined;
     }
     // A second decline inside the Undo window commits the earlier one at once
-    // rather than overwriting it and losing the call (finding 2).
+    // rather than overwriting it and losing the call.
     const previous = pendingRef.current;
     if (previous !== undefined) {
       commitDecline(previous);

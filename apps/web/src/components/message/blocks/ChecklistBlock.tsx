@@ -5,9 +5,6 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useBlockRespond } from './BlockRespond';
 
-// The tick recipe of the boards (`Main.dc.html:26-28`): a raised light box when
-// done, a recessed well when not. T-1795 makes each row a control: a tap
-// answers with the item's new `done` and keeps the `by` name.
 const BOX_ON = {
   background: 'linear-gradient(180deg,#ffffff,#d4d4d4)',
   boxShadow: 'inset 0 1px 0 #fff, 0 1px 2px rgba(0,0,0,.8)',
@@ -18,11 +15,6 @@ const BOX_OFF = {
   boxShadow: 'inset 0 1px 2px rgba(0,0,0,.9)',
 };
 
-/**
- * 08 · CHECKLIST: the ticks everyone sees. An item is a button that toggles
- * `done` at once; a failed answer takes the tick back. `showHeading` hides the
- * block's own title row when the card already draws a header.
- */
 export function ChecklistBlock({
   block,
   showHeading,
@@ -34,7 +26,6 @@ export function ChecklistBlock({
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [seenBlock, setSeenBlock] = useState(block);
 
-  // React's prop-sync pattern: the room correction replaces the optimistic ticks.
   if (block !== seenBlock) {
     setSeenBlock(block);
     setOverrides({});

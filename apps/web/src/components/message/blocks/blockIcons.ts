@@ -27,10 +27,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-// Every `BlockIcon` name mapped to its lucide component (T-1755). The protocol
-// pins the names, so every name has one; where they differ from lucide's, the
-// closest glyph is picked (`chart` → `ChartColumn`, `sliders` →
-// `SlidersHorizontal`, `warning` → `TriangleAlert`).
+// Every `BlockIcon` name mapped to its lucide component. The protocol pins
+// the names, so each has one; where they differ, the closest glyph is picked.
 export const BLOCK_ICONS: Record<BlockIcon, LucideIcon> = {
   activity: Activity,
   bell: Bell,

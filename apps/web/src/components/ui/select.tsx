@@ -10,21 +10,15 @@ export interface SelectOption {
 }
 
 export interface SelectProps {
-  /** The options, in display order. */
   options: readonly SelectOption[];
-  /** The selected value, or `null` for nothing yet (the placeholder shows). */
   value: string | null;
   onValueChange: (value: string) => void;
-  /** The accessible name of the field, used on the trigger and the popup list. */
   label: string;
-  /** Shown on the trigger when no option is selected. */
   placeholder?: string;
   disabled?: boolean;
-  /** Extra classes for the trigger. */
   className?: string;
 }
 
-/** Above this many options the popup grows a filter input. */
 const FILTER_THRESHOLD = 8;
 
 const TRIGGER =
@@ -36,13 +30,6 @@ const PANEL =
 const ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] select-none outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-list-hover data-[selected]:font-medium';
 
-/**
- * A single-choice dropdown built on Base UI `Select`, styled like the kit
- * `Menu`: the panel is portalled, it flips and shifts to stay inside the
- * viewport, and Base UI supplies the keyboard support (arrows, Home/End,
- * typeahead, Escape, focus back to the trigger). A list longer than
- * `FILTER_THRESHOLD` options gets a filter input above the list.
- */
 export function Select({
   options,
   value,

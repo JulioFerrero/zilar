@@ -7,18 +7,12 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, type ActionState } from '@/lib/effect/use-action';
 import { describeAiError } from '../ais/errors';
 
-/** A failed panel action; `message` is the sentence the panel shows. */
 export class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
 
-/**
- * The sentence for a failed API call: the server's message, or the fallback
- * when the call never reached the server (`toApiFailure` marks that case).
- */
 function apiFailureText(failure: ApiFailure, fallback: string): string {
   return failure.code === 'unknown_error' ? fallback : failure.message;
 }
 
-/** An API call whose failure shows `fallback` unless the server sent a message. */
 export function apiStep<A>(
   call: () => Promise<A>,
   fallback: string,
@@ -28,10 +22,6 @@ export function apiStep<A>(
   );
 }
 
-/**
- * A store call. The store throws the raw error, so `textOf` builds the
- * sentence from that error (the text the panel showed before the move).
- */
 export function storeStep<A>(
   call: () => Promise<A>,
   textOf: (error: unknown) => string,
@@ -54,12 +44,10 @@ export function removeAiText(error: unknown): string {
   return describeAiError(error, 'Could not remove the AI').message;
 }
 
-/** The shown failure of the last call; hidden while a new call runs. */
 export function messageOf<A>(state: ActionState<A, PanelFailure>): string | undefined {
   return isWaiting(state) ? undefined : failureOf(state)?.message;
 }
 
-/** The invite links, for managers only; a plain member makes no request. */
 export function loadLinks(
   manager: boolean,
   groupId: string | undefined,
@@ -72,7 +60,6 @@ export function loadLinks(
   );
 }
 
-/** The group's roles. With no group yet the load waits, so the section reads as loading. */
 export function loadRoles(groupId: string | undefined): Effect.Effect<GroupRole[], PanelFailure> {
   if (groupId === undefined) {
     return Effect.never;

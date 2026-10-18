@@ -6,7 +6,6 @@ export interface CardProps {
   className?: string;
 }
 
-/** A grouped surface whose direct rows are separated by hairline dividers. */
 export function Card({ children, className }: CardProps) {
   return (
     <div
@@ -20,7 +19,6 @@ export function Card({ children, className }: CardProps) {
   );
 }
 
-/** An uppercase muted section label (11/500, 0.06em tracking). */
 export function SectionLabel({
   children,
   as: As = 'h2',

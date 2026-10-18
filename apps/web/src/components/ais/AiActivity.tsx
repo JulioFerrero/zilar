@@ -43,12 +43,6 @@ function serialiseScope(scope: AuditScope): string {
   return 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
 }
 
-// T-0086: shared between the AI panel and the group panel. The scope is one
-// of `?aiId=…` or `?groupId=…` (the same union `listAudit` enforces); the
-// shape, the loading / error / empty states and the load-more behaviour are
-// identical between the two callers, so they share one component. Callers
-// guard their own mounting: the AI panel mounts it for any AI the viewer
-// owns; the group panel only mounts it for group owners and admins.
 export function ActivitySection({ scope }: { scope: AuditScope }) {
   const [state, setState] = useState<LoadState>({
     status: 'loading',
@@ -57,10 +51,6 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
     message: '',
   });
   const scopeKey = serialiseScope(scope);
-  // The first page is read once per scope key; Refresh and Retry call `reload`.
-  // Callers pass a fresh `{ aiId }` / `{ groupId }` literal each render, so the
-  // key, not the object, decides when to read again. A finished read replaces
-  // the list; while a Refresh runs, the rows on screen stay.
   const [, reload] = useQuery(
     () =>
       fromApi(() => listAudit({ ...scope, limit: PAGE_LIMIT })).pipe(
@@ -169,8 +159,6 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
   );
 }
 
-// Thin wrapper kept for the AI panel: the rest of the app imports
-// `AiActivity` and tests of the AI panel use it directly.
 export function AiActivity({ aiId }: { aiId: string }) {
   return <ActivitySection scope={{ aiId }} />;
 }

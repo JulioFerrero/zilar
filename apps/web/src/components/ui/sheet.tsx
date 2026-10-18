@@ -5,21 +5,16 @@ import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
-  /** Accessible name of the sheet; it has no built-in header. */
   ariaLabel: string;
   children?: ReactNode;
-  /** Element to focus on open instead of the first focusable child. */
   initialFocusRef?: RefObject<HTMLElement | null>;
-  /** When false, Escape and a backdrop click do not close the sheet. */
   dismissable?: boolean;
 }
 
 /**
- * A right-side drawer for chat panels, built on the Base UI `Dialog` primitive so
- * it shares focus, Escape and Tab behaviour with `Dialog`: Escape closes only
- * the topmost overlay and stops before window listeners, focus moves in on open
- * and back on close, and Tab is trapped. It has no header, so each panel
- * renders its own.
+ * Built on the Base UI `Dialog` primitive so it shares focus, Escape and Tab
+ * behaviour: Escape closes only the topmost overlay and stops before window
+ * listeners, focus moves in on open and back on close, and Tab is trapped.
  */
 export function Sheet({
   open,
@@ -39,8 +34,8 @@ export function Sheet({
         if (nextOpen) {
           return;
         }
-        // `dismissable={false}` keeps the sheet open on Escape: Base UI reports
-        // it as `escape-key`, and cancelling the change leaves it mounted.
+        // `dismissable={false}` keeps the sheet open on Escape: Base UI reports it as
+        // `escape-key`, and cancelling the change leaves it mounted.
         if (!dismissable && eventDetails.reason === 'escape-key') {
           eventDetails.cancel();
           return;

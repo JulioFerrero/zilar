@@ -19,7 +19,6 @@ import { StateMessage } from '@/components/ui/state-message';
 
 type RoutineWork = 'pause' | 'resume' | 'delete';
 
-/** The notice under the list: a fixed error sentence, or a hint. */
 interface Notice {
   readonly error: string;
   readonly hint: string;
@@ -47,7 +46,6 @@ function lastStatusText(routine: Routine): string {
   return `last ${routine.lastStatus}${at}`;
 }
 
-/** The API's own message, or the fallback for a failure that was not an API answer. */
 function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
     return fallback;
@@ -57,9 +55,8 @@ function failureText(failure: ApiFailure | undefined, fallback: string): string 
 
 /**
  * A failure that parses as "no such scope" reads as an empty list (older
- * server, or a strict fetch mock answering 404/[] for the new endpoints),
- * so the section never adds noise to the panel. Any other failure stays
- * the inline error with Retry.
+ * server or a strict fetch mock), so the section never adds noise. Any other
+ * failure stays the inline error with Retry.
  */
 function loadRoutines(
   scope: { aiId: string } | { groupId: string },
@@ -74,7 +71,6 @@ function loadRoutines(
   );
 }
 
-/** One call per action; delete answers no routine, so the row goes. */
 function routineCall(
   work: RoutineWork,
   id: string,
@@ -101,32 +97,18 @@ function noticeOf(failure: ApiFailure): Notice {
   return { error: failureText(failure, 'Could not update the routine.'), hint: '' };
 }
 
-/**
- * The Routines list of an AI or a group (T-0107): title, schedule in
- * plain words, next run, last status, the paused reason with its
- * explanation line, and Pause/Resume/Delete. A routine paused for
- * `hosts_changed` or failures says what to do next (ask the AI to
- * re-approve). Actions the API would refuse hide (`canManage` comes from
- * the caller); a 403/404 from a write shows an inline message, no crash.
- * Resume from `needs_approval` answers 409 and shows the re-approve hint.
- */
 export function RoutinesSection({
   scope,
   scopeKey,
   canManage,
   onCount,
 }: {
-  /** Exactly one of the two lists, matching the server routes. */
   scope: { aiId: string } | { groupId: string };
   scopeKey: string;
-  /** False hides Pause/Resume/Delete (a member the API would refuse). */
   canManage: boolean;
-  /** T-1784: the loaded list's size, for the panel's "Tools and routines · N · M". */
   onCount?: (count: number) => void;
 }) {
   const [list, reloadList] = useQuery(() => loadRoutines(scope), [scopeKey]);
-  // One action at a time on the list: while a row waits, every row's
-  // buttons are disabled, as before the per-row actions.
   const [busy, setBusy] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>({ error: '', hint: '' });
@@ -140,7 +122,6 @@ export function RoutinesSection({
     setConfirmingId(null);
   };
 
-  // A reload shows Loading… again, as the list did before the hook.
   const loading = isWaiting(list) || AsyncResult.isInitial(list);
   const failure = AsyncResult.isFailure(list) && !loading ? failureOf(list) : undefined;
   const status: 'loading' | 'ready' | 'error' = loading
@@ -150,7 +131,6 @@ export function RoutinesSection({
       : 'ready';
   const routines = status === 'ready' && AsyncResult.isSuccess(list) ? list.value : [];
 
-  // T-1784: the collapse row's routine count, from the list the section shows.
   useEffect(() => {
     if (status === 'ready') {
       onCount?.(routines.length);
@@ -203,10 +183,8 @@ export function RoutinesSection({
 }
 
 /**
- * One routine with its own Pause/Resume/Delete action, so a second click on
- * the same row waits for the first. A deleted row returns nothing but stays
- * mounted: the parent's settle step still runs to the end, and an unmount
- * would cancel it.
+ * A deleted row returns nothing but stays mounted: the parent's settle step
+ * still runs to the end, and an unmount would cancel it.
  */
 function RoutineRow({
   routine: loaded,

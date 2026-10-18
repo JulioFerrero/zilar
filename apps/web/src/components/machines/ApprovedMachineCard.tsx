@@ -12,9 +12,6 @@ interface ApprovedMachineCardProps {
   revoking: boolean;
   confirmingRevoke: boolean;
   actionError: string;
-  /** T-0091: names of the owner's AIs whose home machine is this one. When
-   *  the AI list could not be loaded the prop is null and the line is
-   *  hidden — a failure here never blocks the rest of the card. */
   aiNames: string[] | null;
   onRename: (name: string) => void;
   onAskRevoke: () => void;
@@ -22,12 +19,6 @@ interface ApprovedMachineCardProps {
   onConfirmRevoke: () => void;
 }
 
-/**
- * An approved machine: name (inline rename), online dot, hardware, drivers,
- * fingerprint and a Revoke action that asks twice before disconnecting.
- * The card's heading is the machine's own name (with the rename pencil);
- * the section header above ("Your machines") names the group.
- */
 export function ApprovedMachineCard({
   machine,
   renaming,
@@ -61,8 +52,6 @@ export function ApprovedMachineCard({
     setEditing(false);
   };
 
-  // The page runs the rename and shows the new name at once, so the field
-  // closes without waiting for the request.
   const commitEdit = (): void => {
     const next = draft.trim();
     if (next === '' || next === machine.name) {
@@ -155,9 +144,6 @@ export function ApprovedMachineCard({
         </div>
       )}
 
-      {/* T-0091: which of the owner's AIs live on this machine. The list
-          comes from the same AI call the page already makes; a failure
-          there just hides this line so the rest of the card stays usable. */}
       {aiNames !== null && (
         <p className="text-[13px] text-muted-foreground">
           {aiNames.length === 0 ? 'No AIs yet' : `AIs: ${aiNames.join(', ')}`}

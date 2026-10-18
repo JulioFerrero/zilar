@@ -2,10 +2,8 @@ import { topicActivityView, type TopicAiActivity } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { EntityAvatar } from '../EntityAvatar';
 
-/** How many AI pictures a mark group shows before the "+N". */
 const MAX_MARKS = 3;
 
-/** The `EntityAvatar` person one activity entry is drawn from. */
 function personOf(entry: TopicAiActivity) {
   return {
     id: entry.aiId,
@@ -14,7 +12,6 @@ function personOf(entry: TopicAiActivity) {
   };
 }
 
-/** The 16 px green check a finished AI or a done topic shows. */
 export function DoneCheck({ size = 16 }: { size?: number }) {
   return (
     <svg role="img" aria-label="Done" width={size} height={size} viewBox="0 0 16 16" fill="none">
@@ -30,7 +27,6 @@ export function DoneCheck({ size = 16 }: { size?: number }) {
   );
 }
 
-/** One AI's picture with its state mark: a turning ring, an amber dot or a check. */
 export function AiActivityMark({ entry, size = 20 }: { entry: TopicAiActivity; size?: number }) {
   return (
     <span className="relative inline-flex shrink-0">
@@ -68,12 +64,6 @@ export function AiActivityMark({ entry, size = 20 }: { entry: TopicAiActivity; s
   );
 }
 
-/**
- * A topic's AIs at work (T-1532), shared by the topic row and the "AIs here"
- * key: up to three overlapping pictures, working (turning ring) before waiting
- * (amber dot), then "+N". A finished topic shows the green check instead; an
- * idle topic shows nothing. General never reads as finished (T-1843).
- */
 export function AiActivityMarks({
   activity,
   doneAt,

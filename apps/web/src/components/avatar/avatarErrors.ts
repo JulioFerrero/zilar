@@ -1,4 +1,3 @@
-/** The fixed user-facing sentence for an upload or remove failure. */
 export function friendlyUploadError(error: unknown): string {
   if (error !== null && typeof error === 'object' && 'code' in error) {
     const code = (error as { code?: unknown }).code;

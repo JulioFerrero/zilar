@@ -2,11 +2,6 @@ import { type UiMessage } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { MessageMeta } from './MessageMeta';
 
-/**
- * A bubble-less big-emoji message: the time (and my ticks) sit in a small
- * translucent pill at the emoji's bottom-right, the way Telegram draws it,
- * instead of a raised box on its own row below (T-1327).
- */
 export function BigEmoji({
   message,
   text,
@@ -41,9 +36,8 @@ export function BigEmoji({
 }
 
 /**
- * A soft blinking caret at the end of a live draft. It has zero layout width
- * and paints into the trailing space, so swapping the draft for the final
- * message never moves the text.
+ * It has zero layout width and paints into the trailing space, so swapping
+ * the draft for the final message never moves the text.
  */
 export function DraftCaret() {
   return (
@@ -53,7 +47,6 @@ export function DraftCaret() {
   );
 }
 
-/** The recessed `generating` label under a reply that is still being written. */
 export function GeneratingLabel() {
   return (
     <span className="font-mono flex items-center gap-1.5 px-3 pt-1 pb-2 text-[11px] text-subtle-foreground">

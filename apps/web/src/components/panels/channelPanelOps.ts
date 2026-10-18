@@ -6,9 +6,8 @@ import { describeAiError } from '../ais/errors';
 
 export type ChannelFailure = ApiFailure | StoreFailed;
 
-// A store action's rejection. An ApiError stays an API failure (its server
-// message, as before); a plain Error keeps its message; anything else gets
-// the fallback.
+// A store action's rejection: an ApiError keeps its server message and code;
+// a plain Error keeps its message; anything else gets the fallback.
 export function storeCall<A>(
   call: () => Promise<A>,
   fallback: string,
@@ -22,8 +21,6 @@ export function storeCall<A>(
   });
 }
 
-// The text a failure shows. An API failure keeps the server's own sentence, as
-// before; any other throw (its failure is 'unknown_error') shows the fallback.
 export function failureText(failure: ChannelFailure, fallback: string): string {
   if (failure._tag === 'StoreFailed') {
     return failure.message;
@@ -31,7 +28,6 @@ export function failureText(failure: ChannelFailure, fallback: string): string {
   return failure.code === 'unknown_error' ? fallback : failure.message;
 }
 
-// describeAiError reads an ApiError, so an API failure is rebuilt as one.
 export function describeFailure(failure: ChannelFailure, fallback: string): string {
   if (failure._tag === 'StoreFailed') {
     return failure.message;

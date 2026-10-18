@@ -4,7 +4,6 @@ import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { CodeBlock } from './CodeBlock';
 import { failureText, hostsLine } from './toolDetailOps';
 
-/** Read-only source of the shown version, plus the version history with revert. */
 export function ToolSourceSection({
   toolName,
   currentVersion,

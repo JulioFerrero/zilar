@@ -44,13 +44,12 @@ export function rowSubtitle(item: MediaItem): string {
   return [lead, byline(item)].filter((part) => part !== undefined && part !== '').join(' · ');
 }
 
-// One message can yield several items (two links in one body), so the key needs
-// the kind/reference and the item's position, not just the message id.
+// One message can yield several items (two links in one body), so the key
+// needs the kind/reference and the item's position, not just the message id.
 export function mediaItemKey(item: MediaItem, index: number): string {
   return `${item.messageId}-${item.kind}-${item.url ?? item.linkUrl ?? ''}-${index}`;
 }
 
-/** The chat a row opens items in, and the panel's reactions to a jump. */
 export interface JumpTarget {
   readonly chatId: string;
   readonly onStart: () => void;

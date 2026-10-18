@@ -10,8 +10,6 @@ import { PackThumbs, thumbsOf } from './PackThumbs';
 import { PackMenu } from './PackMenu';
 import { type PageSetters, addToPanel, deletePack, removeFromPanel } from './pageActions';
 
-// One row of the shared list card: the rows sit inside a
-// `rounded-xl border border-border bg-surface` container and divide themselves.
 const ROW_CLASS = 'flex items-center gap-3 border-b border-divider px-3 py-2.5 last:border-b-0';
 const THUMB_SIZE = 36;
 
@@ -20,8 +18,6 @@ function countLabel(pack: StickerPack): string {
   return `${count} sticker${count === 1 ? '' : 's'}`;
 }
 
-// A pack that may belong to someone else (Added, Discover) also shows its
-// owner's handle when the list carried one. My own packs keep the count alone.
 function ownerCountLabel(pack: StickerPack): string {
   if (pack.ownerHandle === undefined || pack.ownerHandle === null) {
     return countLabel(pack);
@@ -29,7 +25,6 @@ function ownerCountLabel(pack: StickerPack): string {
   return `${countLabel(pack)} · @${pack.ownerHandle}`;
 }
 
-/** The name (with the shared globe), the count line and room for one action. */
 function PackRowText({ pack, shared, meta }: { pack: StickerPack; shared: boolean; meta: string }) {
   return (
     <span className="min-w-0 flex-1">
@@ -53,11 +48,6 @@ function PackRowText({ pack, shared, meta }: { pack: StickerPack; shared: boolea
   );
 }
 
-/**
- * A pack I own. The grip starts the drag (pointer, touch or keyboard); the
- * row's own menu stays clickable. Its delete action is registered so the
- * page's one confirm dialog can run it.
- */
 export function MyPackRow({
   pack,
   disabled,
@@ -96,7 +86,6 @@ export function MyPackRow({
   );
 }
 
-/** A pack someone else owns that I added to my panel; no grip, remove only. */
 export function AddedPackRow({ pack, setters }: { pack: StickerPack; setters: PageSetters }) {
   const [, runRemove] = useAction<void, void, never>(() => removeFromPanel(pack.id, setters));
   return (
@@ -110,7 +99,6 @@ export function AddedPackRow({ pack, setters }: { pack: StickerPack; setters: Pa
   );
 }
 
-/** A shared pack from the discover search, with its own Add or in-panel state. */
 export function DiscoverPackRow({
   pack,
   added,

@@ -2,10 +2,6 @@ import type { BlocksData } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { BlockCard } from './BlockCard';
 
-// Cosmos fixture (T-1772): the progress, timeline and countdown samples of the
-// board `docs/design/mockups/blocks/WebProgress.dc.html` on its `#0a0a0a` page.
-
-/** The boards' `.time` (mono 10, `#8a8a8a`) as a plain footer. */
 function Time({ at }: { at: string }) {
   return <span className="font-mono text-[10px] text-[#8a8a8a]">{at}</span>;
 }
@@ -19,7 +15,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// `WebProgress.dc.html:63-77`.
 const BACKUP: BlocksData = {
   fallback: 'Uploading the backup: 70% · 1.4 / 2.0 GB · about 1 min left',
   blocks: [
@@ -33,7 +28,6 @@ const BACKUP: BlocksData = {
   ],
 };
 
-// `WebProgress.dc.html:79-96`. The target is computed from now, so the tiles tick.
 const FLIGHT: BlocksData = {
   fallback: 'Flight to Barcelona: boarding 18:40 · Gate K72',
   blocks: [
@@ -46,7 +40,6 @@ const FLIGHT: BlocksData = {
   ],
 };
 
-// A target already reached shows the muted word instead of the tiles.
 const DEPARTED: BlocksData = {
   fallback: 'Boarding: started · Gate K72',
   blocks: [
@@ -59,7 +52,6 @@ const DEPARTED: BlocksData = {
   ],
 };
 
-// `WebProgress.dc.html:101-127`.
 const PARCEL: BlocksData = {
   fallback:
     'Parcel 4417: ordered Mon 10:02, shipped Tue 08:40, out for delivery 07:15 (arrives 12:00 to 14:00), delivered.',

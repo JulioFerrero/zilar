@@ -5,7 +5,6 @@ import type { ToolRun, ToolRunResult } from '@/lib/tools';
 import { TruncatedText } from './CodeBlock';
 import { runStatusText } from './toolDetailOps';
 
-/** Run now with an optional JSON input, the last result, and the recent runs. */
 export function ToolRunSection({
   canManage,
   runInput,
@@ -105,7 +104,6 @@ function RunResultBlock({ result }: { result: ToolRunResult }) {
   );
 }
 
-/** Output text truncated with a "Show all" toggle, shared by the last result and a run. */
 function RunOutput({ text }: { text: string }) {
   const cut = truncateOutput(text);
   return <TruncatedText text={text} preview={cut.preview} truncated={cut.truncated} />;

@@ -2,10 +2,6 @@ import type { ImagesBlock as ImagesBlockData } from '@zilar/protocol';
 import { ImageOff } from 'lucide-react';
 import { useState } from 'react';
 
-/**
- * The board's tile corners: the outer ones 12 px, the ones inside the grid
- * 6 px (`WebContent.dc.html:127-130`). A lone tile is round on every corner.
- */
 function tileRadius(index: number, count: number): string {
   if (count === 1) {
     return '12px';
@@ -24,11 +20,9 @@ function tileRadius(index: number, count: number): string {
 }
 
 /**
- * 20 · IMAGES: uploaded media ids drawn as one full-width tile or a 2×2 grid,
- * with `extra` summed up on the last tile. The route sends the bytes
- * same-origin, so the session cookie authenticates every `<img>`; a custom
- * `alt` would need a caption the payload does not carry, so the card title
- * names the link instead.
+ * Uploaded media ids draw as one full-width tile or a 2×2 grid, with `extra`
+ * summed on the last tile. The route sends the bytes same-origin, so the
+ * session cookie authenticates every `<img>`.
  */
 export function ImagesBlock({
   block,

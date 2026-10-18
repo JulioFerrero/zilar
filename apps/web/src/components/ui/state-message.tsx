@@ -15,7 +15,6 @@ const ICONS = {
   error: CircleAlert,
 } as const;
 
-/** A centered empty, loading or error message with an optional action. */
 export function StateMessage({
   kind,
   title,

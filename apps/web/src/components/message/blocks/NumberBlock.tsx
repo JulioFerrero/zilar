@@ -1,8 +1,6 @@
 import { changeTone, sparklinePath, type BlockTone } from '@zilar/chat-core';
 import type { Change, NumberBlock as NumberBlockData } from '@zilar/protocol';
 
-// The change colours of the boards (up `#4ade80`, down `#f87171`); the tone also
-// colours the sparkline, which the boards draw in the change's colour.
 const CHANGE_COLOR: Record<BlockTone, string> = {
   positive: '#4ade80',
   negative: '#f87171',
@@ -17,7 +15,6 @@ const CHANGE_ARROW: Record<Change['direction'], string> = {
   flat: '—',
 };
 
-/** 02 · BIG NUMBER: one large value, an optional change and sparkline. */
 export function NumberBlock({ block }: { block: NumberBlockData }) {
   const tone = block.change === undefined ? 'neutral' : changeTone(block.change);
   const color = CHANGE_COLOR[tone];

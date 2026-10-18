@@ -11,10 +11,6 @@ import { GroupAiRowView } from './GroupAiRowView';
 import { addAiText, removeAiText, storeStep } from './groupPanelOps';
 import type { PanelFailure } from './groupPanelOps';
 
-/**
- * The group's AIs (T-0055): the rows, the memory action and the manager add
- * picker. The panel owns the picker snapshot and the memory dialog.
- */
 export function GroupAiSection({
   ais,
   chatId,
@@ -97,10 +93,6 @@ export function GroupAiSection({
   );
 }
 
-/**
- * One AI in the group, with its own Remove action so two AIs can be removed
- * at once; a second click on the same row waits for the first.
- */
 function GroupAiRow({
   ai,
   chatId,
@@ -161,10 +153,6 @@ function GroupAiRow({
   );
 }
 
-/**
- * One of my AIs in the add picker, with its own add action so two options
- * can run at once; a second click on the same option waits for the first.
- */
 function AddAiOption({
   ai,
   chatId,

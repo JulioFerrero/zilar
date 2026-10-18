@@ -15,11 +15,6 @@ interface ApprovedRowProps {
   onAisChanged: () => void;
 }
 
-/**
- * One approved machine with its own rename and revoke actions. A revoke moves
- * the machine out of this section, so the AI list refresh runs on the page
- * (through `onAisChanged`), which stays mounted.
- */
 export function ApprovedRow({
   machine,
   confirmingRevoke,
@@ -30,7 +25,6 @@ export function ApprovedRow({
 }: ApprovedRowProps) {
   const [renameState, rename, , renameError] = useMachineAction(
     (name: string) =>
-      // Optimistic: the new name shows at once and goes back if the server refuses.
       Effect.sync(() => onUpdate(machine.id, { ...machine, name })).pipe(
         Effect.andThen(fromApi(() => renameMachine(machine.id, name))),
         Effect.tap((updated) => Effect.sync(() => onUpdate(machine.id, updated))),

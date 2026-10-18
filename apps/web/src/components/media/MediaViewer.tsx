@@ -9,15 +9,9 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import './lightbox-theme.css';
 import { viewerSlides } from './viewerSlides';
 
-/** The chat to step through, and the photo the viewer starts on. */
 export interface MediaViewerTarget {
   chatId: string;
   messageId: string;
-  /**
-   * An album opened from a tile (T-1268): its photo ids, in index order. When
-   * present the viewer steps through the album first, then the rest of the chat
-   * (§4.5). Absent for a single-photo open.
-   */
   albumIds?: readonly string[] | undefined;
 }
 
@@ -25,25 +19,12 @@ export type OpenMediaViewer = (target: MediaViewerTarget) => void;
 
 const MediaViewerContext = createContext<OpenMediaViewer | null>(null);
 
-/** The opener for the chat's photo viewer; null outside a `MediaViewerProvider`. */
 export function useMediaViewer(): OpenMediaViewer | null {
   return useContext(MediaViewerContext);
 }
 
 const EMPTY_MESSAGES: readonly UiMessage[] = [];
 
-/**
- * The chat's photo viewer (T-1232): a full-screen overlay opened from the
- * message list by `ImageMessage` and `AlbumGrid` through `useMediaViewer`. One
- * provider serves the whole list.
- *
- * T-1343 rewrote it on `yet-another-react-lightbox` (the twin of the phone's
- * T-1341 library move): the Zoom plugin gives wheel and trackpad-pinch zoom
- * toward the cursor, double-click zoom and drag-pan, the carousel gives the
- * swipe and the edge arrows, and the Counter plugin gives the "3 / 12" badge.
- * Escape and a backdrop click close, and the toolbar keeps an "Open original"
- * link.
- */
 export function MediaViewerProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<MediaViewerTarget | null>(null);
   return (
@@ -61,7 +42,6 @@ export function MediaViewerProvider({ children }: { children: ReactNode }) {
 }
 
 function MediaViewer({ target, onClose }: { target: MediaViewerTarget; onClose: () => void }) {
-  // The same slice the list renders (MessageList.tsx:68).
   const stored = useChatSelector((state) => state.messagesByChat[target.chatId]);
   const photos = useMemo(() => {
     const all = photosOf(stored ?? EMPTY_MESSAGES);
@@ -76,11 +56,10 @@ function MediaViewer({ target, onClose }: { target: MediaViewerTarget; onClose: 
     return [...album, ...all.filter((photo) => !inScope.has(photo.messageId))];
   }, [stored, target.albumIds]);
   const slides = useMemo(() => viewerSlides(target.chatId, photos), [target.chatId, photos]);
-  // The photo the viewer opens on. The carousel owns the current slide, and
-  // `on.view` mirrors it back into `index`; passing that back in as the
-  // controlled `index` (the library's "Tracking Slide Index" pattern) keeps the
-  // viewer on the same slide when `slides` gets a new reference (a message
-  // arriving in the chat), which would otherwise snap it back to `startIndex`.
+  // The carousel owns the current slide and `on.view` mirrors it back into
+  // `index`; passing that back as the controlled `index` (the library's
+  // "Tracking Slide Index" pattern) keeps the viewer on the same slide when
+  // `slides` gets a new reference, which would otherwise snap to `startIndex`.
   const startIndex = useMemo(
     () =>
       Math.max(

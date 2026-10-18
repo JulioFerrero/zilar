@@ -5,9 +5,8 @@ import { SelectOption } from './AiPageShell';
 export { providerLabel };
 
 /**
- * The wizard's provider picker over the caller's active connections. A
- * connection whose provider is not an LLM one (GitHub) is dropped: it cannot
- * run an AI.
+ * A connection whose provider is not an LLM one (GitHub) is dropped: it
+ * cannot run an AI.
  */
 export function ConnectionPicker({
   connections,

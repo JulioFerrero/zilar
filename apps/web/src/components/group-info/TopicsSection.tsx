@@ -19,7 +19,6 @@ function memberById(info: GroupDetail | undefined): Map<string, GroupMember> {
   return new Map((info?.members ?? []).map((member) => [member.userId, member]));
 }
 
-/** The people of a topic, with the names and pictures the group detail holds. */
 function peopleOf(topic: TopicInfo, info: GroupDetail | undefined): AvatarStackEntry[] {
   const byId = memberById(info);
   return (topic.memberIds ?? []).map((userId) => {
@@ -32,7 +31,6 @@ function peopleOf(topic: TopicInfo, info: GroupDetail | undefined): AvatarStackE
   });
 }
 
-/** The topic's AIs, in the order the row lists them. */
 function aisOf(topic: TopicInfo): AvatarStackEntry[] {
   return (topic.ais ?? []).map((ai) => ({
     id: ai.id,
@@ -45,11 +43,6 @@ function firstName(name: string): string {
   return name.split(' ')[0] ?? name;
 }
 
-/**
- * The row's second line (T-1786, `WebGroup.dc.html:71-104`): "Everyone" for
- * General, "N people · <first AI>" on a public topic, and a private topic's
- * first two people by name before its first AI.
- */
 function subtitleOf(topic: TopicInfo, info: GroupDetail | undefined): string {
   if (topic.isGeneral) {
     return 'Everyone';
@@ -69,7 +62,6 @@ function subtitleOf(topic: TopicInfo, info: GroupDetail | undefined): string {
   return firstAi === undefined ? `${count} people` : `${count} people · ${firstAi}`;
 }
 
-/** The flat topic tile: `#`, or a lock when the topic is private. */
 function TopicGlyph({ topic }: { topic: TopicInfo }) {
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface-raised text-[15px] font-semibold text-foreground/80">
@@ -82,7 +74,6 @@ function TopicGlyph({ topic }: { topic: TopicInfo }) {
   );
 }
 
-/** One topic row: the tile, the name and subtitle, the muted icon and the stack. */
 export function TopicRow({
   chat,
   info,
@@ -93,7 +84,6 @@ export function TopicRow({
   chat: ChatSummary;
   info: GroupDetail | undefined;
   onOpen: (chatId: string) => void;
-  /** Paint the people-and-AIs stack of a Your-topic row. */
   showStack?: boolean;
   trailing?: ReactNode;
 }) {
@@ -126,10 +116,6 @@ export function TopicRow({
   );
 }
 
-/**
- * The two topic lists (T-1786, `WebGroup.dc.html:66-109`), presentational so the
- * Cosmos fixture can paint static rows. `TopicsSection` computes their data.
- */
 export function TopicsList({
   yourTopics,
   otherTopics,
@@ -193,10 +179,6 @@ export function TopicsList({
   );
 }
 
-/**
- * The Join key of an Other-topic row: busy while its request runs and a muted
- * "Couldn't join" on the row when it fails.
- */
 function JoinKey({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
   const [state, run] = useAction<void, void, PanelFailure>(() =>
@@ -231,16 +213,11 @@ function JoinKey({ chat }: { chat: ChatSummary }) {
   );
 }
 
-/**
- * The group screen's Your/Other topics (T-1786): the group's topic rows split
- * by the caller's membership, General first. It owns its reads; a row opens the
- * topic and closes the panel, and New topic opens the dialog.
- */
 export function TopicsSection({
   chat,
   onClose,
 }: {
-  /** The group's General row; `chat.id` keys the detail and `chat.groupId` is the group. */
+  /** `chat.id` keys the detail and `chat.groupId` is the group. */
   chat: ChatSummary;
   onClose: () => void;
 }) {

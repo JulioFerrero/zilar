@@ -19,12 +19,10 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, shownFailure, useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 
-/** The server's words for a failure, or the fixed fallback for a call that never reached the server. */
 function messageOf(failure: ApiFailure, fallback: string): string {
   return failure.code === 'unknown_error' ? fallback : failure.message;
 }
 
-/** The host of a custom connection's base URL; the raw text if it will not parse. */
 function hostOf(baseUrl: string): string {
   try {
     return new URL(baseUrl).host;
@@ -35,7 +33,6 @@ function hostOf(baseUrl: string): string {
 
 type TestOutcome = { readonly ok: boolean; readonly message?: string };
 
-/** The last test result: a failure or a result, kept while the next test runs (as before). */
 function testOutcome(
   state: AsyncResult.AsyncResult<ConnectionTestResult, ApiFailure>,
 ): TestOutcome | undefined {
@@ -51,11 +48,6 @@ function testOutcome(
     : { ok: false, message: state.value.message ?? 'The key was rejected' };
 }
 
-/**
- * One connection as a single row (T-1503): a status dot, the provider name, a
- * muted line and a ⋮ menu (Test key, Replace key, Delete). The dot is the
- * status; a failed test in this page reddens it and its reason joins the line.
- */
 export function ConnectionRow({
   connection,
   confirming,
@@ -97,7 +89,6 @@ export function ConnectionRow({
   );
   const removeFailure = confirming ? shownFailure(removeState) : undefined;
 
-  // Asking again or cancelling clears the last remove error, as the page did before.
   const askRemove = (): void => {
     removeControls.reset();
     onAskRemove();

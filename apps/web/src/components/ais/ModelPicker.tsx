@@ -14,11 +14,6 @@ interface ModelOption {
   readonly toolCalls: boolean;
 }
 
-/**
- * The wizard's model picker (T-1395): the chosen provider's models.dev catalog,
- * searchable, with context size and prices. The free-text field is always
- * editable, and an empty catalog falls back to the static suggestions.
- */
 export function ModelPicker({
   provider,
   suggestions,
@@ -29,7 +24,6 @@ export function ModelPicker({
 }: {
   provider: string;
   suggestions: readonly string[];
-  /** The chosen provider's catalog models; empty uses `suggestions`. */
   models?: readonly AiCatalogModel[];
   value: string;
   onChange: (model: string) => void;
@@ -59,8 +53,8 @@ export function ModelPicker({
   }, [models, suggestions, query]);
 
   const selectedIndex = options.findIndex((option) => option.id === value);
-  // With a custom value nothing is checked; the first option still takes the
-  // tab stop so the radiogroup stays reachable from the keyboard.
+  // With a custom value nothing is checked, but the first option still takes the
+  // tab stop so the radiogroup stays keyboard reachable.
   const tabbableIndex = selectedIndex === -1 ? 0 : selectedIndex;
 
   const moveSelection = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {

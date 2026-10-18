@@ -20,10 +20,6 @@ import { LinkBlock } from './LinkBlock';
 import { NumberBlock } from './NumberBlock';
 import { StatusBlock } from './StatusBlock';
 
-/**
- * The block kinds this build can draw; the rest are skipped (T-1755). The
- * choice kinds (13-18) are interactive and answer through `BlockRespond`.
- */
 function renderBlock(block: Block, showHeading: boolean, title?: string): ReactNode {
   switch (block.kind) {
     case 'figure':
@@ -67,19 +63,6 @@ function renderBlock(block: Block, showHeading: boolean, title?: string): ReactN
   }
 }
 
-/**
- * The blocks card (T-1755): the `#141414` shell with the optional header row,
- * every block this build knows separated by a `#232323` rule, and a footer slot
- * for the message's time. A lone callout in a headerless card is drawn as one
- * compact row (the board, `WebContent.dc.html:103-122`), with the time inline at
- * the right. A payload whose kinds are all unknown shows the `fallback` as plain
- * text, so the card is never empty.
- *
- * T-1795: a member's answer is drawn from the route's merged card at once; the
- * message's own copy still resets it when the room correction arrives. With no
- * `respond` target (a fixture, or the viewer's own card) every control is drawn
- * but disabled.
- */
 export function BlockCard({
   data,
   footer,
@@ -94,7 +77,6 @@ export function BlockCard({
   const [failed, setFailed] = useState(false);
   const shownRef = useRef(data);
 
-  // React's prop-sync pattern: the room correction replaces the drawn card.
   if (data !== seenData) {
     setSeenData(data);
     setShown(data);
@@ -152,12 +134,8 @@ export function BlockCard({
     .filter(
       (entry): entry is { key: string; block: Block; node: ReactNode } => entry.node !== null,
     );
-  // The board draws a lone callout in a headerless card as one row: the tinted
-  // icon, the line and the time inline, 12/14 padding and no footer underneath.
   const lone = !hasHeader && rendered.length === 1 ? rendered[0]?.block : undefined;
   const compactCallout = lone !== undefined && lone.kind === 'callout' ? lone : undefined;
-  // An images-only card is the one body the board draws edge to edge: the grid
-  // keeps its own 4 px gap, so the card padding is 6/6/8/6 instead of 14/12/8/14.
   const loneImages = lone !== undefined && lone.kind === 'images';
   const errorLine = failed ? (
     <p role="alert" className="mt-1 text-[12px] text-danger">
@@ -216,9 +194,8 @@ export function BlockCard({
 }
 
 function BlockIcon({ name }: { name: BlockIconName }) {
-  // The map covers every name this build knows; a newer server may ship one it
-  // does not (`BlockIcon` names are additive under expand/contract), so an
-  // unknown name falls back to a neutral glyph instead of crashing the list.
+  // A newer server may ship an unknown icon name (additive under
+  // expand/contract); it falls back to a neutral glyph instead of crashing.
   const Icon = (BLOCK_ICONS as Partial<Record<BlockIconName, LucideIcon>>)[name] ?? Info;
   return <Icon className="size-3.5 shrink-0" aria-hidden="true" />;
 }

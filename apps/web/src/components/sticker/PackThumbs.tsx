@@ -10,7 +10,6 @@ const DEFAULT_SIZE = 56;
 const SMALL_SIZE = 36;
 const THUMB_COUNT = 4;
 
-/** A pack row's thumbnail strip: the first few sticker images, side by side. */
 export function PackThumbs({
   thumbs,
   size = DEFAULT_SIZE,

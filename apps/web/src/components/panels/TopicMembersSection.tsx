@@ -18,12 +18,6 @@ export type MembersState = {
   message: string;
 };
 
-/**
- * The People section (WebTopic.dc.html): a counted heading and one grouped card
- * of 44 px rows, with the owner's crown and a ⋯ menu for managers. General keeps
- * the "everyone in the group" line (T-1817). Leave moved to the panel's bottom
- * group (T-1797), and the add pickers to the one Add dialog (T-1784).
- */
 export function TopicMembersSection({
   listsMembers,
   state,

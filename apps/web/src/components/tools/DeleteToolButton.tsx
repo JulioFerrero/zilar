@@ -8,7 +8,6 @@ import { type ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { failureText } from './toolDetailOps';
 
-/** The Delete tool button with its confirm step (no-op for a member). */
 export function DeleteToolButton({
   toolId,
   toolName,

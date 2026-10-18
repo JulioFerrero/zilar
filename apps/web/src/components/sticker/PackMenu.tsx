@@ -9,11 +9,6 @@ import { Menu, MenuItem } from '@/components/ui/menu';
 import { useToast } from '@/components/ui/toast';
 import { type PageSetters, removeFromPanel, stickerPackUrl, toggleVisibility } from './pageActions';
 
-/**
- * The ⋮ menu on a pack I own (Main.dc.html, T-1497): Share, Edit, the
- * visibility switch, Remove from panel and Delete. An imported pack keeps
- * no visibility item, the way its inline key was locked before.
- */
 export function PackMenu({
   pack,
   setters,

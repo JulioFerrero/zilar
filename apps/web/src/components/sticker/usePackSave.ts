@@ -10,7 +10,6 @@ import {
   type PackEditorProps,
 } from './packEditorModel';
 
-/** What Save sends: the click-time values, so the save never reads a half-edited form. */
 interface SaveInput {
   readonly title: string;
   readonly visibility: 'private' | 'server';
@@ -21,10 +20,8 @@ export interface UsePackSaveOptions {
   packId: string | undefined;
   initialTitle: string;
   initialVisibility: 'private' | 'server';
-  /** The click-time title and visibility the editor holds. */
   title: string;
   visibility: 'private' | 'server';
-  /** The click-time rows; `itemsRef` is the finished list at order-PATCH time. */
   items: PackEditorItem[];
   itemsRef: RefObject<PackEditorItem[]>;
   initialIdsRef: RefObject<string[]>;
@@ -37,7 +34,6 @@ export interface UsePackSaveOptions {
   deleteSticker: NonNullable<PackEditorProps['deleteSticker']>;
 }
 
-/** The state and the one action the editor's form and buttons read. */
 export interface PackSaveControls {
   save: () => void;
   busy: boolean;
@@ -45,12 +41,6 @@ export interface PackSaveControls {
   progress: string | undefined;
 }
 
-/**
- * The pack save: the removals, the create/edit/resume steps, the sequential
- * uploads with per-file retry, the order patch and the validation before a
- * save starts. It owns the form error, the upload progress counts and the
- * create-mode refs the component used to hold.
- */
 export function usePackSave({
   packId,
   initialTitle,
@@ -71,11 +61,9 @@ export function usePackSave({
   const [formError, setFormError] = useState('');
   const [doneCount, setDoneCount] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
-  // Create mode: the pack minted on the first save, plus the title and
-  // visibility it was created with. Kept across Save clicks so a retry
-  // after a partial upload resumes into the same pack instead of minting a
-  // second one — and a title/visibility change since the creation is
-  // patched onto it rather than silently dropped.
+  // Create mode keeps the pack minted on the first save, so a retry after a
+  // partial upload resumes into it instead of minting a second one; a title or
+  // visibility change since creation is patched onto it, not silently dropped.
   const createdPackIdRef = useRef<string | undefined>(undefined);
   const createdTitleRef = useRef<string | undefined>(undefined);
   const createdVisibilityRef = useRef<'private' | 'server' | undefined>(undefined);
@@ -102,8 +90,6 @@ export function usePackSave({
     );
   };
 
-  // Create mode mints the pack on the first save and remembers it, so a
-  // retry resumes into the same pack.
   const createStep = (input: SaveInput): Effect.Effect<string, CallFailed> =>
     Effect.gen(function* () {
       const created: StickerPack = yield* call(() =>
@@ -115,7 +101,6 @@ export function usePackSave({
       return created.id;
     });
 
-  // Edit mode: title/visibility patch first, then the sticker diff.
   const editStep = (pack: string, input: SaveInput): Effect.Effect<string, CallFailed> =>
     Effect.gen(function* () {
       if (input.title !== initialTitle || input.visibility !== initialVisibility) {
@@ -125,10 +110,6 @@ export function usePackSave({
       return pack;
     });
 
-  // Create-mode resume: the pack already exists from the first save, so a
-  // title/visibility change since the creation is patched onto it instead of
-  // silently dropped — and stickers uploaded then removed in-session are
-  // deleted, not orphaned.
   const resumeStep = (pack: string, input: SaveInput): Effect.Effect<string, CallFailed> =>
     Effect.gen(function* () {
       if (
@@ -151,9 +132,6 @@ export function usePackSave({
     return packId !== undefined ? editStep(known, input) : resumeStep(known, input);
   };
 
-  // The whole save: the pack, the removals, the uploads (one at a time, so
-  // the progress count is exact; a failed file becomes its row's error and
-  // the rest go on) and the order patch.
   const saveEffect = (input: SaveInput): Effect.Effect<void, CallFailed> =>
     Effect.gen(function* () {
       const finalId = yield* packStep(input);
@@ -191,9 +169,9 @@ export function usePackSave({
         ),
       );
       const failed = landed.filter((ok) => !ok).length;
-      // Edit mode keeps the server order matching the UI: removals,
-      // uploads and moves all land in one order patch, computed from the
-      // finished list (itemsRef), never the click-time snapshot.
+      // Edit mode keeps the server order matching the UI: removals, uploads and
+      // moves land in one order patch computed from the finished list (`itemsRef`),
+      // never the click-time snapshot.
       if (packId !== undefined && failed === 0) {
         const removed = new Set(removedIdsRef.current);
         const currentIds: string[] = [];
@@ -213,8 +191,6 @@ export function usePackSave({
           yield* call(() => patchPack(finalId, { order: currentIds }));
         }
       }
-      // Only finish when every sticker landed: a partial failure leaves
-      // the editor open (with per-file Retry) instead of closing over it.
       if (failed === 0) {
         yield* Effect.sync(() => onDone(finalId));
       }
@@ -222,7 +198,6 @@ export function usePackSave({
 
   const [saveState, runSave] = useAction((input: SaveInput) => saveEffect(input));
   const busy = isWaiting(saveState);
-  // A save that failed outright (not one file) shows here until the next save.
   const saveFailure = busy ? undefined : failureOf(saveState);
   const saveFailureText =
     saveFailure !== undefined ? messageOf(saveFailure, 'Could not save the pack.') : '';

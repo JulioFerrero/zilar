@@ -6,8 +6,6 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useBlockReply, useBlockRespond } from './BlockRespond';
 
-// The board's keys (`WebChoices.dc.html:25-27`): 36 px high, 10 px radius, a
-// raised light or dark face. The focus ring is the web build's, not the board's.
 const KEY =
   'inline-flex h-9 items-center justify-center rounded-[10px] px-4 text-[14px] font-medium transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ededed]/50 disabled:cursor-default';
 const KEY_LIGHT = 'border border-white text-[#0a0a0a]';
@@ -29,7 +27,6 @@ type Answer = {
   mine: boolean;
 };
 
-/** The answered row the server merged in; `undefined` when the card is open. */
 function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
   const chosen = block.chosen;
   const action =
@@ -46,18 +43,11 @@ function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
   };
 }
 
-/**
- * 13 · BUTTONS: the line, then its keys. A press answers with the action id; on
- * success the keys become the answered row (the green tick, the label, the
- * time) and the label is sent as the @AI reply. The recorded `chosen` action
- * reopens the card answered for everyone.
- */
 export function ButtonsBlock({
   block,
   initialAnswer,
 }: {
   block: ButtonsBlockData;
-  /** The answered row a fixture starts with; a live card starts open. */
   initialAnswer?: { label: string; at: Date };
 }) {
   const respond = useBlockRespond();
@@ -71,8 +61,6 @@ export function ButtonsBlock({
   const [seenChosen, setSeenChosen] = useState(block.chosen);
   const [busy, setBusy] = useState(false);
 
-  // React's prop-sync pattern: the room correction fills `chosen` in. A tap
-  // made in this view on the same action keeps the "You chose" wording.
   if (block.chosen !== seenChosen) {
     setSeenChosen(block.chosen);
     const next = chosenAnswer(block);

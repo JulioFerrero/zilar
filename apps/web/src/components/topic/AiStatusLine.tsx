@@ -6,17 +6,14 @@ import { useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
-// T-1537: working before waiting; a done or idle topic shows no line.
 const STATE_ORDER: Record<TopicAiActivity['state'], number> = { working: 0, waiting: 1, done: 2 };
 
-/** The topic's working and waiting AIs, working first. */
 function activeAis(activity: readonly TopicAiActivity[]): TopicAiActivity[] {
   return activity
     .filter((entry) => entry.state !== 'done')
     .sort((left, right) => STATE_ORDER[left.state] - STATE_ORDER[right.state]);
 }
 
-/** The one sentence after the name: "· running the tests" or "is waiting for you". */
 function entryText(entry: TopicAiActivity, stage: string | undefined): string {
   if (entry.state === 'waiting') {
     return 'is waiting for you';
@@ -24,16 +21,8 @@ function entryText(entry: TopicAiActivity, stage: string | undefined): string {
   return stage === undefined ? 'is working' : `· ${stage}`;
 }
 
-/**
- * T-1537: the quiet status line above a topic's composer, one row for the AIs
- * at work. It shows nothing when no AI is working or waiting, or when the chat
- * is not a topic. At most two AIs show, then "+N" for the rest; long text
- * truncates rather than wrapping or scrolling.
- */
 export function AiStatusLine({ chat }: { chat: ChatSummary }) {
   const messages = useChatSelector((state) => state.messagesByChat[chat.id]);
-  // T-1586: a waiting AI with an open question opens its card in this topic,
-  // the same jump a search hit makes; the sentence itself is unchanged.
   const storeApi = useChatStoreApi();
   const [, openQuestion] = useAction((messageId: string) =>
     fromApi(() => storeApi.getState().openAtMessage(chat.id, messageId)).pipe(

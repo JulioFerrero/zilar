@@ -6,11 +6,6 @@ import { KeyStep } from '../ais/new-ai/KeyStep';
 import { ProviderStep } from '../ais/new-ai/ProviderStep';
 import { useKeyCheck } from '../ais/new-ai/useKeyCheck';
 
-/**
- * The Connections page's Add key dialog: the same Provider and Key steps as the
- * New AI flow. Continue runs the key check (which creates the connection), then
- * Save closes the dialog; closing before Save abandons an unverified connection.
- */
 export function AddKeyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const keys = useKeyCheck();
   const [step, setStep] = useState(0);

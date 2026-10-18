@@ -1,10 +1,6 @@
 import { Dialog } from '@/components/ui/dialog';
 import { AiMemorySection } from './AiMemorySection';
 
-/**
- * T-0447: the "What <AI> remembers" dialog opened from an AI row in a group
- * or topic panel. It seats the shared AiMemorySection, already expanded.
- */
 export function AiMemoryDialog({
   chat,
   aiId,

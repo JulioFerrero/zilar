@@ -3,19 +3,14 @@ import { type ChatBackgroundPresetId } from '@zilar/ui-tokens';
 
 export type Scope = 'chat' | 'all';
 
-/** T-0464: the dim slider saves this long after the last change. */
 export const DIM_SAVE_DELAY_MS = 400;
 
-/** The chat store rejected a write; the dialog shows its fixed sentence. */
 export class SaveFailed extends Data.TaggedError('SaveFailed') {}
 
-/** A picked image could not be prepared or uploaded; `text` is the fixed sentence. */
 export class UploadFailed extends Data.TaggedError('UploadFailed')<{ readonly text: string }> {}
 
-/** The image could not be deleted. */
 export class DeleteFailed extends Data.TaggedError('DeleteFailed') {}
 
-/** One save: an optional wait (the dim slider), then one store write. */
 export interface SaveRequest {
   readonly delayMs: number;
   readonly write: () => Promise<void>;
@@ -26,7 +21,6 @@ export interface UploadRequest {
   readonly scope: Scope;
 }
 
-/** A store write as an Effect: a rejection becomes SaveFailed. */
 export const writeSave = (write: () => Promise<void>): Effect.Effect<void, SaveFailed> =>
   Effect.tryPromise({ try: write, catch: () => new SaveFailed() });
 
@@ -34,7 +28,6 @@ export function presetLabel(id: ChatBackgroundPresetId): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-/** A plain sentence for an upload failure, never the server's text. */
 export function uploadErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message === 'too_small') {

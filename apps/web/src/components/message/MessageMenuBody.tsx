@@ -26,7 +26,6 @@ export interface MessageMenuProps {
   canPin: boolean;
   canForward: boolean;
   align: 'left' | 'right';
-  /** A right-click point; the menu opens there instead of at the bubble (WUX-29). */
   point?: { x: number; y: number } | undefined;
   onReply: () => void;
   onForward: () => void;
@@ -35,11 +34,6 @@ export interface MessageMenuProps {
   onClose: () => void;
 }
 
-/**
- * Runs a store call the user does not wait for (pin, unpin). Unlike the old
- * empty handler, it reports the outcome: `success` on resolve, the fixed pin
- * error on reject (WUX-30).
- */
 function runWithFeedback(
   call: () => Promise<unknown>,
   show: (text: string) => void,
@@ -55,11 +49,6 @@ function runWithFeedback(
   );
 }
 
-/**
- * The menu's visible part, mounted by the shell only while the menu or one of
- * its dialogs is open (T-2011), so a closed menu runs no store selectors while
- * an AI reply streams.
- */
 export function MessageMenuBody({
   open,
   message,
@@ -83,28 +72,20 @@ export function MessageMenuBody({
   const storeApi = useChatStoreApi();
   const show = useToast();
   const members = useAlbumMembers();
-  // T-1273: on an album bubble the menu acts on every photo. The list row hands
-  // the grid its grouped members; with two or more, Delete loops over all of
-  // them (an album is one sender, so the own/peer rule is unchanged). A lone
-  // photo, or a bubble drawn without members, keeps the single-message action.
   const albumIds =
     message.album !== undefined && members !== null && members.length >= 2
       ? members.map((member) => member.id)
       : undefined;
   const deleteTitle = albumIds === undefined ? 'Delete message?' : 'Delete album?';
   const deleteIds = albumIds ?? [message.id];
-  // T-1247: in a DM (and not an AI chat) every message can be deleted for me.
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const meId = useChatSelector((s) => s.currentUserId);
   const own = message.senderId === meId;
   // A message with no wire id yet (still sending, or a failed send) is refused
-  // by React, Edit and Delete: hide or disable them instead of letting the tap
-  // do nothing (UI-7).
+  // by React, Edit and Delete: hide or disable them instead of a dead tap.
   const canActNow = canAct(message);
   const isDm = chat?.kind === 'dm' && chat.isAI !== true;
   const canDeleteForMe = isDm && message.deleted !== true && message.status !== 'sending';
-  // T-1247: in a DM the item names the action its confirm offers (both for my
-  // own message, "for me" only on the peer's); groups keep the old label.
   const deleteLabel = isDm ? (own ? 'Delete' : 'Delete for me') : 'Delete for everyone';
   const deleteForMe = (): void => {
     for (const id of deleteIds) {
@@ -116,9 +97,6 @@ export function MessageMenuBody({
       storeApi.getState().deleteForEveryone(chatId, id);
     }
   };
-  // T-1325: a `kind: 'file'` attachment gets a Download item in the menu, so the
-  // file bubble keeps a single circle. The URL is resolved exactly as the file
-  // bubble resolves it, so a same-origin `/upload/` goes through `GET /api/files`.
   const fileAttachment =
     message.attachment !== undefined && message.attachment.kind === 'file'
       ? message.attachment
@@ -179,7 +157,6 @@ export function MessageMenuBody({
           }}
           onDelete={() => {
             onClose();
-            // Focus the opener so the dialog can restore it on close.
             menuButtonRef.current?.focus();
             menu.openConfirm();
           }}

@@ -5,10 +5,6 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { GroupAiRowView } from './GroupAiRowView';
 import { type ChannelFailure, describeFailure, storeCall } from './channelPanelOps';
 
-/**
- * One channel AI row with its own Remove action, so two AIs can be removed at
- * once; a second click on the same row waits for the first.
- */
 export function GroupAiRow({
   chatId,
   ai,

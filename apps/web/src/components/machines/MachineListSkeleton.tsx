@@ -3,7 +3,6 @@ import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 
-/** Quiet skeleton in the shape of a machine card. Mirrors the real cards' height. */
 export function MachineListSkeleton({ rows = 3 }: { rows?: number }) {
   const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');

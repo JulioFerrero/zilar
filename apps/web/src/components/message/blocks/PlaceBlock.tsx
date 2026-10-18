@@ -2,11 +2,6 @@ import type { PlaceBlock as PlaceBlockData } from '@zilar/protocol';
 import { Navigation } from 'lucide-react';
 import { BLOCK_KEY } from './blockKey';
 
-/**
- * 21 · PLACE: the title, the address line and a Directions key when there is a
- * link. The board's map image is an uploaded media id and is out of scope, so
- * the card is drawn without it.
- */
 export function PlaceBlock({ block }: { block: PlaceBlockData }) {
   return (
     <div className="flex items-center gap-2.5">

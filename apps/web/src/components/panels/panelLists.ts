@@ -8,12 +8,6 @@ import { textOf } from './topic-failure';
 
 export type PanelStatus = 'loading' | 'ready' | 'error';
 
-/**
- * A chat-store action. The store throws an ApiError (mapped as fromApi maps
- * it) or a plain Error whose message is the user-facing sentence, which keeps
- * its text. Any other cause becomes the unknown failure, so `textOf` shows the
- * fixed fallback.
- */
 export const storeCall = <A>(call: () => Promise<A>): Effect.Effect<A, ApiFailure> =>
   Effect.tryPromise({
     try: call,
@@ -23,16 +17,12 @@ export const storeCall = <A>(call: () => Promise<A>): Effect.Effect<A, ApiFailur
         : toApiFailure(cause),
   });
 
-/** The shown state of one loaded list. */
 export type ListState<Item> = {
   status: PanelStatus;
   items: Item[];
   message: string;
 };
 
-/** One list on the panel: a shown list stays on screen while it reloads, and
- *  `keepReadyOnDrop` decides whether the rows left after a failed re-read stay
- *  visible. */
 export function useListLoader<Item, Id>({
   load,
   fallback,
@@ -55,8 +45,6 @@ export function useListLoader<Item, Id>({
   const setFailure = (failure: ApiFailure): void =>
     setState({ status: 'error', items: [], message: textOf(failure, fallback) });
 
-  // `onShown` runs in the same step as the list update, so a row or picker
-  // that the update removes has finished its last step.
   const fetch = (onShown: () => void = () => undefined): Effect.Effect<void, ApiFailure> =>
     fromApi(load).pipe(
       Effect.tap((items) =>
@@ -78,8 +66,6 @@ export function useListLoader<Item, Id>({
   );
   const [, refresh] = useQuery(() => loadEffect, deps);
 
-  // The list re-read after an action: a failure shows the list's inline error,
-  // and `done` runs in the same step either way.
   const reloadAfter = (done: () => void = () => undefined): Effect.Effect<void> =>
     fetch(done).pipe(
       Effect.catchTag('ApiFailure', (failure) =>
@@ -101,9 +87,7 @@ export function useListLoader<Item, Id>({
 }
 
 /**
- * Removes one row: the store call, then a re-read of the list. A 404 with
- * `onMissing` runs the "the row may be gone" path instead of failing. A
- * re-read that fails after a successful delete drops the row locally: never
+ * A re-read that fails after a successful delete drops the row locally: never
  * show a removed row as if the delete failed.
  */
 export function removeRow<Id>({

@@ -7,11 +7,9 @@ import { cn } from '@/lib/utils';
 import type { StickerChoice } from '../StickerPanel';
 
 /**
- * The favorite star on one sticker tile (T-0121). It has its own action, so a
- * second click on the same star waits for the first request while other stars
- * run at once. The request is uninterruptible: a row leaves the list at once
- * when its favorite is removed on the Favorites tab, and a failed request must
- * still roll back.
+ * The request is uninterruptible: a row leaves the list at once when its
+ * favorite is removed on the Favorites tab, and a failed request must still
+ * roll back.
  */
 export function FavoriteStar({
   sticker,

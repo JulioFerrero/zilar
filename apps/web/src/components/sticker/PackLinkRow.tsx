@@ -7,7 +7,6 @@ import { copyText } from '@/lib/clipboard';
 import { useAction } from '@/lib/effect/use-action';
 import { stickerPackUrl, stickerPackUrlText } from './pageActions';
 
-/** A pack's share link with a Copy key (WebPack.dc.html, T-1497). */
 export function PackLinkRow({ packId }: { packId: string }) {
   const show = useToast();
   const [, copy] = useAction<string, void, unknown>((url) =>

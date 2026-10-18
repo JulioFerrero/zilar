@@ -9,11 +9,6 @@ import { useMuteToggle } from '../useMuteToggle';
 
 const MUTE_FAILED = 'Could not change the mute. Try again.';
 
-/**
- * T-1797: the bottom group of the topic panel (WebTopic.dc.html:113-124): a
- * Mute switch on the chat row's pref and one Leave topic row (never on
- * General), confirmed before the panel's existing leave action runs.
- */
 export function TopicMuteLeave({
   chat,
   groupTitle,

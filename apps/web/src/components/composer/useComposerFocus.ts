@@ -5,12 +5,8 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 // the same query ChatShell uses for its wide layout.
 const WIDE_QUERY = '(min-width: 900px)';
 
-// The mounted composer's textarea, registered by `useComposerFocus` so
-// ChatView's type-to-focus listener can reach it without a prop chain
-// (ComposerControls owns the ref).
 let activeTextarea: HTMLTextAreaElement | null = null;
 
-/** True when focusing would steal from a field, a dialog or the search box. */
 function isEditable(element: Element | null): boolean {
   if (element === null) {
     return false;
@@ -28,15 +24,10 @@ function isEditable(element: Element | null): boolean {
   return element.closest('[role="dialog"], [aria-modal="true"]') !== null;
 }
 
-/** True when an overlay dialog is open anywhere in the document. */
 function hasOpenDialog(): boolean {
   return document.querySelector('[role="dialog"], [aria-modal="true"]') !== null;
 }
 
-/**
- * Focuses the composer's textarea (WUX-6), unless that would steal focus from
- * a field, a dialog or the search box. Returns whether it focused.
- */
 export function focusComposer(): boolean {
   const textarea = activeTextarea;
   if (textarea === null || !textarea.isConnected || hasOpenDialog()) {
@@ -49,20 +40,14 @@ export function focusComposer(): boolean {
   return true;
 }
 
-/**
- * Registers the composer's textarea and, on a wide layout, focuses it when the
- * open chat changes, as Telegram focuses the composer when a chat opens (and
- * on the first mount).
- */
 export function useComposerFocus(
   chatId: string,
   textareaRef: RefObject<HTMLTextAreaElement | null>,
   focusKey?: string | undefined,
 ): void {
   const isWide = useMediaQuery(WIDE_QUERY);
-  // Read through a ref so the focus effect below depends on `chatId` alone: a
-  // narrow↔wide resize must not yank focus into the composer, only a chat
-  // change (or the first mount) does.
+  // Read through a ref so the focus effect depends on `chatId` alone: a
+  // narrow↔wide resize must not yank focus into the composer.
   const isWideRef = useRef(isWide);
   useEffect(() => {
     isWideRef.current = isWide;
@@ -84,7 +69,6 @@ export function useComposerFocus(
     textareaRef.current?.focus();
   }, [chatId, textareaRef]);
 
-  // Reply and Edit focus the composer, as in Telegram: on every layout width.
   useEffect(() => {
     if (focusKey === undefined) {
       return;

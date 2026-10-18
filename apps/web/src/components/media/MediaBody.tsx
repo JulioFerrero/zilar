@@ -11,11 +11,6 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EMPTY_TITLE, mediaItemKey, type JumpTarget } from './mediaModel';
 import { FileRow, LinkRow, MediaThumb } from './MediaRows';
 
-/**
- * The pages of one tab of one chat. It is keyed by chat and tab, so a tab
- * switch remounts it and interrupts the load still running for the old tab.
- * The first page loads on mount; "Load more" appends the next page.
- */
 export function MediaBody({
   chatId,
   tab,
@@ -44,7 +39,6 @@ export function MediaBody({
   );
 
   const page = AsyncResult.isSuccess(first) ? first.value : undefined;
-  // A failure is hidden while a new call runs, as the page did before.
   const firstFailure = isWaiting(first) ? undefined : failureOf(first);
   const moreFailure = isWaiting(more) ? undefined : failureOf(more);
   const pages = page === undefined ? [] : [page, ...extra];

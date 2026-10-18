@@ -1,6 +1,3 @@
-// T-1234: a small card under a message's first https link. It unfurls one
-// https URL through the API (which caps what it returns), shows nothing while
-// loading or when the page has nothing, and links out in a new tab.
 // effect-plain: presentational card; the api module owns the fetch and cache
 import { useEffect, useState } from 'react';
 import { linkPreview, type LinkPreview } from '@/lib/api/media';
@@ -10,12 +7,10 @@ type PreviewState =
 
 export function LinkPreviewCard({ url }: { url: string }) {
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
-  // T-1252: the image URL that failed to load, so a broken thumbnail hides.
   const [brokenImage, setBrokenImage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    // The api module caches and dedupes, so a re-render never refetches.
     linkPreview(url).then((preview) => {
       if (!active) {
         return;

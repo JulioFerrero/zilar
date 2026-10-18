@@ -2,10 +2,6 @@ import type { BlocksData } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { BlockCard } from './BlockCard';
 
-// Cosmos fixture (T-1755): every board example on the boards' `#0a0a0a` page,
-// so the lead can screenshot it next to `docs/design/mockups/blocks/`.
-
-/** The boards' `.time` (mono 10, `#8a8a8a`) as a plain footer. */
 function Time({ at }: { at: string }) {
   return <span className="font-mono text-[10px] text-[#8a8a8a]">{at}</span>;
 }
@@ -19,7 +15,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// The routine message from `Main.dc.html:52-67`.
 const PRICES: BlocksData = {
   icon: 'activity',
   title: 'Prices',
@@ -37,7 +32,6 @@ const PRICES: BlocksData = {
   ],
 };
 
-// `WebNumbers.dc.html:53-64`.
 const BITCOIN: BlocksData = {
   fallback: 'Bitcoin $82,302, up 2.1% today',
   blocks: [
@@ -52,7 +46,6 @@ const BITCOIN: BlocksData = {
   ],
 };
 
-// `WebProgress.dc.html:43-59`.
 const GROCERIES: BlocksData = {
   fallback: 'Groceries: 2 of 5 done. Eggs and Milk done; Tomatoes, Bread and Coffee beans left.',
   blocks: [
@@ -71,7 +64,6 @@ const GROCERIES: BlocksData = {
   ],
 };
 
-// `WebProgress.dc.html:132-146`.
 const SERVICES: BlocksData = {
   fallback:
     'Services: chat.zilar.app 99.98%, www.zilar.app 100%, Nightly backup 2 h late, Desk egress down since 06:58.',
@@ -89,7 +81,6 @@ const SERVICES: BlocksData = {
   ],
 };
 
-// `WebContent.dc.html:37-49`.
 const LINK: BlocksData = {
   fallback: 'github.com/JulioFerrero/zilar — A messenger you host yourself.',
   blocks: [
@@ -102,7 +93,6 @@ const LINK: BlocksData = {
   ],
 };
 
-// `WebContent.dc.html:103-116`.
 const CALLOUT_SUCCESS: BlocksData = {
   fallback: 'Backup finished · 2.0 GB',
   blocks: [{ kind: 'callout', tone: 'success', text: 'Backup finished · 2.0 GB' }],
@@ -113,7 +103,6 @@ const CALLOUT_WARNING: BlocksData = {
   blocks: [{ kind: 'callout', tone: 'warning', text: 'Daily limit almost used · $0.92 of $1.00' }],
 };
 
-// The two-block shape of `Main.dc.html:74-118` (figures, a rule, then a checklist).
 const MORNING_BRIEFING: BlocksData = {
   icon: 'activity',
   title: 'Morning briefing',
@@ -141,7 +130,6 @@ const MORNING_BRIEFING: BlocksData = {
   ],
 };
 
-// A card whose one block the build cannot draw yet falls back to plain text.
 const UNKNOWN_KIND: BlocksData = {
   fallback: 'Backup is 70% done.',
   blocks: [{ kind: 'progress', label: 'Uploading the backup', ratio: 0.7 }],

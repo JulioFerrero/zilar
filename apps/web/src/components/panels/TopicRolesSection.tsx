@@ -18,11 +18,7 @@ import { failInline, textOf } from './topic-failure';
 import { storeCall, type PanelStatus } from './topicPanelOps';
 
 /**
- * The topic's roles (T-0116): attached roles with holder counts next to the
- * people list, and the approver select ("Owner and admins only" or one
- * role). Managers edit; everyone else reads. Saving goes through the
- * store so the chat row refreshes. Saves stay one action for the section:
- * each save sends the whole role list, so two saves at once would drop one.
+ * Each save sends the whole role list, so two saves at once would drop one.
  */
 export function TopicRolesSection({
   chatId,
@@ -46,8 +42,6 @@ export function TopicRolesSection({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // The topic and the group's roles load side by side; a failure shows the
-  // inline error with Retry.
   const loadRoles = Effect.sync(() =>
     setRolesState({ status: 'loading', roles: [], approverRole: null, message: '' }),
   ).pipe(
@@ -80,7 +74,6 @@ export function TopicRolesSection({
   );
   const [, refreshRoles] = useQuery(() => loadRoles, [topicId, groupId]);
 
-  // A second click while a save waits is dropped (mode 'ignore').
   const [saveState, saveRoles] = useAction(
     (input: { roleIds: string[]; approverRoleId: string | null }) =>
       Effect.sync(() => setErrorMessage('')).pipe(

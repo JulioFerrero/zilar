@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 
 type PreviewLineProps = { KindIcon: LucideIcon | undefined; prefix: string; body: string };
 
-/** The preview line shared by the chat list and the topic rows. */
 export function PreviewLine({ KindIcon, prefix, body }: PreviewLineProps) {
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">

@@ -29,7 +29,6 @@ export function BackgroundImages({
   onChangeDim,
 }: {
   images: BackgroundListItem[];
-  /** Ids of the rows still shown, for the labels. */
   shownIds: string[];
   removedIds: ReadonlySet<string>;
   selectedImageId: string | null;
@@ -42,7 +41,6 @@ export function BackgroundImages({
   onSelectImage: (imageId: string, nextDim: number, targetScope: Scope) => void;
   onAskDelete: (id: string) => void;
   onCancelDelete: () => void;
-  /** Runs when a confirmed delete starts. */
   onStartDelete: () => void;
   onDeleteImage: (id: string) => Effect.Effect<void>;
   onStartUpload: (file: File | undefined) => void;
@@ -114,13 +112,6 @@ export function BackgroundImages({
   );
 }
 
-/**
- * One uploaded image: a thumbnail, or the inline delete confirm. Each row has
- * its own delete action, so two rows can be deleted at once and a second click
- * on the same row while it waits is ignored. A deleted row stays mounted and
- * renders nothing, so the store patch after its delete still runs to the end
- * (the BlockedPage model, T-0767).
- */
 function BackgroundRow({
   image,
   index,
@@ -134,7 +125,6 @@ function BackgroundRow({
   deleteImage,
 }: {
   image: BackgroundListItem;
-  /** Position among the rows still shown, for the labels. */
   index: number;
   removed: boolean;
   selected: boolean;
@@ -142,7 +132,6 @@ function BackgroundRow({
   onPick: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
-  /** Runs when a confirmed delete starts. */
   onStartDelete: () => void;
   deleteImage: (id: string) => Effect.Effect<void>;
 }) {

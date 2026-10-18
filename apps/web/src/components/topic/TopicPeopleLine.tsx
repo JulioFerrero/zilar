@@ -4,13 +4,10 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Avatar } from '../Avatar';
 
-/** The board's stack shows at most four pictures (WebTopic.dc.html:58). */
 const STACK_MAX = 4;
-/** The writing line shows at most three writers' pictures (PhoneHeader.dc.html). */
 const WRITERS_MAX = 3;
 const AVATAR_SIZE = 20;
 
-/** One person drawn in the line: the id, the display name and its picture. */
 interface LinePerson {
   id: string;
   name: string;
@@ -32,10 +29,6 @@ function personOfGroupAi(ai: GroupAi): LinePerson {
   return { id: ai.aiId, name: ai.name, avatarUrl: ai.avatarUrl };
 }
 
-/**
- * The topic's AIs: its `ais` list, or the whole group's for General, which
- * carries no list of its own (T-1777).
- */
 function topicAis(chat: ChatSummary, info: GroupDetail | undefined): LinePerson[] {
   const topic = chat.topic;
   if (topic === undefined) {
@@ -46,10 +39,6 @@ function topicAis(chat: ChatSummary, info: GroupDetail | undefined): LinePerson[
     : (topic.ais ?? []).map(personOfTopicAi);
 }
 
-/**
- * The topic's people: its `memberIds`, with the names and pictures from the
- * group detail, or the whole group's people for General.
- */
 function topicPeople(chat: ChatSummary, info: GroupDetail | undefined): LinePerson[] {
   const topic = chat.topic;
   if (topic === undefined) {
@@ -61,26 +50,23 @@ function topicPeople(chat: ChatSummary, info: GroupDetail | undefined): LinePers
   const members = new Map((info?.members ?? []).map((member) => [member.userId, member]));
   return (topic.memberIds ?? []).map((id) => {
     const member = members.get(id);
-    // The names and pictures land with the group detail; until then the id is
-    // still a stable seed, so the orb does not change when it arrives.
+    // The names and pictures land with the group detail; until then the id is a
+    // stable seed, so the orb does not change when they arrive.
     return { id, name: member?.name ?? id, avatarUrl: member?.avatarUrl };
   });
 }
 
-/** The topic's people, then its AIs, in the board's stack order. */
 function linePeople(chat: ChatSummary, info: GroupDetail | undefined): LinePerson[] {
   return [...topicPeople(chat, info), ...topicAis(chat, info)];
 }
 
-/** The `group · N` count: the topic's people plus its AIs. */
 function topicCount(chat: ChatSummary, info: GroupDetail | undefined): number {
   return topicPeople(chat, info).length + topicAis(chat, info).length;
 }
 
 /**
- * The writers, matched by display name to the group's people or the topic's
- * AIs. A name that matches nothing keeps its own name as the orb seed, so the
- * same writer draws the same ball (the orb-by-name rule, T-1334).
+ * A name that matches nothing keeps its own name as the orb seed, so the same
+ * writer always draws the same ball.
  */
 function writerPeople(
   names: readonly string[],
@@ -94,7 +80,6 @@ function writerPeople(
   });
 }
 
-/** The overlapping pictures the line opens with, ringed like the board's `.st`. */
 function AvatarStack({ people }: { people: readonly LinePerson[] }) {
   if (people.length === 0) {
     return null;
@@ -123,10 +108,7 @@ function AvatarStack({ people }: { people: readonly LinePerson[] }) {
 }
 
 /**
- * A topic header's second line (T-1779, plan W1): the ≤4 avatar stack with
- * `group · N` when nobody writes, swapped for the writers' avatars,
- * `writingLabel(names)` and a pulsing dot while someone does. The line keeps
- * its height in both states so the 64 px header never moves.
+ * The line keeps its height in both states so the 64 px header never moves.
  */
 export function TopicPeopleLine({
   chat,
@@ -167,8 +149,6 @@ export function TopicPeopleLine({
       <span className="truncate">{label}</span>
     </>
   );
-  // T-1852: with no handler the line stays a plain span; the header passes one
-  // so tapping the people opens the topic panel.
   if (onOpen === undefined) {
     return <span className={className}>{content}</span>;
   }

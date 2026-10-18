@@ -12,24 +12,12 @@ interface AlbumPhoto {
   alt: string;
 }
 
-/**
- * The album item's loaded members, provided by the list row that owns the run
- * (T-1268). `groupMessages` already scoped them to one sender, one day and the
- * group window, so the grid renders exactly that run instead of re-deriving it
- * from the store by `album.id` (which would merge a peer's colliding id, or a
- * far sibling the grouping kept apart). A head drawn outside the list (a lone
- * marker) has no provider and falls back to itself.
- */
 const AlbumMembersContext = createContext<readonly UiMessage[] | null>(null);
 
-/** The album item's grouped members from the surrounding list row (T-1268), or
- * `null` when this bubble was drawn without them. The bubble menu reads it to
- * turn Delete and Forward into album-wide actions (T-1273). */
 export function useAlbumMembers(): readonly UiMessage[] | null {
   return useContext(AlbumMembersContext);
 }
 
-/** Provides one album item's members to the grid drawn in its head bubble. */
 export function AlbumMembersProvider({
   messages,
   children,
@@ -41,11 +29,8 @@ export function AlbumMembersProvider({
 }
 
 /**
- * The members' renderable photos, in `index` order, mirroring `photosOf`: a
- * message with an `image`, or with an attachment whose `kind` is `image`. The
- * store's sanitizer downgrades an untrusted host to `kind: 'file'`, so a plain
- * `<img>` here never loads bytes from a peer's arbitrary host (the same trust
- * rule the image and GIF branches rely on).
+ * The store's sanitizer downgrades an untrusted host to `kind: 'file'`, so a
+ * plain `<img>` here never loads bytes from a peer's arbitrary host.
  */
 function albumPhotos(messages: readonly UiMessage[]): AlbumPhoto[] {
   return messages
@@ -85,9 +70,6 @@ function AlbumTile({
   const media = useMediaRetry(chatId, photo.url);
   const storeApi = useChatStoreApi();
   const openViewer = useMediaViewer();
-  // A sibling whose upload failed keeps its local bytes; its tile offers the
-  // same per-message Retry the single-photo branch does (T-0168), so a partial
-  // album failure is recoverable without deleting the bubble (T-1268).
   const failed = photo.message.failed === true || photo.message.status === 'failed';
 
   const open = (event: MouseEvent<HTMLButtonElement>): void => {
@@ -168,15 +150,6 @@ function AlbumTile({
   );
 }
 
-/**
- * One album rendered as a Telegram-style grid (T-1268): 2 two columns, 3 one
- * large tile and two stacked, 4 a 2×2, 5+ a 2×2 whose last tile shows `+N` for
- * the hidden remainder. The list row hands the item's grouped members down; a
- * head drawn without them (a lone marker outside the list) renders as an album
- * of one, the same shape `groupMessages` gives it. A tile opens the viewer
- * scoped to the album. The caption is the head message's body, drawn by the
- * bubble under this grid.
- */
 export function AlbumGrid({ message, chat }: { message: UiMessage; chat: ChatSummary }) {
   const provided = useAlbumMembers();
   const photos = albumPhotos(provided ?? [message]);

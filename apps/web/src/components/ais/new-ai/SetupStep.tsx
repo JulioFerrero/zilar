@@ -46,7 +46,6 @@ function MoneyField({
   );
 }
 
-/** Step 4: where the AI runs and its USD caps, then Create AI. */
 export function SetupStep({ flow }: { flow: NewAiFlow }) {
   const needsMachine = flow.computerMode === 'runner' || flow.computerMode === 'auto';
 

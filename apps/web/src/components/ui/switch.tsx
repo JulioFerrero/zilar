@@ -6,11 +6,9 @@ export interface SwitchProps {
   onCheckedChange: (checked: boolean) => void;
   label: string;
   disabled?: boolean;
-  /** Hides the visible label and names the control with `label` instead. */
   hideLabel?: boolean;
 }
 
-/** A labelled switch. Space and Enter toggle it via the native button. */
 export function Switch({
   checked,
   onCheckedChange,

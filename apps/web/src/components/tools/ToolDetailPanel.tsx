@@ -27,14 +27,6 @@ import {
   settledFailure,
 } from './toolDetailOps';
 
-/**
- * One tool with its source, versions, runs and actions (T-0107): read-only
- * source with line numbers, version history with revert (confirm step),
- * Run now with an optional JSON input (validated, max 4 KB), recent runs,
- * and Delete (confirm step, handled by the parent). Everything renders as
- * text, never HTML. Actions the API would refuse hide after a 403/404 on
- * load; a 403/404 from a write shows an inline message, no crash.
- */
 export function ToolDetailPanel({
   toolId,
   canManage,
@@ -42,22 +34,18 @@ export function ToolDetailPanel({
   onClose,
 }: {
   toolId: string;
-  /** False hides Run/Revert/Delete (a member the API would refuse). */
   canManage: boolean;
   onDeleted: (toolId: string) => void;
   onClose: () => void;
 }) {
   const [loaded, reloadDetail] = useQuery(() => loadDetail(toolId), [toolId]);
 
-  // The source the user picked from the history; undefined shows the
-  // current version. Cleared on every reload, as the panel did before.
   const [picked, setPicked] = useState<{ version: number; source: string } | null>(null);
-  // The recent runs after a run; undefined shows the loaded list.
   const [freshRuns, setFreshRuns] = useState<ToolRun[] | null>(null);
   const [confirmingRevert, setConfirmingRevert] = useState<number | null>(null);
 
-  // Run now: optional JSON input, validated before the POST (the server also
-  // enforces 16 KiB). The result stays in local state, as before.
+  // Run now takes optional JSON input, validated before the POST (the server
+  // also enforces 16 KiB).
   const [runInput, setRunInput] = useState('');
   const [runResult, setRunResult] = useState<ToolRunResult | null>(null);
 
@@ -87,8 +75,8 @@ export function ToolDetailPanel({
   const [runState, runNow] = useAction((text: string) =>
     runToolWithInput(toolId, text).pipe(
       Effect.tap((result) => Effect.sync(() => setRunResult(result))),
-      // The run itself succeeded: a failed history refresh must not turn it
-      // into an error, the old list simply stays until the next refresh.
+      // The run itself succeeded: a failed history refresh must not turn it into an
+      // error, so the old list stays until the next refresh.
       Effect.tap(() =>
         fromApi(() => listToolRuns(toolId)).pipe(
           Effect.tap((fresh) => Effect.sync(() => setFreshRuns(fresh))),
@@ -129,7 +117,6 @@ export function ToolDetailPanel({
   const shownVersion = picked?.version ?? tool.currentVersion;
   const shownSource = picked?.source ?? tool.source;
   const runs = freshRuns ?? loadedRuns;
-  // A failure shows only once its call has ended; a new call clears it.
   const sourceError = settledFailure(sourceState);
   const revertFailure = settledFailure(revertState);
   const runFailure = settledFailure(runState);

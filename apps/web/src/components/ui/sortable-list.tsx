@@ -23,7 +23,6 @@ import { cn } from '@/lib/utils';
 
 type UseSortable = ReturnType<typeof useSortable>;
 
-/** The controls a `SortableItem` hands to its render prop for the drag handle. */
 export interface SortableItemControls {
   attributes: UseSortable['attributes'];
   listeners: UseSortable['listeners'];
@@ -41,9 +40,9 @@ export interface SortableAccessibility {
 }
 
 /**
- * dnd-kit's default announcements name the internal ids. These name the row
- * through `labelOf` and read its position, so the live region says
- * "Personal moved to position 2 of 2." instead of the raw id.
+ * dnd-kit's default announcements name the internal ids; these name the row
+ * through `labelOf` and read its position, so the live region says "Personal
+ * moved to position 2 of 2" instead of the raw id.
  */
 export function sortableAccessibility(
   ids: string[],
@@ -76,21 +75,13 @@ export function sortableAccessibility(
 }
 
 export interface SortableListProps {
-  /** The row ids in visual order; each must match a `SortableItem` id. */
   ids: string[];
   disabled?: boolean;
-  /** The spoken name of a row, shown in the screen-reader announcements. */
   labelOf: (id: string) => string;
-  /** Called on drop with the dragged id and the id it landed on. */
   onReorder: (fromId: string, toId: string) => void;
   children: ReactNode;
 }
 
-/**
- * A vertical sortable list: pointer, touch and keyboard sensors, closest-centre
- * collision and the same reorder callback semantics as a manual move. Only the
- * handle starts a drag; the rows stay put for their own buttons and inputs.
- */
 export function SortableList({
   ids,
   disabled = false,
@@ -134,7 +125,6 @@ export interface SortableItemProps {
   children: (controls: SortableItemControls) => ReactNode;
 }
 
-/** One `<li>` in a `SortableList`; it moves as a whole while its handle is active. */
 export function SortableItem({ id, disabled = false, className, children }: SortableItemProps) {
   const {
     attributes,
@@ -161,13 +151,11 @@ export function SortableItem({ id, disabled = false, className, children }: Sort
 }
 
 export interface SortableHandleProps extends SortableItemControls {
-  /** The handle's accessible name, e.g. `Reorder My folder`. */
   label: string;
   disabled?: boolean;
   className?: string;
 }
 
-/** The grip button that starts a drag; keyboard (Space, arrows) works through it. */
 export function SortableHandle({
   attributes,
   listeners,

@@ -12,24 +12,13 @@ import { StateMessage } from '../ui/state-message';
 
 interface AiEmptyInfo {
   template: AiTemplate;
-  /** The mono model line: `<model>` or `<model> · <provider>`. */
   model: string;
 }
 
-/**
- * The empty chat canvas (T-1511). A DM shows only the person's picture, name
- * and handle; an AI chat adds the "AI" badge, its model line and three
- * suggestion chips that send. Any other chat keeps the "No messages yet"
- * state. The caller supplies the chat background.
- */
 export function EmptyChat({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
   const contacts = useChatSelector((s) => s.contacts);
 
-  // The AI's template and model line: found by jid, the provider named from its
-  // connection. Left out while loading, for a chat that is not a known AI, and
-  // for someone else's AI (which is not in the list). A failed read of the
-  // connections just drops the provider name.
   const [aiResult] = useQuery(
     () =>
       chat.isAI

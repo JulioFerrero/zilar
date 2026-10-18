@@ -14,10 +14,6 @@ interface PendingRowProps {
   onRemove: (id: string) => void;
 }
 
-/**
- * One pending machine with its own Approve and Deny actions, so two rows can
- * run at once while a second click on the same row waits for the first.
- */
 export function PendingRow({
   machine,
   confirmingDeny,

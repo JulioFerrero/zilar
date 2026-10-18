@@ -48,7 +48,6 @@ export function ComposerControls({
   editor: ComposerEditor;
   replyTo: ReplyRef | undefined;
   onCancelReply: () => void;
-  /** Opens Settings → Stickers (the panel's "+" tab and Manage link). */
   onOpenStickersSettings?: (() => void) | undefined;
   actionError: string | undefined;
 }) {

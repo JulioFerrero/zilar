@@ -33,11 +33,9 @@ import { PanelKey } from '../ui/panel-key';
 import { useToast } from '../ui/toast';
 import { useMuteToggle } from '../useMuteToggle';
 
-/** The pages of the channel info panel; `root` is the page itself (T-1519). */
 export type ChannelInfoPageId =
   'root' | 'admins' | 'subscribers' | 'ais' | 'links' | 'activity' | 'allowed' | 'settings';
 
-/** The title of each subpage, shown by `GroupInfoPage noun="channel"`. */
 export const CHANNEL_INFO_TITLES: Record<ChannelInfoPageId, string> = {
   root: '',
   admins: 'Admins',
@@ -49,16 +47,10 @@ export const CHANNEL_INFO_TITLES: Record<ChannelInfoPageId, string> = {
   settings: 'Settings',
 };
 
-/** The count at the right of a row, in mono as the design asks. */
 function count(value: number): ReactNode {
   return <span className="font-mono text-[12px]">{value}</span>;
 }
 
-/**
- * The channel info root page (T-1519): the picture, the name and the subscriber
- * count, the Mute / Search / Share / More keys, and the grouped lists whose rows
- * open the subpages. Built like `GroupInfoRoot` after `WebChannel.dc.html`.
- */
 export function ChannelInfoRoot({
   chat,
   title,
@@ -82,21 +74,15 @@ export function ChannelInfoRoot({
 }: {
   chat: ChatSummary;
   title: string;
-  /** The channel's id, for the More key's Delete channel dialog. */
   groupId: string | undefined;
-  /** The subscriber count, shown in the header and on the Subscribers row. */
   count: number;
-  /** The public handle, when the channel has one. */
   handle: string | null;
-  /** The channel's description, when it has one. */
   description: string | null;
-  /** The admins count, when it is known (subscribers load it). */
   adminsCount: number | undefined;
   aisCount: number;
   linksCount: number | undefined;
   isManager: boolean;
   isOwner: boolean;
-  /** A subscriber: show the red Leave channel row. */
   canLeave: boolean;
   leaving: boolean;
   leaveError: string;
@@ -167,7 +153,6 @@ export function ChannelInfoRoot({
           />
           <PanelKey label="Search" icon={Search} onClick={onSearch} />
           {shareUrl !== null && (
-            // The visible label is "Share"; the accessible name spells it out.
             <div className="flex w-16 flex-col items-center gap-1.5">
               <IconButton aria-label="Share link" onClick={() => runShare(shareUrl)}>
                 <Share2 className="size-[18px]" aria-hidden="true" />
@@ -270,7 +255,6 @@ export function ChannelInfoRoot({
             </nav>
           )}
 
-          {/* The red bottom row: subscribers leave here; the owner deletes from More. */}
           {canLeave && (
             <div className="flex flex-col gap-1">
               <div className="overflow-hidden rounded-xl border border-border bg-surface">

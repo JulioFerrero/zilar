@@ -4,7 +4,9 @@ import type { StoredDevice } from '@/lib/push/deviceStorage';
 import { Button } from '../ui/button';
 import { Card, SectionLabel } from '../ui/card';
 
-/** The native apps' user agents say nothing useful, so name them by kind. */
+/**
+ * The native apps' user agents say nothing useful, so name them by kind.
+ */
 function deviceName(device: PushDevice): string {
   if (device.kind === 'fcm') {
     return 'Android app';
@@ -15,7 +17,6 @@ function deviceName(device: PushDevice): string {
   return describeUserAgent(device.userAgent);
 }
 
-/** The registered devices list, with a Remove button per row. */
 export function DevicesSection({
   devices,
   storedDevice,

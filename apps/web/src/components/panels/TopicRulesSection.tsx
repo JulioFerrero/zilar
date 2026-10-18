@@ -1,6 +1,5 @@
 import { AlwaysAllowedList } from '../approvals/AlwaysAllowedList';
 
-/** The topic's Always-allowed rules, read-only: rows show the topic name. */
 export function TopicRulesSection({
   groupId,
   topicId,

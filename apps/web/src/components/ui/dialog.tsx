@@ -10,40 +10,24 @@ export interface DialogProps {
   title: string;
   description?: string;
   children?: ReactNode;
-  /** Keys in the footer, aligned right. Kept for existing dialogs. */
   actions?: ReactNode;
-  /** A custom footer that replaces `actions` and gets the hairline treatment. */
   footer?: ReactNode;
-  /** Optional step bar, for example a `DialogStepper`. */
   stepper?: ReactNode;
-  /** A fixed error line above the footer. */
   error?: ReactNode;
-  /** When set, the body and footer are wrapped in a form so Enter submits. */
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
-  /** While busy, Escape, the backdrop and the close key are all off. */
   busy?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  /** Element to focus on open instead of the first `[data-autofocus]` element. */
   initialFocusRef?: RefObject<HTMLElement | null>;
-  /** Accessible name when it should differ from the visible title. */
   ariaLabel?: string;
-  /** When false, Escape and a backdrop click do not close the dialog. */
   dismissable?: boolean;
   /**
-   * T-1351: render the backdrop even when this dialog is nested inside another
-   * Base UI overlay. Base UI drops a nested dialog's backdrop (`DialogBackdrop`
-   * renders nothing when its root is nested), which leaves the parent overlay
-   * undimmed behind a confirm; forcing it keeps the confirm clearly modal.
+   * Base UI drops a nested dialog's backdrop (`DialogBackdrop` renders nothing
+   * when its root is nested), which leaves the parent overlay undimmed; forcing
+   * it keeps a confirm clearly modal.
    */
   forceRenderBackdrop?: boolean;
 }
 
-/**
- * A generic dialog shell built on Base UI `Dialog` (portal, focus trap, Escape and
- * scroll lock). Escape closes it, focus moves in on open and back to the opener
- * on close. It has a header with a close key, an optional step bar, a scrolling
- * body, an optional error line and a footer with a hairline.
- */
 export function Dialog({
   open,
   onClose,

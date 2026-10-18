@@ -6,9 +6,9 @@ import { isPanelStickerUrl, readRecentStickers } from '@/lib/stickers';
 import type { StickerChoice } from '../StickerPanel';
 
 /**
- * A panel thumbnail: a same-origin sticker file URL loads lazily; anything
- * else (e.g. a hostile URL planted in localStorage recents) shows the
- * emoji tile so the browser never fetches it.
+ * A same-origin sticker file URL loads lazily; anything else (e.g. a hostile
+ * URL planted in localStorage recents) shows the emoji tile so the browser
+ * never fetches it.
  */
 export function StickerThumb({
   sticker,
@@ -55,7 +55,6 @@ export function StickerThumb({
   );
 }
 
-/** The recents in localStorage at this sync edge; a blocked or hostile storage gives none. */
 export function readStoredRecents(): RecentStickerEntry[] {
   return Effect.runSync(
     Effect.try(() => readRecentStickers(window.localStorage)).pipe(
@@ -64,7 +63,6 @@ export function readStoredRecents(): RecentStickerEntry[] {
   );
 }
 
-/** The page's localStorage for a write, or null when the browser blocks it. */
 export function panelStorage(): Storage | null {
   return Effect.runSync(
     Effect.try(() => window.localStorage).pipe(Effect.orElseSucceed((): Storage | null => null)),

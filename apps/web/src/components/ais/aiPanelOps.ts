@@ -19,28 +19,18 @@ export function describeFailure(failure: ApiFailure, fallback: string): AiErrorI
   );
 }
 
-// Reads the AI again after a failed write. The read is best-effort: the inline
-// error stays visible whether or not it works, so its own failure is dropped.
 export const refetchAi = (id: string, apply: (next: PublicAi) => void) =>
   fromApi(() => getAi(id)).pipe(
     Effect.tap((fresh) => Effect.sync(() => apply(fresh))),
     Effect.catchTag('ApiFailure', () => Effect.void),
   );
 
-// The AI's picture is cleared by dropping `avatarUrl` from the row the panel
-// already has, without a round trip (T-0165).
 export function stripAvatarUrl(ai: PublicAi): PublicAi {
   const { avatarUrl: _removed, ...rest } = ai;
   void _removed;
   return rest;
 }
 
-/**
- * The one write an AI panel action runs: clear its inline error, call the
- * server, hand the fresh AI to `onSuccess`, and on failure show the action's
- * own fixed sentence and (when asked) read the AI again so the panel matches
- * the server. Stop, resume, delete and the delegation switches all share it.
- */
 export function writeAi<A>(options: {
   readonly clearError: () => void;
   readonly setError: (message: string) => void;

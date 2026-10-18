@@ -6,11 +6,6 @@ import { useState } from 'react';
 import { EntityAvatar } from '../EntityAvatar';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 
-/**
- * The person behind one handoff JID (T-1575): the chat's own members first, then
- * the contacts / AI list, then the AI chat rows, and the JID's localpart as the
- * last resort so a line always names something.
- */
 function personFor(
   jid: string,
   members: readonly MentionMember[],
@@ -33,17 +28,10 @@ function personFor(
 export interface HandoffLineProps {
   card: HandoffLineData;
   chat: ChatSummary;
-  /** The card message's resolved sender, the `from` orb's fallback name. */
   senderName: string;
-  /** Toggles the full reply bubble under the line. */
   onToggle: () => void;
 }
 
-/**
- * The board's small centred handoff line (T-1575): the sender's 16 px orb, a
- * muted arrow, the targets' 16 px orbs, then the one-line task. Clicking it
- * toggles the full bubble of the reply it belongs to.
- */
 export function HandoffLine({ card, chat, senderName, onToggle }: HandoffLineProps) {
   const groupMembers = useChatSelector((state) => state.groupMembers);
   const contacts = useChatSelector((state) => state.contacts);
@@ -54,8 +42,6 @@ export function HandoffLine({ card, chat, senderName, onToggle }: HandoffLinePro
   const targets = to.map((person) => person.name).join(', ');
   const handedOff = `${from.name} handed off to ${targets}`;
   const label = card.task === '' ? handedOff : `${handedOff}: ${card.task}`;
-  // The row owns the bubble's visibility, so this local flag mirrors it: both
-  // flip on the same click and stay in step. It only feeds `aria-expanded`.
   const [expanded, setExpanded] = useState(false);
 
   return (

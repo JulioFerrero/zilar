@@ -5,7 +5,6 @@ import { Card, SectionLabel } from '../ui/card';
 const BLOCKED_DETAIL =
   "Notifications are blocked for this site. Allow them in the browser's site settings, then reload.";
 
-/** The "This device" card: its push state and the Enable/Disable button. */
 export function ThisDeviceCard({
   state,
   detail,

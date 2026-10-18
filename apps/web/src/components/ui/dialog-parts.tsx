@@ -2,18 +2,11 @@ import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-/**
- * Presentational pieces of the dialog shell (`ui-style.md` D24 + the approved
- * New AI boards). `dialog.tsx` composes them so the shell itself stays small.
- */
-
 export interface DialogHeaderProps {
   title: string;
   description?: string;
-  /** Optional step bar slot, drawn under the title. */
   stepper?: ReactNode;
   onClose: () => void;
-  /** The close key is disabled while the dialog is busy. */
   closeDisabled: boolean;
 }
 
@@ -52,12 +45,10 @@ export function DialogHeader({
   );
 }
 
-/** The scrolling body of the dialog. */
 export function DialogBody({ children }: { children?: ReactNode }) {
   return <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>;
 }
 
-/** The fixed footer: a hairline with right-aligned keys. */
 export function DialogFooter({ children }: { children?: ReactNode }) {
   return (
     <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3.5">
@@ -66,7 +57,6 @@ export function DialogFooter({ children }: { children?: ReactNode }) {
   );
 }
 
-/** A fixed 13 px error line shown above the footer. */
 export function DialogError({ children }: { children: ReactNode }) {
   return (
     <p role="alert" className="shrink-0 px-5 pb-3 text-[13px] text-danger">

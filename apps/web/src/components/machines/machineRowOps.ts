@@ -22,18 +22,12 @@ export type ConfirmKind = keyof ConfirmingState;
 
 export const EMPTY_CONFIRMING: ConfirmingState = { deny: null, revoke: null, delete: null };
 
-/** Clears the failure an earlier call left; a call that is still running is not interrupted. */
 export function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionControls): void {
   if (!isWaiting(state)) {
     controls.reset();
   }
 }
 
-/**
- * The text machineErrorMessage gives for an API answer. fromApi keeps an
- * ApiError's code, status and message; any other throw became the generic
- * unknown_error, which shows the fallback sentence instead.
- */
 export function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || failure.code === 'unknown_error') {
     return fallback;
@@ -44,11 +38,6 @@ export function failureText(failure: ApiFailure | undefined, fallback: string): 
   );
 }
 
-/**
- * One machine row action: `useAction` plus the failure text its card shows.
- * `error` is null until the last call has failed, so a row with two actions
- * can prefer one action's text over the other's.
- */
 export function useMachineAction<I, A>(
   fn: (input: I) => Effect.Effect<A, ApiFailure, HttpClient.HttpClient>,
   fallback: string,

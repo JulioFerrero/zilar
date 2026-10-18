@@ -16,7 +16,6 @@ import type { BeforeInstallPromptEvent } from '@/lib/push';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
 
-// The menu close callback; `NavMenuItem` reads it instead of taking it per item.
 const MenuCloseContext = createContext<(() => void) | null>(null);
 
 interface NavMenuItemProps {
@@ -26,7 +25,6 @@ interface NavMenuItemProps {
   badge?: ReactNode;
 }
 
-/** A menu entry that closes the menu and navigates to `to`. */
 function NavMenuItem({ to, label, icon, badge }: NavMenuItemProps) {
   const navigate = useNavigate();
   const closeMenu = useContext(MenuCloseContext);
@@ -50,7 +48,6 @@ function NavMenuItem({ to, label, icon, badge }: NavMenuItemProps) {
   );
 }
 
-/** The menu's profile row: avatar, name and @handle (or email), to the profile page. */
 function ProfileMenuItem() {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -79,7 +76,6 @@ function ProfileMenuItem() {
   );
 }
 
-/** The requests count pill, capped at 9+ like the approvals one. */
 function RequestBadge({ count }: { count: number }) {
   return (
     <span
@@ -91,7 +87,6 @@ function RequestBadge({ count }: { count: number }) {
   );
 }
 
-/** The approvals count pill (the hook already caps the string). */
 function ApprovalBadge({ text }: { text: string }) {
   return (
     <span
@@ -119,15 +114,6 @@ export interface ChatListMenuProps {
   onInstall: () => void;
 }
 
-/**
- * The short hamburger menu: the profile row, Contacts (with the requests
- * badge), My AIs, Explore groups, Invite a friend and Settings (with the
- * approvals badge), plus Install app as a conditional seventh item while the
- * browser offers `beforeinstallprompt`. The other entries — and Sign out —
- * live in the `/settings` hub now; the install props are used by that item.
- * `onSignOut` and `isServerOwner` stay in the props because `ChatList.tsx`
- * still passes them; the menu no longer uses either.
- */
 export function ChatListMenu({
   open,
   onOpenChange,

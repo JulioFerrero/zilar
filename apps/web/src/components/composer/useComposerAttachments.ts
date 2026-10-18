@@ -25,13 +25,14 @@ import {
 import { ComposerFailure, fork } from './composerShared';
 
 const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
-/** Telegram's cap, and the mobile picker's `selectionLimit` (T-1246). */
+/**
+ * Telegram's cap, and the mobile picker's `selectionLimit`.
+ */
 const MAX_FILES = 10;
 const FILE_EMPTY = 'That file is empty.';
 const FILE_TOO_LARGE = 'That file is larger than 50 MB.';
 const TOO_MANY_FILES = 'You can send up to 10 files at once.';
 
-/** The single inline refusal a chosen file gets, before any request. */
 function refusal(file: File): string | undefined {
   if (file.size === 0) {
     return FILE_EMPTY;
@@ -42,23 +43,17 @@ function refusal(file: File): string | undefined {
   return undefined;
 }
 
-/** A file the "Photo or video" picker can produce (or a dropped/pasted one). */
 function isMediaFile(file: File): boolean {
   return file.type.startsWith('image/') || file.type.startsWith('video/');
 }
 
-/** How `sendPending` sends the staged files. */
 export interface SendPendingOptions {
-  /** Send photos one by one instead of as one album ("Send as files"). */
   asFiles?: boolean;
 }
 
 export interface ComposerAttachments {
-  /** The first staged file, for `canSend` and the single-file preview. */
   attachment: PendingAttachment | undefined;
-  /** Every staged file: several photos are sent as one album. */
   attachments: PendingAttachment[];
-  /** The object URL of each staged image, aligned with `attachments`. */
   previewUrls: (string | undefined)[];
   setAttachment: Dispatch<SetStateAction<PendingAttachment | undefined>>;
   removeAttachment: (index: number) => void;
@@ -66,18 +61,11 @@ export interface ComposerAttachments {
   setAttachmentError: Dispatch<SetStateAction<string | undefined>>;
   stickerOpen: boolean;
   setStickerOpen: Dispatch<SetStateAction<boolean>>;
-  /** True while the send dialog for a media pick is open. */
   attachDialogOpen: boolean;
-  /** Closes the send dialog and drops its staged pick. */
   closeAttachDialog: () => void;
   stickerWrapRef: RefObject<HTMLSpanElement | null>;
   onPaste: (event: ReactClipboardEvent<HTMLDivElement>) => void;
-  /**
-   * Stages the chosen files. `media` marks a pick from "Photo or video"
-   * (or a drop/paste): a media pick opens the send dialog.
-   */
   acceptFiles: (files: readonly File[], options?: { media?: boolean }) => void;
-  /** Sends every staged file in order; two or more photos share one album id. */
   sendPending: (options?: SendPendingOptions) => void;
   sendSticker: (sticker: StickerChoice) => void;
   sendGif: (gif: GifChoice) => void;
@@ -101,18 +89,13 @@ export function useComposerAttachments({
   const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [attachDialogOpen, setAttachDialogOpen] = useState(false);
-  // The sticker toggle button plus the panel: a pointer-down outside this
-  // wrapper closes the panel (the panel itself is viewport-fixed, so the
-  // Composer subtree cannot contain it).
   const stickerWrapRef = useRef<HTMLSpanElement>(null);
   const attachment = staged[0];
 
-  // The picker, paste and drop all funnel their files through here. An empty
-  // or oversized file is refused inline, before any request. A pick of up to
-  // ten files is staged in pick order, each tagged by `classify`; a longer
-  // pick keeps the first ten and shows the cap. A `media` pick (the "Photo or
-  // video" entry, a drop or a paste) also opens the send dialog, but only when
-  // every chosen file is media.
+  // Every picker, paste and drop funnels its files here. An empty or oversized
+  // file is refused inline, before any request; a pick is capped at ten files in
+  // pick order, each tagged by `classify`; a `media` pick opens the send dialog
+  // only when every chosen file is media.
   const acceptFiles = useCallback((files: readonly File[], options?: { media?: boolean }): void => {
     setAttachmentError(undefined);
     const chosen = [...files];
@@ -134,8 +117,6 @@ export function useComposerAttachments({
     setAttachDialogOpen(isMedia);
   }, []);
 
-  // The single-file `setAttachment(undefined)` the composer uses still clears
-  // the whole strip, so Escape and the preview's Remove keep working.
   const setAttachment: Dispatch<SetStateAction<PendingAttachment | undefined>> = useCallback(
     (update) => {
       setStaged((current) => {
@@ -149,7 +130,6 @@ export function useComposerAttachments({
   const removeAttachment = useCallback(
     (index: number): void => {
       setStaged((current) => current.filter((_, position) => position !== index));
-      // Removing the last preview leaves nothing to send: close the dialog.
       if (staged.length <= 1) {
         setAttachDialogOpen(false);
       }
@@ -162,8 +142,8 @@ export function useComposerAttachments({
     [staged],
   );
 
-  // The preview thumbnails' object URLs are revoked when they are replaced or
-  // the composer unmounts, so they never leak.
+  // The preview thumbnails' object URLs are revoked when replaced or the
+  // composer unmounts, so they never leak.
   useEffect(
     () => () => {
       for (const url of previewUrls) {
@@ -175,8 +155,6 @@ export function useComposerAttachments({
     [previewUrls],
   );
 
-  // A file dropped anywhere on the chat panel (or the page) opens the preview,
-  // exactly like the picker; a multi-file drop stages every photo at once.
   useEffect(() => {
     const onDragOver = (event: DragEvent): void => {
       if (event.dataTransfer?.types.includes('Files') === true) {
@@ -222,9 +200,8 @@ export function useComposerAttachments({
     }
   };
 
-  // A pointer-down outside the sticker toggle + panel closes the panel.
-  // The toggle button lives inside the wrapper, so clicking it to open
-  // never counts as "outside" (it fires before the toggle's click).
+  // The toggle button lives inside the wrapper, so clicking it to open never
+  // counts as "outside" (it fires before the toggle's click).
   useEffect(() => {
     if (!stickerOpen) {
       return;
@@ -243,8 +220,6 @@ export function useComposerAttachments({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [stickerOpen]);
 
-  // A sticker sends at once through the store (same path as other payload
-  // messages): optimistic bubble, failure shows the usual retry.
   const sendSticker = useCallback(
     (sticker: StickerChoice): void => {
       storeApi
@@ -256,14 +231,9 @@ export function useComposerAttachments({
     [chatId, onCancelReply, replyTo, storeApi],
   );
 
-  // A GIF pick fetches the media through the proxy, then uploads it with the
-  // existing attachment path and sends an attachment message (T-0122): the
-  // sent GIF is stored as our attachment and keeps working if the provider
-  // disappears. A caption is whatever the composer holds. The mime and the
-  // extension come from the proxied blob's real content type (validated
-  // against what the proxy serves), never from the search result's kind.
-  // Failures show the inline error; the attachment bubble's Retry covers
-  // upload failures.
+  // A GIF is fetched through the proxy and stored as our attachment, so it
+  // keeps working if the provider disappears. The mime and extension come from
+  // the proxied blob's real content type, never from the search result's kind.
   const sendGif = useCallback(
     (gif: GifChoice): void => {
       const caption = value.trim();
@@ -276,7 +246,6 @@ export function useComposerAttachments({
           try: (signal) => fetch(gif.url, { credentials: 'same-origin', signal }),
           catch: loadFailed,
         }).pipe(
-          // The proxy refused the media.
           Effect.filterOrFail((response) => response.ok, loadFailed),
           Effect.flatMap((response) =>
             Effect.tryPromise({ try: () => response.blob(), catch: loadFailed }),
@@ -303,13 +272,9 @@ export function useComposerAttachments({
     [chatId, onCancelReply, replyTo, storeApi, value],
   );
 
-  // Sends every staged file. Two or more photos get one album id, each with its
-  // `index`, and only the first message sent carries the caption and the reply.
-  // When the album applies the photos go first, in pick order, then the other
-  // files, so a mixed pick (photo, PDF, photo) makes one album instead of two
-  // albums of one. Uploads then run in parallel and the list renders by `index`.
-  // "Send as files" drops the album marker so each photo is its own message (the
-  // app never compresses, so the bytes are the same) and keeps pick order.
+  // Two or more photos share one album id with `index`; only the first message
+  // carries the caption and reply, and uploads run in parallel, rendered by
+  // `index`. "Send as files" drops the album marker so each photo stands alone.
   const sendPending = useCallback(
     (options?: SendPendingOptions): void => {
       const store = storeApi.getState();
@@ -344,7 +309,6 @@ export function useComposerAttachments({
     [chatId, replyTo, staged, storeApi, value],
   );
 
-  // Cancelling the send dialog drops the pick (the caption stays in the draft).
   const closeAttachDialog = useCallback((): void => {
     setStaged([]);
     setAttachDialogOpen(false);

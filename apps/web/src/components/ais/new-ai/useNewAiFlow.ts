@@ -40,7 +40,6 @@ const TEMPLATES: readonly AiTemplateId[] = ['dev', 'marketing', 'fun'];
 const PARTIAL_FAILURE =
   "AI created. Some settings could not be saved; change them in the AI's settings.";
 
-// `@zilar/ball-avatar` is not a web dependency; orb params come back from `orbParamsFor`.
 type OrbParams = ReturnType<typeof orbParamsFor>;
 
 const isComputerMode = (value: string): value is AiComputerMode =>
@@ -49,7 +48,6 @@ const isComputerMode = (value: string): value is AiComputerMode =>
 const isTemplate = (value: string): value is AiTemplateId =>
   (TEMPLATES as readonly string[]).includes(value);
 
-// A failure with no status never reached the server, so the fixed fallback shows.
 function describeFailure(failure: ApiFailure, fallback: string): AiErrorInfo {
   if (failure.status === 0) return { message: fallback, unavailable: false };
   return describeAiError(
@@ -60,11 +58,9 @@ function describeFailure(failure: ApiFailure, fallback: string): AiErrorInfo {
 
 export interface NewAiFlowOptions {
   onClose: () => void;
-  /** Called with the created AI once the create call succeeded. */
   onCreated: (created: PublicAi) => void;
 }
 
-/** The New AI wizard's state and actions, shared by the shell and the four steps. */
 export function useNewAiFlow({ onClose, onCreated }: NewAiFlowOptions) {
   const toast = useToast();
   const [optionsResult] = useQuery(() => fromApi(() => getComputerOptions()), []);
@@ -80,8 +76,6 @@ export function useNewAiFlow({ onClose, onCreated }: NewAiFlowOptions) {
   const [machineId, setMachineIdValue] = useState<string | null>(null);
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
-  // The provider, the compatible fields and the key check are shared with the
-  // Connections page's Add key dialog.
   const keys = useKeyCheck({
     onProviderChange: () => setModelDraft(null),
     onVerified: () => setStep(2),
@@ -246,5 +240,4 @@ export function useNewAiFlow({ onClose, onCreated }: NewAiFlowOptions) {
   };
 }
 
-/** The value `useNewAiFlow` returns, shared by the shell and the four steps. */
 export type NewAiFlow = ReturnType<typeof useNewAiFlow>;

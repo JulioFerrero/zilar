@@ -3,11 +3,6 @@ import { X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
 import { ScreenHeader } from '../ui/screen-header';
 
-/**
- * A subpage of the group info panel (T-1494): the back and close keys, the page
- * title, and the sections of that page scrolling below. The channel info panel
- * reuses it with `noun="channel"` (T-1519).
- */
 export function GroupInfoPage({
   title,
   onBack,
@@ -18,7 +13,6 @@ export function GroupInfoPage({
   title: string;
   onBack: () => void;
   onClose: () => void;
-  /** The entity the info is about; drives the back and close labels. */
   noun?: 'group' | 'channel';
   children?: ReactNode;
 }) {

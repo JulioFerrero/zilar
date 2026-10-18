@@ -10,7 +10,6 @@ type Answer = { at: Date; by?: string | undefined; mine: boolean };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** A date well opens the native picker only when the block's value fits it. */
 function usesNativeDate(field: FormBlockData['fields'][number]): boolean {
   return (
     field.kind === 'date' &&
@@ -27,7 +26,6 @@ function valuesOf(block: FormBlockData): Record<string, string> {
   return Object.fromEntries(block.fields.map((field) => [field.id, valueOf(field)]));
 }
 
-/** The sent row the server merged in; `undefined` when the form is open. */
 function sentAnswer(block: FormBlockData): Answer | undefined {
   const sent = block.sent;
   if (sent === undefined) {
@@ -36,13 +34,6 @@ function sentAnswer(block: FormBlockData): Answer | undefined {
   return { at: new Date(sent.at), by: sent.by, mine: false };
 }
 
-/**
- * 16 · QUICK FORM: the optional title header, the fields in wells (two to a
- * row) and the light submit key. A number field gets −/+ dark icon keys around
- * a centered mono value and starts at 0. Submit answers with every field and
- * sends the "Label: value" pairs as the @AI reply. Each value is capped at 120
- * characters. A sent form draws its values read-only under the answered row.
- */
 export function FormBlock({ block, showHeading }: { block: FormBlockData; showHeading: boolean }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
@@ -51,8 +42,6 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
   const [busy, setBusy] = useState(false);
   const [answered, setAnswered] = useState<Answer | null>(() => sentAnswer(block) ?? null);
 
-  // React's prop-sync pattern: the room correction replaces the drawn values
-  // and the sent row. A send made in this view keeps the "You" wording.
   if (block !== seenBlock) {
     setSeenBlock(block);
     setValues(valuesOf(block));
@@ -95,8 +84,6 @@ export function FormBlock({ block, showHeading }: { block: FormBlockData; showHe
   for (let index = 0; index < block.fields.length; index += 2) {
     rows.push(block.fields.slice(index, index + 2));
   }
-  // The board puts Send on the last number field's row, right-aligned and
-  // bottom-aligned; a form without numbers keeps it on its own row.
   const lastNumber = [...block.fields].reverse().find((field) => field.kind === 'number');
 
   const control = (field: FormBlockData['fields'][number]): ReactNode =>

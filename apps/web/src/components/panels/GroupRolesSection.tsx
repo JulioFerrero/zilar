@@ -12,12 +12,6 @@ import { TextInput } from '../ui/text-input';
 import { PanelFailure, apiStep, messageOf } from './groupPanelOps';
 import type { RolesView } from './groupPanelOps';
 
-/**
- * Custom group roles for managers (T-0116): create, rename, delete, and
- * assign with a member multi-select. A role grants private-topic access and
- * approver rights in the topics it is attached to — picked per topic in
- * the topic panel, not here.
- */
 export function GroupRolesSection({
   groupId,
   members,
@@ -34,8 +28,6 @@ export function GroupRolesSection({
   const [renameValue, setRenameValue] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
-  // One action for the section, as before: every role button is disabled
-  // while a change runs, and the roles reload after each success.
   const [changeState, runChange] = useAction<Effect.Effect<void, PanelFailure>, void, PanelFailure>(
     (change) => change.pipe(Effect.tap(() => Effect.sync(onReload))),
   );

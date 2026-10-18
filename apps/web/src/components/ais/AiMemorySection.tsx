@@ -19,14 +19,6 @@ type LoadStatus = 'loading' | 'ready' | 'error';
 
 const isNotFound = (failure: ApiFailure): boolean => failure.status === 404;
 
-/**
- * T-0443: the AI's memory in this DM. It stays collapsed, and makes no
- * request, until the owner opens it; then it lists the pinned facts and the
- * cover lines, and lets the owner forget a fact or clear the whole memory.
- *
- * T-0447: `initiallyOpen` mounts it already expanded, for the rooms dialog;
- * then it loads at once and shows neither the Show nor the Hide button.
- */
 export function AiMemorySection({
   chat,
   aiId,
@@ -43,11 +35,10 @@ export function AiMemorySection({
   const [forgettingId, setForgettingId] = useState<string | null>(null);
   const [clearError, setClearError] = useState('');
   const [confirmingClear, setConfirmingClear] = useState(false);
-  // Facts forgotten since the last read: they stay hidden until the next read.
   const [forgottenIds, setForgottenIds] = useState<ReadonlySet<string>>(() => new Set());
 
-  // The memory is read only while the section is open. A closed section holds
-  // the read back with Effect.never; opening it builds the real read.
+  // The memory is read only while the section is open: `Effect.never` holds the
+  // read back until opening it builds the real one.
   const [loaded, reload] = useQuery(
     (): Effect.Effect<AiMemory, ApiFailure> =>
       open ? fromApi(() => getAiMemory(chat, aiId)) : Effect.never,
@@ -65,7 +56,6 @@ export function AiMemorySection({
           facts: loadedMemory.facts.filter((fact) => !forgottenIds.has(fact.id)),
         };
 
-  // Clears the local state of the last read: a retry, a show or the read after a clear.
   const resetLocal = (): void => {
     setForgottenIds(new Set());
     setForgetError('');
@@ -77,9 +67,8 @@ export function AiMemorySection({
     reload();
   };
 
-  // Ignore further clicks while a forget is in flight (mode 'ignore'), so one
-  // request runs at a time. A 404 means the fact is already gone, so the
-  // outcome the owner asked for holds: the row drops without a false error.
+  // A 404 means the fact is already gone, so the outcome the owner asked for
+  // holds: the row drops without a false error.
   const [, forget] = useAction((factId: string) =>
     Effect.sync(() => {
       setForgetError('');

@@ -9,9 +9,7 @@ import { ApprovedRow } from '@/components/machines/ApprovedRow';
 
 interface MachineListRowProps {
   machine: Machine;
-  /** The first of the owner's AIs whose home machine this is, for the row's avatar. */
   ai: PublicAi | undefined;
-  /** Every AI whose home machine this is; null hides the line on the card. */
   aiNames: string[] | null;
   confirmingRevoke: boolean;
   onConfirm: (id: string | null) => void;
@@ -19,13 +17,6 @@ interface MachineListRowProps {
   onAisChanged: () => void;
 }
 
-/**
- * One approved machine in the list (T-1518): a status dot (online or offline),
- * the name, the first assigned AI's picture and a chevron. Clicking the row
- * opens a side sheet with today's machine card: rename, hardware, drivers,
- * fingerprint and Revoke. A revoke removes the machine from the approved list,
- * so the sheet closes with it.
- */
 export function MachineListRow({
   machine,
   ai,

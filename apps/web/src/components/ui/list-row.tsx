@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 
 export interface ListRowProps {
   icon?: ReactNode;
-  /** A leading element drawn plainly, without the 32 px key tile (T-1857). */
   leading?: ReactNode;
   title: string;
   subtitle?: string;
@@ -17,11 +16,6 @@ export interface ListRowProps {
   ariaLabel?: string;
 }
 
-/**
- * A settings-style row: a 32 px key tile (or a plain leading element), a title,
- * a one-line muted subtitle and an optional chevron. It renders a button when
- * it acts, a router Link when it points somewhere, and a plain div otherwise.
- */
 export function ListRow({
   icon,
   leading,

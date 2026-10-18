@@ -4,8 +4,6 @@ import { ConnectionPicker } from './ConnectionPicker';
 import { LimitsFields } from './LimitsFields';
 import { ModelPicker } from './ModelPicker';
 
-/** The AI's name, persona, provider and model fields. The panel owns the
- *  values and the save patch; this renders the controls. */
 export function AiFormFields({
   name,
   persona,
@@ -78,7 +76,6 @@ export function AiFormFields({
   );
 }
 
-/** The AI's USD daily and monthly caps, the panel's other saved form fields. */
 export function AiLimitsFields({
   day,
   month,

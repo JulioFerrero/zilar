@@ -57,9 +57,8 @@ export function ChatListBody({
   onOpenNewTopic,
 }: ChatListBodyProps) {
   const { chats, groups, archived } = rows;
-  // An `@handle` query looks the person up exactly (like the phone); any
-  // other query of 3+ characters once one leading `@` is stripped shows the
-  // prefix hits.
+  // An `@handle` query looks the person up exactly (like the phone); any other
+  // query of 3+ characters shows the prefix hits.
   const showPeopleSearch =
     peopleHandleFor(search) !== null ||
     normalizePeopleQuery(search).length >= PEOPLE_SEARCH_MIN_LENGTH;
@@ -109,14 +108,10 @@ export function ChatListBody({
               </div>
             </div>
           )}
-          {/* WUX-19: pending incoming contact requests show as a row at the
-              top of the list, above the people hits and chat rows. Hidden
-              while a query is active, as Telegram and the mobile app's search
-              results do: the search view is a list of hits, not the folder. */}
           {search.trim() === '' && <ContactRequestsRow isWide={isWide} />}
-          {/* People hits come first: 3+ characters (after stripping `@`) show
-              matching people and public groups, above the chat-name matches
-              and the message hits. */}
+          {/* People hits come first: 3+ characters (after stripping `@`) show matching
+           * people and public groups, above chat-name matches and message hits.
+           */}
           {showPeopleSearch && <PeopleSearchResult query={search} />}
           {chats.length === 0 && archived.length === 0 ? (
             search.trim() === '' ? (
@@ -125,12 +120,10 @@ export function ChatListBody({
               <p className="px-[10px] py-2 text-[13px] text-muted-foreground">No chats match</p>
             )
           ) : (
-            // T-1353: `TopicKeyboardNav` grows with `flex-1` (its own class).
-            // Inside this scroll container a `flex-1` item has a zero basis, so
-            // once the message hits below are taller than the list it collapsed
-            // to nothing and its rows painted over the `Messages` section. A
-            // plain block wrapper keeps the rows at their natural height, and
-            // the whole list scrolls instead.
+            // `TopicKeyboardNav` grows with `flex-1`. Inside this scroll container a
+            // `flex-1` item has a zero basis, so it collapsed to nothing once the message
+            // hits below were taller and painted over the `Messages` section. A plain block
+            // wrapper keeps the rows at their natural height and the whole list scrolls.
             <div className="shrink-0">
               <TopicKeyboardNav>
                 {groups.map((group) =>
@@ -161,9 +154,6 @@ export function ChatListBody({
                     />
                   ),
                 )}
-                {/* Per-user archived chats (T-0113): topics hide inside their
-                    group's own Archived toggle instead; this row covers DMs,
-                    AI chats and legacy groups. */}
                 {archived.length > 0 && (
                   <>
                     <Button
@@ -194,8 +184,6 @@ export function ChatListBody({
               </TopicKeyboardNav>
             </div>
           )}
-          {/* Message hits come after the chat-name matches. `searchChat`
-              scopes "Search only in this chat" from a chat header. */}
           {search.trim().length >= 2 && (
             <MessageSearchResults
               query={search}

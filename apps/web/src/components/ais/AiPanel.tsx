@@ -41,11 +41,6 @@ import { buildPatch } from './aiForm';
 
 export { UsageBlock };
 
-/**
- * The AI side panel of an AI DM: it finds the AI by the chat's jid and edits its
- * name, persona and limits, plus Delete. It slides in from the right, matching
- * the app's other sheets.
- */
 export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
 
@@ -61,7 +56,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Seeds the form from the AI the panel shows. A later save replaces these values.
   const seedForm = (next: PublicAi): void => {
     setAi(next);
     setName(next.name);
@@ -72,8 +66,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     setModelDraft(next.model);
   };
 
-  // The panel's AI is the one whose jid is this chat's id. The list is read
-  // once per chat; the result seeds the panel, or shows why it could not.
   useQuery(
     () =>
       fromApi(() => listAis()).pipe(
@@ -98,8 +90,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     [chat.id],
   );
 
-  // The model picker still works without connections: a failed read just offers
-  // no provider suggestions, and the connection picker stays hidden.
   const [connectionList] = useQuery(() => fromApi(() => listConnections()), []);
   const connections: Connection[] = AsyncResult.isSuccess(connectionList)
     ? connectionList.value.filter((connection) => connection.status === 'active')
@@ -123,9 +113,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
           limits: limits.limits,
           originalLimits: ai.limits,
         });
-  // The model and connection diffs ride the same patch: the server needs the
-  // model whenever the connection changes, so a connection change always
-  // carries both, while a model-only change carries just the model.
+  // A connection change always carries the model too: the server needs the model
+  // whenever the connection changes.
   const modelTrimmed = modelDraft.trim();
   const modelChanged = ai !== null && modelTrimmed !== '' && modelTrimmed !== ai.model;
   const connectionChanged =
@@ -155,8 +144,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     setSaveError('');
   };
 
-  // Switching provider re-prefills that provider's default model, as in the
-  // create dialog: the old model name rarely fits the new provider.
   const chooseConnection = (id: string): void => {
     setSelectedConnectionId(id);
     const next = usableConnections.find((connection) => connection.id === id) ?? null;
@@ -166,10 +153,9 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     markEdited();
   };
 
-  // A combined PATCH can commit one field and fail a later one (the model swaps
-  // before the roster rename), so a failure reads the AI again and shows what the
-  // server really has. When even that read fails, the form falls back to the
-  // values the save started from.
+  // A combined PATCH can commit one field and fail a later one, so a failure
+  // reads the AI again; if that read fails the form falls back to the values the
+  // save started from.
   const [saveState, runSave] = useAction<void, void, never>(() => {
     if (ai === null || patch === null || !savable) {
       return Effect.void;
@@ -227,9 +213,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             <div className="flex items-center gap-1.5">
               <span className="truncate text-[16px] font-semibold">{ai?.name ?? chat.title}</span>
               <AiBadge />
-              {/* T-0080: a stopped AI gets a clear "Stopped" label near the
-                  name so the owner sees the kill-switch state at a glance,
-                  even before opening the panel body. */}
               {ai !== null && ai.status === 'stopped' && (
                 <span className="rounded-full border border-divider px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
                   Stopped
@@ -302,7 +285,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
 
               <AiMemorySection chat={chat.id} aiId={ai.id} aiName={ai.name} />
 
-              {/* T-0165: the AI's picture, for the AI's owner. */}
               <AiPictureSection ai={ai} onChanged={setAi} />
 
               <AiLimitsFields
@@ -333,8 +315,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
 
               <AlwaysAllowedList scope={{ aiId: ai.id }} />
 
-              {/* T-0107: tools and routines of this AI. The panel mounts for
-                  the AI owner only, so every action is allowed. */}
               <ToolsSection scope={{ aiId: ai.id }} scopeKey={`ai:${ai.id}`} canManage />
               <RoutinesSection
                 scope={{ aiId: ai.id }}

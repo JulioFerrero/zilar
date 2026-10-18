@@ -3,11 +3,6 @@ import { FileText, X } from 'lucide-react';
 import { formatFileSize, type PendingAttachment } from '@/lib/attachments';
 import { AttachmentPreview } from '../AttachmentPreview';
 
-/**
- * The composer's staged attachments (T-1268). One file keeps the earlier
- * single-preview row exactly; two or more show as a horizontal strip of 72 px
- * tiles, each removable. Pure view: the hook owns the picking.
- */
 export function AttachmentStrip({
   attachments,
   previewUrls,

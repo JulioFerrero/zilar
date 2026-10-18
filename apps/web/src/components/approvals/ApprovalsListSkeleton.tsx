@@ -3,7 +3,6 @@ import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { useDelayed } from '@/lib/useDelayed';
 import { cn } from '@/lib/utils';
 
-/** Quiet skeleton in the shape of an approval row. */
 export function ApprovalsListSkeleton({ rows = 2 }: { rows?: number }) {
   const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');

@@ -16,12 +16,6 @@ import { FormBlock } from './FormBlock';
 import { PollBlock } from './PollBlock';
 import { RatingBlock } from './RatingBlock';
 
-// Cosmos fixture (T-1795): the choice samples of the board
-// `docs/design/mockups/blocks/WebChoices.dc.html` on its `#0a0a0a` page. There
-// is no `BlockRespond` provider here, so every control is drawn disabled, as on
-// the viewer's own cards. The answered and selected states are seeded props,
-// which a live card reaches by tapping.
-
 function Example({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
@@ -31,7 +25,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** The `BlockCard` shell, so a block body sits where the board draws it. */
 function Card({ time, children }: { time: string; children: ReactNode }) {
   return (
     <div className="flex w-full min-w-[280px] max-w-[380px] flex-col gap-[10px] rounded-[16px] border border-[#232323] bg-[#141414] px-[14px] pt-[12px] pb-[8px] text-[14px] leading-[20px] text-[#ededed]">
@@ -43,7 +36,6 @@ function Card({ time, children }: { time: string; children: ReactNode }) {
   );
 }
 
-// `WebChoices.dc.html:45-69`.
 const BOOK: ButtonsBlockData = {
   kind: 'buttons',
   id: 'book',
@@ -55,7 +47,6 @@ const BOOK: ButtonsBlockData = {
   ],
 };
 
-// `WebChoices.dc.html:71-86`.
 const DINNER: PollBlockData = {
   kind: 'poll',
   id: 'dinner',
@@ -68,7 +59,6 @@ const DINNER: PollBlockData = {
   votes: 9,
 };
 
-// `WebChoices.dc.html:106-120`.
 const CALL: ChoiceBlockData = {
   kind: 'choice',
   id: 'call',
@@ -77,7 +67,6 @@ const CALL: ChoiceBlockData = {
   selected: 1,
 };
 
-// `WebChoices.dc.html:122-148`.
 const RESERVE: FormBlockData = {
   kind: 'form',
   id: 'reserve',
@@ -102,7 +91,6 @@ const RESERVE_OPEN: FormBlockData = {
   submit: 'Send',
 };
 
-// `WebChoices.dc.html:88-103`.
 const SUMMARY: RatingBlockData = {
   kind: 'rating',
   id: 'summary',
@@ -118,7 +106,6 @@ const SUMMARY_OPEN: RatingBlockData = {
   max: 5,
 };
 
-// `WebChoices.dc.html:150-166`.
 const BTC_ALERT: AlertBlockData = {
   kind: 'alert',
   id: 'btc-alert',
@@ -134,7 +121,6 @@ const BTC_ALERT_OFF: AlertBlockData = {
   on: false,
 };
 
-// `WebProgress.dc.html:43-59`, now tappable.
 const GROCERIES: ChecklistBlockData = {
   kind: 'checklist',
   id: 'groceries',

@@ -2,11 +2,6 @@ import { type UiMessage } from '@zilar/chat-core';
 import { EntityAvatar } from '../EntityAvatar';
 import { cn } from '@/lib/utils';
 
-/**
- * The slim tombstone a retracted message leaves behind (WUX-30 split from
- * `MessageBubble`, which must stay at 400 lines). It keeps the row's avatar
- * slot so neighbours line up, and carries no actions.
- */
 export function MessageTombstone({
   message,
   own,
@@ -16,7 +11,6 @@ export function MessageTombstone({
 }: {
   message: UiMessage;
   own: boolean;
-  /** A group peer's last message shows the avatar; earlier ones keep its slot. */
   showAvatarSlot: boolean;
   firstInGroup: boolean;
   lastInGroup: boolean;

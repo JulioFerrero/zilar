@@ -5,14 +5,12 @@ export interface CheckboxProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
-  /** Accessible name for the checkbox (rendered as `aria-label`). */
   label?: string | undefined;
 }
 
 /**
- * A checkbox in the folder editor's style: a screen-reader-only native
- * input plus a visual box. It renders no `<label>` itself: callers keep
- * their row `<label>`, so clicking the row toggles it.
+ * A screen-reader-only native input plus a visual box. It renders no `<label>`
+ * itself: callers keep their row `<label>`, so clicking the row toggles it.
  */
 export function Checkbox({ checked, onCheckedChange, disabled = false, label }: CheckboxProps) {
   return (

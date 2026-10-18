@@ -6,7 +6,6 @@ import { readEmojiRecents, rememberEmojiRecent } from '@/lib/emojiRecents';
 import { EmojiCategoryBar, type EmojiSectionId } from './EmojiCategoryBar';
 import { panelStorage } from './StickerThumb';
 
-/** Every glyph of every category, in category order; the search corpus. */
 const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 
 interface EmojiSection {
@@ -15,13 +14,6 @@ interface EmojiSection {
   glyphs: readonly string[];
 }
 
-/**
- * T-1945: the Emoji tab, rebuilt to read like Telegram's picker. A category
- * bar sits above one 300 px scroller that holds the recents (when any) and
- * every category under a sticky header, eight cells to a row. The bar follows
- * the scroll and jumps to a section on click; Search swaps the bar for a field
- * in the same row. Picks append to the composer draft and feed the recents.
- */
 export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
   // Read once on mount: a pick must not reorder the list under the pointer.
   const [recents] = useState<string[]>(() => readEmojiRecents(panelStorage()));
@@ -58,7 +50,6 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
     return list;
   }, [recents]);
 
-  /** The last section whose top has reached the scroller's top (or the last one at the bottom). */
   const followScroll = (): void => {
     const scroller = scrollerRef.current;
     if (scroller === null || sections.length === 0) {
@@ -66,10 +57,9 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
     }
     const target = jumpTargetRef.current;
     if (target !== null) {
-      // `scrollend` is missing on older Safari and on an instant `auto` scroll
-      // under reduced motion, so a jump must also release itself here once the
-      // scroller reaches the target; otherwise the clicked key stays active
-      // for good and the bar never follows the user again.
+      // `scrollend` is missing on older Safari and on an instant `auto` scroll under
+      // reduced motion, so a jump must also release itself here once the scroller
+      // reaches the target; otherwise the clicked key stays active for good.
       if (Math.abs(scroller.scrollTop - target) >= 2) {
         return;
       }
@@ -108,13 +98,11 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
       scroller.getBoundingClientRect().top;
     const maxTop = scroller.scrollHeight - scroller.clientHeight;
     const target = Math.min(Math.max(top, 0), maxTop);
-    // Hold the clicked key active until the smooth scroll ends (see `settleJump`).
     jumpTargetRef.current = Math.abs(scroller.scrollTop - target) < 1 ? null : target;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     scroller.scrollTo({ top: target, behavior: reduceMotion ? 'auto' : 'smooth' });
   };
 
-  /** The smooth scroll of a category jump ended: the bar follows the scroll again. */
   const settleJump = (): void => {
     if (jumpTargetRef.current === null) {
       return;
@@ -210,7 +198,6 @@ export function EmojiTab({ onEmoji }: { onEmoji: (emoji: string) => void }) {
   );
 }
 
-/** The button label and title: the first two words of the glyph's name. */
 function emojiLabel(glyph: string): string {
   const name = EMOJI_NAMES[glyph] ?? glyph;
   return name.split(' ').slice(0, 2).join(' ');

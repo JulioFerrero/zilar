@@ -2,11 +2,6 @@ import type { BlocksData } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { BlockCard } from './BlockCard';
 
-// Cosmos fixture (T-1773): the content-group board
-// `docs/design/mockups/blocks/WebContent.dc.html` (21 place, 22 weather, 23
-// event), so the lead can screenshot it next to the mockup.
-
-/** The boards' `.time` (mono 10, `#8a8a8a`) as a plain footer. */
 function Time({ at }: { at: string }) {
   return <span className="font-mono text-[10px] text-[#8a8a8a]">{at}</span>;
 }
@@ -20,7 +15,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// `WebContent.dc.html:138-159`.
 const WEATHER: BlocksData = {
   fallback:
     'Weather in Madrid: clear, 18°, high 22°, low 11°. 10:00 19°, 12:00 21°, 14:00 22°, 16:00 21°, 18:00 18°.',
@@ -43,8 +37,6 @@ const WEATHER: BlocksData = {
   ],
 };
 
-// `WebContent.dc.html:162-182`. Its calendar and map keys are not drawn: the
-// calendar is interactive (Wave 2) and `map` is an uploaded image, out of scope.
 const EVENT: BlocksData = {
   fallback: 'Dinner at Casa Paco, Fri 21:00 – 23:00, 4 people.',
   blocks: [
@@ -58,7 +50,6 @@ const EVENT: BlocksData = {
   ],
 };
 
-// `WebContent.dc.html:53-83`, drawn without the map image.
 const PLACE: BlocksData = {
   fallback: 'Casa Paco — Calle Mayor 12 · 650 m · 8 min walk.',
   blocks: [
@@ -71,8 +62,6 @@ const PLACE: BlocksData = {
   ],
 };
 
-// `WebContent.dc.html:122-135`. The ids are made up: the tiles show the board's
-// `#181818` placeholder in Cosmos, where no card media exists.
 const IMAGES: BlocksData = {
   fallback: 'Four photos.',
   blocks: [
@@ -89,7 +78,6 @@ const ONE_IMAGE: BlocksData = {
   blocks: [{ kind: 'images', items: ['mock-photo-1'] }],
 };
 
-// `WebContent.dc.html:85-100`.
 const FILE: BlocksData = {
   fallback: 'prices-october.csv, 12 KB, CSV, 31 rows.',
   blocks: [

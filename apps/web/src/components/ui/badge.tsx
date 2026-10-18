@@ -8,7 +8,6 @@ export interface BadgeProps {
   className?: string;
 }
 
-/** Unread-count pill (ui-style.md §5): a primary key pill, 20 px tall, 11/600. */
 export function Badge({ count, max = 99, muted = false, labelSuffix, className }: BadgeProps) {
   if (count <= 0) {
     return null;

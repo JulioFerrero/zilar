@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils';
 
 export type { MessageMenuProps };
 
-/** The hover/focus "Message actions" button that opens the bubble menu. */
 export function MessageActionsButton({
   buttonRef,
   open,
@@ -17,10 +16,6 @@ export function MessageActionsButton({
   buttonRef: RefObject<HTMLButtonElement | null>;
   open: boolean;
   onOpen: () => void;
-  /**
-   * A bubble-less big-emoji message (T-1327) has no frame to sit on, so the
-   * button moves beside the emoji, on that side, instead of covering it.
-   */
   beside?: 'left' | 'right' | undefined;
 }) {
   return (
@@ -44,11 +39,6 @@ export function MessageActionsButton({
   );
 }
 
-/**
- * The always-mounted shell (T-2011): it holds the delete-confirm and emoji
- * picker state, and mounts the store-reading body only while the menu or one
- * of those dialogs is open.
- */
 export function MessageMenu(props: MessageMenuProps) {
   const menu = useMessageMenu();
   if (!props.open && !menu.confirmOpen && !menu.pickerOpen) {

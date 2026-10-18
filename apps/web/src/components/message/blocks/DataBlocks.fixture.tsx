@@ -2,11 +2,6 @@ import type { BlocksData } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { BlockCard } from './BlockCard';
 
-// Cosmos fixture (T-1770): the board's own 03 stat tiles and 04 table samples
-// (`docs/design/mockups/blocks/WebNumbers.dc.html:110-147`), on the boards'
-// `#0a0a0a` page.
-
-/** The boards' `.time` (mono 10, `#8a8a8a`) as a plain footer. */
 function Time({ at }: { at: string }) {
   return <span className="font-mono text-[10px] text-[#8a8a8a]">{at}</span>;
 }
@@ -20,7 +15,6 @@ function Example({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// `WebNumbers.dc.html:110-127`.
 const SERVERS: BlocksData = {
   fallback: 'chat.zilar.app: CPU 23%, Memory 3.1 / 8 GB, Disk 41%, Uptime 12 d',
   blocks: [
@@ -37,7 +31,6 @@ const SERVERS: BlocksData = {
   ],
 };
 
-// `WebNumbers.dc.html:129-147`.
 const SPEND: BlocksData = {
   fallback:
     'AI spend this week: Deepseek 142 turns, 1.2M tokens, $0.38; Claude 38 turns, 410k tokens, $1.12; GLM 61 turns, 650k tokens, $0.00; total 241 turns, 2.3M tokens, $1.50',

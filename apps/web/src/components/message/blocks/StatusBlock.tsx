@@ -2,8 +2,6 @@ import { statusTone, type BlockTone } from '@zilar/chat-core';
 import type { StatusBlock as StatusBlockData } from '@zilar/protocol';
 import { Activity } from 'lucide-react';
 
-// The dot colours of the boards (`WebProgress.dc.html:32-35`): green, amber and
-// red, each with a soft ring; the tone picks the pair.
 const DOT: Record<BlockTone, { color: string; ring: string }> = {
   positive: { color: '#22c55e', ring: 'rgba(34,197,94,.14)' },
   warning: { color: '#fbbf24', ring: 'rgba(251,191,36,.14)' },
@@ -12,18 +10,12 @@ const DOT: Record<BlockTone, { color: string; ring: string }> = {
   info: { color: '#ededed', ring: 'rgba(237,237,237,.12)' },
 };
 
-// The board shows a word only in the dot's accessible label, never on screen.
 const DOT_LABEL: Record<StatusBlockData['rows'][number]['status'], string> = {
   ok: 'Up',
   warn: 'Late',
   bad: 'Down',
 };
 
-/**
- * 12 · STATUS LIST: a dot with a soft ring plus a value, never a word.
- * `showHeading` hides the block's own title row when the card already draws a
- * header.
- */
 export function StatusBlock({
   block,
   showHeading,
@@ -41,9 +33,8 @@ export function StatusBlock({
       )}
       <div className="flex flex-col">
         {block.rows.map((row, index) => {
-          // A newer server may add a status word (expand/contract); an unknown
-          // one falls back to the neutral dot instead of leaving `dot` undefined
-          // and throwing on `dot.color`.
+          // A newer server may add a status word (expand/contract); an unknown one
+          // falls back to the neutral dot instead of throwing on `dot.color`.
           const dot = DOT[statusTone(row.status)] ?? DOT.neutral;
           return (
             <div

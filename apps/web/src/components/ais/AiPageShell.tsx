@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-/** A single wrapped option row used by the provider, template and model pickers. */
 export function SelectOption({
   selected,
   disabled = false,
@@ -35,7 +34,6 @@ export function SelectOption({
   );
 }
 
-/** An inline, red validation or server message with an accessible role. */
 export function FieldError({ children }: { children: React.ReactNode }) {
   return (
     <p role="alert" className="text-[13px] text-danger">

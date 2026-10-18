@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/web/src/components/MessageBubble.tsx (size split)
+// effect-plain: presentational text body.
 import { splitLinks, type UiMessage } from '@zilar/chat-core';
 import { lazy, Suspense } from 'react';
 import { LinkText } from '../LinkText';
@@ -12,9 +12,8 @@ const MarkdownText = lazy(() =>
   import('../MarkdownText').then((m) => ({ default: m.MarkdownText })),
 );
 
-// T-1234: the first https link in the text, unless the message carries an
-// image or an attachment (those fill the bubble already). Only https is
-// unfurled; the server refuses anything else anyway.
+// Only https is unfurled (the server refuses anything else); a message that
+// already carries an image or attachment has no link card.
 function previewUrl(message: UiMessage, text: string): string | undefined {
   if (message.image !== undefined || message.attachment !== undefined) {
     return undefined;
@@ -62,8 +61,6 @@ export function MessageTextBody({
               className={cn(
                 'float-right ml-1.5 translate-y-[4px]',
                 own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                // Keeps the width the final message will have, so the
-                // swap does not move anything.
                 generating && 'invisible',
               )}
             />
@@ -82,8 +79,6 @@ export function MessageTextBody({
             className={cn(
               'float-right ml-1.5 translate-y-[4px]',
               own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-              // Keeps the width the final message will have, so the
-              // swap does not move anything.
               generating && 'invisible',
             )}
           />

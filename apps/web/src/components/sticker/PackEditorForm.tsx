@@ -17,7 +17,6 @@ export interface PackEditorFormProps {
   visibility: 'private' | 'server';
   onVisibilityChange: (value: 'private' | 'server') => void;
   busy: boolean;
-  /** How many stickers are in the pack, for the "n / 120" line. */
   count: number;
   preparing: number;
   batches: PrepareBatchJob[];
@@ -25,11 +24,9 @@ export interface PackEditorFormProps {
   onAddFiles: (files: FileList | File[]) => void;
   onPrepared: (item: PackEditorItem) => void;
   onBatchFinished: (key: string) => void;
-  /** The hidden picker the grid's Add tile opens. */
   fileInputRef: RefObject<HTMLInputElement | null>;
 }
 
-/** The name and visibility row, the sticker count and the preparation batches. */
 export function PackEditorForm({
   title,
   onTitleChange,

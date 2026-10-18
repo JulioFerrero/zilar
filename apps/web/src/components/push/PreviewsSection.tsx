@@ -1,7 +1,6 @@
 import { Card, SectionLabel } from '../ui/card';
 import { Switch } from '../ui/switch';
 
-/** The "Message previews" toggle and its fixed explanation. */
 export function PreviewsSection({
   showPreviews,
   onToggle,

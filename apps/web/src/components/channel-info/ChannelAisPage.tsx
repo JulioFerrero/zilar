@@ -6,11 +6,6 @@ import { GroupAiRow } from '../panels/ChannelAdminsSection';
 import { Button } from '../ui/button';
 import { SectionLabel } from '../ui/card';
 
-/**
- * The channel's AIs page (T-1519): today's AIs section, moved behind a subpage.
- * The data and actions stay in `ChannelPanel`, which passes the picker state and
- * callbacks in; this only draws them.
- */
 export function ChannelAisPage({
   chatId,
   ais,

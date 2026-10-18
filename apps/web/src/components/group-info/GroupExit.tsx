@@ -13,11 +13,6 @@ import { Dialog } from '../ui/dialog';
 import { ListRow } from '../ui/list-row';
 import { TextInput } from '../ui/text-input';
 
-/**
- * Leaving and deleting a group (T-1508), moved out of `GroupMembersSection`:
- * the red Leave group row at the bottom of the root page (non-owners only) and
- * the owner's type-the-name Delete group dialog behind the More key.
- */
 export function LeaveGroupRow({
   chatId,
   title,
@@ -25,7 +20,6 @@ export function LeaveGroupRow({
 }: {
   chatId: string;
   title: string;
-  /** Closes the whole group info panel after a successful leave. */
   onClose: () => void;
 }) {
   const storeApi = useChatStoreApi();
@@ -80,12 +74,6 @@ export function LeaveGroupRow({
   );
 }
 
-/**
- * The owner deletes the group for everyone (T-1243). The typed group name gates
- * the destructive key; on success the chat list refreshes, the panel closes and
- * the caller goes home. Errors show in the dialog. The channel panel reuses it
- * with `noun="channel"` (T-1519).
- */
 export function DeleteGroupDialog({
   groupId,
   title,
@@ -97,11 +85,8 @@ export function DeleteGroupDialog({
   groupId: string | undefined;
   title: string;
   open: boolean;
-  /** Dismisses the dialog without deleting. */
   onClose: () => void;
-  /** Closes the whole group info panel after a successful delete. */
   onDeleted: () => void;
-  /** The entity being deleted; drives the dialog's labels. */
   noun?: 'group' | 'channel';
 }) {
   const storeApi = useChatStoreApi();

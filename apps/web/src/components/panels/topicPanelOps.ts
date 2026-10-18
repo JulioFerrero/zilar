@@ -22,11 +22,6 @@ import { failInline } from './topic-failure';
 
 export { storeCall, type PanelStatus } from './panelLists';
 
-/**
- * The topic info panel's state and actions: the members and AIs lists, the
- * tools / my-AIs reads, the pickers, the confirm dialogs and the store calls.
- * `TopicPanelBody` renders what this returns.
- */
 export function useTopicPanelOps({
   chat,
   topic,
@@ -95,11 +90,8 @@ export function useTopicPanelOps({
 
   const clearError = Effect.sync(() => setErrorMessage(''));
 
-  // The row re-check after a removal 404. A superseded refresh (the store
-  // restarted mid-flight) rejects with `stale_refresh` instead of merging:
-  // retry once so a transient restart does not surface the store's
-  // "superseded" wording in the panel; a second supersede is genuinely
-  // stale state, so report a generic message the user can act on.
+  // A superseded refresh (the store restarted mid-flight) rejects with
+  // `stale_refresh`: retry once, then report a generic message.
   const refreshTopicRowOnce = (): Effect.Effect<boolean, ApiFailure> => {
     const recheck = storeCall(() => storeApi.getState().refreshTopicRow(chat.id, topic.id));
     return recheck.pipe(
@@ -126,24 +118,18 @@ export function useTopicPanelOps({
   });
 
   // A 404 alone never means "the topic is gone" — the server also 404s for a
-  // user who is not a member — so only navigate away when the refreshed list
-  // no longer has the topic row. Any other failure keeps the user here with
-  // the inline error.
+  // user who is not a member — so navigate away only when the refreshed list
+  // no longer has the topic row.
   const afterMissingMember = (): Effect.Effect<void, ApiFailure> =>
     refreshTopicRowOnce().pipe(
       Effect.flatMap((gone) => (gone ? closeTopicScreen : members.reloadAfter())),
     );
 
-  // ONE call: the store issues the POST and folds the row back in. The Add
-  // dialog keeps the row (it turns into "Added"), so only the list refreshes.
   const addMember = (userId: string): Effect.Effect<void, ApiFailure> =>
     storeCall(() => storeApi.getState().addTopicMember(chat.id, userId)).pipe(
       Effect.andThen(members.reloadAfter()),
     );
 
-  // ONE call: the store issues the DELETE and folds the row back in (real)
-  // or drops it when archived (both). A 404 alone never means "the topic is
-  // gone" (see afterMissingMember).
   const removeMember = removeRow<string>({
     call: (userId) => storeApi.getState().removeTopicMember(chat.id, userId),
     reload: () => members.fetch(),
@@ -151,23 +137,18 @@ export function useTopicPanelOps({
     onMissing: afterMissingMember,
   });
 
-  // ONE call: the store issues the POST and folds the row back in. The Add
-  // dialog keeps the row (it turns into "Added"), so only the list refreshes.
   const addAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
     storeCall(() => storeApi.getState().addTopicAi(chat.id, aiId)).pipe(
       Effect.andThen(ais.reloadAfter()),
     );
 
-  // T-1784: the Add dialog's invite row. A stable function so the dialog's
-  // query runs once per open, like `InviteDialog`.
   const createInvite = useCallback(
     (): Effect.Effect<string, ApiFailure> => fromApi(() => storeApi.getState().createInvite()),
     [storeApi],
   );
 
-  // ONE call: the store issues the DELETE and folds the row back in. The
-  // reload may fail after a successful delete (transient network): never show
-  // the removed row as if the delete failed.
+  // The reload may fail after a successful delete (transient network): never
+  // show the removed row as if the delete failed.
   const removeAi = removeRow<string>({
     call: (aiId) => storeApi.getState().removeTopicAi(chat.id, aiId),
     reload: () => ais.fetch(),
@@ -176,8 +157,7 @@ export function useTopicPanelOps({
 
   const leaveEffect = storeCall(() => storeApi.getState().leaveTopic(chat.id)).pipe(
     // The store's `leaveTopic` swallows the last-seat 404 itself (the topic
-    // archived, so there is nothing left to leave): success means the caller
-    // is out either way, so navigate away.
+    // archived, so there is nothing to leave), so navigate away either way.
     Effect.andThen(closeTopicScreen),
   );
 
@@ -219,7 +199,6 @@ export function useTopicPanelOps({
     );
   };
 
-  // The panel-level buttons each own their call; the confirm dialogs stay here.
   const [leaveState, runLeave] = useAction<void, void, never>(() =>
     clearError.pipe(
       Effect.andThen(leaveEffect),

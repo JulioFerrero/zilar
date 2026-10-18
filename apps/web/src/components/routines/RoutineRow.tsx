@@ -23,7 +23,9 @@ function workCall(work: RoutineWork, id: string): Promise<unknown> {
   return deleteRoutine(id);
 }
 
-/** A fixed sentence for a failed action; the API message never reaches the row. */
+/**
+ * A fixed sentence for a failed action; the API message never reaches the row.
+ */
 function failureText(failure: ApiFailure): string {
   if (failure.status === 403 || failure.status === 404) {
     return 'You may not change this routine.';
@@ -34,21 +36,13 @@ function failureText(failure: ApiFailure): string {
   return 'Could not update the routine.';
 }
 
-/**
- * One routine in Settings › Routines: the AI's ball, the title with a status
- * dot, the schedule · AI · chat line, an Ask key that opens the chat, and a
- * Pause or Resume key. Clicking the row reveals a red Delete key; deleting
- * takes the same two-step confirm the tools panel uses.
- */
 export function RoutineRow({
   routine,
   onChanged,
   onFailed,
 }: {
   routine: MyRoutine;
-  /** Refetch the list after a change; the server owns the new order. */
   onChanged: () => void;
-  /** A fixed sentence when an action fails, shown by the page. */
   onFailed: (message: string) => void;
 }) {
   const navigate = useNavigate();

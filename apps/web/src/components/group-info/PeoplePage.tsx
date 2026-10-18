@@ -8,7 +8,6 @@ import { GroupRolesSection } from '../panels/GroupRolesSection';
 import type { RolesView } from '../panels/groupPanelOps';
 import { SectionLabel } from '../ui/card';
 
-/** A section label with its count on the right, as the topic panel draws it. */
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center justify-between px-0.5">
@@ -18,11 +17,6 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
   );
 }
 
-/**
- * The combined People and AIs page (T-1857): the AIs first, as the topic sheet
- * draws them, then the members with Add and Invite with a link, then the roles
- * for managers. The panel owns the open page and the add-AI picker snapshot.
- */
 export function PeoplePage({
   chatId,
   info,
@@ -45,9 +39,7 @@ export function PeoplePage({
   rolesByUser: Map<string, GroupRole[]>;
   rolesState: RolesView;
   onReloadRoles: () => void;
-  /** Opens the invite links page from the members' Invite row. */
   onOpenLinks: () => void;
-  /** The root's Add key lands here with the member picker already open. */
   openPickerOnMount: boolean;
   eligibleAis: PublicAi[];
   pickerChoices: PublicAi[] | undefined;
@@ -65,7 +57,6 @@ export function PeoplePage({
     <>
       <section className="flex flex-col gap-2">
         <SectionHeading label="AIs" count={info.ais.length} />
-        {/* GroupAiSection draws its own plain label; this page draws the counted one. */}
         <div className="[&>section>h2]:hidden">
           <GroupAiSection
             ais={info.ais}
@@ -106,12 +97,9 @@ export function PeoplePage({
         />
       </section>
 
-      {/* T-0116: custom group roles — managers only. Everyone sees the chips
-            next to the member names above. */}
       {isManager && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Roles</SectionLabel>
-          {/* GroupRolesSection draws its own plain label; this page draws the kit one. */}
           <div className="[&>section>h2]:hidden">
             <GroupRolesSection
               groupId={info.id}

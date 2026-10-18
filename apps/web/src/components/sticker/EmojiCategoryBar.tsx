@@ -14,10 +14,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-/** A section of the emoji scroller: the recents or one of the nine categories. */
 export type EmojiSectionId = EmojiCategoryId | 'recent';
 
-/** The phone's category icons (`apps/mobile/src/components/chat/emoji-tab.tsx`). */
 const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
   smileys: Smile,
   people: Hand,
@@ -31,19 +29,12 @@ const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
 };
 
 interface EmojiCategoryBarProps {
-  /** The section the scroller is on, or `undefined` before the first scroll. */
   active: EmojiSectionId | undefined;
-  /** Whether the recents hold anything; the Recent key only shows when they do. */
   showRecent: boolean;
   onSelect: (section: EmojiSectionId) => void;
   onOpenSearch: () => void;
 }
 
-/**
- * T-1945: the emoji category bar, Telegram-style. Equal 32 px icon keys with
- * Search first, then Recent (only when there are recents) and the nine
- * categories. The active key is the D24 raised segment; the rest are muted.
- */
 export function EmojiCategoryBar({
   active,
   showRecent,
