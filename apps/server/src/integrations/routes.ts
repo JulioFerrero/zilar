@@ -1,11 +1,6 @@
-// Integration settings helpers (T-0162 + the Email follow-up). The routes
-// themselves live on the Effect `HttpApi` adapter in `./api.ts`; this module
-// keeps the rate-limit constants, the dependencies, the per-request bot token
-// resolver the import route uses, and the shared helpers the handlers call.
-// The stored server owner (`setup/instance-owner.ts`) manages the integration
-// keys from Settings → Integrations. Every route needs a session, and anyone
-// who is not the owner gets the same 404 as an unknown route, so existence is
-// never leaked.
+// Integration settings helpers: rate-limit constants, dependencies, the per-request bot
+// token resolver and shared helpers. Every route needs a session, and a non-owner gets the
+// same 404 as an unknown route, so existence never leaks.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -37,27 +32,13 @@ export interface IntegrationsRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   logger: Logger;
-  /** The live mailer, swapped to the new Resend transport on email success. */
   mailer: CurrentMailer;
   audit?: AuditRecorder;
-  /** Builds the Telegram client; tests inject a fake so no network is hit. */
   createTelegram?: (token: string) => TelegramClient;
-  /** Overrides the per-user Telegram limiter (tests inject a small budget). */
   telegramLimiter?: RateLimiter | undefined;
-  /** Overrides the per-user email limiter (tests inject a small budget). */
   emailLimiter?: RateLimiter | undefined;
-  /** Injected in tests; production trusts TRUSTED_PROXY_HOPS like join. */
   now?: (() => number) | undefined;
-  /**
-   * Sends the verification test message through the candidate mailer;
-   * tests inject a fake. Defaults to a short "it works" message to the
-   * owner's own address (a code is not needed — the owner is signed in).
-   */
   sendTestMail?: ((input: { mailer: Mailer; email: string }) => Promise<void>) | undefined;
-  /**
-   * Swaps the live mailer after the test send succeeds; tests inject a
-   * capture. Defaults to swapping the shared `mailer` above.
-   */
   swapMailer?: ((mailer: Mailer) => void) | undefined;
 }
 
@@ -71,14 +52,11 @@ export interface BotTokenResolverDeps {
   config: Pick<ServerConfig, 'TELEGRAM_BOT_TOKEN'>;
   db: ServerDatabase;
   cipher: { decrypt: (envelope: string) => string };
-  /** Warned (never with a secret) when a stored token cannot be decrypted. */
   logger?: { warn: (fields: Record<string, unknown>, message: string) => void } | undefined;
 }
 
-// The token for a request: the env value wins when set, else the stored
-// value, else none. Read per request (not at boot) so saving works without
-// a restart. A decryption failure reads as "no token", never as an error
-// carrying the secret.
+// The env value wins when set, else the stored value, else none. Read per request so
+// saving works without a restart. A decryption failure reads as "no token".
 export function createGetBotToken(deps: BotTokenResolverDeps): () => Promise<string | null> {
   return async () => {
     const env = deps.config.TELEGRAM_BOT_TOKEN;
@@ -97,10 +75,8 @@ export function createGetBotToken(deps: BotTokenResolverDeps): () => Promise<str
   };
 }
 
-// Telegram answers a bad bot token with 401 `Unauthorized`, whatever the
-// method — including the imports' `getStickerSet`. Only the owner-gated
-// verification path reports it distinctly; the import flow still reads any
-// non-pack failure as `try_later` (its tests assert exactly that).
+// Telegram answers a bad bot token with 401 whatever the method; only owner-gated
+// verification reports it distinctly.
 export function isInvalidToken(error: unknown): boolean {
   return (
     error !== null &&
@@ -138,15 +114,12 @@ export async function mailStatusFor(deps: IntegrationsRoutesDependencies): Promi
   return { configured: true, source: 'stored', from: stored.from };
 }
 
-// Explicit `MAIL_TRANSPORT`/`SMTP_*` env means mail is configured without
-// the settings page (mirrors the setup route's rule).
+// Explicit `MAIL_TRANSPORT`/`SMTP_*` env means mail is configured without the settings page.
 export function envMailConfigured(config: ServerConfig): boolean {
   return config.MAIL_TRANSPORT !== undefined;
 }
 
-// The stored token/key is decrypted for the status call; a broken envelope
-// reads as "not stored". The status answer never carries the secret either
-// way — only `configured` and `source`.
+// A broken envelope reads as "not stored"; the status answer never carries the secret.
 async function readStoredTokenQuietly(
   deps: IntegrationsRoutesDependencies,
 ): Promise<string | null> {
@@ -181,10 +154,8 @@ export async function ownerEmailFor(db: ServerDatabase, userId: string): Promise
   return row.email;
 }
 
-// The production test send for email changes: a short "it works" message
-// to the signed-in owner's own address through the candidate mailer. The
-// body carries no secret; any delivery failure surfaces as a rejection the
-// caller maps to 422 `mail_send_failed`.
+// The production test send: a short message to the signed-in owner through the candidate
+// mailer. No secret in the body; a delivery failure maps to 422 `mail_send_failed`.
 export async function sendWorkingTestMail(input: { mailer: Mailer; email: string }): Promise<void> {
   const { mailer, email } = input;
   if (typeof (mailer as { sendTestMail?: unknown }).sendTestMail === 'function') {

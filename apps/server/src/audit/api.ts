@@ -1,7 +1,3 @@
-// Audit module on the Effect `HttpApi` adapter (T-0525): the same method,
-// path, query rules and answers as the deleted router. Its service runs on
-// effect/sql. `app.ts` mounts {@link createAuditApi} through the Effect edge.
-
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AuditGroup, AuditSchemaErrors, type AuditPage } from '@zilar/api-contract';
@@ -20,9 +16,8 @@ import {
 } from '../effect/http-core';
 import { listAuditForAi, listAuditForGroup, type ListAuditPage } from './service';
 
-// The service throws `Error('Invalid cursor')` for a malformed `before`; the
-// old route mapped just that message to 400, and every other rejection stayed
-// an unhandled 500. Both travel as defects so the envelope renders them.
+// The service marks a malformed `before` with `Invalid cursor`, answered 400; every
+// other rejection is an unhandled 500, so both travel as defects.
 function listPage(promise: () => Promise<ListAuditPage>): Effect.Effect<ListAuditPage> {
   return Effect.promise(promise).pipe(
     Effect.catchDefect((defect) =>
@@ -35,8 +30,6 @@ function listPage(promise: () => Promise<ListAuditPage>): Effect.Effect<ListAudi
   );
 }
 
-// The service returns `Date`s; the wire carries their ISO strings, which is
-// what `JSON.stringify` wrote before the contract declared the page.
 function toWirePage(page: ListAuditPage): AuditPage {
   return {
     entries: page.entries.map((entry) => ({ ...entry, at: entry.at.toISOString() })),
@@ -57,8 +50,8 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(AuditApi, 'audit', (handlers) =>
     handlers
-      // The caller's audit rows: a group's (owner/admin) or an AI's (owner).
-      // Unknown scopes answer an empty page, never a 404.
+      // A group's rows for its owner/admin, an AI's for its owner. An unknown scope
+      // answers an empty page, never a 404.
       .handle(
         'list',
         handler(logger, (request, user) =>
@@ -99,7 +92,7 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AuditApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // Any query decode failure is the fixed text `Invalid audit query`.
+    // Every query decode failure answers the fixed text `Invalid audit query`.
     Layer.provide(schemaErrorLayerFor(AuditSchemaErrors, logger, 'Invalid audit query')),
   );
 

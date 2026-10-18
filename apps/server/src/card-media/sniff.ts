@@ -1,7 +1,6 @@
-// T-1862: the card media fetcher trusts bytes, never the declared content
-// type or the file name. `sniffImage` reads the dimensions from the header
-// alone (no decode), so an oversized or decompression-bomb image is refused
-// before it can reach a phone. `sniffFile` accepts PDF and plain text only.
+// The fetcher trusts bytes, never the declared type or file name. Dimensions come from
+// the header alone (no decode), so a decompression bomb is refused before it reaches a
+// phone. `sniffFile` accepts PDF and plain text only.
 import { isUtf8 } from 'node:buffer';
 import { readU16BE, readU16LE, readU24LE, readU32BE, readU32LE } from '../media-bytes';
 import { isPng, isWebp } from '../stickers/image';
@@ -26,8 +25,6 @@ function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
   return magic.every((value, index) => bytes[index] === value);
 }
 
-// PNG: 8-byte signature, then the first chunk must be IHDR, whose payload
-// starts with 4-byte width and height.
 function sniffPng(bytes: Uint8Array): SniffedImage | null {
   if (bytes.length < 24 || !PNG_IHDR.every((value, index) => bytes[12 + index] === value)) {
     return null;
@@ -44,7 +41,6 @@ const SOF_MARKERS = new Set([
   0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
 ]);
 
-// T-2062: the marker read shared by the sniffer and the stripper.
 export function readJpegMarker(
   bytes: Uint8Array,
   offset: number,
@@ -61,8 +57,6 @@ export function readJpegMarker(
   return { marker, offset };
 }
 
-// JPEG: walk the marker segments up to the first SOFn. Its payload holds the
-// 1-byte precision, then 2-byte height and 2-byte width.
 function sniffJpeg(bytes: Uint8Array): SniffedImage | null {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     return null;
@@ -79,8 +73,6 @@ function sniffJpeg(bytes: Uint8Array): SniffedImage | null {
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       continue;
     }
-    // Anything without a frame header before the scan or the end is not a
-    // JPEG we can measure.
     if (marker === 0x00 || marker === 0xd8 || marker === 0xd9 || marker === 0xda) {
       return null;
     }
@@ -104,8 +96,7 @@ function sniffJpeg(bytes: Uint8Array): SniffedImage | null {
   return null;
 }
 
-// WebP: RIFF container. VP8 (lossy), VP8L (lossless) and VP8X (extended)
-// each carry the canvas size in a different layout.
+// WebP: RIFF container; VP8, VP8L and VP8X each lay the canvas size out differently.
 function sniffWebp(bytes: Uint8Array): SniffedImage | null {
   if (bytes.length < 21) {
     return null;
@@ -160,8 +151,8 @@ export function sniffImage(bytes: Uint8Array): SniffedImage | null {
   return sniffJpeg(bytes);
 }
 
-// The bytes must decode as UTF-8 and contain no NUL. A name ending in `.csv`
-// only chooses the label; the text itself is what makes it a text file.
+// Must decode as UTF-8 with no NUL: a `.csv` name only chooses the label, the text is
+// what makes it a text file.
 export function sniffFile(bytes: Uint8Array, name: string): FileMime | null {
   if (bytes.length === 0) {
     return null;

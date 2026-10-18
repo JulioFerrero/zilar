@@ -1,11 +1,6 @@
-// Voice transcription settings (T-0170). Instance-level settings the
-// server owner manages from Settings → Integrations: the
-// OpenAI-compatible transcription endpoint (base URL + optional API key,
-// stored encrypted like the Telegram token) plus the model name (stored in
-// clear text, like the mail sender).
-//
-// There is no per-install env override: transcription is off by default and
-// only a stored, owner-verified endpoint turns it on.
+// Instance-level settings the owner manages: the OpenAI-compatible endpoint (base URL plus
+// an optional encrypted API key) and the model name in clear text. No env override:
+// transcription is off until a stored, owner-verified endpoint turns it on.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';

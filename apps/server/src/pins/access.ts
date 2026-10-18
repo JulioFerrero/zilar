@@ -24,17 +24,13 @@ export interface ResolvePinChatOptions {
   mucDomain: string;
 }
 
-// The stored `chat_jid` for a DM: the canonical pair key
-// `min(jidA,jidB)|max(jidA,jidB)` over lowercased bare JIDs, so both people
-// share one pin list whichever side names the chat.
+// The stored `chat_jid` for a DM: `min(jidA,jidB)|max(jidA,jidB)` over lowercased
+// bare JIDs, so both people share one pin list.
 export function dmPairKey(ownBareJid: string, peerBareJid: string): string {
   const [first, second] = [ownBareJid.toLowerCase(), peerBareJid.toLowerCase()].sort();
   return `${first}|${second}`;
 }
 
-// The room-owning topic row, read through `effect/sql`. Selecting `*` and
-// letting the client camelCase the columns keeps the `TopicRow` shape the
-// access helpers below already take.
 async function findTopicByRoomLocalpart(
   db: ServerDatabase,
   roomLocalpart: string,
@@ -48,10 +44,8 @@ async function findTopicByRoomLocalpart(
   return sqlRuntimeFor(db).runPromise(program);
 }
 
-// Resolves the `chat` parameter to the stored `chat_jid` plus, for rooms,
-// the topic row that owns it. Visibility only: a stranger (or a malformed
-// JID) gets the same 404 as an unknown chat. Pin/write permission is a
-// separate check (`requirePinManager`).
+// Resolves the `chat` parameter to its stored `chat_jid` plus, for rooms, the owning
+// topic row. A stranger or a malformed JID gets the same 404 as an unknown chat.
 export async function resolvePinChat(
   db: ServerDatabase,
   options: ResolvePinChatOptions,
@@ -68,8 +62,7 @@ export async function resolvePinChat(
   if (host === mucDomain.toLowerCase()) {
     const localpart = access.bare.slice(0, at);
     const topic = await findTopicByRoomLocalpart(db, localpart);
-    // The room exists in the directory but no visible topic owns it (or the
-    // topic is archived): still a 404, never a leak.
+    // A room with no visible owning topic (or an archived one) is still a 404.
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       throw toMissingChat();
     }
@@ -79,12 +72,9 @@ export async function resolvePinChat(
   return { kind: 'dm', chatJid: dmPairKey(ownBare, access.bare) };
 }
 
-// Who may pin or unpin: in a DM either person; in a group topic (including
-// General) a group owner/admin who can see the topic, or the topic creator.
-// T-1990: General belongs to the group, so only its current owner/admins pin
-// there — the creator shortcut never applies to General. Plain members can
-// read pins but may not change them. A caller who may not even see the chat
-// gets the same 404 as for an unknown chat.
+// In a DM either person; in a group topic a group owner/admin who can see it, or the
+// topic creator. General belongs to the group, so only its owner/admins pin there. Plain
+// members read but do not change; an invisible chat is the same 404 as unknown.
 export async function requirePinManager(
   db: ServerDatabase,
   chat: PinChat,
@@ -105,9 +95,7 @@ export async function requirePinManager(
   throw new HttpError(403, 'forbidden', 'Only a topic manager can pin messages');
 }
 
-// Whether the caller may read or unpin the stored pin row behind
-// `DELETE /api/pins/:id` (which carries no chat parameter): one side of a DM
-// pair, or anyone who can see the pin's topic room.
+// One side of a DM pair, or anyone who can see the pin's topic room.
 export async function requirePinVisible(
   db: ServerDatabase,
   storedChatJid: string,

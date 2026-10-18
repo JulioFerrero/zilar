@@ -3,9 +3,8 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ExtractedMediaItem, MediaKind } from './indexer';
 
-// The `media_items` row the indexer writes. Local to this file now that the
-// insert is raw SQL; the columns mirror the `media_items` migration SQL, and a
-// `bigint` read would come back as a string (none is read here).
+// The columns mirror the `media_items` migration SQL; a `bigint` read would come back as
+// a string (none is read here).
 interface MediaItemRow {
   id: string;
   archiveOwner: string;
@@ -36,9 +35,8 @@ interface RowBase {
   senderJid: string;
 }
 
-// `ref` is the row's identity inside its message: the URL for a media item,
-// the link URL for a link. Empty only for a voice note without a URL, which is
-// still unique by `kind`.
+// `ref` is the row's identity inside its message: the URL, or empty only for a voice
+// note without one, which is still unique by `kind`.
 function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemRow {
   return {
     id: randomUUID(),
@@ -63,11 +61,9 @@ function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemRow {
   };
 }
 
-// `ON CONFLICT (archive_owner, chat_jid, message_id, kind, ref) DO NOTHING`
-// (the unique index at `schema.ts:1419-1426`) with `RETURNING`, so the count
-// is the rows actually inserted and a re-run inserts nothing. `waveform` is
-// jsonb, so it is stringified and cast; every other value binds directly.
-// 500 rows x 19 bindings stays well under Postgres's 65 535 parameters.
+// `ON CONFLICT ... DO NOTHING` with `RETURNING`, so the count is the rows actually
+// inserted and a re-run inserts nothing. `waveform` is jsonb, so it is stringified and
+// cast; 500 rows x 19 bindings stays well under Postgres's 65 535 parameters.
 const INSERT_CHUNK_ROWS = 500;
 
 function insertChunk(

@@ -5,8 +5,6 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { decodeEntry, type AuditEntry } from './schema';
 
-// Minimal slice of pino's Logger the recorder needs. Real call sites pass the
-// server's own logger; tests can pass a captor.
 export interface AuditLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
 }
@@ -15,10 +13,9 @@ export interface AuditRecorder {
   record: (entry: AuditEntry) => Promise<void>;
 }
 
-// A recorder wraps `recordAudit` so a database failure never propagates into
-// the caller's request. The error log intentionally only carries `{ action }`:
-// `detail`, `actor_user_id`, `ai_id` and friends are not echoed because the
-// audit log's whole point is to keep sensitive data out of write paths.
+// A recorder wraps `recordAudit` so a database failure never reaches the caller's
+// request. The error log carries `{ action }` only: the audit log keeps sensitive
+// data out of write paths, so `detail` and ids are never echoed.
 export interface CreateAuditRecorderInput {
   db: ServerDatabase;
   logger?: AuditLogger;
@@ -43,9 +40,7 @@ export function createAuditRecorder({
   };
 }
 
-// Validates the entry at the boundary, then inserts one row. Callers that
-// must not fail on an audit write wrap this in `createAuditRecorder`. The
-// `now` parameter is injectable so tests can pin the timestamp.
+// Validates at the boundary, then inserts one row. `now` is injectable for tests.
 export async function recordAudit(db: ServerDatabase, entry: AuditEntry, now: Date): Promise<void> {
   const parsed = decodeEntry(entry);
   const id = randomId();
@@ -54,7 +49,6 @@ export async function recordAudit(db: ServerDatabase, entry: AuditEntry, now: Da
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // jsonb is written as a cast string, or NULL when there is no detail.
       const detail =
         parsed.detail === null ? sql`NULL` : sql`${JSON.stringify(parsed.detail)}::jsonb`;
       yield* sql`INSERT INTO audit_log (

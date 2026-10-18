@@ -11,9 +11,8 @@ const tokenPayloadSchema = struct({
 });
 
 /**
- * Opaque media tokens (T-0122): HMAC-signed, expiring after 15 minutes, and
- * bound to the exact provider URL plus the user id. A token minted for user
- * A fails for user B, and any edit fails the signature.
+ * HMAC-signed, expiring after 15 minutes, bound to the exact provider URL and user id: a
+ * token for user A fails for user B, and any edit fails the signature.
  */
 export interface GifTokenIssuer {
   issue(userId: string, mediaUrl: string): string;

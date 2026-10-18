@@ -10,12 +10,6 @@ import { HttpError, xmppUnavailable } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
-// Personal chat background wallpapers (T-0460). Unlike avatars, one upload is
-// not a replacement: a user may keep up to `BACKGROUND_MAX_PER_USER` images,
-// each a `randomUUID()` file on disk with `backgroundUrlFor` = `/api/backgrounds/<id>`.
-// The bytes are readable by the owner only (the group-background read for
-// members comes later, in task F).
-
 export const BACKGROUND_MAX_BYTES = 1024 * 1024;
 export const BACKGROUND_MAX_SIDE = 2048;
 export const BACKGROUND_MIN_SIDE = 64;
@@ -50,7 +44,6 @@ export function backgroundUrlFor(backgroundId: string): string {
 
 export interface BackgroundsServiceDeps {
   db: ServerDatabase;
-  /** Directory background files are stored under; resolved once, absolutely. */
   storageDir: string;
 }
 
@@ -66,11 +59,8 @@ export interface BackgroundCheck {
   error?: BackgroundProbeError | undefined;
 }
 
-// Validates raw upload bytes: at most 1 MiB, a static WebP or PNG by magic
-// bytes (never the client's content type or file name), with each side in
-// [64, 2048]. The shared probe is given wallpaper limits (a 2048 px side and a
-// 16 MiB decoded frame); anything it refuses that is not a size problem is a
-// `background_not_image`. Side under 64 fails as `background_bad_size`.
+// At most 1 MiB, a static WebP or PNG by magic bytes, each side in [64, 2048]. The
+// shared probe gets wallpaper limits; a side under 64 fails as `background_bad_size`.
 export function checkBackgroundBytes(bytes: Uint8Array): BackgroundCheck {
   if (bytes.byteLength === 0) {
     return { error: 'background_empty' };
@@ -80,8 +70,6 @@ export function checkBackgroundBytes(bytes: Uint8Array): BackgroundCheck {
   }
   const probed = probeStickerBytes(bytes, BACKGROUND_PROBE_LIMITS);
   if (!probed.ok) {
-    // Too short, unknown magic, a truncated header, a side past 2048 or a
-    // decode bomb: all "not a usable picture" for the upload route.
     return { error: 'background_not_image' };
   }
   const { info } = probed;
@@ -124,11 +112,9 @@ export interface BackgroundUploadResult {
   height: number;
 }
 
-// Stores one new image: the per-user count is read and the row inserted under
-// the user's advisory lock, so two concurrent uploads cannot both pass the cap
-// (never check-then-insert). The file is written between the count and the
-// insert; a failure after it lands removes it, so a refused upload leaves no
-// orphan.
+// The per-user count and the insert share the user's advisory lock, so two concurrent
+// uploads cannot both pass the cap. The file is written between them; a failure after
+// it lands removes it, so a refused upload leaves no orphan.
 export async function uploadBackground(
   deps: BackgroundsServiceDeps,
   userId: string,
@@ -215,11 +201,9 @@ export interface BackgroundFile {
   size: number;
 }
 
-// An unknown id and another user's image answer the same `null`, so ids cannot
-// be probed. T-0463: the image is also readable by a member of any group that
-// uses it as its background. The path is built from the stored key only
-// (`<uuid>.<ext>` written at upload), so a crafted id never touches the
-// filesystem.
+// An unknown id and another user's image answer the same `null`, so ids cannot be
+// probed; a group member may read an image their group uses. The path is built from
+// the stored key only, so a crafted id never touches the filesystem.
 export async function readBackgroundFile(
   deps: BackgroundsServiceDeps,
   backgroundId: string,
@@ -266,12 +250,9 @@ export async function readBackgroundFile(
   }
 }
 
-// Deletes one image owned by the caller and clears every use of it, in one
-// transaction: pref, default and group rows that referenced it drop the image
-// id AND the dim (a dim without an image is invalid), rows that land back at
-// all defaults are deleted, then the image row goes. An unknown or foreign id
-// makes no change and returns false. The file is removed best-effort after
-// the commit.
+// Deletes one image and clears every use of it in one transaction: pref, default and
+// group rows drop the image id AND the dim, rows back at all defaults are deleted, then
+// the row goes. An unknown or foreign id changes nothing and returns false.
 export async function deleteBackground(
   deps: BackgroundsServiceDeps,
   backgroundId: string,
@@ -297,9 +278,8 @@ export async function deleteBackground(
           yield* sql`UPDATE chat_background_defaults
             SET background_image_id = NULL, background_dim = NULL
             WHERE user_id = ${userId} AND background_image_id = ${backgroundId}`;
-          // T-0463: a group that used this image loses it too, so members stop being
-          // served a deleted image. Not scoped to the caller: the image may only be
-          // referenced by a group they administer, and the FK would null it anyway.
+          // A group loses the image too, so members stop being served a deleted file.
+          // Not scoped to the caller: only a group they administer can reference it.
           yield* sql`UPDATE groups
             SET background_image_id = NULL, background_dim = NULL
             WHERE background_image_id = ${backgroundId}`;

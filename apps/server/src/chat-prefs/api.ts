@@ -1,11 +1,3 @@
-// Chat preferences on the Effect `HttpApi` adapter (T-0520): the same methods,
-// paths, limiter order and answers as the deleted router (`routes.ts`),
-// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
-// runs on effect/sql.
-//
-// The schemas and the group live in the shared contract (`@zilar/api-contract`,
-// T-0892); this file keeps the handlers and layers.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -65,7 +57,6 @@ export interface ChatPrefsApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   config: ServerConfig;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
   logger: Logger;
 }
@@ -91,8 +82,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
           return { prefs, defaultBackground };
         }),
       )
-      // Partial update of one pref row. The session runs first, then the body
-      // is decoded, then access is checked, then the write budget is charged.
+      // Session, body decode, access check, then the write budget.
       .handle(
         'putPref',
         handler(logger, async (request, user) => {

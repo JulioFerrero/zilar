@@ -1,13 +1,9 @@
-// The per-chat background fields and the per-user background default
-// (T-1019 size split). Moved unchanged from `chat-prefs/service.ts`.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
-/** The three nullable background columns, shared by the pref and the default. */
 export interface BackgroundFields {
   backgroundPreset: string | null;
   backgroundImageId: string | null;
@@ -21,10 +17,8 @@ export interface BackgroundFieldsInput {
   backgroundDim?: number | null | undefined;
 }
 
-// Merges a background patch with the stored values and rejects the invalid
-// combinations. An image id that does not exist and one owned by another user
-// answer the same error, so an id cannot be probed. Shared by the per-chat
-// pref and the per-user default.
+// An image id that does not exist and one owned by another user answer the same error,
+// so ids cannot be probed.
 export async function resolveBackgroundFields(
   db: ServerDatabase,
   userId: string,
@@ -68,7 +62,6 @@ export interface PutChatBackgroundDefaultInput extends BackgroundFieldsInput {
   now: Date;
 }
 
-/** The per-user global background default; all null when there is no row. */
 export async function getChatBackgroundDefault(
   db: ServerDatabase,
   userId: string,
@@ -84,10 +77,6 @@ export async function getChatBackgroundDefault(
   return row ?? { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
 }
 
-/**
- * Partial update of the per-user background default. A write that lands back
- * on all defaults deletes the row instead of keeping it.
- */
 export async function putChatBackgroundDefault(
   db: ServerDatabase,
   userId: string,

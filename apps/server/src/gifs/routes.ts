@@ -7,9 +7,8 @@ import type { GifProvider } from './provider';
 
 export const GIF_RATE_LIMIT_MAX = 30;
 export const GIF_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-// Media previews fan out per search: one page mints 25 tokens and every
-// rendered cell fetches, so the proxy gets its own much higher budget. The
-// token already binds user + URL + expiry; the limiter only caps volume.
+// Media previews fan out per search, so the proxy gets its own high budget. The token
+// already binds user, URL and expiry; the limiter only caps volume.
 export const GIF_MEDIA_RATE_LIMIT_MAX = 600;
 export const GIF_PAGE_LIMIT = 25;
 export const GIF_PROXY_MAX_BYTES = 8 * 1024 * 1024;
@@ -20,11 +19,8 @@ export interface GifsRoutesDependencies {
   auth: Auth;
   config: ServerConfig;
   logger: Logger;
-  /** Injected in tests; production builds the real adapter from config. */
   provider?: GifProvider | undefined;
-  /** Injected in tests so the media fetch never touches the network. */
   mediaFetcher?: MediaFetch | undefined;
-  /** Injected in tests so token expiry and the rate window can advance. */
   now?: () => number;
 }
 
@@ -38,11 +34,8 @@ interface ProxiedMedia {
   body: Uint8Array;
 }
 
-// The media proxy fetches one provider URL with the full SSRF guard: resolve
-// every address, reject if any is non-public, connect to the validated IP
-// with SNI and Host kept as the hostname, follow no redirects.
-// The request is an `Effect.callback`: the first outcome wins, and an
-// interrupted fiber destroys the request so its socket is released.
+// Fetch one provider URL with the full SSRF guard: resolve every address, reject any
+// non-public one, connect to the validated IP with SNI and Host kept, follow no redirects.
 export function fetchProxiedMediaEffect(
   url: URL,
   address: string,

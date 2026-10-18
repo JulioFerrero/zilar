@@ -15,12 +15,9 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { countGroupMembers, findLinkRow, isGroupMember, linkIsUsable, serviceNow } from './queries';
 import { toInvalidLink, type InviteLinkServiceDeps, type JoinPreview } from './tokens';
 
-// The preview for `GET /api/join/:token`: the group title and member count,
-// never member names — and never the group id, unless the caller is already
-// a member (they know it; the join page uses it to open the group chat).
-// T-0124: the preview also carries the group's kind, so the page reads
-// "Join channel" for a channel. Unknown/expired/revoked/exhausted links
-// answer the same 404 `invalid_link`, so failures never reveal why.
+// The preview shows the group title and member count, never member names, and the group
+// id only to a member. Unknown, expired, revoked and exhausted links all answer the same
+// 404 `invalid_link`, so a failure never reveals why.
 export async function previewInviteLink(
   deps: InviteLinkServiceDeps,
   token: string,
@@ -59,29 +56,9 @@ export interface JoinByLinkResult {
   alreadyMember: boolean;
 }
 
-// Adds the caller as a `member` through the existing add-member flow, so
-// room sync, public topics and the audit entry all happen. The group-full
-// check runs before any use is consumed, so a full group never burns a use.
-// The membership re-check, the claim and the insert share one transaction.
-// What that guarantees, per race:
-// - Same user twice: the loser either sees the committed row in the in-tx
-//   re-check, or both claimed and its insert is a no-op (`onConflictDoNothing`
-//   returns no row, the unique index is the backstop). Either way it answers
-//   200 with `alreadyMember: true` and consumes nothing: its own claim rolls
-//   back with the transaction.
-// - Two strangers on a 1-use link: the conditional claim UPDATE is the
-//   backstop — at most `max_uses` of them win. The loser's claim updates no
-//   row, so it answers the same 404 `invalid_link` (never `alreadyMember`).
-// - A room failure after the claim answers 503 and the claim rolls back,
-//   so a 503 never burns a use either.
-// There is no `SELECT ... FOR UPDATE` or advisory lock here: strangers
-// serialize on the link row through the conditional claim, and same-user
-// claims on an under-cap link can both land momentarily — the unique index
-// plus the no-row check is what makes the loser consume nothing.
-// Already a member answers 200 with `alreadyMember: true` and consumes no
-// use (fast path, before the transaction). A full group answers 409
-// `group_full`.
-// Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`.
+// The membership re-check, the claim and the insert share one transaction. A same-user
+// racer consumes nothing; at most `max_uses` strangers win via the conditional claim; and
+// a room failure rolls the claim back, so a 503 never burns a use either.
 export async function joinByInviteLink(
   deps: InviteLinkServiceDeps,
   token: string,
@@ -102,15 +79,13 @@ export async function joinByInviteLink(
   if (!group) {
     throw toInvalidLink();
   }
-  // SG-8: a block in either direction between the joiner and the owner
-  // refuses the join with the same 404 `invalid_link` an unusable link
-  // answers, so a block is never an oracle. The owner is the `owner` row.
+  // A block in either direction refuses the join with the same 404 as an unusable link,
+  // so a block is never an oracle.
   const ownerId = await groupOwnerId(deps.db, link.groupId);
   if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw toInvalidLink();
   }
-  // T-1846 (SG-8): a member removed by an owner or admin is banned, and a ban
-  // answers the same 404 `invalid_link` an unusable link answers.
+  // A banned member is refused with the same 404, before any use is claimed.
   if (await isBanned(deps.db, link.groupId, userId)) {
     throw toInvalidLink();
   }
@@ -122,9 +97,8 @@ export async function joinByInviteLink(
     await deps.beforeJoinTransaction();
   }
 
-  // The claim and the insert run atomically on the transaction connection.
-  // A typed failure (the loser's 404) and a failing room call both abort the
-  // transaction, so the claim rolls back: a failed join consumes nothing.
+  // A typed failure and a failing room call both abort the transaction, so the claim rolls
+  // back and a failed join consumes nothing.
   const joined = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -136,8 +110,6 @@ export async function joinByInviteLink(
           if (existing !== undefined) {
             return false;
           }
-          // T-1846 (SG-8): a ban set since the pre-check still refuses the
-          // join, and it refuses before any use is claimed.
           if (yield* isBannedIn(sql, link.groupId, userId)) {
             return yield* Effect.fail(toInvalidLink());
           }
@@ -145,9 +117,8 @@ export async function joinByInviteLink(
           if (!claimed) {
             return yield* Effect.fail(toInvalidLink());
           }
-          // A room failure must reach the caller unchanged: an `HttpError`
-          // from the client keeps its status and code, anything else becomes
-          // the fixed 503. Either way the transaction rolls the claim back.
+          // A room failure reaches the caller unchanged: an `HttpError` keeps its status and
+          // code, anything else becomes the fixed 503.
           yield* Effect.tryPromise({
             try: () =>
               deps.adminClient.setAffiliation(
@@ -162,9 +133,7 @@ export async function joinByInviteLink(
             VALUES (${link.groupId}, ${userId}, 'member')
             ON CONFLICT (group_id, user_id) DO NOTHING
             RETURNING user_id`;
-          // No row inserted: another writer won the race and committed first.
-          // No membership was created, so the claim above rolls back with the
-          // transaction and nothing is consumed.
+          // No row inserted: another writer won and committed first, so the claim rolls back.
           return inserted.length > 0;
         }),
       );
@@ -184,13 +153,10 @@ export async function joinByInviteLink(
   return { groupId: link.groupId, alreadyMember: false };
 }
 
-// The group-full check, run before any use is claimed: people and AIs share
-// MAX_GROUP_MEMBERS. Throws 409 `group_full` when the newcomer would exceed
-// it. This check and the insert are not atomic: two strangers racing for the
-// last seat can both pass it and both join, exceeding the cap by one — the
-// same known race as the existing add-member flow (`addGroupMembers`), which
-// checks the cap before its transaction without a serializing lock. Accepted.
-// T-0164: shared with the public-group join below.
+// Run before any use is claimed: people and AIs share MAX_GROUP_MEMBERS, and 409
+// `group_full` answers when the newcomer would exceed it. The check is not atomic with
+// the insert, so two racers for the last seat can exceed the cap by one — the same known,
+// accepted race as `addGroupMembers`.
 export async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
   const [row] = await runSql(
     db,
@@ -214,10 +180,8 @@ export async function assertGroupHasRoom(db: ServerDatabase, groupId: string): P
   }
 }
 
-// Atomically consumes one use: the update only lands while the link is
-// usable, so racing joins serialize on the row and at most `max_uses` of
-// them win. Returns true when this caller won a use. Runs on the caller's
-// transaction connection.
+// Consumes one use atomically: the update only lands while the link is usable, so racing
+// joins serialize on the row and at most `max_uses` win.
 function claimLinkUse(
   sql: SqlClient.SqlClient,
   linkId: string,
@@ -235,10 +199,8 @@ function claimLinkUse(
   });
 }
 
-// Every existing public topic room gains the newcomer. Best effort after the
-// commit, like the other group flows: a failure is logged with the group id
-// (never a topic name), never thrown. Link joins ignore the contacts rule on
-// purpose: the link is the introduction.
+// Every existing public topic room gains the newcomer, best effort after the commit. A
+// failure is logged with the group id, never a topic name.
 export async function syncPublicTopicsByLink(
   deps: InviteLinkServiceDeps,
   groupId: string,

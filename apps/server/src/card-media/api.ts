@@ -1,9 +1,6 @@
-// Card media reads (T-1853, media plan M2): one signed-in GET that serves the
-// bytes an AI put in a card. The row's room decides who may read it: a group
-// room is readable by its members (through `allowedArchives` +
-// `resolveChatFilter`, the same check `/api/files` uses), and a DM card only
-// by the AI's owner. An unknown id, an invisible room and a missing file all
-// answer the same fixed 404, so the route never reveals what exists.
+// One signed-in GET serving the bytes an AI put in a card. A group room is readable by
+// its members (the same check `/api/files` uses), a DM card only by the AI's owner. An
+// unknown id, an invisible room and a missing file all answer the same 404.
 
 import { readFile } from 'node:fs/promises';
 import { Effect, Layer, Schema } from 'effect';
@@ -23,8 +20,7 @@ import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter } from '../search/service';
 import { cardMediaPath, getCardMedia } from './service';
 
-// The read budget (T-1853): 600 per 10 min per user, charged before the
-// lookup so a caller cannot probe ids without paying.
+// 600 per 10 min per user, charged before the lookup so ids cannot be probed for free.
 export const CARD_MEDIA_READ_RATE_LIMIT_MAX = 600;
 export const CARD_MEDIA_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
@@ -34,14 +30,12 @@ export interface CardMediaApiDependencies {
   config: ServerConfig;
   logger: Logger;
   storageDir: string;
-  /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
 }
 
 const CardMediaIdParams = Schema.Struct({ id: Schema.String });
 
 const CardMediaGroup = HttpApiGroup.make('card-media')
-  // No success schema: the handler answers raw bytes with custom headers.
   .add(
     HttpApiEndpoint.get('serve', '/card-media/:id', {
       params: CardMediaIdParams,
@@ -56,8 +50,8 @@ function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
 }
 
-// The filename inside `content-disposition`: only a conservative character
-// set, at most 100 characters, so the header cannot be split or misread.
+// Only a conservative character set, at most 100 characters, so the header cannot be
+// split or misread.
 function sanitiseName(name: string): string {
   const safe = name.replace(/[^A-Za-z0-9._ -]/g, '').slice(0, 100);
   return safe === '' ? 'file' : safe;
@@ -74,8 +68,8 @@ async function isAiOwner(db: ServerDatabase, aiId: string, userId: string): Prom
   return ai?.owner === userId;
 }
 
-// The row's room, as `resolveChatFilter` names it. A DM is readable only by
-// the AI's owner in addition to the ordinary DM visibility and block checks.
+// A DM is readable only by the AI's owner, on top of the ordinary DM visibility and
+// block checks.
 async function mayRead(
   deps: CardMediaApiDependencies,
   row: CardMediaRow,
@@ -130,7 +124,6 @@ export function createCardMediaApi(deps: CardMediaApiDependencies): EffectApiMou
           'content-length': String(bytes.byteLength),
           'x-content-type-options': 'nosniff',
           'content-security-policy': "default-src 'none'",
-          // A row's id never changes, so the bytes behind it are immutable.
           'cache-control': 'private, max-age=31536000, immutable',
           etag: `"${row.id}"`,
         };

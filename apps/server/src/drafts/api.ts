@@ -1,15 +1,3 @@
-// Draft stream on the Effect `HttpApi` adapter (T-0581): the SSE pilot.
-// The same method, path, statuses, headers and bytes as the old router
-// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-//
-// The response is an endless `Stream` of SSE text frames: hub events offered
-// into an unbounded `Queue` are drained one at a time, each followed by an
-// idle wait of `DRAFT_SSE_HEARTBEAT_MS` that answers a `: heartbeat` comment
-// when no event arrived. The subscribe runs in an `acquireRelease` scope, so
-// interruption — the client disconnecting and the web runtime cancelling the
-// body — always runs the unsubscribe. No decode schemas: the endpoint
-// declares no payload and the handler returns a raw `HttpServerResponse`.
-
 import { Duration, Effect, Layer, Queue, Schema, Stream } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -19,16 +7,13 @@ import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '.
 import type { DraftHubEvent } from './events';
 import { sharedDraftHub, type DraftHub } from './hub';
 
-// A comment line this often keeps the connection (and any proxy buffer)
-// alive between turns. Carried as an SSE comment, so event parsers ignore it.
+// A comment line this often keeps the connection (and any proxy buffer) alive between
+// turns; event parsers ignore it.
 export const DRAFT_SSE_HEARTBEAT_MS = 25_000;
 
-// The stream ends after this long (AI-19): the session is only checked when
-// the request opens, so a revoked session would otherwise keep receiving the
-// owner's drafts until the socket drops. Both clients reconnect — web
-// `subscribeToDrafts` (apps/web/src/lib/drafts.ts:100-150) and mobile
-// (`apps/mobile/src/lib/drafts.ts:218-247`) — and the reconnect re-runs the
-// session check.
+// The stream ends after this long: the session is only checked when the request opens,
+// so a revoked session would otherwise keep receiving drafts. Both clients reconnect,
+// which re-runs the session check.
 export const DRAFT_STREAM_MAX_MS = 10 * 60_000;
 
 export interface DraftsApiDependencies {
@@ -40,38 +25,20 @@ export interface DraftsApiDependencies {
 const DraftStreamSuccess = Schema.String;
 
 const DraftsGroup = HttpApiGroup.make('drafts')
-  // No payload schema: the handler streams raw SSE text frames itself.
   .add(HttpApiEndpoint.get('stream', '/drafts/stream', { success: DraftStreamSuccess }))
   .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const DraftsApi = HttpApi.make('drafts').add(DraftsGroup);
 
-// The old `streamSSE` helper's `writeSSE({ event, data })` splits `data` on
-// newlines into one `data: <line>` frame per line, then writes
-// `event: <event>\ndata: <json>\n\n`. `JSON.stringify` of the hub event never
-// contains a newline, so each event is exactly one `event:` line, one
-// `data:` line and a blank line.
 function encodeSseEvent(event: DraftHubEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
-// The idle marker the old route wrote with `stream.write(': heartbeat\n\n')`:
-// a comment line event parsers ignore.
 function encodeHeartbeat(): string {
   return ': heartbeat\n\n';
 }
 
-/**
- * `GET /api/drafts/stream`: the caller's own AI drafts as `event: draft` /
- * `event: end` SSE frames with JSON `data:`, plus a `: heartbeat` comment
- * every `DRAFT_SSE_HEARTBEAT_MS` of idleness. A client that connects mid-turn
- * is sent the open turns' latest frame at once (AI-11). The stream ends after
- * `DRAFT_STREAM_MAX_MS` (AI-19), so a revoked session stops receiving; both
- * clients reconnect, which re-runs the session check. Interrupting it (client
- * disconnect) unsubscribes from the hub.
- */
 export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
   const logger = deps.logger ?? defaultLogger();
   const hub = deps.hub ?? sharedDraftHub;
@@ -94,10 +61,8 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
             ).pipe(
               Effect.map(({ queue }) =>
                 Stream.fromEffectRepeat(
-                  // One frame cycle: wait for the next event, timing out at
-                  // the heartbeat interval, then encode what arrived. The
-                  // timeout reads full with `Duration`, so vitest's fake
-                  // timers keep controlling the heartbeat test.
+                  // The timeout reads full with `Duration`, so vitest's fake timers keep
+                  // controlling the heartbeat test.
                   Queue.take(queue).pipe(
                     Effect.timeoutOption(Duration.millis(DRAFT_SSE_HEARTBEAT_MS)),
                     Effect.map((event) =>
@@ -110,8 +75,7 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
           );
           return HttpServerResponse.stream(
             frames.pipe(
-              // End the response after the cap so a revoked session stops
-              // receiving drafts (AI-19); the client reconnects and re-auths.
+              // End the response after the cap; the client reconnects and re-auths.
               Stream.interruptWhen(Effect.sleep(Duration.millis(DRAFT_STREAM_MAX_MS))),
               Stream.encodeText,
             ),
@@ -140,9 +104,6 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
 
 let silentLogger: Logger | undefined;
 
-// A caller that builds the API without a logger (the tests) gets this silent
-// one: only the shared envelope could log (an unhandled failure), and the old
-// route had no log line of its own, so a silent one keeps the bytes identical.
 function defaultLogger(): Logger {
   silentLogger ??= pino({ level: 'silent' });
   return silentLogger;

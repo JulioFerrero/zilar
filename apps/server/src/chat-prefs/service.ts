@@ -1,10 +1,3 @@
-// The chat-prefs service barrel (T-1019 size split): the old
-// `chat-prefs/service.ts` contents live in `access.ts` (who may keep prefs for
-// which chat) and `backgrounds.ts` (the background fields and the per-user
-// background default). This path keeps the constants, the view and the pref
-// reads and writes, and re-exports every name it exported before, so importers
-// do not change.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -20,7 +13,6 @@ import {
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
 
-// The preset ids live in the shared contract (T-0892).
 export { CHAT_BACKGROUND_PRESET_IDS } from '@zilar/api-contract';
 
 export type { ChatPrefRow };
@@ -66,16 +58,14 @@ export interface PutChatPrefInput extends BackgroundFieldsInput {
   mutedUntil?: Date | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
-  /** T-1244: `undefined` leaves the unread mark; true/false sets it. */
+  /** `undefined` leaves the unread mark; true/false sets it. */
   unreadMark?: boolean | undefined;
   now: Date;
 }
 
 /**
- * Partial update of one pref row. A write that lands back on all defaults
- * deletes the row instead of keeping it. Enforces the per-user row and pin
- * caps. `pinned: true` stamps `now` (keeping an existing stamp);
- * `pinned: false` clears the stamp.
+ * A write back on all defaults deletes the row, and the per-user row and pin caps are
+ * enforced. `pinned: true` stamps `now` (keeping an existing stamp).
  */
 export async function putChatPref(
   db: ServerDatabase,
@@ -189,7 +179,6 @@ export async function putChatPref(
   return toChatPrefView(row);
 }
 
-// Re-exports so every importer of this path keeps working (T-1019 size split).
 export type { ChatAccess } from './access';
 export { requireChatAccess } from './access';
 export type {

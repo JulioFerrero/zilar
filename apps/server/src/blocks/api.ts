@@ -1,7 +1,3 @@
-// Blocks module on the Effect `HttpApi` adapter (T-0514): the same methods,
-// paths, limiter order and answers as the old router, mounted by the Effect
-// edge (`apps/server/src/effect/edge.ts`). Its store runs on effect/sql.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BlocksGroup, BlocksReadRateLimit, BlocksWriteRateLimit } from '@zilar/api-contract';
@@ -31,11 +27,8 @@ export interface BlocksRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   audit?: AuditRecorder;
-  /** The app config (for the XMPP domain) and admin client, so a block can
-   * remove both roster items after the commit. Optional in tests. */
   config?: ServerConfig;
   adminClient?: EjabberdAdminClient;
-  /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
   writeLimiter?: RateLimiter;
   readLimiter?: RateLimiter;
@@ -45,9 +38,7 @@ export interface BlocksApiDependencies extends BlocksRoutesDependencies {
   logger: Logger;
 }
 
-// The schemas, the group and the middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0894). The write budget runs before the service,
-// exactly like the old route's `writeLimiter.allow` -> `blockUser` order.
+// The write budget runs before the service.
 const RATE_LIMIT_MESSAGE = 'Too many attempts, try again later';
 
 const BlocksApi = HttpApi.make('blocks').add(BlocksGroup);
@@ -80,25 +71,21 @@ export function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
     });
   const service = serviceFor(deps);
 
-  // Roster cleanup after a block warns, never fails; the warn needs the
-  // request logger, which only exists here.
+  // Roster cleanup after a block warns, never fails; the warn needs the request logger.
   const serviceWithLogger = { ...service, logger };
 
   const groupLayer = HttpApiBuilder.group(BlocksApi, 'blocks', (handlers) =>
     handlers
-      // Blocks `:userId`, idempotent. Unknown users answer 404, yourself 400.
       .handle(
         'block',
         handler(logger, (request, user) =>
           blockUser(serviceWithLogger, user.id, request.params.userId),
         ),
       )
-      // Unblocks `:userId`, idempotent.
       .handle(
         'unblock',
         handler(logger, (request, user) => unblockUser(service, user.id, request.params.userId)),
       )
-      // The blocker's list, newest first.
       .handle(
         'list',
         handler(logger, (_request, user) => listBlockedUsers(service, user.id)),

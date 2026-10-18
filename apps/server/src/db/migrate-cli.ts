@@ -12,13 +12,11 @@ const migrateProgram = Effect.gen(function* () {
 
   const { db, close } = createDb(config.DATABASE_URL);
 
-  // Dispose the `effect/sql` pool, which owns the connections, before closing.
   const release = Effect.promise(() => disposeSqlRuntime(db)).pipe(
     Effect.andThen(Effect.promise(() => close())),
   );
 
   yield* Effect.gen(function* () {
-    // The migrator runs on `effect/sql`, so this script registers the runtime too.
     registerSqlRuntime(db, config.DATABASE_URL);
     yield* Effect.promise(() => runMigrations(db));
     logger.info('database migrations applied');

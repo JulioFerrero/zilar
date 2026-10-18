@@ -7,16 +7,13 @@ import type { ServerDatabase } from '../db/client';
 import type { CardMediaInsert, CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';
 
-// T-1847: the per-AI caps of the card media store (media plan M1, §7).
-// `CARD_MEDIA_DAILY_MAX` counts rows created in the last 24 hours;
+// Per-AI caps: `CARD_MEDIA_DAILY_MAX` counts rows created in the last 24 hours;
 // `CARD_MEDIA_TOTAL_BYTES_MAX` sums the bytes of every row the AI owns.
 export const CARD_MEDIA_DAILY_MAX = 40;
 export const CARD_MEDIA_TOTAL_BYTES_MAX = 200 * 1024 * 1024;
 
 export type CardMediaQuotaReason = 'daily' | 'total';
 
-// Refused upload: the AI is at its daily count or at its total bytes. The
-// caller maps it to a user-facing sentence (M2); nothing was written.
 export class CardMediaQuotaError extends Error {
   readonly reason: CardMediaQuotaReason;
 
@@ -43,19 +40,16 @@ export interface StoreCardMediaInput {
   bytes: Uint8Array;
 }
 
-// Writes the bytes under `dir` and one row, under a per-AI advisory lock so
-// two concurrent uploads cannot both read below a cap. The count and the sum
-// run in the same locked transaction as the insert; the file lands after the
-// caps pass, and is removed again if the transaction does not commit, so a
-// refused upload leaves neither a row nor a file.
+// The count and the bytes sum run in the same advisory-locked transaction as the insert,
+// so two concurrent uploads cannot both pass a cap. The file lands after the caps pass
+// and is removed if the transaction does not commit.
 export async function storeCardMedia(
   db: ServerDatabase,
   dir: string,
   input: StoreCardMediaInput,
 ): Promise<CardMediaRow> {
   const id = randomUUID();
-  // `storageKey` is server-made, never user input, so `cardMediaPath` can join
-  // it blindly.
+  // `storageKey` is server-made, never user input, so `cardMediaPath` can join it blindly.
   const storageKey = randomUUID();
   const path = join(dir, storageKey);
   const row: CardMediaInsert = {
@@ -121,8 +115,8 @@ export async function storeCardMedia(
     }
     return created;
   } catch (error) {
-    // A failed insert or commit must not leave the file behind. A removal that
-    // itself fails stays an orphan file the row cannot point at.
+    // A failed insert or commit must not leave the file behind; a failed removal leaves an
+    // orphan file no row can point at.
     if (written) {
       await unlink(path).catch(() => undefined);
     }
@@ -130,7 +124,6 @@ export async function storeCardMedia(
   }
 }
 
-// Reads one row by id, or `undefined` when there is none.
 export async function getCardMedia(
   db: ServerDatabase,
   id: string,
@@ -145,7 +138,6 @@ export async function getCardMedia(
   return row;
 }
 
-// The path of a row's bytes. `storageKey` is server-made, so this is safe.
 export function cardMediaPath(dir: string, row: CardMediaRow): string {
   return join(dir, row.storageKey);
 }

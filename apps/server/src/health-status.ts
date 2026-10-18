@@ -1,10 +1,5 @@
-// A module-level registry (one process) of the push component's liveness,
-// its last send outcome, and the two leader-drain flags the `/health` builder
-// reads. `component.ts` and `delivery.ts` write the push state; the leader lock
-// and the shutdown path write the leader/draining flags.
-//
-// It holds no secrets: the snapshot only ever carries a status, an ISO
-// timestamp, a failure kind and two booleans.
+// Process-wide push and leader liveness, read by the `/health` builder. It holds no
+// secrets: a status, an ISO timestamp, a failure kind and the drain flags.
 
 export type PushStatus = 'online' | 'offline' | 'unknown';
 
@@ -12,9 +7,8 @@ export type PushFailureKind = 'send-failed' | 'archive-unavailable';
 
 export type HealthSnapshot = {
   push: PushStatus;
-  /** True while this instance holds the leader advisory lock (T-1316). */
   leader: boolean;
-  /** True from SIGTERM until the process closes (T-1316). */
+  /** True from SIGTERM until the process closes. */
   draining: boolean;
   lastPushSentAt?: string;
   lastPushFailure?: { at: string; kind: PushFailureKind };
@@ -22,9 +16,8 @@ export type HealthSnapshot = {
 
 type PushState = {
   status: PushStatus;
-  // Why the component went offline is kept for diagnostics only and is
-  // deliberately not part of `healthSnapshot()`: the public `/health` route
-  // serialises that snapshot, and it must never leak internal error text.
+  // The failure reason stays out of `healthSnapshot()`: the public `/health` route
+  // serialises it, and it must never leak internal error text.
   offlineReason?: string;
   lastPushSentAt?: string;
   lastPushFailure?: { at: string; kind: PushFailureKind };
@@ -32,17 +25,14 @@ type PushState = {
 
 let state: PushState = { status: 'unknown' };
 
-// Leader/drain state, set by `leader/lock.ts` and `main.ts`'s shutdown path.
 let leader = false;
 let draining = false;
 
-// The leader lock calls this when it acquires (true) and steps down (false).
 export function markLeader(value: boolean): void {
   leader = value;
 }
 
-// Called once, at the start of shutdown, so `/health` answers 503 while the
-// process is still serving during the drain.
+// Called once at shutdown so `/health` answers 503 while the process drains.
 export function markDraining(): void {
   draining = true;
 }

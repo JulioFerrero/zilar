@@ -1,16 +1,5 @@
-// GIF search, trending and the media proxy on the Effect `HttpApi` adapter
-// (T-0586): the same methods, paths, step order, statuses, texts, log fields,
-// headers and SSRF checks as the deleted router (`routes.ts`), mounted by the
-// Effect edge (`apps/server/src/effect/edge.ts`).
-//
-// The queries are decoded manually inside the handlers (Effect Schema, same
-// rules as the old zod schemas) instead of as endpoint `query`, because the
-// old routes ran the provider check and the limiter *before* the decode (an
-// invalid query still spends budget). Session -> 501 -> limiter -> 400 —
-// exactly like the old `requireSession` -> provider check -> limiter ->
-// `safeParse` sequence. The media route answers raw bytes with
-// `HttpServerResponse.uint8Array` (see `voice/api.ts`); `HttpApiBuilder`
-// returns a handler-returned `HttpServerResponse` untouched, headers included.
+// Step order is security-relevant: session, provider check (501), then the limiter, then
+// the 400 query decode, so an invalid query still spends budget.
 import { createHmac } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -55,23 +44,18 @@ export interface GifsApiDependencies extends GifsRoutesDependencies {
   logger: Logger;
 }
 
-// Replaces `searchQuerySchema` (zod): strict, `q` is 1..100 characters,
-// `pos?` is at most 128 characters. Values arrive as strings from the query
-// string, so the decode runs over the raw `URLSearchParams` view (first value
-// wins, like the old `c.req.query()`).
+// `q` is 1..100 characters, `pos?` at most 128; values arrive as strings from the query
+// string (first value wins).
 const GifSearchQuery = Schema.Struct({
   q: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100))),
   pos: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(128)))),
 });
 
-// Replaces `trendingQuerySchema` (zod): strict, `pos?` is at most 128 chars.
+// Strict; `pos?` is at most 128 chars.
 const GifTrendingQuery = Schema.Struct({
   pos: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(128)))),
 });
 
-// The group and the reply schemas live in the shared contract
-// (`@zilar/api-contract`, `gifs.ts`, T-0895). The queries are decoded by hand
-// in the handlers, so the contract declares none.
 const GifsApi = HttpApi.make('gifs').add(GifsGroup);
 
 async function resolvePublicAddress(host: string): Promise<string | undefined> {
@@ -98,8 +82,7 @@ function providerConfigured(config: ServerConfig): boolean {
 }
 
 function tokenSecret(config: ServerConfig): string {
-  // The session/signing secret signs media tokens. Bound per feature so a
-  // token minted elsewhere can never pass as a GIF token.
+  // Bound per feature so a token minted elsewhere can never pass as a GIF token.
   return createHmac('sha256', config.BETTER_AUTH_SECRET).update('gifs-media').digest('hex');
 }
 
@@ -180,9 +163,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
     };
   }
 
-  // A provider failure is retryable (502), never an empty 200: the panel
-  // shows its Retry state instead of "No GIFs found". A provider refusal
-  // (HttpError) passes through untouched.
+  // A provider failure is a retryable 502, never an empty 200, so the panel shows Retry.
   function searchOrFail(promise: () => Promise<GifPage>): Promise<GifPage> {
     return promise().catch((error: unknown) => {
       if (error instanceof HttpError) {
@@ -274,9 +255,6 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
           if (!mediaLimiter.allow(user.id)) {
             throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
           }
-          // The Effect router hands out decoded params (like the old
-          // `c.req.param`), so this second decode is idempotent on normal
-          // tokens and keeps the old 404 on a bad escape.
           let rawToken: string;
           try {
             rawToken = decodeURIComponent(request.params.token);
@@ -333,20 +311,13 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  // The router caps a path segment at 100 characters by default, but a media
-  // token is ~200 characters (base64url payload + signature), so the cap is
-  // raised; the token itself is still validated inside the handler.
+  // The edge keeps the request log (redacted path); the router's own logger would print
+  // full URLs. A media token is ~200 characters, so the 100-char segment cap is raised.
   const { handler: effectHandler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
     { disableLogger: true, routerConfig: { maxParamLength: 4096 } },
   );
 
-  // The Effect router answers its own misses with an empty 404 (its internal
-  // `safeDecodeURI` rejects a malformed percent escape before any handler
-  // runs), so a bad token escape under the media prefix keeps the old
-  // `not_found` envelope here at the edge.
   const mediaPrefix = '/api/gifs/media/';
   const edgeHandler: EffectApiMount['handler'] = async (request) => {
     const response = await effectHandler(request);

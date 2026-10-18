@@ -6,13 +6,11 @@ export interface RateLimiterOptions {
 
 export interface RateLimiter {
   allow: (key: string) => boolean;
-  /** Number of keys currently tracked. Exposed so tests can observe pruning. */
   readonly size: number;
 }
 
-// Simple in-memory limiter keyed by an arbitrary string (usually a user id).
-// It is per process: with several server processes a caller could get the
-// limit per process, which is acceptable for short-lived, low-stakes caps.
+// In-memory and per process: with several server processes a caller gets the limit per
+// process, which is acceptable for short-lived, low-stakes caps.
 export function createRateLimiter({
   max,
   windowMs,
@@ -31,9 +29,8 @@ export function createRateLimiter({
     allow(key: string): boolean {
       const current = now();
       const cutoff = current - windowMs;
-      // Prune keys whose entries all fell out of the window, so the map does
-      // not grow forever with one entry per caller who ever hit the route. At
-      // most once per window: entries are filtered per call anyway.
+      // Prune expired keys so the map does not grow with every caller who ever hit
+      // the route; at most once per window, since entries are filtered per call anyway.
       if (current - lastPrune >= windowMs) {
         lastPrune = current;
         for (const [other, times] of attempts) {

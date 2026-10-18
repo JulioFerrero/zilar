@@ -1,11 +1,6 @@
-// T-1496: the safe subprocess runner shared by the voice engine and the
-// sticker converter. Moved byte for byte out of `voice/engine.ts` so more than
-// one module can run ffmpeg with the same no-shell, hard-timeout guarantees.
-
 import { spawn } from 'node:child_process';
 import { Duration, Effect } from 'effect';
 
-/** ffmpeg or ffprobe failed or timed out. */
 export class FfmpegError extends Error {
   constructor(message: string) {
     super(message);
@@ -19,10 +14,8 @@ export interface CommandResult {
   stderr: string;
 }
 
-// Runs a command with no shell, a hard timeout and captured output. The child
-// is killed when the timeout fires or the fiber is interrupted, which keeps a
-// hostile input from pinning the server. A non-zero exit is handed back to the
-// caller, which decides what it means.
+// No shell, a hard timeout and captured output. The child is killed on timeout or fiber
+// interrupt, so a hostile input cannot pin the server.
 export function runCommand(
   command: string,
   args: string[],
@@ -55,7 +48,6 @@ export function runCommand(
       );
     });
 
-    // Runs on timeout or interrupt: kill the child unless it already settled.
     return Effect.sync(() => {
       if (settled) return;
       settled = true;

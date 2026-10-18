@@ -1,7 +1,3 @@
-// Public directory module on the Effect `HttpApi` adapter (T-0514): the same
-// methods, paths, limiter order and answers as the deleted router.
-// Its store runs on effect/sql.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { DirectoryGroup, DirectoryRateLimit } from '@zilar/api-contract';
@@ -22,13 +18,9 @@ import { publicGroupForHandle, searchDirectory, type GroupKind } from './service
 export const DIRECTORY_RATE_LIMIT_MAX = 30;
 export const DIRECTORY_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
-// The schemas, the group and the middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0894).
-
 export interface DirectoryApiDependencies {
   auth: Auth;
   db: ServerDatabase;
-  /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
   limiter?: RateLimiter;
   logger: Logger;
@@ -71,8 +63,7 @@ export function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMou
 
   const groupLayer = HttpApiBuilder.group(DirectoryApi, 'directory', (handlers) =>
     handlers
-      // Searches public groups and channels only. `q` filters by handle or
-      // title prefix, optional `kind`, 20 per page with a cursor.
+      // `q` matches handle or title prefix; optional `kind`; 20 per page with a cursor.
       .handle(
         'search',
         handler(logger, async (request, user) => {
@@ -84,7 +75,6 @@ export function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMou
           return { entries: page.entries.map(toEntry), next: page.next };
         }),
       )
-      // Exact match of one public group by `@handle`.
       .handle(
         'byHandle',
         handler(logger, async (request, user) =>
@@ -96,9 +86,8 @@ export function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMou
   const apiLayer = HttpApiBuilder.layer(DirectoryApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // The read budget runs before the query is decoded, exactly like the old
-    // route's `limiter.allow` -> `safeParse` order: an invalid query still
-    // spends budget.
+    // The read budget runs before the query is decoded: an invalid query still spends
+    // budget.
     Layer.provide(
       rateLimitLayer(DirectoryRateLimit, limiter, 'Too many attempts, try again later'),
     ),

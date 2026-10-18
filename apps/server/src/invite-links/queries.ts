@@ -37,8 +37,7 @@ async function requireGroupManager(
     }),
   );
   const membership = group ? await findGroupMembership(db, groupId, actorId) : undefined;
-  // A non-member sees the same 404 as a missing group, so group ids cannot
-  // be probed.
+  // A non-member sees the same 404 as a missing group.
   if (!group || !membership) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -162,8 +161,7 @@ export async function revokeInviteLink(
         RETURNING *`;
     }),
   );
-  // Idempotent: revoking twice (or revoking a missing id) still answers 204.
-  // The audit entry fires only on the first revoke, when the row changed.
+  // Idempotent; the audit entry fires only when the row changed.
   if (!row) {
     return;
   }
@@ -196,9 +194,8 @@ export async function findLinkRow(
         WHERE token_hash = ${hash} LIMIT 1`;
     }),
   );
-  // The lookup is by hash, so a wrong-shaped token simply misses. The
-  // constant-time comparison keeps a slow local oracle from helping a
-  // guesser confirm prefixes.
+  // The lookup is by hash, so a wrong-shaped token misses. Constant-time comparison keeps
+  // a local timing oracle from confirming prefixes.
   if (!row || !inviteTokenMatches(token, row.tokenHash)) {
     return null;
   }
@@ -210,7 +207,7 @@ export async function countGroupMembers(db: ServerDatabase, groupId: string): Pr
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // T-1492: a group's members are its people and its AIs.
+      // A group's members are its people and its AIs.
       return yield* sql<{ total: number }>`SELECT (
           (SELECT count(*) FROM group_members WHERE group_id = ${groupId})
           + (SELECT count(*) FROM group_ais WHERE group_id = ${groupId})

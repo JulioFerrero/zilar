@@ -1,15 +1,5 @@
-// First-run setup on the Effect `HttpApi` adapter (T-0578): the same
-// methods, paths, statuses, bodies, step order and texts as the router it
-// replaces. `app.ts` mounts this API at the same position.
-//
-// Both transactions run on `effect/sql` (`sql.withTransaction` inside a
-// `runSql` on the registered runtime), through the effects in
-// `setup/settings.ts`; the older versions are gone in T-0675.
-//
-// The body is decoded manually inside the POST handler (Effect Schema, same
-// trims, lowercase, bounds, email rule and texts as the old zod schema), so
-// the route keeps its exact order: `needsSetup` 404 -> limiter 429 -> decode
-// 400 -> transaction -> test send -> mailer swap -> audit.
+// Step order: `needsSetup` 404, limiter 429, decode 400, transaction, test send, mailer
+// swap, audit.
 
 import { Effect, Layer, Result, Schema } from 'effect';
 import type { HttpServerRequest } from 'effect/http';
@@ -50,24 +40,15 @@ export interface SetupApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   config: ServerConfig;
-  /** The live mailer, swapped to the stored Resend transport on success. */
   mailer: CurrentMailer;
   logger: Logger;
   audit?: AuditRecorder;
-  /** Overrides the per-IP setup limiter (tests inject a small budget). */
   limiter?: RateLimiter | undefined;
-  /** Injected in tests; production trusts proxy hops like the join limiter. */
   getClientIp?: ((request: HttpServerRequest.HttpServerRequest) => string) | undefined;
-  /** Injected in tests; production trusts TRUSTED_PROXY_HOPS like the join limiter. */
   trustedProxyHops?: number | undefined;
-  /** Sends the test code through the new mailer; tests inject a fake. */
   sendTestCode?:
     | ((input: { auth: Auth; mailer: Mailer; email: string; inviteCode: string }) => Promise<void>)
     | undefined;
-  /**
-   * Swaps the live mailer after the test send succeeds; tests inject a
-   * capture. Defaults to swapping the shared `mailer` above.
-   */
   swapMailer?: ((mailer: Mailer) => void) | undefined;
 }
 
@@ -80,7 +61,6 @@ const SetupGroup = HttpApiGroup.make('setup')
       success: SetupResult,
     }),
   )
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const SetupApi = HttpApi.make('setup').add(SetupGroup);
@@ -94,10 +74,8 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
   const limiter =
     deps.limiter ??
     createRateLimiter({ max: SETUP_RATE_LIMIT_MAX, windowMs: SETUP_RATE_LIMIT_WINDOW_MS });
-  // Same client-IP rule as the join limiter: with N trusted proxy hops
-  // the Nth address from the right of `x-forwarded-for` counts, otherwise
-  // the socket address — behind Coolify every visitor must not share one
-  // budget. Tests inject `getClientIp`.
+  // Same client-IP rule as the join limiter: behind Coolify every visitor must not share
+  // one budget.
   const clientIp =
     deps.getClientIp ??
     ((request: HttpServerRequest.HttpServerRequest) =>
@@ -131,16 +109,14 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
           Effect.gen(function* () {
-            // Setup-done first: once an admin exists every caller gets the same
-            // 404 as an unknown route, never a 429.
+            // Setup-done first: once an admin exists every caller gets a 404, never a 429.
             if (!(yield* Effect.promise(() => needsSetup(deps.db)))) {
               throw notFound();
             }
             if (!limiter.allow(clientIp(request.request))) {
               throw new HttpError(429, 'rate_limited', 'Too many setup attempts, try again later');
             }
-            // Mirrors `c.req.json().catch(() => null)`: an unparseable or empty
-            // body is `null`, which fails the struct decode below.
+            // An unparseable or empty body is `null`, which fails the struct decode below.
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(null)),
             );
@@ -164,8 +140,7 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
                   yield* sql.withTransaction(
                     Effect.gen(function* () {
                       yield* takeSetupLockEffect();
-                      // Re-check inside the lock: a concurrent setup (or a
-                      // sign-up racing the check above) must not create a
+                      // Re-check inside the lock: a concurrent setup must not create a
                       // second invite.
                       if (yield* needsSetupEffect()) {
                         yield* saveMailSettingsEffect(cipher, { resendApiKey, from });
@@ -217,10 +192,8 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
                     yield* sql.withTransaction(
                       Effect.gen(function* () {
                         yield* takeSetupLockEffect();
-                        // Roll back the settings AND the invite only while
-                        // setup is still open (no user signed up in the
-                        // meantime). Never delete on a concurrent success:
-                        // both rows belong to the finished setup then.
+                        // Roll back settings AND invite only while setup is still open;
+                        // both rows belong to a finished setup on concurrent success.
                         if (yield* needsSetupEffect()) {
                           yield* deleteMailSettingsEffect();
                           yield* sql`DELETE FROM invites WHERE code = ${code}`;
@@ -234,8 +207,7 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
                 Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
               );
               if (!rolledBack.ok) {
-                // The cleanup must never mask the specified answer or leak
-                // provider detail: one line with the error name, then 422 below.
+                // One line with the error name, then 422: never provider detail.
                 const rollbackError = rolledBack.defect;
                 deps.logger.warn(
                   {
@@ -251,11 +223,9 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
               );
             }
 
-            // The key works: swap the live mailer without a restart.
             swap(candidate);
 
-            // Ids only: never the email, the key or the invite code. The recorder
-            // swallows write failures itself, so this never fails the request.
+            // Ids only: never the email, the key or the invite code.
             void deps.audit?.record({
               actorUserId: null,
               aiId: null,

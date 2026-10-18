@@ -1,19 +1,6 @@
-// Files module on the Effect `HttpApi` adapter (T-0580): the same method,
-// path, step order, statuses, texts, logs and headers as the old router
-// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChatOnDemand`;
-// the file-row read runs on the `effect/sql` client.
-//
-// The query is decoded manually inside the handler (Effect Schema, same rules
-// as the old zod schema) instead of as an endpoint `query`, because the old
-// route ran the archive check and the limiter *before* the decode (an invalid
-// query still spends budget). 501 `files_unavailable` comes first, then the
-// 429 limiter, then the 400 decode, then the 404 resolutions — exactly like
-// the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
-//
-// This is the first module that streams a response body: the upstream fetch
-// body flows through as a web `ReadableStream` via `HttpServerResponse.raw`
-// and is never read into memory.
+// Step order is security-relevant: 501 `files_unavailable`, then the 429 limiter, then the
+// 400 query decode, then the 404 resolutions. The upstream body streams through, never
+// read into memory.
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -43,27 +30,19 @@ export interface FilesRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   logger: Logger;
-  /** Absent when XMPP_ARCHIVE_DATABASE_URL is unset → every request 501s. */
   archive?: ArchivePool;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
-  /** Injected in tests so the 429 boundary is reached in a few requests. */
   rateLimitMax?: number;
-  /** Injected in tests so the ejabberd fetch never touches the network. */
   internalFetch?: InternalFetch;
 }
 
-// Replaces `querySchema` (zod): `chat` is 1..256 characters, `url` is
-// 1..2048. Strict, so an excess key fails like the old `.strict()`. Values
-// arrive as strings from the query string, so the decode runs over the raw
-// `URLSearchParams` view (first value wins, like the old `c.req.query()`).
+// `chat` is 1..256 characters and `url` 1..2048; strict, and values arrive as strings
+// from the query string (first value wins).
 const FilesQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
-  // A client cache-buster for a retried image load (T-1337): the bubble appends
-  // a new `retry` on every attempt so a 404 is not served from the browser
-  // cache. It never reaches the lookup, only breaks the cache, so it is
-  // accepted and ignored. Every other excess key still fails below.
+  // A cache-buster for a retried image load: a new `retry` on every attempt so a 404 is
+  // not served from the browser cache. It never reaches the lookup.
   retry: Schema.optional(Schema.String.check(Schema.isMaxLength(32))),
 });
 
@@ -109,10 +88,9 @@ function encodeRfc5987(value: string): string {
     .replaceAll('*', '%2A');
 }
 
-// Only these sender-declared types may render inline on the app origin:
-// raster images, mp4/webm video, and any audio (voice notes are audio/mp4
-// and audio/mpeg). Everything else — SVG and HTML included — is an
-// attachment, because script in it would run with the user's session (SEC-1).
+// Only raster images, mp4/webm video and audio may render inline on the app origin.
+// Everything else, SVG and HTML included, is an attachment: script in it would run with
+// the user's session (SEC-1).
 const INLINE_MEDIA_TYPES: ReadonlySet<string> = new Set([
   'image/png',
   'image/jpeg',
@@ -129,12 +107,9 @@ function isInlineMediaType(mime: string): boolean {
   return mime.startsWith('audio/');
 }
 
-// Only these upstream headers reach the client; everything else (cookies,
-// server banners, ejabberd internals) stays behind. `Content-Type` falls back
-// to the indexed mime, then to a generic binary type. The effective type is
-// the sender's word (stanza payload or upstream header), so SVG and HTML are
-// forced to `application/octet-stream` and served as attachments, and every
-// reply carries a sandbox CSP so even an inline type cannot run script.
+// Only these upstream headers reach the client; cookies and ejabberd internals stay
+// behind. The effective type is the sender's word, so SVG and HTML are forced to
+// `application/octet-stream` as attachments, and every reply carries a sandbox CSP.
 function passthroughHeaders(upstream: Headers, row: FilesItemRow): Headers {
   const headers = new Headers();
   const declared = upstream.get('content-type') ?? row.mime ?? 'application/octet-stream';
@@ -164,11 +139,8 @@ function passthroughHeaders(upstream: Headers, row: FilesItemRow): Headers {
 }
 
 const FilesGroup = HttpApiGroup.make('files')
-  // No payload or query schema: the handler decodes the query by hand (so
-  // the 501/429 guards run first) and streams the upstream body itself.
   .add(HttpApiEndpoint.get('file', '/files'))
   .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const FilesApi = HttpApi.make('files').add(FilesGroup);
@@ -182,8 +154,8 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
     now,
   });
   const internalFetch = deps.internalFetch ?? defaultInternalFetch;
-  // ejabberd resolves the upload vhost from the Host header, so the internal
-  // fetch must carry the public host, not `ejabberd:5280` (T-1315).
+  // ejabberd resolves the upload vhost from the Host header, so the internal fetch carries
+  // the public host, not `ejabberd:5280`.
   const uploadHost = new URL(deps.config.PUBLIC_URL).host;
 
   const groupLayer = HttpApiBuilder.group(FilesApi, 'files', (handlers) =>
@@ -228,8 +200,8 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           const archiveOwner = filter.kind === 'room' ? filter.room : allowed.ownLocalpart;
           const chatJid = filter.kind === 'room' ? filter.room : filter.peer;
 
-          // A rejection surfaces as a defect, which `yield*` does not throw
-          // into a surrounding `try`; map it to a value instead.
+          // A rejection surfaces as a defect, which `yield*` does not throw into a
+          // surrounding `try`; map it to a value instead.
           const firstLookup = yield* Effect.promise(() =>
             findFileRow(deps.db, archiveOwner, chatJid, query.url),
           ).pipe(
@@ -241,8 +213,8 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           }
           let row = firstLookup.row;
           if (row === undefined) {
-            // A just-sent file has no indexed row yet: index this chat on demand
-            // and look again. A failure is logged and the lookup below answers.
+            // A just-sent file has no indexed row yet: index this chat on demand and look
+            // again. A failure is logged and the lookup below answers.
             const archive = deps.archive;
             yield* Effect.promise(() =>
               indexChatOnDemand({
@@ -272,8 +244,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
             throw notFound();
           }
 
-          // Only the Range header crosses into ejabberd: cookies, auth and any
-          // other caller header stay behind.
+          // Only the Range header crosses into ejabberd.
           const range = request.request.headers['range'];
           const fetched = yield* Effect.promise(() =>
             internalFetch(internalUrl, {
@@ -294,17 +265,15 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           }
           const upstream = fetched.response;
           if (upstream.status === 200 || upstream.status === 206 || upstream.status === 416) {
-            // The upstream web `ReadableStream` passes through untouched:
-            // `raw` wraps it as-is and `toWeb` builds the answer with
-            // `new Response(body.body, ...)`, so the bytes are never buffered.
+            // The upstream web `ReadableStream` passes through untouched: `raw` wraps it and
+            // `toWeb` builds the answer, so the bytes are never buffered.
             return HttpServerResponse.raw(upstream.body, {
               status: upstream.status,
               headers: passthroughHeaders(upstream.headers, row),
             });
           }
-          // A non-200/206/416 upstream (ejabberd 404, a bad Host, a refusal)
-          // becomes the fixed 502; log only the status, never the URL/token.
-          // Release the unread body so the socket is not left dangling.
+          // A non-200/206/416 upstream becomes the fixed 502; log only the status, never
+          // the URL or token, and release the unread body.
           void upstream.body.cancel().catch(() => {});
           deps.logger.warn({ userId: user.id, status: upstream.status }, 'files upstream status');
           throw new HttpError(502, 'file_unavailable', 'The file could not be loaded');

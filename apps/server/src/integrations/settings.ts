@@ -1,17 +1,7 @@
-// Integration settings (T-0162). Instance-level secrets the server
-// owner manages from Settings → Integrations: the Telegram bot token and,
-// since the lead's follow-up, the Resend key + sender for sign-in mail.
-//
-// Both live in the `instance_settings` table T-0161 built, sealed with the
-// same envelope cipher (`setup/crypto.ts` via `setup/settings.ts`). The
-// environment variables still win when set, so explicit env installs behave
-// exactly as before.
-//
-// The server owner is the user with the earliest `createdAt`: there is no
-// global admin role (group roles are per group), so the first account to
-// exist owns the integration settings. Every route answers the same 404 as
-// an unknown route for anyone else — a non-owner cannot tell an unknown
-// path from a forbidden one.
+// Instance-level secrets the owner manages from Settings → Integrations, sealed with the
+// envelope cipher; env variables still win when set. The owner is the user with the
+// earliest `createdAt` (there is no global admin role), and everyone else gets the same
+// 404 as an unknown route.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -19,10 +9,6 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import type { createSettingsCipher } from '../setup/crypto';
 
-// The mail helpers (`getMailSettings`, `saveMailSettingsEffect`,
-// `settingsCipherFor`, `RESEND_API_KEY_SETTING`, `MAIL_FROM_SETTING`)
-// live in `setup/settings.ts` and are used as-is; this module adds only
-// the Telegram bot token key.
 export const TELEGRAM_BOT_TOKEN_SETTING = 'telegram.bot_token';
 
 type Decrypter = Pick<ReturnType<typeof createSettingsCipher>, 'decrypt'>;

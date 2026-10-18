@@ -13,9 +13,7 @@ const SENSITIVE_KEYS = [
   'privateKey',
 ];
 
-// Environment names whose values are secrets (T-1179, OPS-17). Redacted at
-// the top level and one level deep, like the generic keys above, so a logged
-// config object or error detail can never carry them.
+// Names whose values are secrets: redacted at the top level and one level deep.
 const SENSITIVE_ENV_KEYS = [
   'DATABASE_URL',
   'BETTER_AUTH_SECRET',

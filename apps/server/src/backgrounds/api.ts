@@ -1,11 +1,3 @@
-// Background images on the Effect `HttpApi` adapter (T-0577): the same
-// methods, paths, limiter order, statuses, texts, bodies and GET headers as
-// the old router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). The upload reads the raw body stream
-// under a cap (`readCapped`, item 12) exactly like `voice/api.ts`; the file
-// route answers raw bytes with `HttpServerResponse.uint8Array`, which
-// `HttpApiBuilder` returns untouched, headers included.
-
 import { Effect, Layer } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -38,11 +30,6 @@ export interface BackgroundsApiDependencies extends BackgroundsRoutesDependencie
   logger: Logger;
 }
 
-// A malformed percent escape is an unknown image (404), not a server error.
-// The Effect router hands the handler the same decoded param the old router's
-// `c.req.param()` gave (see `chat-prefs/api.ts`), so the lookup decodes it
-// again while the etag keeps the param as received — the same final id and
-// etag as the old route for the test inputs (plain uuids).
 function decodePathId(raw: string): string {
   try {
     return decodeURIComponent(raw);
@@ -55,15 +42,11 @@ function serviceDeps(deps: BackgroundsApiDependencies): BackgroundsServiceDeps {
   return { db: deps.db, storageDir: deps.storageDir };
 }
 
-// The group and the reply schemas live in the shared contract
-// (`@zilar/api-contract`, `backgrounds.ts`, T-0895). The upload declares no
-// payload: the handler reads the raw body stream itself.
 const BackgroundsApi = HttpApi.make('backgrounds').add(BackgroundsGroup);
 
 export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const injected = deps.uploadLimiter;
-  // An injected limiter only has to say `allow`; `makeRateLimit` wants the full shape.
   const uploadLimiter: RateLimiter =
     injected === undefined
       ? createRateLimiter({
@@ -75,8 +58,8 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
 
   const groupLayer = HttpApiBuilder.group(BackgroundsApi, 'backgrounds', (handlers) =>
     handlers
-      // Uploads one image. The limiter middleware already charged the
-      // budget, before the declared-length check and the capped read.
+      // The limiter middleware charges the budget before the declared-length check
+      // and the capped read.
       .handle(
         'upload',
         handler(logger, (request, user) =>
@@ -106,16 +89,14 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
           }),
         ),
       )
-      // The owner's images, newest first.
       .handle(
         'list',
         handler(logger, async (_request, user) => ({
           backgrounds: await listBackgrounds(deps.db, user.id),
         })),
       )
-      // Streams the stored file to its owner, or to a member of a group that
-      // uses it as its background. A signed-in stranger and an unknown id
-      // answer the same 404.
+      // The owner, or a member of a group using the image; a signed-in stranger and an
+      // unknown id answer the same 404.
       .handle(
         'getFile',
         handler(logger, async (request, user) => {
@@ -138,8 +119,6 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
           });
         }),
       )
-      // Deletes one image owned by the caller. `false` is the same 404 as an
-      // unknown id; success is an empty 204.
       .handle(
         'remove',
         handler(logger, async (request, user) => {
@@ -159,8 +138,7 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    // The upload budget runs before the body is read, exactly like the old
-    // route's `uploadLimiter.allow` -> declared-length -> `readCapped` order.
+    // The upload budget runs before the body is read.
     Layer.provide(
       rateLimitLayer(
         BackgroundsUploadRateLimit,

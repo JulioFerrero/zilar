@@ -1,7 +1,3 @@
-// The server config field map (T-1457): every environment key the server reads,
-// with its default and its boundary validation. Split out of `config.ts`; the
-// decode helpers live in `./schema-helpers` and the loader in `./load`.
-
 import { Schema } from 'effect';
 import {
   agentToolRoundsSchema,
@@ -31,58 +27,31 @@ export const serverConfigSchema = Schema.Struct({
   BETTER_AUTH_SECRET: Schema.String.pipe(Schema.check(Schema.isMinLength(32))),
   BETTER_AUTH_URL: Schema.optional(anyUrlSchema),
   WEB_ORIGINS: withDefault(webOriginsSchema, 'http://localhost:5173'),
-  // Search (T-0117): connection string for a read-only role on the
-  // ejabberd MAM archive. Absent → GET /api/search answers 501 and the
-  // web hides the feature.
+  // Read-only role on the ejabberd MAM archive; absent means search answers 501.
   XMPP_ARCHIVE_DATABASE_URL: Schema.optional(databaseUrlSchema),
-  // GitHub App (one App for the platform). Optional so the server still
-  // boots without git integration; all three must be set together.
+  // Optional so the server boots without git; all three must be set together.
   GITHUB_APP_ID: Schema.optional(nonEmptyStringSchema),
   GITHUB_APP_PRIVATE_KEY: Schema.optional(nonEmptyStringSchema),
   GITHUB_APP_INSTALLATION_ID: Schema.optional(nonEmptyStringSchema),
-  // Invite links (T-0115): the base URL baked into shareable group join
-  // links (`${WEB_BASE_URL}/j/<token>`). A plain URL, never echoed in a
-  // config error.
+  // The base URL baked into shareable join links; never echoed in a config error.
   WEB_BASE_URL: withDefault(anyUrlSchema, 'http://localhost:5173'),
-  // Stickers (T-0120): the directory sticker files are stored under.
-  // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
-  // writable at startup (checked in `index.ts`).
+  // Sticker files are `<uuid>.<ext>`; the dir must be creatable and writable at startup.
   STICKER_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/stickers'),
-  // Avatars (T-0165): the directory profile pictures are stored under.
-  // Same rules as `STICKER_STORAGE_DIR`: file names are `<uuid>.<ext>`
-  // (never user input), the dir must exist or be creatable and writable
-  // at startup (checked in `index.ts`).
   AVATAR_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/avatars'),
-  // Background wallpapers (T-0460): the directory uploaded chat background
-  // images are stored under. Same rules as `AVATAR_STORAGE_DIR`: file names
-  // are `<uuid>.<ext>` (never user input), the dir must exist or be
-  // creatable and writable at startup (checked in `index.ts`).
   BACKGROUND_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/backgrounds'),
-  // Card media (T-1847): the directory AI card images and files are stored
-  // under. Same rules as `AVATAR_STORAGE_DIR`: file names are `<uuid>` (never
-  // user input), the dir must exist or be creatable and writable at startup.
   CARD_MEDIA_STORAGE_DIR: withDefault(nonEmptyStringSchema, './data/card-media'),
-  // Telegram sticker import (T-0123): the token of a bot that may call
-  // `getStickerSet`/`getFile` for public packs (Julio creates one with
-  // @BotFather and puts it in `infra/.env`). Unset = the import route
-  // answers 501 `import_unavailable` and the web hides the feature. The
-  // token is never logged or returned (see `logger.ts` redact paths and
-  // the scrubbing in `stickers/telegram-import.ts`).
+  // A bot that may read public packs for import. Unset means the route answers 501. The
+  // token is never logged or returned (see `logger.ts` redaction).
   TELEGRAM_BOT_TOKEN: Schema.optional(nonEmptyStringSchema),
-  // GIFs (T-0122): `GIF_PROVIDER` picks the search adapter (`giphy` today;
-  // a second adapter can be added behind the same port later). Unset = the
-  // feature is off and every route answers 501 `gifs_unavailable`. The key
-  // is never logged or returned; the rating filter narrows provider results
-  // (`g` | `pg` | `pg-13` | `r`, default `pg-13`).
+  // `GIF_PROVIDER` picks the adapter; unset means the feature is off and every route
+  // answers 501. The key is never logged or returned. The rating filter is `g` | `pg` |
+  // `pg-13` | `r`, default `pg-13`.
   GIF_PROVIDER: Schema.optional(Schema.Literals(['giphy'])),
   GIF_API_KEY: Schema.optional(nonEmptyStringSchema),
   GIF_RATING: literalWithDefault(['g', 'pg', 'pg-13', 'r'] as const, 'pg-13'),
-  // Client IP behind a proxy (T-0134, T-1983): how many right-most
-  // `x-forwarded-for` hops to trust when resolving the client IP. 0
-  // (default) ignores proxy headers entirely and uses the socket address;
-  // N > 0 takes the Nth address from the right (an attacker controls the
-  // left side). The edge reads it for Better Auth (its rate limits and the
-  // stored session IP), and every per-IP limiter reads it too.
+  // How many right-most `x-forwarded-for` hops to trust. 0 (default) ignores proxy
+  // headers and uses the socket address; N > 0 takes the Nth address from the right,
+  // since an attacker controls only the left side.
   TRUSTED_PROXY_HOPS: withDefault(
     Schema.String.pipe(
       Schema.check(Schema.isPattern(/^-?\d+$/)),
@@ -92,94 +61,62 @@ export const serverConfigSchema = Schema.Struct({
     ),
     '0',
   ),
-  // Envelope-encryption master key for provider keys stored in
-  // `provider_connections`. Optional so the server still boots without it;
-  // the connections module refuses to start when it is absent. At least 32
-  // bytes, so a weak key fails validation at startup rather than encrypting at
-  // rest.
+  // Master key for provider keys stored in `provider_connections`; optional so the server
+  // boots without it, but the module refuses to start when it is absent. At least 32 bytes.
   ZILAR_KEY_ENCRYPTION_KEY: Schema.optional(
     Schema.String.pipe(Schema.check(Schema.isMinLength(32))),
   ),
-  // Mail transport (T-0128, T-0161): `console` writes sign-in codes to
-  // the log (development only), `smtp` sends real mail through
-  // nodemailer. Unset means "unconfigured": the server boots (production
-  // included) and sending a code fails with a clear logged error until
-  // explicit `MAIL_TRANSPORT`/`SMTP_*` env or the setup screen's stored
-  // Resend settings provide a transport (see `auth/mailer.ts`).
+  // `console` writes sign-in codes to the log (development only), `smtp` sends real mail.
+  // Unset means unconfigured: the server boots and sending fails with a clear error until
+  // explicit SMTP env or the setup screen's stored settings provide a transport.
   MAIL_TRANSPORT: Schema.optional(Schema.Literals(['console', 'smtp'])),
-  // SMTP host, required when MAIL_TRANSPORT=smtp.
+  // Required when MAIL_TRANSPORT=smtp.
   SMTP_HOST: Schema.optional(nonEmptyStringSchema),
-  // SMTP port in [1, 65535]. Default: 587.
+  // In [1, 65535]. Default: 587.
   SMTP_PORT: portSchema('587'),
-  // `true` = implicit TLS (normally port 465). `false` = STARTTLS is
-  // required: the mailer sets `requireTLS: true` and never falls back
-  // to plaintext. Default: false.
+  // `true` = implicit TLS (normally 465). `false` = STARTTLS required: the mailer sets
+  // `requireTLS: true` and never falls back to plaintext.
   SMTP_SECURE: booleanFlagSchema(),
-  // SMTP credentials. Both are optional together (no auth when absent);
-  // setting only one is a startup error.
+  // Both optional together (no auth when absent); setting only one is a startup error.
   SMTP_USER: Schema.optional(nonEmptyStringSchema),
   SMTP_PASSWORD: Schema.optional(nonEmptyStringSchema),
-  // Sender shown on sign-in mails, e.g. `Zilar <no-reply@example.com>`.
   // Required when MAIL_TRANSPORT=smtp.
   MAIL_FROM: Schema.optional(nonEmptyStringSchema),
-  // Optional Reply-To header for sign-in mails.
   MAIL_REPLY_TO: Schema.optional(nonEmptyStringSchema),
-  // Explicit opt-in that lets a single-admin private install run with
-  // MAIL_TRANSPORT=console in production. The server then logs a loud
-  // startup warning and the codes appear in the log. Off by default and
-  // unsuitable for anyone but the operator.
+  // Lets a single-admin private install run with MAIL_TRANSPORT=console in production:
+  // it logs a loud warning and codes appear in the log. Off by default.
   MAIL_ALLOW_CONSOLE_IN_PRODUCTION: booleanFlagSchema(),
-  // Agent gateway (T-0034): when true, the server keeps every active AI
-  // online over XMPP and replies to owner DMs. Off by default; enabling it
-  // is one env line.
+  // Keeps every active AI online over XMPP and replies to owner DMs. Off by default.
   AGENT_GATEWAY_ENABLED: booleanFlagSchema(),
-  // Action demo adapter (T-0093): when true, the harmless `demo.echo`
-  // adapter is registered so a DM owner can prove the `request_action`
-  // tool end-to-end without a real integration. Off by default so
-  // production behaviour is unchanged.
+  // Registers the harmless `demo.echo` adapter to prove `request_action` end-to-end. Off
+  // by default.
   ACTION_DEMO_ENABLED: booleanFlagSchema(),
-  // Runner hub (T-0071): off by default. When enabled, the server accepts
-  // tunnel connections from approved machines on RUNNER_HUB_PORT (default
-  // 3189) bound to 127.0.0.1.
+  // Accepts tunnel connections from approved machines on RUNNER_HUB_PORT (default 3189)
+  // bound to 127.0.0.1. Off by default.
   RUNNER_HUB_ENABLED: booleanFlagSchema(),
-  // Routines scheduler (T-0104): when true, `index.ts` starts the
-  // scheduler that fires due routines. Off by default; enabling it also
-  // needs a tool runner (the sandbox wiring), otherwise the scheduler
-  // stays off with one warning.
+  // Starts the scheduler that fires due routines. Off by default; enabling it also needs a
+  // tool runner, otherwise it stays off with one warning.
   ROUTINES_ENABLED: booleanFlagSchema(),
-  // AI-built tools and routines (T-0105): when true, `index.ts` builds
-  // the real sandbox runner and registers the tool/routine adapters in
-  // the action registry (next to the demo adapter when it is on), and
-  // passes the runner to the tools routes and the routines scheduler.
-  // Off by default: no adapters, no runner, and manual runs answer 501
-  // `runner_unavailable`.
+  // Builds the real sandbox runner and registers the tool/routine adapters. Off by
+  // default: no adapters or runner, and manual runs answer 501 `runner_unavailable`.
   TOOLS_ENABLED: booleanFlagSchema(),
-  // Gateway-level web tools for AIs (T-0125): `web.fetch`,
-  // `web.wikipedia`, `web.price`, `web.feed` and a best-effort
-  // `web.search`. Keyless, no account: pages, Wikipedia, RSS/Atom
-  // feeds and market prices work with nothing to sign up for. Off by
-  // default: no adapters are registered.
+  // Gateway-level web tools (`web.fetch`, `web.wikipedia`, `web.price`, `web.feed` and a
+  // best-effort `web.search`). Keyless and off by default.
   WEB_TOOLS_ENABLED: booleanFlagSchema(),
-  // The listener (T-0474, plan `listener-delegation-plan.md` §2): when true,
-  // the server decides which AI answers a room message without an @mention.
-  // Off by default; the per-group switch is inert while this is off.
+  // Decides which AI answers a room message without an @mention; the per-group switch is
+  // inert while this is off.
   LISTENER_ENABLED: booleanFlagSchema(),
-  // The model name the listener calls (T-0475, plan §2.2). Unset means the
-  // listener stays off even when `LISTENER_ENABLED` is true.
+  // Unset means the listener stays off even when `LISTENER_ENABLED` is true.
   LISTENER_MODEL: Schema.optional(listenerModelSchema),
-  // Model-side tool rounds (T-0106): how many tool rounds one AI turn
-  // may run. Integer 1 to 10. Unset = 1 when `TOOLS_ENABLED` is off
-  // (today's behaviour, byte for byte) and 6 when it is on. Set
-  // explicitly to force either value whatever the flag says.
+  // How many tool rounds one AI turn may run, 1 to 10. Unset = 1 when `TOOLS_ENABLED` is
+  // off and 6 when on; an explicit value wins.
   AGENT_TOOL_MAX_ROUNDS: withDefault(agentToolRoundsSchema, ''),
-  // The search backend behind the port (T-0125): `duckduckgo-html`
-  // parses one DuckDuckGo HTML page per call and may be blocked or
-  // change its markup at any time; `none` unregisters `web.search`.
+  // `duckduckgo-html` parses one HTML page per call and may be blocked or change markup;
+  // `none` unregisters `web.search`.
   WEB_SEARCH_PROVIDER: literalWithDefault(['duckduckgo-html', 'none'] as const, 'duckduckgo-html'),
   RUNNER_HUB_PORT: portSchema('3189'),
-  // SIGTERM drain (T-1316): how long the server keeps serving after it gets a
-  // signal and `/health` reports draining, before it steps down the leader and
-  // closes. Milliseconds, 0 to 60000. Default 5000. Tests set 0.
+  // How long the server keeps serving after SIGTERM while `/health` reports draining.
+  // Milliseconds, 0 to 60000, default 5000; tests set 0.
   SHUTDOWN_DRAIN_MS: withDefault(
     Schema.String.pipe(
       Schema.check(Schema.isPattern(/^\d+$/)),
@@ -189,13 +126,10 @@ export const serverConfigSchema = Schema.Struct({
     ),
     '5000',
   ),
-  // Desk sidecar socket (T-1407): the host service that runs the desk jails,
-  // spoken by the cloud `Hands` adapter. T-1603: the agent's default location;
-  // the server asks the agent whether it is ready instead of requiring this.
+  // The host service that runs the desk jails; the server asks it whether it is ready.
   DESK_AGENT_SOCKET: withDefault(nonEmptyStringSchema, '/run/zilar/desk.sock'),
-  // The pinned jail image (`<name>@sha256:<64 hex>`, T-1418). T-1603: an
-  // override for an old agent that does not report a pinned image; unset means
-  // the image comes from the agent's own status.
+  // A pinned image (`<name>@sha256:<64 hex>`) used as an override for an old agent that
+  // does not report one.
   DESK_IMAGE: Schema.optional(pinnedImageSchema),
 });
 

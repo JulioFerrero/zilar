@@ -1,14 +1,8 @@
-// T-1862: fetch one card media file from a user-supplied URL and store it.
-// This is the security edge of the media tool: the URL goes through
-// `guardedGet` (https only, port 443, DNS pinned, private/loopback refused,
-// no redirects), the bytes are sniffed instead of trusted, sized and measured
-// from the header alone, stripped of metadata, and only then written. SVG,
-// HTML and JavaScript never sniff as an allowed type, so they are refused.
-// Every refusal is a fixed sentence: no URL, host or remote text is echoed.
-//
-// Effect runs inside and `Effect.runPromise` sits at the edge (EFFECT_GUIDE
-// "The Promise boundary rule"); the store's quota refusal is a typed error,
-// anything else stays a defect.
+// The security edge of the media tool: the URL goes through `guardedGet` (https only,
+// port 443, DNS pinned, private/loopback refused, no redirects), the bytes are sniffed,
+// sized from the header alone and stripped of metadata before writing. SVG, HTML and
+// JavaScript never sniff as allowed. Every refusal is a fixed sentence: no URL, host or
+// remote text is echoed.
 import { Data, Effect, type Effect as EffectType } from 'effect';
 import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
@@ -79,9 +73,8 @@ function refuse(reason: string): FetchCardMediaResult {
   return { ok: false, reason };
 }
 
-// The display name only: the bytes are stored under a server-made UUID. A
-// caller-supplied name is trimmed and capped; otherwise the last URL segment
-// is reduced to a conservative character set.
+// The display name only; the bytes are stored under a server-made UUID. A supplied name
+// is trimmed and capped, otherwise the last URL segment is reduced to a safe character set.
 function displayName(raw: string | undefined, url: URL, fallback: string): string {
   const given = raw?.trim();
   if (given !== undefined && given !== '') {
@@ -150,8 +143,7 @@ const fetchCardMediaEffect = Effect.fnUntraced(function* (
     anyPublicHost: true,
     allowedContentTypes: isImage ? IMAGE_CONTENT_TYPES : FILE_CONTENT_TYPES,
     maxResponseBytes: maxBytes,
-    // Wikimedia answers 403 to a request with no User-Agent; every fetch from
-    // the tool now sends the same descriptive one the web tools use.
+    // Wikimedia answers 403 without a User-Agent; send the same descriptive one as the web tools.
     headers: { 'user-agent': wikipediaUserAgent(), accept: isImage ? 'image/*' : '*/*' },
   };
   if (deps.resolver !== undefined) {
@@ -166,8 +158,7 @@ const fetchCardMediaEffect = Effect.fnUntraced(function* (
     return refuse(fetched.summary === 'response too large' ? REFUSED_TOO_LARGE : REFUSED_FETCH);
   }
   const bytes = fetched.body.bytes;
-  // The real transport enforces the cap; this keeps an injected or future
-  // transport from handing over an oversized body.
+  // The real transport enforces the cap; this guards an injected or future transport.
   if (bytes.byteLength > maxBytes) {
     return refuse(REFUSED_TOO_LARGE);
   }

@@ -3,11 +3,8 @@ import { struct } from '@zilar/protocol';
 import type { GifPage } from './provider';
 import { gifItemSchema } from './provider';
 
-// Giphy media hosts, from the public docs' rendition URLs
-// (`mediaN.giphy.com/media/<id>/…`). The API endpoint host is allowed too,
-// because a hostile adapter response could otherwise smuggle it in — every
-// URL in an item re-checks this list, so the allowlist is enforced on the
-// parsed item, not just on what the adapter intended to return.
+// Giphy media hosts from the public docs. The API endpoint host is allowed too, because a
+// hostile response could smuggle it in; every URL in an item re-checks this allowlist.
 export const GIPHY_MEDIA_HOSTS = [
   'media0.giphy.com',
   'media1.giphy.com',
@@ -19,8 +16,6 @@ export const GIPHY_MEDIA_HOSTS = [
   'api.giphy.com',
 ] as const;
 
-// Unknown keys are kept, like the old zod `.loose()`: Giphy adds renditions
-// and fields as it likes and only the ones we read matter.
 const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 
 const renditionSchema = Schema.StructWithRest(
@@ -93,10 +88,8 @@ function httpsOnAllowlist(url: string): URL | undefined {
   return parsed;
 }
 
-// Picks one playable rendition per GIF object: the fixed-width mp4 when
-// present (small, loops in the client), else the fixed-width gif/webp, else
-// the original. Anything off the media allowlist is dropped, which drops the
-// whole item — never a provider URL the UI did not vet.
+// One playable rendition per GIF object (fixed-width mp4, then gif/webp, then the
+// original). Anything off the media allowlist drops the whole item.
 function toItem(raw: unknown): GifPage['items'][number] | undefined {
   const parsed = Schema.decodeUnknownExit(gifObjectSchema)(raw);
   if (!Exit.isSuccess(parsed)) {

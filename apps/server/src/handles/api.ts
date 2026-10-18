@@ -1,8 +1,3 @@
-// Handles module on the Effect `HttpApi` adapter (T-0498): the same methods,
-// paths, query and body rules and status codes as the deleted router
-// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Its store runs on effect/sql.
-
 import { Effect, Layer } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -37,12 +32,7 @@ export const HANDLE_CHECK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const HANDLE_CLAIM_RATE_LIMIT_MAX = 10;
 export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// The schemas, the group and its middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0894).
-//
-// Applied to the group so a query or payload decode failure renders as the
-// module's typed envelope: an invalid check query is a 200 `invalid` answer,
-// an invalid claim body is a 400 `invalid_request` error.
+// Applied to the group so a bad decode renders the module's typed envelope.
 const renderSchemaError: SchemaErrorRender = (error) =>
   Effect.succeed(
     error.kind === 'Query'
@@ -62,7 +52,6 @@ export interface HandlesApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   audit?: AuditRecorder;
-  /** Injected in tests so the rate windows can advance without waiting. */
   now?: () => number;
   checkLimiter?: RateLimiter;
   claimLimiter?: RateLimiter;
@@ -90,9 +79,7 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(HandlesApi, 'handles', (handlers) =>
     handlers
-      // Live availability for the typed handle: `{ available, reason? }`.
-      // The check budget was already charged by `HandlesCheckRateLimit`,
-      // before the query decode.
+      // The check budget was already charged before the query decode.
       .handle(
         'check',
         handler(logger, (request, user) =>
@@ -101,14 +88,12 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
             : checkHandleAvailability(db, user.id, request.query.handle),
         ),
       )
-      // Claims (or changes) the caller's handle in one store transaction.
       .handle(
         'claim',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
-            // Saving the exact current value is a no-op: answer without
-            // spending the claim budget. The store re-checks inside its
-            // transaction, so this is only a fast path.
+            // Saving the current value is a no-op fast path; the store re-checks inside
+            // its transaction.
             const current = yield* Effect.promise(() => handleForUser(db, user.id));
             if (current !== null && current === request.payload.handle.trim()) {
               return { handle: current };
@@ -145,9 +130,7 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayerFor(HandlesSchemaErrors, logger, renderSchemaError)),
-    // The check budget runs before the query is decoded, exactly like the old
-    // route's `checkLimiter.allow` -> `safeParse` order: an invalid query
-    // still spends budget.
+    // The check budget runs before the query decode: an invalid query still spends budget.
     Layer.provide(rateLimitLayer(HandlesCheckRateLimit, checkLimiter, RATE_LIMITED_MESSAGE)),
   );
 

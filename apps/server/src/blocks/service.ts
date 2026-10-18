@@ -1,11 +1,6 @@
-// User blocks (T-0171, part 1a): a silent blocklist. Blocking never tells
-// the blocked person: their requests look successful and handle lookups
-// answer 404. Reads and writes here assume the caller already holds a
-// session; the routes own the rate limit.
-//
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
+// A silent blocklist: blocking never tells the blocked person — their requests look
+// successful and handle lookups answer 404. Callers already hold a session; the routes
+// own the rate limit.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -16,24 +11,15 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { removePairRosterItems, type RosterLogger } from './roster';
 
-// The list endpoint caps server-side; nobody should keep 500 blocks, but
-// the cap keeps the response bounded.
+// The list endpoint caps server-side so the response stays bounded.
 export const MAX_BLOCK_LIST_ROWS = 500;
 
 export interface BlocksDeps {
   db: ServerDatabase;
   audit?: AuditRecorder;
-  /** Override the clock in tests. Defaults to the wall clock. */
   now?: () => Date;
-  /**
-   * After a block commits, both roster items of the pair are removed, best
-   * effort. When absent (production wiring lives in the caller, outside this
-   * task's scope), the pair delete and the block filters still apply.
-   */
   adminClient?: EjabberdAdminClient | undefined;
-  /** The XMPP domain the roster JIDs are built on. */
   domain?: string | undefined;
-  /** Warns on a failed roster removal. Defaults to silence. */
   logger?: RosterLogger | undefined;
 }
 
@@ -64,9 +50,7 @@ function auditFor(deps: BlocksDeps, action: string, actorUserId: string, subject
   });
 }
 
-// A DM peer JID maps to one of our users through `xmpp_accounts.jid`. An AI
-// peer has no row (and therefore no block). The lookup folds case like
-// `resolveChatFilter`.
+// A DM peer JID maps through `xmpp_accounts.jid`; an AI has no row, so no block.
 export async function isDmBlocked(
   db: ServerDatabase,
   userId: string,
@@ -97,10 +81,8 @@ export async function isDmBlocked(
   return block !== undefined;
 }
 
-// A block between two users in either direction, read from `user_blocks`.
-// The group joins use it (T-1286, SG-8): a person the owner blocked cannot
-// join the owner's public group or invite link, and vice versa. The same
-// either-direction rule `isDmBlocked` and the request reads already apply.
+// The group joins use this: a blocked person cannot join the owner's public group or
+// invite link, and vice versa, in either direction.
 export async function pairHasBlock(
   db: ServerDatabase,
   userId: string,
@@ -119,13 +101,9 @@ export async function pairHasBlock(
   return block !== undefined;
 }
 
-// Blocks `targetId` for `userId`. Idempotent: blocking twice keeps one row.
-// Unknown users answer 404, yourself answers 400. Every pending or accepted
-// contact request between the two (either direction) becomes `cancelled`, and
-// both `contacts` rows of the pair are deleted, in the same transaction,
-// serialized against contact-request creates through the advisory locks
-// taken below. Unblocking leaves the pair gone: re-adding goes through a
-// contact request.
+// Idempotent; unknown users answer 404, yourself 400. Every pending or accepted contact
+// request between the pair is cancelled and both `contacts` rows deleted in the same
+// transaction, serialized against contact-request creates by the advisory locks below.
 export async function blockUser(
   deps: BlocksDeps,
   userId: string,
@@ -139,17 +117,11 @@ export async function blockUser(
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.gen(function* () {
-        // A request A→B can otherwise commit after this block cancels the
-        // pending rows: `createContactRequest` serializes on
-        // `contact-sender:<sender>`, so this transaction takes the blocked
-        // person's sender key too, BEFORE the cancel update. The sender key
-        // comes first, then `user-block:`, in both transactions that need the
-        // pair — `createContactRequest` only ever takes the sender key — so no
-        // lock order exists to deadlock. (PGlite has one connection per
-        // database, which is why the handle-comment rule in
-        // `createContactRequest` folds keys into one critical section; here the
-        // two takes are sequential on the same connection, never held while
-        // waiting on another.)
+        // A request A→B could otherwise commit after this block cancels the pending rows:
+        // take the blocked person's sender key BEFORE the cancel update. The sender key
+        // comes first, then `user-block:`, in every transaction that needs the pair, so no
+        // lock order exists to deadlock. PGlite has one connection, so the two takes are
+        // sequential and never held while waiting on another.
         yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + targetId}))`;
         yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + userId}))`;
         const [target] = yield* sql<{ id: string }>`SELECT id FROM "user"
@@ -162,16 +134,14 @@ export async function blockUser(
           VALUES (${userId}, ${targetId}, ${now.toISOString()})
           ON CONFLICT DO NOTHING
           RETURNING user_id`;
-        // T-1992: accepted rows go too. A block deletes the pair, and leaving
-        // the old accepted request alive let a re-accept repair it back.
+        // Accepted rows go too: leaving one alive let a re-accept repair the pair back.
         yield* sql`UPDATE contact_requests
           SET status = 'cancelled', decided_at = ${now.toISOString()}
           WHERE status IN ('pending', 'accepted')
             AND ((from_user_id = ${userId} AND to_user_id = ${targetId})
               OR (from_user_id = ${targetId} AND to_user_id = ${userId}))`;
-        // The pair is gone in both directions, even when the block row
-        // already existed: a contact accepted between blocks must not
-        // survive a re-block.
+        // The pair is gone in both directions even when the block row existed: an accepted
+        // contact between blocks must not survive a re-block.
         yield* sql`DELETE FROM contacts
           WHERE (user_id = ${userId} AND contact_user_id = ${targetId})
             OR (user_id = ${targetId} AND contact_user_id = ${userId})`;
@@ -180,13 +150,12 @@ export async function blockUser(
     );
   });
   const inserted = await runSql(deps.db, insert);
-  // Audited once, after the commit, by the call that actually inserted the
-  // row; an idempotent re-block adds nothing. Ids only, never names.
+  // Audited after the commit by the call that inserted the row; ids only, never names.
   if (inserted) {
     auditFor(deps, 'user.blocked', userId, targetId);
   }
-  // Best effort, after the commit: the `both` subscriptions would otherwise
-  // keep the blocked person seeing the blocker online. A failure only warns.
+  // Best effort after the commit: the pair's `both` subscriptions would keep the blocked
+  // person seeing the blocker online.
   if (deps.adminClient !== undefined && deps.domain !== undefined) {
     await removePairRosterItems({
       db: deps.db,
@@ -200,10 +169,6 @@ export async function blockUser(
   return { blocked: true };
 }
 
-// Unblocks `targetId` for `userId`. Idempotent: unblocking twice (or
-// unblocking someone never blocked, unknown or not) still answers success
-// and deletes only the row `(userId, targetId)`. The contact pair stays
-// gone: re-adding goes through a contact request.
 export async function unblockUser(
   deps: BlocksDeps,
   userId: string,
@@ -224,10 +189,8 @@ export async function unblockUser(
   return { blocked: false };
 }
 
-// The blocker's list, newest first, capped server-side: `{ userId, name,
-// handle, image, jid }`. Never an email; `handle` is null when the person
-// has none and `jid` is null when they have no XMPP account. One joined
-// query over the blocked ids — never one select per row.
+// The blocker's list, newest first, capped. Never an email; one joined query over the
+// blocked ids, never one select per row.
 export async function listBlockedUsers(
   deps: BlocksDeps,
   userId: string,

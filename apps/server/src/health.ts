@@ -12,8 +12,7 @@ import { ejabberdSchemaStatus, type EjabberdSchemaStatus } from './xmpp/schema-c
 const DB_HEALTH_TIMEOUT_MS = 1000;
 const EJABBERD_HEALTH_TIMEOUT_MS = 2000;
 const EJABBERD_HEALTH_CACHE_MS = 15_000;
-// `userExists` is a cheap admin round trip, so any answer — true or false —
-// proves ejabberd's admin API is answering. The probe JID is a fixed name.
+// Any answer, true or false, proves ejabberd's admin API is answering; the probe JID is fixed.
 const EJABBERD_HEALTH_PROBE = 'zilar-health-probe';
 
 export type HealthBody = {
@@ -26,7 +25,7 @@ export type HealthBody = {
   db: 'ok' | 'down';
   ejabberd: 'ok' | 'down';
   push: 'online' | 'offline' | 'unknown';
-  /** OPS-7: the startup ejabberd schema check's result. Absent without a pool. */
+  /** The startup schema check's result; absent without a pool. */
   ejabberdSchema?: EjabberdSchemaStatus;
   leader: boolean;
   draining: boolean;
@@ -39,12 +38,9 @@ export type HealthCheckDeps = {
   adminClient: EjabberdAdminClient;
 };
 
-// Builds the `/health` handler. The status code reflects Postgres and the
-// drain: a draining instance answers 503 with `draining: true` so Traefik drops
-// it, while the process keeps serving (T-1316). The ejabberd, push and
-// ejabberdSchema fields are informational and never make the container
-// unhealthy. ejabberd is probed at most once per `EJABBERD_HEALTH_CACHE_MS`, so
-// Coolify's frequent healthcheck does not hammer the admin API.
+// The status code reflects Postgres and draining: a draining instance answers 503 so
+// Traefik drops it while it keeps serving. ejabberd, push and schema are informational
+// and never make it unhealthy; ejabberd is probed at most once per `EJABBERD_HEALTH_CACHE_MS`.
 export function createHealthCheck(deps: HealthCheckDeps): () => Promise<EdgeHealth> {
   let ejabberd: { at: number; status: 'ok' | 'down' } | undefined;
 

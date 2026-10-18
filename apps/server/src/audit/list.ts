@@ -15,10 +15,8 @@ const cursorSchema = Schema.String.pipe(
   ),
 );
 
-// One result row, exactly as it appears in the API. Visibility rules are
-// applied by the list functions: a row's `actor_user_id` is only included
-// when the caller is allowed to see it (i.e. they own the AI, or they own
-// or administer the group).
+// `actor_user_id` is included only when the caller may see it: the AI's owner,
+// or the group's owner or an admin.
 export interface PublicAuditEntry {
   id: string;
   at: Date;
@@ -30,25 +28,21 @@ export interface PublicAuditEntry {
   cost: { currency: 'EUR' | 'USD'; amount: number } | null;
   result: 'ok' | 'denied' | 'error';
   detail: Record<string, unknown> | null;
-  /** The acting user. Only present when the caller may see it. */
   actorUserId: string | null;
 }
 
 export interface ListAuditPage {
   entries: PublicAuditEntry[];
-  /** A cursor for `before`. `null` when there are no more pages. */
   next: string | null;
 }
 
 export interface ListAuditOptions {
   limit?: number;
-  /** Cursor returned by a previous page. */
   before?: string;
 }
 
-// One audit row as the driver returns it: snake_case columns are camelCased
-// by `transformResultNames`, timestamptz comes back as a `Date`, and numeric
-// comes back as a string.
+// Driver row: snake_case columns are camelCased by `transformResultNames`, timestamptz
+// comes back as a `Date`, numeric as a string.
 interface AuditLogRow {
   id: string;
   at: Date;
@@ -64,9 +58,8 @@ interface AuditLogRow {
   detail: Record<string, unknown> | null;
 }
 
-// Cursor format: `<ISO_AT>_<id>`, base64url. The id breaks ties when two rows
-// share the same `at` (possible when two writers inserted at the same
-// instant), so pagination never returns duplicates or skips.
+// Cursor format `<ISO_AT>_<id>`, base64url. The id breaks ties when two rows share
+// the same `at`, so pagination never duplicates or skips.
 function encodeCursor(at: Date, id: string): string {
   return Buffer.from(`${at.toISOString()}_${id}`, 'ascii').toString('base64url');
 }
@@ -91,12 +84,9 @@ function decodeCursor(cursor: string): { at: Date; id: string } {
   return { at, id };
 }
 
-// Lists audit rows whose `group_id` matches, newest first. Visibility:
-// the group's owner and admins only. A non-member — or a plain member —
-// gets the same empty page as an unknown group id, so existence is never
-// leaked. T-0108: topic entries for a private topic the viewer cannot see
-// are dropped from the page (the recorder never stores a private topic's
-// name in `detail`, and this filter keeps the entries themselves hidden).
+// Lists a group's rows, newest first. A non-member and a plain member get the same
+// empty page as an unknown group, so existence never leaks. Entries about a private
+// topic the viewer cannot see are dropped.
 export async function listAuditForGroup(
   db: ServerDatabase,
   groupId: string,
@@ -109,9 +99,7 @@ export async function listAuditForGroup(
   if (!visible) {
     return { entries: [], next: null };
   }
-  // Over-fetch so private-topic entries can be filtered without shrinking
-  // the page more than needed; pagination stays newest-first and the cursor
-  // still advances.
+  // Over-fetch so private-topic entries can be filtered without shrinking the page.
   const page = await listForColumn(db, 'group', groupId, limit * 2 + 1, before);
   const kept = await filterHiddenTopicEntries(db, userId, page.entries);
   const entries = kept.slice(0, limit);
@@ -122,9 +110,8 @@ export async function listAuditForGroup(
   };
 }
 
-// Lists audit rows whose `ai_id` matches, newest first. Visibility: the AI's
-// owner only. Anyone else — a stranger, even a group admin — gets the same
-// empty page as an unknown AI.
+// Lists an AI's rows, newest first. Anyone but its owner gets the same empty page as
+// an unknown AI.
 export async function listAuditForAi(
   db: ServerDatabase,
   aiId: string,
@@ -146,10 +133,9 @@ export async function listAuditForAi(
   return listForColumn(db, 'ai', aiId, limit, before);
 }
 
-// The shared `WHERE` and cursor logic. `limit + 1` rows are fetched so we
-// can tell the caller whether another page exists, without running two
-// queries. The column comes from a closed choice, so no untrusted name is
-// ever interpolated: each side builds its own fixed fragment.
+// The shared `WHERE` and cursor logic. `limit + 1` rows tell whether another page
+// exists without a second query. The column comes from a closed choice, so no
+// untrusted name is interpolated.
 async function listForColumn(
   db: ServerDatabase,
   scope: 'group' | 'ai',
@@ -181,9 +167,8 @@ async function listForColumn(
   return { entries: page.map(toPublicAuditEntry), next };
 }
 
-// Maps an internal row to the public shape. The caller is known to be
-// allowed to read this scope, so `actor_user_id` is always included: only
-// admins and AI owners ever see it.
+// The caller may read this scope, so `actor_user_id` is always included: only admins
+// and AI owners ever see it.
 function toPublicAuditEntry(row: AuditLogRow): PublicAuditEntry {
   const hasCost = row.costCurrency !== null && row.costAmount !== null;
   return {
@@ -225,9 +210,8 @@ function isGroupAdmin(db: ServerDatabase, groupId: string, userId: string): Prom
   });
 }
 
-// Drops entries about a private topic the viewer cannot see. Topic actions
-// (`topic.*`) carry the topic id in `subject_id`; anything else passes
-// through. Group membership is already established by the caller.
+// Drops entries about a private topic the viewer cannot see; topic ids live in
+// `subject_id`, anything else passes through.
 async function filterHiddenTopicEntries(
   db: ServerDatabase,
   userId: string,
@@ -261,8 +245,7 @@ async function filterHiddenTopicEntries(
       return true;
     }
     const topic = byId.get(entry.subjectId);
-    // A topic row that is gone (or never existed) carries no private name;
-    // keep the entry so the log stays complete.
+    // A topic row that is gone carries no private name; keep the entry so the log stays complete.
     if (!topic || topic.visibility !== 'private') {
       return true;
     }

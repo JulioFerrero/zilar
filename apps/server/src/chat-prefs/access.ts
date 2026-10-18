@@ -1,6 +1,3 @@
-// Chat prefs access checks (T-1019 size split): who may keep prefs for which
-// chat. Moved unchanged from `chat-prefs/service.ts`.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -9,9 +6,7 @@ import { HttpError } from '../errors';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 
-// A MUC room JID (`localpart@mucDomain`) is visible to the caller when any
-// non-archived topic with that room is visible to them (General, or a topic
-// they can see under T-0108's rule).
+// A MUC room JID is visible when any non-archived topic with that room is visible.
 async function canSeeRoomJid(
   db: ServerDatabase,
   roomLocalpart: string,
@@ -33,8 +28,8 @@ async function canSeeRoomJid(
   return false;
 }
 
-// A DM JID is the XMPP account of one of the caller's contacts, or one of the
-// caller's own AIs. Everything is compared as lowercased bare JIDs.
+// A DM JID is a contact's XMPP account or one of the caller's own AIs, compared as
+// lowercased bare JIDs.
 async function canDm(db: ServerDatabase, bare: string, userId: string, domain: string) {
   const contactRows = await runSql(
     db,
@@ -68,8 +63,7 @@ async function canDm(db: ServerDatabase, bare: string, userId: string, domain: s
     if (known !== undefined && known === bare) {
       return true;
     }
-    // No account row yet (an account is provisioned at sign-in; tests seed it
-    // through signup): fall back to the derived JID of the contact.
+    // No account row yet (provisioned at sign-in): fall back to the contact's derived JID.
     if (
       known === undefined &&
       jidFor(localpartFor(row.contactUserId), domain).toLowerCase() === bare
@@ -88,15 +82,12 @@ async function canDm(db: ServerDatabase, bare: string, userId: string, domain: s
 }
 
 export interface ChatAccess {
-  /** Normalised (lowercased) bare JID the pref is stored under. */
   bare: string;
 }
 
 /**
- * Whether the caller may keep prefs for `chatJid`: a DM with one of their
- * contacts or one of their own AIs, or a group General/topic room they can
- * see. Anything else (and any malformed JID) answers 404, like an unknown
- * chat, so JIDs cannot be probed.
+ * A contact or own-AI DM, or a group room the caller can see. Anything else, including a
+ * malformed JID, answers 404 like an unknown chat, so JIDs cannot be probed.
  */
 export async function requireChatAccess(
   db: ServerDatabase,

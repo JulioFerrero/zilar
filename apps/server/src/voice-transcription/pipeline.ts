@@ -1,17 +1,6 @@
-// The transcript pipeline as Effect code (T-0173). This module owns the
-// logic between the HTTP handlers and the database: fetch the audio with a
-// timeout and size cap, call the provider with a timeout, single-flight per
-// URL hash, cache re-check and insert, the fixed error mapping.
-//
-// The Effect HttpApi handlers in `api.ts` call this module, and they validate
-// input with Effect Schema. Everything here runs through `Effect.runPromise`
-// at the edge, so callers see plain `Promise`s.
-//
-// Errors are typed (`Data.TaggedError`): `AudioUnavailable` (fetch leg
-// failed), `VoiceTooLarge`, `NotAudio`, `TranscriptionFailed` (provider
-// refused). The `Promise` boundary maps each to the same fixed `HttpError`
-// answers the old code threw — the network's or provider's text never
-// leaves this module.
+// The transcript pipeline: fetch the audio with a timeout and size cap, call the provider
+// with a timeout, single-flight per URL hash, re-check and insert, and map errors. Errors
+// are typed, and the network's or provider's text never leaves this module.
 
 import { Cause, Data, Duration, Effect, Stream, type Effect as EffectType } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
@@ -32,7 +21,6 @@ export interface FetchedAudio {
   contentType: string;
 }
 
-/** The public host to send on the internal upload fetch (see `internal-fetch.ts`). */
 export interface AudioFetchInit {
   host: string;
 }
@@ -59,7 +47,6 @@ export class TranscriptionFailed extends Data.TaggedError('TranscriptionFailed')
 export type TranscriptPipelineError =
   AudioUnavailable | VoiceTooLarge | NotAudio | TranscriptionFailed;
 
-/** Maps a typed pipeline error to its fixed HTTP answer. */
 export function transcriptErrorToHttp(error: TranscriptPipelineError): HttpError {
   switch (error._tag) {
     case 'AudioUnavailable':
@@ -136,10 +123,8 @@ const transcribeEffect = Effect.fnUntraced(function* (
     mime: string;
   },
 ): EffectType.fn.Return<{ text: string; language: string | null }, TranscriptionFailed> {
-  // A non-provider throw (bug in an injected fake, realistically) rejects
-  // the boundary promise with the original error, identical and unwrapped —
-  // like an unexpected throw in the old `await`. A provider refusal becomes
-  // the typed `TranscriptionFailed`.
+  // A non-provider throw rejects the boundary promise with the original error, unwrapped,
+  // like an unexpected throw in a plain `await`.
   const result = yield* Effect.promise(() => transcribe(input)).pipe(
     Effect.catchCause((cause) => {
       const failure = Cause.squash(cause);
@@ -156,10 +141,8 @@ const transcribeEffect = Effect.fnUntraced(function* (
   return result;
 });
 
-// `awaitSql` runs an effect/sql program on the database's registered runtime.
-// A SQL failure rejects the runtime promise with the original error, and
-// `Effect.promise` turns that rejection into a defect, so a DB failure rejects
-// the boundary promise unwrapped, exactly as a plain `await` would.
+// `awaitSql` runs an effect/sql program; a SQL failure rejects the boundary promise
+// unwrapped, exactly as a plain `await` would.
 const awaitSql = <A>(
   db: ServerDatabase,
   effect: EffectType.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
@@ -215,16 +198,10 @@ const fetchAndTranscribeEffect = Effect.fnUntraced(function* (
 });
 
 /**
- * Fetches the audio and transcribes it, then stores the result — with no
- * transaction held across the network. Only the re-check + insert runs in
- * one transaction under an advisory lock on the hash (a duplicate that won
- * the race reads the winner's row; `onConflictDoNothing` covers the last
- * overlap). Fetch-leg failures (ejabberd down, slow, refusing) surface as
- * fixed 502 `audio_unavailable`; size and content-type refusals keep their
- * 413/422; a provider refusal answers fixed 502 `transcription_failed`.
- *
- * The Effect form: typed pipeline errors become the same fixed `HttpError`s
- * the old code threw; defects (DB down) stay defects and reject unchanged.
+ * No transaction is held across the network: only the re-check + insert runs in one under
+ * an advisory lock on the hash, and `onConflictDoNothing` covers the last overlap. Fetch
+ * failures are a fixed 502, size and type refusals keep 413/422, and a provider refusal is
+ * a fixed 502 `transcription_failed`.
  */
 export const fetchAndTranscribeAsEffect = (
   input: FetchAndTranscribeInput,
@@ -239,25 +216,19 @@ export const fetchAndTranscribeAsEffect = (
     }),
   );
 
-/** The `Promise` boundary over `fetchAndTranscribeAsEffect`, for the handlers. */
 export function fetchAndTranscribe(input: FetchAndTranscribeInput): Promise<string> {
   return Effect.runPromise(fetchAndTranscribeAsEffect(input));
 }
 
 export interface TranscriptionInFlight {
-  /** Runs `start` once per key; concurrent callers share the same promise. */
   run: (key: string, start: () => Promise<string>) => Promise<string>;
-  /** How many keys are currently in flight (tests assert cleanup). */
   size: () => number;
 }
 
 /**
- * Single-flight per URL hash: two simultaneous taps on the same voice
- * message share one fetch + provider call instead of double-billing. The
- * entry is removed in `finally`, so a failure — or an interrupted request
- * whose waiter goes away — never poisons the next tap. The DB row
- * (re-checked under the lock at insert time) is the durable cache; this map
- * only dedupes the overlap window.
+ * Single-flight per URL hash, so simultaneous taps share one call instead of
+ * double-billing. An entry is removed in `finally`, so a failure never poisons the next
+ * tap; the DB row is the durable cache.
  */
 export function shareInFlight(): TranscriptionInFlight {
   const inFlight = new Map<string, Promise<string>>();
@@ -269,9 +240,8 @@ export function shareInFlight(): TranscriptionInFlight {
       }
       const shared = start();
       inFlight.set(key, shared);
-      // `.then` with both handlers (not `.finally`): the derived promise
-      // resolves either way, so a failed share never surfaces as an
-      // unhandled rejection — the awaiting requests already mapped it.
+      // `.then` with both handlers, not `.finally`: the derived promise resolves either way,
+      // so a failed share never surfaces as an unhandled rejection.
       const cleanup = (): void => {
         if (inFlight.get(key) === shared) {
           inFlight.delete(key);
@@ -284,14 +254,10 @@ export function shareInFlight(): TranscriptionInFlight {
   };
 }
 
-// The internal download leg: same path on ejabberd's API base, 10 MB cap,
-// 20 s timeout. The declared length is checked before the body is read and
-// the body itself is streamed through `readCapped`, so an over-cap upload is
-// never buffered whole. Every fetch-leg failure (transport, abort, non-OK,
-// unreadable body) surfaces as `AudioUnavailableError` — the route maps it to
-// a fixed 502, never a bare 500 and never the network's error text; an
-// over-cap body is `VoiceTooLarge` (413). The content type gates the provider
-// call (`not_audio` without one); the bytes are never logged.
+// The internal download leg: same path on ejabberd's API base, 10 MB cap, 20 s timeout.
+// The declared length is checked before the body, which streams through `readCapped`, so
+// an over-cap upload is never buffered whole. Every fetch failure is a fixed 502, never
+// the network's text; the bytes are never logged.
 export async function defaultAudioFetcher(
   url: string,
   init: AudioFetchInit,
@@ -332,8 +298,7 @@ export async function defaultAudioFetcher(
   return { body: capped, contentType };
 }
 
-/** The audio-fetch leg failed (ejabberd down, slow, or refusing): fixed
- * 502, never the network's error text and never a bare 500. */
+/** The audio fetch failed: fixed 502, never the network's text and never a bare 500. */
 export class AudioUnavailableError extends Error {
   constructor() {
     super('The voice file could not be fetched');

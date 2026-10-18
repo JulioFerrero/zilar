@@ -1,6 +1,5 @@
-// effect-plain: the runner hands maps `desk.*` frames to the same Promise/
-// generator shape as `cloud-hands.ts`; the frames carry their own bounded
-// schemas, so the domain logic stays plain.
+// effect-plain: maps `desk.*` frames to the same Promise/generator shape as
+// `cloud-hands.ts`; the frames carry their own bounded schemas.
 import type { Socket } from 'node:net';
 import {
   DeskError,
@@ -16,21 +15,15 @@ import { deskName } from '@zilar/desk/agent';
 import type { DeskEgressFrame, DeskReplyFrame, DeskRequestFrame } from '@zilar/runner-tunnel';
 import { runExecuteOverSocket } from './cloud-hands';
 
-/**
- * T-1423: the hub's desk ops for one runner, already bound to its runner id so
- * the `Hands` never carry one. `sendDesk` resolves with the runner's reply
- * frame; `openDeskExec` returns the socket that carries the daemon bytes.
- */
 export interface RunnerDesk {
   sendDesk(frame: DeskRequestFrame): Promise<DeskReplyFrame>;
   openDeskExec(deskId: string): Promise<Socket>;
 }
 
 /**
- * The app-side `Hands` over a runner's tunnel (plan §2, §6.1). It is the runner
- * twin of `cloud-hands.ts`: the same four operations, the same daemon protocol
- * over `execute`, but the transport is the hub's `desk.*` control frames. Every
- * reply frame carries a fixed error code, never host text.
+ * The app-side `Hands` over a runner's tunnel: the same operations and daemon protocol
+ * as `cloud-hands.ts`, over the hub's `desk.*` frames. Every reply carries a fixed error
+ * code, never host text.
  */
 export function createRunnerHands(desk: RunnerDesk): Hands {
   async function* runExecute(
@@ -76,7 +69,6 @@ export function createRunnerHands(desk: RunnerDesk): Hands {
   };
 }
 
-/** The runner frame for one provision request; `desk_id` is deterministic. */
 function provisionFrame(spec: DeskSpec, deskId: string): DeskRequestFrame {
   return {
     type: 'desk.provision',

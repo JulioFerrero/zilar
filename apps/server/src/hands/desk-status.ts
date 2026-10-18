@@ -1,20 +1,16 @@
-// T-1603: the cached status probe that asks the desk agent whether it is ready
-// and which image it pinned. The server no longer guesses from `DESK_IMAGE`:
-// `null` here means "no cloud computer for this turn", never an error, so a
-// stopped agent only costs the cloud option (the turn falls back as before).
+// The cached status probe: asks the desk agent whether it is ready and which image it
+// pinned. `null` means "no cloud computer for this turn", never an error.
 import type { Logger } from 'pino';
 import { Schema } from 'effect';
 import { ErrorInfoSchema } from '@zilar/desk';
 import type { DeskClient } from '../agents/gateway/desk-exec';
 import { requestReply, type Hands } from './cloud-hands';
 
-/** The probe: resolves the cloud client, or `null` when the agent is not ready. */
 export type DeskProbe = () => Promise<DeskClient | null>;
 
 export interface DeskProbeOptions {
   readonly socketPath: string;
   readonly hands: Hands;
-  /** An old agent's image, used only when its status carries no digest. */
   readonly overrideImage?: string | undefined;
   readonly logger: Logger;
   readonly ttlMs?: number;
@@ -24,19 +20,16 @@ export interface DeskProbeOptions {
 const DEFAULT_TTL_MS = 10_000;
 const PROBE_TIMEOUT_MS = 2_000;
 
-// Lenient on purpose: `ready`, `imageDigest` and `detail` are absent from an old
-// agent's status, and a missing `ready` means ready (it only ever started with
-// a pinned image). Anything the schema refuses is caught below and reads as
-// "not ready".
+// Lenient: `ready`, `imageDigest` and `detail` are absent from an old agent's status,
+// and a missing `ready` means ready. Anything the schema refuses reads as "not ready".
 const statusReplySchema = Schema.Union([
   Schema.Struct({ id: Schema.Number, ok: Schema.Literal(false), error: ErrorInfoSchema }),
   Schema.Struct({
     id: Schema.Number,
     ok: Schema.Literal(true),
     status: Schema.Struct({
-      // A real agent answers with `running` as a list of desk refs and a number
-      // of `queued` desks (packages/desk/src/agent/wire.ts). The probe reads
-      // neither, so accept them loosely instead of rejecting a real reply.
+      // A real agent answers `running` as a list and `queued` as a number; the probe reads
+      // neither, so accept them loosely.
       running: Schema.optional(Schema.Unknown),
       queued: Schema.optional(Schema.Unknown),
       ready: Schema.optional(Schema.Boolean),
@@ -47,11 +40,9 @@ const statusReplySchema = Schema.Union([
 ]);
 
 /**
- * Builds the cached cloud-desk probe. It sends one `status` request, decodes it
- * leniently and caches the answer (ready or not) for `ttlMs`; concurrent
- * callers share one in-flight request. Any error, timeout or missing socket is
- * `null` and is never thrown. It logs only when availability changes, with a
- * fixed message plus the agent's `detail` code (never raw socket text or paths).
+ * Caches the answer (ready or not) for `ttlMs`; concurrent callers share one in-flight
+ * request. Any error, timeout or missing socket is `null`, never thrown. Logs only when
+ * availability changes, with a fixed message and the agent's `detail` code.
  */
 export function createDeskProbe(options: DeskProbeOptions): DeskProbe {
   const { socketPath, hands, overrideImage, logger } = options;

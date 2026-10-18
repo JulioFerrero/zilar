@@ -1,16 +1,12 @@
 import { Effect, Schema } from 'effect';
 import { FfmpegError, runCommand } from '../media/run-command';
 
-// Re-exported so importers of this module keep their `FfmpegError` import.
 export { FfmpegError };
 
 const PROBE_TIMEOUT_MS = 10_000;
 const CONVERT_TIMEOUT_MS = 30_000;
 
-/**
- * Container format names ffprobe reports for audio we accept. `format_name`
- * is a comma-separated list (e.g. `matroska,webm`), so any token counts.
- */
+/** Container names ffprobe reports; `format_name` is comma-separated, so any token counts. */
 const AUDIO_FORMATS = new Set([
   'aac',
   'aiff',
@@ -32,22 +28,16 @@ const AUDIO_FORMATS = new Set([
 ]);
 
 export interface ProbedAudio {
-  /**
-   * From the container, when the container carries one. MediaRecorder WebM
-   * often does not, which is why the converted file's duration is authoritative.
-   */
+  /** MediaRecorder WebM often has none, which is why the converted duration is authoritative. */
   durationMs?: number;
   formatName: string;
 }
 
 export interface VoiceEngine {
-  /** Reads the container and rejects anything that is not a plain audio file. */
   probe(inputPath: string): Promise<ProbedAudio>;
-  /** Converts any accepted input to AAC in an M4A container. */
   convert(inputPath: string, outputPath: string): Promise<void>;
 }
 
-/** The input is a container ffprobe does not recognize as audio. */
 export class NotAudioError extends Error {
   constructor(reason: string) {
     super(reason);
@@ -177,10 +167,6 @@ export const convertEffect = Effect.fnUntraced(function* (
   }
 });
 
-/**
- * The real engine: `ffprobe` to validate and measure, `ffmpeg` to convert.
- * The binaries come from PATH unless overridden (tests pass absolute paths).
- */
 export function createFfmpegEngine(paths: FfmpegEnginePaths = {}): VoiceEngine {
   const ffmpeg = paths.ffmpeg ?? 'ffmpeg';
   const ffprobe = paths.ffprobe ?? 'ffprobe';

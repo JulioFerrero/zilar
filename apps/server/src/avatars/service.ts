@@ -11,11 +11,6 @@ import { HttpError, xmppUnavailable } from '../errors';
 import { resolveStorageDir } from '../stickers/service';
 import { checkAvatarBytes, toAvatarHttpError } from './check';
 
-// Profile pictures for people, AIs, groups and channels (T-0165): one row per
-// owner (`owner_kind` + `owner_id` unique), a random `<uuid>.<ext>` on disk.
-// Split (T-1553): the byte check lives in `./check`, the file read in `./read`;
-// this path stays the barrel and re-exports every name it exported before.
-
 export { AVATAR_MAX_BYTES, AVATAR_MIN_SIDE, AVATAR_MAX_SIDE, checkAvatarBytes } from './check';
 export type { AvatarCheck, AvatarProbeError } from './check';
 export { readAvatarFile } from './read';
@@ -23,7 +18,7 @@ export type { AvatarFile } from './read';
 
 export const AVATAR_UPLOAD_RATE_LIMIT_MAX = 10;
 export const AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-// T-1174 (SEC-7): the read budget, charged per viewer inside `serve`.
+// The read budget, charged per viewer inside `serve`.
 export const AVATAR_READ_RATE_LIMIT_MAX = 600;
 export const AVATAR_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
@@ -42,16 +37,13 @@ export function avatarUrlFor(avatarId: string): string {
 
 export interface AvatarsServiceDeps {
   db: ServerDatabase;
-  /** Directory avatar files are stored under; resolved once, absolutely. */
   storageDir: string;
   audit?: AuditRecorder;
 }
 
-// Who may change which picture. A person only their own; a group or
-// channel only its owner or an admin; an AI only the person who owns it
-// (`ais.owner`, the same ownership the AI routes check). Anything else —
-// an unknown owner, a wrong kind, a stranger — answers the same 404, so
-// owner ids cannot be probed through this route.
+// A person may change only their own picture; a group or channel only its owner or
+// an admin; an AI only its owner. Anything else answers the same 404, so owner ids
+// cannot be probed.
 export async function checkAvatarWritePermission(
   db: ServerDatabase,
   kind: AvatarKind,
@@ -104,11 +96,9 @@ export interface AvatarUploadResult {
   url: string;
 }
 
-// Replaces the owner's picture: the new file lands first, the row swaps
-// in one statement (the unique index makes concurrent uploads end with
-// exactly one row), then the old file is removed. A failure never leaves
-// the owner without a picture — even when the old file cannot be
-// removed, its row is already gone and the new picture serves.
+// The new file lands first, the row swaps in one statement (the unique index makes
+// concurrent uploads end with exactly one row), then the old file is removed. A failure
+// never leaves the owner without a picture.
 export async function uploadAvatar(
   deps: AvatarsServiceDeps,
   kind: AvatarKind,
@@ -131,8 +121,7 @@ export async function uploadAvatar(
   } catch {
     throw xmppUnavailable();
   }
-  // Read the replaced row inside the same advisory-locked transaction that
-  // swaps it, so the old file removed below is exactly the replaced one.
+  // Read the replaced row inside the same advisory-locked transaction that swaps it.
   let oldStorageKey: string | null = null;
   try {
     await runSql(
@@ -171,8 +160,8 @@ export async function uploadAvatar(
     throw xmppUnavailable();
   }
   if (oldStorageKey !== null && oldStorageKey !== storageKey) {
-    // Best effort: the row already points at the new file, so a leftover
-    // old file is an orphan that is never served — never a missing picture.
+    // Best effort: the row already points at the new file, so a leftover file is an
+    // orphan that is never served.
     await rm(join(storageDir, oldStorageKey), { force: true }).catch(() => {});
   }
   if (deps.audit) {
@@ -192,11 +181,9 @@ export async function uploadAvatar(
   return { url: avatarUrlFor(id) };
 }
 
-// Removes the row and the file; idempotent (a missing picture is `{ ok:
-// true }`). The permission check runs first, so strangers cannot probe whether
-// a picture exists. The delete shares the owner's advisory lock with
-// `uploadAvatar` and names the exact row read, so a racing replace removes the
-// old row or nothing — never the new row.
+// Deletes the row and the file; idempotent. The permission check runs first, so
+// strangers cannot probe whether a picture exists; the delete shares the owner's
+// advisory lock with `uploadAvatar`, so a racing replace never removes the new row.
 export async function deleteAvatar(
   deps: AvatarsServiceDeps,
   kind: AvatarKind,
@@ -245,8 +232,6 @@ export async function deleteAvatar(
   }
 }
 
-// The avatar ids of a set of owners, in one query per kind — the read
-// path that every list route uses to attach `avatarUrl` at read time.
 export async function avatarIdsByOwner(
   db: ServerDatabase,
   kind: AvatarOwnerKind,

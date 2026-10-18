@@ -1,8 +1,3 @@
-// Loading and finalizing the server config (T-1457), split out of `config.ts`:
-// the schema-error walker, the empty-string normalization, the derived fields
-// and the public `ServerConfig` service + loaders. The barrel `config.ts`
-// re-exports the names other modules import.
-
 import { Context, Exit, Layer, Schema, SchemaIssue } from 'effect';
 import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 import { crossFieldDetails, type ConfigDetail } from './mail';
@@ -15,10 +10,9 @@ export class ConfigError extends Error {
   }
 }
 
-// Maps Effect's issue tree to the same `path (reason)` pairs zod produced:
-// `missing` for an absent required key, the custom message for a filter that
-// returned one, and `invalid` otherwise. Only names and code-written messages
-// are used, never a value.
+// Maps Effect's issue tree to `path (reason)` pairs: `missing` for an absent required
+// key, the custom message for a filter that returned one, `invalid` otherwise. Names and
+// code-written messages only, never a value.
 function collectDetails(
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],
@@ -53,8 +47,8 @@ function formatIssues(details: ReadonlyArray<ConfigDetail>): string {
   const seen = new Set<string>();
   const parts: string[] = [];
   for (const { name, reason } of details) {
-    // One entry per issue so several precise messages survive under one
-    // path (for example both SMTP rules); exact duplicates collapse.
+    // One entry per issue so several precise messages survive under one path; exact
+    // duplicates collapse.
     const detail = `${name || 'env'} (${reason})`;
     if (!seen.has(detail)) {
       seen.add(detail);
@@ -64,11 +58,9 @@ function formatIssues(details: ReadonlyArray<ConfigDetail>): string {
   return `Invalid server configuration: ${parts.join(', ')}`;
 }
 
-// Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
-// which a bare optional would reject. For the optional mail settings and the
-// optional key-encryption key an empty value means "not set". Explicit
-// `undefined` values are dropped too, so a key-based schema default applies to
-// them exactly as zod's `?? default` did.
+// Docker Compose renders an unset optional as an empty string (`${VAR:-}`), which a bare
+// optional would reject, so empty means "not set" for the optional mail and key settings.
+// Explicit `undefined` is dropped too, so a schema default still applies.
 const EMPTY_MEANS_UNSET_KEYS = [
   'ZILAR_KEY_ENCRYPTION_KEY',
   'MAIL_TRANSPORT',
@@ -98,17 +90,15 @@ function emptyMailSettingsAsUnset(
   return normalized;
 }
 
-// Derives `MAIL_TRANSPORT`, `BETTER_AUTH_URL` and `AGENT_TOOL_MAX_ROUNDS`
-// after a successful decode, exactly like the zod object transform did, then
-// attaches the XMPP config. The returned object's type is the public
-// `ServerConfig`.
+// Derives `MAIL_TRANSPORT`, `BETTER_AUTH_URL` and `AGENT_TOOL_MAX_ROUNDS` after a
+// successful decode, then attaches the XMPP config.
 function finalizeConfig(raw: RawServerConfig, xmpp: XmppConfig) {
   return {
     ...raw,
     WEB_ORIGINS: [...new Set(raw.WEB_ORIGINS.map((origin) => new URL(origin).origin))],
     MAIL_TRANSPORT: raw.MAIL_TRANSPORT ?? (raw.NODE_ENV === 'production' ? undefined : 'console'),
     BETTER_AUTH_URL: raw.BETTER_AUTH_URL ?? raw.PUBLIC_URL,
-    // Unset = 1 when tools are off (today's behaviour), 6 when on.
+    // Unset = 1 when tools are off, 6 when on.
     AGENT_TOOL_MAX_ROUNDS:
       raw.AGENT_TOOL_MAX_ROUNDS === ''
         ? raw.TOOLS_ENABLED
@@ -121,9 +111,8 @@ function finalizeConfig(raw: RawServerConfig, xmpp: XmppConfig) {
 
 export type ServerConfig = ReturnType<typeof finalizeConfig>;
 
-// The Effect `Context` tag other services ask for; `ServerConfigLive` builds
-// it from `process.env` at provision time (not at import time, so importing
-// this module never parses the environment).
+// The tag other services ask for; the live layer builds it from `process.env` at
+// provision time, so importing this module never parses the environment.
 export const ServerConfig = Context.Service<ServerConfig>('ServerConfig');
 
 export const ServerConfigLive: Layer.Layer<ServerConfig> = Layer.sync(ServerConfig, () =>

@@ -1,10 +1,6 @@
-// Handle store (T-0163): claiming and reading `@username` rows. The primary
-// key on `handle_lower` is the only uniqueness rule: concurrent claims race
-// on it and the loser maps to 409 `handle_taken`, never check-then-insert.
-//
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`); the exported functions stay `async` so routes and
-// tests keep their shape during the transition.
+// Claiming and reading `@username` rows. The primary key on `handle_lower` is the only
+// uniqueness rule: concurrent claims race on it and the loser maps to 409 `handle_taken`,
+// never check-then-insert.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -24,7 +20,6 @@ export interface HandleRow {
   groupId: string | null;
 }
 
-// The full `handles` row the claim path reads to decide.
 interface HandleRecord extends HandleRow {
   createdAt: Date;
   changedAt: Date;
@@ -49,10 +44,8 @@ export async function handleForUser(db: ServerDatabase, userId: string): Promise
   return row?.handle ?? null;
 }
 
-// Whether a handle is free for `userId` to take: shape and reserved words
-// first, then the live row, then the retired reservation (expired reads as
-// free; a reservation held by the asker reads as free). `reason` is set
-// exactly when the handle is not available.
+// Shape and reserved words first, then the live row, then the retired reservation
+// (expired or held by the asker reads as free). `reason` is set exactly when unavailable.
 export async function checkHandleAvailability(
   db: ServerDatabase,
   userId: string,
@@ -89,13 +82,9 @@ export async function checkHandleAvailability(
   );
 }
 
-// Whether a handle is free for a public group or channel to take: same
-// shape and reserved words as users (one namespace), then the live row,
-// then the retired reservation (expired reads as free). A reservation held
-// by the *asking group* reads as available (going public again may reuse
-// it); anyone else's reservation — a user or another group — reads as
-// taken. The asker passes their group id (`null` when they have no group
-// yet, e.g. the create flow checks before the row exists).
+// Same shape and reserved words as users (one namespace), then the live row, then the
+// retired reservation. A reservation held by the asking group reads as available; anyone
+// else's reads as taken. The asker passes `null` before its row exists.
 export async function checkGroupHandleAvailability(
   db: ServerDatabase,
   handle: string,
@@ -135,19 +124,11 @@ export async function checkGroupHandleAvailability(
   );
 }
 
-// Claims `handle` for `userId`: the first claim is always allowed, later
-// ones only 14 days after the previous change. Saving the same handle
-// (case-insensitively) returns the existing row before the interval check:
-// it is a no-op (no budget, no retirement); a casing-only change is applied
-// and updates the stored casing, but still obeys the 14-day interval and
-// never retires the handle. Any other change retires the old handle for 30
-// days (reclaimable by its former owner only) and writes the new row last,
-// so its unique violation (the race backstop) maps to 409 `handle_taken`.
-// Everything runs in one transaction under a per-user advisory lock, and
-// every row the decision depends on is read INSIDE it. Throws `HttpError`
-// with `handle_invalid`, `handle_reserved`, `handle_taken` or
-// `handle_change_too_soon` (with `nextChangeAt` in the error detail and the
-// 409 JSON body).
+// The first claim is always allowed, later ones only 14 days after the previous change.
+// Saving the same handle (case-insensitively) is a no-op; a casing-only change obeys the
+// interval and retires nothing. Any other change retires the old handle for 30 days and
+// writes the new row last, so its unique violation maps to 409 `handle_taken`. Everything
+// runs in one transaction under a per-user advisory lock, reading every row INSIDE it.
 export async function claimHandle(
   db: ServerDatabase,
   userId: string,
@@ -176,8 +157,8 @@ export async function claimHandle(
           const lower = normalizeHandle(trimmed);
           if (existing && existing.handleLower === lower) {
             if (existing.handle !== trimmed) {
-              // A casing-only change: allowed only after the interval, updates the
-              // stored casing in place, retires nothing.
+              // A casing-only change: allowed after the interval, updates the stored casing
+              // in place, retires nothing.
               const nextChangeAt = new Date(
                 existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
               );
@@ -229,11 +210,8 @@ export async function claimHandle(
 
           if (existing) {
             yield* sql`DELETE FROM handles WHERE handle_lower = ${existing.handleLower}`;
-            // The reservation belongs to whoever just gave the handle up: upsert
-            // so a racing retire (older owner) cannot survive a newer one. In
-            // practice the older reservation cannot exist here — the winner holds
-            // the live row, so only the winner reaches this path — but the upsert
-            // makes that invariant hold even if two txs interleave.
+            // The reservation belongs to whoever just gave the handle up: upsert so a
+            // racing retire cannot survive a newer one.
             const reservedUntil = new Date(
               now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000,
             );
@@ -265,13 +243,9 @@ export async function claimHandle(
   );
 }
 
-// Whether `error` is a unique-constraint violation: re-exported from
-// `../effect/error-utils` (T-1043) so `groups/service.ts` and
-// `groups/visibility.ts` keep importing it from here.
 export { isUniqueViolation };
 
-// Reaps expired retired rows opportunistically after a claim, so the table
-// does not grow forever. Best effort: a failure never fails the claim.
+// Best effort: a failed reap never fails the claim.
 export async function reapExpiredRetiredHandles(
   db: ServerDatabase,
   now: Date = new Date(),

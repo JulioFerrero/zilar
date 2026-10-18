@@ -4,20 +4,12 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from './db/client';
 import { runSql } from './effect/sql';
 
-// Startup helpers shared by `index.ts` (T-0120).
-
 export interface EnsureWritableDirDeps {
   mkdir: (dir: string, options: { recursive: boolean }) => Promise<unknown>;
   access: (dir: string, mode: number) => Promise<void>;
   writeAccess: number;
   onError: (message: string) => void;
   exit: (code: number) => void;
-  /**
-   * Called with the resolved dir when it did not exist yet and was created
-   * (T-0146). The default logs ONE warning line with the resolved path; a
-   * relative value resolving to an empty, unexpected directory (e.g. a
-   * build step moved the package root) is the "moved base" case.
-   */
   onCreated?: ((dir: string) => void) | undefined;
 }
 
@@ -32,16 +24,14 @@ function defaultDeps(envName: string): EnsureWritableDirDeps {
   };
 }
 
-/** Creates `dir` when missing and fails fast when it is not writable. */
 export async function ensureWritableDir(
   dir: string,
   envName: string,
   deps: EnsureWritableDirDeps = defaultDeps(envName),
 ): Promise<void> {
   let created = false;
-  // `recursive: true` succeeds whether or not the dir existed, so check
-  // existence first: the caller logs one line when the dir was created,
-  // which is the signal for "a relative path resolved somewhere new".
+  // `recursive: true` succeeds whether or not the dir existed, so check existence
+  // first: a newly created dir is the signal that a relative path resolved somewhere new.
   try {
     await deps.access(dir, deps.writeAccess);
   } catch {
@@ -57,26 +47,16 @@ export async function ensureWritableDir(
     deps.exit(1);
     return;
   }
-  // If the dir did not exist yet and was created now, log ONE warning
-  // line with the resolved path (T-0146): a relative value resolving to an
-  // empty, unexpected directory (e.g. a build step moved the package root)
-  // is the "moved base" case, and the resolved path says where the files
-  // actually land. Only when the directory holds no stickers while the
-  // database has sticker rows is the mismatch certain — the service logs
-  // that line (see `warnOnEmptyStorageDir` below); startup only sees the
-  // filesystem.
+  // Log ONE warning with the resolved path when the dir was just created: a relative
+  // value resolved against an unexpected package root, which is where files actually land.
   if (created) {
     deps.onCreated?.(dir);
   }
 }
 
 /**
- * Logs ONE warning line with the resolved storage path when the directory
- * holds no sticker files while the database has sticker rows (T-0146): the
- * "a build step moved the base" case, where a relative
- * `STICKER_STORAGE_DIR` resolved against an unexpected package root and the
- * previously uploaded files are silently unreachable. Callers pass a logger
- * (production) or a recorder (tests).
+ * Warns when the directory holds no sticker files while the database has sticker rows:
+ * a relative `STICKER_STORAGE_DIR` resolved elsewhere, so uploads are unreachable.
  */
 export async function warnOnEmptyStorageDir(input: {
   db: ServerDatabase;
@@ -108,13 +88,8 @@ export async function warnOnEmptyStorageDir(input: {
 }
 
 /**
- * Startup warning (T-0156): when `dirs` resolve onto the container layer in
- * production (no mount), uploads and stickers are silently lost the next
- * time the container is replaced. Warns ONCE per directory, with ids and
- * paths only — never contents. `isProduction` gates the whole check, so
- * development and tests stay quiet; `dirDevice`/`rootDevice` are injected
- * so tests never touch the real filesystem (production compares
- * `stat -c %d` of the dir against `/`: same device = container layer).
+ * Warns when an upload dir resolves onto the container layer (no mount) in production:
+ * uploads are lost when the container is replaced. Ids and paths only, never contents.
  */
 export async function warnOnContainerLayerStorage(input: {
   dirs: Array<{ envName: string; dir: string }>;
@@ -160,10 +135,8 @@ async function deviceOf(dir: string): Promise<number> {
 }
 
 /**
- * Startup warning (T-0156): `GIF_PROVIDER` set without `GIF_API_KEY` means
- * the GIF feature is half-configured — every route answers 501. Warns ONCE
- * with names only (never values), so a typo surfaces at boot instead of at
- * the first search.
+ * Warns when `GIF_PROVIDER` is set without `GIF_API_KEY`: the feature is half-configured
+ * and every route answers 501. Names only, never values.
  */
 export function warnOnGifConfig(input: {
   provider: string | undefined;

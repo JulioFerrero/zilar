@@ -1,20 +1,12 @@
-// The client-IP rule shared by the Hono rate limiters (join, pairing,
-// setup) and, later, their Effect HTTP replacements. Pure functions on
-// plain inputs: with 0 trusted proxy hops (the default) the socket address
-// is used and proxy headers are ignored — anyone can forge them. With N > 0
-// (behind N proxies, e.g. Caddy) the client IP is the Nth address from the
-// RIGHT of `x-forwarded-for`: the proxies append truthfully on the right
-// while an attacker controls only the left side.
+// The client-IP rule. With 0 trusted proxy hops (the default) the socket address is used
+// and proxy headers are ignored: anyone can forge them. With N > 0 the client IP is the
+// Nth address from the RIGHT of `x-forwarded-for`, since only the left side is attacker-
+// controlled.
 
-// T-1983: the edge resolves the client IP once (from TRUSTED_PROXY_HOPS) and
-// writes it here; Better Auth reads only this header for rate limits and the
-// session IP. The edge overwrites any incoming value, so a client cannot pick
-// its own bucket.
+// The edge resolves the IP once and writes it here; Better Auth reads only this header.
+// The edge overwrites any incoming value, so a client cannot pick its own bucket.
 export const CLIENT_IP_HEADER = 'x-zilar-client-ip';
 
-// The Nth address from the right of an `x-forwarded-for` header, or null
-// when the header is missing or has fewer than N addresses. Empty entries
-// never count as an address.
 export function trustedClientIp(header: string | undefined, hops: number): string | null {
   if (header === undefined) {
     return null;
@@ -34,9 +26,6 @@ export interface ClientIpInput {
   readonly socketAddress: string;
 }
 
-// The client IP for a per-IP limiter: with trusted proxy hops the Nth
-// address from the right of `x-forwarded-for`, otherwise the socket
-// address.
 export function clientIpFrom(input: ClientIpInput, trustedProxyHops: number): string {
   if (trustedProxyHops > 0) {
     const forwarded = trustedClientIp(input.forwardedFor, trustedProxyHops);

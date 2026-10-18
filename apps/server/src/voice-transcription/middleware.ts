@@ -6,14 +6,8 @@ import { CurrentUser, httpErrorResponse, requestIdOf } from '../effect/http-core
 import type { RateLimiter } from '../rate-limit';
 import type { VoiceTranscriptionSettings } from './settings';
 
-// The tags themselves live in `@zilar/api-contract` (T-1113); the layers below
-// are the server's implementation, the same as before the move.
-
-// The transcript route answers 501 when the owner never configured an
-// endpoint, before the payload is decoded (the old router's
-// session -> settings -> decode -> limiter order). Endpoint middleware runs
-// before the payload decode, the same pattern as `GroupsRoleRateLimit` in
-// `groups/api.ts`. `requires: CurrentUser` keeps the session 401 first.
+// The transcript route answers 501 when no endpoint is configured, before the payload is
+// decoded. `requires: CurrentUser` keeps the session 401 first.
 export function transcriptConfiguredLayer(
   settingsReader: () => Promise<VoiceTranscriptionSettings | null>,
 ): Layer.Layer<TranscriptConfigured> {
@@ -39,10 +33,8 @@ export function transcriptConfiguredLayer(
   );
 }
 
-// The owner settings answer 404 for non-owners and 429 over budget before
-// the payload is decoded (the old router's session -> owner -> limiter ->
-// decode order). The handler drops both checks so the budget is charged
-// exactly once. `requires: CurrentUser` keeps the session 401 first.
+// The owner settings answer 404 for non-owners and 429 over budget before the payload is
+// decoded; the handler drops both checks so the budget is charged once.
 export function voiceSettingsOwnerLimitLayer(
   ownerOf: (userId: string) => Promise<boolean>,
   limiter: RateLimiter,

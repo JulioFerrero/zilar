@@ -1,18 +1,13 @@
-// The Effect Schema body rules for first-run setup, split out of `setup/api.ts`
-// in T-1120 with no behaviour change.
-
 import { Schema, SchemaGetter, SchemaIssue } from 'effect';
 import { firstIssueMessage } from '../effect/schema-issues';
 
-// zod v4's practical email check (`z.email()`), kept so an address the setup
-// page accepted before is still accepted.
+// A pragmatic email check: an address the setup page accepted stays accepted.
 const EMAIL_PATTERN =
   /^(?:[A-Za-z0-9_'+-]+\.)*[A-Za-z0-9_'+-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/;
 
-// Replaces `field: z.string().trim().min(1, ...).max(n, ...)`: trimmed before
-// the length checks, exactly like the old chain. In effect 4.0.2 the
-// `{ message }` option on `isMinLength`/`isMaxLength` does not reach the issue
-// annotations, so one `makeFilter` returns each text (T-0561 pitfall).
+// Trimmed before the length checks. In effect 4.0.2 the `{ message }` option on
+// `isMinLength`/`isMaxLength` does not reach the issue annotations, so one `makeFilter`
+// returns each text.
 function lengthChecked(field: string, max: number): (value: string) => string | undefined {
   return (value) => {
     if (value.length < 1) {
@@ -31,8 +26,6 @@ const ResendApiKey = Schema.Trim.pipe(
 
 const From = Schema.Trim.pipe(Schema.check(Schema.makeFilter(lengthChecked('from', 320))));
 
-// Replaces `z.string().trim().toLowerCase()`: trimmed, then lowercased, before
-// the checks below run.
 const Lowercased = Schema.Trim.pipe(
   Schema.decodeTo(Schema.String, {
     decode: SchemaGetter.transform((value: string) => value.toLowerCase()),
@@ -40,8 +33,6 @@ const Lowercased = Schema.Trim.pipe(
   }),
 );
 
-// Replaces the `adminEmail` chain: trim, lowercase, min 1, max 320, then the
-// email rule, with the same texts in the same order.
 const AdminEmail = Lowercased.pipe(
   Schema.check(
     Schema.makeFilter((value: string) => {
@@ -75,9 +66,7 @@ export const SetupResult = Schema.Struct({
   inviteCode: Schema.String,
 });
 
-// The first failure's message, like zod's `issues[0].message`: a `makeFilter`
-// text when the failing check set one, else the generic fallback. Setup only
-// looks at the first child and has no `AnyOf` case.
+// The first failure's message: a `makeFilter` text when one is set, else the fallback.
 export function firstMessage(issue: SchemaIssue.Issue): string | undefined {
   return firstIssueMessage(issue, { firstChildOnly: true });
 }

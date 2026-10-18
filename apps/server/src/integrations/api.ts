@@ -1,9 +1,5 @@
-// Integrations module on the Effect `HttpApi` adapter (T-0544): the same
-// methods, paths, statuses, bodies, limiter order, audit calls and texts as
-// the deleted router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). These routes carry secrets (the Telegram
-// bot token, the Resend key); like before, no secret reaches a response, a
-// log line or an error text. Helpers stay in `routes.ts`.
+// These routes carry secrets (the Telegram bot token, the Resend key): no secret reaches
+// a response, a log line or an error text.
 
 import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
@@ -55,11 +51,8 @@ import {
 const MAIL_SEND_FAILED =
   'The test email could not be sent. Check the Resend key and the sender address.';
 
-// Runs the Telegram save budget before the payload is decoded, exactly like
-// the old route's `requireOwner` -> `allow` -> decode order: the owner check
-// runs first (a non-owner gets the same 404 as an unknown route without
-// spending budget), then the limiter, then the decode. `requires:
-// CurrentUser` is satisfied by `Session`.
+// The owner check runs first (a non-owner gets the same 404 without spending budget),
+// then the limiter, then the payload decode.
 function telegramRateLimitLayer(
   limiter: RateLimiter,
   db: ServerDatabase,
@@ -88,8 +81,7 @@ function telegramRateLimitLayer(
   );
 }
 
-// Same order as the old email route: owner (404) -> env guard (409) ->
-// limiter (429) -> decode. The env guard lives here (before the decode)
+// Owner (404), env guard (409), limiter (429), decode: the guard runs before the decode
 // because the middleware runs before the payload is parsed.
 function emailRateLimitLayer(
   limiter: RateLimiter,
@@ -176,9 +168,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
 
   const groupLayer = HttpApiBuilder.group(IntegrationsApi, 'integrations', (handlers) =>
     handlers
-      // Owner-only like the three writes: anyone else gets the same 404 as
-      // an unknown route. The web reads "am I the owner" from 200 versus
-      // 404 (`useIsServerOwner`).
+      // Owner-only: anyone else gets the same 404 as an unknown route.
       .handle(
         'status',
         handler(logger, async (_request, user) => {
@@ -191,10 +181,8 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           return { telegram, email, voiceTranscription, canManage: true };
         }),
       )
-      // The Telegram token, verified through `getMe` before storing. The
-      // limiter middleware already charged the budget, before the payload
-      // decode. A rejected token answers 422 `invalid_token` and nothing is
-      // stored; anything else failing to reach Telegram answers 503.
+      // The token is verified through `getMe` before storing; a rejected token answers 422
+      // `invalid_token` and nothing is stored.
       .handle(
         'setTelegram',
         handler(logger, async (request, user) => {
@@ -218,8 +206,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           return { ok: true };
         }),
       )
-      // Removes the stored token. An env token cannot be deleted here and
-      // stays in effect.
+      // An env token cannot be deleted here and stays in effect.
       .handle(
         'removeTelegram',
         handler(logger, async (_request, user) => {
@@ -229,11 +216,9 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           return { ok: true };
         }),
       )
-      // The sender changes always; the key changes only when given. Before
-      // storing anything a real test message goes to the owner's own email
-      // through the candidate mailer; a failed send answers 422
-      // `mail_send_failed` and nothing is stored. The env guard and the
-      // limiter middleware already ran, before the payload decode.
+      // The sender always changes, the key only when given. A real test message goes to the
+      // owner's own email through the candidate mailer; a failed send answers 422 and stores
+      // nothing.
       .handle(
         'setEmail',
         handler(logger, async (request, user) => {
@@ -260,8 +245,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           try {
             await sendTestMail({ mailer: candidate, email: ownerEmail });
           } catch {
-            // Nothing is stored on a failed send: same fixed message as
-            // setup, with no provider detail and no secret.
+            // Nothing is stored on a failed send: fixed message, no provider detail or secret.
             throw new HttpError(422, 'mail_send_failed', MAIL_SEND_FAILED);
           }
           await runSql(

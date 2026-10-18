@@ -1,9 +1,3 @@
-// The invite-links service barrel (T-0991 size split): the old
-// `invite-links/service.ts` contents live in `tokens.ts` (types, constants
-// and token primitives), `queries.ts` (the link reads and writes) and
-// `join.ts` (the preview and join flow). This path re-exports every name it
-// exported before, so importers do not change.
-
 export {
   INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
   INVITE_LINK_CREATE_MAX_USES,

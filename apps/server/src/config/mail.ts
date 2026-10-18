@@ -1,9 +1,5 @@
-// Mail transport and GitHub App cross-field rules (T-1457), split out of
-// `config.ts`. Every issue names the variable and states what is wrong; values
-// are never included, so `SMTP_PASSWORD` can never leak through a configuration
-// error. The rules run on the raw env map (the values are plain strings at this
-// boundary) and are appended after the schema issues, mirroring zod's
-// `superRefine` order.
+// Mail transport and GitHub App cross-field rules. Every issue names the variable and
+// states what is wrong, never the value, so `SMTP_PASSWORD` cannot leak through an error.
 
 export interface ConfigDetail {
   readonly name: string;
@@ -60,9 +56,8 @@ export function crossFieldDetails(
   return details;
 }
 
-// Accepts a bare address (`no-reply@example.com`) or a display name plus
-// angle-addr (`Zilar <no-reply@example.com>`); enough validation to catch a
-// typo in MAIL_FROM at startup without pulling in a mail parser.
+// A bare address or a display name plus angle-addr; enough to catch a typo in MAIL_FROM
+// at startup without a mail parser.
 function isMailbox(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.includes('\n') || trimmed.includes('\r')) {

@@ -1,9 +1,6 @@
-// Instance settings store (T-0161). Two keys live in the
-// `instance_settings` table: `mail.resend_api_key` (stored encrypted, see
-// `setup/crypto.ts`) and `mail.from` (stored in clear text). "Setup
-// needed" means no user exists at all: there is no global admin role
-// (group roles are per group), so the first user to finish the setup
-// screen becomes the implicit first admin and their sign-up closes setup.
+// Two keys: `mail.resend_api_key` (encrypted) and `mail.from` (clear text). "Setup needed"
+// means no user exists: there is no global admin role, so the first user to finish setup
+// becomes the implicit first admin and their sign-up closes setup.
 
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
@@ -15,8 +12,7 @@ import type { ServerConfig } from '../config';
 export const RESEND_API_KEY_SETTING = 'mail.resend_api_key';
 export const MAIL_FROM_SETTING = 'mail.from';
 
-// Serializes first-run setup across processes: two concurrent setups
-// race safely because the current state is read INSIDE this lock.
+// The current state is read INSIDE this lock, so two concurrent setups race safely.
 const SETUP_LOCK = 'zilar-first-run-setup';
 
 export interface MailSettings {
@@ -24,10 +20,8 @@ export interface MailSettings {
   from: string;
 }
 
-// The envelope-encryption key for instance settings: the explicit
-// `ZILAR_KEY_ENCRYPTION_KEY` wins, otherwise it is derived from the auth
-// secret — so an install needs no extra variable and the key is never
-// stored in clear text.
+// The explicit `ZILAR_KEY_ENCRYPTION_KEY` wins, otherwise the key is derived from the auth
+// secret, so an install needs no extra variable and the key is never stored in clear text.
 export function settingsCipherFor(
   config: Pick<ServerConfig, 'ZILAR_KEY_ENCRYPTION_KEY' | 'BETTER_AUTH_SECRET'>,
 ): { encrypt: (plaintext: string) => string; decrypt: (envelope: string) => string } {
@@ -35,9 +29,6 @@ export function settingsCipherFor(
   return createSettingsCipher(masterKey);
 }
 
-// Wrappers over the `effect/sql` helpers below: every query runs
-// on the runtime registered for this database (see `../effect/sql`). They stay
-// `async` so routes, `index.ts` and existing tests keep their shape.
 export function needsSetup(db: ServerDatabase): Promise<boolean> {
   return runSql(db, needsSetupEffect());
 }
@@ -48,9 +39,6 @@ export function getMailSettings(
 ): Promise<MailSettings | null> {
   return runSql(db, getMailSettingsEffect(cipher));
 }
-
-// The `effect/sql` helpers the wrappers above and `setup/api.ts` use. The setup
-// transactions run them through `sql.withTransaction`.
 
 interface InstanceSettingRow {
   key: string;

@@ -1,11 +1,3 @@
-// Invite links module on the Effect `HttpApi` adapter (T-0566): the same
-// methods, paths, statuses (201 create, 204 revoke), bodies, limiter order
-// and audit calls as the deleted router (`routes.ts`), mounted by the Effect
-// edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-//
-// The schemas and the group live in the shared contract (`@zilar/api-contract`,
-// T-0892); this file keeps the handlers and layers.
-
 import { Layer, Option, Schema } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -49,31 +41,23 @@ export interface InviteLinksApiDependencies {
   adminClient: EjabberdAdminClient;
   logger: Logger;
   audit?: AuditRecorder;
-  /** Injected in tests so the join windows can advance without waiting. */
   now?: () => number;
-  /** Injected in tests; production uses the socket address. */
   getClientIp?: (request: HttpServerRequest.HttpServerRequest) => string;
-  /** Injected in tests; production reads TRUSTED_PROXY_HOPS from config. */
   trustedProxyHops?: number;
-  /** Overrides the join limiters (tests inject small budgets). */
   joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
 }
 
-// Test seam for the join rate windows, set on the app module by
-// `setTestAppInviteLinks` (see app.ts). Production never sets it.
+// Test seam for the join rate windows; production never sets it.
 export interface TestInviteLinksOverrides {
   now?: () => number;
   getClientIp?: (request: HttpServerRequest.HttpServerRequest) => string;
-  /** Overrides TRUSTED_PROXY_HOPS in tests (the test config has no env seam). */
   trustedProxyHops?: number;
-  /** Overrides the join limiters (tests inject small budgets). */
   joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
 }
 
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
-// The shape check still answers the same 404 `invalid_link`, so it runs inside
-// the handler where the old decode did; the contract keeps `:token` a string.
+// The shape check answers the same 404 `invalid_link` inside the handler.
 const InviteToken = Schema.String.check(Schema.isPattern(TOKEN_PATTERN));
 
 const InviteLinksApi = HttpApi.make('invite-links').add(InviteLinksGroup);
@@ -104,8 +88,7 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
       windowMs: JOIN_RATE_LIMIT_WINDOW_MS,
       now,
     });
-  // The preview is a cheap read, but an unrated GET would let tokens be
-  // probed at full speed: a generous per-user budget keeps that expensive.
+  // A generous per-user budget keeps unrated GETs from probing tokens at full speed.
   const previewLimiter =
     deps.joinLimiters?.preview ??
     createRateLimiter({
@@ -114,9 +97,6 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
       now,
     });
 
-  // The per-IP join limiter reads the socket address `forwardRequest`
-  // stamped; with trusted proxy hops it uses the Nth `x-forwarded-for`
-  // address from the right instead. Tests inject `getClientIp`.
   const clientIp =
     deps.getClientIp ??
     ((request: HttpServerRequest.HttpServerRequest) =>
@@ -130,8 +110,7 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
 
   const groupLayer = HttpApiBuilder.group(InviteLinksApi, 'invite-links', (handlers) =>
     handlers
-      // Group owner/admin creates a link: the token is shown once here and
-      // never stored.
+      // The token is shown once here and never stored.
       .handle(
         'createLink',
         handler(logger, (request, user) =>
@@ -146,24 +125,22 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
           }),
         ),
       )
-      // Group owner/admin lists links: the tokens are never returned.
+      // The tokens are never returned.
       .handle(
         'listLinks',
         handler(logger, async (request, user) => ({
           links: await listInviteLinks(serviceDeps, request.params.id, user.id),
         })),
       )
-      // Group owner/admin revokes a link. Idempotent: revoking twice still
-      // answers 204.
+      // Idempotent: revoking twice still answers 204.
       .handle(
         'revokeLink',
         handler(logger, async (request, user) => {
           await revokeInviteLink(serviceDeps, request.params.id, user.id, request.params.linkId);
         }),
       )
-      // Join preview: group title and member count only. Unknown/expired/
-      // revoked/exhausted links answer the same 404 `invalid_link`. The
-      // limiter middleware already charged the budget, before the token check.
+      // Preview: title and member count only. Unknown, expired, revoked and exhausted
+      // links answer the same 404 `invalid_link`.
       .handle(
         'preview',
         handler(logger, async (request, user) => {
@@ -174,8 +151,8 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
           return await previewInviteLink(serviceDeps, token.value, user.id);
         }),
       )
-      // Joins the caller as a `member`. The token check runs first, then the
-      // per-user and per-IP budgets, so a malformed token costs nothing.
+      // Token check first, then the per-user and per-IP budgets, so a malformed token
+      // costs nothing.
       .handle(
         'join',
         handler(logger, async (request, user) => {
@@ -197,8 +174,7 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(InviteLinksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // The join preview limiter runs before the token is decoded, exactly like
-    // the old route's `previewLimiter.allow` -> token check order.
+    // The preview limiter runs before the token is decoded.
     Layer.provide(
       rateLimitLayer(
         InviteLinksPreviewRateLimit,

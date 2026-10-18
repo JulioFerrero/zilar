@@ -1,16 +1,7 @@
-// The OpenAI-compatible transcription port (T-0170, Effect conversion by
-// T-0492). One function posts audio to
-// `POST {baseUrl}/audio/transcriptions` (multipart `file` + `model`,
-// optional bearer key) and answers the transcript text plus the detected
-// language. The provider's response shape is validated with Effect Schema
-// (`transcriptionResponseSchema`); the error
-// body is never forwarded — the caller maps each failure kind to a fixed
-// answer (`rejected` vs `unreachable`, never the provider's body).
-//
-// The call runs on Effect inside (typed errors, timeout via interruption);
-// `transcribeAudio` is the Promise edge and throws the same
-// `TranscriptionProviderError` as before. `fetchFn` is injected so tests
-// use a fake provider, never a real endpoint or key.
+// Posts audio to `POST {baseUrl}/audio/transcriptions` (multipart `file` + `model`,
+// optional bearer key) and answers the text plus detected language. The provider's error
+// body is never forwarded: each failure maps to a fixed answer. `fetchFn` is injected so
+// tests never reach a real endpoint or key.
 
 import { Data, Duration, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 
@@ -51,13 +42,10 @@ export type TranscriptionFetch = (
 
 const PROVIDER_TIMEOUT_MS = 60_000;
 
-/** The provider was never reached (transport, DNS or the timeout). */
 class ProviderUnreachable extends Data.TaggedError('ProviderUnreachable') {}
 
-/** The provider answered but refused, or its body did not parse. */
 class ProviderRejected extends Data.TaggedError('ProviderRejected') {}
 
-/** Builds `POST {baseUrl}/audio/transcriptions` with no double slash. */
 export function transcriptionEndpointFor(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 }
@@ -73,9 +61,8 @@ const transcribeAudioEffect = Effect.fnUntraced(function* (
   const form = new FormData();
   form.append('model', input.model);
   form.append('file', new Blob([input.audio], { type: input.mime }), input.filename);
-  // `Effect.tryPromise` hands the fetch an `AbortSignal` that fires when the
-  // effect is interrupted; `timeoutOrElse` interrupts the source on expiry
-  // and keeps only the typed error (no `Cause.TimeoutError`).
+  // `Effect.tryPromise` hands the fetch an `AbortSignal` that fires on interruption;
+  // `timeoutOrElse` keeps only the typed error, no `Cause.TimeoutError`.
   const response = yield* Effect.tryPromise({
     try: (signal) =>
       fetchFn(transcriptionEndpointFor(input.baseUrl), {
@@ -93,16 +80,14 @@ const transcribeAudioEffect = Effect.fnUntraced(function* (
   );
   const raw: unknown = yield* Effect.promise(() => response.json().catch(() => null));
   if (!response.ok) {
-    // The endpoint answered, but refused (bad key, bad model, 5xx).
     return yield* new ProviderRejected();
   }
   const parsed = Schema.decodeUnknownExit(transcriptionResponseSchema)(raw);
   if (!Exit.isSuccess(parsed)) {
     return yield* new ProviderRejected();
   }
-  // Empty text is a valid answer (silence transcribes to nothing): the
-  // verify call proves the endpoint works either way, and a real message
-  // with no speech honestly has no words.
+  // Empty text is a valid answer (silence): the verify call proves the endpoint works
+  // either way.
   return { text: parsed.value.text.trim(), language: parsed.value.language ?? null };
 });
 
@@ -128,10 +113,8 @@ function defaultFetch(
 }
 
 /**
- * A 1-second silent WAV (16 kHz mono 16-bit, a few KB) built in memory.
- * The PUT verifies the endpoint by sending this instead of real audio: a
- * test request is not possible without audio, and silence transcribes (or
- * rejects) exactly like any other clip.
+ * A 1-second silent WAV (16 kHz mono 16-bit, a few KB) built in memory: a test request is
+ * not possible without audio, and silence transcribes (or rejects) like any other clip.
  */
 export function silentVerificationWav(): Uint8Array {
   const sampleRate = 16_000;

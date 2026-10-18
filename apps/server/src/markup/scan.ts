@@ -1,18 +1,13 @@
-// T-1988: linear markup scans. The old regexes (`/<[^>]*>/`,
-// `/<!--[\s\S]*?-->/` and the lazy element patterns) slowed down with the
-// square of the input on crafted pages and message stanzas. Every helper here
-// walks the string once with indexOf-style scans, so a 2 MiB body stays
-// linear. Matching is case-insensitive, as the regexes were.
+// Linear markup scans. The old regexes slowed down with the square of the input on
+// crafted pages, so every helper walks the string once with indexOf-style scans; matching
+// is case-insensitive.
 const MAX_TAG_ATTRIBUTE_CHARS = 2000;
 
 export interface TagMatch {
-  /** Index of the opening `<`. */
   start: number;
-  /** Index just after the closing `>`. */
   end: number;
   closing: boolean;
   selfClosing: boolean;
-  /** Attribute text between the tag name and `>`, capped at 2,000 characters. */
   attrs: string;
 }
 
@@ -21,7 +16,6 @@ export interface ElementMatch {
   inner: string;
 }
 
-/** The next `<tag …>` or `</tag …>`, or null. */
 export function nextTag(input: string, tag: string, from = 0): TagMatch | null {
   if (tag.length === 0) {
     return null;
@@ -59,7 +53,6 @@ export function nextTag(input: string, tag: string, from = 0): TagMatch | null {
   return null;
 }
 
-/** The next opening `<tag …>`, skipping closing tags, or null. */
 export function nextOpenTag(input: string, tag: string, from = 0): TagMatch | null {
   let cursor = from;
   while (true) {
@@ -71,7 +64,6 @@ export function nextOpenTag(input: string, tag: string, from = 0): TagMatch | nu
   }
 }
 
-/** The index of the next `</tag\s*>`, or null. */
 export function findCloseTag(input: string, tag: string, from = 0): number | null {
   if (tag.length === 0) {
     return null;
@@ -100,7 +92,6 @@ export function findCloseTag(input: string, tag: string, from = 0): number | nul
   return null;
 }
 
-/** Replaces every comment with one space; an unclosed `<!--` drops the rest. */
 export function stripComments(input: string): string {
   const parts: string[] = [];
   let cursor = 0;
@@ -121,7 +112,6 @@ export function stripComments(input: string): string {
   return parts.join('');
 }
 
-/** Replaces every `<…>` tag with `replacement`; an unclosed `<` drops the rest. */
 export function stripTags(input: string, replacement = ' '): string {
   const parts: string[] = [];
   let cursor = 0;
@@ -155,7 +145,6 @@ export function stripTags(input: string, replacement = ' '): string {
   return parts.join('');
 }
 
-/** The inner text of every `<tag …>…</tag>` block, up to `limit` blocks. */
 export function elementBlocks(input: string, tag: string, limit: number): string[] {
   const blocks: string[] = [];
   let cursor = 0;
@@ -174,7 +163,6 @@ export function elementBlocks(input: string, tag: string, limit: number): string
   return blocks;
 }
 
-/** The first `<tag …>…</tag>` block's attributes and inner text, or null. */
 export function firstElement(input: string, tag: string): ElementMatch | null {
   const open = nextOpenTag(input, tag, 0);
   if (open === null) {
@@ -187,7 +175,6 @@ export function firstElement(input: string, tag: string): ElementMatch | null {
   return { attrs: open.attrs, inner: input.slice(open.end, closeStart) };
 }
 
-/** The attribute text of the first `<tag …>`, or null. */
 export function openTagAttrs(input: string, tag: string): string | null {
   return nextOpenTag(input, tag, 0)?.attrs ?? null;
 }

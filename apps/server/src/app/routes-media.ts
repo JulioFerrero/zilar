@@ -1,5 +1,3 @@
-// The sticker, avatar and background routes `createApp` mounts next, in mount
-// order (T-1460, plan #48).
 import type { EffectApiMount } from '../effect/http-core';
 import { createAvatarsApi } from '../avatars/api';
 import { createBackgroundsApi } from '../backgrounds/api';
@@ -11,26 +9,19 @@ import { createStickersApi } from '../stickers/api';
 import type { RouteWiring } from './deps';
 import { opt } from './opt';
 
-/** The media-storage mounts: stickers, avatars and backgrounds. */
 export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[] {
   const { config } = base;
   const mounts: EffectApiMount[] = [];
-  // Stickers (T-0120): packs, uploads and file serving. The storage dir
-  // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
-  // The bot token resolves per request: env wins, else the stored
-  // integrations value, else none (T-0162), so saving needs no restart.
+  // The bot token resolves per request: env wins, else the stored integrations value.
   const getBotToken = createGetBotToken({
     ...base,
     cipher: settingsCipherFor(config),
   });
-  // The Effect api serves all 14 sticker routes, binary upload and file GET
-  // included (T-0582 part A, T-0602 part B).
   const stickersDeps = {
     ...base,
     storageDir: deps.stickerStorageDir ?? config.STICKER_STORAGE_DIR,
     audit,
     getBotToken,
-    // T-1567: conversion failures go to the pino log, not `console.warn`.
     converter: createStickerConverter({
       warn: (summary, stderrTail) =>
         base.logger.warn({ stderrTail }, `sticker conversion failed: ${summary}`),
@@ -42,9 +33,6 @@ export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[
   };
   const stickersApi = createStickersApi(stickersDeps);
   mounts.push(stickersApi);
-  // Avatars (T-0165): upload / remove / serve profile pictures for
-  // people, AIs, groups and channels. The storage dir comes from
-  // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
   const avatarsApi = createAvatarsApi({
     ...base,
     storageDir: deps.avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
@@ -53,9 +41,6 @@ export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[
     ...opt('uploadLimiter', deps.avatarUploadLimiter),
   });
   mounts.push(avatarsApi);
-  // Background images (T-0460): upload / list / serve / delete personal
-  // wallpapers, owner-only. The storage dir comes from
-  // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
   const backgroundsApi = createBackgroundsApi({
     ...base,
     storageDir: deps.backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
@@ -64,9 +49,6 @@ export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[
   });
   mounts.push(backgroundsApi);
 
-  // Card media (T-1853): read-only serving of the files an AI attached to a
-  // card. The storage dir comes from `CARD_MEDIA_STORAGE_DIR`; tests override
-  // it with a temp dir.
   const cardMediaApi = createCardMediaApi({
     ...base,
     storageDir: deps.cardMediaStorageDir ?? config.CARD_MEDIA_STORAGE_DIR,

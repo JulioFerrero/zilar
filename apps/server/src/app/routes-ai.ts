@@ -1,5 +1,3 @@
-// The integration, AI, approvals, tools and voice routes `createApp` mounts
-// last, in mount order (T-1460, plan #48).
 import type { EffectApiMount } from '../effect/http-core';
 import { createAisApi } from '../ais/api';
 import { approvalFollowerOf } from '../agents/gateway/stop-types';
@@ -18,13 +16,10 @@ import { createXmppApi } from '../xmpp/api';
 import type { RouteWiring } from './deps';
 import { opt } from './opt';
 
-/** The second group of mounts: integrations up to AIs, in mount order. */
 export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): EffectApiMount[] {
   const { config, logger } = base;
   const mounts: EffectApiMount[] = [];
-  // Integration settings (T-0162 + Email): owner-only; everyone else gets
-  // the same 404 as an unknown route. Covered by the 401 sweep as
-  // session-required routes (never allowlisted).
+  // Owner-only; everyone else gets the same 404 as an unknown route.
   const integrationsApi = createIntegrationsApi({
     ...base,
     mailer,
@@ -34,9 +29,7 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
   mounts.push(integrationsApi);
   const auditApi = createAuditApi({ ...base });
   mounts.push(auditApi);
-  // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
-  // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
-  // so the web can hide the tab.
+  // Mounted always: an unconfigured provider answers 501, so the web can hide the tab.
   const gifsApi = createGifsApi({
     ...base,
     ...opt('provider', deps.gifProvider),
@@ -76,22 +69,16 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
     ...opt('maxBytes', deps.voiceMaxBytes),
   });
   mounts.push(voiceApi);
-  // Voice transcripts on demand (T-0170): the enabled flag plus the
-  // transcript route for any signed-in user, and the owner-only endpoint
-  // settings. Covered by the 401 sweep as session-required routes (never
-  // allowlisted). Tests inject the audio fetcher and the transcriber so no
-  // request ever reaches ejabberd or a real provider.
+  // Session-required, never allowlisted in the 401 sweep; tests inject the fetcher and
+  // transcriber so no request reaches ejabberd or a provider.
   const voiceTranscriptionApi = createVoiceTranscriptionApi({
     ...base,
     audit,
     ...deps.voiceTranscription,
   });
   mounts.push(voiceTranscriptionApi);
-  // Provider-key connections always mount: with no envelope-encryption master
-  // key configured, each route answers 503 (`connections_unavailable`) rather
-  // than disappearing into a bare 404. The key is validated at startup by the
-  // config schema when present. Tests override the cipher and probe so no
-  // request ever reaches a real provider.
+  // Mounted always: with no master key each route answers 503, never a bare 404. Tests
+  // override the cipher and probe.
   const connectionsCipher =
     deps.connections?.cipher ??
     (config.ZILAR_KEY_ENCRYPTION_KEY === undefined
@@ -104,9 +91,7 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
     ...opt('probe', deps.connections?.probe),
   });
   mounts.push(connectionsApi);
-  // AIs always mount. Creating one needs the key cipher (to seal the provider
-  // connection's key); when it is missing every write route answers 503
-  // (`ais_unavailable`) rather than failing halfway.
+  // Mounted always: without the key cipher every write answers 503, never a half-write.
   const aisCipher = deps.ais?.cipher ?? connectionsCipher;
   const aisApi = createAisApi({
     ...base,

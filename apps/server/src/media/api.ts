@@ -1,15 +1,5 @@
-// Media gallery module on the Effect `HttpApi` adapter (T-0560): the same
-// method, path, step order, statuses, texts and payloads as the deleted
-// router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChatOnDemand`
-// and the gallery read, which runs on effect/sql.
-//
-// The query is decoded manually inside the handler (Effect Schema, same rules
-// as the old zod schema) instead of as an endpoint `query`, because the old
-// route ran the archive check and the limiter *before* the decode (an invalid
-// query still spends budget). 501 `media_unavailable` comes first, then the
-// 429 limiter, then the 400 decode, then the 404 chat resolution — exactly
-// like the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
+// Step order is security-relevant: 501 `media_unavailable`, then the 429 limiter, then
+// the 400 query decode, then the 404 chat resolution.
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpServerResponse, type HttpServerRequest } from 'effect/http';
@@ -42,8 +32,7 @@ export const MEDIA_RATE_LIMIT_MAX = 30;
 export const MEDIA_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const MEDIA_DEFAULT_LIMIT = 50;
 export const MEDIA_MAX_LIMIT = 100;
-// T-1234: the link-preview budget, a read route capped per user like the
-// gallery (MEDIA_RATE_LIMIT_MAX, applied at the top of the `gallery` handler).
+// The link-preview budget, a read route capped per user like the gallery.
 export const LINK_PREVIEW_RATE_LIMIT_MAX = 60;
 export const LINK_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const LINK_PREVIEW_MAX_URL_CHARS = 2000;
@@ -51,8 +40,6 @@ export const LINK_PREVIEW_MAX_URL_CHARS = 2000;
 export const MEDIA_TYPES = ['media', 'files', 'links', 'voice'] as const;
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-// The tab a client asks for maps to the indexed kinds it shows. `media` is the
-// grid (images and gifs); the other tabs are one kind each.
 const TYPE_KINDS: Record<MediaType, readonly MediaKind[]> = {
   media: ['image', 'gif'],
   files: ['file'],
@@ -65,23 +52,17 @@ export interface MediaRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   logger: Logger;
-  /** Absent when XMPP_ARCHIVE_DATABASE_URL is unset → every request 501s. */
   archive?: ArchivePool;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
 
 export interface MediaApiDependencies extends MediaRoutesDependencies {
   limiter?: RateLimiter;
-  /** T-1234: the link-preview budget, injectable in tests. */
   linkPreviewLimiter?: RateLimiter;
 }
 
-// Replaces `querySchema` (zod): `chat` is 1..256 characters, `type` is one of
-// the four tabs, `before` is a coerced positive int, `limit` is a coerced int
-// 1..MEDIA_MAX_LIMIT. Strict, so an excess key fails like the old `.strict()`.
-// Values arrive as strings from the query string, so the decode runs over the
-// raw `URLSearchParams` view (first value wins, like the old `c.req.query()`).
+// `chat` is 1..256 characters; `type` one of the four tabs; `before` a positive int,
+// `limit` 1..MEDIA_MAX_LIMIT. Strict, values arrive as strings (first value wins).
 const MediaQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   type: Schema.optional(Schema.Literals(MEDIA_TYPES)),
@@ -94,8 +75,6 @@ const MediaQuery = Schema.Struct({
   ),
 });
 
-// T-1234: the link-preview URL, decoded by hand like the gallery query so a
-// missing, non-https or overlong value is the handler's fixed 400.
 function linkPreviewUrl(request: HttpServerRequest.HttpServerRequest): string | null {
   const url = queryRecord(request).url;
   if (url === undefined || url.length === 0 || url.length > LINK_PREVIEW_MAX_URL_CHARS) {
@@ -165,8 +144,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
           const limit = query.limit ?? MEDIA_DEFAULT_LIMIT;
           const before = query.before;
 
-          // Index the chat on demand. A failure is logged (ids and the error
-          // name only) and the rows already stored still answer.
+          // Index the chat on demand. A failure is logged with ids only and the stored
+          // rows still answer.
           const archive = deps.archive;
           yield* Effect.promise(() =>
             indexChatOnDemand({
@@ -187,9 +166,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
               deps.db,
               Effect.gen(function* () {
                 const sql = yield* SqlClient.SqlClient;
-                // `kinds` is never empty here (every tab maps to at least one
-                // kind), but an empty `IN ()` would be a syntax error, so the
-                // guard returns no rows instead of running one.
+                // `kinds` is never empty, but an empty `IN ()` would be a syntax error, so
+                // the guard returns no rows.
                 if (kinds.length === 0) {
                   return [] as MediaItemRow[];
                 }
@@ -199,8 +177,6 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
                   WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid} AND deleted = false AND kind IN ${sql.in(kinds)} ${beforeCondition}
                   ORDER BY at_micros DESC, id ASC
                   LIMIT ${limit + 1}`;
-                // One extra row answers "is there another page?" without a
-                // count.
                 return raw.map((row) => ({
                   ...(row as unknown as MediaItemRow),
                   atMicros: Number((row as { atMicros: string | number }).atMicros),
@@ -211,10 +187,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
 
           const hasMore = rows.length > limit;
           const page = hasMore ? rows.slice(0, limit) : rows;
-          // One batched name lookup for the page's real room senders (T-2014):
-          // a room sender's name comes from `bare_peer`, never from the nick.
-          // The rows are already in hand and `senderNameFor` falls back to the
-          // nick (or `Unknown`), so a failed lookup must not fail the page.
+          // One batched name lookup for the page's room senders: the name comes from
+          // `bare_peer`, never the nick, and a failed lookup must not fail the page.
           const roomNames = yield* Effect.promise(() =>
             senderNamesByJid(deps.db, roomSenderJids(page)),
           ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
@@ -233,16 +207,10 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     ),
   );
 
-  // T-1234: the link preview answers 200 with the unfurled head, or 204 when
-  // the page has neither a title nor a description. It shares the media
-  // module so `app.ts` does not change. A non-https or overlong URL is a 400;
-  // everything the guard refuses (redirects, private hosts, non-HTML, errors)
-  // is an empty answer, never an error page.
-  //
-  // T-1252 adds `image`: the bytes behind a key a cached preview minted, so
-  // the remote URL never reaches a client. An unknown or expired key is a 404
-  // (never a fetch), and the bytes go out with the upstream content type, a
-  // private 24 h cache and `nosniff`. It shares the preview rate limiter.
+  // The preview answers 200 with the unfurled head, 204 when the page has neither title
+  // nor description, and a 400 for a non-https or overlong URL. Everything the guard
+  // refuses is an empty answer. `image` serves bytes behind a key a cached preview
+  // minted, so the remote URL never reaches a client; an unknown key is a 404.
   const linkPreviewGroupLayer = HttpApiBuilder.group(MediaApi, 'linkPreview', (handlers) =>
     handlers
       .handle(

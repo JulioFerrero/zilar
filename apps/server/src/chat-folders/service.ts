@@ -1,8 +1,3 @@
-// Telegram-style chat folders (T-0232). Every query runs on the `effect/sql`
-// client registered for this database (see `../effect/sql`); the exported
-// functions stay `async` so routes and tests keep their shape during the
-// transition.
-
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
@@ -12,8 +7,6 @@ import type { ChatFolderRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
-// The icon list, chat types and the name and chat-list limits live in the
-// shared contract (T-0892; they mirror `packages/chat-core/src/folders.ts`).
 export {
   FOLDER_CHATS_MAX,
   FOLDER_CHAT_TYPES,
@@ -70,18 +63,16 @@ const DEFAULT_FOLDER_SEEDS: DefaultFolderSeed[] = [
   { name: 'AIs', icon: 'bot', includeTypes: ['ai'] },
 ];
 
-// A one-dimensional `text[]` value built from scalar placeholders. The
-// effect/sql pg driver cannot infer the type of an empty JS array, so every
-// array column is written through the `ARRAY[...]::text[]` constructor: an
-// empty list is `ARRAY[]::text[]`, and both drivers bind only strings.
+// A one-dimensional `text[]` built from scalar placeholders: the effect/sql pg driver
+// cannot infer the type of an empty JS array, so arrays go through `ARRAY[...]::text[]`
+// and both drivers bind only strings.
 function textArray(sql: SqlClient.SqlClient, values: ReadonlyArray<string>) {
   return sql`ARRAY[${sql.join(',', false)(values.map((value) => sql`${value}`))}]::text[]`;
 }
 
-// Seeds the two defaults (Personal and AIs) the first time a user lists
-// folders. Runs in the caller's transaction under a per-user advisory lock
-// and re-reads state inside it, so concurrent first lists seed once: the
-// seed row insert is the race backstop (the loser sees the winner's rows).
+// Seeds the two defaults. Runs in the caller's transaction under a per-user advisory
+// lock and re-reads state inside it, so concurrent first lists seed once; the row insert
+// is the race backstop.
 function ensureSeeded(
   sql: SqlClient.SqlClient,
   userId: string,
@@ -216,8 +207,8 @@ export interface UpdateChatFolderInput {
 }
 
 /**
- * Partial update of one of the caller's folders. An id that is unknown or
- * belongs to another user answers the same 404, so ids cannot be probed.
+ * An id that is unknown or belongs to another user answers the same 404, so ids cannot
+ * be probed.
  */
 export async function updateChatFolder(
   db: ServerDatabase,
@@ -272,10 +263,7 @@ export async function updateChatFolder(
   return toChatFolderView(updated);
 }
 
-/**
- * Rewrites positions 0..n-1 in the order of `ids`. The ids must be exactly
- * the caller's folder ids: no missing, no extra, no duplicates.
- */
+/** Rewrites positions 0..n-1; the ids must be exactly the caller's folder ids. */
 export async function reorderChatFolders(
   db: ServerDatabase,
   options: { userId: string; ids: string[]; now: Date },

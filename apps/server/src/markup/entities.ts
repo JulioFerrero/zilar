@@ -1,5 +1,3 @@
-// T-2040: one HTML entity decoder for the head metadata reader and the
-// body-to-text extractor, which used to carry identical copies.
 // effect-plain: pure entity decoding; malformed input is returned unchanged, no I/O
 const ENTITY_MAP: Record<string, string> = {
   amp: '&',
@@ -10,7 +8,6 @@ const ENTITY_MAP: Record<string, string> = {
   nbsp: ' ',
 };
 
-/** Decodes the common named entities and numeric character references. */
 export function decodeHtmlEntities(value: string): string {
   return value.replace(/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g, (full, body: string) => {
     const named = ENTITY_MAP[body];

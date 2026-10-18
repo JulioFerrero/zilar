@@ -1,10 +1,6 @@
-// Instance owner (SEC-12). The owner is stored once in `instance_settings`
-// under `instance.owner_user_id`, instead of being re-derived as the oldest
-// `user` row on every check: deleting or recreating accounts can therefore
-// not move ownership of the integrations and voice settings. The first check
-// claims the oldest user under the setup advisory lock (see
-// `takeSetupLockEffect`), which serializes the race across processes; the
-// stored id never changes afterwards.
+// The owner is stored once under `instance.owner_user_id` instead of being re-derived as
+// the oldest user, so deleting or recreating accounts cannot move ownership. The first
+// check claims the oldest user under the setup advisory lock; the id never changes after.
 
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
@@ -33,8 +29,7 @@ function readStoredOwnerEffect(): Effect.Effect<
   });
 }
 
-// Today's definition of the owner: the oldest user, the id as the tiebreak.
-// `"user"` is a reserved word, so it stays quoted.
+// The oldest user, the id as the tiebreak. `"user"` is a reserved word, so it stays quoted.
 function oldestUserIdEffect(): Effect.Effect<
   string | null,
   SqlError.SqlError,
@@ -48,9 +43,8 @@ function oldestUserIdEffect(): Effect.Effect<
   });
 }
 
-// Claims the oldest user as the owner exactly once. The state is read INSIDE
-// the setup lock, so two concurrent first checks cannot store different ids;
-// the insert is idempotent (`on conflict do nothing`) as the backstop.
+// The state is read INSIDE the setup lock, so two concurrent first checks cannot store
+// different ids; the insert is idempotent as the backstop.
 function claimOwnerEffect(): Effect.Effect<string | null, SqlError.SqlError, SqlClient.SqlClient> {
   return Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -74,11 +68,8 @@ function claimOwnerEffect(): Effect.Effect<string | null, SqlError.SqlError, Sql
   });
 }
 
-/**
- * The stored instance owner, claiming the oldest user on the first call and
- * reusing it afterwards. With no users at all it returns null and stores
- * nothing.
- */
+/** The stored owner, claiming the oldest user on first call; null (and no write) with
+ * no users. */
 export function instanceOwnerId(db: ServerDatabase): Promise<string | null> {
   return runSql(
     db,
@@ -103,9 +94,8 @@ function userExistsEffect(
 }
 
 /**
- * Whether `userId` is the stored instance owner. The stored id never changes:
- * when that user no longer exists nobody owns the instance (one warn, ids
- * only, no fallback to the next-oldest account).
+ * The stored id never changes: when that user no longer exists nobody owns the instance
+ * (one warn, ids only, no fallback to the next-oldest account).
  */
 export async function isInstanceOwner(
   db: ServerDatabase,

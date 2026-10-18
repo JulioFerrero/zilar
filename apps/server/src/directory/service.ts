@@ -1,12 +1,5 @@
-// Public directory (T-0164): search over public groups and channels only.
-// Private groups and people never appear here; strangers never see them.
-// Rows are read from `groups` joined to their single `handles` row (the
-// shared namespace with T-0163 `@username`s) and counted from
-// `group_members`.
-//
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape.
+// The public directory: search over public groups and channels only. Private groups and
+// people never appear here; strangers never see them.
 
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
@@ -17,8 +10,8 @@ import { HttpError } from '../errors';
 
 export const DIRECTORY_PAGE_SIZE = 20;
 export const DIRECTORY_QUERY_MIN_LENGTH = 2;
-// A user joins a public group or channel through one request; people and
-// AIs share this cap, counted atomically inside the join transaction.
+// A user joins a public group or channel through one request; the cap is counted
+// atomically inside the join transaction.
 export const PUBLIC_GROUP_MAX_MEMBERS = 5000;
 
 export type GroupKind = 'group' | 'channel';
@@ -31,13 +24,11 @@ export interface DirectoryEntry {
   description: string | null;
   memberCount: number;
   joined: boolean;
-  /** T-0165: the group's picture, when it has one. Omitted when none. */
   avatarUrl?: string | undefined;
 }
 
 export interface DirectoryPage {
   entries: DirectoryEntry[];
-  /** A cursor for the next page, or null when there are no more pages. */
   next: string | null;
 }
 
@@ -84,11 +75,9 @@ interface DirectoryRow {
   createdAt: Date;
 }
 
-// Newest first when `q` is empty, so Explore shows fresh groups; with a
-// query, handle-then-title prefix matches come first (exact handle first),
-// then newest — the deterministic tie-break is `(created_at, id)` with a
-// cursor over both. Every row is a public group with its single handle row
-// joined in one query; counts ride along from `group_members`.
+// Newest first when `q` is empty; with a query, handle-then-title prefix matches come
+// first (exact handle first), then newest. The cursor walks `(created_at, id)` so
+// pagination never skips or repeats.
 export async function searchDirectory(
   db: ServerDatabase,
   viewerId: string,
@@ -107,9 +96,6 @@ export async function searchDirectory(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      // The cursor walks the public rows newest-first; with a query the same
-      // walk is filtered to prefix matches, so pagination never skips or
-      // repeats.
       const conditions: Array<Statement.Fragment> = [sql`g.visibility = 'public'`];
       if (input.kind !== undefined) {
         conditions.push(sql`g.kind = ${input.kind}`);
@@ -155,8 +141,6 @@ export async function searchDirectory(
     page.map((row) => row.id),
   );
 
-  // T-0165: every entry that already carries a name gets `avatarUrl` when
-  // the group has a picture (omitted when none, like today).
   const entryAvatars = await avatarIdsByOwner(
     db,
     'group',
@@ -179,8 +163,7 @@ export async function searchDirectory(
         : { avatarUrl: avatarUrlFor(entryAvatars.get(row.id)!) }),
     };
   });
-  // title-prefix, keeping newest-first inside each bucket. The cursor still
-  // walks newest-first overall; ranking only reorders the page in memory.
+  // Ranking reorders the page in memory; the cursor still walks newest-first overall.
   if (hasQuery) {
     const rank = (entry: DirectoryEntry): number => {
       const handleLower = entry.handle.toLowerCase();
@@ -203,10 +186,8 @@ export async function searchDirectory(
   return { entries, next };
 }
 
-// The public group behind one `@handle`: exact, case-insensitive match
-// only (like T-0163's user lookup — no prefix search anywhere). A private
-// group and an unknown handle answer the same 404, so neither can be
-// probed from here.
+// Exact, case-insensitive handle match only. A private group and an unknown handle
+// answer the same 404, so neither can be probed.
 export async function publicGroupForHandle(
   db: ServerDatabase,
   viewerId: string,
@@ -234,8 +215,7 @@ export async function publicGroupForHandle(
         LIMIT 1`;
     }),
   );
-  // A handle row for a user is not a group; a group row that is private
-  // (invisible while the retire path settles) reads exactly like unknown.
+  // A user's handle is not a group; a private group reads exactly like unknown.
   if (!row || row.visibility !== 'public') {
     throw new HttpError(404, 'not_found', 'No public group with that handle');
   }
@@ -255,9 +235,8 @@ export async function publicGroupForHandle(
   };
 }
 
-// `%`, `_` and the escape char in a query are literal text, never
-// wildcards. PostgreSQL `LIKE`/`ILIKE` treat backslash as the escape by
-// default, so no `ESCAPE` clause is needed.
+// `%`, `_` and the escape char in a query are literal text, never wildcards. PostgreSQL
+// `LIKE`/`ILIKE` use backslash as the escape by default, so no `ESCAPE` clause is needed.
 function escapeLike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
@@ -267,8 +246,7 @@ async function countMembers(db: ServerDatabase, groupIds: string[]): Promise<Map
     return new Map();
   }
   const ids = [...new Set(groupIds)];
-  // T-1492: a group's members are its people and its AIs, so the count sums
-  // `group_members` and `group_ais` in one grouped query.
+  // A group's members are its people and its own AIs, summed in one grouped query.
   const rows = await runSql(
     db,
     Effect.gen(function* () {

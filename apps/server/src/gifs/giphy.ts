@@ -23,9 +23,8 @@ export interface GiphyProviderOptions {
 }
 
 /**
- * The provider call failed (DNS, blocked resolution, network, non-2xx, bad
- * JSON). The message stays neutral — no provider detail ever reaches the
- * client — and the routes turn it into a retryable 502.
+ * The provider call failed. The message stays neutral, so no provider detail reaches the
+ * client; the routes turn it into a retryable 502.
  */
 export class GiphyError extends Error {
   constructor() {
@@ -39,9 +38,8 @@ export type GiphyFetcher = (url: URL, address: string) => Promise<{ status: numb
 const GIPHY_API_TIMEOUT_MS = 10_000;
 const GIPHY_API_MAX_BYTES = 1024 * 1024;
 
-// The internal failure mode: every resolve, filter, fetch and parse failure
-// funnels into this one tagged error, which the `Promise` boundary maps to the
-// neutral `GiphyError`. It carries no payload, so no provider detail leaks.
+// Every failure funnels into this tagged error, which carries no payload, so no provider
+// detail leaks.
 class GiphyRequestFailed extends Data.TaggedError('GiphyRequestFailed') {}
 
 async function defaultResolver(host: string): Promise<string[]> {
@@ -49,11 +47,9 @@ async function defaultResolver(host: string): Promise<string[]> {
   return records.map((record) => record.address);
 }
 
-// The API call itself goes through the same SSRF guard as the media proxy:
-// https only, the documented endpoint host, resolve-then-pin, connect to the
-// validated IP with SNI and Host kept, no redirects. The request is an
-// interruptible effect: the timeout interrupts it and the finalizer destroys
-// the socket, so a slow host never holds a connection.
+// The API call uses the same SSRF guard as the media proxy: https only, the documented
+// host, resolve-then-pin, SNI and Host kept, no redirects. The request is interruptible,
+// so a timeout destroys the socket.
 const giphyRequestEffect = (
   url: URL,
   address: string,
@@ -98,7 +94,6 @@ const giphyRequestEffect = (
     });
   });
 
-/** The real `giphy` adapter behind the `GifProvider` port. */
 export function createGiphyProvider(options: GiphyProviderOptions): GifProvider {
   const resolver = options.resolver ?? defaultResolver;
 

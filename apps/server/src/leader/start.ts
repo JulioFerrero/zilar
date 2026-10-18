@@ -1,10 +1,6 @@
-// effect-plain: the leader-only background work, moved from main.ts (T-1316,
-// docs/audit/two-servers-audit.md §3). Plain async start/stop handles for the
-// same components main.ts started before; a follower never runs them.
-//
-// `startServer` builds the shared objects (db, app, gateway) and hands them
-// here; `createLeaderLock` calls `start()` when this instance wins the advisory
-// lock and `stop()` when it steps down (or shuts down).
+// effect-plain: the leader-only background work. Plain async start/stop handles for the
+// shared components; a follower never runs them. `createLeaderLock` calls `start()` when
+// this instance wins the advisory lock and `stop()` when it steps down.
 import type { Logger } from 'pino';
 import { redactSecrets } from '../ai/http';
 import type { ActionGateway } from '../actions/gateway';
@@ -47,16 +43,8 @@ export interface LeaderWorkDeps {
   audit: AuditRecorder;
   toolRunner: ToolRunner | undefined;
   post: BuildToolAdaptersDeps['post'];
-  /** Runs a prompt routine through the gateway; the scheduler records
-   * `skipped` while it is absent. */
   runPrompt: PromptRunner;
-  /** T-1880: corrects a linked alert card in the room; `false` while the
-   * gateway does not exist yet. */
   correctCard: (input: CorrectCardInput) => Promise<boolean>;
-  /**
-   * Called with the runner hub while it runs and with `null` when it stops, so
-   * the per-request `isMachineOnline` closure follows the leader.
-   */
   onRunnerHub: (hub: Pick<RunnerHub, 'isOnline' | 'close'> | null) => void;
 }
 
@@ -79,12 +67,9 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
   let routineScheduler: RoutineSchedulerHandle | null = null;
   let roomReconcile: AbortController | null = null;
 
-  // Push component (T-0119): off unless PUSH_ENABLED=true. A misconfigured flag
-  // (keys, component credentials or storage key missing) logs one error and
-  // stays off; without the archive pool it also stays off, because the
-  // component could not resolve who/where and would have to guess. A start
-  // failure never takes the API down: the component reconnects on its own and
-  // `stop` still stops it.
+  // Push: off unless PUSH_ENABLED=true. A misconfigured flag or a missing archive pool
+  // logs one error and stays off. A start failure never takes the API down; the component
+  // reconnects on its own and `stop` still stops it.
   function startPush(): void {
     if (!deps.push.PUSH_ENABLED) {
       logger.info('push is disabled (PUSH_ENABLED=false)');
@@ -129,7 +114,6 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
         service,
         logger,
       });
-      // Starts next to the component; stops with it, one handle.
       pushComponent = {
         stop: () => Promise.all([component.stop(), groupNotifier.stop()]).then(() => {}),
       };
@@ -139,10 +123,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
         'push component failed to start; API continues without it',
       );
     }
-    // One-time reconcile for rooms created before push: enable
-    // `allow_subscription` through `change_room_option`. Best effort —
-    // failures are logged per room inside. Fire-and-forget, as the old
-    // detached Effect fiber was.
+    // One-time reconcile for older rooms: enable `allow_subscription` through
+    // `change_room_option`. Best effort, failures logged per room.
     void reconcileRoomSubscriptionOptions({ db, adminClient: deps.adminClient, logger }).catch(
       (error: unknown) => {
         logger.warn({ error: messageOf(error) }, 'push room reconcile failed');
@@ -150,10 +132,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     );
   }
 
-  // Runner hub (T-0071): starts only when RUNNER_HUB_ENABLED=true. A start
-  // failure (port in use, bad config) must never take the API down, so it logs
-  // and the rest of the server keeps running. `isMachineOnline` returns false
-  // until the hub resolves, then forwards to it for every request.
+  // Runner hub: off unless RUNNER_HUB_ENABLED=true. A start failure must never take the
+  // API down; `isMachineOnline` returns false until the hub resolves.
   function startRunnerHubWork(): void {
     if (!config.RUNNER_HUB_ENABLED) {
       return;
@@ -176,9 +156,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       });
   }
 
-  // T-2002: one pass per leader start that moves existing rooms to the
-  // hardened rights (plain members, private and unlisted). Best effort and
-  // throttled; step-down aborts it.
+  // One pass per leader start that moves existing rooms to the hardened rights. Best
+  // effort and throttled; step-down aborts it.
   function startRoomRightsReconcile(): void {
     const controller = new AbortController();
     roomReconcile = controller;
@@ -193,14 +172,11 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     });
   }
 
-  // The gateway logs each AI in over XMPP, which can take a while when ejabberd
-  // is slow or down: never block on it. Shutdown still awaits `gateway.stop()`,
-  // which is safe while a start is in flight (sessions it no longer owns are
-  // dropped on connect).
+  // The gateway logs each AI in over XMPP, which can be slow: never block on it. Shutdown
+  // still awaits `gateway.stop()`, safe while a start is in flight.
   function startGatewayWork(): void {
     void deps.gateway.start().catch((error: unknown) => {
-      // The generic credential rule still strips any provider key a start
-      // failure might echo.
+      // The generic credential rule still strips any provider key a start failure might echo.
       const err = new Error(redactSecrets(messageOf(error), []));
       if (error instanceof Error) {
         err.stack = redactSecrets(error.stack ?? '', []);
@@ -209,10 +185,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     });
   }
 
-  // One startup sweep: an earlier crash may have left `running` or past-due
-  // `waiting` rows that we want to surface immediately rather than wait up to
-  // five minutes for the first timer tick. Failure here logs and carries on;
-  // the timer retries on the next tick.
+  // One startup sweep: surface `running` or past-due `waiting` rows immediately rather
+  // than wait up to five minutes for the first timer tick.
   function recoverStuckOnce(): void {
     void deps.actionGateway.recoverStuck().catch((error: unknown) => {
       logger.error({ err: messageOf(error) }, 'initial recoverStuck sweep failed');
@@ -224,9 +198,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       startPush();
       startRunnerHubWork();
       startRoomRightsReconcile();
-      // T-1493: reload the saved Stop pauses before the gateway reads them. A
-      // failed load is logged and ignored: following simply resumes until the
-      // next Stop, which is better than never starting the gateway.
+      // Reload the saved Stop pauses before the gateway reads them. A failed load is
+      // logged and ignored: following resumes until the next Stop.
       await initTopicFollow(db).catch((error: unknown) => {
         logger.error({ err: messageOf(error) }, 'saved topic follow pauses failed to load');
       });
@@ -246,8 +219,6 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
         correctCard: deps.correctCard,
       });
     },
-    // Today's stop order (main.ts): runner hub, push, the agent gateway, the
-    // two timers and the routine scheduler.
     async stop(): Promise<void> {
       roomReconcile?.abort();
       roomReconcile = null;

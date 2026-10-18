@@ -1,21 +1,11 @@
-// effect-plain: node:http transport primitive; Effect's fetch/undici client drops the Host header (T-1315)
-// The internal upload fetch (T-1315). ejabberd's `mod_http_upload` serves a
-// GET by finding the per-vhost upload process from the request's Host
-// (`get_proc_name(Host, ?MODULE)`), so the internal fetch to
-// `EJABBERD_API_URL` must carry the public host (`PUBLIC_URL`). With the
-// internal host (`ejabberd:5280`) there is no such vhost and every file
-// answers 404, which the routes surface as `file_unavailable` (502).
-//
-// Node's `fetch` (undici) treats `Host` as a forbidden header and drops it,
-// so this uses `node:http`'s `request`, which sends the header as given. The
-// response body stays a web `ReadableStream`, so the files route can pass it
-// through without buffering and the voice route can read it into a buffer.
+// effect-plain: node:http transport primitive; Effect's fetch/undici client drops the Host header
+// ejabberd resolves the upload vhost from the Host header, and undici drops `Host` as a
+// forbidden header, so this uses `node:http`'s `request`.
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
 
 export interface InternalFetchInit {
-  /** The public host (`PUBLIC_URL`'s host) the upstream vhost is resolved from. */
   host: string;
   /** Only the caller's Range header crosses into ejabberd. */
   range?: string;
@@ -50,11 +40,6 @@ function toHeaders(raw: IncomingHttpHeaders): Headers {
   return headers;
 }
 
-/**
- * Requests an upload from ejabberd's internal base with the public `Host`.
- * The body streams as-is; a `signal` aborts the request (and any in-flight
- * body read). A refusal or transport failure rejects, like `fetch`.
- */
 export const defaultInternalFetch: InternalFetch = (url, init) =>
   new Promise((resolve, reject) => {
     const send = new URL(url).protocol === 'https:' ? httpsRequest : httpRequest;

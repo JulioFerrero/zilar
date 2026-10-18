@@ -1,11 +1,3 @@
-// Chat folders on the Effect `HttpApi` adapter (T-0520): the same methods,
-// paths, limiter order and answers as the deleted router (`routes.ts`),
-// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
-// runs on effect/sql.
-//
-// The schemas and the group live in the shared contract (`@zilar/api-contract`,
-// T-0892); this file keeps the handlers and layers.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -41,7 +33,6 @@ export interface ChatFoldersApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   config: ServerConfig;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
   logger: Logger;
 }

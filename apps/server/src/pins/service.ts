@@ -22,12 +22,10 @@ export { PIN_MESSAGE_ID_MAX, PIN_SENDER_NAME_MAX, PIN_TEXT_MAX } from '@zilar/ap
 
 export type PinRow = PinnedMessageRow;
 
-/** The wire row, from the shared contract. */
 export type PinView = Pin;
 
-// The snapshot is display-only: the server trusts it for rendering, never
-// for authorization. Requests are validated at the Effect HTTP boundary
-// (the contract's `CreatePinPayload`); this is the shape the service accepts.
+// The snapshot is display-only: never trusted for authorization. Requests are validated
+// at the HTTP boundary.
 export type CreatePinBody = CreatePinPayload;
 
 export interface PinsServiceDeps {
@@ -50,8 +48,7 @@ export function toPinView(row: PinRow, chat: string): PinView {
   };
 }
 
-// Pins newest first. The `chat` echo uses the caller's form of the address;
-// the stored key (DM pair key or room JID) never leaks through the API.
+// The `chat` echo uses the caller's form of the address; the stored key never leaks.
 export async function listPins(
   deps: PinsServiceDeps,
   chatParam: string,
@@ -93,10 +90,8 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     throw new HttpError(400, 'invalid_request', 'Only text pins carry a text snapshot');
   }
   const id = randomUUID();
-  // The duplicate check stays outside (the unique index + 409 mapping below
-  // keep it race-safe), but the count check and the insert run in one
-  // transaction under a per-chat advisory lock: two concurrent pins past the
-  // cap would otherwise both read under 20 and both insert.
+  // The count check and the insert share one transaction under a per-chat advisory lock,
+  // so two concurrent pins past the cap cannot both read under 20 and insert.
   const [existing] = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -158,9 +153,7 @@ export async function unpinMessage(
       return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${pinId} LIMIT 1`;
     }),
   );
-  // A missing pin and a pin in a chat the caller may not see are the same
-  // 404 ("Chat not found" either way), so pin ids cannot be told apart from
-  // invisible chats.
+  // A missing pin and one in an invisible chat are the same 404, so ids cannot be told apart.
   if (!row) {
     throw toMissingChat();
   }
@@ -179,8 +172,8 @@ export async function unpinMessage(
   return toPinView(row, echoChat(chat, userId, deps.domain));
 }
 
-// DELETE carries no chat parameter, so echo the caller's own form: the peer's
-// bare JID for a DM (never the stored pair key), the room JID for a topic.
+// Echo the caller's own form: the peer's bare JID for a DM (never the pair key), the room
+// JID for a topic.
 function echoChat(chat: PinChat, userId: string, domain: string): string {
   if (chat.kind === 'room') {
     return chat.chatJid;
@@ -189,11 +182,9 @@ function echoChat(chat: PinChat, userId: string, domain: string): string {
   return chat.chatJid.split('|').find((side) => side !== ownBare) ?? chat.chatJid;
 }
 
-// Audit detail carries ids only — never the snapshot text or sender name —
-// and no topic name for private topics (only the opaque stored chat key).
-// Private-topic pins stay out of the group activity feed entirely (no
-// groupId), so a group admin who cannot see the topic never learns a pin
-// happened there; public-topic and General pins keep their groupId.
+// Audit detail carries ids only — never snapshot text or sender name — and no topic name
+// for private topics. Private-topic pins carry no groupId, so a group admin who cannot see
+// the topic never learns a pin happened.
 function toAuditEntry(chat: PinChat, action: string, actorUserId: string, row: PinRow) {
   const groupId =
     chat.kind === 'room' && chat.topic.visibility !== 'private' ? chat.topic.groupId : null;
@@ -215,8 +206,8 @@ function mapPinError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
-  // A concurrent pin of the same message lands here (the pre-check passed,
-  // the unique index refused): answer 409 like the pre-check does.
+  // A concurrent pin of the same message lands here (the pre-check passed, the unique
+  // index refused): answer 409.
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'pin_exists', 'That message is already pinned');
   }

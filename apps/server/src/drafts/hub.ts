@@ -1,22 +1,15 @@
 import { Effect, Fiber } from 'effect';
 import type { DraftEvent, DraftHubEvent } from './events';
 
-// At most one `draft` per turn this often. The text is cumulative, so a
-// dropped draft is harmless, and the latest text is always flushed before
-// `end`.
+// At most one `draft` per turn this often; the latest text is flushed before `end`.
 export const DRAFT_THROTTLE_MS = 150;
 
-// Drafts stop past this many characters. The final message still goes through
-// XMPP uncut; the cap only keeps the live channel small.
+// Past this many characters drafts stop; the final message still goes through XMPP
+// uncut, so the cap only keeps the live channel small.
 export const DRAFT_MAX_CHARS = 8000;
 
 export type DraftListener = (event: DraftHubEvent) => void;
 
-// One turn's throttled writer. `push` records the cumulative text and
-// publishes at most every `DRAFT_THROTTLE_MS`; `flush` publishes the given
-// text now (the complete reply, right before the final XMPP send); `end`
-// flushes the latest text (when it is new and within the cap) and then
-// publishes the outcome. All are idempotent after `end`.
 export interface DraftTurnPublisher {
   push(text: string): void;
   flush(text: string): void;
@@ -30,14 +23,11 @@ export interface DraftHub {
   publishTurn(ownerUserId: string, chatJid: string, turnId: string): DraftTurnPublisher;
 }
 
-// In-process, per server: a user only ever receives drafts of AIs they own.
-// There is no cross-server fan-out (one server per deployment for now). The
-// latest `draft` of each open turn is kept so a client that connects mid-turn
-// gets it at once (AI-11); it is cleared when the turn ends, so nothing is
-// replayed for a turn that is already over.
+// In-process, per server: a user only ever receives drafts of AIs they own, with no
+// cross-server fan-out. The latest `draft` of each open turn is replayed to a client
+// that connects mid-turn, and cleared when the turn ends.
 export function createDraftHub(): DraftHub {
   const listeners = new Map<string, Set<DraftListener>>();
-  // The latest `draft` per (owner, chat) of a turn that is still open.
   const latestDrafts = new Map<string, Map<string, DraftEvent>>();
 
   function remember(ownerUserId: string, event: DraftEvent): void {
@@ -80,9 +70,8 @@ export function createDraftHub(): DraftHub {
         set = new Set();
         listeners.set(ownerUserId, set);
       }
-      // Replay the open turns' latest frames before any live one: the
-      // listener is added first, so a live `publish` cannot slip past the
-      // synchronous replay.
+      // Replay open turns before any live one: the listener is added first, so a live
+      // `publish` cannot slip past the synchronous replay.
       set.add(listener);
       for (const event of latestDrafts.get(ownerUserId)?.values() ?? []) {
         listener(event);
@@ -107,7 +96,6 @@ export function createDraftHub(): DraftHub {
       let latest: string | undefined;
       let latestSent: string | undefined;
       let lastSentAt = 0;
-      // The pending throttle flush: a fiber that sleeps, then flushes.
       let timer: Fiber.Fiber<void> | undefined;
       let ended = false;
 
@@ -124,7 +112,6 @@ export function createDraftHub(): DraftHub {
         publish(ownerUserId, { type: 'draft', chatJid, turnId, text: latest });
       };
 
-      // Interrupting the fiber cancels its sleep, so no timed flush fires later.
       const cancelTimer = (): void => {
         if (timer !== undefined) {
           Effect.runSync(Fiber.interrupt(timer));
@@ -144,9 +131,8 @@ export function createDraftHub(): DraftHub {
           if (timer !== undefined) {
             return;
           }
-          // The first draft of a quiet turn goes out immediately; a burst
-          // schedules one flush with the latest text. `flush` and `end` below
-          // publish synchronously, so ordering with `end` stays exact.
+          // The first draft of a quiet turn goes out immediately; a burst schedules one
+          // flush with the latest text.
           if (Date.now() - lastSentAt >= DRAFT_THROTTLE_MS) {
             flushLatest();
           } else {
@@ -159,8 +145,6 @@ export function createDraftHub(): DraftHub {
         },
 
         flush(text: string): void {
-          // Past the cap nothing is published, so a pending in-cap draft is
-          // left to go out on its timer.
           if (ended || text.length > DRAFT_MAX_CHARS) {
             return;
           }
@@ -185,7 +169,4 @@ export function createDraftHub(): DraftHub {
   return hub;
 }
 
-// The hub the server routes and the agent gateway share. Tests create their
-// own with `createDraftHub()`; the gated live check relies on this shared one
-// (the in-process gateway publishes here, the branch server streams from it).
 export const sharedDraftHub: DraftHub = createDraftHub();

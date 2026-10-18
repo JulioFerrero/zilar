@@ -1,9 +1,5 @@
-// Voice transcription routes on the Effect `HttpApi` adapter (T-0545): the
-// same methods, paths, statuses, bodies, limiter order and audit calls as the
-// old router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). The handlers call the pipeline, and the
-// database reads and writes run on effect/sql. The owner settings carry the
-// provider API key, which never appears in a response, log line or error text.
+// The owner settings carry the provider API key, which never appears in a response, log
+// line or error text.
 
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -71,22 +67,18 @@ export function createVoiceTranscriptionApi(
     });
   const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
   const transcribe = deps.transcribe ?? defaultTranscriber();
-  // ejabberd resolves the upload vhost from the Host header, so the internal
-  // fetch must carry the public host, not `ejabberd:5280` (T-1315).
+  // ejabberd resolves the upload vhost from the Host header, so the internal fetch carries
+  // the public host, not `ejabberd:5280`.
   const uploadHost = new URL(deps.config.PUBLIC_URL).host;
-  // In-flight transcripts by URL hash: two simultaneous taps on the same
-  // voice message share one fetch + provider call instead of double-billing.
-  // `shareInFlight` removes the entry in `finally`, so a failure (or an
-  // interrupted request) never poisons the next tap; the DB row (re-checked
-  // under the lock at insert time) is the durable cache, this map only
-  // dedupes the overlap window.
+  // In-flight transcripts by URL hash: simultaneous taps share one fetch + provider call
+  // instead of double-billing. The DB row, re-checked under the lock at insert time, is the
+  // durable cache; this map only dedupes the overlap window.
   const inFlight = shareInFlight();
 
   function storedSettings(): Promise<VoiceTranscriptionSettings | null> {
     return getVoiceTranscriptionSettings(deps.db, settingsCipherFor(deps.config)).catch(() => {
-      // Fail closed (reads as "not configured"), but say so: a DB or
-      // decrypt failure must not silently look like an unset endpoint. The
-      // message is fixed — no error text, no key.
+      // Fail closed (reads as "not configured"), but say so with a fixed message: no error
+      // text, no key.
       deps.logger.warn({}, 'voice transcription settings could not be read');
       return null;
     });
@@ -94,17 +86,13 @@ export function createVoiceTranscriptionApi(
 
   const groupLayer = HttpApiBuilder.group(VoiceTranscriptionApi, 'voiceTranscription', (handlers) =>
     handlers
-      // The enabled flag for any signed-in user.
       .handle(
         'status',
         handler(logger, async () => ({ enabled: (await storedSettings()) !== null })),
       )
-      // The transcript route. The 501 for an unconfigured server already ran
-      // in endpoint middleware, before the payload decode; the re-check
-      // below is only a backstop for settings removed mid-flight. Validation
-      // still runs before the rate limiter: malformed requests fail at the
-      // payload decode and never burn the caller's budget. Cached hits still
-      // count (fine — they cost a row read, and the budget is generous).
+      // The 501 for an unconfigured server already ran in endpoint middleware. Validation
+      // runs before the rate limiter, so malformed requests never burn budget; cached hits
+      // still count.
       .handle(
         'transcript',
         handler(logger, async (request, user) => {
@@ -116,8 +104,8 @@ export function createVoiceTranscriptionApi(
               'Voice transcription is not set up on this server',
             );
           }
-          // The URL is validated against this install before any request is
-          // made: same origin as `PUBLIC_URL`, path under `/upload/`.
+          // The URL is validated against this install first: same origin as `PUBLIC_URL`,
+          // path under `/upload/`.
           const internalUrl = toInternalUploadUrl(request.payload.url, deps.config);
           if (internalUrl === null) {
             throw new HttpError(400, 'invalid_request', 'The voice URL is not from this server');
@@ -128,11 +116,9 @@ export function createVoiceTranscriptionApi(
           const urlHash = voiceTranscriptUrlHash(request.payload.url);
           const db: ServerDatabase = deps.db;
 
-          // Fast path: the durable cache, no lock. Misses share one
-          // in-flight fetch + provider call per URL hash (no transaction
-          // and no advisory lock is held across the network — the lock only
-          // covers the re-check + insert below, with `onConflictDoNothing`
-          // as the backstop).
+          // Fast path: the durable cache, no lock. Misses share one in-flight call per hash;
+          // the lock only covers the re-check and insert, with `onConflictDoNothing` as the
+          // backstop.
           const [fastHit] = await runSql(
             db,
             Effect.gen(function* () {
@@ -142,8 +128,8 @@ export function createVoiceTranscriptionApi(
               }>`SELECT text FROM voice_transcripts WHERE url_hash = ${urlHash} LIMIT 1`;
             }),
           );
-          // Every successful request is audited, cache hits included (ids
-          // and the URL hash only, never the text).
+          // Every request is audited, cache hits included: ids and the URL hash only, never
+          // the text.
           const auditRequested = (): void => {
             void deps.audit?.record({
               actorUserId: user.id,
@@ -179,11 +165,9 @@ export function createVoiceTranscriptionApi(
           return { text };
         }),
       )
-      // The owner-only endpoint settings, verified with a 1-second generated
-      // silent WAV before storing. The owner 404 and the settings budget
-      // already ran in endpoint middleware, before the payload decode (old
-      // order: owner -> limiter -> decode), so the handler starts at the
-      // base-URL check.
+      // Owner-only, verified with a 1-second silent WAV before storing. The owner 404 and
+      // the settings budget already ran in middleware, so the handler starts at the base-URL
+      // check.
       .handle(
         'setSettings',
         handler(logger, async (request, user) => {
@@ -197,12 +181,9 @@ export function createVoiceTranscriptionApi(
             model: request.payload.model ?? VOICE_TRANSCRIPTION_DEFAULT_MODEL,
           };
 
-          // Verify before storing: the silent WAV goes through the real
-          // provider path (same `transcribe` seam the transcript route
-          // uses). A clip the endpoint accepts proves the URL/key/model
-          // work; a refusal answers 422 `endpoint_rejected`, a transport
-          // failure 422 `endpoint_unreachable` — and nothing is stored
-          // either way.
+          // The silent WAV goes through the real provider path, so an accepted clip proves
+          // URL, key and model work. A refusal answers 422 `endpoint_rejected`, a transport
+          // failure 422 `endpoint_unreachable`, and nothing is stored either way.
           const verificationError: unknown = await transcribe({
             baseUrl: candidate.baseUrl,
             apiKey: candidate.apiKey,
@@ -257,7 +238,6 @@ export function createVoiceTranscriptionApi(
           return { ok: true as const };
         }),
       )
-      // The owner-only endpoint removal.
       .handle(
         'removeSettings',
         handler(logger, async (_request, user) => {

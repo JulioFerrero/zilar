@@ -2,31 +2,23 @@ import { Exit, Schema } from 'effect';
 import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
 import { firstIssueMessage } from '../effect/schema-issues';
 
-// `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
-// protocol's approval schema already enforces for similar dotted ids.
+// `action` is dotted: `domain.verb`, lowercase and underscores.
 const ACTION_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
-// A serialised `detail` blob stays under 2 KB so the audit log can never
-// quietly start storing secrets, free text or big payloads.
+// A serialised `detail` stays under 2 KB, so the log cannot quietly store secrets or
+// big payloads.
 const MAX_DETAIL_BYTES = 2 * 1024;
 
-// We accept the few cost currencies the rest of the platform stores.
 const costCurrencySchema = Schema.Literals(['EUR', 'USD']);
 
-// `result` is a small closed set: the row must tell the reader whether the
-// action succeeded, was refused by policy, or failed because of an error.
 const resultSchema = Schema.Literals(['ok', 'denied', 'error']);
 
-// Nullable ids are strings of 1 to 128 characters.
 const nullableId = Schema.NullOr(
   Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
 );
 
-// Effect's `Record` does not run checks on the key schema, so both the key
-// length bound (1 to 64 characters, like the old zod key schema) and the
-// serialised-size bound live in one filter on the whole record. A filter that
-// returns a string carries it (see `firstIssueMessage` below), unlike the
-// `{ message }` option on length checks in Effect 4.0.2.
+// Effect's `Record` runs no checks on the key schema, so the key length (1 to 64)
+// and the serialised size bound live in one filter on the whole record.
 const detailSchema = Schema.NullOr(
   Schema.Record(Schema.String, Schema.Unknown).pipe(
     Schema.check(
@@ -44,12 +36,8 @@ const detailSchema = Schema.NullOr(
   ),
 );
 
-// The boundary validation: callers (the approvals and machines routes) hand
-// us an entry, and we reject malformed ones before they touch the database.
-// The spec forbids any free text: only ids, the action, a hash, optional
-// cost, and a small `detail` object. `struct` (from `@zilar/protocol`) keeps
-// the zod shape: mutable fields, and excess keys rejected at decode time via
-// `onExcessProperty: 'error'` (see `decodeEntry`).
+// Boundary validation: malformed entries are rejected before touching the database.
+// Only ids, the action, a hash, optional cost and a small `detail` are allowed.
 const entrySchema = struct({
   actorUserId: nullableId,
   aiId: nullableId,
@@ -81,9 +69,8 @@ export function decodeEntry(entry: AuditEntry): AuditEntry {
       if (reason.error.message.includes(sizeText)) {
         throw new Error(`Invalid audit entry: ${sizeText}`);
       }
-      // A union failure (e.g. a wrong type for a nullable id) flattens to an
-      // `AnyOf` with no child issues, so the tree walk finds nothing: fall
-      // back to the schema message's first line (`Expected string | null`).
+      // A union failure flattens to an `AnyOf` with no child issues, so fall back to the
+      // schema message's first line.
       throw new Error(
         `Invalid audit entry: ${firstIssueMessage(reason.error.issue, { leafTypes: true }) ?? reason.error.message.split('\n')[0] ?? 'unknown'}`,
       );

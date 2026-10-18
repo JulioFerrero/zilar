@@ -1,8 +1,5 @@
-// Hand-written row types for the tables the server reads and writes. Each
-// shape follows the migration SQL in `apps/server/drizzle/`, and a schema change
-// must update both the migration and this file.
+// Hand-written row types; a schema change must update both the migration and this file.
 
-// Row of the `invites` table.
 export interface InviteRow {
   id: string;
   code: string;
@@ -14,7 +11,6 @@ export interface InviteRow {
   revokedAt: Date | null;
 }
 
-// Row of the `xmpp_accounts` table.
 export interface XmppAccountRow {
   userId: string;
   localpart: string;
@@ -24,7 +20,6 @@ export interface XmppAccountRow {
   updatedAt: Date;
 }
 
-// Row of the `groups` table.
 export interface GroupRow {
   id: string;
   roomLocalpart: string;
@@ -42,7 +37,6 @@ export interface GroupRow {
   createdAt: Date;
 }
 
-// Row of the `group_invite_links` table.
 export interface GroupInviteLinkRow {
   id: string;
   groupId: string;
@@ -57,7 +51,6 @@ export interface GroupInviteLinkRow {
   revokedAt: Date | null;
 }
 
-// Row of the `group_members` table.
 export interface GroupMemberRow {
   groupId: string;
   userId: string;
@@ -65,8 +58,7 @@ export interface GroupMemberRow {
   addedAt: Date;
 }
 
-// Row of the `group_bans` table (T-1846): a member removed by an owner or
-// admin cannot rejoin until one of them adds them back.
+// A member removed by an owner or admin cannot rejoin until one of them adds them back.
 export interface GroupBanRow {
   groupId: string;
   userId: string;
@@ -74,7 +66,6 @@ export interface GroupBanRow {
   createdAt: Date;
 }
 
-// Row of the `topic_members` table.
 export interface TopicMemberRow {
   topicId: string;
   userId: string;
@@ -82,7 +73,6 @@ export interface TopicMemberRow {
   addedAt: Date;
 }
 
-// Row of the `group_ais` table.
 export interface GroupAiRow {
   groupId: string;
   aiId: string;
@@ -90,7 +80,6 @@ export interface GroupAiRow {
   addedAt: Date;
 }
 
-// Row of the `topics` table.
 export interface TopicRow {
   id: string;
   groupId: string;
@@ -115,7 +104,6 @@ export interface TopicRow {
   updatedAt: Date;
 }
 
-// Row of the `group_roles` table.
 export interface GroupRoleRow {
   id: string;
   groupId: string;
@@ -124,9 +112,8 @@ export interface GroupRoleRow {
   createdAt: Date;
 }
 
-// Row of the `provider_connections` table. `baseUrl` (migration 0058) is the
-// user's own OpenAI-compatible endpoint, validated and stored at create; it is
-// `null` for every other provider.
+// `baseUrl` is the user's own OpenAI-compatible endpoint, validated at create; null for
+// every other provider.
 export interface ProviderConnectionRow {
   id: string;
   owner: string;
@@ -139,7 +126,6 @@ export interface ProviderConnectionRow {
   updatedAt: Date;
 }
 
-// Row of the `ais` table.
 export interface AisRow {
   id: string;
   owner: string;
@@ -153,8 +139,8 @@ export interface AisRow {
   jid: string;
   status: 'active' | 'disabled' | 'stopped';
   machineId: string | null;
-  // T-1409: where the AI's desk runs. `off` (default), `cloud` (Zilar cloud),
-  // `runner` (the owner's machine) or `auto`; only `cloud` is wired so far.
+  // Where the AI's desk runs: `off` (default), `cloud`, `runner` or `auto`; only `cloud`
+  // is wired so far.
   computerMode: 'off' | 'cloud' | 'runner' | 'auto';
   canDelegate: boolean;
   acceptsDelegation: boolean;
@@ -162,7 +148,6 @@ export interface AisRow {
   updatedAt: Date;
 }
 
-// Row of the `pinned_messages` table.
 export interface PinnedMessageRow {
   id: string;
   chatJid: string;
@@ -174,7 +159,6 @@ export interface PinnedMessageRow {
   pinnedAt: Date;
 }
 
-// Row of the `chat_backgrounds` table.
 export interface ChatBackgroundRow {
   id: string;
   userId: string;
@@ -186,7 +170,6 @@ export interface ChatBackgroundRow {
   createdAt: Date;
 }
 
-// Row of the `chat_prefs` table.
 export interface ChatPrefRow {
   userId: string;
   chatJid: string;
@@ -200,7 +183,6 @@ export interface ChatPrefRow {
   updatedAt: Date;
 }
 
-// Row of the `chat_folders` table.
 export interface ChatFolderRow {
   id: string;
   userId: string;
@@ -216,7 +198,6 @@ export interface ChatFolderRow {
   updatedAt: Date;
 }
 
-// Row of the `sticker_packs` table.
 export interface StickerPackRow {
   id: string;
   ownerId: string;
@@ -227,7 +208,6 @@ export interface StickerPackRow {
   updatedAt: Date;
 }
 
-// Row of the `stickers` table.
 export interface StickerRow {
   id: string;
   packId: string;
@@ -244,7 +224,6 @@ export interface StickerRow {
 
 export type AvatarOwnerKind = 'user' | 'ai' | 'group';
 
-// Row of the `avatars` table.
 export interface AvatarRow {
   id: string;
   ownerKind: AvatarOwnerKind;
@@ -257,23 +236,20 @@ export interface AvatarRow {
   createdAt: Date;
 }
 
-// Which transport a push device speaks. `webpush` rows carry the Web Push
-// endpoint and sealed keys; `fcm`/`apns` rows carry a plaintext device token.
+// Transport of a push device: `webpush` carries the endpoint and sealed keys; `fcm` and
+// `apns` carry a plaintext device token.
 export type PushDeviceKind = 'webpush' | 'fcm' | 'apns';
 
-// Row of the `push_subscriptions` table. A row is either a Web Push row
-// (`kind = 'webpush'`, endpoint and sealed keys set, `token` empty) or a native
-// row (`kind = 'fcm' | 'apns'`, `token` set, the Web Push columns empty);
-// migration 0047's `shape_check` enforces that pair. The Web Push columns are
-// nullable because a native row leaves them NULL; a Web Push reader opens a row
-// through `openDevice`, and a native row through `openNativeDevice`, never off
-// the raw columns unchecked.
+// A row is either Web Push (`kind = 'webpush'`, endpoint and keys set, token empty) or
+// native (`fcm`/`apns`, token set, Web Push columns NULL); migration 0047's `shape_check`
+// enforces that pair. Open a row through `openDevice` or `openNativeDevice`, never off the
+// raw columns unchecked.
 export interface PushSubscriptionRow {
   id: string;
   userId: string;
   node: string;
-  // The session that registered the device (T-1255). The FK cascades the row
-  // away when that session is revoked; a NULL row is a legacy registration.
+  // The session that registered the device; the FK cascades on revocation. NULL is a
+  // legacy registration.
   sessionId: string | null;
   kind: PushDeviceKind;
   endpoint: string | null;
@@ -284,22 +260,19 @@ export interface PushSubscriptionRow {
   createdAt: Date;
   lastUsedAt: Date | null;
   failedAt: Date | null;
-  // Short reason stored with `failedAt` (migration 0054): the FCM error code
-  // or `http-<status>`, at most 64 chars. Cleared with `failedAt` on success.
+  // Short reason stored with `failedAt`: the FCM error code or `http-<status>`, at most
+  // 64 chars; cleared with `failedAt` on success.
   lastFailure: string | null;
 }
 
-// Row of the `push_settings` table.
 export interface PushSettingRow {
   userId: string;
   showPreviews: boolean;
   updatedAt: Date;
 }
 
-// Row of the `ai_usage` table (T-1405): one row per AI per UTC day, added to
-// after every model call. The token columns are `bigint` (a read would come
-// back as a string; nothing reads them here) and `costUsd` is `numeric`, which
-// node-postgres returns as a string, like the other numeric rows.
+// One row per AI per UTC day, added to after every model call. Token columns are
+// `bigint` and `costUsd` is `numeric`, both read back as strings.
 export interface AiUsageRow {
   aiId: string;
   day: Date;
@@ -311,7 +284,6 @@ export interface AiUsageRow {
   updatedAt: Date;
 }
 
-// Row of the `machines` table.
 export interface MachineRow {
   id: string;
   ownerUserId: string;
@@ -325,7 +297,6 @@ export interface MachineRow {
   lastSeenAt: Date | null;
 }
 
-// Row of the `machine_pairing_codes` table.
 export interface MachinePairingCodeRow {
   id: string;
   ownerUserId: string;
@@ -335,7 +306,6 @@ export interface MachinePairingCodeRow {
   createdAt: Date;
 }
 
-// Row of the `chat_reads` table.
 export interface ChatReadRow {
   userId: string;
   chatJid: string;
@@ -343,8 +313,7 @@ export interface ChatReadRow {
   updatedAt: Date;
 }
 
-// Row of the `chat_deliveries` table (T-1229): the caller's confirmed
-// delivery mark per chat, an archive id in the author's terms.
+// The caller's confirmed delivery mark per chat, an archive id in the author's terms.
 export interface ChatDeliveryRow {
   userId: string;
   chatJid: string;
@@ -352,9 +321,8 @@ export interface ChatDeliveryRow {
   updatedAt: Date;
 }
 
-// Row of the `user_profiles` table (T-1258): the short profile bio, in its own
-// table so Better Auth's `user` table stays as Better Auth expects it. T-1440
-// adds the user's IANA time zone (nullable) beside it.
+// The short profile bio lives in its own table so Better Auth's `user` table stays as
+// Better Auth expects it.
 export interface UserProfileRow {
   userId: string;
   bio: string;
@@ -362,9 +330,8 @@ export interface UserProfileRow {
   updatedAt: Date;
 }
 
-// Row of the `user_deletions` table (T-1261): the 7-day grace before the
-// deletion job runs (`docs/audit/account-deletion-plan.md` §5a). `userId`
-// deliberately has no FK: the row must outlive the user delete.
+// The 7-day grace before the deletion job runs. `userId` deliberately has no FK: the row
+// must outlive the user delete.
 export type UserDeletionPhase = 'scheduled' | 'running' | 'failed';
 
 export interface UserDeletionRow {
@@ -376,10 +343,8 @@ export interface UserDeletionRow {
   lastError: string | null;
 }
 
-// Row of the `agent_task_events` table (T-1426): one append-only step of an AI
-// task's session log, keyed by the turn's `task_id` and a per-task `seq`.
-// `kind` is one of the `TASK_EVENT_KINDS` in `agents/log/append.ts`; `data`
-// holds ids, counts and redacted/truncated tool text only.
+// One append-only step of an AI task's session log, keyed by `task_id` and a per-task
+// `seq`. `data` holds ids, counts and redacted tool text only.
 export interface AgentTaskEventRow {
   id: string;
   taskId: string;

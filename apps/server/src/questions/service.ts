@@ -14,7 +14,7 @@ const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 4;
 const MAX_OPTION_LENGTH = 24;
 
-// Per-AI cap on open questions, like `MAX_PENDING_APPROVALS_PER_AI` on approvals.
+// Per-AI cap on open questions.
 export const MAX_OPEN_QUESTIONS_PER_AI = 20;
 
 export interface CreateQuestionInput {
@@ -36,8 +36,7 @@ function invalidRequest(message: string): HttpError {
   return new HttpError(400, 'invalid_request', message);
 }
 
-// Trims first, then bounds the result, so blank text is refused and the stored
-// text is the trimmed text.
+// Trims first, then bounds, so blank text is refused and the stored text is trimmed.
 function validateQuestion(question: string): string {
   const trimmed = question.trim();
   if (trimmed.length < 1 || trimmed.length > MAX_QUESTION_LENGTH) {
@@ -59,13 +58,9 @@ function validateOptions(options: string[]): string[] {
   });
 }
 
-// Validates the question and its options and writes one open row. `message_id`
-// is null here: the caller sets it after the card is posted. At most
-// `MAX_OPEN_QUESTIONS_PER_AI` open, unexpired questions per AI.
-//
-// The count and the insert run in one transaction under a per-AI advisory
-// lock, so two concurrent creates cannot both read below the cap and both
-// insert: the second waits, then sees the first.
+// The count and the insert run in one transaction under a per-AI advisory lock, so two
+// concurrent creates cannot both read below the cap. `message_id` is null until the card
+// is posted.
 export async function createQuestion(
   db: ServerDatabase,
   input: CreateQuestionInput,
@@ -125,10 +120,8 @@ export async function createQuestion(
   return created;
 }
 
-// Records the posted card's stanza id, once. T-1576: only a row still `open`
-// is stamped — a question answered or closed before the card went out keeps a
-// null message id, so `findOpenQuestionByMessage` can never match its reply.
-// Returns whether the row changed.
+// Stamps the posted card's stanza id once, and only on a still `open` row: an answered or
+// closed question keeps a null id, so a reply can never match it.
 export async function setQuestionMessageId(
   db: ServerDatabase,
   id: string,
@@ -147,12 +140,9 @@ export async function setQuestionMessageId(
   return updated.length > 0;
 }
 
-// T-1579: the card an AI posts comes back from the room as an outgoing
-// reflection whose stanza id (XEP-0359) is what clients quote in `replyTo.id`,
-// while the row was stamped with the origin id the gateway chose when sending.
-// Moves `message_id` from the origin id to the stanza id, only for a still
-// `open` row; a no-op when the two ids are equal. Returns whether the row
-// changed.
+// The posted card comes back as an outgoing reflection whose stanza id (XEP-0359) is what
+// clients quote, while the row was stamped with the origin id. Move it, only for an open
+// row and only when the ids differ.
 export async function rekeyQuestionMessage(
   db: ServerDatabase,
   fromId: string,
@@ -174,12 +164,9 @@ export async function rekeyQuestionMessage(
   return updated.length > 0;
 }
 
-// Refunds the cap slot for a card that never went out. The send failed after
-// `createQuestion` wrote the row, so it sits `open` with a null message id —
-// invisible to every read, but still counted by `createQuestion`'s per-AI cap
-// until it expires. Marking it expired frees the slot. Only an unstamped row
-// is touched: a stamped row has a visible card. Returns whether the row
-// changed.
+// Refunds the cap slot for a card that never went out: the row sits open with a null
+// message id, invisible to reads but still counted, so marking it expired frees the slot.
+// Only an unstamped row is touched.
 export async function expireQuestion(db: ServerDatabase, id: string): Promise<boolean> {
   const updated = await runSql(
     db,
@@ -194,10 +181,8 @@ export async function expireQuestion(db: ServerDatabase, id: string): Promise<bo
   return updated.length > 0;
 }
 
-// The open, unexpired question a reply quotes. `now()` is the database clock,
-// so a question past its expiry is never returned. T-1991: `roomJid` keeps a
-// reply in another room from closing a card it never answered; T-2012 makes it
-// required so no caller can skip the room check.
+// `now()` is the database clock, so an expired question is never returned. `roomJid` keeps
+// a reply in another room from closing a card it never answered.
 export async function findOpenQuestionByMessage(
   db: ServerDatabase,
   messageId: string,
@@ -216,8 +201,7 @@ export async function findOpenQuestionByMessage(
   return row ?? null;
 }
 
-// T-1738: the open, unexpired questions of one AI in one room, oldest first.
-// A person's typed message that reaches the AI in that room answers them all.
+// A person's typed message in that room answers them all, oldest first.
 export async function listOpenQuestionsForAiInRoom(
   db: ServerDatabase,
   params: { aiId: string; roomJid: string },
@@ -235,8 +219,7 @@ export async function listOpenQuestionsForAiInRoom(
   return [...rows];
 }
 
-// Marks an open, unexpired question answered. The conditional update makes
-// exactly one caller win; the second returns false.
+// The conditional update makes exactly one caller win; the second returns false.
 export async function answerQuestion(
   db: ServerDatabase,
   id: string,
@@ -258,9 +241,7 @@ export async function answerQuestion(
   return updated.length > 0;
 }
 
-// The open, unexpired questions of a topic, oldest first, capped at 100. Only
-// rows whose card was posted (`message_id` set) are returned: a question the
-// activity read cannot open has no place there.
+// Only posted rows (`message_id` set) are returned, capped at 100.
 export async function listOpenQuestions(
   db: ServerDatabase,
   params: { topicId: string },
@@ -279,10 +260,6 @@ export async function listOpenQuestions(
   return [...rows];
 }
 
-// One open, posted question of a batch of topics, for the topic activity read
-// (T-1577). A question that was never posted (`message_id` NULL) or has expired
-// is left out. A NULL `topic_id` belongs to its group's General topic; the
-// caller attributes it.
 export interface OpenQuestionForActivity {
   topicId: string | null;
   groupId: string | null;
@@ -291,12 +268,8 @@ export interface OpenQuestionForActivity {
   createdAt: Date;
 }
 
-// The open, unexpired, posted questions of a batch of topics, newest first. One
-// read covers the whole activity call: the batch's topic ids plus the
-// NULL-topic rows of its General-topic groups, the same scope shape as
-// `loadPendingApprovals` in `../topics/ai-activity`. The `LIMIT` bounds a topic
-// with a large backlog, and newest-first keeps the questions the "AIs here"
-// row should open.
+// One read covers the whole activity call: the batch's topic ids plus the NULL-topic
+// rows of its General-topic groups. `LIMIT` bounds a topic with a large backlog.
 export async function listOpenQuestionsForTopics(
   db: ServerDatabase,
   topicIds: string[],
@@ -306,8 +279,8 @@ export async function listOpenQuestionsForTopics(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // `sql.in([])` compiles to `IN ()`, which Postgres rejects: only add the
-      // NULL-topic branch when there is a General group to attribute it to.
+      // `sql.in([])` compiles to `IN ()`, which Postgres rejects: only add the NULL-topic
+      // branch when there is a General group.
       const scope: Array<Statement.Fragment> = [sql`topic_id IN ${sql.in(topicIds)}`];
       if (generalGroupIds.length > 0) {
         scope.push(sql`(topic_id IS NULL AND group_id IN ${sql.in(generalGroupIds)})`);

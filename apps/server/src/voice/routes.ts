@@ -8,7 +8,6 @@ export const VOICE_MAX_DURATION_MS = 5 * 60 * 1000;
 
 export interface VoiceRoutesDependencies {
   auth: Auth;
-  /** Defaults to the real ffmpeg engine; tests inject a fake. */
   engine?: VoiceEngine;
   maxBytes?: number;
 }

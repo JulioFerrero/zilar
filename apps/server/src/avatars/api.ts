@@ -1,19 +1,3 @@
-// Avatars module on the Effect `HttpApi` adapter (T-0576): the same methods,
-// paths, statuses, texts, bodies, headers, limiter order and streaming cap as
-// the deleted router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-//
-// The PUT upload declares no payload schema, so nothing is buffered or decoded
-// before the handler: the handler reads `request.request.stream` chunk by
-// chunk and stops as soon as the running total passes the cap (`readCapped`),
-// exactly like the old `c.req.raw.body` reader (see `voice/api.ts`). The GET
-// reply is a raw `HttpServerResponse.uint8Array`; `HttpApiBuilder` returns a
-// handler-returned `HttpServerResponse` untouched, headers included.
-//
-// Step order on PUT is permission check -> limiter -> declared-length check
-// -> streaming cap, so the limiter runs inside the handler (after
-// `checkAvatarWritePermission`), exactly like the old route.
-
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -42,13 +26,10 @@ export interface AvatarsApiDependencies extends AvatarsRoutesDependencies {
   logger: Logger;
 }
 
-// The upload answer carries exactly what `uploadAvatar` returns (`{ url }`);
-// the remove answer is the old `{ ok: true }` body.
 const AvatarUploadView = Schema.Struct({ url: Schema.String });
 const AvatarRemoveView = Schema.Struct({ ok: Schema.Literal(true) });
 
-// Path params decode as plain strings; the kind is validated inside each
-// handler so an unknown kind answers 404 `not_found`, never a 400.
+// The kind is validated inside each handler, so an unknown kind answers 404, never 400.
 const AvatarOwnerParams = Schema.Struct({ kind: Schema.String, ownerId: Schema.String });
 const AvatarIdParams = Schema.Struct({ id: Schema.String });
 
@@ -62,20 +43,17 @@ const AvatarsGroup = HttpApiGroup.make('avatars')
       params: AvatarOwnerParams,
       success: AvatarRemoveView,
     }),
-    // No success schema: the handler answers raw bytes with custom headers.
     HttpApiEndpoint.get('serve', '/avatars/:id', {
       params: AvatarIdParams,
     }),
   )
   .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
+  // The edge forwards the full path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AvatarsApi = HttpApi.make('avatars').add(AvatarsGroup);
 
 // A malformed percent escape is an unknown owner (404), not a server error.
-// The Effect router hands out decoded params, so
-// this second decode is idempotent on normal ids and keeps the old final id.
 function decodePathId(raw: string): string {
   try {
     return decodeURIComponent(raw);
@@ -102,7 +80,7 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
       windowMs: AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS,
       now,
     });
-  // T-1174 (SEC-7): the read budget, charged in `serve`.
+  // The read budget, charged per viewer in `serve`.
   const readLimiter = createRateLimiter({
     max: AVATAR_READ_RATE_LIMIT_MAX,
     windowMs: AVATAR_READ_RATE_LIMIT_WINDOW_MS,
@@ -125,11 +103,9 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
           Effect.gen(function* () {
             const kind = decodeAvatarKind(request.params.kind);
             const ownerId = yield* Effect.sync(() => decodePathId(request.params.ownerId));
-            // The permission check runs before the rate-limit budget is
-            // spent, so a stranger probing ids cannot burn the owner's
-            // budget — and an unknown owner, a wrong kind and a stranger all
-            // answer the same 404. That order is why the limiter stays here
-            // and is not a `makeRateLimit` middleware (it would run first).
+            // The permission check runs before the rate-limit budget is spent, so a stranger
+            // probing ids cannot burn the owner's budget, and unknown/wrong-kind/stranger all
+            // answer the same 404. That order is why the limiter is not middleware.
             yield* Effect.promise(() =>
               checkAvatarWritePermission(deps.db, kind, ownerId, user.id),
             );
@@ -164,18 +140,14 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      // Streams the stored file. The id is a random unguessable uuid and a
-      // signed-in session is required. User and AI pictures are a capability
-      // for signed-in users (the URL is not listed anywhere a stranger can
-      // enumerate). SEC-8 (T-1174): a public group's picture is served to any
-      // signed-in user; a private group's only to a member — `readAvatarFile`
-      // answers `null` for anyone else, so a non-member gets the same 404 as
-      // an unknown id.
+      // The id is an unguessable uuid and a session is required: the URL is a capability.
+      // SEC-8: a public group's picture is served to any signed-in user, a private one only
+      // to a member; `readAvatarFile` answers `null` otherwise, the same 404 as unknown.
       .handle(
         'serve',
         handler(logger, async (request, user) => {
-          // The read budget (600 per 10 min per user) is spent before the
-          // lookup, so a caller cannot probe ids without paying.
+          // The read budget (600 per 10 min per user) is spent before the lookup, so ids
+          // cannot be probed for free.
           if (!readLimiter.allow(user.id)) {
             throw new HttpError(429, 'rate_limited', 'Too many avatar reads, try again later');
           }

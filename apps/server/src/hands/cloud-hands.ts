@@ -12,16 +12,10 @@ import {
 } from '@zilar/desk';
 
 /**
- * The app-side `Hands` over the desk-agent unix socket
- * (`packages/desk/src/agent/server.ts`), speaking the package's own shapes
- * (`packages/desk/src/hands.ts`); every reply is re-validated against the wire
- * schema. The sidecar still refuses anything but the pinned image and the
- * declared fields.
+ * The app-side `Hands` over the desk-agent unix socket. Every reply is re-validated
+ * against the wire schema; the sidecar refuses anything but the pinned image.
  */
 
-// Re-exported so every existing importer keeps working. `HandsError` and
-// `HandsQueued` are the package's `DeskError` and `DeskQueued` under this
-// module's old names.
 export type {
   DeskChunk,
   DeskKey,
@@ -78,12 +72,11 @@ const executeLineSchema = Schema.Union([
   Schema.Struct({ id: requestIdSchema, chunk: chunkSchema }),
 ]);
 
-// A daemon line is one JSON frame; anything past this is a peer trying to grow
-// our buffer, whether the frame ends in a newline or not, so the socket is
-// dropped.
+// A daemon line is one JSON frame; anything past this is a peer growing our buffer, so
+// the socket is dropped.
 const MAX_LINE_CHARS = 1024 * 1024;
-// T-1993: the server's own ceiling for one execute, past the desk's command
-// timeout so the daemon's own timeout is seen first.
+// The server's ceiling for one execute, past the desk's command timeout so the daemon's
+// own timeout is seen first.
 const EXECUTE_DEADLINE_MS = MAX_COMMAND_TIMEOUT_MS + 15_000;
 
 function openSocket(socketPath: string): Promise<Socket> {
@@ -119,9 +112,6 @@ export async function* socketLines(socket: Socket): AsyncIterable<string> {
   }
 }
 
-/** Sends one request and resolves with its single reply line (parsed). T-1603:
- * exported for the desk status probe, which aborts the wait after its own
- * timeout so the socket never lingers. */
 export function requestReply(
   socketPath: string,
   payload: unknown,
@@ -201,11 +191,6 @@ async function* runExecute(
   yield* runExecuteOverSocket(socket, ref, call, signal);
 }
 
-/**
- * T-1423: runs one tool call over an already-open daemon socket and yields the
- * chunks. Shared with `runner-hands.ts`, whose `desk.exec` stream carries the
- * same newline-delimited JSON, so the daemon is spoken from one place.
- */
 export async function* runExecuteOverSocket(
   socket: Socket,
   ref: DeskRef,

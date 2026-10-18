@@ -1,7 +1,5 @@
-// T-2042: one bounds-checked byte reader for the image headers the server
-// parses. These readers see untrusted uploads (stickers and card media), so a
-// read that starts before the buffer or runs past its end answers `null`
-// instead of returning a number built from missing bytes.
+// Bounds-checked readers for the image headers the server parses. These see untrusted
+// uploads, so a read before the buffer or past its end answers `null`, never missing bytes.
 
 export function readU16BE(bytes: Uint8Array, offset: number): number | null {
   if (offset < 0 || offset + 2 > bytes.length) {

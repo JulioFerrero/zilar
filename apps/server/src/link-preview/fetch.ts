@@ -1,23 +1,7 @@
-// T-1234: fetch one https page through the sandbox guard and read its head
-// metadata, with a small in-memory cache.
-//
-// The guard (`web-tools/guarded-fetch.ts`) is the same one the AI web tools
-// use: https only, port 443, no credentials, no redirects, the DNS answer
-// pinned and every resolved address classified (private, loopback and
-// link-local are refused). `anyPublicHost` drops only the exact-host
-// allowlist, because a preview follows a URL a person pasted, not a fixed
-// site list.
-//
-// T-1252: a preview with an image mints a key for the remote image URL and
-// answers the server path `/api/link-preview/image/<key>` instead. The remote
-// URL stays in `imageKeys`, so `fetchLinkPreviewImage` can only fetch a URL a
-// cached preview already saw — never an open proxy. The image bytes are
-// fetched through the same guard with an image-only content-type allowlist
-// and cached in memory.
-//
-// The body is a `Promise` over the guard's own `Promise` edge
-// (`docs/EFFECT_GUIDE.md`), lifted into an `Effect` at the public edge. Never
-// log the URL or the page text: the host and the outcome only.
+// Fetch one https page through the sandbox guard (https only, port 443, no credentials or
+// redirects, DNS pinned, private/loopback/link-local refused) and read its head metadata.
+// An image preview answers a server path, not the remote URL, so the image fetch is never
+// an open proxy. Never log the URL or the page text: the host and the outcome only.
 import { createHash } from 'node:crypto';
 import type { LinkPreview } from '@zilar/api-contract';
 import type { Logger } from 'pino';
@@ -31,10 +15,8 @@ export const LINK_PREVIEW_HIT_TTL_MS = 24 * 60 * 60 * 1000;
 export const LINK_PREVIEW_MISS_TTL_MS = 60 * 60 * 1000;
 export const LINK_PREVIEW_MAX_ENTRIES = 2000;
 
-// T-1252: the image side. The bytes cache holds at most 200 images and 50 MB
-// in total (oldest first), and the key map is capped the same way. Images are
-// fetched with the same 8 s deadline but a full 2 MB cap and no truncation: a
-// partial image is not an image.
+// The image side: at most 200 images and 50 MB in total (oldest first), and the key map
+// is capped the same way. A full 2 MB cap and no truncation: a partial image is not an image.
 export const LINK_PREVIEW_IMAGE_TIMEOUT_MS = 8000;
 export const LINK_PREVIEW_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const LINK_PREVIEW_IMAGE_MAX_ENTRIES = 200;
@@ -46,7 +28,6 @@ export const LINK_PREVIEW_IMAGE_CONTENT_TYPES: readonly string[] = [
   'image/gif',
 ];
 
-/** The guarded GET, injectable in tests. */
 export type LinkPreviewFetcher = (url: string) => Promise<GuardedGetResult>;
 
 export interface LinkPreviewOptions {
@@ -55,7 +36,6 @@ export interface LinkPreviewOptions {
   fetcher?: LinkPreviewFetcher;
 }
 
-/** T-1252: the bytes of one preview image, with its upstream content type. */
 export interface LinkPreviewImage {
   contentType: string;
   bytes: Uint8Array;
@@ -76,7 +56,6 @@ const imageKeys = new Map<string, { at: number; url: string }>();
 const imageBytes = new Map<string, { at: number; contentType: string; bytes: Uint8Array }>();
 let imageBytesTotal = 0;
 
-/** The cache key: the URL without its fragment (a fragment never changes the page). */
 export function normalizePreviewUrl(rawUrl: string): string | null {
   let url: URL;
   try {
@@ -89,10 +68,8 @@ export function normalizePreviewUrl(rawUrl: string): string | null {
 }
 
 /**
- * Unfurls one URL. A hit lasts 24 h and a `null` answer 1 h; both are cached.
- * Two concurrent calls for the same URL share one fetch. Never fails: a
- * redirect, an error, a non-HTML answer or a page with no title and no
- * description all answer `null`.
+ * Unfurls one URL. A hit lasts 24 h and a `null` answer 1 h; concurrent calls share one
+ * fetch. Never fails: redirect, error, non-HTML or no title/description all answer `null`.
  */
 export function fetchLinkPreview(
   rawUrl: string,
@@ -118,10 +95,8 @@ export function fetchLinkPreview(
 }
 
 /**
- * T-1252: the bytes of the image behind one preview key. An unknown or
- * expired key answers `null` (the route renders 404), so a caller can never
- * fetch anything outside the cache. A fetched image is served from memory
- * afterwards.
+ * The image behind one preview key. An unknown or expired key answers `null`, so a caller
+ * can never fetch outside the cache.
  */
 export function fetchLinkPreviewImage(
   key: string,
@@ -145,7 +120,6 @@ export function fetchLinkPreviewImage(
   });
 }
 
-/** Forgets the in-memory caches (tests only). */
 export function resetLinkPreviewCache(): void {
   cache.clear();
   inFlight.clear();
@@ -189,9 +163,8 @@ function defaultFetcher(url: string): Promise<GuardedGetResult> {
   return guardedGet(url, {
     allowedHosts: [],
     anyPublicHost: true,
-    // T-1240: a bot User-Agent (Wikimedia and others refuse requests without
-    // one) with an HTML Accept, and read only the first 512 KB of a big page
-    // instead of failing it as too large: the `<head>` is in the first few KB.
+    // A bot User-Agent (Wikimedia and others refuse requests without one), an HTML
+    // Accept, and only the first 512 KB of a big page: the `<head>` is in the first few KB.
     headers: {
       'user-agent': 'Mozilla/5.0 (compatible; ZilarBot/1.0; +https://chat.zilar.app)',
       accept: 'text/html,application/xhtml+xml',
@@ -206,9 +179,7 @@ function defaultImageFetcher(url: string): Promise<GuardedGetResult> {
   return guardedGet(url, {
     allowedHosts: [],
     anyPublicHost: true,
-    // T-1252: image types only, so an SVG or an HTML page is refused. No
-    // truncation and a 2 MB cap: a too-large image is a miss, not a partial
-    // file.
+    // Image types only, so SVG or HTML is refused; no truncation and a 2 MB cap.
     allowedContentTypes: LINK_PREVIEW_IMAGE_CONTENT_TYPES,
     headers: {
       'user-agent': 'Mozilla/5.0 (compatible; ZilarBot/1.0; +https://chat.zilar.app)',
@@ -220,9 +191,8 @@ function defaultImageFetcher(url: string): Promise<GuardedGetResult> {
   });
 }
 
-// `guardedGet` already refuses redirects, errors and any non-allowed content
-// type; only `text/html` is parsed here. `pageUrl` is the fetched URL, used to
-// resolve a relative `og:image` (T-1252).
+// `guardedGet` already refuses redirects, errors and non-allowed content types; only
+// `text/html` is parsed here.
 function previewOf(result: GuardedGetResult, pageUrl: string): LinkPreviewData | null {
   if (!result.ok || result.body.contentType !== 'text/html') {
     return null;
@@ -230,9 +200,8 @@ function previewOf(result: GuardedGetResult, pageUrl: string): LinkPreviewData |
   return parseLinkPreview(result.body.text, pageUrl);
 }
 
-// T-1252: the key is the SHA-256 of the remote image URL: stable (the same
-// image shares one cache entry) and not reversible, so a client that guesses
-// a key still learns nothing about the URL.
+// The key is the SHA-256 of the remote URL: stable, and not reversible, so a guessed key
+// still learns nothing about the URL.
 function toView(data: LinkPreviewData, at: number): LinkPreview {
   const fields: Pick<LinkPreview, 'title' | 'description' | 'siteName'> = {
     ...(data.title === undefined ? {} : { title: data.title }),
@@ -271,8 +240,8 @@ async function loadImage(
     contentType: result.body.contentType,
     bytes: result.body.bytes,
   };
-  // A concurrent request for the same key can reach here twice, so replace the
-  // accounted size rather than adding to it.
+  // A concurrent request for the same key can reach here twice, so replace the accounted
+  // size rather than adding to it.
   const previous = imageBytes.get(key);
   if (previous !== undefined) {
     imageBytesTotal -= previous.bytes.byteLength;

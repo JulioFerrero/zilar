@@ -12,11 +12,9 @@ import { insertItems, toInsert } from './rows';
 
 export { extractLinks, extractMediaItems };
 
-// The MAM read bounds, copied from search (apps/server/src/search/routes.ts):
-// no expression index is possible in the ejabberd database, so each pass reads
-// newest-to-oldest within 12 months and at most 5 000 rows. The indexer reads
-// the other way (ascending) to advance its cursor, and caps the stored rows
-// per chat so a room cannot grow unbounded.
+// No expression index is possible in the ejabberd database, so each pass reads
+// newest-to-oldest within 12 months and at most 5 000 rows. The stored rows per chat are
+// capped so a room cannot grow unbounded.
 export const MEDIA_INDEX_MAX_ROWS = 5000;
 export const MEDIA_ITEMS_CAP_PER_CHAT = 20000;
 const MEDIA_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
@@ -42,38 +40,29 @@ export interface MediaLink {
   host: string;
 }
 
-// How the archive is addressed, exactly as search scopes it: a room is
-// `username = <room JID>`; a DM is `username = <own localpart> AND
-// bare_peer = <peer bare JID>` (see search/routes.ts:200-207).
+// The archive is addressed as search scopes it: a room is `username = <room JID>`; a DM
+// is `username = <own localpart> AND bare_peer = <peer bare JID>`.
 export type MediaChatScope = { kind: 'dm'; peer: string } | { kind: 'room'; room: string };
 
 export interface IndexChatInput {
   archive: ArchivePool;
   db: ServerDatabase;
-  /** The archive `username`: the room JID, or the DM owner's localpart. */
   archiveOwner: string;
-  /** The chat JID clients address: the room JID, or the DM peer's bare JID. */
   chatJid: string;
   scope: MediaChatScope;
   now: Date;
-  /** Overridable in tests; defaults to `MEDIA_ITEMS_CAP_PER_CHAT`. */
   maxRows?: number;
-  /** Optional log sink; a skipped row falls back to the console. */
   logger?: Pick<Logger, 'warn'>;
 }
 
 export interface IndexChatResult {
-  /** Rows read from the archive on this pass. */
   read: number;
-  /** Rows actually inserted (conflicts count nothing). */
   inserted: number;
-  /** True when this pass reached the end of the window. */
   done: boolean;
 }
 
-// One fully parameterized query, like search's (`$n` bindings, never built SQL).
-// Ascending so the cursor advances to the newest row read; strictly greater
-// than the cursor so re-running never repeats a row.
+// One fully parameterized query (`$n` bindings, never built SQL). Ascending so the cursor
+// advances, strictly greater than the cursor so a re-run never repeats a row.
 export function buildIndexQuery(input: {
   archiveOwner: string;
   scope: MediaChatScope;
@@ -102,8 +91,7 @@ function scopeSql(
     : `username = ${next(input.archiveOwner)} AND bare_peer = ${next(input.scope.peer)}`;
 }
 
-// The author of a message the index has not seen: a text-only message leaves
-// no `media_items` rows to compare against, so the archive answers instead.
+// A text-only message leaves no `media_items` rows, so the archive answers instead.
 export function buildTargetAuthorQuery(input: {
   archiveOwner: string;
   scope: MediaChatScope;
@@ -120,10 +108,8 @@ export function buildTargetAuthorQuery(input: {
   };
 }
 
-// The stored author: a room row's real sender is the archived `bare_peer` (the
-// stanza's `from` is `room/nick`, a free display name anyone can take). A DM
-// row's sender stays the stanza's bare `from`, which is where ejabberd stores
-// it. Rows indexed before T-2014 keep their old `room/nick` value.
+// A room row's real sender is the archived `bare_peer`: the stanza's `from` is
+// `room/nick`, a free display name anyone can take. A DM row uses the stanza's bare `from`.
 function senderJidFor(row: ArchiveRow): string {
   if (row.kind === 'groupchat') {
     return bareJid(row.barePeer);
@@ -137,14 +123,12 @@ interface IndexRowContext {
   atMicros: number;
   scope: MediaChatScope;
   archive: ArchivePool;
-  /** Authors seen in this pass, keyed by origin id, edits excluded. */
   batchAuthors: ReadonlyMap<string, string>;
 }
 
-// A foreign correction of a message that never produced media rows has no
-// `media_items` sender to compare. The archive still names the author, and an
-// author the archive cannot prove is treated as foreign: the correction inserts
-// nothing rather than letting another member's links onto the message.
+// A foreign correction of a message with no media rows has no sender to compare. The
+// archive still names the author, and an unprovable author is treated as foreign, so
+// another member's links never land on the message.
 async function archivedAuthor(
   archive: ArchivePool,
   scope: MediaChatScope,
@@ -162,8 +146,8 @@ async function archivedAuthor(
   return null;
 }
 
-// A failing row must not roll back the whole pass: each row runs in its own
-// savepoint, so the cursor still moves past it and the next row is indexed.
+// Each row runs in its own savepoint, so a failing row does not roll back the pass and the
+// cursor still moves past it.
 function logSkippedRow(
   logger: Pick<Logger, 'warn'> | undefined,
   messageId: string,
@@ -177,9 +161,8 @@ function logSkippedRow(
   console.warn(`[media] index row skipped for message ${messageId}: ${name}`);
 }
 
-// One archive row's work, in a savepoint of the surrounding pass. A correction
-// and a retraction only touch the sender's own rows: a foreign edit neither
-// deletes nor inserts anything, so it cannot hide another member's files.
+// A foreign edit neither deletes nor inserts anything, so it cannot hide another member's
+// files.
 function indexRow(
   sql: SqlClient.SqlClient,
   row: ArchiveRow,
@@ -191,12 +174,10 @@ function indexRow(
       const senderJid = senderJidFor(row);
       const base = { archiveOwner, chatJid, atMicros, senderJid };
 
-      // A correction names its target: the new text replaces the target's
-      // links. The correction row itself is never indexed.
+      // A correction names its target; the correction row itself is never indexed.
       const corrected = correctionTarget(row.xml);
       if (corrected !== null) {
-        // The target's rows belong to its author. If any of them names another
-        // sender, this correction is foreign and is ignored whole.
+        // If any of the target's rows names another sender, this correction is foreign.
         const owners = yield* sql<{ senderJid: string }>`SELECT DISTINCT sender_jid AS "senderJid"
           FROM media_items
           WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
@@ -205,10 +186,8 @@ function indexRow(
           return 0;
         }
         if (owners.length === 0) {
-          // A text-only target has no rows, so the author comes from this pass
-          // or from the archive. An archive failure is rethrown so the per-row
-          // catch logs it and skips the row; an author the archive cannot name
-          // counts as foreign.
+          // A text-only target has no rows, so the author comes from this pass or the
+          // archive; an archive failure is rethrown and the row skipped.
           const author =
             batchAuthors.get(corrected) ??
             (yield* Effect.tryPromise({
@@ -232,7 +211,6 @@ function indexRow(
         return yield* insertItems(sql, links);
       }
 
-      // A retraction hides every row of the target message, links included.
       const retracted = retractTarget(row.xml);
       if (retracted !== null) {
         yield* sql`UPDATE media_items SET deleted = true
@@ -270,13 +248,11 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
   );
   const stored = state[0]?.indexedThroughMicros;
   const storedMicros = stored === undefined ? cutoffMicros : BigInt(stored);
-  // Never read older than the 12-month window, even if the cursor is stale.
   const cursorMicros = storedMicros > cutoffMicros ? storedMicros : cutoffMicros;
 
   const built = buildIndexQuery({ archiveOwner, scope, cursorMicros, limit: MEDIA_INDEX_MAX_ROWS });
   const rows = await archive.query(built.text, built.values);
-  // Edits are skipped: their own origin id must never lend them authorship of
-  // the message they name.
+  // Edits are skipped: their own origin id must never lend them authorship of the target.
   const batchAuthors = new Map<string, string>();
   for (const row of rows) {
     if (correctionTarget(row.xml) !== null || retractTarget(row.xml) !== null) {
@@ -319,10 +295,8 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
               DO UPDATE SET indexed_through_micros = ${through}, updated_at = ${now}`;
           }
 
-          // One atomic statement prunes the chat's links down to the cap,
-          // oldest first. The cap is never a check-then-insert, and it never
-          // removes an image, file, voice or video row: the link flood is the
-          // only thing a room can produce without limit.
+          // One atomic statement prunes the chat's links to the cap, oldest first, never
+          // check-then-insert, and never removes an image, file, voice or video row.
           yield* sql`DELETE FROM media_items WHERE id IN (
             SELECT id FROM media_items
             WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
@@ -340,16 +314,13 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
   return { read: rows.length, inserted: result.inserted, done: rows.length < MEDIA_INDEX_MAX_ROWS };
 }
 
-/** The chat index pass, with the failure log the read handlers share (T-2058). */
 export interface IndexChatOnDemandInput extends IndexChatInput {
   logger: Pick<Logger, 'warn'>;
   userId: string;
-  /** The handler's fixed message, e.g. `'files index failed'`. */
   logMessage: string;
 }
 
-// Index the chat once; a failed pass is logged (ids and the error name only,
-// never message contents) and the rows already stored still answer.
+// A failed pass is logged with ids and the error name only, never message contents.
 export async function indexChatOnDemand(input: IndexChatOnDemandInput): Promise<void> {
   const { logger, userId, logMessage, ...chat } = input;
   try {

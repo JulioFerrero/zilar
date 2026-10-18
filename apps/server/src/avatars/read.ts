@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/avatars/service.ts (size split)
+// effect-plain: avatar file reads are plain fs calls; no Effect in this module.
 import { dirname, join } from 'node:path';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -17,11 +17,8 @@ export async function readStoredFile(
   storageDir: string,
   storageKey: string,
 ): Promise<Uint8Array | null> {
-  // The path is built from the stored key only (a `<uuid>.<ext>` written at
-  // upload); the request id never touches the filesystem, so `..` or a
-  // crafted name cannot escape the storage directory. Both sides are
-  // resolved, so a relative `AVATAR_STORAGE_DIR` (or the sticker one) still
-  // compares equal to its own join.
+  // The path is built from the stored key only (`<uuid>.<ext>` written at upload), so a
+  // request id can never escape the storage directory, even with `..`.
   const dir = resolveStorageDir(storageDir);
   const filePath = join(dir, storageKey);
   if (dirname(filePath) !== dir) return null;
@@ -48,9 +45,8 @@ export async function readAvatarFile(
   if (!row) {
     return null;
   }
-  // SEC-8 (T-1174): a group's picture is served to a member, and to anyone
-  // when the group is public (Explore, search, the `/@handle` card); a private
-  // group's non-member and an unknown id answer the same `null` (404).
+  // SEC-8: a group's picture is served to a member, and to anyone when the group is
+  // public; a private group's non-member and an unknown id answer the same `null`.
   if (row.ownerKind === 'group') {
     const [group] = await runSql(
       deps.db,

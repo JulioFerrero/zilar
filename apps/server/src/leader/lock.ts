@@ -1,24 +1,21 @@
-// effect-plain: a Postgres advisory-lock leader election; the reserved
-// `postgres` connection and its polling timer are inherently async/sessionful
-// (T-1316, docs/audit/two-servers-audit.md §3).
+// effect-plain: a Postgres advisory-lock leader election; the reserved `postgres`
+// connection and its polling timer are inherently async/sessionful.
 //
-// One dedicated session-level advisory lock on its own connection decides which
-// of the two overlapping instances during a rolling deploy runs the leader-only
-// work (`leader/start.ts`). Session locks release themselves when the
-// connection closes, so a killed container hands the lock over with no cleanup.
+// One dedicated session-level advisory lock decides which of the two overlapping
+// instances during a rolling deploy runs the leader-only work (`leader/start.ts`).
+// Session locks release when the connection closes, so a killed container hands over
+// with no cleanup.
 import postgres from 'postgres';
 import type { Logger } from 'pino';
 
-// A dedicated advisory-lock scope, so the leader lock never collides with the
-// per-key `pg_advisory_xact_lock(hashtext(…))` locks already in the database.
+// A dedicated advisory-lock scope, so this never collides with the per-key
+// `pg_advisory_xact_lock(hashtext(…))` locks already in the database.
 export const LEADER_LOCK_SCOPE = 730034;
 export const LEADER_LOCK_KEY = 1;
 export const LEADER_POLL_MS = 1000;
 
-// The lock surface `createLeaderLock` needs: how to try, release and watch a
-// session advisory lock. The real implementation wraps a reserved `postgres`
-// connection; tests use a fake, because the test database (PGlite) is a single
-// in-process handle the `postgres` TCP client cannot connect to.
+// The lock surface `createLeaderLock` needs. Tests use a fake, because the PGlite test
+// database is one in-process handle the `postgres` TCP client cannot connect to.
 export interface LeaderLockConnection {
   tryLock(): Promise<boolean>;
   unlock(): Promise<void>;
@@ -29,22 +26,16 @@ export interface LeaderLockConnection {
 export interface CreateLeaderLockOptions {
   connection: LeaderLockConnection;
   logger: Pick<Logger, 'info' | 'error'>;
-  /** Starts the leader-only work. Awaited before the lock is announced. */
   onAcquire: () => Promise<void>;
-  /** Stops the leader-only work on step down. */
   onStepDown: () => Promise<void>;
   pollMs?: number;
-  /** Injected so a test can assert the exit without ending the test process. */
   exit?: (code: number) => void;
 }
 
 export interface LeaderLock {
-  /** Begins trying to acquire; polls every `pollMs` while held elsewhere. */
   start: () => void;
   isLeader: () => boolean;
-  /** Stops the leader-only work and releases the lock, if held. Idempotent. */
   stepDown: () => Promise<void>;
-  /** Stops polling and closes the connection. Call last, at process shutdown. */
   close: () => Promise<void>;
 }
 
@@ -67,8 +58,8 @@ export function createLeaderLock(options: CreateLeaderLockOptions): LeaderLock {
     }
   };
 
-  // A failure after the lock is held leaves the process running leaderless, so
-  // it logs and exits; `restart: unless-stopped` brings it back as a follower.
+  // A failure after the lock is held leaves the process leaderless, so it logs and exits;
+  // `restart: unless-stopped` brings it back as a follower.
   const fail = (error: unknown, message: string): void => {
     if (stopped) {
       return;
@@ -175,9 +166,8 @@ export function createLeaderLock(options: CreateLeaderLockOptions): LeaderLock {
   };
 }
 
-// Runs `pg_try_advisory_lock` on one reserved connection, so the session that
-// takes the lock is the one that releases it. Two-int form with this module's
-// scope (see the constant above).
+// Runs `pg_try_advisory_lock` on one reserved connection, so the session that takes the
+// lock is the one that releases it.
 export function createPostgresLockConnection(options: {
   url: string;
   scope: number;

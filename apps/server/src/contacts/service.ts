@@ -1,6 +1,3 @@
-// Contacts and the XMPP roster sync. Every query runs on the `effect/sql`
-// client registered for this database; the exported functions stay `async`.
-
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
@@ -13,11 +10,10 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { findInviteByCode } from '../auth/invites';
 import { removePairRosterItems, type RosterLogger } from '../blocks/roster';
 
-// The XMPP roster group every Zilar contact goes into.
 export const ROSTER_GROUP = 'Zilar';
 
-// Shown for contacts who never set a display name. Never an email: a contact's
-// email must not leak into another user's chat list.
+// Shown for contacts with no display name. Never an email: it must not leak into
+// another user's chat list.
 export const UNNAMED_CONTACT_NAME = 'Unnamed user';
 
 export type ContactSource = 'invite' | 'manual';
@@ -26,10 +22,8 @@ export interface Contact {
   userId: string;
   name: string;
   jid: string;
-  // T-0165: a stored picture wins over `user.image`; without a row the
-  // existing `user.image` value is kept.
+  // A stored picture wins over `user.image`; without a row the existing value is kept.
   avatarUrl?: string | undefined;
-  /** The contact's `@username`, when they have one (T-0163). */
   handle?: string | null;
 }
 
@@ -39,8 +33,7 @@ export interface AddContactPairInput {
   source: ContactSource;
 }
 
-// The pair insert on a caller's connection, so a caller that holds a
-// transaction can run it under its own locks (the accept repair, T-1992).
+// Runs on the caller's connection so a caller holding a transaction can use its locks.
 export function addContactPairEffect(
   sql: SqlClient.SqlClient,
   input: AddContactPairInput,
@@ -56,7 +49,6 @@ export function addContactPairEffect(
   });
 }
 
-// Creates both directions of a contact relationship, idempotently.
 export async function addContactPair(
   db: ServerDatabase,
   input: AddContactPairInput,
@@ -76,21 +68,14 @@ export async function addContactPair(
 export interface RemoveContactDeps {
   db: ServerDatabase;
   audit?: AuditRecorder;
-  /**
-   * After the pair commits, both roster items of the pair are removed, best
-   * effort. When absent (tests pass nothing), the pair delete and the list
-   * filters still apply.
-   */
   adminClient?: EjabberdAdminClient | undefined;
-  /** The XMPP domain the roster JIDs are built on. */
   domain?: string | undefined;
-  /** Warns on a failed roster removal. Defaults to silence. */
   logger?: RosterLogger | undefined;
 }
 
-// Removes a contact in both directions; an unknown target answers 404 first.
-// The accepted request is cancelled in the same transaction under the pair
-// locks, and both roster items are removed after the commit, best effort.
+// Removes a contact in both directions; an unknown target answers 404 first. The
+// accepted request is cancelled under the pair locks, and roster items are removed after
+// the commit, best effort.
 export async function removeContact(
   deps: RemoveContactDeps,
   userId: string,
@@ -102,8 +87,8 @@ export async function removeContact(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          // T-1992: the same sorted pair keys as the accept repair, so a
-          // re-accept cannot insert the pair after this delete commits.
+          // The same sorted pair keys as the accept repair, so a re-accept cannot insert
+          // the pair after this delete commits.
           const [lockLow, lockHigh] = [userId, targetId].sort();
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockLow}))`;
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockHigh}))`;
@@ -114,8 +99,8 @@ export async function removeContact(
           if (rows.length === 0) {
             return rows;
           }
-          // T-1992: an accepted request left behind could be re-accepted,
-          // and the repair would re-add the pair this call just removed.
+          // An accepted request left behind could be re-accepted, and the repair would
+          // re-add the pair.
           yield* sql`UPDATE contact_requests
             SET status = 'cancelled', decided_at = ${new Date().toISOString()}
             WHERE status = 'accepted'
@@ -129,8 +114,7 @@ export async function removeContact(
   if (deleted.length === 0) {
     throw new HttpError(404, 'not_found', 'Contact not found');
   }
-  // Audited once, after the commit; ids only, never names (like the block
-  // audit).
+  // Audited after the commit; ids only, never names.
   void deps.audit?.record({
     actorUserId: userId,
     aiId: null,
@@ -172,9 +156,8 @@ export async function listContacts(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // Belt and braces until old rows are gone: a block deletes the pair,
-      // but a contact accepted between blocks (or written by an older
-      // version) must still not show on either side.
+      // A contact accepted between blocks (or written by an older version) must still not
+      // show on either side.
       return yield* sql<ContactListRow>`SELECT c.contact_user_id AS user_id, u.name, u.image,
           x.jid, h.handle
         FROM contacts c
@@ -189,9 +172,7 @@ export async function listContacts(
     }),
   );
 
-  // The avatar is read by joining `avatars` at read time: a stored
-  // picture wins (`/api/avatars/<id>`), otherwise the existing
-  // `user.image` value is kept (Better Auth's table is untouched).
+  // The avatar is joined at read time: a stored picture wins, otherwise `user.image`.
   const avatarIds = await avatarIdsByOwner(
     db,
     'user',
@@ -212,8 +193,8 @@ export async function listContacts(
     unnamed: row.name.trim() === '',
   }));
 
-  // The SQL order puts blank names first. Keep named contacts in their SQL
-  // order and move unnamed ones after, preserving relative order (stable).
+  // The SQL order puts blank names first. Keep the stable SQL order, unnamed contacts
+  // last.
   return [...mapped.filter((row) => !row.unnamed), ...mapped.filter((row) => row.unnamed)].map(
     (row) => row.contact,
   );
@@ -231,10 +212,9 @@ interface PendingRosterRow {
   jid: string | null;
 }
 
-// Adds every not-yet-synced contact of `userId` to that user's XMPP roster.
-// A failure (for example ejabberd is down) leaves the rows `roster_synced`
-// false and stops early, so a later call can retry. It never throws for an
-// admin-client error: the caller decides whether the failure matters.
+// Adds every not-yet-synced contact to the user's XMPP roster. A failure leaves the rows
+// `roster_synced` false and stops early so a later call retries; an admin-client error
+// never throws, the caller decides.
 export async function syncRoster(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -287,11 +267,9 @@ export interface RosterNicknameResult {
   ok: boolean;
 }
 
-// After a user changes their display name, the nickname in every contact's
-// roster must follow: the item that matters is the one where this user is the
-// contact, owned by each of their contacts. Every row is marked unsynced
-// first, so if ejabberd fails, `syncRoster` fixes it on the contact's next
-// token request using the user's current display name.
+// After a display-name change every contact's roster nickname must follow: mark every
+// row unsynced first, so if ejabberd fails `syncRoster` fixes it on the contact's next
+// token request with the current name.
 export async function refreshRosterNicknames(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -359,10 +337,9 @@ export interface SetUpContactsInput {
   inviteCode: string;
 }
 
-// Runs after a new user is created: records which invite they came from and,
-// when that invite had a creator, makes the inviter and the new user contacts
-// and pushes the two roster items. Roster failures are not fatal: the rows
-// stay with `roster_synced = false` and the token endpoint retries.
+// After a new user is created: record the invite and, when it had a creator, make the
+// inviter and the new user contacts and push both roster items. Roster failures are not
+// fatal: the rows stay unsynced and the token endpoint retries.
 export async function setUpContactsFromInvite(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,

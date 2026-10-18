@@ -1,8 +1,6 @@
-// T-1862: metadata is removed before the bytes get a row and an id. Pixels
-// are never re-encoded: the segment structure is walked and only the carrying
-// segments are dropped, so no decoder dependency is needed. A structure the
-// walker cannot follow returns `null`, and the caller refuses the file rather
-// than storing bytes it could not clean.
+// Metadata is removed before the bytes get a row and an id. Pixels are never re-encoded:
+// only the carrying segments are dropped. A structure the walker cannot follow returns
+// `null`, and the caller refuses the file rather than storing it uncleaned.
 import { readU16BE, readU32BE, readU32LE, writeU32LE } from '../media-bytes';
 import { readJpegMarker, type ImageMime } from './sniff';
 
@@ -33,8 +31,6 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
-// PNG: keep the signature and every chunk except the metadata ones. Each
-// chunk is length, type, payload, CRC, and the CRC is copied untouched.
 function stripPng(bytes: Uint8Array): Uint8Array | null {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   if (bytes.length < 8 || !signature.every((value, index) => bytes[index] === value)) {
@@ -65,11 +61,9 @@ function stripPng(bytes: Uint8Array): Uint8Array | null {
   return sawEnd ? concat(parts) : null;
 }
 
-// JPEG: copy the SOI and every header segment except APPn, keeping only APP0
-// (JFIF) and APP2 (ICC) before the first scan. After a scan starts, keep the
-// entropy-coded data, restart markers and every later SOS (progressive JPEGs),
-// drop APPn/COM segments that appear between scans, and stop at the first EOI
-// so trailing metadata never survives.
+// JPEG: copy the SOI and header segments except APPn, keeping only APP0 (JFIF) and APP2
+// (ICC) before the first scan. After a scan starts, keep entropy-coded data, restart
+// markers and later SOS segments; drop between-scan APPn/COM and stop at the first EOI.
 function stripJpeg(bytes: Uint8Array): Uint8Array | null {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     return null;
@@ -80,9 +74,8 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
   let sawScan = false;
   while (offset < bytes.length) {
     if (inScan) {
-      // Scan forward for the next marker that starts a segment: 0xFF00 is
-      // stuffed data, 0xFFD0-0xFFD7 are restart markers and 0xFFFF is fill;
-      // all of them stay inside the entropy-coded run.
+      // 0xFF00 is stuffed data, 0xFFD0-0xFFD7 restart markers and 0xFFFF fill: all stay
+      // inside the entropy-coded run.
       const scanStart = offset;
       let markerAt = -1;
       while (offset < bytes.length) {
@@ -155,9 +148,8 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
   return null;
 }
 
-// WebP: keep every chunk except EXIF and XMP, and clear their flags in the
-// VP8X header so the result does not advertise chunks that are gone. The RIFF
-// size field is rewritten from the bytes actually kept.
+// Keep every chunk except EXIF and XMP, clear their VP8X flags, and rewrite the RIFF
+// size from the bytes actually kept.
 function stripWebp(bytes: Uint8Array): Uint8Array | null {
   if (bytes.length < 12) {
     return null;
