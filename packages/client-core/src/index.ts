@@ -40,6 +40,7 @@ export {
   type Topic,
   type TopicTool,
 } from './topics-api';
+export { makeGroupsApi, type CreateGroupInviteLinkInput } from './groups-api';
 export {
   isLocalPreviewUrl,
   useMediaRetry,

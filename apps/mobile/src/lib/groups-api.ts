@@ -1,17 +1,18 @@
 import { ApiError, omitUndefined, runApi, type PatchGroupPayload } from '@zilar/api-contract';
+import { makeGroupsApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import type { GroupMember, TokenProvider } from './chat-api';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The channel management calls (T-0144), the mobile twin of the web channel
- * client (`apps/web/src/lib/api.ts`, "Channels"): create a channel, leave
- * one, read the members slice and flip a member's role, as a Promise port over
- * the client derived from the shared contract (`@zilar/api-contract`,
- * `groups.ts`, T-0892). A malformed payload throws `invalid_response`. Raw
- * server messages never reach the UI; callers map status/code to their own
- * neutral lines.
+ * The channel management calls (T-0144), the mobile port over the shared
+ * groups API (`@zilar/client-core`, `groups-api.ts`, T-2056): create a
+ * channel, leave one, read the members slice and flip a member's role, as a
+ * Promise port over the client derived from the shared contract
+ * (`@zilar/api-contract`, `groups.ts`, T-0892). A malformed payload throws
+ * `invalid_response`. Raw server messages never reach the UI; callers map
+ * status/code to their own neutral lines.
  */
 
 export type ChannelMemberRole = 'admin' | 'member';
@@ -96,6 +97,7 @@ export function createGroupsApi(
   apiUrl: string = API_URL,
 ): GroupsApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  const api = makeGroupsApi((call) => runApi(call(client)));
   return {
     // The server trims `title`; the contract encodes the trimmed form.
     createChannel: (input) =>
@@ -128,8 +130,9 @@ export function createGroupsApi(
           },
         }),
       ).then(({ id }) => ({ id })),
+    // The phone narrows `handle` to absent, so the member row is rebuilt.
     listGroupMembers: (groupId) =>
-      runApi(client.groups.members({ params: { id: groupId } })).then(({ members }) =>
+      api.listGroupMembers(groupId).then((members) =>
         members.map((member) => ({
           userId: member.userId,
           name: member.name,
@@ -137,34 +140,22 @@ export function createGroupsApi(
           roles: member.roles ?? [],
         })),
       ),
-    changeGroupMemberRole: async (groupId, userId, role) => {
-      await runApi(
-        client.groups.changeRole({ params: { id: groupId, userId }, payload: { role } }),
-      );
-    },
-    removeGroupMember: async (groupId, userId) => {
-      await runApi(client.groups.removeMember({ params: { id: groupId, userId } }));
-    },
+    changeGroupMemberRole: (groupId, userId, role) =>
+      api.changeGroupMemberRole(groupId, userId, role).then(() => undefined),
+    removeGroupMember: (groupId, userId) =>
+      api.removeGroupMember(groupId, userId).then(() => undefined),
     // T-1569: the fresh detail the route answers is dropped here; the store
     // reloads it through `ensureGroupDetail`, so the cache is one source.
-    addGroupMembers: async (groupId, userIds) => {
-      await runApi(client.groups.addMembers({ params: { id: groupId }, payload: { userIds } }));
-    },
-    addGroupAi: async (groupId, aiId) => {
-      await runApi(client.groups.addAi({ params: { id: groupId }, payload: { aiId } }));
-    },
-    removeGroupAi: async (groupId, aiId) => {
-      await runApi(client.groups.removeAi({ params: { id: groupId, aiId } }));
-    },
+    addGroupMembers: (groupId, userIds) =>
+      api.addGroupMembers(groupId, userIds).then(() => undefined),
+    addGroupAi: (groupId, aiId) => api.addGroupAi(groupId, aiId).then(() => undefined),
+    removeGroupAi: (groupId, aiId) => api.removeGroupAi(groupId, aiId).then(() => undefined),
     // T-1190: the fresh detail the route answers is dropped here; the store
     // reloads it through `ensureGroupDetail`, so the cache is one source.
-    transferGroupOwner: async (groupId, userId) => {
-      await runApi(client.groups.transferOwner({ params: { id: groupId }, payload: { userId } }));
-    },
+    transferGroupOwner: (groupId, userId) =>
+      api.transferGroupOwner(groupId, userId).then(() => undefined),
     // T-1243: the route answers 204 with no body.
-    deleteGroup: async (groupId) => {
-      await runApi(client.groups.deleteGroup({ params: { id: groupId } }));
-    },
+    deleteGroup: (groupId) => api.deleteGroup(groupId),
     // T-1574: only the keys the caller set go over the wire (`omitUndefined`),
     // so a patch of one setting never clears another; the fresh detail the
     // route answers is dropped, the store reloads it.

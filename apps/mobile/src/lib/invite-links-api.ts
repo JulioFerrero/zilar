@@ -1,58 +1,37 @@
-import { omitUndefined, ApiError, runApi } from '@zilar/api-contract';
+import {
+  ApiError,
+  runApi,
+  type CreatedInviteLink,
+  type InviteLink as GroupInviteLink,
+  type JoinPreview,
+  type JoinResult,
+} from '@zilar/api-contract';
+import { makeGroupsApi, type CreateGroupInviteLinkInput } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import type { TokenProvider } from './chat-api';
 import { createApiClient } from './effect/api-client';
 
 /**
- * Group invite links (T-0136), the mobile twin of the web client
- * (`apps/web/src/lib/api.ts`, "Group invite links" + "Join by link"): create,
- * list and revoke shareable group links for owners/admins, plus the
- * join-by-link preview and join, as a Promise port over the client derived
- * from the shared contract (`@zilar/api-contract`, `invite-links.ts`, T-0892).
- * Malformed rows fail the decode and throw `invalid_response`. The token is
- * shown once at creation in `url` and never stored: the list carries hints,
- * labels, uses and state, never tokens.
+ * Group invite links (T-0136), the mobile port over the shared calls
+ * (`@zilar/client-core`, `groups-api.ts`, T-2056): create, list and revoke
+ * shareable group links for owners/admins, plus the join-by-link preview and
+ * join, as a Promise port over the client derived from the shared contract
+ * (`@zilar/api-contract`, `invite-links.ts`, T-0892). Malformed rows fail the
+ * decode and throw `invalid_response`. The token is shown once at creation in
+ * `url` and never stored: the list carries hints, labels, uses and state,
+ * never tokens.
  */
 
-export interface GroupInviteLink {
-  id: string;
-  label: string | null;
-  tokenHint: string;
-  uses: number;
-  maxUses: number | null;
-  expiresAt: string | null;
-  revoked: boolean;
-  createdAt: string;
-}
-
-export interface CreatedInviteLink {
-  id: string;
-  /** The raw token, shown once. Never stored, logged or audited. */
-  token: string;
-  url: string;
-}
-
-export interface CreateGroupInviteLinkInput {
-  label?: string;
-  expiresInHours?: number;
-  maxUses?: number;
-}
-
-export interface JoinPreview {
-  groupTitle: string;
-  memberCount: number;
-  alreadyMember: boolean;
-  groupId?: string;
-  // T-0144: the group's kind, so the join screen reads "Join channel" for a
-  // channel. Optional so older servers still parse (treated as a group).
-  kind?: 'group' | 'channel';
-}
-
-export interface JoinResult {
-  groupId: string;
-  alreadyMember: boolean;
-}
+export type {
+  CreatedInviteLink,
+  InviteLink as GroupInviteLink,
+  JoinPreview,
+  JoinResult,
+} from '@zilar/api-contract';
+// T-0144: `JoinPreview.kind` lets the join screen read "Join channel" for a
+// channel; absent on older servers (a group). T-0124 counts subscribers.
+export type { CreateGroupInviteLinkInput };
 
 export interface InviteLinksApi {
   createGroupInviteLink(
@@ -75,26 +54,14 @@ export function createInviteLinksApi(
   apiUrl: string = API_URL,
 ): InviteLinksApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const links = client['invite-links'];
+  const api = makeGroupsApi((call) => runApi(call(client)));
   return {
-    // The server trims `label`; the contract encodes the trimmed form.
-    createGroupInviteLink: (groupId, input = {}) =>
-      runApi(
-        links.createLink({
-          params: { id: groupId },
-          payload: {
-            ...omitUndefined(input),
-            ...(input.label === undefined ? {} : { label: input.label.trim() }),
-          },
-        }),
-      ),
-    listGroupInviteLinks: (groupId) =>
-      runApi(links.listLinks({ params: { id: groupId } })).then(({ links: rows }) => [...rows]),
-    revokeGroupInviteLink: async (groupId, linkId) => {
-      await runApi(links.revokeLink({ params: { id: groupId, linkId } }));
-    },
-    previewJoinLink: (token) => runApi(links.preview({ params: { token } })),
-    joinByLink: (token) => runApi(links.join({ params: { token } })),
+    createGroupInviteLink: api.createGroupInviteLink,
+    listGroupInviteLinks: api.listGroupInviteLinks,
+    revokeGroupInviteLink: (groupId, linkId) =>
+      api.revokeGroupInviteLink(groupId, linkId).then(() => undefined),
+    previewJoinLink: api.previewJoinLink,
+    joinByLink: api.joinByLink,
   };
 }
 
