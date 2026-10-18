@@ -8,6 +8,9 @@ import type { ExtractedMediaItem, MediaKind, MediaLink } from './indexer';
 // trimmed, a closing bracket kept only when the URL opened it. The host comes
 // from `new URL`, so anything the parser rejects is dropped.
 const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
+// A single message can carry thousands of links; the index keeps the first 50
+// so one message cannot exhaust the chat's row cap or the insert's parameters.
+export const MEDIA_LINKS_PER_MESSAGE = 50;
 const ALWAYS_STRIP = new Set(['.', ',', ';', ':', '!', '?', '…', '»', '"', "'"]);
 const BRACKETS: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
 
@@ -77,6 +80,9 @@ export function extractLinks(text: string): MediaLink[] {
     }
     seen.add(url);
     links.push({ url, host });
+    if (links.length >= MEDIA_LINKS_PER_MESSAGE) {
+      break;
+    }
   }
   return links;
 }

@@ -67,13 +67,13 @@ function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemRow {
 // (the unique index at `schema.ts:1419-1426`) with `RETURNING`, so the count
 // is the rows actually inserted and a re-run inserts nothing. `waveform` is
 // jsonb, so it is stringified and cast; every other value binds directly.
-function insertItems(
+// 500 rows x 19 bindings stays well under Postgres's 65 535 parameters.
+const INSERT_CHUNK_ROWS = 500;
+
+function insertChunk(
   sql: SqlClient.SqlClient,
   rows: MediaItemRow[],
 ): Effect.Effect<number, SqlError.SqlError> {
-  if (rows.length === 0) {
-    return Effect.succeed(0);
-  }
   const tuples = rows.map(
     (row) => sql`(${row.id}, ${row.archiveOwner}, ${row.chatJid}, ${row.messageId},
       ${row.atMicros}, ${row.senderJid}, ${row.kind}, ${row.url}, ${row.name},
@@ -88,6 +88,22 @@ function insertItems(
     VALUES ${sql.csv(tuples)}
     ON CONFLICT (archive_owner, chat_jid, message_id, kind, ref) DO NOTHING
     RETURNING id`.pipe(Effect.map((inserted) => inserted.length));
+}
+
+function insertItems(
+  sql: SqlClient.SqlClient,
+  rows: MediaItemRow[],
+): Effect.Effect<number, SqlError.SqlError> {
+  if (rows.length === 0) {
+    return Effect.succeed(0);
+  }
+  return Effect.gen(function* () {
+    let inserted = 0;
+    for (let start = 0; start < rows.length; start += INSERT_CHUNK_ROWS) {
+      inserted += yield* insertChunk(sql, rows.slice(start, start + INSERT_CHUNK_ROWS));
+    }
+    return inserted;
+  });
 }
 
 export { insertItems, toInsert };
