@@ -923,7 +923,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - T-2004 also got `push/group-notifier.ts:205` (own-message skip by nick).
                       - T-2003 got the same correction: its edit overlay matched room senders by the stored `<x>` or the nick.
                       - **Next, after T-2004 merges (T-2014):** the AI context (`agents/context.ts:212`), AI memory (`agents/memory/indexer.ts:106`) and the media list (`media/items.ts:36`) still label room senders by nick. They should use the real name looked up by `bare_peer` or the resolved JID, so nobody can pose as "Julio" to an AI.
-                    - **Code reduction (Julio 15:40):** T-2013's free scan is running. Then an Opus plan of at most $25, then DeepSeek waves.
+                    - **Code reduction (Julio 15:40):**
+                      - T-2013 is merged: `docs/audit/reduce-scan.md`. Exact clones are only 1.66%; the real target is about 30 web/phone twin modules with duplicated logic.
+                      - Running: T-2015 (Opus share plan, about $20) and T-2016 (dead files and deps).
+                    - **Deployed `330d36482`, live at 15:54:51** (16 merges). Checks:
+                      - **Room reconcile:** 5 rooms, 0 failed. No room has an `owner`. Only the 2 channel feeds keep one person as `admin`.
+                      - **Room settings:** all rooms are non-public, unlisted and members-only.
+                      - **Desk networks:** none yet; no desk was running.
+                      - **Errors:** none since the deploy.
+                    - **Merged and held since that deploy:** T-2012, T-1993, T-1992, T-2011, T-2013, T-2006, T-2009.
+                    - **T-1980 (pin jump):** resolving its rebase conflict with T-2008.
+                    - **Phone scroll measurement** (emulator, "ai test › cards test", 299 messages): a baseline build of `72ff17678` (before W1) is running, then main (W1 + W2).
                       - W3 (one menu, one gesture) and W4 (row leaves) wait for T-2009, since they share files;
                       - measure with `dumpsys gfxinfo` before and after.
                     - **T-1980 (pin jump):** fix round sent. Its pre-review caught two real regressions: pins stored the archive id, and the alias direction would have hidden DM reactions from the other person.
