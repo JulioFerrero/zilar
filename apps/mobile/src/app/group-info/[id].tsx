@@ -1,13 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { Trash2 } from 'lucide-react-native';
 import { type ComponentProps, useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Share, View } from 'react-native';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useGroupManage } from '@/components/chat/group-manage-section';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
-import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
+import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
-import { useGroupInviteLinks } from '@/components/chat/use-group-invite-links';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
@@ -36,6 +36,8 @@ import type { GroupMember } from '@/lib/chat-api';
 import { useQuery } from '@/lib/effect/use-query';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import type { GroupInviteLink } from '@/lib/invite-links-api';
 
 // The group screen's roles sheet state and writes: the query, the busy/error flags and the CRUD handlers the sheet calls.
 function useGroupRoles(groupId: string, members: readonly GroupMember[]) {
@@ -166,7 +168,94 @@ function GroupInfo() {
 
   const manage = useGroupManage({ groupId, groupChatId: groupChatId ?? groupId, isOwner });
   const roles = useGroupRoles(groupId, members);
-  const links = useGroupInviteLinks(groupId);
+  // The group screen's invite-links sheet state and writes, owner/admin only like web. The list loads when the sheet opens; the created URL is kept only until dismissed, never stored.
+  const listInviteLinks = useChatStore((state) => state.listInviteLinks);
+  const createInviteLink = useChatStore((state) => state.createInviteLink);
+  const revokeInviteLink = useChatStore((state) => state.revokeInviteLink);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [linksNow, setLinksNow] = useState(() => Date.now());
+  const [links, setLinks] = useState<GroupInviteLink[]>([]);
+  const [linksError, setLinksError] = useState('');
+  const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
+  const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
+  const fetchLinks = (linksGroupId: string) =>
+    Effect.sync(() => {
+      setLinksError('');
+    }).pipe(
+      Effect.andThen(
+        groupAction(
+          rawCall(() => listInviteLinks(linksGroupId)).pipe(
+            Effect.tap((list) =>
+              Effect.sync(() => {
+                setLinks(list);
+              }),
+            ),
+          ),
+          () => setLinksError('Could not load invite links. Try again.'),
+        ),
+      ),
+    );
+  const [, loadLinks] = useAction((linksGroupId: string) => fetchLinks(linksGroupId));
+  const openLinksSheet = () => {
+    setLinksError('');
+    setCreatedUrl(undefined);
+    setRevokingId(undefined);
+    // Fresh clock on every open: the sheet stays mounted while hidden, so a mount-time stamp would go stale.
+    setLinksNow(Date.now());
+    setLinksOpen(true);
+    loadLinks(groupId);
+  };
+  const [linkCreate, runLinkCreate] = useAction((input: CreateInviteLinkForm) =>
+    groupAction(
+      rawCall(() => createInviteLink(groupId, input)).pipe(
+        Effect.tap((created) =>
+          Effect.sync(() => {
+            setCreatedUrl(created.url);
+          }),
+        ),
+        Effect.andThen(fetchLinks(groupId)),
+      ),
+      () => setLinksError('Could not create the invite link. Try again.'),
+    ),
+  );
+  const linksBusy = isWaiting(linkCreate);
+  const [, runLinkRevoke] = useAction((linkId: string) =>
+    groupAction(
+      rawCall(() => revokeInviteLink(groupId, linkId)).pipe(Effect.andThen(fetchLinks(groupId))),
+      () => setLinksError('Could not revoke the invite link. Try again.'),
+      () => setRevokingId(undefined),
+    ),
+  );
+  const createLink = (input: CreateInviteLinkForm) => {
+    setLinksError('');
+    runLinkCreate(input);
+  };
+  const revokeLink = (linkId: string) => {
+    setRevokingId(linkId);
+    setLinksError('');
+    runLinkRevoke(linkId);
+  };
+  // The clipboard/share bridge: `expo-clipboard` and `Share` cannot run in Node tests, so the sheet takes callbacks and the screen wires the real modules.
+  const share = useMemo(
+    () => ({
+      copyText: (text: string) =>
+        Effect.runPromise(Effect.promise(() => Clipboard.setStringAsync(text)).pipe(Effect.asVoid)),
+      shareText: (text: string) =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Share.share({ message: text }),
+            catch: (cause) => cause,
+          }).pipe(Effect.asVoid),
+        ),
+    }),
+    [],
+  );
+  const closeLinks = () => {
+    if (!linksBusy) {
+      setLinksOpen(false);
+    }
+  };
+  const dismissCreated = () => setCreatedUrl(undefined);
   const visibility = useGroupVisibility(groupId);
   const myAisInGroup = useMemo(
     () => groupAis.filter((ai) => ownedAis.some((owned) => owned.id === ai.aiId)),
@@ -191,7 +280,7 @@ function GroupInfo() {
   // The sheets open only behind their own role gate, so a hidden key can never open a manager- or owner-only sheet; the server is the enforcer.
   const openLinks = () => {
     if (isManager) {
-      links.open();
+      openLinksSheet();
     }
   };
 
@@ -389,18 +478,18 @@ function GroupInfo() {
       </BottomSheet>
 
       <InviteLinksSheet
-        visible={links.visible}
-        links={links.links}
-        busy={links.busy}
-        error={links.error}
-        createdUrl={links.createdUrl}
-        revokingId={links.revokingId}
-        now={links.now}
-        share={links.share}
-        onCreate={links.create}
-        onRevoke={links.revoke}
-        onDismissCreated={links.dismissCreated}
-        onClose={links.close}
+        visible={linksOpen}
+        links={links}
+        busy={linksBusy}
+        error={linksError}
+        createdUrl={createdUrl}
+        revokingId={revokingId}
+        now={linksNow}
+        share={share}
+        onCreate={createLink}
+        onRevoke={revokeLink}
+        onDismissCreated={dismissCreated}
+        onClose={closeLinks}
       />
       <GroupRolesSheet
         visible={roles.visible}
@@ -435,7 +524,7 @@ function GroupInfo() {
         error={visibility.error}
         saved={visibility.saved}
         confirmingPrivate={visibility.confirmingPrivate}
-        share={links.share}
+        share={share}
         onPick={visibility.pick}
         onHandleChange={visibility.changeHandle}
         onSave={visibility.save}

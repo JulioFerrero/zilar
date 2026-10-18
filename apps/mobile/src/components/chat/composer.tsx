@@ -1,35 +1,50 @@
 import type { Attachment } from '@zilar/protocol';
+import {
+  composerPlaceholder,
+  isAiJid,
+  lightToPlain,
+  type MentionMember,
+  type UiMention,
+} from '@zilar/chat-core';
+import { ArrowUp, Check, Keyboard, Paperclip, Pencil, Smile, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AttachSheet } from '@/components/chat/attach-sheet';
-import { ComposerInputRow, MIN_INPUT_HEIGHT, ReplyBar } from '@/components/chat/composer-input-row';
 import { useComposerMedia } from '@/components/chat/composer-media';
 import { PickedStrip } from '@/components/chat/composer-picked-strip';
 import { useComposerSheet } from '@/components/chat/composer-sheet';
 import { EmojiSheet } from '@/components/chat/emoji-sheet';
+import { tap } from '@/components/chat/haptics';
 import { useComposerMentions } from '@/components/chat/use-composer-mentions';
+import { useBackCancel } from '@/components/chat/use-back-cancel';
+import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
+import { AiBadge } from '@/components/chat/ai-badge';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { useKeyPress } from '@/components/ui/use-key-press';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
-import { well } from '@/lib/depth';
+import { ICON } from '@/lib/colors';
+import {
+  ACCENT_FOREGROUND,
+  KEY_PRIMARY_PRESSED_SHADOW,
+  pressStyle,
+  primaryKey,
+  well,
+} from '@/lib/depth';
 import type { CaretSelection } from '@/lib/emoji-data';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
 import type { ReplyRef } from '@/lib/types';
-import { composerPlaceholder, type MentionMember, type UiMention, isAiJid } from '@zilar/chat-core';
-import type {
-  SendAttachmentOptions,
-  SendStickerChoice,
-  SendTextOptions,
-  SendVoiceRecording,
+import {
+  type SendAttachmentOptions,
+  type SendStickerChoice,
+  type SendTextOptions,
+  type SendVoiceRecording,
 } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { setDraft, useComposerDraft } from '@/lib/composer-drafts';
-import { Pencil, X } from 'lucide-react-native';
-import { useBackCancel } from '@/components/chat/use-back-cancel';
-import { ICON } from '@/lib/colors';
-import { AiBadge } from '@/components/chat/ai-badge';
-import { EntityAvatar } from '@/components/chat/entity-avatar';
 
 interface MentionPickerProps {
   members: MentionMember[];
@@ -105,6 +120,51 @@ function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
   );
 }
 
+export const MIN_INPUT_HEIGHT = 36;
+const MAX_INPUT_HEIGHT = 132;
+
+/** On Android the reported content height already includes the `py-2` padding,
+ *  so adding it again doubled the well. The cap holds 8 lines. */
+export function fieldHeightFor(contentHeight: number): number {
+  if (!Number.isFinite(contentHeight)) {
+    return MIN_INPUT_HEIGHT;
+  }
+  return clamp(Math.round(contentHeight), MIN_INPUT_HEIGHT, MAX_INPUT_HEIGHT);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }) {
+  useBackCancel(onCancel);
+
+  return (
+    <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
+      <View className="w-[3px] bg-[#333333]" />
+      <View className="min-w-0 flex-1 px-2.5 py-1.5">
+        <Text className="text-[13px] font-semibold text-[#d4d4d4]">
+          Reply to {reply.senderName}
+        </Text>
+        {reply.text !== undefined ? (
+          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+            {lightToPlain(reply.text)}
+          </Text>
+        ) : null}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Cancel reply"
+        hitSlop={8}
+        onPress={onCancel}
+        className="w-9 items-center justify-center active:bg-surface-raised"
+      >
+        <X size={18} color={ICON} />
+      </Pressable>
+    </View>
+  );
+}
+
 // The composer's text for one chat: the chat's stored draft, so leaving and returning keeps it, and every change writes back through `setDraft` (empty deletes it). A composer with no chat id keeps its text locally.
 function useDraftText(chatId: string | undefined): [string, (next: string) => void] {
   const stored = useComposerDraft(chatId);
@@ -121,8 +181,6 @@ function useDraftText(chatId: string | undefined): [string, (next: string) => vo
   );
   return chatId === undefined ? [local, setValue] : [stored, setValue];
 }
-
-export { fieldHeightFor } from '@/components/chat/composer-input-row';
 
 type ComposerProps = {
   onSend: (text: string, mentions?: UiMention[]) => void;
@@ -280,6 +338,18 @@ export function Composer({
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
+  const iconColor = ICON;
+  const sendLabel = editing
+    ? 'Save edit'
+    : media.picks.length >= 2
+      ? `Send ${media.picks.length} files`
+      : 'Send message';
+  const showKeyboard = () => {
+    sheet.closeSheet();
+    inputRef.current?.focus();
+  };
+
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
       {editTarget !== undefined ? (
@@ -302,29 +372,92 @@ export function Composer({
         <MentionPicker members={mentions.candidates} onSelect={mentions.pickMention} />
       ) : null}
       <PickedStrip previews={pickedPreviews} onRemove={media.removePick} />
-      <ComposerInputRow
-        placeholder={placeholder}
-        text={text}
-        onChangeText={mentions.handleChange}
-        selection={selection}
-        onSelectionChange={setSelection}
-        inputHeight={inputHeight}
-        onInputHeightChange={(height) => setInputHeight(text === '' ? MIN_INPUT_HEIGHT : height)}
-        canSend={media.canSend}
-        stagedCount={media.picks.length}
-        editing={editTarget !== undefined}
-        onSend={handleSend}
-        onOpenAttach={media.openAttach}
-        onOpenSheet={sheet.openSheet}
-        sheetOpen={sheet.sheetOpen}
-        onCloseSheet={sheet.closeSheet}
-        voiceRecording={media.voiceRecording}
-        onRecordingChange={media.setVoiceRecording}
-        replyTo={replyTo}
-        onCancelReply={onCancelReply}
-        onSendVoice={onSendVoice}
-        inputRef={inputRef}
-      />
+      <View
+        className="flex-row items-end gap-1 rounded-[14px] p-2"
+        style={[well, { borderColor: '#262626' }]}
+      >
+        {!media.voiceRecording ? (
+          <>
+            <IconButton
+              label="Attach file"
+              className="h-9 w-9 rounded-[10px]"
+              onPress={media.openAttach}
+            >
+              <Paperclip size={20} color={iconColor} />
+            </IconButton>
+            <TextInput
+              ref={inputRef}
+              value={text}
+              onChangeText={mentions.handleChange}
+              multiline
+              placeholder={placeholder}
+              placeholderTextColor="#a1a1a1"
+              accessibilityLabel="Message"
+              className="mx-1 flex-1 py-2 text-[16px] text-foreground"
+              style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
+              selection={selection}
+              onFocus={() => {
+                if (sheet.sheetOpen) {
+                  sheet.closeSheet();
+                }
+              }}
+              onContentSizeChange={(event) =>
+                setInputHeight(
+                  text === ''
+                    ? MIN_INPUT_HEIGHT
+                    : fieldHeightFor(event.nativeEvent.contentSize.height),
+                )
+              }
+              onSelectionChange={(event) =>
+                setSelection({
+                  start: event.nativeEvent.selection.start,
+                  end: event.nativeEvent.selection.end,
+                })
+              }
+            />
+            <IconButton
+              label={sheet.sheetOpen ? 'Keyboard' : 'Emoji'}
+              className="h-9 w-9 rounded-[10px]"
+              onPress={sheet.sheetOpen ? showKeyboard : sheet.openSheet}
+            >
+              {sheet.sheetOpen ? (
+                <Keyboard size={20} color={iconColor} />
+              ) : (
+                <Smile size={20} color={iconColor} />
+              )}
+            </IconButton>
+          </>
+        ) : null}
+        {media.canSend ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={sendLabel}
+            hitSlop={8}
+            onPress={() => {
+              tap();
+              handleSend();
+            }}
+            onPressIn={() => setPressed(true)}
+            onPressOut={() => setPressed(false)}
+            className="h-9 w-9 items-center justify-center rounded-[10px]"
+            style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
+          >
+            {editing ? (
+              <Check size={20} color={ACCENT_FOREGROUND} />
+            ) : (
+              <ArrowUp size={20} color={ACCENT_FOREGROUND} />
+            )}
+          </Pressable>
+        ) : (
+          <VoiceRecorderButton
+            onSendVoice={(recording, options) => onSendVoice?.(recording, options)}
+            replyTo={replyTo}
+            onCancelReply={onCancelReply}
+            canSend={media.canSend}
+            onRecordingChange={media.setVoiceRecording}
+          />
+        )}
+      </View>
       <EmojiSheet
         open={sheet.sheetOpen}
         tab={sheet.sheetTab}

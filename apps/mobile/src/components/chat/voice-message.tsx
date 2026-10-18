@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 import { VoiceMessageBars, VoiceMessageFailedBars } from './voice-message-bars';
 import {
   BAR_COUNT,
+  isPromiseLike,
   resolvePlaySourceEffect,
   resolved,
   sampleBars,
@@ -16,13 +17,29 @@ import {
   subscribeVoiceState,
 } from './voice-player-registry';
 import type { VoicePlayerControls } from './voice-player-host';
-import { useVoiceTranscribe } from './use-voice-transcribe';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
+import { interruptFiber } from '@zilar/client-core';
 import { mobileUploadOf, type UiMessage } from '@/lib/types';
-import { isPlayableVoiceUrl, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-playback';
-import type { StoredTranscript, TranscriptMap } from '@/lib/voice-transcripts';
-import type { WhistlePort } from '@/lib/whistle-port';
+import {
+  isPlayableVoiceUrl,
+  voiceAudioSource,
+  type VoicePlayback,
+  type VoiceSpeed,
+} from '@/lib/voice-playback';
+import {
+  readTranscripts,
+  saveTranscript,
+  type StoredTranscript,
+  type TranscriptMap,
+} from '@/lib/voice-transcripts';
+import {
+  consumeTranscribeConsent,
+  transcribeVoiceNote,
+  type TranscribePhase,
+  type VoiceTranscribeSource,
+} from '@/lib/voice-transcribe-flow';
+import { createWhistlePort, type WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -150,29 +167,178 @@ export function VoiceMessage({
         ? true
         : voice.url !== undefined && isPlayableVoiceUrl(voice.url, hosts);
 
-  const {
-    showTranscript,
-    toggleTranscript,
-    shownText,
-    localTranscript,
-    showTranscribe,
-    transcribeBusy,
-    transcribePhase,
-    transcribeError,
-    confirmOpen,
-    startTranscribe,
-    confirmTranscribe,
-    closeConfirm,
-  } = useVoiceTranscribe({
-    voice,
-    messageId: message.id,
-    localUri: upload.localUri,
-    trustedHosts: hosts,
-    playable,
-    transcripts,
-    whistle,
-    onSaveTranscript,
-  });
+  // The voice bubble's transcription half: on-device state, the stored transcript read, and the transcribe/confirm flow. The bubble and bars only render.
+  const [showTranscript, setShowTranscript] = useState(false);
+  // The on-device transcript, kept locally (never on the wire): the stored value wins, then this session's fresh text.
+  const [storedTranscripts, setStoredTranscripts] = useState<TranscriptMap | undefined>(
+    () => transcripts,
+  );
+  const [localText, setLocalText] = useState<StoredTranscript | undefined>(undefined);
+  const [transcribeBusy, setTranscribeBusy] = useState(false);
+  const [transcribePhase, setTranscribePhase] = useState<TranscribePhase | undefined>(undefined);
+  const [transcribeError, setTranscribeError] = useState<string | undefined>(undefined);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const whistlePort = useMemo(() => whistle ?? createWhistlePort(), [whistle]);
+  const transcribeRun = useRef(0);
+  // The one-shot model-download consent: set only by the sheet's Download for this run, consumed by `confirmDownload`.
+  const transcribeConsent = useRef({ confirmed: false });
+
+  // A stored transcript is shown at once on the next start; read here when the caller injected none.
+  useEffect(() => {
+    if (transcripts !== undefined) {
+      return;
+    }
+    const reading = Effect.runFork(
+      Effect.tryPromise(() => readTranscripts()).pipe(
+        Effect.flatMap((all) => Effect.sync(() => setStoredTranscripts(all))),
+        Effect.ignore,
+      ),
+    );
+    return () => {
+      interruptFiber(reading);
+    };
+  }, [transcripts, message.id]);
+
+  const storedText = storedTranscripts?.[message.id];
+  const transcriptText = storedText ?? localText;
+  const hasTranscript = transcriptText !== undefined || voice.transcript !== undefined;
+  const shownText = transcriptText?.text ?? voice.transcript?.text;
+  const localTranscript = transcriptText !== undefined;
+  const toggleTranscript = () => setShowTranscript((value) => !value);
+
+  // Transcribe shows only on phones with the engine, with no transcript yet, and with playable audio. The engine probe is synchronous and safe (it only reads the ABI list).
+  const whistleAvailable = Effect.runSync(
+    Effect.try(() => whistlePort.isAvailable()).pipe(Effect.orElseSucceed(() => false)),
+  );
+  const showTranscribe = whistleAvailable && !hasTranscript && playable;
+
+  const runTranscribe = () => {
+    transcribeRun.current += 1;
+    const run = transcribeRun.current;
+    setTranscribeBusy(true);
+    setTranscribeError(undefined);
+    setTranscribePhase(undefined);
+    // The model download needs the user's yes: Download sets `transcribeConsent` for this run and the gate consumes it; no yes, no download.
+    const consent = transcribeConsent.current;
+    const askDownload = (): boolean => {
+      if (transcribeRun.current !== run) {
+        return false;
+      }
+      const ok = consumeTranscribeConsent(consent, () => {
+        if (transcribeRun.current === run) {
+          setConfirmOpen(true);
+        }
+      });
+      if (!ok && transcribeRun.current === run) {
+        setTranscribeBusy(false);
+        setTranscribePhase(undefined);
+      }
+      return ok;
+    };
+    const program = Effect.gen(function* () {
+      const source = yield* Effect.tryPromise(() =>
+        voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts }),
+      );
+      if (transcribeRun.current !== run) {
+        return;
+      }
+      if (source === undefined) {
+        setTranscribeBusy(false);
+        setTranscribeError('Could not read that voice message.');
+        return;
+      }
+      // A local file transcribes in place; a served URL downloads to the cache with its headers (the flow always deletes the cached file).
+      const audioSource: VoiceTranscribeSource =
+        upload.localUri !== undefined && upload.localUri !== ''
+          ? { localUri: upload.localUri }
+          : { url: source.uri, headers: source.headers };
+      const result = yield* Effect.tryPromise(() =>
+        transcribeVoiceNote({
+          port: whistlePort,
+          source: audioSource,
+          audioMs: voice.duration_ms,
+          onPhase: (phase) => {
+            if (transcribeRun.current === run) {
+              setTranscribePhase(phase);
+            }
+          },
+          confirmDownload: () => Effect.runPromise(Effect.sync(askDownload)),
+        }),
+      );
+      if (transcribeRun.current !== run) {
+        return;
+      }
+      setTranscribeBusy(false);
+      setTranscribePhase(undefined);
+      if (result.status === 'cancelled') {
+        return;
+      }
+      if (result.status === 'error') {
+        setTranscribeError(result.message);
+        return;
+      }
+      const text = result.transcript.text.trim();
+      const entry: StoredTranscript =
+        result.transcript.language === ''
+          ? { text }
+          : { text, language: result.transcript.language };
+      setLocalText(entry);
+      setShowTranscript(true);
+      setStoredTranscripts((current) => ({ ...current, [message.id]: entry }));
+      // The text is already on screen; a blocked store keeps it local.
+      yield* Effect.try(
+        () => onSaveTranscript?.(message.id, entry) ?? saveTranscript(message.id, entry),
+      ).pipe(
+        Effect.flatMap((pending) =>
+          isPromiseLike(pending) ? Effect.tryPromise(() => pending) : Effect.void,
+        ),
+        Effect.ignore,
+      );
+    });
+    Effect.runFork(
+      program.pipe(
+        Effect.catchCause(() =>
+          Effect.sync(() => {
+            if (transcribeRun.current === run) {
+              setTranscribeBusy(false);
+              setTranscribePhase(undefined);
+              setTranscribeError('Could not transcribe that voice note. Try again.');
+            }
+          }),
+        ),
+      ),
+    );
+  };
+
+  const startTranscribe = () => {
+    if (!showTranscribe || transcribeBusy) {
+      return;
+    }
+    // The user's yes must be fresh: a previous confirm never carries over; the model check decides whether the sheet opens.
+    transcribeConsent.current.confirmed = false;
+    Effect.runFork(
+      Effect.tryPromise(() => whistlePort.modelStatus()).pipe(
+        Effect.flatMap((status) =>
+          Effect.try(() => {
+            if (status === 'ready') {
+              runTranscribe();
+            } else {
+              setConfirmOpen(true);
+            }
+          }),
+        ),
+        Effect.catch(() => Effect.sync(runTranscribe)),
+      ),
+    );
+  };
+
+  const confirmTranscribe = () => {
+    setConfirmOpen(false);
+    transcribeConsent.current.confirmed = true;
+    runTranscribe();
+  };
+
+  const closeConfirm = () => setConfirmOpen(false);
 
   // Resolves the source lazily on play (the bearer must be fresh), with a request-id guard so a stale resolve loses to the last tap.
   const playRequestRef = useRef(0);

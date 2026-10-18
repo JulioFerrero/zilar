@@ -5,17 +5,17 @@ import {
   Lock,
   Plus,
   Wrench,
+  Check,
   CheckCircle2,
   RotateCcw,
   Bell,
   LogOut,
 } from 'lucide-react-native';
-import { Children, type ReactNode } from 'react';
+import { Children, type ReactNode, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
-import { TopicInfoRoles } from '@/components/chat/topic-info-roles';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
 import { memberPerson, type TopicLinePerson } from '@/components/chat/topic-people-line';
 import { InfoRow } from '@/components/group-info/info-row';
@@ -24,7 +24,15 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { GroupDetail } from '@/lib/chat-api';
-import { ACCENT_FOREGROUND, MUTED_FOREGROUND, ICON, ACCENT, DANGER } from '@/lib/colors';
+import {
+  ACCENT_FOREGROUND,
+  MUTED_FOREGROUND,
+  FOREGROUND,
+  ICON,
+  ACCENT,
+  DANGER,
+} from '@/lib/colors';
+import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
@@ -201,6 +209,33 @@ export function aiOwnerLabel(
   return firstName === undefined || firstName === '' ? undefined : `${firstName}'s`;
 }
 
+// An error line with a Retry: the topic-roles and group-roles failures share the row, each with its own message and retry.
+function RetryRow({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <View className="gap-2 py-1">
+      <Text accessibilityRole="alert" className="text-[13px] text-danger">
+        {message}
+      </Text>
+      <Button
+        variant="outline"
+        accessibilityLabel={retryLabel}
+        onPress={onRetry}
+        className="self-start"
+      >
+        <Text>Retry</Text>
+      </Button>
+    </View>
+  );
+}
+
 type TopicInfoSheetProps = {
   chat: ChatSummary | null;
   groupTitle: string;
@@ -263,7 +298,15 @@ export function TopicInfoSheet({
   onAdd,
   onOpenTools,
 }: TopicInfoSheetProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [approverOpen, setApproverOpen] = useState(false);
   const topic = chat?.topic;
+  // The picker rows and approver options come from the shared helpers, so the block renders what the unit tests pin (attached first, the rest by name).
+  const accessRows = topicAccessRows(topic?.visibility ?? 'public', roles, groupRoles);
+  const attachedRows = accessRows.filter((row) => row.attached);
+  const addableRows = accessRows.filter((row) => !row.attached);
+  const approverOpts = approverOptions(roles, approverRole);
+  const approverLineText = approverLine(approverRole);
   // General is the whole group, so its AIs are `group_ais`; a General topic has no `topic_ais` rows. The rows carry the AI's JID so each opens the AI.
   const ais: TopicAi[] =
     topic?.isGeneral === true
@@ -439,20 +482,129 @@ export function TopicInfoSheet({
             </Text>
           ) : null}
 
-          <TopicInfoRoles
-            visibility={topic.visibility}
-            roles={roles}
-            rolesError={rolesError}
-            rolesLoading={rolesLoading}
-            groupRolesError={groupRolesError}
-            approverRole={approverRole}
-            groupRoles={groupRoles}
-            canManageRoles={canManageRoles}
-            onToggleTopicRole={onToggleTopicRole}
-            onPickApprover={onPickApprover}
-            onRetryRoles={onRetryRoles}
-            onRetryGroupRoles={onRetryGroupRoles}
-          />
+          {topic.visibility === 'private' ? (
+            <View>
+              <Text className="text-[13px] font-semibold text-muted-foreground">Roles</Text>
+              {rolesError !== '' ? (
+                <RetryRow
+                  message={rolesError}
+                  retryLabel="Retry loading topic roles"
+                  onRetry={onRetryRoles}
+                />
+              ) : rolesLoading ? (
+                <Text className="py-1 text-[14px] text-muted-foreground">Checking your role…</Text>
+              ) : (
+                <View>
+                  {roles.length === 0 ? (
+                    <StateMessage
+                      kind="empty"
+                      size="inline"
+                      title="No roles here yet — only the people above can see this topic."
+                    />
+                  ) : null}
+                  {attachedRows.map((row) => (
+                    <View key={row.id} className="flex-row items-center gap-2 py-1">
+                      <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px]">
+                        {row.label}
+                      </Text>
+                      {canManageRoles ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          accessibilityLabel={`Remove ${row.label} from the topic`}
+                          onPress={() => onToggleTopicRole(row.id)}
+                        >
+                          <Text>Remove</Text>
+                        </Button>
+                      ) : null}
+                    </View>
+                  ))}
+                  {groupRolesError !== '' ? (
+                    <RetryRow
+                      message={groupRolesError}
+                      retryLabel="Retry loading group roles"
+                      onRetry={onRetryGroupRoles}
+                    />
+                  ) : null}
+                  {canManageRoles ? (
+                    pickerOpen ? (
+                      <View className="gap-1 py-1">
+                        {addableRows.map((row) => (
+                          <Button
+                            key={row.id}
+                            variant="outline"
+                            size="sm"
+                            accessibilityLabel={`Add ${row.label} to the topic`}
+                            onPress={() => onToggleTopicRole(row.id)}
+                          >
+                            <Text>{row.label}</Text>
+                          </Button>
+                        ))}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Done adding roles"
+                          onPress={() => setPickerOpen(false)}
+                          className="self-start rounded-[10px] px-3 py-1.5 active:bg-surface-raised"
+                        >
+                          <Text className="text-[14px] text-foreground">Done</Text>
+                        </Pressable>
+                      </View>
+                    ) : addableRows.length > 0 ? (
+                      <Button
+                        accessibilityLabel="Add roles to the topic"
+                        onPress={() => setPickerOpen(true)}
+                        className="self-start"
+                      >
+                        <Text>Add roles</Text>
+                      </Button>
+                    ) : null
+                  ) : null}
+                  {canManageRoles ? (
+                    approverOpen ? (
+                      <View className="gap-1 py-1">
+                        {approverOpts.map((option) => (
+                          <Pressable
+                            key={option.id ?? 'none'}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: option.selected }}
+                            accessibilityLabel={`Approvers: ${option.label}`}
+                            onPress={() => {
+                              setApproverOpen(false);
+                              onPickApprover(option.id);
+                            }}
+                            className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
+                          >
+                            <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
+                              {option.label}
+                            </Text>
+                            {option.selected ? <Check size={16} color={FOREGROUND} /> : null}
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Choose approvers"
+                        onPress={() => setApproverOpen(true)}
+                        className="flex-row items-center gap-2 py-1 active:opacity-80 disabled:opacity-50"
+                      >
+                        <Text className="text-[13px] font-medium text-muted-foreground">
+                          Approvers
+                        </Text>
+                        <Text className="text-[14px] text-foreground">
+                          {approverRole?.name ?? 'Owner and admins only'}
+                        </Text>
+                      </Pressable>
+                    )
+                  ) : approverLineText !== undefined ? (
+                    <Text className="py-1 text-[13px] text-muted-foreground">
+                      {approverLineText}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          ) : null}
 
           {topic.isGeneral !== true ? (
             <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />

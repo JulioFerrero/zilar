@@ -1,17 +1,18 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatList } from '@/components/chat/chat-list';
 import { ChatPeopleResults, ChatSearchResults } from '@/components/chat/chat-search-results';
 import { NewChatButton } from '@/components/chat/new-chat-button';
-import { useChatActions } from '@/components/chat/use-chat-actions';
-import { peopleHandleFor, useDelayed } from '@zilar/client-core';
+import { interruptFiber, peopleHandleFor, useDelayed } from '@zilar/client-core';
+import { Effect, type Fiber } from 'effect';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { connectionLabel } from '@/lib/connection';
 import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
+import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 import { Search } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
@@ -21,85 +22,20 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { mutedUntilFor } from '@/lib/chat-prefs';
-import { ChatActionsSheet } from '../../components/chat/chat-actions-sheet';
-import type { ChatActions } from '../../components/chat/use-chat-actions';
+import { ChatActionsSheet } from '@/components/chat/chat-actions-sheet';
 
-function ChatActionsHost({
-  actions,
-  onOpenGroup,
-}: {
-  actions: ChatActions;
-  onOpenGroup: (groupId: string) => void;
-}) {
-  const {
-    actionContext,
-    actionBusy,
-    actionError,
-    actionMuteOpen,
-    setActionMuteOpen,
-    actionClearOpen,
-    openClear,
-    closeClear,
-    saveChatPref,
-    markUnread,
-    markRead,
-    clearHistoryFor,
-    closeActions,
-  } = actions;
-  return (
-    <ChatActionsSheet
-      chat={actionContext?.chat ?? null}
-      groupTitle={actionContext?.groupTitle}
-      groupId={actionContext?.groupId}
-      busy={actionBusy}
-      error={actionError}
-      muteOpen={actionMuteOpen}
-      clearOpen={actionClearOpen}
-      onOpenMute={() => setActionMuteOpen(true)}
-      onMute={(duration) =>
-        actionContext?.chat === undefined
-          ? undefined
-          : saveChatPref(actionContext.chat.id, {
-              mutedUntil: mutedUntilFor(duration, new Date()),
-            })
-      }
-      onUnmute={() =>
-        actionContext?.chat === undefined
-          ? undefined
-          : saveChatPref(actionContext.chat.id, { mutedUntil: null })
-      }
-      onTogglePin={() =>
-        actionContext?.chat === undefined
-          ? undefined
-          : saveChatPref(actionContext.chat.id, {
-              pinned: actionContext.chat.pinnedAt === undefined,
-            })
-      }
-      onToggleArchive={() =>
-        actionContext?.chat === undefined
-          ? undefined
-          : saveChatPref(actionContext.chat.id, {
-              archived: actionContext.chat.archived !== true,
-            })
-      }
-      onMarkUnread={() =>
-        actionContext?.chat === undefined ? undefined : markUnread(actionContext.chat.id)
-      }
-      onMarkRead={() =>
-        actionContext?.chat === undefined ? undefined : markRead(actionContext.chat.id)
-      }
-      onOpenClear={openClear}
-      onClearHistory={() =>
-        actionContext?.chat === undefined ? undefined : clearHistoryFor(actionContext.chat.id)
-      }
-      onCancelClear={closeClear}
-      onOpenGroup={(groupId) => {
-        closeActions();
-        onOpenGroup(groupId);
-      }}
-      onClose={closeActions}
-    />
-  );
+// How long a failed swipe keeps its line above the chat list.
+const SWIPE_ERROR_MS = 4000;
+const DELETE_ERROR = 'Could not delete. Try again.';
+
+function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
+  const next = new Set(keys);
+  if (on) {
+    next.add(key);
+  } else {
+    next.delete(key);
+  }
+  return next;
 }
 
 // The chats screen's header: the title and search well when search is closed, the autofocused field with Cancel when open. The screen owns the search state.
@@ -208,7 +144,143 @@ function ChatsList() {
   const [searchMiss, setSearchMiss] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const actions = useChatActions();
+  // The chat id (or `group:<groupId>`) whose action sheet is open; the sheet resolves it to the rows below.
+  const [actionFor, setActionFor] = useState<string | null>(null);
+  const [actionMuteOpen, setActionMuteOpen] = useState(false);
+  const [actionClearOpen, setActionClearOpen] = useState(false);
+  const setChatPref = useChatStore((state) => state.setChatPref);
+  const markChatRead = useChatStore((state) => state.markChatRead);
+  const clearHistory = useChatStore((state) => state.clearHistory);
+  const [actionError, setActionError] = useState('');
+  // One timer clears the swipe-failure line; a new save or unmount cancels it.
+  const swipeErrorTimer = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
+  const cancelSwipeErrorTimer = () => {
+    interruptFiber(swipeErrorTimer.current);
+    swipeErrorTimer.current = undefined;
+  };
+  useEffect(
+    () => () => {
+      interruptFiber(swipeErrorTimer.current);
+    },
+    [],
+  );
+  // One change per chat at a time: a second tap while it saves is dropped, other chats are not blocked.
+  const prefInFlight = useRef(new Set<string>());
+  const [prefBusy, setPrefBusy] = useState<ReadonlySet<string>>(() => new Set());
+
+  const openActions = (id: string) => {
+    setActionMuteOpen(false);
+    setActionClearOpen(false);
+    setActionError('');
+    setActionFor(id);
+  };
+
+  // The rows behind the sheet: a group resolves to its General topic row. Only a General row enables the pref rows, since a group pref on any other JID would mute one topic, not the group.
+  const actionContext = useMemo(() => {
+    if (actionFor === null) {
+      return undefined;
+    }
+    if (actionFor.startsWith('group:')) {
+      const actionGroupId = actionFor.slice('group:'.length);
+      const topics = topicsOfGroup(chats, actionGroupId);
+      const general = topics.find((topic) => topic.topic?.isGeneral === true);
+      const fallback = general ?? topics[0];
+      const groupTitle = general?.groupTitle ?? fallback?.groupTitle ?? fallback?.title ?? 'Group';
+      return { chat: general, groupId: actionGroupId, groupTitle };
+    }
+    const chat = chats.find((entry) => entry.id === actionFor);
+    return chat === undefined ? undefined : { chat, groupId: undefined, groupTitle: undefined };
+  }, [actionFor, chats]);
+
+  const actionChatId = actionContext?.chat?.id;
+  const actionBusy = actionChatId !== undefined && prefBusy.has(actionChatId);
+  // With no sheet open a save failure belongs to the swipe and shows on its own line; with the sheet open, the sheet shows it.
+  const swipeError = actionFor === null ? actionError : '';
+
+  // A saving chat change closes its sheet; a failure keeps it open. `save` is the write itself, so a pref patch, Mark as read and Clear history share one path; `errorText` is the fixed failure line.
+  const runPrefSave = (
+    saveChatId: string,
+    save: () => Promise<void>,
+    errorText = 'Could not save. Try again.',
+  ) => {
+    if (prefInFlight.current.has(saveChatId)) {
+      return;
+    }
+    prefInFlight.current.add(saveChatId);
+    setPrefBusy((busy) => withKey(busy, saveChatId, true));
+    cancelSwipeErrorTimer();
+    setActionError('');
+    Effect.runFork(
+      Effect.tryPromise({
+        try: save,
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setActionFor((current) => (current === saveChatId ? null : current));
+            setActionMuteOpen(false);
+            setActionClearOpen(false);
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setActionError(errorText);
+            // A swipe has no sheet to show it in: keep the line for a beat.
+            if (actionFor === null) {
+              swipeErrorTimer.current = Effect.runFork(
+                Effect.sleep(SWIPE_ERROR_MS).pipe(
+                  Effect.andThen(Effect.sync(() => setActionError(''))),
+                ),
+              );
+            }
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            prefInFlight.current.delete(saveChatId);
+            setPrefBusy((busy) => withKey(busy, saveChatId, false));
+          }),
+        ),
+      ),
+    );
+  };
+
+  const saveChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
+    runPrefSave(chatId, () => setChatPref(chatId, input));
+  };
+
+  // "Mark as unread" sets the manual pref; "Mark as read" runs the store action (recordRead plus clearing the pref).
+  const markUnread = (chatId: string) =>
+    runPrefSave(chatId, () => setChatPref(chatId, { unreadMark: true }));
+  const markRead = (chatId: string) => runPrefSave(chatId, () => markChatRead(chatId));
+
+  // Clear history runs the store action (my own copy only) and keeps the row; only `failed` shows the delete line.
+  const clearHistoryFor = (chatId: string) => {
+    setActionClearOpen(false);
+    runPrefSave(
+      chatId,
+      () =>
+        clearHistory(chatId).then((outcome) => {
+          if (outcome === 'failed') {
+            throw new Error('clear_history_failed');
+          }
+        }),
+      DELETE_ERROR,
+    );
+  };
+
+  const closeActions = () => {
+    if (!actionBusy) {
+      setActionFor(null);
+      setActionMuteOpen(false);
+      setActionClearOpen(false);
+      setActionError('');
+    }
+  };
+
+  const openClear = () => setActionClearOpen(true);
+  const closeClear = () => setActionClearOpen(false);
+
   const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
   if (chatsLoad !== lastChatsLoad) {
     setLastChatsLoad(chatsLoad);
@@ -292,7 +364,7 @@ function ChatsList() {
         onOpenChat={openChat}
         onOpenGroup={openSearchGroup}
         chatMatches={chatMatches}
-        openActions={actions.openActions}
+        openActions={openActions}
         messageQuery={messageQuery}
         onNotFound={() => setSearchMiss(messageQuery)}
         searchMiss={searchMiss}
@@ -339,14 +411,62 @@ function ChatsList() {
         onPressGroup={(groupId) =>
           router.push({ pathname: '/group/[id]', params: { id: groupId } })
         }
-        onLongPress={actions.openActions}
-        swipeError={actions.swipeError}
+        onLongPress={openActions}
+        swipeError={swipeError}
         onStartChat={() => setSearchOpen(true)}
         onRequestsToast={setToast}
       />
-      <ChatActionsHost
-        actions={actions}
-        onOpenGroup={(groupId) => router.push({ pathname: '/group/[id]', params: { id: groupId } })}
+      <ChatActionsSheet
+        chat={actionContext?.chat ?? null}
+        groupTitle={actionContext?.groupTitle}
+        groupId={actionContext?.groupId}
+        busy={actionBusy}
+        error={actionError}
+        muteOpen={actionMuteOpen}
+        clearOpen={actionClearOpen}
+        onOpenMute={() => setActionMuteOpen(true)}
+        onMute={(duration) =>
+          actionContext?.chat === undefined
+            ? undefined
+            : saveChatPref(actionContext.chat.id, {
+                mutedUntil: mutedUntilFor(duration, new Date()),
+              })
+        }
+        onUnmute={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : saveChatPref(actionContext.chat.id, { mutedUntil: null })
+        }
+        onTogglePin={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : saveChatPref(actionContext.chat.id, {
+                pinned: actionContext.chat.pinnedAt === undefined,
+              })
+        }
+        onToggleArchive={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : saveChatPref(actionContext.chat.id, {
+                archived: actionContext.chat.archived !== true,
+              })
+        }
+        onMarkUnread={() =>
+          actionContext?.chat === undefined ? undefined : markUnread(actionContext.chat.id)
+        }
+        onMarkRead={() =>
+          actionContext?.chat === undefined ? undefined : markRead(actionContext.chat.id)
+        }
+        onOpenClear={openClear}
+        onClearHistory={() =>
+          actionContext?.chat === undefined ? undefined : clearHistoryFor(actionContext.chat.id)
+        }
+        onCancelClear={closeClear}
+        onOpenGroup={(groupId) => {
+          closeActions();
+          router.push({ pathname: '/group/[id]', params: { id: groupId } });
+        }}
+        onClose={closeActions}
       />
       <NewChatButton />
       <Toast toast={toast} onDismiss={() => setToast(null)} />
