@@ -182,6 +182,43 @@ describe('boot bookkeeping', () => {
     // The boot settled: a resume must see no in-flight boot and reconnect.
     expect(ctx.boot).toBeUndefined();
   });
+
+  it('fetches the XMPP token beside the boot fetches, once (T-1944)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const getXmppToken = vi.fn(async () => ({
+      jid: 'me@x',
+      token: 't',
+      service: 's',
+      domain: 'd',
+    }));
+    const { ctx } = lifecycleCtx({
+      ports: {
+        api: {
+          getMe: async () => {
+            await gate;
+            return { id: 'u-me', name: 'Me' };
+          },
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken,
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    // `getMe` is still gated, so the token was not waiting for the boot fetches.
+    expect(getXmppToken).toHaveBeenCalledTimes(1);
+
+    release();
+    await Effect.runPromise(Fiber.await(ctx.boot!.fiber!));
+
+    // The connection reused the prefetched token instead of asking again.
+    expect(getXmppToken).toHaveBeenCalledTimes(1);
+    expect(ctx.mediaToken).toEqual({ service: 's', domain: 'd' });
+  });
 });
 
 describe('start idempotency (R9)', () => {

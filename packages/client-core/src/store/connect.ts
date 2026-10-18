@@ -20,7 +20,7 @@ import {
 import type { LifecycleCtx } from './lifecycle';
 import type { Fibers } from './lifetime';
 import { scheduleChatsRefreshBurst } from './polling';
-import type { CoreMe } from './ports';
+import type { CoreMe, CoreXmppToken } from './ports';
 import { onAuthFailed } from './session-check';
 import { sortByRecency } from './rows';
 
@@ -110,10 +110,13 @@ export const connectXmpp = (
   ctx: LifecycleCtx,
   session: Fibers<never>,
   me: CoreMe,
+  prefetchedToken?: Effect.Effect<Exit.Exit<CoreXmppToken, unknown>>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { api, createXmpp } = ctx.ports;
-    const tokenExit = yield* Effect.exit(fromPromise(() => api.getXmppToken()));
+    // `boot` fetches the token beside the boot fetches (T-1944); a retry has
+    // none and asks for a fresh one.
+    const tokenExit = yield* prefetchedToken ?? Effect.exit(fromPromise(() => api.getXmppToken()));
     if (Exit.isFailure(tokenExit)) {
       setConnectionStatus(ctx, 'offline');
       yield* scheduleConnectRetry(ctx, session, me);

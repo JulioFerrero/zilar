@@ -199,6 +199,12 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
 const boot = (ctx: LifecycleCtx, session: Fibers<never>): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { api, storage } = ctx.ports;
+    // The token request has no dependency on the boot fetches, so it starts
+    // beside them instead of after them (T-1944). A failure is an `Exit`
+    // value, and the fiber dies with the session.
+    const tokenFiber = yield* Effect.exit(fromPromise(() => api.getXmppToken())).pipe(
+      Effect.forkIn(session.scope, { startImmediately: true }),
+    );
     const prefs = Effect.suspend(() => {
       const list = api.listChatPrefs;
       return list === undefined
@@ -219,6 +225,7 @@ const boot = (ctx: LifecycleCtx, session: Fibers<never>): Effect.Effect<void> =>
       ),
     );
     if (Exit.isFailure(loaded)) {
+      yield* Fiber.interrupt(tokenFiber);
       setConnectionStatus(ctx, 'offline');
       ctx.fx.setChatsLoad('error');
       return;
@@ -247,5 +254,5 @@ const boot = (ctx: LifecycleCtx, session: Fibers<never>): Effect.Effect<void> =>
     yield* startChatsPolling(ctx, session);
     yield* startPinsPolling(ctx, session);
     flushPending(ctx);
-    yield* connectXmpp(ctx, session, me);
+    yield* connectXmpp(ctx, session, me, Fiber.join(tokenFiber));
   });
