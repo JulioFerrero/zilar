@@ -1,22 +1,170 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { RequireAuth } from '@/auth/RequireAuth';
-import { ChatActionsHost } from '@/components/chat/chat-actions-host';
 import { ChatList } from '@/components/chat/chat-list';
 import { ChatPeopleResults, ChatSearchResults } from '@/components/chat/chat-search-results';
 import { NewChatButton } from '@/components/chat/new-chat-button';
-import { SearchHeader } from '@/components/chat/search-header';
 import { useChatActions } from '@/components/chat/use-chat-actions';
-import { peopleHandleFor } from '@zilar/client-core';
+import { peopleHandleFor, useDelayed } from '@zilar/client-core';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { connectionLabel } from '@/lib/connection';
 import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
-import { useDelayed } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
+import { Search } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { SearchField } from '@/components/ui/search-field';
+import { Text } from '@/components/ui/text';
+import { MUTED_FOREGROUND } from '@/lib/colors';
+import { well } from '@/lib/depth';
+import { mutedUntilFor } from '@/lib/chat-prefs';
+import { ChatActionsSheet } from '../../components/chat/chat-actions-sheet';
+import type { ChatActions } from '../../components/chat/use-chat-actions';
+
+function ChatActionsHost({
+  actions,
+  onOpenGroup,
+}: {
+  actions: ChatActions;
+  onOpenGroup: (groupId: string) => void;
+}) {
+  const {
+    actionContext,
+    actionBusy,
+    actionError,
+    actionMuteOpen,
+    setActionMuteOpen,
+    actionClearOpen,
+    openClear,
+    closeClear,
+    saveChatPref,
+    markUnread,
+    markRead,
+    clearHistoryFor,
+    closeActions,
+  } = actions;
+  return (
+    <ChatActionsSheet
+      chat={actionContext?.chat ?? null}
+      groupTitle={actionContext?.groupTitle}
+      groupId={actionContext?.groupId}
+      busy={actionBusy}
+      error={actionError}
+      muteOpen={actionMuteOpen}
+      clearOpen={actionClearOpen}
+      onOpenMute={() => setActionMuteOpen(true)}
+      onMute={(duration) =>
+        actionContext?.chat === undefined
+          ? undefined
+          : saveChatPref(actionContext.chat.id, {
+              mutedUntil: mutedUntilFor(duration, new Date()),
+            })
+      }
+      onUnmute={() =>
+        actionContext?.chat === undefined
+          ? undefined
+          : saveChatPref(actionContext.chat.id, { mutedUntil: null })
+      }
+      onTogglePin={() =>
+        actionContext?.chat === undefined
+          ? undefined
+          : saveChatPref(actionContext.chat.id, {
+              pinned: actionContext.chat.pinnedAt === undefined,
+            })
+      }
+      onToggleArchive={() =>
+        actionContext?.chat === undefined
+          ? undefined
+          : saveChatPref(actionContext.chat.id, {
+              archived: actionContext.chat.archived !== true,
+            })
+      }
+      onMarkUnread={() =>
+        actionContext?.chat === undefined ? undefined : markUnread(actionContext.chat.id)
+      }
+      onMarkRead={() =>
+        actionContext?.chat === undefined ? undefined : markRead(actionContext.chat.id)
+      }
+      onOpenClear={openClear}
+      onClearHistory={() =>
+        actionContext?.chat === undefined ? undefined : clearHistoryFor(actionContext.chat.id)
+      }
+      onCancelClear={closeClear}
+      onOpenGroup={(groupId) => {
+        closeActions();
+        onOpenGroup(groupId);
+      }}
+      onClose={closeActions}
+    />
+  );
+}
+
+// The chats screen's header: the title and search well when search is closed, the autofocused field with Cancel when open. The screen owns the search state.
+function SearchHeader({
+  searchOpen,
+  search,
+  onChange,
+  onSubmit,
+  onOpen,
+  onCancel,
+}: {
+  searchOpen: boolean;
+  search: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onOpen: () => void;
+  onCancel: () => void;
+}) {
+  if (searchOpen) {
+    return (
+      <View className="flex-row items-center gap-3 px-4 py-2">
+        <SearchField
+          containerClassName="flex-1"
+          autoFocus
+          value={search}
+          onChangeText={onChange}
+          onSubmitEditing={onSubmit}
+          placeholder="Search, or type @username"
+          accessibilityLabel="Search chats, messages and people"
+          returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onClear={() => onChange('')}
+        />
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel search" onPress={onCancel}>
+          <Text className="text-[15px] text-foreground">Cancel</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  return (
+    <View className="pb-2">
+      <ScreenHeader variant="root" title="Chats" />
+      <View className="px-4">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search chats and @usernames"
+          onPress={onOpen}
+          className="h-10 flex-row items-center gap-2 rounded-xl px-3"
+          style={well}
+        >
+          <Search size={16} color={MUTED_FOREGROUND} />
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            className="flex-1 text-[15px]"
+            style={{ color: MUTED_FOREGROUND }}
+          >
+            Search chats and @usernames
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function ChatsScreen() {
   return (

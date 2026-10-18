@@ -1,13 +1,12 @@
 import { Effect, Fiber } from 'effect';
 import * as Haptics from 'expo-haptics';
-import { Lock, Mic } from 'lucide-react-native';
+import { Lock, Mic, ArrowUp, ChevronLeft, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View, type GestureResponderHandlers } from 'react-native';
-
+import { Pressable, View, type GestureResponderHandlers, PanResponder } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { interruptFiber } from '@zilar/client-core';
-import { ACCENT_FOREGROUND, primaryKey } from '@/lib/depth';
+import { ACCENT_FOREGROUND, primaryKey, KEY_PRIMARY_PRESSED_SHADOW, pressStyle } from '@/lib/depth';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
 import {
   createVoiceRecorder,
@@ -16,7 +15,6 @@ import {
 } from '@/lib/voice-recorder';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
-
 import {
   ERROR_VISIBLE_MS,
   LEVEL_TICK_MS,
@@ -29,14 +27,153 @@ import {
   type RecorderBeginResult,
   type RecorderDecisionDeps,
   type RecorderFinishOutcome,
+  formatElapsed,
 } from '@/components/chat/voice-recorder-flow';
-import { VoiceRecordingRow } from '@/components/chat/voice-recording-row';
-import {
-  createHoldResponder,
-  startTicker,
-  stopTicker,
-  type TickerRef,
-} from '@/components/chat/voice-recorder-gesture';
+import { useKeyPress } from '@/components/ui/use-key-press';
+
+type VoiceRecordingRowProps = {
+  elapsedMs: number;
+  willCancel: boolean;
+  locked: boolean;
+  onCancel: () => void;
+  onSend: () => void;
+};
+
+function RecordingMeta({ elapsedMs }: { elapsedMs: number }) {
+  return (
+    <>
+      <View className="size-2.5 shrink-0 rounded-full bg-danger" />
+      <Text className="shrink-0 font-mono text-[15px] tabular-nums text-foreground">
+        {formatElapsed(elapsedMs)}
+      </Text>
+    </>
+  );
+}
+
+// The row that replaces the composer while recording. With the finger still down it shows the slide-to-cancel hint; once locked the finger has lifted, so it swaps to a Cancel key and a Send key.
+function VoiceRecordingRow({
+  elapsedMs,
+  willCancel,
+  locked,
+  onCancel,
+  onSend,
+}: VoiceRecordingRowProps) {
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
+  return (
+    <View className="h-9 min-w-0 flex-1 flex-row items-center gap-3 px-1">
+      <RecordingMeta elapsedMs={elapsedMs} />
+      {locked ? (
+        <>
+          <View className="flex-1" />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel recording"
+            hitSlop={8}
+            onPress={onCancel}
+            className="h-9 w-9 items-center justify-center rounded-[10px]"
+          >
+            <Trash2 size={18} color={ICON} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send voice message"
+            onPress={onSend}
+            onPressIn={() => setPressed(true)}
+            onPressOut={() => setPressed(false)}
+            className="h-9 w-9 items-center justify-center rounded-[10px]"
+            style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
+          >
+            <ArrowUp size={20} color={ACCENT_FOREGROUND} />
+          </Pressable>
+        </>
+      ) : willCancel ? (
+        <Text numberOfLines={1} className="min-w-0 flex-1 text-center text-[13px] text-danger">
+          Release to cancel
+        </Text>
+      ) : (
+        <View className="min-w-0 flex-1 flex-row items-center justify-center gap-1">
+          <ChevronLeft size={14} color={ICON} />
+          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+            Slide to cancel
+          </Text>
+        </View>
+      )}
+      {!locked ? <Trash2 size={18} color={willCancel ? '#f87171' : ICON} /> : null}
+    </View>
+  );
+}
+
+/** Sliding the finger this far left (negative dx, in px) while holding cancels. */
+const CANCEL_SLIDE_PX = -90;
+/** Sliding the finger this far up (negative dy, in px) while holding locks. */
+const LOCK_SLIDE_PX = -70;
+
+type HoldHandlers = {
+  begin: () => void;
+  release: (cancel: boolean) => void;
+  lock: () => void;
+};
+type FlagRef = { current: boolean };
+type TickerRef = { current: Fiber.Fiber<unknown, unknown> | undefined };
+
+// Runs `tick` every `everyMs` (first after one interval) until interrupted; a throw inside one tick is dropped, so the next still runs, like `setInterval`.
+function startTicker(everyMs: number, tick: () => void): Fiber.Fiber<unknown, unknown> {
+  const safeTick = Effect.sync(tick).pipe(Effect.catchDefect(() => Effect.void));
+  return Effect.runFork(Effect.sleep(everyMs).pipe(Effect.andThen(safeTick), Effect.forever));
+}
+
+function stopTicker(ref: TickerRef): void {
+  const fiber = ref.current;
+  if (fiber !== undefined) {
+    ref.current = undefined;
+    interruptFiber(fiber);
+  }
+}
+
+// The hold gesture on the mic: grant starts, release sends, a slide past `CANCEL_SLIDE_PX` or a lost touch cancels. A slide up past `LOCK_SLIDE_PX` locks once; then release neither sends nor cancels and the row's buttons end it.
+function createHoldResponder(
+  handlersRef: { current: HoldHandlers },
+  heldRef: FlagRef,
+  cancelRef: FlagRef,
+  lockedRef: FlagRef,
+  setWillCancel: (value: boolean) => void,
+) {
+  return PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    // A lost touch (a permission dialog, a scroll takeover) cancels the recording instead of continuing silently.
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => {
+      heldRef.current = true;
+      cancelRef.current = false;
+      lockedRef.current = false;
+      handlersRef.current.begin();
+    },
+    onPanResponderMove: (_event, gesture) => {
+      if (lockedRef.current) {
+        return;
+      }
+      const willCancel = gesture.dx < CANCEL_SLIDE_PX;
+      setWillCancel(willCancel);
+      if (!willCancel && gesture.dy < LOCK_SLIDE_PX) {
+        lockedRef.current = true;
+        setWillCancel(false);
+        handlersRef.current.lock();
+      }
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      if (lockedRef.current) {
+        return;
+      }
+      handlersRef.current.release(gesture.dx < CANCEL_SLIDE_PX);
+    },
+    onPanResponderTerminate: () => {
+      if (lockedRef.current) {
+        return;
+      }
+      handlersRef.current.release(true);
+    },
+  });
+}
 
 export {
   runRecorderBegin,

@@ -2,7 +2,6 @@ import type { VoiceMeta } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
-
 import { VoiceMessageBars, VoiceMessageFailedBars } from './voice-message-bars';
 import {
   BAR_COUNT,
@@ -17,15 +16,45 @@ import {
   subscribeVoiceState,
 } from './voice-player-registry';
 import type { VoicePlayerControls } from './voice-player-host';
-import { VoiceTranscribeConfirm } from './voice-transcribe-confirm';
 import { useVoiceTranscribe } from './use-voice-transcribe';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { mobileUploadOf, type UiMessage } from '@/lib/types';
 import { isPlayableVoiceUrl, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-playback';
-import { type StoredTranscript, type TranscriptMap } from '@/lib/voice-transcripts';
+import type { StoredTranscript, TranscriptMap } from '@/lib/voice-transcripts';
 import type { WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+
+type TranscribeConfirmProps = {
+  open: boolean;
+  busy: boolean;
+  onDownload: () => void;
+  onClose: () => void;
+};
+
+// The one-time model download confirm: "Download the transcription model? 17 MB, once. Everything stays on your phone." While busy the backdrop does nothing.
+function VoiceTranscribeConfirm({ open, busy, onDownload, onClose }: TranscribeConfirmProps) {
+  if (!open) {
+    return null;
+  }
+  return (
+    <ConfirmDialog
+      visible={open}
+      title="Download the transcription model?"
+      message="17 MB, once. Everything stays on your phone."
+      confirmLabel="Download"
+      busyLabel="Downloading…"
+      busy={busy}
+      destructive={false}
+      onConfirm={onDownload}
+      onCancel={busy ? () => {} : onClose}
+      confirmAccessibilityLabel="Download transcription model"
+      cancelAccessibilityLabel="Cancel transcription download"
+      accessibilityLabel="Download the transcription model"
+    />
+  );
+}
 
 export { resolvePlaySource, resolvePlaySourceEffect } from './voice-playback-source';
 

@@ -3,13 +3,12 @@ import {
   unreadDividerIndex,
   type ChatSummary,
   type UiMessage,
+  aiSuggestions,
+  providerLabel,
 } from '@zilar/chat-core';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
-
 import { ChatRowFactsProvider } from '@/components/chat/chat-row-facts';
-import { EmptyChat } from '@/components/chat/empty-chat';
-import { JumpToBottom } from '@/components/chat/jump-to-bottom';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageListRow, type ListEntry } from '@/components/chat/message-list-row';
 import { MessageMenuHost } from '@/components/chat/message-menu-host';
@@ -22,6 +21,145 @@ import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
 import { runLater } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
+import { ChevronDown, MessageSquare } from 'lucide-react-native';
+import { CountBadge } from '@/components/ui/count-badge';
+import { IconButton } from '@/components/ui/icon-button';
+import { ICON } from '@/lib/colors';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useAisApi } from '@/components/ais/use-ais-api';
+import { dmHandleFor } from '@/components/chat/chat-header';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
+import { useQuery } from '@/lib/effect/use-query';
+
+interface AiEmptyInfo {
+  template: string;
+  model: string;
+}
+
+function EmptyChat({ chat }: { chat: ChatSummary }) {
+  const { api: aisApi } = useAisApi();
+  const { api: connectionsApi } = useConnectionsApi();
+  const contacts = useChatStore((state) => state.contacts);
+  const sendText = useChatStore((state) => state.sendText);
+
+  const [aiResult] = useQuery(
+    () =>
+      chat.isAI
+        ? Effect.promise(() => aisApi.listAis()).pipe(
+            Effect.flatMap((ais) => {
+              const found = ais.find((item) => item.jid === chat.id);
+              if (found === undefined) {
+                return Effect.succeed<AiEmptyInfo | null>(null);
+              }
+              const fallback: AiEmptyInfo = { template: found.template, model: found.model };
+              return Effect.promise(() => connectionsApi.listConnections()).pipe(
+                Effect.map((connections): AiEmptyInfo => {
+                  const connection = connections.find(
+                    (entry) => entry.id === found.providerConnectionId,
+                  );
+                  return connection === undefined
+                    ? fallback
+                    : {
+                        template: found.template,
+                        model: `${found.model} · ${providerLabel(connection.provider)}`,
+                      };
+                }),
+                Effect.orElseSucceed((): AiEmptyInfo => fallback),
+              );
+            }),
+          )
+        : Effect.succeed<AiEmptyInfo | null>(null),
+    [aisApi, connectionsApi, chat.id, chat.isAI],
+  );
+  const ai = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
+
+  if (chat.isAI) {
+    const suggestions = aiSuggestions(ai === null ? '' : ai.template);
+    return (
+      <View className="flex-1 items-center justify-center gap-3.5 px-4 py-6">
+        <EntityAvatar chat={chat} size={80} ai />
+        <View className="items-center gap-1">
+          <Text className="text-[20px] font-semibold">{chat.title}</Text>
+          {ai === null ? null : (
+            <Text className="font-mono text-[12px] text-muted-foreground">{ai.model}</Text>
+          )}
+        </View>
+        <View className="mt-2.5 items-center gap-2">
+          {suggestions.map((text) => (
+            <Button
+              key={text}
+              variant="outline"
+              onPress={() => sendText(chat.id, text)}
+              className="h-11 rounded-full px-4"
+            >
+              <Text className="text-[15px] font-medium">{text}</Text>
+            </Button>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (chat.kind === 'dm') {
+    const handle = dmHandleFor(chat, contacts);
+    return (
+      <View className="flex-1 items-center justify-center gap-3.5 px-4 py-6">
+        <EntityAvatar chat={chat} size={80} />
+        <View className="items-center gap-1">
+          <Text className="text-[20px] font-semibold">{chat.title}</Text>
+          {handle === undefined ? null : (
+            <Text className="font-mono text-[12px] text-muted-foreground">@{handle}</Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-1 items-center justify-center p-8">
+      <StateMessage
+        kind="empty"
+        icon={MessageSquare}
+        title="No messages yet"
+        hint="Send a message to start the conversation."
+      />
+    </View>
+  );
+}
+
+type JumpToBottomProps = {
+  /** Whether the list is scrolled to (or within 40 px of) the bottom. */
+  atBottom: boolean;
+  count: number;
+  onPress: () => void;
+};
+
+function JumpToBottom({ atBottom, count, onPress }: JumpToBottomProps) {
+  if (atBottom) {
+    return null;
+  }
+  return (
+    <View className="absolute right-3 bottom-3">
+      <IconButton
+        label="Jump to latest messages"
+        className="h-11 w-11 rounded-full"
+        onPress={onPress}
+      >
+        <ChevronDown size={22} color={ICON} />
+      </IconButton>
+      {count > 0 ? (
+        <View className="absolute -top-1 -right-1">
+          <CountBadge count={count} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 type MessageListProps = {
   chat: ChatSummary;

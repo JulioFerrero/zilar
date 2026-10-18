@@ -1,18 +1,14 @@
-import { type Attachment } from '@zilar/protocol';
-import { useEffect, useRef, useState } from 'react';
+import type { Attachment } from '@zilar/protocol';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { AttachSheet } from '@/components/chat/attach-sheet';
 import { ComposerInputRow, MIN_INPUT_HEIGHT, ReplyBar } from '@/components/chat/composer-input-row';
 import { useComposerMedia } from '@/components/chat/composer-media';
 import { PickedStrip } from '@/components/chat/composer-picked-strip';
 import { useComposerSheet } from '@/components/chat/composer-sheet';
-import { EditBar } from '@/components/chat/edit-bar';
 import { EmojiSheet } from '@/components/chat/emoji-sheet';
-import { MentionPicker } from '@/components/chat/mention-picker';
 import { useComposerMentions } from '@/components/chat/use-composer-mentions';
-import { useDraftText } from '@/components/chat/use-draft-text';
 import { Text } from '@/components/ui/text';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { well } from '@/lib/depth';
@@ -20,7 +16,7 @@ import type { CaretSelection } from '@/lib/emoji-data';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
 import type { ReplyRef } from '@/lib/types';
-import { composerPlaceholder, type MentionMember, type UiMention } from '@zilar/chat-core';
+import { composerPlaceholder, type MentionMember, type UiMention, isAiJid } from '@zilar/chat-core';
 import type {
   SendAttachmentOptions,
   SendStickerChoice,
@@ -28,6 +24,103 @@ import type {
   SendVoiceRecording,
 } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { setDraft, useComposerDraft } from '@/lib/composer-drafts';
+import { Pencil, X } from 'lucide-react-native';
+import { useBackCancel } from '@/components/chat/use-back-cancel';
+import { ICON } from '@/lib/colors';
+import { AiBadge } from '@/components/chat/ai-badge';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+
+interface MentionPickerProps {
+  members: MentionMember[];
+  onSelect: (member: MentionMember) => void;
+}
+
+// The `@` member picker above a group composer, the mobile twin of web's `MentionPicker`: rows are tapped (no hardware-key navigation), and the caller filters and caps them.
+function MentionPicker({ members, onSelect }: MentionPickerProps) {
+  return (
+    <View
+      accessibilityRole="list"
+      accessibilityLabel="Mention someone"
+      className="mb-2 overflow-hidden rounded-[16px] border border-[#1f1f1f] bg-[#111111] pt-1.5 pb-1.5"
+      style={{ boxShadow: '0 12px 28px -8px rgba(0,0,0,.95)' }}
+    >
+      {members.map((member) => {
+        const ai = isAiJid(member.jid);
+        const hasHandle = member.handle !== undefined && member.handle !== '';
+        const label = hasHandle
+          ? `Mention ${member.name} @${member.handle}`
+          : `Mention ${member.name}`;
+        return (
+          <Pressable
+            key={member.jid}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            onPress={() => onSelect(member)}
+            className="min-h-[48px] w-full flex-row items-center gap-3 pl-[14px] pr-[10px] active:bg-surface-raised"
+          >
+            <EntityAvatar person={{ id: member.jid, name: member.name }} ai={ai} size={30} />
+            <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
+              <Text numberOfLines={1} className="min-w-0 shrink text-[16px] text-foreground">
+                {member.name}
+              </Text>
+              {ai ? <AiBadge /> : null}
+            </View>
+            {hasHandle ? (
+              <Text numberOfLines={1} className="shrink-0 font-mono text-[12px] text-[#8a8a8a]">
+                @{member.handle}
+              </Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
+  useBackCancel(onCancel);
+
+  return (
+    <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
+      <View className="w-[3px] bg-[#333333]" />
+      <View className="min-w-0 flex-1 px-2.5 py-1.5">
+        <View className="flex-row items-center gap-1.5">
+          <Pencil size={14} color="#d4d4d4" />
+          <Text className="text-[13px] font-semibold text-[#d4d4d4]">Edit message</Text>
+        </View>
+        <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+          {text}
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Cancel edit"
+        onPress={onCancel}
+        className="w-9 items-center justify-center active:bg-surface-raised"
+      >
+        <X size={18} color={ICON} />
+      </Pressable>
+    </View>
+  );
+}
+
+// The composer's text for one chat: the chat's stored draft, so leaving and returning keeps it, and every change writes back through `setDraft` (empty deletes it). A composer with no chat id keeps its text locally.
+function useDraftText(chatId: string | undefined): [string, (next: string) => void] {
+  const stored = useComposerDraft(chatId);
+  const [local, setLocal] = useState('');
+  const setValue = useCallback(
+    (next: string): void => {
+      if (chatId === undefined) {
+        setLocal(next);
+        return;
+      }
+      setDraft(chatId, next);
+    },
+    [chatId],
+  );
+  return chatId === undefined ? [local, setValue] : [stored, setValue];
+}
 
 export { fieldHeightFor } from '@/components/chat/composer-input-row';
 

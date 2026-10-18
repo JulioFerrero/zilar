@@ -2,24 +2,17 @@ import { isUnjoinedTopic } from '@zilar/chat-core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelScreen } from '@/components/chat/channel-screen';
 import { groupAction, rawCall } from '@/components/chat/group-action';
-import { GroupHeader } from '@/components/chat/group-header';
 import { GroupTopicList } from '@/components/chat/group-topic-list';
 import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
-import {
-  TopicActionsSheet,
-  type TopicPrefAction,
-  type TopicSheetAction,
-} from '@/components/chat/topic-actions-sheet';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
-import { mutedUntilFor } from '@/lib/chat-prefs';
+import { mutedUntilFor, MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import {
@@ -31,6 +24,146 @@ import {
 } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { ChevronLeft, Lock } from 'lucide-react-native';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { IconButton } from '@/components/ui/icon-button';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
+
+type TopicSheetAction = 'archive';
+type TopicPrefAction =
+  | { kind: 'mute'; duration: MuteDurationId }
+  | { kind: 'unmute' }
+  | { kind: 'pin'; pinned: boolean }
+  | { kind: 'archive'; archived: boolean };
+
+// The long-press sheet on a topic row: Pin/Unpin, Mute with durations (Unmute when muted), Archive chat/Unarchive, plus Archive topic for everyone for managers (never General — the caller hides it). Pure view (no hooks) so it stays render-testable.
+function TopicActionsSheet({
+  chat,
+  canArchive,
+  muteOpen,
+  onOpenMute,
+  onAction,
+  onPref,
+  onClose,
+}: {
+  chat: ChatSummary | null;
+  canArchive: boolean;
+  muteOpen: boolean;
+  onOpenMute: () => void;
+  onAction: (action: TopicSheetAction) => void;
+  onPref: (action: TopicPrefAction) => void;
+  onClose: () => void;
+}) {
+  const pinned = chat?.pinnedAt !== undefined;
+  const archived = chat?.archived === true;
+  const muted = chat?.muted === true;
+  return (
+    <ActionSheet
+      visible={chat !== null}
+      onClose={onClose}
+      closeLabel="Close topic actions"
+      header={
+        chat !== null ? (
+          <View className="flex-row items-center gap-3 px-4 py-3">
+            <View className="h-9 w-9 items-center justify-center rounded-[10px] border border-edge bg-surface-raised">
+              <Text className="text-[16px] font-semibold text-foreground">
+                {chat.topic?.glyph ?? 'G'}
+              </Text>
+            </View>
+            <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
+              {chat.title}
+            </Text>
+            {chat.topic?.visibility === 'private' ? (
+              <Lock size={16} color={MUTED_FOREGROUND} />
+            ) : null}
+          </View>
+        ) : undefined
+      }
+    >
+      <ActionSheetItem
+        label={pinned ? 'Unpin' : 'Pin'}
+        accessibilityLabel={pinned ? 'Unpin topic' : 'Pin topic'}
+        onPress={() => onPref({ kind: 'pin', pinned: !pinned })}
+      />
+      {muteOpen ? (
+        <>
+          {MUTE_DURATIONS.map((option) => (
+            <ActionSheetItem
+              key={option.id}
+              label={option.label}
+              accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
+              onPress={() => onPref({ kind: 'mute', duration: option.id })}
+            />
+          ))}
+          {muted ? (
+            <ActionSheetItem
+              label="Unmute"
+              accessibilityLabel="Unmute topic"
+              onPress={() => onPref({ kind: 'unmute' })}
+            />
+          ) : null}
+        </>
+      ) : (
+        <ActionSheetItem
+          label={muted ? 'Muted: change' : 'Mute'}
+          accessibilityLabel="Mute topic"
+          onPress={onOpenMute}
+        />
+      )}
+      <ActionSheetItem
+        label={archived ? 'Unarchive' : 'Archive'}
+        accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
+        onPress={() => onPref({ kind: 'archive', archived: !archived })}
+      />
+      {canArchive ? (
+        <ActionSheetItem
+          label="Archive topic for everyone"
+          accessibilityLabel="Archive topic for everyone"
+          onPress={() => onAction('archive')}
+          destructive
+        />
+      ) : null}
+    </ActionSheet>
+  );
+}
+
+type GroupHeaderProps = {
+  title: string;
+  avatarId: string;
+  subtitle: string;
+  onBack: () => void;
+  onOpenInfo: () => void;
+};
+
+function GroupHeader({ title, avatarId, subtitle, onBack, onOpenInfo }: GroupHeaderProps) {
+  return (
+    <View className="flex-row items-center gap-1 border-b border-divider bg-surface px-1 py-1">
+      <IconButton label="Back" onPress={onBack}>
+        <ChevronLeft size={24} color={ICON} />
+      </IconButton>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Group info"
+        onPress={onOpenInfo}
+        className="ml-1 min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-80"
+      >
+        <EntityAvatar chat={{ id: avatarId, title }} size={36} />
+        <View className="min-w-0 flex-1 justify-center">
+          <Text
+            numberOfLines={1}
+            className="shrink text-[15px] font-semibold leading-5 text-foreground"
+          >
+            {title}
+          </Text>
+          <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
+            {subtitle}
+          </Text>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function GroupTopicsScreen() {
   return (

@@ -1,14 +1,21 @@
-import { canDeleteMessage, canEditMessage, isBigEmoji } from '@zilar/chat-core';
+import {
+  canDeleteMessage,
+  canEditMessage,
+  isBigEmoji,
+  QUICK_REACTIONS,
+  UiMessage,
+  type AvatarPersonInput,
+  type ChatSummary,
+  type MentionMember,
+  type UiReaction,
+} from '@zilar/chat-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
-import { memo, useState } from 'react';
+import { memo, useState, useMemo, type ReactNode, useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-
 import { useAlbumMembers } from '@/components/chat/album-members';
 import { useChatRowFacts } from '@/components/chat/chat-row-facts';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { BubbleGesture } from '@/components/chat/bubble-gesture';
-import { HandoffLine } from '@/components/chat/handoff-line';
 import { openMessageMenu } from '@/components/chat/message-bubble-actions';
 import { isMediaFirstMessage } from '@/components/chat/media-bubble';
 import {
@@ -17,21 +24,315 @@ import {
   type MessageBubbleProps,
   StickerBubble,
 } from '@/components/chat/message-bubble-content';
-import { appActiveSource, BubbleTail, LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
-import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
+import {
+  appActiveSource,
+  BubbleTail,
+  LONG_PRESS_MS,
+  GENERATING_FOREGROUND,
+  SWAP_MS,
+} from '@/components/chat/message-bubble-decor';
 import { useMessageMenu } from '@/components/chat/message-menu-host';
 import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { PersonPressable } from '@/components/chat/person-pressable';
-import { ReactionChips } from '@/components/chat/reaction-chips';
-import { RowGesture } from '@/components/chat/row-gesture';
+import { RowGesture, useRowPan } from '@/components/chat/row-gesture';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
-import { WELL_BACKGROUND, bubbleStyle } from '@/lib/depth';
-import { useBubbleReveal } from '@/components/chat/use-bubble-reveal';
+import { WELL_BACKGROUND, bubbleStyle, raisedPill } from '@/lib/depth';
 import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
+import { Effect } from 'effect';
+import * as Haptics from 'expo-haptics';
+import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-handler';
+import { Text } from '@/components/ui/text';
+import { type ActiveSource, useSmoothText } from '@/lib/use-smooth-text';
+import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
+import { ArrowRight } from 'lucide-react-native';
+import type { Contact } from '@/lib/chat-api';
+import { interruptFiber, runLater } from '@zilar/client-core';
+
+/** How long the "who reacted" line stays under the chips. */
+const REACTORS_VISIBLE_MS = 3000;
+
+interface ReactionChipsProps {
+  reactions: UiReaction[];
+  outgoing: boolean;
+  onToggle?: (emoji: string) => void;
+}
+
+function chipLabel(reaction: UiReaction): string {
+  return reaction.mine
+    ? `${reaction.emoji} ${reaction.count}, including you`
+    : `${reaction.emoji} ${reaction.count}`;
+}
+
+// The raised reaction pills under a bubble. Mine use a brighter accent. With `onToggle` a chip is a toggle: tapping one I already reacted with clears it.
+function ReactionChips({ reactions, outgoing, onToggle }: ReactionChipsProps) {
+  const [shown, setShown] = useState<{ emoji: string; names: string[] } | null>(null);
+
+  useEffect(() => {
+    if (shown === null) {
+      return undefined;
+    }
+    const hide = runLater(REACTORS_VISIBLE_MS, () => setShown(null));
+    return () => {
+      interruptFiber(hide);
+    };
+  }, [shown]);
+
+  if (reactions.length === 0) {
+    return null;
+  }
+
+  return (
+    <View className={cn('mt-1', outgoing ? 'self-end' : 'self-start')}>
+      <View accessibilityRole="text" className="flex-row flex-wrap gap-1">
+        {reactions.map((reaction) => {
+          const togglable = onToggle !== undefined;
+          return (
+            <Pressable
+              key={reaction.emoji}
+              accessibilityLabel={chipLabel(reaction)}
+              accessibilityHint="Long press to see who reacted"
+              accessibilityState={{ selected: reaction.mine }}
+              hitSlop={8}
+              delayLongPress={350}
+              onPress={() => onToggle?.(reaction.emoji)}
+              onLongPress={() => setShown({ emoji: reaction.emoji, names: reaction.reactors })}
+              className={cn(
+                'flex-row items-center gap-1 rounded-full px-2 py-1',
+                togglable ? 'active:opacity-80' : null,
+                reaction.mine ? 'bg-[#ededed]' : null,
+              )}
+              style={reaction.mine ? null : raisedPill}
+            >
+              <Text className="text-[13px] leading-[17px]">{reaction.emoji}</Text>
+              <Text
+                className={cn(
+                  'font-mono text-[11px] tabular-nums leading-none',
+                  reaction.mine ? 'text-[#0a0a0a]' : 'text-muted-foreground',
+                )}
+              >
+                {reaction.count}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {shown !== null ? (
+        <Text
+          numberOfLines={2}
+          className={cn('mt-1 text-[12px] text-muted-foreground', outgoing ? 'self-end' : null)}
+        >
+          {shown.emoji} {shown.names.join(', ')}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+interface PersonSources {
+  members: readonly MentionMember[];
+  contacts: readonly Contact[];
+  chats: readonly ChatSummary[];
+}
+
+/** Resolves from the chat's members, then contacts and AIs, then the JID
+ *  localpart, so a line always names something. */
+function personFor(jid: string, sources: PersonSources, fallbackName = ''): AvatarPersonInput {
+  const member = sources.members.find((entry) => entry.jid === jid);
+  const contact = sources.contacts.find((entry) => entry.jid === jid);
+  const chat = sources.chats.find((entry) => entry.id === jid);
+  const name =
+    member?.name ??
+    contact?.name ??
+    chat?.title ??
+    (fallbackName === '' ? jidLocal(jid) : fallbackName);
+  const avatarUrl = contact?.avatarUrl ?? chat?.avatarUrl;
+  return { id: jid, name, ...(avatarUrl === undefined ? {} : { avatarUrl }) };
+}
+
+interface HandoffLineProps {
+  card: HandoffLineData;
+  chatId: string;
+  senderName: string;
+  onToggle: () => void;
+}
+
+function HandoffLine({ card, chatId, senderName, onToggle }: HandoffLineProps) {
+  const contacts = useChatStore((state) => state.contacts);
+  const chats = useChatStore((state) => state.chats);
+  const groupMembers = useChatStore((state) => state.groupMembers);
+  // Reads `groupMembers` to re-resolve when an async group detail lands.
+  useChatStore((state) => state.groupDetailsRevision);
+  const sources: PersonSources = { members: groupMembers(chatId), contacts, chats };
+  const from = personFor(card.from, sources, senderName);
+  const to = card.to.map((jid) => personFor(jid, sources));
+  const targets = to.map((person) => person.name).join(', ');
+  const handedOff = `${from.name} handed off to ${targets}`;
+  const label = card.task === '' ? handedOff : `${handedOff}: ${card.task}`;
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="flex-row items-center gap-2"
+    >
+      <EntityAvatar person={from} size={16} ai />
+      <ArrowRight size={14} color={MUTED_FOREGROUND} />
+      {to.map((person, index) => (
+        <EntityAvatar key={card.to[index]} person={person} size={16} ai />
+      ))}
+      {card.task !== '' ? (
+        <Text numberOfLines={1} className="shrink text-[14px]" color={MUTED_FOREGROUND}>
+          {card.task}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function useBubbleReveal({
+  message,
+  outgoing,
+  draft,
+  revealTurnId,
+  reduceMotion,
+  appActiveSource,
+}: {
+  message: UiMessage;
+  outgoing: boolean;
+  draft: boolean;
+  revealTurnId: string | undefined;
+  reduceMotion: boolean;
+  appActiveSource: ActiveSource;
+}) {
+  const beyondDraft = revealTurnId !== undefined && !draft;
+  const animate = draft || beyondDraft;
+  const { text, done } = useSmoothText(message.text ?? '', {
+    animate,
+    initial: 'full',
+    reducedMotion: reduceMotion,
+    active: appActiveSource,
+  });
+  const generating = draft || (beyondDraft && !done);
+  // A bubble ever written live keeps the recessed shell and fades the incoming look in over it, so the swap has no jump.
+  const everLive = !outgoing && (draft || revealTurnId !== undefined);
+  const textColor = outgoing ? '#0a0a0a' : generating ? GENERATING_FOREGROUND : '#ededed';
+  const [swap] = useState(() => new Animated.Value(generating ? 0 : 1));
+  const wasGenerating = useRef(generating);
+  useEffect(() => {
+    if (wasGenerating.current && !generating) {
+      if (reduceMotion) {
+        swap.setValue(1);
+      } else {
+        Animated.timing(swap, {
+          toValue: 1,
+          duration: SWAP_MS,
+          useNativeDriver: true,
+        }).start();
+      }
+    } else if (!wasGenerating.current && generating) {
+      swap.setValue(0);
+    }
+    wasGenerating.current = generating;
+  }, [generating, reduceMotion, swap]);
+  return { text, generating, everLive, textColor, swap };
+}
+
+function MessageTombstone({
+  message,
+  outgoing,
+  isGroup,
+  isLastInGroup,
+}: {
+  message: UiMessage;
+  outgoing: boolean;
+  isGroup: boolean;
+  isLastInGroup: boolean;
+}) {
+  const showAvatar = isGroup && !outgoing && isLastInGroup;
+  return (
+    <View
+      className={cn(
+        'flex-row px-2',
+        outgoing ? 'justify-end' : 'items-end',
+        isLastInGroup ? 'mb-2' : 'mb-0.5',
+      )}
+    >
+      {!outgoing && isGroup ? (
+        showAvatar ? (
+          <EntityAvatar
+            person={{ id: message.senderId, name: message.senderName }}
+            size={34}
+            className="mr-2"
+          />
+        ) : (
+          <View className="mr-2" style={{ width: 34 }} />
+        )
+      ) : null}
+      <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
+        <View
+          className={cn(
+            'rounded-[14px] bg-[#1a1a1a] px-3 py-1.5',
+            outgoing ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
+          )}
+        >
+          <Text className="text-[13px] italic text-muted-foreground">
+            {outgoing ? 'You deleted this message' : 'This message was deleted'}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function lightHaptic(): void {
+  Effect.runFork(
+    Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
+      Effect.ignore,
+    ),
+  );
+}
+
+type BubbleGestureProps = {
+  message: UiMessage;
+  onReact?: ((message: UiMessage, emoji: string) => void) | undefined;
+  enabled?: boolean;
+  className?: string;
+  children: ReactNode;
+};
+
+/** The tap is linked to the row's swipe pan so both run; a swipe still replies. */
+function BubbleGesture({
+  message,
+  onReact,
+  enabled = true,
+  className,
+  children,
+}: BubbleGestureProps) {
+  const rowPan = useRowPan();
+  const canReact =
+    onReact !== undefined && enabled && message.status !== 'sending' && message.status !== 'failed';
+  const doubleTap = useMemo(() => {
+    const tap: TapGesture = Gesture.Tap()
+      .numberOfTaps(2)
+      .enabled(canReact)
+      .runOnJS(true)
+      .onEnd(() => {
+        lightHaptic();
+        onReact?.(message, QUICK_REACTIONS[0]);
+      });
+    return rowPan === null ? tap : tap.simultaneousWithExternalGesture(rowPan);
+  }, [canReact, message, onReact, rowPan]);
+  return (
+    <GestureDetector gesture={doubleTap}>
+      <View className={className}>{children}</View>
+    </GestureDetector>
+  );
+}
 
 function MessageBubbleImpl({
   message,

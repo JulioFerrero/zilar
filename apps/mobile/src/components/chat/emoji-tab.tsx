@@ -1,5 +1,19 @@
 import { searchEmoji } from '@zilar/chat-core';
-import { X } from 'lucide-react-native';
+import {
+  X,
+  Clock,
+  Flag,
+  Hand,
+  Hash,
+  Lightbulb,
+  PawPrint,
+  Pizza,
+  Plane,
+  Search,
+  Smile,
+  Trophy,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
@@ -8,19 +22,164 @@ import {
   type ListRenderItemInfo,
   View,
 } from 'react-native';
-
-import { EmojiCategoryBar } from '@/components/chat/emoji-category-bar';
-import {
-  buildEmojiRows,
-  buildSearchRows,
-  type EmojiListItem,
-  type EmojiRowItem,
-  type EmojiSectionCategory,
-} from '@/components/chat/emoji-rows';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
-import { MUTED_FOREGROUND } from '@/lib/colors';
-import { EMOJI_BY_CATEGORY, type EmojiCategoryId } from '@/lib/emoji-data';
+import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
+import { EMOJI_BY_CATEGORY, type EmojiCategoryId, EMOJI_CATEGORIES } from '@/lib/emoji-data';
+import { cn } from '@/lib/utils';
+
+const EMOJI_CATEGORY_BAR_HEIGHT = 36;
+
+const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
+  smileys: Smile,
+  people: Hand,
+  animals: PawPrint,
+  food: Pizza,
+  activities: Trophy,
+  travel: Plane,
+  objects: Lightbulb,
+  symbols: Hash,
+  flags: Flag,
+};
+
+type EmojiCategoryBarProps = {
+  active: EmojiCategoryId | 'recent';
+  hasRecents: boolean;
+  onSelect: (category: EmojiCategoryId | 'recent') => void;
+  onOpenSearch: () => void;
+};
+
+function EmojiCategoryBar({ active, hasRecents, onSelect, onOpenSearch }: EmojiCategoryBarProps) {
+  return (
+    <View
+      accessibilityRole="toolbar"
+      accessibilityLabel="Emoji categories"
+      className="flex-row items-stretch justify-between"
+      style={{ height: EMOJI_CATEGORY_BAR_HEIGHT }}
+    >
+      <BarButton label="Search emoji" icon={Search} onPress={onOpenSearch} />
+      {hasRecents ? (
+        <BarButton
+          label="Recent emoji"
+          icon={Clock}
+          selected={active === 'recent'}
+          onPress={() => onSelect('recent')}
+        />
+      ) : null}
+      {EMOJI_CATEGORIES.map((category) => (
+        <BarButton
+          key={category.id}
+          label={`${category.label} emoji`}
+          icon={CATEGORY_ICONS[category.id]}
+          selected={active === category.id}
+          onPress={() => onSelect(category.id)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function BarButton({
+  label,
+  icon: Icon,
+  selected = false,
+  onPress,
+}: {
+  label: string;
+  icon: LucideIcon;
+  selected?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={selected ? { selected: true } : undefined}
+      hitSlop={{ top: 4, bottom: 4 }}
+      onPress={onPress}
+      className={cn(
+        'flex-1 items-center justify-center rounded-[8px] active:bg-surface-raised',
+        selected && 'bg-surface-raised',
+      )}
+    >
+      <Icon size={18} color={selected ? FOREGROUND : MUTED_FOREGROUND} />
+    </Pressable>
+  );
+}
+
+type EmojiSectionCategory = 'recent' | EmojiCategoryId;
+
+interface EmojiHeaderItem {
+  kind: 'header';
+  key: string;
+  category: EmojiSectionCategory;
+  label: string;
+}
+
+interface EmojiRowItem {
+  kind: 'row';
+  key: string;
+  category?: EmojiSectionCategory;
+  glyphs: string[];
+}
+
+type EmojiListItem = EmojiHeaderItem | EmojiRowItem;
+
+interface EmojiRows {
+  items: EmojiListItem[];
+  headerIndex: Partial<Record<EmojiSectionCategory, number>>;
+}
+
+function chunk<T>(items: readonly T[], columns: number): T[][] {
+  if (columns <= 0) {
+    return [];
+  }
+  const rows: T[][] = [];
+  for (let start = 0; start < items.length; start += columns) {
+    rows.push(items.slice(start, start + columns));
+  }
+  return rows;
+}
+
+function buildEmojiRows(recents: readonly string[], columns: number): EmojiRows {
+  const items: EmojiListItem[] = [];
+  const headerIndex: Partial<Record<EmojiSectionCategory, number>> = {};
+
+  const addSection = (
+    category: EmojiSectionCategory,
+    label: string,
+    glyphs: readonly string[],
+  ): void => {
+    if (glyphs.length === 0) {
+      return;
+    }
+    headerIndex[category] = items.length;
+    items.push({ kind: 'header', key: `header-${category}`, category, label });
+    chunk(glyphs, columns).forEach((row, rowIndex) => {
+      items.push({
+        kind: 'row',
+        key: `${category}-row-${rowIndex}`,
+        category,
+        glyphs: row,
+      });
+    });
+  };
+
+  addSection('recent', 'Recently used', recents);
+  for (const category of EMOJI_CATEGORIES) {
+    addSection(category.id, category.label, EMOJI_BY_CATEGORY[category.id]);
+  }
+
+  return { items, headerIndex };
+}
+
+function buildSearchRows(results: readonly string[], columns: number): EmojiRowItem[] {
+  return chunk(results, columns).map((glyphs, index) => ({
+    kind: 'row',
+    key: `search-row-${index}`,
+    glyphs,
+  }));
+}
 
 const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 

@@ -1,12 +1,41 @@
-import type { AlbumItem, MessageItem, UiMessage } from '@zilar/chat-core';
+import {
+  type AlbumItem,
+  type MessageItem,
+  type UiMessage,
+  formatDateSeparator,
+} from '@zilar/chat-core';
 import { memo } from 'react';
-
 import { AlbumMembersProvider } from '@/components/chat/album-members';
-import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
-import { UnreadDivider } from '@/components/chat/unread-divider';
 import type { MessageHandler, ReactHandler } from '@/components/chat/use-stable-handlers';
 import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
+import { View } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { well, raisedPill } from '@/lib/depth';
+
+function DateSeparator({ date }: { date: Date }) {
+  return (
+    <View className="my-2 items-center">
+      <View className="rounded-full px-2.5 py-1" style={raisedPill}>
+        <Text className="text-[12px] font-medium text-muted-foreground">
+          {formatDateSeparator(date, new Date())}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function UnreadDivider() {
+  return (
+    <View className="my-3 w-full px-3">
+      <View className="w-full rounded-[10px] px-3 py-1.5" style={well}>
+        <Text className="text-center text-[12px] font-medium text-muted-foreground">
+          Unread messages
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export type ListEntry =
   | { type: 'divider'; key: string }

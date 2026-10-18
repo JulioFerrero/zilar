@@ -1,19 +1,135 @@
-import { Paperclip } from 'lucide-react-native';
-import { useState } from 'react';
+import {
+  Paperclip,
+  File as FileIcon,
+  Image as ImageIcon,
+  type LucideIcon,
+  FileText,
+} from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
-
-import { AttachTabBar, type AttachTab } from '@/components/chat/attach/attach-tab-bar';
-import { FileTab } from '@/components/chat/attach/file-tab';
 import { GalleryTab } from '@/components/chat/attach/gallery-tab';
 import { useGalleryAssets } from '@/components/chat/attach/use-gallery-assets';
 import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { Text } from '@/components/ui/text';
 import type { PickedFile } from '@/lib/attachment-ports';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { segment } from '@/lib/depth';
+
+/**
+ * The File tab: today's document picker behind "Browse files". The
+ * Telegram row "Send photos as files" is deliberately absent: the send path
+ * takes the kind from the file's MIME (`classifyMobileFile` /
+ * `attachmentDataFor`), so a photo cannot be forced to `kind: 'file'` without
+ * changing the store's bytes port (`apps/mobile/src/store/effects/ports.ts`).
+ */
+function FileTab({ busy, onPick }: { busy: boolean; onPick: (choice: AttachmentChoice) => void }) {
+  const iconColor = ICON;
+  return (
+    <View className="pt-1">
+      <FileRow
+        label="Browse files"
+        hint="Any document"
+        onPress={() => onPick('file')}
+        busy={busy}
+        icon={<FileText size={20} color={iconColor} />}
+      />
+    </View>
+  );
+}
+
+function FileRow({
+  label,
+  hint,
+  onPress,
+  busy,
+  icon,
+}: {
+  label: string;
+  hint: string;
+  onPress: () => void;
+  busy: boolean;
+  icon: ReactNode;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={busy}
+      onPress={onPress}
+      className="flex-row items-center gap-3 border-b border-divider px-1 py-3.5 active:bg-surface-raised disabled:opacity-60"
+    >
+      <View className="h-9 w-9 items-center justify-center rounded-[8px] bg-surface-raised">
+        {icon}
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className="text-[16px] text-foreground">{label}</Text>
+        <Text className="text-[13px] text-muted-foreground">{hint}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** The two tabs of the attach sheet: the inline gallery and files. */
+type AttachTab = 'gallery' | 'file';
+
+const TABS: { id: AttachTab; label: string; Icon: LucideIcon }[] = [
+  { id: 'gallery', label: 'Gallery', Icon: ImageIcon },
+  { id: 'file', label: 'File', Icon: FileIcon },
+];
+
+/**
+ * The sheet's bottom tab bar: Gallery | File, lucide icons, and the active
+ * pill look of the main floating tab bar (`segment`). The face is keyed by its
+ * look, so Android rebuilds it instead of swapping the gradient on a live view
+ * (`gradient-swap.test.ts`).
+ */
+function AttachTabBar({
+  active,
+  onSelect,
+}: {
+  active: AttachTab;
+  onSelect: (tab: AttachTab) => void;
+}) {
+  return (
+    <View
+      accessibilityRole="tablist"
+      accessibilityLabel="Attachment tabs"
+      className="flex-row gap-1 border-t border-divider pt-2"
+    >
+      {TABS.map(({ id, label, Icon }) => {
+        const selected = active === id;
+        return (
+          <Pressable
+            key={id}
+            accessibilityRole="tab"
+            accessibilityLabel={label}
+            accessibilityState={{ selected }}
+            onPress={() => onSelect(id)}
+            className="flex-1 items-center justify-center rounded-[10px] py-1 active:bg-surface-raised"
+          >
+            <View
+              key={selected ? 'active' : 'idle'}
+              className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5"
+              {...(selected ? { style: segment } : {})}
+            >
+              <Icon size={16} color={selected ? '#ededed' : ICON} />
+              <Text
+                className="text-[13px] font-medium"
+                style={{ color: selected ? '#ededed' : MUTED_FOREGROUND }}
+              >
+                {label}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 export type AttachmentChoice = 'library' | 'camera' | 'file';
 

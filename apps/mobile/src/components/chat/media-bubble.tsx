@@ -1,16 +1,13 @@
-import { photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
+import { photosOf, type UiMessage, type ViewerPhoto, formatTime } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-
+import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { AttachmentViewer, isLoadableMediaUrl } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
-import { ImageMessage } from '@/components/chat/image-message';
 import { MEDIA_WIDTH, mediaFrame } from '@/components/chat/media-frame';
-import { MediaMetaPill } from '@/components/chat/media-meta-pill';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { PlainBubbleBody } from '@/components/chat/plain-bubble-body';
@@ -19,8 +16,56 @@ import { imageAttachmentRender, isGifVideoAttachment } from '@/lib/attachments';
 import { imageGradient } from '@/lib/image-presets';
 import { useMediaRetry, withMediaRetry } from '@/lib/media-retry';
 import { useMediaSource } from '@/lib/media-source';
-import { mobileUploadOf } from '@/lib/types';
+import { mobileUploadOf, type UiImage } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { Ticks } from '@/components/chat/ticks';
+import { SEEN } from '@/lib/colors';
+import { cn } from '@/lib/utils';
+
+// The dark translucent blob when a media message has no caption: time and ticks on the photo, bottom-right, white on `rgba(0,0,0,0.45)`. Read ticks keep the bright seen colour.
+const PILL: ViewStyle = { backgroundColor: 'rgba(0,0,0,0.45)' };
+
+function MediaMetaPill({
+  message,
+  outgoing,
+  className,
+}: {
+  message: UiMessage;
+  outgoing: boolean;
+  className?: string;
+}) {
+  return (
+    <View
+      className={cn('flex-row items-center gap-1 rounded-full px-2 py-0.5', className)}
+      style={PILL}
+    >
+      <Text className="font-mono text-[11px] text-white">{formatTime(message.createdAt)}</Text>
+      {outgoing ? (
+        <Ticks
+          status={message.status}
+          color={message.status === 'read' ? SEEN : '#ffffff'}
+          size={13}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+const FALLBACK_GRADIENT = ['#262626', '#1a1a1a'] as const;
+
+/** A gradient placeholder sized to the image's aspect ratio. */
+function ImageMessage({ image }: { image: UiImage }) {
+  const gradient = imageGradient(image.url) ?? FALLBACK_GRADIENT;
+  const { width, height } = mediaFrame(image.width / image.height);
+  return (
+    <LinearGradient
+      colors={gradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ width, height }}
+    />
+  );
+}
 
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 

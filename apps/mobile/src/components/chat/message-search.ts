@@ -1,27 +1,64 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect, Fiber } from 'effect';
-
-import type { SearchApi } from '../../lib/search-api';
+import type { SearchApi, SearchPage, SearchItem } from '../../lib/search-api';
 import { interruptFiber } from '@zilar/client-core';
-
 import {
-  activeQuery,
   MESSAGE_SEARCH_DEBOUNCE_MS,
-  MESSAGE_SEARCH_LIMIT,
   MESSAGE_SEARCH_MIN_LENGTH,
+  activeQuery,
+  MESSAGE_SEARCH_LIMIT,
   groupSearchByChat,
-  nearEnd,
   searchResultTitle,
   snippetParts,
-} from './message-search-format';
-import type {
-  DebouncedQuery,
-  MessageSearchStatus,
-  SearchGroup,
-  SnippetPart,
-} from './message-search-format';
-import { settleSearch } from './message-search-scheduler';
-import type { SearchScheduler } from './message-search-scheduler';
+  type SearchGroup,
+  type SnippetPart,
+} from '@zilar/chat-core';
+
+/** Null until the first debounce settles, so the first keystrokes wait too. */
+type DebouncedQuery = string | null;
+
+type MessageSearchStatus =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | {
+      status: 'ready';
+      items: SearchItem[];
+      /** The opaque server cursor for the next page; absent means no more. */
+      nextBefore?: string;
+      /** A failed page keeps the items shown and reports the failure inline. */
+      pageError?: { message: string; retry: () => void };
+    }
+  | { status: 'error'; message: string; rateLimited: boolean; retry: () => void }
+  | { status: 'unavailable' };
+
+function nearEnd(contentOffsetY: number, contentHeight: number, layoutHeight: number): boolean {
+  return contentHeight - (contentOffsetY + layoutHeight) < 400;
+}
+
+/** A clock seam so tests can drive the controller deterministically. */
+interface SearchScheduler {
+  setTimeout: (callback: () => void, ms: number) => unknown;
+  clearTimeout: (handle: unknown) => void;
+}
+
+type SearchInput = Parameters<SearchApi['searchMessages']>[0];
+
+// Runs one search request as a fiber; `onPage` or `onError` runs on that fiber once it settles, and a throw from `onPage` is not sent to `onError`.
+function settleSearch(
+  api: SearchApi,
+  input: SearchInput,
+  onPage: (page: SearchPage) => void,
+  onError: (error: unknown) => void,
+): void {
+  Effect.runFork(
+    Effect.tryPromise({ try: () => api.searchMessages(input), catch: (error) => error }).pipe(
+      Effect.matchEffect({
+        onSuccess: (page) => Effect.sync(() => onPage(page)),
+        onFailure: (error) => Effect.sync(() => onError(error)),
+      }),
+    ),
+  );
+}
 
 export {
   MESSAGE_SEARCH_DEBOUNCE_MS,

@@ -2,6 +2,40 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+## Night 10-18 → 10-19 (Julio asleep): fewer lines, clearer code
+
+Julio's words: "dont stop working, try to reduce the lines and make a better codebase for other ais and humans". No feature was removed.
+
+**Source lines** (as the code map counts them; tests, mocks and generated files excluded):
+
+| When (UTC) | Lines |
+| --- | ---: |
+| 10-18 19:35 | 274,479 |
+| 10-18 21:35 | 249,272 |
+| latest | see the next update |
+
+**Merged tonight:**
+
+| Task | What | Lines |
+| --- | --- | ---: |
+| T-2094 | web api barrel, auth layout route | −533 |
+| T-2101 | server dead code | −284 |
+| T-2099 | one shared API for chats, me, contacts, invites, folders, prefs | −350 |
+| T-2096 | one shared API for AIs and connections | −160 |
+| T-2097 | one shared API for stickers and GIFs | −164 |
+| T-2103 | 62 single-use web files folded into their only importer | −205 |
+
+- **Checks:** every merge was checked in web mock mode (Playwright, all 25 routes for the folds), and on the emulator when it touched the phone.
+- **Live:** at `7a4d3e7a8`.
+- **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
+
+**Running or queued:**
+- shared key check (T-2093) and chat extras API (T-2098);
+- folds of single-use files: web (T-2102, T-2104), phone (T-2105, T-2106), packages (T-2109), and server next;
+- server barrels (T-2100: 14 files, 193 importers, rebased);
+- `AGENTS.md` points at the map (T-2110).
+- **Next:** merge back the old size splits where a hook's return object or a child's props list is pure plumbing (39 pairs, about −1.6k), and the New AI flow twin.
+
 **Plan after the canvas reviews (2026-10-15).** Every approved canvas's boards are in `docs/design/mockups/<name>/`. Julio's rules: up to 8 workers, at most 3 mobile; estimates are in worker minutes (about 35–60 min from launch to merge).
 
 **Order:**

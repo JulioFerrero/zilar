@@ -1,8 +1,7 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect, Fiber } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
-
+import { ScrollView, View, Pressable } from 'react-native';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -12,15 +11,130 @@ import {
   GIF_SEARCH_DEBOUNCE_MS,
   setGifsAvailability,
   type GifItem,
+  gifsAvailability,
+  isLoadableGifPreviewUrl,
 } from '@/lib/gifs';
-import { createGifsApi, type GifsApi } from '@/lib/gifs-api';
+import { createGifsApi, type GifsApi, type GifPage } from '@/lib/gifs-api';
 import { getSessionToken } from '@/lib/session-token';
+import { Image } from 'expo-image';
+import { API_URL } from '@/lib/auth';
 
-import { GifCell } from './gif-cells';
-import { fetchGifPageEffect } from './gif-paging';
+const CELL_ASPECT = 4 / 3;
 
-export { GifCell, isPanelGifUrl } from './gif-cells';
-export { fetchGifPage, probeGifsAvailability } from './gif-paging';
+/** Only same-origin proxy URLs preview inline; anything else shows a
+ *  placeholder tile, so the device never fetches it. */
+function isPanelGifUrl(url: string, apiUrl: string): boolean {
+  return isLoadableGifPreviewUrl(url, apiUrl);
+}
+
+function GifCell({
+  item,
+  token,
+  onPick,
+}: {
+  item: GifItem;
+  token: string | undefined;
+  onPick: (gif: GifItem) => void;
+}) {
+  const label = item.title === '' ? 'GIF' : item.title;
+  if (!isPanelGifUrl(item.url, API_URL) && !item.url.startsWith('data:image/')) {
+    return (
+      <View
+        accessibilityRole="image"
+        accessibilityLabel={label}
+        className="items-center justify-center rounded-[8px] bg-surface-raised"
+        style={{ aspectRatio: CELL_ASPECT }}
+      >
+        <Text className="text-[26px]">🎞️</Text>
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Send ${label}`}
+      onPress={() => onPick(item)}
+      className="overflow-hidden rounded-[8px] bg-surface-raised"
+      style={{ aspectRatio: CELL_ASPECT }}
+    >
+      <Image
+        recyclingKey={item.url}
+        source={
+          item.url.startsWith('data:image/')
+            ? { uri: item.url }
+            : {
+                uri: item.url,
+                ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+              }
+        }
+        accessibilityLabel={label}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="cover"
+      />
+      {item.kind === 'video' ? (
+        <View className="absolute right-1 bottom-1 items-center justify-center rounded-full bg-black/60 px-2 py-0.5">
+          <Text className="text-[11px] text-white">▶ GIF</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const fetchGifPage = (input: {
+  query: string;
+  pos: string | undefined;
+  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
+  signal: AbortSignal;
+}): Promise<GifPage> => Effect.runPromise(fetchGifPageEffect(input));
+
+const fetchGifPageEffect = (input: {
+  query: string;
+  pos: string | undefined;
+  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
+  signal: AbortSignal;
+}): Effect.Effect<GifPage, unknown> =>
+  Effect.tryPromise({
+    try: () => {
+      const trimmed = input.query.trim();
+      return trimmed === ''
+        ? input.client.trendingGifs(input.pos, input.signal)
+        : input.client.searchGifs(trimmed, input.pos, input.signal);
+    },
+    catch: (error) => error,
+  });
+
+/** Probes once per session: `false` after a 501, `true` once the provider
+ *  answers; a network error keeps it unknown so an outage hides nothing. */
+const probeGifsAvailability = (api?: GifsApi): Promise<boolean> =>
+  Effect.runPromise(probeGifsAvailabilityEffect(api));
+
+function probeGifsAvailabilityEffect(api?: GifsApi): Effect.Effect<boolean> {
+  const cached = gifsAvailability();
+  if (cached !== undefined) {
+    return Effect.succeed(cached);
+  }
+  return Effect.tryPromise({
+    try: () => (api ?? createGifsApi()).trendingGifs(undefined, undefined),
+    catch: (error) => error,
+  }).pipe(
+    Effect.andThen(
+      Effect.sync(() => {
+        setGifsAvailability(true);
+        return true;
+      }),
+    ),
+    Effect.catch((error) =>
+      error instanceof ApiError && error.code === 'gifs_unavailable'
+        ? Effect.sync(() => {
+            setGifsAvailability(false);
+            return false;
+          })
+        : Effect.succeed(true),
+    ),
+  );
+}
+
+export { GifCell, isPanelGifUrl, fetchGifPage, probeGifsAvailability };
 
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);

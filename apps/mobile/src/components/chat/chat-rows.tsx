@@ -1,13 +1,220 @@
-import { useMemo, type RefObject } from 'react';
-import type { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-
+import { useMemo, type RefObject, useRef, type ReactNode } from 'react';
+import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { ChatListItem } from '@/components/chat/chat-list-item';
-import { ChatRowSwipe } from '@/components/chat/chat-row-swipe';
-import { GroupListItem } from '@/components/chat/group-list-item';
 import type { ChatListRow } from '@/lib/chat-list';
 import type { PutChatPrefInput } from '@/lib/chat-prefs-api';
-import { topicsOfGroup } from '@/lib/topics';
+import { topicsOfGroup, groupRowFor, topicCountLabel } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
+import {
+  Archive,
+  Bell,
+  BellOff,
+  Pin,
+  PinOff,
+  type LucideIcon,
+  Megaphone,
+} from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
+import { Text } from '@/components/ui/text';
+import { MUTE_DURATIONS, mutedUntilFor } from '@/lib/chat-prefs';
+import { MUTED_FOREGROUND } from '@/lib/colors';
+import type { ChatSummary } from '@/lib/types';
+import { formatListTime, previewMessage, previewParts } from '@zilar/chat-core';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { plainPreviewBody } from '@/components/chat/markdown-decision';
+import { PreviewIcon } from '@/components/chat/preview-icon';
+import { UnreadBadge } from '@/components/chat/unread-badge';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { channelSubscriberLabel } from '@/lib/channels';
+import { useBlockedJids } from '@/lib/blocked-users';
+
+function GroupListItem({
+  groupId,
+  onPress,
+  onLongPress,
+}: {
+  groupId: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  const chats = useChatStore((state) => state.chats);
+  const row = groupRowFor(groupId, topicsOfGroup(chats, groupId));
+  const topics = row?.topics ?? [];
+  const newest = topics.reduce<(typeof topics)[number] | undefined>(
+    (best, chat) =>
+      (chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY) >
+      (best?.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY)
+        ? chat
+        : best,
+    undefined,
+  );
+  const messages = useChatStore((state) => state.messages(newest?.id ?? ''));
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  const { api: contactsApi } = useContactsApi();
+  const blockedJids = useBlockedJids(contactsApi);
+  if (row === undefined) {
+    return null;
+  }
+  const previewed =
+    newest === undefined ? undefined : previewMessage(newest, messages, blockedJids, currentUserId);
+  const preview = previewParts(previewed?.deleted === true ? undefined : previewed, {
+    isGroup: true,
+    currentUserId,
+  });
+  const body =
+    previewed === undefined
+      ? ''
+      : plainPreviewBody(newest!, previewed, preview.body, currentUserId);
+  const subtitle =
+    row.chatKind === 'channel'
+      ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)
+      : topicCountLabel(row.topicCount);
+  const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
+  const generalTopic = topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${row.title}, ${subtitle}`}
+      onPress={onPress}
+      {...(onLongPress === undefined ? {} : { onLongPress })}
+      className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
+    >
+      <EntityAvatar
+        chat={{
+          id: generalTopic?.id ?? groupId,
+          title: row.title,
+          avatarUrl: generalTopic?.avatarUrl,
+        }}
+        size={52}
+      />
+      <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
+        <View className="flex-1 justify-center">
+          <View className="flex-row items-center justify-between">
+            <View className="min-w-0 flex-1 flex-row items-baseline gap-1.5">
+              <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">
+                {row.title}
+              </Text>
+              {row.chatKind === 'channel' ? (
+                <View accessibilityRole="image" accessibilityLabel="Channel">
+                  <Megaphone size={14} color={MUTED_FOREGROUND} />
+                </View>
+              ) : null}
+              {anyPinned ? (
+                <View accessibilityRole="image" accessibilityLabel="Pinned chat">
+                  <Pin size={14} color={MUTED_FOREGROUND} />
+                </View>
+              ) : null}
+              <Text numberOfLines={1} className="shrink-0 text-[12px] text-subtle-foreground">
+                {subtitle}
+              </Text>
+            </View>
+            {row.newestAt ? (
+              <Text className="ml-2 shrink-0 font-mono text-[12px] text-subtle-foreground">
+                {formatListTime(row.newestAt, new Date())}
+              </Text>
+            ) : null}
+          </View>
+          <View className="mt-0.5 flex-row items-center justify-between">
+            <View className="mr-2 min-w-0 flex-1 flex-row items-center gap-1.5">
+              <PreviewIcon kind={preview.kind} />
+              <Text numberOfLines={1} className="flex-1 text-[14px] text-muted-foreground">
+                {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
+                {body}
+              </Text>
+            </View>
+            {row.unread > 0 ? <UnreadBadge count={row.unread} muted={row.muted} /> : null}
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+// The swipe's mute uses the longest offered duration; the sheet offers the full choice.
+const SWIPE_MUTE_ID = MUTE_DURATIONS.find((entry) => entry.id === 'forever')?.id ?? 'week';
+
+type SwipeActionProps = {
+  label: string;
+  accessibilityLabel: string;
+  icon: LucideIcon;
+  onPress: () => void;
+};
+
+function SwipeAction({ label, accessibilityLabel, icon: Icon, onPress }: SwipeActionProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      className="min-w-[64px] items-center justify-center gap-1 bg-surface-raised px-2 active:opacity-70"
+    >
+      <Icon size={20} color={MUTED_FOREGROUND} />
+      <Text className="text-[11px] text-muted-foreground">{label}</Text>
+    </Pressable>
+  );
+}
+
+type ChatRowSwipeProps = {
+  chat: ChatSummary;
+  onPref: (chatId: string, input: PutChatPrefInput) => void;
+  openRef: RefObject<SwipeableMethods | null>;
+  children: ReactNode;
+};
+
+function ChatRowSwipe({ chat, onPref, openRef, children }: ChatRowSwipeProps) {
+  const ownRef = useRef<SwipeableMethods>(null);
+
+  const act = (input: PutChatPrefInput) => {
+    ownRef.current?.close();
+    onPref(chat.id, input);
+  };
+
+  const pinned = chat.pinnedAt !== undefined;
+  const muted = chat.muted === true;
+  const archived = chat.archived === true;
+
+  return (
+    <Swipeable
+      ref={ownRef}
+      renderRightActions={() => (
+        <View className="flex-row items-stretch">
+          <SwipeAction
+            label={pinned ? 'Unpin' : 'Pin'}
+            accessibilityLabel={pinned ? 'Unpin chat' : 'Pin chat'}
+            icon={pinned ? PinOff : Pin}
+            onPress={() => act({ pinned: chat.pinnedAt === undefined })}
+          />
+          <SwipeAction
+            label={muted ? 'Unmute' : 'Mute'}
+            accessibilityLabel={muted ? 'Unmute chat' : 'Mute chat'}
+            icon={muted ? BellOff : Bell}
+            onPress={() =>
+              act(
+                muted
+                  ? { mutedUntil: null }
+                  : { mutedUntil: mutedUntilFor(SWIPE_MUTE_ID, new Date()) },
+              )
+            }
+          />
+          <SwipeAction
+            label={archived ? 'Unarchive' : 'Archive'}
+            accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
+            icon={Archive}
+            onPress={() => act({ archived: chat.archived !== true })}
+          />
+        </View>
+      )}
+      onSwipeableWillOpen={() => {
+        if (openRef.current !== null && openRef.current !== ownRef.current) {
+          openRef.current.close();
+        }
+        openRef.current = ownRef.current;
+      }}
+    >
+      {children}
+    </Swipeable>
+  );
+}
 
 export function chatRowKey(row: ChatListRow): string {
   return row.kind === 'chat' ? row.chat.id : `group:${row.groupId}`;

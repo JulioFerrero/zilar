@@ -1,9 +1,8 @@
 import { formatListTime } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useReducer, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
-
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { LoadError } from '@/components/chat/load-error';
 import { Text } from '@/components/ui/text';
@@ -11,10 +10,81 @@ import { ACCENT } from '@/lib/colors';
 import type { SearchApi, SearchItem } from '@/lib/search-api';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
-import { groupSearchByChat, nearEnd, searchResultTitle } from './message-search';
+import {
+  groupSearchByChat,
+  nearEnd,
+  searchResultTitle,
+  MessageSearchController,
+  type MessageSearchStatus,
+  snippetParts,
+} from './message-search';
 import { openSearchHitEffect } from './search-jump';
-import { SearchHitLine } from './search-snippet';
-import { useMessageSearch, type MessageSearchView } from './use-message-search';
+
+const MARK_BACKGROUND = '#2a2a2a';
+
+// A hit's snippet with its matched ranges highlighted. The snippet is plain server text plus character ranges; every slice renders through nested `Text`, never HTML or a link, so a hostile snippet cannot inject markup or tappable links.
+function SearchSnippet({ snippet, marks }: { snippet: string; marks: Array<[number, number]> }) {
+  const parts = snippetParts(snippet, marks);
+  return (
+    <Text numberOfLines={2} className="text-[13px] text-muted-foreground">
+      {parts.map((part, index) =>
+        part.mark ? (
+          <Text
+            key={index}
+            className="rounded-[3px] text-[13px] text-foreground"
+            style={{ backgroundColor: MARK_BACKGROUND }}
+          >
+            {part.text}
+          </Text>
+        ) : (
+          <Text key={index} className="text-[13px] text-muted-foreground">
+            {part.text}
+          </Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
+function SearchHitLine({ item }: { item: SearchItem }) {
+  return (
+    <View className="mt-0.5 flex-row items-baseline gap-1.5">
+      <Text numberOfLines={1} className="shrink-0 text-[13px] text-foreground">
+        {item.senderName}
+      </Text>
+      <View className="min-w-0 flex-1">
+        <SearchSnippet snippet={item.snippet} marks={item.marks} />
+      </View>
+    </View>
+  );
+}
+
+type MessageSearchView = MessageSearchStatus & { loadMore?: () => void };
+
+// Message search over `GET /api/search`, the mobile twin of web's hook: debounced 300 ms, superseded requests cancelled, hidden when the server answers 501 (`search_unavailable`), paging with `nextBefore`. The query text goes only to the search endpoint and is never logged.
+function useMessageSearch(searchApi: SearchApi, query: string, chat?: string): MessageSearchView {
+  const [, force] = useReducer((count: number) => count + 1, 0);
+  // The controller is created once; `force` re-renders on every state change.
+  const [controller] = useState(
+    () => new MessageSearchController({ api: searchApi, onChange: force }),
+  );
+
+  useEffect(() => {
+    controller.setQuery(query);
+  }, [controller, query]);
+
+  useEffect(() => {
+    controller.setChat(chat);
+  }, [controller, chat]);
+
+  useEffect(() => () => controller.dispose(), [controller]);
+
+  const view = controller.view;
+  if (view.status === 'ready') {
+    return { ...view, loadMore: () => controller.loadMore() };
+  }
+  return view;
+}
 
 // One message hit: avatar, chat/topic breadcrumb, sender, time and snippet. Tapping opens the chat and jumps to the message once it loads.
 const MessageSearchHit = memo(function MessageSearchHit({
