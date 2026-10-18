@@ -1,3 +1,20 @@
+import { activeFolderOf, matchesFolder } from './selectors';
+import type {
+  ChatBackgroundChoice,
+  ChatPref,
+  Contact,
+  GroupDetail,
+  Me,
+  MediaPage,
+  MediaTab,
+  Pin,
+  CreateTopicInput,
+  GroupBackground,
+  PatchTopicInput,
+  PublicAi,
+  SetGroupListenerInput,
+  SetTopicRolesInput,
+} from '@/lib/api';
 import {
   type ChatSummary,
   type EditsState,
@@ -12,18 +29,113 @@ import {
   type MuteDurationId,
   type ReplyRef,
   type UiMention,
+  type MentionMember,
+  chatSortTime,
+  isUnjoinedTopic,
+  sortTopics,
 } from '@zilar/chat-core';
-import type {
-  ChatBackgroundChoice,
-  ChatPref,
-  Contact,
-  GroupDetail,
-  Me,
-  MediaPage,
-  MediaTab,
-  Pin,
-} from '@/lib/api';
-import type { ChatStoreGroupApi } from './groupStoreTypes';
+
+interface ChatGroup {
+  key: string;
+  title: string;
+  groupId: string | undefined;
+  avatarUrl?: string | undefined;
+  topics: ChatSummary[];
+}
+
+function groupTitleOf(chat: ChatSummary): string {
+  return chat.groupTitle ?? chat.title;
+}
+
+/** Folds the flat chat list into sidebar groups: topics nest under their group, DMs and AI
+ * chats stand alone, and per-user archived chats are hidden here. Pinned first (via the
+ * General room's pref, newer pins first), then newest activity, ties by title; inside a
+ * group, pinned topics float above the rest. */
+export function groupChats(state: ChatStoreState): ChatGroup[] {
+  const query = state.search.trim().toLowerCase();
+  const byGroup = new Map<string, ChatSummary[]>();
+  const singles: ChatSummary[] = [];
+  for (const chat of state.chats) {
+    // Manager-archived topics never reach the client; per-user archived topics stay in their
+    // group so its Archived toggle shows them, while archived DMs and AIs drop to the bottom list.
+    if (chat.topic === undefined && chat.archived === true) {
+      continue;
+    }
+    // An unjoined topic lives under the group's Other topics with Join, not in the chat list.
+    if (isUnjoinedTopic(chat.topic, state.currentUserId)) {
+      continue;
+    }
+    if (!matchesFolder(chat, activeFolderOf(state))) {
+      continue;
+    }
+    if (chat.topic !== undefined && chat.groupId !== undefined) {
+      const list = byGroup.get(chat.groupId) ?? [];
+      list.push(chat);
+      byGroup.set(chat.groupId, list);
+    } else {
+      if (query.length > 0 && !chat.title.toLowerCase().includes(query)) {
+        continue;
+      }
+      singles.push(chat);
+    }
+  }
+  const groups: ChatGroup[] = [];
+  for (const [groupId, topics] of byGroup) {
+    const groupMatches = query.length > 0 && groupTitleOf(topics[0]!).toLowerCase().includes(query);
+    const matching =
+      query.length === 0 || groupMatches
+        ? topics
+        : topics.filter((topic) => topic.title.toLowerCase().includes(query));
+    if (matching.length === 0) {
+      continue;
+    }
+    const title = groupTitleOf(matching[0] ?? topics[0]!);
+    groups.push({
+      key: `group:${groupId}`,
+      title,
+      groupId,
+      // Every topic row carries the group's picture, so the first one paints the header.
+      ...(matching[0]?.avatarUrl === undefined ? {} : { avatarUrl: matching[0].avatarUrl }),
+      topics: sortTopics(matching),
+    });
+  }
+  for (const chat of singles) {
+    groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });
+  }
+  return sortGroups(groups);
+}
+
+// A group's pin stamp comes from the General topic (the pref lives on the General room JID).
+function groupPinTime(group: ChatGroup): number {
+  const general = group.topics.find((topic) => topic.topic?.isGeneral === true);
+  const row = general ?? group.topics[0];
+  return row?.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+}
+
+// A group's recency is its newest topic's; a singleton group's is its own row's.
+function groupSortTime(group: ChatGroup): number {
+  return Math.max(Number.NEGATIVE_INFINITY, ...group.topics.map((topic) => chatSortTime(topic)));
+}
+
+// Newer first; equal stamps compare equal, including two -Infinity stamps (subtracting
+// infinities would give NaN and freeze the sort).
+function compareNewestFirst(left: number, right: number): number {
+  if (left === right) {
+    return 0;
+  }
+  return right > left ? 1 : -1;
+}
+
+function sortGroups(groups: ChatGroup[]): ChatGroup[] {
+  return [...groups].sort((left, right) => {
+    const pin = compareNewestFirst(groupPinTime(left), groupPinTime(right));
+    if (pin !== 0) {
+      return pin;
+    }
+    const time = compareNewestFirst(groupSortTime(left), groupSortTime(right));
+    return time !== 0 ? time : left.title.localeCompare(right.title);
+  });
+}
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -66,6 +178,61 @@ export interface SendStickerInput {
   width: number;
   height: number;
   mime: 'image/webp' | 'image/png';
+}
+
+interface ChatStoreGroupApi {
+  groupMembers: (chatId: string) => MentionMember[];
+  groupInfo: (chatId: string) => GroupDetail | undefined;
+  refreshGroupInfo: (chatId: string) => void;
+  addGroupAi: (chatId: string, aiId: string) => Promise<void>;
+  removeGroupAi: (chatId: string, aiId: string) => Promise<void>;
+  listMyAis: () => Promise<PublicAi[]>;
+  /** The notice shown when the open topic disappeared and the view moved to General;
+   *  private topic names never appear in it. */
+  topicNotice: { chatId: string; message: string } | undefined;
+  dismissTopicNotice: () => void;
+  /** Re-reads the chat list (topics included), joining new rooms and moving to General
+   *  when the open topic is gone. */
+  refreshChats: () => void;
+  createTopic: (chatId: string, input: CreateTopicInput) => Promise<string>;
+  /** Applies a strip edit (status, owner, link, kind) or a manager edit (name, visibility,
+   *  archive) optimistically with rollback on failure. Rejects on failure. */
+  patchTopic: (chatId: string, input: PatchTopicInput) => Promise<void>;
+  addTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  removeTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  addTopicMember: (chatId: string, userId: string) => Promise<void>;
+  joinTopic: (chatId: string) => Promise<void>;
+  removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  setTopicRoles: (chatId: string, input: SetTopicRolesInput) => Promise<void>;
+  /** Resolves true when the topic is gone (the caller navigates away), false when it is there. */
+  refreshTopicRow: (chatId: string, topicId: string) => Promise<boolean>;
+  leaveTopic: (chatId: string) => Promise<void>;
+  /** Creates a channel (the broadcast feed: moderated room, only admins post) and opens it;
+   *  public with a handle creates its directory entry in one transaction. Rejects on failure. */
+  createChannel: (
+    title: string,
+    memberIds: string[],
+    description?: string,
+    options?: { visibility?: 'private' | 'public'; handle?: string },
+  ) => Promise<string>; /**
+  /** Leaves a channel through the member route; admins remove others the same way. */
+  leaveChannel: (chatId: string) => Promise<void>;
+  /** Promotes a member to admin or demotes one back (owner only). Rejects on failure. */
+  changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
+  addGroupMembers: (chatId: string, userIds: string[]) => Promise<void>;
+  removeGroupMember: (chatId: string, userId: string) => Promise<void>;
+  transferGroupOwner: (chatId: string, userId: string) => Promise<void>;
+  /** The owner flips a group public (with a handle) or back to private. Rejects on failure. */
+  setGroupVisibility: (
+    chatId: string,
+    input: { visibility: 'private' | 'public'; handle?: string },
+  ) => Promise<void>;
+  /** Joins a public group or channel with one request (private or unknown is the same 404)
+   *  and returns the General chat id to open. Rejects on failure. */
+  joinPublicGroup: (groupId: string) => Promise<string | undefined>;
+  setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
+  setGroupBackground: (chatId: string, background: GroupBackground) => Promise<void>;
+  setGroupListener: (chatId: string, input: SetGroupListenerInput) => Promise<void>;
 }
 
 export interface ChatStore extends ChatStoreGroupApi {
@@ -228,8 +395,5 @@ export type ChatStoreState = ChatStore & {
 };
 
 export { matchesFolder, visibleChats } from './selectors';
-export { groupChats, folderUnread } from './chatGroups';
-export type { ChatGroup } from './chatGroups';
 export { MUTE_DURATIONS, applyChatPrefs, effectivePrefFor, mutedUntilFor, sortPinnedFirst };
 export type { MuteDurationId };
-export type { ChatStoreGroupApi } from './groupStoreTypes';

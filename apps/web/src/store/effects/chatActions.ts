@@ -1,16 +1,10 @@
-import {
-  clearHistory as clearHistoryCore,
-  clearSupersededMarker,
-  deleteForEveryone,
-  deleteForMe as deleteForMeCore,
-  editMessage,
-  react,
-  sendTyping,
-  setFolders as setFoldersCore,
-  stopTyping,
-} from '@zilar/client-core/store';
-import type { SetState } from '@zilar/client-core';
-import type { ChatStoreState } from '../store';
+import type {
+  ChatStoreState,
+  SendAttachmentOptions,
+  SendStickerInput,
+  SendTextOptions,
+  VoiceRecording,
+} from '../store';
 import type { StoreCtx } from './ctx';
 import {
   loadOlder as loadOlderInStore,
@@ -43,17 +37,108 @@ import {
 } from './prefs';
 import { recordRead } from './reads';
 import type { Lifetime } from './runtime';
+import type { UiMessage } from '@zilar/chat-core';
+import type { SetState } from '@zilar/client-core';
 import {
-  deleteFailedMessage,
-  forwardMessages,
-  retryAttachment,
-  retrySticker,
-  retryVoice,
-  sendAttachment,
-  sendSticker,
-  sendText,
-  sendVoice,
-} from './send';
+  clearHistory as clearHistoryCore,
+  clearSupersededMarker,
+  deleteForEveryone,
+  deleteForMe as deleteForMeCore,
+  editMessage,
+  react,
+  sendTyping,
+  setFolders as setFoldersCore,
+  stopTyping,
+  deleteFailedMessage as deleteFailedMessageCore,
+  forwardMessages as forwardMessagesCore,
+  retryAttachment as retryAttachmentCore,
+  retrySticker as retryStickerCore,
+  retryVoice as retryVoiceCore,
+  sendAttachment as sendAttachmentCore,
+  sendSticker as sendStickerCore,
+  sendText as sendTextCore,
+  sendVoice as sendVoiceCore,
+} from '@zilar/client-core/store';
+import { Effect } from 'effect';
+
+const objectUrlFor = (blob: Blob): string | undefined =>
+  Effect.runSync(
+    Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
+  );
+
+function sendText(ctx: StoreCtx, chatId: string, text: string, options?: SendTextOptions): void {
+  sendTextCore(ctx, chatId, text, options);
+}
+
+function sendVoice(
+  ctx: StoreCtx,
+  chatId: string,
+  recording: VoiceRecording,
+  options?: SendTextOptions,
+): void {
+  // The empty-recording check stays in the web facade.
+  if (recording.blob.size === 0) {
+    return;
+  }
+  sendVoiceCore(
+    ctx,
+    chatId,
+    {
+      bytes: recording.blob,
+      durationMs: recording.durationMs,
+      waveform: recording.waveform,
+      localUrl: objectUrlFor(recording.blob),
+    },
+    options,
+  );
+}
+
+function retryVoice(ctx: StoreCtx, chatId: string, messageId: string): void {
+  retryVoiceCore(ctx, chatId, messageId);
+}
+
+function deleteFailedMessage(ctx: StoreCtx, chatId: string, messageId: string): void {
+  deleteFailedMessageCore(ctx, chatId, messageId);
+}
+
+function sendAttachment(
+  ctx: StoreCtx,
+  chatId: string,
+  file: File,
+  options?: SendAttachmentOptions,
+): void {
+  // An empty file is refused silently before any request or optimistic bubble.
+  if (file.size === 0) {
+    return;
+  }
+  sendAttachmentCore(ctx, chatId, file, options);
+}
+
+function sendSticker(
+  ctx: StoreCtx,
+  chatId: string,
+  sticker: SendStickerInput,
+  options?: SendTextOptions,
+): void {
+  sendStickerCore(ctx, chatId, sticker, options);
+}
+
+function forwardMessages(
+  ctx: StoreCtx,
+  targets: string[],
+  messages: UiMessage[],
+  options?: { comment?: string },
+): void {
+  forwardMessagesCore(ctx, targets, messages, options);
+}
+
+function retrySticker(ctx: StoreCtx, chatId: string, messageId: string): void {
+  retryStickerCore(ctx, chatId, messageId);
+}
+
+function retryAttachment(ctx: StoreCtx, chatId: string, messageId: string): void {
+  retryAttachmentCore(ctx, chatId, messageId);
+}
 
 export type ChatActions = Pick<
   ChatStoreState,

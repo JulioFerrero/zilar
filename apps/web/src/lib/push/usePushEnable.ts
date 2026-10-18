@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { Effect } from 'effect';
 import {
   getPushConfig,
   getPushSettings,
@@ -10,7 +8,9 @@ import {
   setPushSettings,
   type PushDevice,
   type RegisteredDevice,
+  ApiError,
 } from '@/lib/api';
+import { useQuery } from '@/lib/effect/use-query';
 import {
   deviceLabel,
   permissionStateOf,
@@ -19,19 +19,14 @@ import {
   subscribeBrowser,
   unsubscribeBrowser,
   type NotificationPermissionState,
+  type PushBrowser,
 } from '@/lib/push';
-import { fromApi, ApiFailure } from '@zilar/client-core';
-import { useQuery } from '@/lib/effect/use-query';
 import { readStoredDevice, writeStoredDevice, type StoredDevice } from '@/lib/push/deviceStorage';
-import {
-  attempt,
-  friendlyError,
-  quietly,
-  runPageAction,
-  withPermissionAnswer,
-} from '@/lib/push/pageActions';
 import { setInTabPreviews } from '@/lib/push/inTab';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { fromApi, ApiFailure } from '@zilar/client-core';
+import { Effect } from 'effect';
+import { useState } from 'react';
 
 type PageStatus = 'loading' | 'ready' | 'unsupported' | 'server-off';
 
@@ -59,6 +54,70 @@ export interface PushEnable {
   removeOtherDevice: (id: string) => void;
   togglePreviews: (value: boolean) => void;
   sendTest: () => void;
+}
+
+function attempt<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: run, catch: (error: unknown) => error });
+}
+
+/** Best effort: a failure here never reaches the page message. */
+function quietly<A>(effect: Effect.Effect<A, unknown>): Effect.Effect<void> {
+  return effect.pipe(Effect.orElseSucceed(() => undefined));
+}
+
+/** Starts a page action in the background, not tied to the page's life: leaving does not
+ * cancel a subscribe, a registration or a rollback in flight. Its failure becomes the message. */
+function runPageAction(
+  effect: Effect.Effect<void, unknown>,
+  showError: (message: string) => void,
+): void {
+  Effect.runFork(
+    effect.pipe(
+      Effect.tapError((error) => Effect.sync(() => showError(friendlyError(error)))),
+      Effect.catchCause(() => Effect.void),
+    ),
+  );
+}
+
+/** The same browser, with the permission step answered by a prompt already asked for. */
+function withPermissionAnswer(
+  browser: PushBrowser,
+  answer: Promise<NotificationPermissionState>,
+): PushBrowser {
+  return {
+    serviceWorker: browser.serviceWorker,
+    Notification: {
+      get permission() {
+        return browser.Notification.permission;
+      },
+      requestPermission: () => answer,
+    },
+  };
+}
+
+function friendlyError(error: unknown): string {
+  if (error instanceof ApiFailure || error instanceof ApiError) {
+    if (error.code === 'rate_limited') {
+      return 'Too many tries — wait a little and try again.';
+    }
+    if (error.code === 'device_gone') {
+      return 'That device stopped receiving push. Remove it and enable again.';
+    }
+    if (error.code === 'push_unavailable') {
+      return 'Push is not configured on this server yet.';
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    if (error.message.startsWith('notification permission')) {
+      return 'The browser did not grant permission. Allow notifications for this site, then try again.';
+    }
+    if (error.message.includes('cannot toggle push')) {
+      return 'Not connected yet. Wait a moment and try again.';
+    }
+    return error.message;
+  }
+  return 'Something went wrong. Try again.';
 }
 
 export function usePushEnable(): PushEnable {

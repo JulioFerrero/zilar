@@ -1,22 +1,4 @@
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useState } from 'react';
-import {
-  getToolVersion,
-  listToolRuns,
-  revertTool,
-  type ToolRun,
-  type ToolRunResult,
-  deleteTool,
-} from '@/lib/tools';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { StateMessage } from '@/components/ui/state-message';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
-import { ToolRunSection } from './ToolRunSection';
-import { ToolSourceSection } from './ToolSourceSection';
+import { CodeBlock, TruncatedText } from './CodeBlock';
 import {
   failureText,
   hostsLine,
@@ -25,7 +7,28 @@ import {
   runErrorText,
   runToolWithInput,
   settledFailure,
+  runStatusText,
 } from './toolDetailOps';
+import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StateMessage } from '@/components/ui/state-message';
+import { TextArea } from '@/components/ui/text-input';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
+import {
+  getToolVersion,
+  listToolRuns,
+  revertTool,
+  type ToolRun,
+  type ToolRunResult,
+  deleteTool,
+  type ToolVersion,
+} from '@/lib/tools';
+import { truncateOutput } from '@zilar/chat-core';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 
 function DeleteToolButton({
   toolId,
@@ -78,6 +81,201 @@ function DeleteToolButton({
       )}
     </div>
   );
+}
+
+function ToolSourceSection({
+  toolName,
+  currentVersion,
+  versions,
+  shownVersion,
+  shownSource,
+  shownHosts,
+  sourceError,
+  revertFailure,
+  canManage,
+  busy,
+  onShowVersion,
+  onRequestRevert,
+}: {
+  toolName: string;
+  currentVersion: number;
+  versions: ToolVersion[];
+  shownVersion: number;
+  shownSource: string;
+  shownHosts: readonly string[];
+  sourceError: ApiFailure | undefined;
+  revertFailure: ApiFailure | undefined;
+  canManage: boolean;
+  busy: boolean;
+  onShowVersion: (version: number) => void;
+  onRequestRevert: (version: number) => void;
+}) {
+  return (
+    <>
+      <section aria-label="Source" className="flex flex-col gap-2">
+        <h4 className="px-2 text-[13px] font-semibold text-muted-foreground">
+          Source (v{shownVersion}, read-only)
+        </h4>
+        {sourceError !== undefined && (
+          <FieldError>{failureText(sourceError, 'Could not load that version.')}</FieldError>
+        )}
+        <CodeBlock code={shownSource} label={`Source of ${toolName} v${shownVersion}`} />
+        {shownVersion !== currentVersion && (
+          <p className="px-2 text-[13px] text-muted-foreground">
+            Showing v{shownVersion} ({hostsLine(shownHosts)}); revert to make it current.
+          </p>
+        )}
+      </section>
+
+      <section aria-label="Version history" className="flex flex-col gap-1">
+        <h4 className="px-2 text-[13px] font-semibold text-muted-foreground">Version history</h4>
+        {versions.length === 0 && (
+          <p className="px-2 text-[13px] text-muted-foreground">No versions yet.</p>
+        )}
+        {versions.map((version) => (
+          <div
+            key={version.id}
+            className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
+          >
+            <button
+              type="button"
+              onClick={() => onShowVersion(version.version)}
+              aria-label={`Show source of v${version.version}`}
+              className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              <p className="truncate text-[14px]">
+                v{version.version} · {version.message}
+              </p>
+              <p className="truncate text-[12px] text-muted-foreground">
+                {hostsLine(version.hosts)} · by {version.createdBy} ·{' '}
+                {new Date(version.createdAt).toLocaleString()}
+              </p>
+            </button>
+            {canManage && version.version !== currentVersion && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`Revert to v${version.version}`}
+                className="shrink-0"
+                disabled={busy}
+                onClick={() => onRequestRevert(version.version)}
+              >
+                Revert to this version
+              </Button>
+            )}
+          </div>
+        ))}
+        {revertFailure !== undefined && (
+          <FieldError>{failureText(revertFailure, 'Could not revert the tool.')}</FieldError>
+        )}
+      </section>
+    </>
+  );
+}
+
+function ToolRunSection({
+  canManage,
+  runInput,
+  onRunInputChange,
+  inputError,
+  running,
+  runError,
+  runResult,
+  runs,
+  onStartRun,
+}: {
+  canManage: boolean;
+  runInput: string;
+  onRunInputChange: (value: string) => void;
+  inputError: string | undefined;
+  running: boolean;
+  runError: string | undefined;
+  runResult: ToolRunResult | null;
+  runs: ToolRun[];
+  onStartRun: () => void;
+}) {
+  return (
+    <>
+      {canManage && (
+        <section aria-label="Run now" className="flex flex-col gap-2">
+          <h4 className="px-2 text-[13px] font-semibold text-muted-foreground">Run now</h4>
+          <label className="flex flex-col gap-1 px-2">
+            <span className="text-[13px] text-muted-foreground">
+              Optional JSON input (max 4 KB)
+            </span>
+            <TextArea
+              aria-label="Run input (JSON)"
+              rows={3}
+              value={runInput}
+              onChange={(event) => onRunInputChange(event.target.value)}
+              placeholder='e.g. {"city": "Madrid"}'
+              className="min-h-0 font-mono text-[13px]"
+            />
+          </label>
+          {inputError !== undefined && <FieldError>{inputError}</FieldError>}
+          <div className="px-2">
+            <Button
+              type="button"
+              size="lg"
+              className="rounded-full px-4"
+              disabled={running}
+              onClick={onStartRun}
+            >
+              {running ? 'Running…' : 'Run now'}
+            </Button>
+          </div>
+          {runError !== undefined && <FieldError>{runError}</FieldError>}
+          {runResult !== null && <RunResultBlock result={runResult} />}
+        </section>
+      )}
+
+      <section aria-label="Recent runs" className="flex flex-col gap-1">
+        <h4 className="px-2 text-[13px] font-semibold text-muted-foreground">Recent runs</h4>
+        {runs.length === 0 && (
+          <p className="px-2 text-[13px] text-muted-foreground">No runs yet.</p>
+        )}
+        {runs.map((run) => (
+          <div key={run.id} className="flex flex-col gap-1 rounded-xl px-2 py-1.5">
+            <p className="text-[13px]">{runStatusText(run)}</p>
+            {run.status === 'error' && (
+              <p className="text-[13px] text-muted-foreground">
+                Failed: {run.errorKind ?? 'failed'}
+              </p>
+            )}
+            {run.status === 'ok' && run.outputText !== null && <RunOutput text={run.outputText} />}
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function RunResultBlock({ result }: { result: ToolRunResult }) {
+  if (!result.ok) {
+    const text =
+      result.logs === '' ? result.error.message : `${result.error.message}\n${result.logs}`;
+    return (
+      <div className="flex flex-col gap-1 px-2">
+        <p className="text-[13px] text-danger">Failed: {result.error.kind}</p>
+        <RunOutput text={text} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1 px-2">
+      <p className="text-[13px] text-muted-foreground">
+        Ok in {result.durationMs} ms · {result.fetchCount}{' '}
+        {result.fetchCount === 1 ? 'fetch' : 'fetches'}
+      </p>
+      <RunOutput text={result.output.text} />
+    </div>
+  );
+}
+
+function RunOutput({ text }: { text: string }) {
+  const cut = truncateOutput(text);
+  return <TruncatedText text={text} preview={cut.preview} truncated={cut.truncated} />;
 }
 
 export function ToolDetailPanel({

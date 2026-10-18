@@ -1,18 +1,21 @@
-import { Data, Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { checkGroupHandle } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { EntityAvatar } from './EntityAvatar';
+import { HandleSuffix } from './HandleSuffix';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { Dialog } from './ui/dialog';
+import { DialogStepper } from './ui/dialog-stepper';
+import { SearchField } from './ui/search-field';
+import { SegmentedControl } from './ui/segmented-control';
+import { TextArea, TextInput } from './ui/text-input';
+import { checkGroupHandle, type Contact } from '@/lib/api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { NewGroupMembers } from './NewGroupMembers';
-import { Button } from './ui/button';
-import { Dialog } from './ui/dialog';
-import { DialogStepper } from './ui/dialog-stepper';
-import { SegmentedControl } from './ui/segmented-control';
-import { TextArea, TextInput } from './ui/text-input';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router';
 
 type HandleCheck =
   { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
@@ -48,6 +51,66 @@ class HandleRefused extends Data.TaggedError('HandleRefused')<{
 }> {}
 
 type CreateFailure = NameMissing | HandleMissing | HandleRefused | ApiFailure;
+
+function NewGroupMembers({
+  contacts,
+  selected,
+  onToggle,
+}: {
+  contacts: Contact[];
+  selected: string[];
+  onToggle: (userId: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (needle === '') {
+      return contacts;
+    }
+    return contacts.filter(
+      (contact) =>
+        contact.name.toLowerCase().includes(needle) ||
+        (contact.handle ?? '').toLowerCase().includes(needle),
+    );
+  }, [contacts, query]);
+
+  return (
+    <div className="mt-3">
+      {contacts.length > 0 && (
+        <div className="mb-2">
+          <SearchField
+            autoFocus
+            value={query}
+            placeholder="Search contacts"
+            aria-label="Search contacts"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      )}
+      {filtered.length === 0 ? (
+        <p className="py-6 text-center text-[14px] text-muted-foreground">
+          {contacts.length === 0 ? 'Invite a friend first to start a group.' : 'No contacts match'}
+        </p>
+      ) : (
+        filtered.map((contact) => (
+          <label
+            key={contact.userId}
+            className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+          >
+            <Checkbox
+              checked={selected.includes(contact.userId)}
+              onCheckedChange={() => onToggle(contact.userId)}
+            />
+            <EntityAvatar person={contact} size={28} />
+            <span className="truncate text-[15px]">
+              {contact.name} <HandleSuffix handle={contact.handle} />
+            </span>
+          </label>
+        ))
+      )}
+    </div>
+  );
+}
 
 export function NewGroupDialog({
   onClose,

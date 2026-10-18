@@ -1,6 +1,3 @@
-import { Effect, Schema } from 'effect';
-import { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { ChatListBody } from './chatList/ChatListBody';
 import { ChatListMenu } from './chatList/ChatListMenu';
 import {
@@ -11,19 +8,34 @@ import {
   statusLabel,
 } from './chatList/rowsSelector';
 import { ConfirmDialog } from './ConfirmDialog';
-import { FolderTabs } from './FolderTabs';
+import { folderIconComponent } from './folderIcon';
 import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
 import { NewTopicDialog } from './NewTopicDialog';
-import { SearchBar } from './SearchBar';
-import { useDelayed } from '@zilar/client-core';
+import { Badge } from './ui/badge';
+import { Chip } from './ui/chip';
+import { Well } from './ui/well';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useInstallPrompt } from '@/lib/push';
+import { useContactRequestCount } from '@/lib/useContactRequestCount';
+import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
-import { useContactRequestCount } from '@/lib/useContactRequestCount';
-import { useInstallPrompt } from '@/lib/push';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { useIsServerOwner } from '@/lib/useIsServerOwner';
+import { folderUnreadTotal } from '@zilar/chat-core';
+import { useDelayed } from '@zilar/client-core';
+import { Effect, Schema } from 'effect';
+import { Search, LayoutGrid } from 'lucide-react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
+import { useNavigate } from 'react-router';
 
 const COLLAPSED_KEY = 'zilar:collapsedGroups';
 const ARCHIVED_KEY = 'zilar:archivedOpen';
@@ -87,6 +99,175 @@ function toggleArchivedOpen(current: Set<string>, groupId: string): Set<string> 
   }
   writeSet(ARCHIVED_KEY, next);
   return next;
+}
+
+function SearchBar() {
+  const chats = useChatSelector((s) => s.chats);
+  const searchChat = useChatSelector((s) => s.searchChat);
+  const search = useChatSelector((s) => s.search);
+  const setSearch = useChatSelector((s) => s.setSearch);
+  const storeApi = useChatStoreApi();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const onFocusSearch = (): void => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener('zilar:focus-search', onFocusSearch);
+    return () => window.removeEventListener('zilar:focus-search', onFocusSearch);
+  }, []);
+
+  const scopedChat =
+    searchChat === undefined ? undefined : chats.find((chat) => chat.id === searchChat);
+  const clearScope = (): void => {
+    storeApi.getState().setSearchChat(undefined);
+  };
+
+  return (
+    <Well className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5">
+      <Search className="size-[15px] shrink-0 text-subtle-foreground" aria-hidden="true" />
+      {scopedChat !== undefined && (
+        <Chip
+          tone="accent"
+          onClick={clearScope}
+          title={`Searching only in ${scopedChat.title} — click to search everywhere`}
+          ariaLabel={`Searching only in ${scopedChat.title}. Activate to search all chats.`}
+          className="max-w-[120px] shrink-0 truncate text-[11px]"
+        >
+          {scopedChat.title}
+        </Chip>
+      )}
+      <input
+        ref={inputRef}
+        id="chat-search"
+        name="chat-search"
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            window.dispatchEvent(new Event('zilar:search-enter'));
+            return;
+          }
+          if (event.key === 'Escape') {
+            if (search !== '') {
+              event.preventDefault();
+              setSearch('');
+            } else {
+              inputRef.current?.blur();
+            }
+          }
+        }}
+        placeholder={
+          scopedChat === undefined ? 'Search, or type @username' : `Search in ${scopedChat.title}`
+        }
+        aria-label={scopedChat === undefined ? 'Search chats' : `Search in ${scopedChat.title}`}
+        className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-subtle-foreground"
+      />
+      <kbd className="font-mono hidden shrink-0 rounded-md border border-border-strong px-1.5 py-px text-[11px] leading-4 text-subtle-foreground wide:inline-block">
+        ⌘K
+      </kbd>
+    </Well>
+  );
+}
+
+function FolderTabs() {
+  const folders = useChatSelector((s) => s.folders);
+  const chats = useChatSelector((s) => s.chats);
+  const activeFolder = useChatSelector((s) => s.activeFolder);
+  const setActiveFolder = useChatSelector((s) => s.setActiveFolder);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const tabs: { id: string; label: string; icon: typeof LayoutGrid | null; unread: number }[] = [
+    { id: 'all', label: 'All chats', icon: null, unread: folderUnreadTotal('all', chats) },
+    ...folders.map((folder) => ({
+      id: folder.id,
+      label: folder.name,
+      icon: folderIconComponent(folder.icon),
+      unread: folderUnreadTotal(folder, chats),
+    })),
+  ];
+
+  const moveFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void => {
+    const last = tabs.length - 1;
+    let next: number | undefined;
+    if (event.key === 'ArrowRight') {
+      next = index === last ? 0 : index + 1;
+    } else if (event.key === 'ArrowLeft') {
+      next = index === 0 ? last : index - 1;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = last;
+    }
+    if (next === undefined) {
+      return;
+    }
+    event.preventDefault();
+    const tab = tabs[next];
+    if (tab === undefined) {
+      return;
+    }
+    setActiveFolder(tab.id);
+    tabRefs.current[next]?.focus();
+  };
+
+  return (
+    <div className="shrink-0 px-3 pt-1 pb-2">
+      <div
+        role="tablist"
+        aria-label="Chat folders"
+        className="scrollbar-thin well-surface flex gap-1 overflow-x-auto rounded-[10px] p-[3px]"
+      >
+        {tabs.map((tab, index) => {
+          const active = activeFolder === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() => setActiveFolder(tab.id)}
+              onKeyDown={(event) => moveFocus(event, index)}
+              className={cn(
+                'flex h-[30px] shrink-0 items-center gap-1.5 rounded-[7px] px-3 text-[13px] font-medium transition-colors',
+                active
+                  ? 'segment-raised text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {Icon !== null && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
+              {tab.label}
+              {tab.unread > 0 && (
+                <Badge
+                  count={tab.unread}
+                  muted={!active}
+                  className="h-4 min-w-4 px-1 text-[10px] leading-4"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {

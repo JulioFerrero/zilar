@@ -1,16 +1,6 @@
-// The outside world of the web chat store, read from one Ports service. PortsTest fills every
-// port a test did not supply with an inert one, so no test reaches the network by accident.
-import { Context, Effect, Layer } from 'effect';
-import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
-import type {
-  ChatRows,
-  Notifications,
-  OutgoingBytes,
-  SessionCheck,
-  StoreFlags,
-  Visibility,
-  VoiceOut,
-} from '@zilar/client-core/store';
+import { summariesFor } from './chatRows';
+import type { ApiClient, StorageLike } from './portTypes';
+import { fromPromise } from './util';
 import {
   addGroupAi as addGroupAiRequest,
   archiveTopic as archiveTopicRequest,
@@ -62,34 +52,37 @@ import {
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
+  type ChatEntry,
 } from '@/lib/api';
-import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
-import { defaultVoicePort, type VoicePort } from '@/lib/voice/convert';
-import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
-import {
-  bytesFromAttachmentPort,
-  defaultGoToLogin,
-  defaultOnFocus,
-  defaultStorage,
-  defaultVisible,
-  liveNotifications,
-  realRows,
-  voiceFromPort,
-  webFlags,
-} from './portAdapters';
-import type { ApiClient, StorageLike } from './portTypes';
 import { ApiError } from '@/lib/api/http';
+import { defaultAttachmentPort, type AttachmentPort, cleanFilename } from '@/lib/attachments';
 import { authClient } from '@/lib/auth';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
+import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
 import { writeStoredDevice } from '@/lib/push/deviceStorage';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
+import { defaultVoicePort, type VoicePort } from '@/lib/voice/convert';
 import { clearChatListCache } from '@/store/chatListCache';
 import { clearMessageCache } from '@/store/messageCache';
-
+import {
+  type ChatRows,
+  type Notifications,
+  type OpenDraftStream,
+  type OutgoingBytes,
+  type SessionCheck,
+  type StoreFlags,
+  type Visibility,
+  type VoiceOut,
+  type DraftHubEvent,
+  decodeDraftEvent,
+  draftReconnectDelay,
+} from '@zilar/client-core/store';
+import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
+import { Context, Effect, Layer } from 'effect';
 // effect-plain: promise-edge adapters beside the ports; the pipeline starts one layer up.
-
 // A 200 means the session is alive and a 401 that it is gone; another status or a network
 // error is unknown, so it never signs anyone out.
+
 export const checkSession = (): Promise<SessionCheck> =>
   Effect.runPromise(
     Effect.matchEffect(
@@ -140,6 +133,106 @@ const defaultSessionGoneStorage = (): SessionGoneStorage => {
 };
 
 export type { ApiClient, StorageLike } from './portTypes';
+
+// effect-plain: the browser EventSource adapter behind the drafts port, a callback transport.
+
+const DRAFT_STREAM_URL = '/api/drafts/stream';
+
+/** The slice of EventSource the client uses. Tests inject a fake. */
+interface DraftEventSource {
+  /** EventSource.readyState: 2 means the browser stopped reconnecting. */
+  readonly readyState: number;
+  addEventListener(
+    type: 'draft' | 'end' | 'error' | 'open',
+    listener: (event: MessageEvent) => void,
+  ): void;
+  close(): void;
+}
+
+const EVENT_SOURCE_CLOSED = 2;
+
+function defaultDraftSource(url: string): DraftEventSource {
+  return new EventSource(url);
+}
+
+/** Events that fail validation are dropped silently; nothing here throws. An EventSource
+ * reconnects on its own only after a dropped connection: a non-2xx response closes it for
+ * good, so those are reopened with a jittered backoff (1 s -> 30 s). */
+function subscribeToDrafts(
+  onEvent: (event: DraftHubEvent) => void,
+  createSource: (url: string) => DraftEventSource = defaultDraftSource,
+  random: () => number = Math.random,
+): () => void {
+  let closed = false;
+  let source: DraftEventSource | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let attempt = 0;
+
+  function clearRetry(): void {
+    if (retryTimer !== undefined) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+  }
+
+  function scheduleRetry(): void {
+    if (closed || retryTimer !== undefined) {
+      return;
+    }
+    const delay = draftReconnectDelay(attempt, random);
+    attempt += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      open();
+    }, delay);
+  }
+
+  function open(): void {
+    if (closed) {
+      return;
+    }
+    let next: DraftEventSource;
+    try {
+      next = createSource(DRAFT_STREAM_URL);
+    } catch {
+      // No usable EventSource: the app simply behaves as without drafts.
+      return;
+    }
+    source = next;
+
+    // An open connection proves the stream is healthy, so the next retry starts at the base.
+    next.addEventListener('open', () => {
+      attempt = 0;
+    });
+    next.addEventListener('draft', (event) => {
+      const parsed = decodeDraftEvent('draft', event.data);
+      if (parsed !== undefined) {
+        onEvent(parsed);
+      }
+    });
+    next.addEventListener('end', (event) => {
+      const parsed = decodeDraftEvent('end', event.data);
+      if (parsed !== undefined) {
+        onEvent(parsed);
+      }
+    });
+    next.addEventListener('error', () => {
+      // CONNECTING means the browser will reconnect by itself; only a CLOSED source needs a new one.
+      if (next.readyState === EVENT_SOURCE_CLOSED) {
+        next.close();
+        scheduleRetry();
+      }
+    });
+  }
+
+  open();
+
+  return () => {
+    closed = true;
+    clearRetry();
+    source?.close();
+  };
+}
 
 export interface RealStoreDeps {
   api?: ApiClient;
@@ -231,6 +324,102 @@ const realApi: ApiClient = {
   pinMessage: pinMessageRequest,
   unpinMessage: unpinMessageRequest,
 };
+
+function defaultStorage(): StorageLike | null {
+  return Effect.runSync(
+    Effect.try(() => window.localStorage).pipe(Effect.orElseSucceed(() => null)),
+  );
+}
+
+function defaultVisible(): boolean {
+  if (typeof document === 'undefined') {
+    return true;
+  }
+  // Page visibility is not enough: a visible but unfocused window (a second monitor) must
+  // not mark messages seen. jsdom's document is prerender and unfocused, so treat it as visible.
+  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')) {
+    return true;
+  }
+  return document.visibilityState === 'visible' && document.hasFocus();
+}
+
+function defaultOnFocus(handler: () => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  // Coming back into focus clears the open chat's unread; listen on both visibilitychange and
+  // focus so a visible-but-unfocused window marks seen when it is clicked into.
+  const onVisibility = (): void => {
+    if (document.visibilityState === 'visible') {
+      handler();
+    }
+  };
+  window.addEventListener('focus', handler);
+  document.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    window.removeEventListener('focus', handler);
+    document.removeEventListener('visibilitychange', onVisibility);
+  };
+}
+
+const realRows: ChatRows = {
+  summariesFor: (entry) => summariesFor(entry as ChatEntry),
+};
+
+const webFlags: StoreFlags = { connectRetry: true, reconnectOnResume: false };
+
+const liveNotifications: Notifications = {
+  syncBadge: (chats) => {
+    Effect.runFork(
+      fromPromise(() => updateAppBadge(totalBadgeUnread([...chats]))).pipe(Effect.ignore),
+    );
+  },
+  dismissChat: (chatId) => {
+    Effect.runFork(fromPromise(() => dismissChatNotifications(chatId)).pipe(Effect.ignore));
+  },
+};
+
+// A reload gives the next user a fresh store and XMPP connection.
+function defaultGoToLogin(): void {
+  if (typeof window !== 'undefined') {
+    window.location.assign('/login');
+  }
+}
+
+// URL.createObjectURL is missing in some test environments.
+function objectUrlFor(blob: Blob): string | undefined {
+  return Effect.runSync(
+    Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
+  );
+}
+
+// The core bytes port over web's attachment port: classification, image size and the
+// XEP-0363 upload. Web has no cancel and ignores progress.
+function bytesFromAttachmentPort(port: AttachmentPort): OutgoingBytes {
+  return {
+    describe: (file) => {
+      const picked = file as File;
+      const kind = port.classify(picked);
+      return {
+        kind,
+        name: cleanFilename(picked.name),
+        size: picked.size,
+        mime: picked.type === '' ? 'application/octet-stream' : picked.type,
+        ...(kind === 'image' ? { localUrl: objectUrlFor(picked) } : {}),
+      };
+    },
+    measure: (file) => fromPromise(() => port.readImageSize(file as File)),
+    upload: (core, file) => fromPromise(() => port.upload(core, file as File)),
+  };
+}
+
+// The core voice port over web's voice port; the recording's bytes are opaque to the core.
+function voiceFromPort(port: VoicePort): VoiceOut {
+  return {
+    convert: (recording) => fromPromise(() => port.convert(recording.bytes as Blob)),
+    upload: (core, audio) => fromPromise(() => port.upload(core, audio as Blob)),
+  };
+}
 
 export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
   const attachments = deps.attachments ?? defaultAttachmentPort;

@@ -1,14 +1,35 @@
-import { useEffect } from 'react';
-import { Link } from 'react-router';
-import { Check, CircleMinus, Globe, Plus } from 'lucide-react';
+import { PackThumbs, thumbsOf } from './PackThumbs';
+import {
+  type PageSetters,
+  addToPanel,
+  deletePack,
+  removeFromPanel,
+  stickerPackUrl,
+  toggleVisibility,
+} from './pageActions';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { Menu, MenuItem } from '@/components/ui/menu';
 import { SortableHandle, SortableItem } from '@/components/ui/sortable-list';
-import { useAction } from '@/lib/effect/use-action';
+import { useToast } from '@/components/ui/toast';
 import type { StickerPack } from '@/lib/api';
-import { PackThumbs, thumbsOf } from './PackThumbs';
-import { PackMenu } from './PackMenu';
-import { type PageSetters, addToPanel, deletePack, removeFromPanel } from './pageActions';
+import { copyText } from '@/lib/clipboard';
+import { useAction } from '@/lib/effect/use-action';
+import { Effect } from 'effect';
+import {
+  Check,
+  CircleMinus,
+  Globe,
+  Plus,
+  Lock,
+  MoreVertical,
+  Pencil,
+  Share,
+  Trash2,
+  Unlock,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 
 const ROW_CLASS = 'flex items-center gap-3 border-b border-divider px-3 py-2.5 last:border-b-0';
 const THUMB_SIZE = 36;
@@ -45,6 +66,75 @@ function PackRowText({ pack, shared, meta }: { pack: StickerPack; shared: boolea
       </span>
       <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{meta}</span>
     </span>
+  );
+}
+
+function PackMenu({
+  pack,
+  setters,
+  onEdit,
+  onDelete,
+}: {
+  pack: StickerPack;
+  setters: PageSetters;
+  onEdit: (packId: string) => void;
+  onDelete: (pack: StickerPack) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const show = useToast();
+  const [, runVisibility] = useAction<void, void, never>(() => toggleVisibility(pack, setters));
+  const [, runRemove] = useAction<void, void, never>(() => removeFromPanel(pack.id, setters));
+  const [, copy] = useAction<string, void, unknown>((url) =>
+    Effect.tryPromise({ try: () => copyText(url), catch: (cause) => cause }).pipe(
+      Effect.tap(() => Effect.sync(() => show('Link copied'))),
+    ),
+  );
+  const imported = pack.importedFrom !== undefined;
+  const shared = pack.visibility === 'server';
+
+  return (
+    <Menu
+      open={open}
+      onOpenChange={setOpen}
+      label={`${pack.title} actions`}
+      align="end"
+      trigger={
+        <IconButton aria-label={`${pack.title} actions`}>
+          <MoreVertical className="size-4" aria-hidden="true" />
+        </IconButton>
+      }
+    >
+      <MenuItem icon={Share} onSelect={() => copy(stickerPackUrl(pack.id))}>
+        Share
+      </MenuItem>
+      <MenuItem
+        icon={Pencil}
+        onSelect={() => {
+          setOpen(false);
+          onEdit(pack.id);
+        }}
+      >
+        Edit
+      </MenuItem>
+      {!imported && (
+        <MenuItem icon={shared ? Lock : Unlock} onSelect={() => runVisibility()}>
+          {shared ? 'Make private' : 'Make shared'}
+        </MenuItem>
+      )}
+      <MenuItem icon={CircleMinus} onSelect={() => runRemove()}>
+        Remove from panel
+      </MenuItem>
+      <MenuItem
+        icon={Trash2}
+        destructive
+        onSelect={() => {
+          setOpen(false);
+          onDelete(pack);
+        }}
+      >
+        Delete
+      </MenuItem>
+    </Menu>
   );
 }
 

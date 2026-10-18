@@ -1,31 +1,50 @@
-import type { ChatSummary } from '@zilar/chat-core';
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useEffect, useState } from 'react';
-import type { CreatedInviteLink, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
-import { createGroupInviteLink, revokeGroupInviteLink } from '@/lib/api';
+import { AiMemoryDialog } from './ais/AiMemoryDialog';
+import { FieldError } from './ais/AiPageShell';
+import { GroupMembersSection } from './GroupMembersSection';
+import { GroupAiSection } from './panels/GroupAiSection';
+import {
+  type RolesView,
+  apiStep,
+  loadLinks,
+  loadRoles,
+  messageOf,
+  rolesViewOf,
+  type PanelFailure,
+} from './panels/groupPanelOps';
+import { GroupRolesSection } from './panels/GroupRolesSection';
+import { SectionLabel } from './ui/card';
+import { ActivitySection } from './ais/AiActivity';
+import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
+import { AvatarUploader } from './AvatarUploader';
+import { ChatBackgroundDialog } from './ChatBackgroundDialog';
+import type { AvatarStackEntry } from './group-info/AvatarStack';
+import { GroupInfoPage } from './group-info/GroupInfoPage';
+import { GROUP_INFO_TITLES, GroupInfoRoot, type GroupInfoPageId } from './group-info/GroupInfoRoot';
+import { InviteLinksSection } from './InviteLinksSection';
+import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
+import { RoutinesSection } from './tools/RoutinesSection';
+import { ToolsSection } from './tools/ToolsSection';
+import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
+import { VisibilitySection } from './VisibilitySection';
+import {
+  type CreatedInviteLink,
+  type GroupInviteLink,
+  type GroupRole,
+  type PublicAi,
+  type GroupAi,
+  type GroupDetail,
+  createGroupInviteLink,
+  revokeGroupInviteLink,
+} from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import type { AvatarStackEntry } from './group-info/AvatarStack';
-import { GroupInfoPage } from './group-info/GroupInfoPage';
-import { GROUP_INFO_TITLES, GroupInfoRoot } from './group-info/GroupInfoRoot';
-import type { GroupInfoPageId } from './group-info/GroupInfoRoot';
-import { PeoplePage } from './group-info/PeoplePage';
-import { ActivitySection } from './ais/AiActivity';
-import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
-import { ChatBackgroundDialog } from './ChatBackgroundDialog';
-import { Sheet } from './ui/sheet';
-import { StateMessage } from './ui/state-message';
-import { InviteLinksSection } from './InviteLinksSection';
-import { RoutinesSection } from './tools/RoutinesSection';
-import { ToolsSection } from './tools/ToolsSection';
-import { VisibilitySection } from './VisibilitySection';
-import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
-import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
-import type { PanelFailure } from './panels/groupPanelOps';
-import { AvatarUploader } from './AvatarUploader';
+import type { ChatSummary } from '@zilar/chat-core';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useEffect, useState } from 'react';
 
 function GroupPictureSection({
   groupId,
@@ -53,6 +72,116 @@ function GroupPictureSection({
         storeApi.getState().refreshGroupInfo(chatId);
       }}
     />
+  );
+}
+
+function SectionHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center justify-between px-0.5">
+      <SectionLabel>{label}</SectionLabel>
+      <span className="font-mono text-[12px] font-normal text-muted-foreground">{count}</span>
+    </div>
+  );
+}
+
+function PeoplePage({
+  chatId,
+  info,
+  me,
+  isManager,
+  rolesByUser,
+  rolesState,
+  onReloadRoles,
+  onOpenLinks,
+  openPickerOnMount,
+  eligibleAis,
+  pickerChoices,
+  onOpenPicker,
+  onClosePicker,
+}: {
+  chatId: string;
+  info: GroupDetail;
+  me: string | undefined;
+  isManager: boolean;
+  rolesByUser: Map<string, GroupRole[]>;
+  rolesState: RolesView;
+  onReloadRoles: () => void;
+  onOpenLinks: () => void;
+  openPickerOnMount: boolean;
+  eligibleAis: PublicAi[];
+  pickerChoices: PublicAi[] | undefined;
+  onOpenPicker: () => void;
+  onClosePicker: () => void;
+}) {
+  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const ownerName = (ai: GroupAi): string =>
+    info.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
+  const canRemove = (ai: GroupAi): boolean => ai.ownerId === me || isManager;
+
+  return (
+    <>
+      <section className="flex flex-col gap-2">
+        <SectionHeading label="AIs" count={info.ais.length} />
+        <div className="[&>section>h2]:hidden">
+          <GroupAiSection
+            ais={info.ais}
+            chatId={chatId}
+            ownerNameOf={ownerName}
+            canRemove={canRemove}
+            isManager={isManager}
+            eligibleAis={eligibleAis}
+            pickerChoices={pickerChoices}
+            onOpenPicker={onOpenPicker}
+            onClosePicker={onClosePicker}
+            onOpenMemory={(ai) => setMemoryAi(ai)}
+            onError={setErrorMessage}
+          />
+        </div>
+      </section>
+
+      {memoryAi !== undefined && (
+        <AiMemoryDialog
+          chat={chatId}
+          aiId={memoryAi.id}
+          aiName={memoryAi.name}
+          onClose={() => setMemoryAi(undefined)}
+        />
+      )}
+
+      {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+
+      <section className="flex flex-col gap-2">
+        <SectionHeading label="People" count={info.members.length} />
+        <GroupMembersSection
+          chatId={chatId}
+          info={info}
+          me={me}
+          rolesByUser={rolesByUser}
+          onOpenLinks={onOpenLinks}
+          openPickerOnMount={openPickerOnMount}
+        />
+      </section>
+
+      {isManager && (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>Roles</SectionLabel>
+          <div className="[&>section>h2]:hidden">
+            <GroupRolesSection
+              groupId={info.id}
+              members={info.members.map((member) => ({
+                userId: member.userId,
+                name: member.name,
+                ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+              }))}
+              rolesState={rolesState}
+              onReload={onReloadRoles}
+            />
+          </div>
+        </section>
+      )}
+    </>
   );
 }
 

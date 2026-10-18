@@ -21,7 +21,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import { BLOCK_KEY } from './blockKey';
 
 const EVENT_TILE = {
   background: 'linear-gradient(180deg,#2c2c2c,#151515)',
@@ -64,6 +63,12 @@ function tileRadius(index: number, count: number): string {
     corner(bottom && left),
   ].join(' ');
 }
+
+const BLOCK_KEY = {
+  background: 'linear-gradient(180deg,#1c1c1c,#121212)',
+  border: '1px solid #2a2a2a',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
+} as const;
 
 export function PlaceBlock({ block }: { block: PlaceBlockData }) {
   return (

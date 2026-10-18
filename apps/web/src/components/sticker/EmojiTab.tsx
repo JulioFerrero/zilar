@@ -1,12 +1,109 @@
-import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, EMOJI_NAMES, searchEmoji } from '@zilar/chat-core';
-import { ArrowLeft } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { panelStorage } from './StickerThumb';
 import { SearchField } from '@/components/ui/search-field';
 import { readEmojiRecents, rememberEmojiRecent } from '@/lib/emojiRecents';
-import { EmojiCategoryBar, type EmojiSectionId } from './EmojiCategoryBar';
-import { panelStorage } from './StickerThumb';
+import {
+  EMOJI_BY_CATEGORY,
+  EMOJI_CATEGORIES,
+  EMOJI_NAMES,
+  searchEmoji,
+  type EmojiCategoryId,
+} from '@zilar/chat-core';
+import {
+  ArrowLeft,
+  Clock,
+  Flag,
+  Hand,
+  Hash,
+  Lightbulb,
+  PawPrint,
+  Pizza,
+  Plane,
+  Search,
+  Smile,
+  Trophy,
+  type LucideIcon,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
+
+type EmojiSectionId = EmojiCategoryId | 'recent';
+
+const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
+  smileys: Smile,
+  people: Hand,
+  animals: PawPrint,
+  food: Pizza,
+  travel: Plane,
+  activities: Trophy,
+  objects: Lightbulb,
+  symbols: Hash,
+  flags: Flag,
+};
+
+interface EmojiCategoryBarProps {
+  active: EmojiSectionId | undefined;
+  showRecent: boolean;
+  onSelect: (section: EmojiSectionId) => void;
+  onOpenSearch: () => void;
+}
+
+function EmojiCategoryBar({ active, showRecent, onSelect, onOpenSearch }: EmojiCategoryBarProps) {
+  return (
+    <div
+      className="flex items-center justify-between gap-0.5"
+      role="group"
+      aria-label="Emoji categories"
+    >
+      <BarKey label="Search emoji" icon={Search} onPress={onOpenSearch} />
+      {showRecent ? (
+        <BarKey
+          label="Recently used"
+          icon={Clock}
+          pressed={active === 'recent'}
+          onPress={() => onSelect('recent')}
+        />
+      ) : null}
+      {EMOJI_CATEGORIES.map(({ id, label }) => (
+        <BarKey
+          key={id}
+          label={label}
+          icon={CATEGORY_ICONS[id]}
+          pressed={active === id}
+          onPress={() => onSelect(id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function BarKey({
+  label,
+  icon: Icon,
+  pressed,
+  onPress,
+}: {
+  label: string;
+  icon: LucideIcon;
+  pressed?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      {...(pressed === undefined ? {} : { 'aria-pressed': pressed })}
+      onClick={onPress}
+      className={
+        pressed === true
+          ? 'segment-raised flex h-8 w-8 shrink items-center justify-center rounded-[7px] text-foreground'
+          : 'flex h-8 w-8 shrink items-center justify-center rounded-[7px] text-muted-foreground hover:text-foreground'
+      }
+    >
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
+  );
+}
 
 interface EmojiSection {
   id: EmojiSectionId;

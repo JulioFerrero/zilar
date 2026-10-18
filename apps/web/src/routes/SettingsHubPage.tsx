@@ -1,22 +1,45 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { AsyncResult } from 'effect/reactivity';
-import { ChevronRight, LogOut } from 'lucide-react';
+import { useAuth } from '@/auth/AuthProvider';
 import { APPROVAL_BADGE_CAP } from '@/components/chatList/rowsSelector';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EntityAvatar } from '@/components/EntityAvatar';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { ListRow } from '@/components/ui/list-row';
-import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { SETTINGS_HUB_ICONS, webSettingsGroups } from '@/components/settings/hub/rows';
-import { useAuth } from '@/auth/AuthProvider';
-import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { listMyRoutines } from '@/lib/tools';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
-import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
+import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import {
+  SETTINGS_GROUP_ORDER,
+  SETTINGS_ITEMS,
+  type SettingsGroup,
+  type SettingsIconId,
+  type SettingsItem,
+} from '@zilar/chat-core';
+import { fromApi } from '@zilar/client-core';
+import { AsyncResult } from 'effect/reactivity';
+import {
+  ChevronRight,
+  LogOut,
+  Ban,
+  Bell,
+  FolderOpen,
+  KeyRound,
+  MonitorSmartphone,
+  Plug,
+  Repeat,
+  Server,
+  ShieldCheck,
+  Sticker,
+  UserPlus,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router';
 
 function CountPill({ label, text }: { label: string; text: string }) {
   return (
@@ -27,6 +50,63 @@ function CountPill({ label, text }: { label: string; text: string }) {
       {text}
     </span>
   );
+}
+
+const WEB_SETTINGS_HREFS: ReadonlySet<string> = new Set([
+  '/settings/profile',
+  '/settings/requests',
+  '/settings/contacts',
+  '/settings/blocked',
+  '/settings/devices',
+  '/settings/notifications',
+  '/settings/approvals',
+  '/settings/routines',
+  '/settings/machines',
+  '/settings/connections',
+  '/settings/integrations',
+  '/settings/stickers',
+  '/settings/folders',
+]);
+
+const SETTINGS_HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
+  profile: UserRound,
+  requests: UserPlus,
+  contacts: Users,
+  blocked: Ban,
+  devices: MonitorSmartphone,
+  approvals: ShieldCheck,
+  routines: Repeat,
+  machines: Server,
+  connections: KeyRound,
+  integrations: Plug,
+  stickers: Sticker,
+  folders: FolderOpen,
+  notifications: Bell,
+};
+
+const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
+  account: 'Account',
+  ais: 'AIs and tools',
+  chats: 'Chats',
+  server: 'Server',
+};
+
+interface WebSettingsGroup {
+  group: SettingsGroup;
+  label: string;
+  rows: SettingsItem[];
+}
+
+function rowsFor(group: SettingsGroup): SettingsItem[] {
+  return SETTINGS_ITEMS.filter((item) => item.group === group && WEB_SETTINGS_HREFS.has(item.href));
+}
+
+function webSettingsGroups(): WebSettingsGroup[] {
+  return SETTINGS_GROUP_ORDER.map((group) => ({
+    group,
+    label: SETTINGS_GROUP_LABELS[group],
+    rows: rowsFor(group),
+  })).filter((entry) => entry.rows.length > 0);
 }
 
 export function SettingsHubPage() {

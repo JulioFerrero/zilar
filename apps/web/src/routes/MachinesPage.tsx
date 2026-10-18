@@ -1,25 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useNavigate } from 'react-router';
-import { Ban, ChevronRight, Server, Plus } from 'lucide-react';
-import {
-  listAis,
-  listMachines,
-  deleteMachine,
-  approveMachine,
-  denyMachine,
-  type Machine,
-  type PublicAi,
-} from '@/lib/api';
-import { fromApi, useDelayed } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
-import { cn } from '@/lib/utils';
-import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { StateMessage } from '@/components/ui/state-message';
+import { hardwareLine, PendingMachineCard } from '../components/machines/PendingMachineCard';
+import { FieldError } from '@/components/ais/AiPageShell';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
-import { MachineListRow } from '@/components/machines/MachineListRow';
+import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
 import {
   EMPTY_CONFIRMING,
   clearFailure,
@@ -28,11 +11,32 @@ import {
   type ConfirmingState,
   type ConfirmKind,
 } from '@/components/machines/machineRowOps';
-import { Button } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/sheet';
+import { StateMessage } from '@/components/ui/state-message';
+import {
+  listAis,
+  listMachines,
+  deleteMachine,
+  approveMachine,
+  denyMachine,
+  type Machine,
+  type PublicAi,
+  renameMachine,
+  revokeMachine,
+} from '@/lib/api';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { RevokedMachineCard } from '@/components/machines/RevokedMachineCard';
-import { PendingMachineCard } from '@/components/machines/PendingMachineCard';
+import { cn } from '@/lib/utils';
+import { fromApi, useDelayed } from '@zilar/client-core';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { Ban, ChevronRight, Server, Plus, X, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 interface PendingRowProps {
   machine: Machine;
@@ -91,6 +95,89 @@ interface RevokedRowProps {
   confirmingDelete: boolean;
   onConfirm: (id: string | null) => void;
   onRemove: (id: string) => void;
+}
+
+interface RevokedMachineCardProps {
+  machine: Machine;
+  deleting: boolean;
+  confirmingDelete: boolean;
+  actionError: string;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}
+
+function RevokedMachineCard({
+  machine,
+  deleting,
+  confirmingDelete,
+  actionError,
+  onAskDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: RevokedMachineCardProps) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-divider bg-surface/60 p-4 opacity-80">
+      <div className="min-w-0">
+        <p className="truncate text-[15px] font-medium">{machine.name}</p>
+        <p className="text-[13px] wrap-anywhere text-muted-foreground">{hardwareLine(machine)}</p>
+      </div>
+      <p className="text-[13px] text-muted-foreground">
+        Revoked {formatRevokedAt(machine.approvedAt ?? machine.createdAt)}
+      </p>
+
+      {confirmingDelete ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-danger/40 p-3">
+          <p className="text-[13px] text-danger">Delete {machine.name}? This is permanent.</p>
+          {actionError !== '' && <FieldError>{actionError}</FieldError>}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={onConfirmDelete}
+              disabled={deleting}
+            >
+              Delete
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onCancelDelete}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Delete ${machine.name}`}
+            onClick={onAskDelete}
+            className="text-danger hover:bg-danger/10 hover:text-danger"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Delete
+          </Button>
+          {actionError !== '' && <FieldError>{actionError}</FieldError>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatRevokedAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(
+    date,
+  );
 }
 
 function RevokedRow({ machine, confirmingDelete, onConfirm, onRemove }: RevokedRowProps) {
@@ -173,6 +260,147 @@ function AddMachineButton({ onClick }: AddMachineButtonProps) {
 }
 
 type PageStatus = 'loading' | 'ready' | 'error';
+
+interface MachineListRowProps {
+  machine: Machine;
+  ai: PublicAi | undefined;
+  aiNames: string[] | null;
+  confirmingRevoke: boolean;
+  onConfirm: (id: string | null) => void;
+  onUpdate: (id: string, next: Machine) => void;
+  onAisChanged: () => void;
+}
+
+interface ApprovedRowProps {
+  machine: Machine;
+  confirmingRevoke: boolean;
+  aiNames: string[] | null;
+  onConfirm: (id: string | null) => void;
+  onUpdate: (id: string, next: Machine) => void;
+  onAisChanged: () => void;
+}
+
+function ApprovedRow({
+  machine,
+  confirmingRevoke,
+  aiNames,
+  onConfirm,
+  onUpdate,
+  onAisChanged,
+}: ApprovedRowProps) {
+  const [renameState, rename, , renameError] = useMachineAction(
+    (name: string) =>
+      Effect.sync(() => onUpdate(machine.id, { ...machine, name })).pipe(
+        Effect.andThen(fromApi(() => renameMachine(machine.id, name))),
+        Effect.tap((updated) => Effect.sync(() => onUpdate(machine.id, updated))),
+        Effect.tapError(() => Effect.sync(() => onUpdate(machine.id, machine))),
+      ),
+    'Could not rename the machine.',
+  );
+  const [revokeState, revoke, revokeControls, revokeError] = useMachineAction(
+    (id: string) =>
+      fromApi(() => revokeMachine(id)).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => {
+            onAisChanged();
+            onConfirm(null);
+            onUpdate(id, updated);
+          }),
+        ),
+      ),
+    'Could not revoke the machine.',
+  );
+
+  const actionError = renameError ?? revokeError ?? '';
+
+  return (
+    <ApprovedMachineCard
+      machine={machine}
+      renaming={isWaiting(renameState)}
+      revoking={isWaiting(revokeState)}
+      confirmingRevoke={confirmingRevoke}
+      actionError={actionError}
+      aiNames={aiNames}
+      onRename={(name) => rename(name)}
+      onAskRevoke={() => {
+        clearFailure(revokeState, revokeControls);
+        onConfirm(machine.id);
+      }}
+      onCancelRevoke={() => {
+        clearFailure(revokeState, revokeControls);
+        onConfirm(null);
+      }}
+      onConfirmRevoke={() => revoke(machine.id)}
+    />
+  );
+}
+
+function MachineListRow({
+  machine,
+  ai,
+  aiNames,
+  confirmingRevoke,
+  onConfirm,
+  onUpdate,
+  onAisChanged,
+}: MachineListRowProps) {
+  const [open, setOpen] = useState(false);
+  const online = machine.online === true;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex min-h-[52px] w-full items-center gap-3 border-b border-divider px-4 text-left transition-colors last:border-b-0 hover:bg-list-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 focus-visible:outline-none"
+      >
+        <span
+          role="img"
+          aria-label={online ? 'Online' : 'Offline'}
+          className={cn(
+            'size-2 shrink-0 rounded-full',
+            online ? 'bg-online' : 'bg-muted-foreground',
+          )}
+        />
+        <span className="flex-1 truncate text-[15px] font-medium">{machine.name}</span>
+        {ai !== undefined && (
+          <EntityAvatar
+            person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
+            size={24}
+            ai
+          />
+        )}
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </button>
+
+      <Sheet open={open} onClose={() => setOpen(false)} ariaLabel={machine.name}>
+        <header className="flex shrink-0 items-center justify-end border-b border-divider p-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            aria-label="Close"
+            title="Close"
+            onClick={() => setOpen(false)}
+            className="rounded-full text-muted-foreground"
+          >
+            <X className="size-5" aria-hidden="true" />
+          </Button>
+        </header>
+        <div className="flex-1 overflow-auto p-4">
+          <ApprovedRow
+            machine={machine}
+            confirmingRevoke={confirmingRevoke}
+            aiNames={aiNames}
+            onConfirm={onConfirm}
+            onUpdate={onUpdate}
+            onAisChanged={onAisChanged}
+          />
+        </div>
+      </Sheet>
+    </>
+  );
+}
 
 export function MachinesPage() {
   const navigate = useNavigate();

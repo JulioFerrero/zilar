@@ -1,14 +1,25 @@
-import { useNavigate } from 'react-router';
-import { Bell, BellOff } from 'lucide-react';
-import { isIosDevice, isStandaloneDisplay } from '@/lib/push';
-import { usePushEnable } from '@/lib/push/usePushEnable';
-import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { DevicesSection } from '@/components/push/DevicesSection';
-import { MutedChatsSection } from '@/components/push/MutedChatsSection';
-import { Button } from '@/components/ui/button';
-import { Card, SectionLabel } from '@/components/ui/card';
-import { StateMessage } from '@/components/ui/state-message';
 import { Switch } from '../components/ui/switch';
+import { Button } from '../components/ui/button';
+import { Card, SectionLabel } from '../components/ui/card';
+import { EntityAvatar } from '@/components/EntityAvatar';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { StateMessage } from '@/components/ui/state-message';
+import type { PushDevice } from '@/lib/api';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { isIosDevice, isStandaloneDisplay } from '@/lib/push';
+import type { StoredDevice } from '@/lib/push/deviceStorage';
+import { usePushEnable } from '@/lib/push/usePushEnable';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import {
+  describeUserAgent,
+  formatRelativeAudit,
+  type ChatSummary,
+  formatListTime,
+} from '@zilar/chat-core';
+import { Data, Effect } from 'effect';
+import { Bell, BellOff } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 const BLOCKED_DETAIL =
   "Notifications are blocked for this site. Allow them in the browser's site settings, then reload.";
@@ -93,6 +104,168 @@ function PreviewsSection({
       </p>
     </section>
   );
+}
+
+function deviceName(device: PushDevice): string {
+  if (device.kind === 'fcm') {
+    return 'Android app';
+  }
+  if (device.kind === 'apns') {
+    return 'iPhone app';
+  }
+  return describeUserAgent(device.userAgent);
+}
+
+function DevicesSection({
+  devices,
+  storedDevice,
+  onRemove,
+}: {
+  devices: PushDevice[];
+  storedDevice: StoredDevice | null;
+  onRemove: (id: string) => void;
+}) {
+  const now = new Date();
+  return (
+    <section aria-label="Devices" className="flex flex-col gap-2">
+      <SectionLabel>Devices</SectionLabel>
+      {devices.length === 0 ? (
+        <p className="text-[14px] text-muted-foreground">No devices yet.</p>
+      ) : (
+        <Card>
+          <ul className="divide-y divide-divider">
+            {devices.map((device) => (
+              <li key={device.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                <div className="min-w-0 flex-1 basis-40 text-[14px]">
+                  <p className="truncate text-[15px] font-medium">
+                    {deviceName(device)}
+                    {storedDevice !== null && device.id === storedDevice.id ? ' (this device)' : ''}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground">
+                    Added {new Date(device.createdAt).toLocaleDateString()} ·{' '}
+                    {device.lastUsedAt !== null
+                      ? `Last push: ${formatRelativeAudit(new Date(device.lastUsedAt), now)}`
+                      : 'No push yet'}
+                    {device.inactive ? ' · inactive' : ''}
+                  </p>
+                  {device.failedAt !== null && (
+                    <p className="mt-0.5 text-[13px] text-danger">
+                      Failed {formatRelativeAudit(new Date(device.failedAt), now)}:{' '}
+                      {device.lastFailure ?? 'unknown'}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRemove(device.id)}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+const UNMUTE_ERROR = 'Could not unmute. Try again.';
+// `mutedUntilFor('forever')` is 100 years out; anything at least this far out
+// reads as "always" (chat-core keeps the sentinel private).
+const FOREVER_MUTE_YEAR = 2100;
+
+class UnmuteFailed extends Data.TaggedError('UnmuteFailed') {}
+
+function MutedChatsSection() {
+  const chats = useChatSelector((s) => s.chats);
+  const chatPrefs = useChatSelector((s) => s.chatPrefs);
+  const storeApi = useChatStoreApi();
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // Only rows muted by their own pref are listed: a group mute lives on the
+  // General row and its other topics inherit it, so listing every topic would
+  // repeat the group. The General row itself is included.
+  const muted = useMemo((): ChatSummary[] => {
+    return chats.filter((chat) => {
+      if (!chat.muted) {
+        return false;
+      }
+      return (
+        chat.topic === undefined ||
+        chat.topic.isGeneral ||
+        chatPrefs[chat.id.toLowerCase()] !== undefined
+      );
+    });
+  }, [chats, chatPrefs]);
+
+  const [state, unmute] = useAction<string, void, UnmuteFailed>((chatId) =>
+    Effect.tryPromise({
+      try: () => storeApi.getState().setMuted(chatId, null),
+      catch: () => new UnmuteFailed(),
+    }).pipe(Effect.tapError(() => Effect.sync(() => setError(UNMUTE_ERROR)))),
+  );
+  const busy = isWaiting(state);
+  const startUnmute = (chatId: string): void => {
+    if (busy) {
+      return;
+    }
+    setError(undefined);
+    unmute(chatId);
+  };
+
+  return (
+    <section aria-label="Muted chats" className="flex flex-col gap-2">
+      <SectionLabel>Muted chats</SectionLabel>
+      {muted.length === 0 ? (
+        <StateMessage kind="empty" title="No muted chats." />
+      ) : (
+        <Card>
+          <ul className="divide-y divide-divider">
+            {muted.map((chat) => (
+              <li key={chat.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                <EntityAvatar chat={chat} size={36} />
+                <span className="min-w-0 flex-1 basis-40">
+                  <span className="block truncate text-[15px] font-medium">{chat.title}</span>
+                  <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                    {muteEndLabel(chatPrefs[chat.id.toLowerCase()]?.mutedUntil ?? null, new Date())}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => startUnmute(chat.id)}
+                >
+                  Unmute
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {error !== undefined && (
+        <p role="alert" className="text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function muteEndLabel(mutedUntil: string | null, now: Date): string {
+  const date = mutedUntil === null ? undefined : new Date(mutedUntil);
+  if (
+    date === undefined ||
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() >= FOREVER_MUTE_YEAR
+  ) {
+    return 'always';
+  }
+  return `until ${formatListTime(date, now)}`;
 }
 
 export function NotificationsPage() {

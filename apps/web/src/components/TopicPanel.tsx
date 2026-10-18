@@ -1,26 +1,40 @@
-import type { ChatSummary } from '@zilar/chat-core';
-import { Effect } from 'effect';
-import { CheckCircle2, Plus, RotateCcw } from 'lucide-react';
-import { useChatSelector } from '@/store/ChatStoreProvider';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { AiMemoryDialog } from './ais/AiMemoryDialog';
-import { FieldError } from './ais/AiPageShell';
 import { ConfirmDialog } from './ConfirmDialog';
-import { PinsSection } from './PinsPanel';
-import { TopicAddDialog, type AddAi, type AddPerson } from './panels/TopicAddDialog';
-import { TopicAisSection } from './panels/TopicAisSection';
-import { TopicHeader } from './panels/TopicHeader';
-import { TopicMembersSection } from './panels/TopicMembersSection';
-import { TopicRolesSection } from './panels/TopicRolesSection';
-import { TopicToolsRow } from './panels/TopicToolsRow';
-import { failInline } from './panels/topic-failure';
-import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
-import { TopicLinkRow } from './topic/TopicLinkRow';
-import { TopicMuteLeave } from './topic/TopicMuteLeave';
+import { EntityAvatar } from './EntityAvatar';
+import { RoutinesSection } from './tools/RoutinesSection';
+import { ToolsSection } from './tools/ToolsSection';
 import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
-import { Sheet } from './ui/sheet';
+import { Switch } from './ui/switch';
+import { useMuteToggle } from './useMuteToggle';
+import { AiMemoryDialog } from './ais/AiMemoryDialog';
+import { FieldError } from './ais/AiPageShell';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
+import { failInline } from './panels/topic-failure';
+import { TopicAddDialog, type AddAi, type AddPerson } from './panels/TopicAddDialog';
+import { TopicAisSection } from './panels/TopicAisSection';
+import { TopicMembersSection } from './panels/TopicMembersSection';
+import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
+import { TopicRolesSection } from './panels/TopicRolesSection';
+import { PinsSection } from './PinsPanel';
+import { TopicLinkRow } from './topic/TopicLinkRow';
+import { Sheet } from './ui/sheet';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { cn } from '@/lib/utils';
+import { useChatSelector } from '@/store/ChatStoreProvider';
+import { type ChatSummary, isTopicJoined } from '@zilar/chat-core';
+import { Effect } from 'effect';
+import {
+  CheckCircle2,
+  Plus,
+  RotateCcw,
+  ChevronRight,
+  Wrench,
+  Lock,
+  X,
+  Bell,
+  LogOut,
+} from 'lucide-react';
+import { useState } from 'react';
 
 function TopicDangerZone({
   isManager,
@@ -118,6 +132,200 @@ export function TopicPanel({
       {...(onOpenGroup !== undefined ? { onOpenGroup } : {})}
       onClose={onClose}
     />
+  );
+}
+
+function TopicToolsRow({
+  topicId,
+  groupId,
+  isManager,
+  toolsCount,
+}: {
+  topicId: string;
+  groupId: string;
+  isManager: boolean;
+  toolsCount: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [routinesCount, setRoutinesCount] = useState<number | null>(null);
+
+  const counts = [
+    ...(toolsCount === null ? [] : [String(toolsCount)]),
+    ...(routinesCount === null ? [] : [String(routinesCount)]),
+  ].join(' · ');
+
+  return (
+    <nav
+      aria-label="This topic"
+      className="overflow-hidden rounded-xl border border-border bg-surface-raised"
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-[44px] w-full items-center gap-2.5 px-3 text-left hover:bg-list-hover"
+      >
+        <span className="key-icon inline-flex size-7 shrink-0 items-center justify-center rounded-lg">
+          <Wrench className="size-3.5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[14px]">Tools and routines</span>
+        {counts !== '' && (
+          <span className="font-mono text-[12px] text-muted-foreground">{counts}</span>
+        )}
+        <ChevronRight
+          className={cn(
+            'size-3.5 shrink-0 text-subtle-foreground transition-transform',
+            open && 'rotate-90',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+      {open && (
+        <div className="flex flex-col gap-3 border-t border-divider p-2">
+          <ToolsSection scope={{ topicId }} scopeKey={`topic:${topicId}`} canManage={isManager} />
+          <RoutinesSection
+            scope={{ groupId }}
+            scopeKey={`topic-routines:${topicId}`}
+            canManage={isManager}
+            onCount={setRoutinesCount}
+          />
+        </div>
+      )}
+    </nav>
+  );
+}
+
+function visibilityLabel(visibility: 'public' | 'private'): string {
+  return visibility === 'public' ? 'Public' : 'Private';
+}
+
+function TopicHeader({
+  chat,
+  visibility,
+  groupTitle,
+  suffix,
+  onOpenGroup,
+  onClose,
+}: {
+  chat: ChatSummary;
+  visibility: 'public' | 'private';
+  groupTitle: string;
+  suffix: string;
+  onOpenGroup?: () => void;
+  onClose: () => void;
+}) {
+  const isPrivate = visibility === 'private';
+  return (
+    <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
+      <EntityAvatar chat={chat} size={44} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[16px] font-semibold">
+          {groupTitle !== '' && (
+            <>
+              {onOpenGroup !== undefined ? (
+                <button
+                  type="button"
+                  onClick={onOpenGroup}
+                  aria-label={`Open ${groupTitle} info`}
+                  className="font-normal text-muted-foreground hover:underline"
+                >
+                  {groupTitle}
+                </button>
+              ) : (
+                <span className="font-normal text-muted-foreground">{groupTitle}</span>
+              )}
+              <span className="font-normal text-muted-foreground"> › </span>
+            </>
+          )}
+          {chat.title}
+        </div>
+        <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          {isPrivate && <Lock className="size-3" aria-hidden="true" />}
+          {visibilityLabel(visibility)} topic
+          {suffix}
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-lg"
+        aria-label="Close topic panel"
+        onClick={onClose}
+        className="shrink-0 rounded-full text-muted-foreground"
+      >
+        <X className="size-5" aria-hidden="true" />
+      </Button>
+    </header>
+  );
+}
+
+const MUTE_FAILED = 'Could not change the mute. Try again.';
+
+function TopicMuteLeave({
+  chat,
+  groupTitle,
+  leaving,
+  onLeave,
+}: {
+  chat: ChatSummary;
+  groupTitle: string;
+  leaving: boolean;
+  onLeave: () => void;
+}) {
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const [confirming, setConfirming] = useState(false);
+  const { muted, busy, error, toggle } = useMuteToggle(chat);
+  const topic = chat.topic;
+
+  if (topic === undefined) {
+    return null;
+  }
+
+  return (
+    <section aria-label="Topic settings" className="flex flex-col gap-1">
+      <ListRow
+        icon={<Bell className="size-4" aria-hidden="true" />}
+        title="Mute"
+        trailing={
+          <Switch
+            checked={muted}
+            onCheckedChange={() => toggle()}
+            label={`Mute ${chat.title}`}
+            hideLabel
+            disabled={busy}
+          />
+        }
+      />
+      {topic.isGeneral !== true && isTopicJoined(topic, currentUserId) && (
+        <ListRow
+          danger
+          icon={<LogOut className="size-4" aria-hidden="true" />}
+          title={leaving ? 'Leaving…' : 'Leave topic'}
+          {...(leaving ? {} : { onClick: () => setConfirming(true) })}
+        />
+      )}
+      {error !== undefined && (
+        <p role="alert" className="px-2 text-[12px] text-danger">
+          {MUTE_FAILED}
+        </p>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={`Leave ${chat.title}?`}
+          body={
+            topic.visibility === 'private'
+              ? 'Someone in it has to add you back.'
+              : `You stop getting its messages. You can join again from ${groupTitle}.`
+          }
+          confirmLabel="Leave topic"
+          onConfirm={() => {
+            setConfirming(false);
+            onLeave();
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </section>
   );
 }
 

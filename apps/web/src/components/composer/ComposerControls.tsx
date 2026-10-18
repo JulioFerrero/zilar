@@ -1,17 +1,37 @@
-import { formatDuration, type ReplyRef } from '@zilar/chat-core';
-import { ArrowUp, Mic, Send, Smile, Trash2, X, Pencil } from 'lucide-react';
-import { useEffect, type KeyboardEvent, type RefObject } from 'react';
-import { AttachMenu } from '../attach/AttachMenu';
 import { AttachSendDialog } from '../attach/AttachSendDialog';
-import { AttachmentStrip } from './AttachmentStrip';
-import { MentionPicker } from '../MentionPicker';
 import { StickerPanel } from '../StickerPanel';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { Menu, MenuItem } from '../ui/menu';
 import { Well } from '../ui/well';
+import { AiBadge } from '../AiBadge';
+import type { VoiceRecorderController } from './composerShared';
+import { EntityAvatar } from '../EntityAvatar';
 import type { ComposerAttachments, SendPendingOptions } from './useComposerAttachments';
 import type { Mentions } from './useMentions';
-import type { VoiceRecorderController } from './composerShared';
+import { formatFileSize, type PendingAttachment } from '@/lib/attachments';
+import { cn } from '@/lib/utils';
+import {
+  formatDuration,
+  type ReplyRef,
+  isAiJid,
+  type MentionMember,
+  fileExtension,
+} from '@zilar/chat-core';
+import {
+  ArrowUp,
+  Mic,
+  Send,
+  Smile,
+  Trash2,
+  X,
+  Pencil,
+  File as FileIcon,
+  Image as ImageIcon,
+  Paperclip,
+  FileText,
+} from 'lucide-react';
+import { useEffect, type KeyboardEvent, type RefObject, useRef, useState } from 'react';
 
 function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
   return (
@@ -52,6 +72,241 @@ export interface ComposerEditor {
   onCancelEdit: () => void;
   saveEdit: () => void;
   send: (options?: SendPendingOptions) => void;
+}
+
+interface MentionPickerProps {
+  id: string;
+  members: MentionMember[];
+  activeIndex: number;
+  onSelect: (member: MentionMember) => void;
+  onHover: (index: number) => void;
+}
+
+/** The `@` picker above a group composer; the textarea keeps focus through `aria-activedescendant`. */
+function MentionPicker({ id, members, activeIndex, onSelect, onHover }: MentionPickerProps) {
+  return (
+    <div
+      id={id}
+      role="listbox"
+      aria-label="Mention someone"
+      className="absolute bottom-full left-0 z-30 mb-2 w-[264px] overflow-hidden rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]"
+    >
+      {members.map((member, index) => {
+        const ai = isAiJid(member.jid);
+        return (
+          <button
+            key={member.jid}
+            id={optionId(member)}
+            type="button"
+            role="option"
+            aria-selected={index === activeIndex}
+            aria-label={
+              member.handle === undefined || member.handle === ''
+                ? member.name
+                : `${member.name} @${member.handle}`
+            }
+            // Keep the textarea focused so typing and the keyboard keep working.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(member)}
+            onMouseEnter={() => onHover(index)}
+            className={cn(
+              'flex w-full items-center gap-2 px-2 py-1.5 text-left text-[14px]',
+              index === activeIndex ? 'bg-list-hover' : 'hover:bg-list-hover',
+            )}
+          >
+            <EntityAvatar person={{ id: member.jid, name: member.name }} ai={ai} size={28} />
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="truncate">{member.name}</span>
+              {ai && <AiBadge />}
+            </span>
+            {member.handle !== undefined && member.handle !== '' && (
+              <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                @{member.handle}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function optionId(member: MentionMember): string {
+  return `mention-option-${member.jid}`;
+}
+
+function AttachMenu({
+  onPickMedia,
+  onPickFiles,
+}: {
+  onPickMedia: (files: File[]) => void;
+  onPickFiles: (files: File[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const choose = (ref: RefObject<HTMLInputElement | null>): void => {
+    setOpen(false);
+    ref.current?.click();
+  };
+
+  return (
+    <div className="relative inline-flex shrink-0">
+      <input
+        ref={mediaInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const chosen = event.target.files;
+          if (chosen !== null && chosen.length > 0) {
+            onPickMedia([...chosen]);
+          }
+          event.target.value = '';
+        }}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const chosen = event.target.files;
+          if (chosen !== null && chosen.length > 0) {
+            onPickFiles([...chosen]);
+          }
+          event.target.value = '';
+        }}
+      />
+      <Menu
+        open={open}
+        onOpenChange={setOpen}
+        label="Attach"
+        side="top"
+        align="start"
+        sideOffset={8}
+        trigger={
+          <IconButton aria-label="Attach">
+            <Paperclip className="size-5" aria-hidden="true" />
+          </IconButton>
+        }
+      >
+        <MenuItem icon={ImageIcon} onSelect={() => choose(mediaInputRef)}>
+          Photo or video
+        </MenuItem>
+        <MenuItem icon={FileIcon} onSelect={() => choose(fileInputRef)}>
+          File
+        </MenuItem>
+      </Menu>
+    </div>
+  );
+}
+
+interface AttachmentPreviewProps {
+  attachment: PendingAttachment;
+  previewUrl?: string | undefined;
+  onCancel: () => void;
+}
+
+function AttachmentPreview({ attachment, previewUrl, onCancel }: AttachmentPreviewProps) {
+  return (
+    <Well className="mb-2 flex items-center gap-2.5 rounded-[10px] px-2.5 py-2">
+      {attachment.kind === 'image' && previewUrl !== undefined ? (
+        <img
+          src={previewUrl}
+          alt={attachment.file.name}
+          className="size-10 shrink-0 rounded-[8px] border border-edge object-cover"
+        />
+      ) : (
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-surface">
+          <FileText className="size-5 text-muted-foreground" aria-hidden="true" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-semibold">{attachment.file.name}</div>
+        <div className="text-[12px] text-muted-foreground">
+          {formatFileSize(attachment.file.size)}
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-lg"
+        aria-label="Remove attachment"
+        onClick={onCancel}
+        className="shrink-0 rounded-[8px] text-muted-foreground"
+      >
+        <X className="size-4" aria-hidden="true" />
+      </Button>
+    </Well>
+  );
+}
+
+function AttachmentStrip({
+  attachments,
+  previewUrls,
+  onRemove,
+}: {
+  attachments: PendingAttachment[];
+  previewUrls: (string | undefined)[];
+  onRemove: (index: number) => void;
+}) {
+  const first = attachments[0];
+  if (first === undefined) {
+    return null;
+  }
+  if (attachments.length === 1) {
+    return (
+      <AttachmentPreview
+        attachment={first}
+        previewUrl={previewUrls[0]}
+        onCancel={() => onRemove(0)}
+      />
+    );
+  }
+  return (
+    <div className="mb-2 flex gap-2.5 overflow-x-auto pb-1">
+      {attachments.map((item, index) => {
+        const size = formatFileSize(item.file.size);
+        const extension = fileExtension(item.file.name);
+        return (
+          <div key={`${index}:${item.file.name}`} className="relative shrink-0">
+            {item.kind === 'image' && previewUrls[index] !== undefined ? (
+              <img
+                src={previewUrls[index]}
+                alt={item.file.name}
+                className="size-[72px] rounded-[10px] border border-edge object-cover"
+              />
+            ) : (
+              <span
+                role="img"
+                aria-label={`${item.file.name}, ${size}`}
+                className="flex size-[72px] flex-col items-center justify-center gap-[3px] rounded-[10px] border border-edge bg-surface"
+              >
+                <FileText className="size-[18px] text-muted-foreground" aria-hidden="true" />
+                {extension !== '' && (
+                  <span className="font-mono text-[10px] font-medium text-[#d4d4d4]">
+                    {extension}
+                  </span>
+                )}
+                <span className="font-mono text-[10px] text-subtle-foreground">{size}</span>
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label={`Remove ${item.file.name}`}
+              onClick={() => onRemove(index)}
+              className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-black/80 text-white"
+            >
+              <X className="size-[11px]" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function ComposerControls({

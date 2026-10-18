@@ -1,11 +1,45 @@
+import { MediaBody } from '../components/media/MediaBody';
+import { TABS, type JumpTarget } from '../components/media/mediaModel';
+import { Button } from '../components/ui/button';
+import { SegmentedControl } from '../components/ui/segmented-control';
+import { Sheet } from '../components/ui/sheet';
+import { AiPanel } from '@/components/ais/AiPanel';
+import { ChannelPanel } from '@/components/ChannelPanel';
+import { ChatHeader } from '@/components/ChatHeader';
+import { ChatSearchBar } from '@/components/ChatSearchBar';
+import { Composer } from '@/components/Composer';
+import { focusComposer } from '@/components/composer/useComposerFocus';
+import { ContactPanel } from '@/components/ContactPanel';
+import { EntityAvatar } from '@/components/EntityAvatar';
+import { ForwardPicker } from '@/components/ForwardPicker';
+import { GroupPanel } from '@/components/GroupPanel';
+import { MediaViewerProvider } from '@/components/media/MediaViewer';
+import { MessageList } from '@/components/MessageList';
+import { PinnedBanner } from '@/components/PinnedBanner';
+import { PinsPanel } from '@/components/PinsPanel';
+import { SelectionBar } from '@/components/SelectionBar';
+import { StepsPanel } from '@/components/StepsPanel';
+import { TopicJoinView } from '@/components/topic/TopicJoinView';
+import { TopicPanel } from '@/components/TopicPanel';
+import { useMuteToggle } from '@/components/useMuteToggle';
+import type { MediaTab } from '@/lib/api';
+import { runWeb } from '@/lib/effect/runtime';
+import { useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
   isTopicJoined,
   replyRef,
   type ChatSummary,
   type ReplyRef,
   type UiMessage,
+  liveStageFor,
+  type TopicAiActivity,
 } from '@zilar/chat-core';
+import { fromApi } from '@zilar/client-core';
 import { Effect } from 'effect';
+import { Image as ImageIcon, X } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -18,32 +52,8 @@ import {
   type SetStateAction,
 } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { AiPanel } from '@/components/ais/AiPanel';
-import { AiStatusLine } from '@/components/topic/AiStatusLine';
-import { ChannelPanel } from '@/components/ChannelPanel';
-import { ChatHeader } from '@/components/ChatHeader';
-import { ChatMediaPanel } from '@/components/ChatMediaPanel';
-import { ChatSearchBar } from '@/components/ChatSearchBar';
-import { Composer } from '@/components/Composer';
-import { focusComposer } from '@/components/composer/useComposerFocus';
-import { ForwardPicker } from '@/components/ForwardPicker';
-import { Button } from '@/components/ui/button';
-import { ContactPanel } from '@/components/ContactPanel';
-import { GroupPanel } from '@/components/GroupPanel';
-import { MessageList } from '@/components/MessageList';
-import { MediaViewerProvider } from '@/components/media/MediaViewer';
-import { SelectionBar } from '@/components/SelectionBar';
-import { PinnedBanner } from '@/components/PinnedBanner';
-import { PinsPanel } from '@/components/PinsPanel';
-import { StepsPanel } from '@/components/StepsPanel';
-import { TopicPanel } from '@/components/TopicPanel';
-import { TopicJoinView } from '@/components/topic/TopicJoinView';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { runWeb } from '@/lib/effect/runtime';
-import { useMediaQuery } from '@/lib/useMediaQuery';
-import { useMuteToggle } from '@/components/useMuteToggle';
-
 /** Subscribers see a read-only bar; the moderated room enforces posting, not this bar. */
+
 function ChannelComposerBar({
   chat,
   replyTo,
@@ -193,6 +203,146 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
     return 'contact';
   }
   return undefined;
+}
+
+const STATE_ORDER: Record<TopicAiActivity['state'], number> = { working: 0, waiting: 1, done: 2 };
+
+function activeAis(activity: readonly TopicAiActivity[]): TopicAiActivity[] {
+  return activity
+    .filter((entry) => entry.state !== 'done')
+    .sort((left, right) => STATE_ORDER[left.state] - STATE_ORDER[right.state]);
+}
+
+function entryText(entry: TopicAiActivity, stage: string | undefined): string {
+  if (entry.state === 'waiting') {
+    return 'is waiting for you';
+  }
+  return stage === undefined ? 'is working' : `· ${stage}`;
+}
+
+function AiStatusLine({ chat }: { chat: ChatSummary }) {
+  const messages = useChatSelector((state) => state.messagesByChat[chat.id]);
+  const storeApi = useChatStoreApi();
+  const [, openQuestion] = useAction((messageId: string) =>
+    fromApi(() => storeApi.getState().openAtMessage(chat.id, messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          window.requestAnimationFrame(() => scrollToMessage(messageId));
+        }),
+      ),
+    ),
+  );
+  const entries = activeAis(chat.topic?.activity ?? []);
+  if (entries.length === 0) {
+    return null;
+  }
+  const shown = entries.slice(0, 2);
+  const extra = entries.length - shown.length;
+  return (
+    <div
+      role="status"
+      className="flex min-w-0 max-w-full flex-nowrap items-center gap-2 overflow-hidden rounded-full border border-border bg-surface-raised/95 px-3 py-1 text-[13px] whitespace-nowrap text-muted-foreground shadow-sm backdrop-blur"
+    >
+      {shown.map((entry, index) => {
+        const questionId = entry.questionId;
+        return (
+          <span key={entry.aiId} className="flex min-w-0 items-center gap-1.5">
+            {index > 0 && <span aria-hidden="true">·</span>}
+            <EntityAvatar
+              person={{ id: entry.aiId, name: entry.name, avatarUrl: entry.avatarUrl }}
+              size={16}
+              ai
+              className="shrink-0"
+            />
+            <span className="min-w-0 truncate">
+              {entry.state === 'waiting' && questionId !== undefined ? (
+                <button
+                  type="button"
+                  onClick={() => openQuestion(questionId)}
+                  className="text-foreground hover:underline"
+                >
+                  {entry.name}
+                </button>
+              ) : (
+                <span className="text-foreground">{entry.name}</span>
+              )}{' '}
+              {entryText(entry, liveStageFor(messages, entry.jid))}
+            </span>
+          </span>
+        );
+      })}
+      {extra > 0 && <span className="shrink-0 font-mono">+{extra}</span>}
+    </div>
+  );
+}
+
+function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
+  const [tab, setTab] = useState<MediaTab>('media');
+  const [jumpFailed, setJumpFailed] = useState(false);
+
+  const jump: JumpTarget = {
+    chatId,
+    onStart: () => setJumpFailed(false),
+    onOpened: onClose,
+    onFailed: () => setJumpFailed(true),
+  };
+
+  const selectTab = (value: MediaTab): void => {
+    if (value === tab) {
+      return;
+    }
+    setJumpFailed(false);
+    setTab(value);
+  };
+
+  const label = chat?.title ?? 'this chat';
+
+  return (
+    <Sheet open onClose={onClose} ariaLabel={`Media, files and links in ${label}`}>
+      <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
+        <ImageIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[16px] font-semibold">Media, files and links</div>
+          <p className="text-[13px] text-muted-foreground">{chat?.title ?? 'This chat'}</p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-lg"
+          aria-label="Close media, files and links"
+          onClick={onClose}
+          className="shrink-0 rounded-full text-muted-foreground"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </Button>
+      </header>
+
+      <div className="shrink-0 px-4 pt-3">
+        <SegmentedControl
+          options={TABS}
+          value={tab}
+          onChange={(value) => selectTab(value as MediaTab)}
+          ariaLabel="Media tabs"
+        />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4">
+        <MediaBody
+          key={`${chatId}|${tab}`}
+          chatId={chatId}
+          tab={tab}
+          jump={jump}
+          onRetry={() => setJumpFailed(false)}
+        />
+        {jumpFailed && (
+          <p role="alert" className="px-2 text-[13px] text-danger">
+            Message not found
+          </p>
+        )}
+      </div>
+    </Sheet>
+  );
 }
 
 export function ChatView({ chat }: { chat: ChatSummary }) {

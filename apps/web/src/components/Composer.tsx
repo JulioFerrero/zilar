@@ -1,3 +1,14 @@
+import { Avatar } from './Avatar';
+import { Button } from './ui/button';
+import { ComposerControls } from './composer/ComposerControls';
+import { useComposerAttachments, type SendPendingOptions } from './composer/useComposerAttachments';
+import { useComposerFocus } from './composer/useComposerFocus';
+import { useMentions } from './composer/useMentions';
+import { useRecordingLifecycle } from './composer/useRecordingLifecycle';
+import { useVoiceRecorder } from './composer/useVoiceRecorder';
+import { getDraft, setDraft, useComposerDraft } from '@/lib/composer-drafts';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
   canEditMessage,
   composerPlaceholder,
@@ -5,22 +16,22 @@ import {
   type ReplyRef,
   type UiMention,
 } from '@zilar/chat-core';
-import { useEffect, useRef, useState, type KeyboardEvent, useCallback } from 'react';
-import { ComposerControls } from './composer/ComposerControls';
-import { useFormatShortcut } from './composer/formatShortcut';
-import { useComposerAttachments, type SendPendingOptions } from './composer/useComposerAttachments';
-import { useComposerFocus } from './composer/useComposerFocus';
-import { useMentions } from './composer/useMentions';
-import { useRecordingLifecycle } from './composer/useRecordingLifecycle';
-import { useVoiceRecorder } from './composer/useVoiceRecorder';
-import { AddToTopicRow } from './topic/TopicNotInRow';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { getDraft, setDraft, useComposerDraft } from '@/lib/composer-drafts';
-
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  useCallback,
+  useLayoutEffect,
+  type RefObject,
+} from 'react';
 // The draft set aside while a chat's message is edited (WUX-3): edit mode
 // pre-fills the composer, and leaving it restores this draft, so editing never
 // consumes the in-progress draft. Entries are keyed by user and chat, so one
 // account's stashed text can never reach another account's composer.
+
 const draftsSetAside = new Map<string, string>();
 let setAsideUserId = '';
 
@@ -85,6 +96,189 @@ interface TopicNotIn {
 function jidLocalpart(jid: string): string {
   const at = jid.indexOf('@');
   return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
+}
+
+type TopicNotInState = 'idle' | 'busy' | 'failed';
+
+export function TopicNotInRow({
+  name,
+  avatarUrl,
+  topicTitle,
+  state,
+  onAdd,
+}: {
+  name: string;
+  avatarUrl?: string | undefined;
+  topicTitle: string;
+  state: TopicNotInState;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2.5 rounded-[14px] border border-[#232323] bg-[#141414] py-1.5 pr-1.5 pl-3"
+    >
+      <Avatar seed={name} name={name} size={22} avatarUrl={avatarUrl} />
+      <span className="text-[14px] text-[#a1a1a1]">
+        {name} isn&apos;t in {topicTitle}
+      </span>
+      {state === 'failed' ? (
+        <span className="pr-1.5 text-[13px] text-muted-foreground">Couldn&apos;t add</span>
+      ) : (
+        <Button size="sm" disabled={state === 'busy'} onClick={onAdd}>
+          {state === 'busy' ? 'Adding…' : 'Add'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+class AddToTopicFailed extends Data.TaggedError('AddToTopicFailed') {}
+
+function AddToTopicRow({
+  name,
+  avatarUrl,
+  topicTitle,
+  add,
+  onAdded,
+}: {
+  name: string;
+  avatarUrl?: string | undefined;
+  topicTitle: string;
+  add: () => Promise<void>;
+  onAdded: () => void;
+}) {
+  const [state, run] = useAction<void, void, AddToTopicFailed>(() =>
+    Effect.tryPromise({ try: add, catch: () => new AddToTopicFailed() }),
+  );
+  const done = AsyncResult.isSuccess(state);
+  useEffect(() => {
+    if (done) {
+      onAdded();
+    }
+  }, [done, onAdded]);
+  return (
+    <TopicNotInRow
+      name={name}
+      avatarUrl={avatarUrl}
+      topicTitle={topicTitle}
+      state={isWaiting(state) ? 'busy' : failureOf(state) === undefined ? 'idle' : 'failed'}
+      onAdd={() => run()}
+    />
+  );
+}
+
+const BOLD = '**';
+/** The italic marker light markdown accepts at word edges (`_…_`, not `*…*`). */
+const ITALIC = '_';
+const CODE = '`';
+
+interface FormattedText {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+function markerFor(event: KeyboardEvent<HTMLTextAreaElement>): string | undefined {
+  if (event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) {
+    return undefined;
+  }
+  const key = event.key.toLowerCase();
+  if (key === 'b') {
+    return BOLD;
+  }
+  if (key === 'i') {
+    return ITALIC;
+  }
+  if (key === 'e') {
+    return CODE;
+  }
+  return undefined;
+}
+
+function applyFormat(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  marker: string,
+): FormattedText {
+  const start = Math.min(selectionStart, selectionEnd);
+  const end = Math.max(selectionStart, selectionEnd);
+  const selected = value.slice(start, end);
+
+  if (
+    start >= marker.length &&
+    value.slice(start - marker.length, start) === marker &&
+    value.slice(end, end + marker.length) === marker
+  ) {
+    return {
+      value: value.slice(0, start - marker.length) + selected + value.slice(end + marker.length),
+      selectionStart: start - marker.length,
+      selectionEnd: end - marker.length,
+    };
+  }
+
+  if (start === end) {
+    return {
+      value: `${value.slice(0, start)}${marker}${marker}${value.slice(start)}`,
+      selectionStart: start + marker.length,
+      selectionEnd: start + marker.length,
+    };
+  }
+
+  if (
+    selected.length >= marker.length * 2 &&
+    selected.startsWith(marker) &&
+    selected.endsWith(marker)
+  ) {
+    return {
+      value:
+        value.slice(0, start) + selected.slice(marker.length, -marker.length) + value.slice(end),
+      selectionStart: start,
+      selectionEnd: end - marker.length * 2,
+    };
+  }
+
+  return {
+    value: value.slice(0, start) + marker + selected + marker + value.slice(end),
+    selectionStart: start + marker.length,
+    selectionEnd: end + marker.length,
+  };
+}
+
+/**
+ * The hook restores the selection on the textarea in a layout effect, after
+ * React renders the new value but before the browser paints, so the range
+ * lines up with the new text instead of the default end caret.
+ */
+function useFormatShortcut(
+  value: string,
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
+  onChange: (next: string, caret: number) => void,
+): (event: KeyboardEvent<HTMLTextAreaElement>) => boolean {
+  const pendingRef = useRef<{ start: number; end: number } | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const pending = pendingRef.current;
+    if (pending === undefined) {
+      return;
+    }
+    pendingRef.current = undefined;
+    textareaRef.current?.setSelectionRange(pending.start, pending.end);
+  }, [value, textareaRef]);
+
+  return (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    const marker = markerFor(event);
+    if (marker === undefined) {
+      return false;
+    }
+    const target = event.currentTarget;
+    const next = applyFormat(value, target.selectionStart, target.selectionEnd, marker);
+    event.preventDefault();
+    pendingRef.current = { start: next.selectionStart, end: next.selectionEnd };
+    onChange(next.value, next.selectionEnd);
+    return true;
+  };
 }
 
 export function Composer({

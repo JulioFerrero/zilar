@@ -1,21 +1,30 @@
-import { type ChatSummary, type UiMessage, isTrustedMediaUrl } from '@zilar/chat-core';
-import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
-import { useMemo } from 'react';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ApprovalCard } from '../ApprovalCard';
-import { FileMessage } from '../FileMessage';
 import { GifMessage } from '../GifMessage';
-import { ImageMessage } from '../ImageMessage';
 import { ProgressCard } from '../ProgressCard';
 import { VoiceMessage } from '../VoiceMessage';
-import { cn } from '@/lib/utils';
-import { mediaSrc } from '@/lib/attachments';
 import { AlbumGrid } from './AlbumGrid';
 import { BlockCard } from './blocks/BlockCard';
+import { useMediaViewer } from '../media/MediaViewer';
 import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
 import { SendFailure } from './SendFailure';
-
+import { IconButton } from '@/components/ui/icon-button';
+import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { useMediaRetry } from '@/lib/media-retry';
+import { downloadFile, openPdfInNewTab } from '@/lib/open-file';
+import { cn } from '@/lib/utils';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import {
+  type ChatSummary,
+  type UiMessage,
+  isTrustedMediaUrl,
+  type Attachment,
+  formatFileMeta,
+  isPdfAttachment,
+} from '@zilar/chat-core';
+import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
+import { ArrowDown, FileText, Loader2, RotateCcw } from 'lucide-react';
+import { useMemo, type MouseEvent, useState } from 'react';
 /**
  * A root-relative `/api/` path is same-origin by construction; an absolute URL
  * must be http(s) on a trusted media host. Anything else (`data:`, `blob:`, a
@@ -23,6 +32,7 @@ import { SendFailure } from './SendFailure';
  * URL in the payload, and `<video preload="metadata">` fetches it on render,
  * leaking the reader's IP.
  */
+
 export function isTrustedInlineVideoUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
   if (url.startsWith('/api/')) {
     return true;
@@ -51,6 +61,191 @@ export function MediaMetaPill({
     >
       <MessageMeta message={message} showTicks={showTicks} edited={message.edited === true} />
     </span>
+  );
+}
+
+interface ImageMessageProps {
+  /** The chat JID; `GET /api/files` checks membership. */
+  chatId: string;
+  messageId: string;
+  url: string;
+  alt: string;
+  width?: number | undefined;
+  height?: number | undefined;
+}
+
+/**
+ * Reserves space from the known size so the list never jumps; only http(s)
+ * URLs are clickable. A just-sent `blob:` preview stays while its `/api/files`
+ * copy 404s behind the indexer.
+ */
+function ImageMessage({ chatId, messageId, url, alt, width, height }: ImageMessageProps) {
+  const openViewer = useMediaViewer();
+  const media = useMediaRetry(chatId, url);
+
+  if (media.unavailable) {
+    return (
+      <div className="flex h-[120px] w-full flex-col items-center justify-center gap-1.5 bg-well text-[13px] text-muted-foreground">
+        <span>Image unavailable</span>
+        <button type="button" onClick={media.retry} className="text-[12px] font-semibold underline">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const ratio = width !== undefined && height !== undefined ? `${width} / ${height}` : undefined;
+  // The raw URL decides linkability; trusted same-origin uploads open through the file route.
+  const href = safeHttpUrl(url) === undefined ? undefined : mediaSrc(chatId, url);
+  const image = (
+    <div className="relative">
+      <img
+        src={media.src}
+        alt={alt}
+        loading="lazy"
+        {...(width === undefined ? {} : { width })}
+        {...(height === undefined ? {} : { height })}
+        onLoad={media.onLoad}
+        onError={media.onError}
+        style={ratio === undefined ? undefined : { aspectRatio: ratio }}
+        className="max-h-[320px] w-full object-cover"
+      />
+      {media.preview !== undefined && !media.loaded && (
+        <img
+          src={media.preview}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </div>
+  );
+
+  const open = (event: MouseEvent<HTMLElement>): void => {
+    if (openViewer === null) {
+      return;
+    }
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    openViewer({ chatId, messageId });
+  };
+
+  if (href !== undefined) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Open ${alt}`}
+        onClick={open}
+        className="block"
+      >
+        {image}
+      </a>
+    );
+  }
+  if (openViewer === null) {
+    return image;
+  }
+  return (
+    <button type="button" aria-label={`View ${alt}`} onClick={open} className="block w-full">
+      {image}
+    </button>
+  );
+}
+
+interface FileMessageProps {
+  /** The chat JID; `GET /api/files` checks membership. */
+  chatId: string;
+  attachment: Attachment;
+  own: boolean;
+  uploading?: boolean;
+  failed?: boolean;
+  onRetry?: (() => void) | undefined;
+}
+
+function FileMessage({
+  chatId,
+  attachment,
+  own,
+  uploading = false,
+  failed = false,
+  onRetry,
+}: FileMessageProps) {
+  const [opening, setOpening] = useState(false);
+  const href =
+    safeHttpUrl(attachment.url) === undefined ? undefined : mediaSrc(chatId, attachment.url);
+  const pdf = isPdfAttachment(attachment);
+  const busy = uploading || opening;
+  const canOpen = href !== undefined && !busy && !failed;
+  const meta = failed
+    ? 'Upload failed'
+    : uploading
+      ? 'Uploading…'
+      : formatFileMeta(attachment.size, attachment.name);
+
+  const open = (): void => {
+    if (href === undefined || !canOpen) {
+      return;
+    }
+    if (!pdf) {
+      downloadFile(href, attachment.name);
+      return;
+    }
+    setOpening(true);
+    openPdfInNewTab(href, attachment.name, () => setOpening(false));
+  };
+
+  return (
+    <div className="min-w-[210px] max-w-[320px]">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={open}
+          disabled={!canOpen}
+          aria-label={pdf ? `Open ${attachment.name}` : `Download ${attachment.name}`}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-[10px] text-left active:opacity-80"
+        >
+          <span
+            className={cn(
+              'flex size-12 shrink-0 items-center justify-center rounded-full',
+              own ? 'bg-bubble-in text-foreground' : 'bg-accent text-accent-foreground',
+            )}
+          >
+            {busy ? (
+              <Loader2
+                className="size-6 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            ) : pdf ? (
+              <FileText className="size-6" aria-hidden="true" />
+            ) : (
+              <ArrowDown className="size-6" aria-hidden="true" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-semibold" title={attachment.name}>
+              {attachment.name}
+            </span>
+            <span
+              className={cn(
+                'block truncate text-[12px] tabular-nums',
+                own ? 'text-bubble-out-meta' : 'text-muted-foreground',
+              )}
+            >
+              {meta}
+            </span>
+          </span>
+        </button>
+        {failed && (
+          <IconButton size={32} radius={16} aria-label="Retry upload" onClick={onRetry}>
+            <RotateCcw className="size-4" aria-hidden="true" />
+          </IconButton>
+        )}
+      </div>
+    </div>
   );
 }
 

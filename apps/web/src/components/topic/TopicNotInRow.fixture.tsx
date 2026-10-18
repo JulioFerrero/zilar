@@ -1,4 +1,4 @@
-import { TopicNotInRow } from './TopicNotInRow';
+import { TopicNotInRow } from '../Composer';
 
 const noop = (): void => {};
 
