@@ -110,6 +110,24 @@ export function createEjabberdAdminClient(
       expectMutationResult('change_password', response);
     },
 
+    // T-1982: revoking or signing out a device ends all of the user's XMPP
+    // streams, so a revoked device stops receiving at once. The other devices
+    // reconnect with fresh tokens, so they only blip.
+    //
+    // ejabberd answers a raw result string such as `Kicked sessions: 2`; an
+    // offline user answers `Kicked sessions: 0`, which is success. A number is
+    // tolerated for older builds. Anything else is a failure the caller logs
+    // and ignores.
+    async kickUser(localpart: string, reason: string): Promise<void> {
+      const user = parseName(localpart, 'localpart');
+      const response = await call('kick_user', { user, host: config.domain });
+      const result = expectOk('kick_user', response);
+      const parsed = Schema.decodeUnknownExit(Schema.Union([Schema.String, Schema.Number]))(result);
+      if (Exit.isFailure(parsed)) {
+        fail('kick_user', response, `${reason}: unexpected result: ${errorText(result)}`);
+      }
+    },
+
     async createRoom(roomId: string, options: CreateRoomOptions = {}): Promise<CreatedResult> {
       const room = parseName(roomId, 'roomId');
       const {

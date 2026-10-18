@@ -1990,3 +1990,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1987](T-1987-claude-audit-message-pipeline.md) | message pipeline audit (findings private) | 2026-10-18 |
 | [T-1990](T-1990-group-membership-edges.md) | removed members take their AIs; owner lock; General rights | 2026-10-18 |
 | [T-1996](T-1996-group-sender-avatars.md) | group chats show each sender's real picture | 2026-10-18 |
+| [T-1982](T-1982-revoke-ends-xmpp.md) | signing a device out ends its live XMPP sessions | 2026-10-18 |

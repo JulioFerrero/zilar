@@ -16,11 +16,47 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { localpartFor } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 
 export interface SessionsDeps {
   db: ServerDatabase;
   auth: Auth;
+}
+
+/** The admin-client call revocation needs (T-1982). */
+export type KickAdminClient = Pick<EjabberdAdminClient, 'kickUser'>;
+
+export interface KickLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
+export const REVOKED_SESSION_KICK_REASON = 'Session revoked';
+export const SIGNED_OUT_SESSION_KICK_REASON = 'Session signed out';
+
+/**
+ * Ends every XMPP stream of the user after a session row is deleted (T-1982).
+ * ejabberd kicks all of the user's streams, so the user's other devices
+ * reconnect briefly with fresh tokens; the revoked device cannot.
+ *
+ * Best effort: signing a device out must still work when ejabberd is down, so
+ * a failure is logged and never rethrown.
+ */
+export async function endXmppSessions(
+  adminClient: KickAdminClient | undefined,
+  logger: KickLogger | undefined,
+  userId: string,
+  reason: string,
+): Promise<void> {
+  if (adminClient?.kickUser === undefined) {
+    return;
+  }
+  try {
+    await adminClient.kickUser(localpartFor(userId), reason);
+  } catch (error) {
+    logger?.warn({ userId, err: error }, 'could not end the XMPP sessions');
+  }
 }
 
 interface SessionRow {
@@ -102,7 +138,11 @@ export async function listSessions(
  * answers 400, because it has its own Sign out.
  */
 export async function revokeSession(
-  deps: SessionsDeps & { audit: AuditRecorder },
+  deps: SessionsDeps & {
+    audit: AuditRecorder;
+    adminClient?: KickAdminClient;
+    logger?: KickLogger;
+  },
   userId: string,
   headers: Headers,
   sessionId: string,
@@ -136,6 +176,9 @@ export async function revokeSession(
     result: 'ok',
     detail: null,
   });
+  // The row is gone, so the device can no longer get a token; this closes the
+  // stream it already holds. Failing to reach ejabberd never undoes the revoke.
+  await endXmppSessions(deps.adminClient, deps.logger, userId, REVOKED_SESSION_KICK_REASON);
 }
 
 function toIso(value: Date | string): string {

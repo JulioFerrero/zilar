@@ -1,12 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { createTestContext, type TestContext } from '../test-support';
+import { createTestContext, FakeAdminClient, testSql, type TestContext } from '../test-support';
+import { localpartFor } from '../xmpp/provisioning';
 import { INVITE_HEADER } from './auth';
 import { createInvite } from './invites';
+import { REVOKED_SESSION_KICK_REASON, SIGNED_OUT_SESSION_KICK_REASON } from './sessions';
 
 const BASE_URL = 'http://localhost:3000';
 
 type TestApp = ReturnType<typeof createApp>;
+
+// Records each kick in addition to the in-memory admin API, so the revoke and
+// sign-out paths can assert who was disconnected and why.
+class KickAdminClient extends FakeAdminClient {
+  readonly kicks: Array<{ localpart: string; reason: string }> = [];
+  failKick = false;
+
+  kickUser(localpart: string, reason: string): Promise<void> {
+    if (this.failKick) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.kicks.push({ localpart, reason });
+    return Promise.resolve();
+  }
+}
 
 interface SessionView {
   id: string;
@@ -70,6 +89,20 @@ async function listSessions(app: TestApp, cookie: string): Promise<SessionView[]
   expect(response.status).toBe(200);
   const body = (await response.json()) as { sessions: SessionView[] };
   return body.sessions;
+}
+
+async function userIdFor(context: TestContext, email: string): Promise<string> {
+  const rows = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM "user" WHERE email = ${email} LIMIT 1`;
+    }),
+  );
+  const id = rows[0]?.id;
+  if (id === undefined) {
+    throw new Error(`no user for ${email}`);
+  }
+  return id;
 }
 
 describe('/api/me/sessions', () => {
@@ -143,6 +176,98 @@ describe('/api/me/sessions', () => {
 
     const after = await listSessions(app, cookie);
     expect(after.map((session) => session.id)).toContain(current?.id);
+  });
+
+  it('ends the user XMPP streams when a device is revoked', async () => {
+    const adminClient = new KickAdminClient();
+    await context.close();
+    context = await createTestContext({ adminClient });
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null, maxUses: 2 });
+    const cookie = await signIn(context, app, 'revoke@example.com', invite.code);
+    await signIn(context, app, 'revoke@example.com');
+
+    const target = (await listSessions(app, cookie)).find((session) => !session.current);
+    expect(target).toBeDefined();
+    const response = await app.request(`${BASE_URL}/api/me/sessions/${target?.id ?? ''}`, {
+      method: 'DELETE',
+      headers: { cookie },
+    });
+    expect(response.status).toBe(204);
+
+    const userId = await userIdFor(context, 'revoke@example.com');
+    expect(adminClient.kicks).toEqual([
+      { localpart: localpartFor(userId), reason: REVOKED_SESSION_KICK_REASON },
+    ]);
+  });
+
+  it('keeps the revoke when the XMPP kick fails', async () => {
+    const adminClient = new KickAdminClient();
+    adminClient.failKick = true;
+    await context.close();
+    context = await createTestContext({ adminClient });
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null, maxUses: 2 });
+    const cookie = await signIn(context, app, 'kick-fails@example.com', invite.code);
+    await signIn(context, app, 'kick-fails@example.com');
+
+    const target = (await listSessions(app, cookie)).find((session) => !session.current);
+    expect(target).toBeDefined();
+    const response = await app.request(`${BASE_URL}/api/me/sessions/${target?.id ?? ''}`, {
+      method: 'DELETE',
+      headers: { cookie },
+    });
+    expect(response.status).toBe(204);
+
+    const after = await listSessions(app, cookie);
+    expect(after.map((session) => session.id)).not.toContain(target?.id);
+    expect(context.logOutput()).toContain('could not end the XMPP sessions');
+  });
+
+  it('ends the user XMPP streams on sign-out', async () => {
+    const adminClient = new KickAdminClient();
+    await context.close();
+    context = await createTestContext({ adminClient });
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+    const cookie = await signIn(context, app, 'signout@example.com', invite.code);
+
+    const response = await app.request(`${BASE_URL}/api/auth/sign-out`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json', origin: BASE_URL },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(200);
+
+    const userId = await userIdFor(context, 'signout@example.com');
+    expect(adminClient.kicks).toEqual([
+      { localpart: localpartFor(userId), reason: SIGNED_OUT_SESSION_KICK_REASON },
+    ]);
+  });
+
+  it('does not end the XMPP streams when Better Auth cleans up an expired session', async () => {
+    const adminClient = new KickAdminClient();
+    await context.close();
+    context = await createTestContext({ adminClient });
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+    const cookie = await signIn(context, app, 'expired@example.com', invite.code);
+    const userId = await userIdFor(context, 'expired@example.com');
+
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE "session"
+          SET expires_at = now() - interval '1 hour'
+          WHERE user_id = ${userId}`;
+      }),
+    );
+
+    // The stale cookie makes one call; get-session deletes the expired row.
+    const response = await app.request(`${BASE_URL}/api/me/sessions`, { headers: { cookie } });
+    expect(response.status).toBe(401);
+
+    expect(adminClient.kicks).toEqual([]);
   });
 });
 

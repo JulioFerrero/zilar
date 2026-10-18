@@ -12,6 +12,7 @@ import { findUsableInvite } from './invites';
 import { cancelDeletionOnSignIn } from './deletion-request';
 import type { Mailer } from './mailer';
 import { isTransportConfigured, MailNotConfiguredError } from './mailer';
+import { endXmppSessions, SIGNED_OUT_SESSION_KICK_REASON } from './sessions';
 import { effectSqlAdapter } from './sql-adapter';
 
 export const INVITE_HEADER = 'x-zilar-invite';
@@ -301,6 +302,28 @@ export function createAuth({
       session: {
         create: {
           after: (session) => cancelDeletionOnSignIn(db, logger, session.userId),
+        },
+        // T-1982: signing out, or revoking a session through Better Auth's own
+        // routes, deletes the `session` row. Close the user's XMPP streams too,
+        // so the device that lost its session stops receiving and sending at
+        // once. ejabberd kicks all the user's streams, so the user's other
+        // devices reconnect briefly with fresh tokens; that blip is accepted.
+        //
+        // Better Auth also deletes expired rows from the get-session path. That
+        // is not a sign-out: kicking then would drop every live device just
+        // because one stale client called once, so only an unexpired row counts.
+        delete: {
+          after: async (session) => {
+            if (session.expiresAt.getTime() <= Date.now()) {
+              return;
+            }
+            await endXmppSessions(
+              adminClient,
+              logger,
+              session.userId,
+              SIGNED_OUT_SESSION_KICK_REASON,
+            );
+          },
         },
       },
     },

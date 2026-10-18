@@ -50,6 +50,15 @@ export type EjabberdAdminClient = {
   // show too, and those are the ones ejabberd itself pushes to.
   userResources(localpart: string): Promise<UserResource[]>;
   changePassword(localpart: string, password: string): Promise<void>;
+  /**
+   * Ends every XMPP stream of the user through the ejabberd `kick_user`
+   * command (T-1982). `reason` goes into a failure message only: ejabberd's
+   * `kick_user` takes the user and host, not a reason.
+   *
+   * Optional so an older test double still satisfies the type; every real
+   * client implements it.
+   */
+  kickUser?(localpart: string, reason: string): Promise<void>;
   createRoom(roomId: string, options?: CreateRoomOptions): Promise<CreatedResult>;
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;

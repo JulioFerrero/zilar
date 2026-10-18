@@ -189,7 +189,13 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
         'revokeSession',
         handler(logger, (request, user) =>
           revokeSession(
-            { db: deps.db, auth: deps.auth, audit },
+            {
+              db: deps.db,
+              auth: deps.auth,
+              audit,
+              adminClient: deps.adminClient,
+              logger,
+            },
             user.id,
             new Headers(request.request.headers),
             request.params.id,
