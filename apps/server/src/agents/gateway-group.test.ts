@@ -450,10 +450,15 @@ describe('smart wake rules (T-1633)', () => {
     if (first === undefined) {
       throw new Error('openRoom needs at least one AI');
     }
+    // Every AI brought its own owner from `seedAi`; T-1990 keeps an AI in a
+    // group's rooms only while its owner is a member, so seed each owner too.
     await seedGroup(
       context,
       first.ownerId,
-      [{ userId: first.ownerId, role: 'owner' }],
+      seeded.map((ai, index) => ({
+        userId: ai.ownerId,
+        role: index === 0 ? ('owner' as const) : ('member' as const),
+      })),
       seeded.map((ai) => ai.aiId),
     );
     await gateway.start();

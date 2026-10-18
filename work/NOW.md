@@ -1059,9 +1059,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         4. Wave A deletions (−3k).
                         5. The devtools prune.
                         6. T-2088 (not written yet): an AGENTS.md comment rule and a gate check against task IDs in new comments. It launches after T-2082 merges (both touch `gate/cli.ts`).
-                      - **Running at 20:20:** T-2073, T-2074, T-2075, T-2076, T-2079, T-2082, T-2083, T-2087.
-                      - **Queued:** T-2072, T-2077, T-2078, T-2080, T-2081, T-2084, T-2085, T-2086.
-                      - **Code map total:** 274,479 at 19:35. Re-measure after the comment wave.
+                      - **Julio, ~20:25:** "we can overwrite the 400 lines" when keeping a file whole saves lines.
+                        - CLAUDE.md now says 400 is soft and only files over 800 must split, and merging old size-splits back is fine.
+                        - T-2088 makes the gate warn at 400 and fail at 800, adds the task-ID comment check, and updates the AGENTS.md rule.
+                      - **Comment wave merged by 20:50:** T-2072–T-2076, T-2078, T-2079, T-2081, T-2082 and T-2087 (−15,466 lines).
+                        - **Code map:** 268,210 at 20:39 (from 274,479). Pushed again at 20:48.
+                      - **T-2083 (server agents comments, −1,276):** the merge gate refused it because 2 `gateway-group.test.ts` "smart wake" tests fail on main too (`openRoom` timeout: the second AI doesn't join a two-AI room).
+                        - T-2089 bisects and fixes it. Merge T-2083 after.
+                      - **Running at 20:50:** T-2077, T-2080, T-2083 (waiting), T-2084, T-2085, T-2086, T-2088, T-2089.
+                      - **Next when folders free up:**
+                        - T-2090 phone: 24 `XApiError` aliases (58 files), the dead `TextDecoder` fallback (Expo 57 installs it, `expo/src/winter/runtime.native.ts:15`) and shims. Waits for T-2077.
+                        - The API layer. Waits for T-2080.
+                        - New-AI flow and key-check twins. Wait for T-2077.
+                        - 63 re-export-only files.
+                      - **Lead mistake, 20:44:** a failed `cd` ran `git checkout --detach` in the main checkout. Main was restored at once, with nothing lost. Never chain `cd X && git checkout` without checking that X exists.
                       - **Next:**
                         - W3-f: locals and `finishDraftTurn`;
                         - the phone member-handle fallback for person links;
