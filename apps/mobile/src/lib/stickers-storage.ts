@@ -9,10 +9,11 @@
  * session).
  */
 
+import { RECENT_STICKERS_KEY } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { readRecentStickers, type RecentStickerEntry } from './stickers';
 
-export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
+export { RECENT_STICKERS_KEY };
 
 export interface RecentsStorageBackend {
   read(): Promise<string | null>;
