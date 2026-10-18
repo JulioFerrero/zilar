@@ -110,9 +110,13 @@ export async function listAiRooms(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
+      // T-1990: the AI counts only while its owner is still a group member,
+      // the same rule `allowedTopicAiIds` applies to other topics.
       return yield* sql<GroupRoomRow>`SELECT ga.group_id, g.room_localpart
         FROM group_ais ga
         INNER JOIN groups g ON g.id = ga.group_id
+        INNER JOIN "ais" a ON a.id = ga.ai_id
+        INNER JOIN group_members gm ON gm.group_id = ga.group_id AND gm.user_id = a.owner
         WHERE ga.ai_id = ${aiId}`;
     }),
   );
@@ -160,7 +164,8 @@ export async function listAiRooms(
     }
   }
   // General rooms ride on the `group_ais` rows themselves (one General topic
-  // per group, always public, never archived).
+  // per group, always public, never archived), and only while the AI's owner
+  // is still a group member (T-1990).
   const generals = new Map(
     topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row] as const),
   );

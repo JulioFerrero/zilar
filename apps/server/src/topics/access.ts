@@ -180,8 +180,10 @@ export async function visibleTopics(
 }
 
 // Managing a topic (rename, kind, visibility, archive, members): the topic
-// creator, or a group owner/admin who can also see it. Returns false for a
-// missing topic or a caller who may not see it — the routes answer 404.
+// creator, or a group owner/admin who can also see it. T-1990: General is the
+// group itself, so its manager rights follow the current owner/admins and
+// never the (possibly demoted) creator. Returns false for a missing topic or a
+// caller who may not see it — the routes answer 404.
 export async function canManageTopic(
   db: ServerDatabase,
   topic: TopicRow,
@@ -193,7 +195,7 @@ export async function canManageTopic(
   if (!(await canSeeTopic(db, topic, userId))) {
     return false;
   }
-  if (topic.createdBy === userId) {
+  if (!topic.isGeneral && topic.createdBy === userId) {
     return true;
   }
   const membership = await getGroupMembership(db, topic.groupId, userId);
@@ -206,7 +208,7 @@ export async function requireManagedTopic(
   userId: string,
 ): Promise<TopicRow> {
   const topic = await requireVisibleTopic(db, topicId, userId);
-  if (topic.createdBy === userId) {
+  if (!topic.isGeneral && topic.createdBy === userId) {
     return topic;
   }
   const membership = await getGroupMembership(db, topic.groupId, userId);

@@ -81,8 +81,10 @@ export async function resolvePinChat(
 
 // Who may pin or unpin: in a DM either person; in a group topic (including
 // General) a group owner/admin who can see the topic, or the topic creator.
-// Plain members can read pins but may not change them. A caller who may not
-// even see the chat gets the same 404 as for an unknown chat.
+// T-1990: General belongs to the group, so only its current owner/admins pin
+// there — the creator shortcut never applies to General. Plain members can
+// read pins but may not change them. A caller who may not even see the chat
+// gets the same 404 as for an unknown chat.
 export async function requirePinManager(
   db: ServerDatabase,
   chat: PinChat,
@@ -94,7 +96,7 @@ export async function requirePinManager(
   if (!(await canSeeTopic(db, chat.topic, userId))) {
     throw toMissingChat();
   }
-  if (chat.topic.createdBy === userId) {
+  if (!chat.topic.isGeneral && chat.topic.createdBy === userId) {
     return;
   }
   if (await canManageTopic(db, chat.topic, userId)) {

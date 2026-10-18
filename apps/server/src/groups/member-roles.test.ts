@@ -86,4 +86,21 @@ describe('group member roles (T-1741)', () => {
     const unknown = await changeRoleRequest(owner.cookie, 'does-not-exist', other.id, 'admin');
     expect(unknown.status).toBe(404);
   });
+
+  // T-1990: the locked transaction refuses to change the owner's role, so no
+  // role change can leave the group without an owner.
+  it('refuses to change the current owner role', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const group = await createGroup(owner.cookie, 'Team', []);
+
+    const refused = await changeRoleRequest(owner.cookie, group.id, owner.id, 'member');
+    expect(refused.status).toBe(403);
+
+    const detail = (await (
+      await app.request(`${TEST_BASE_URL}/api/groups/${group.id}`, {
+        headers: { cookie: owner.cookie },
+      })
+    ).json()) as DetailBody;
+    expect(rolesOf(detail).get(owner.id)).toBe('owner');
+  });
 });

@@ -81,6 +81,31 @@ describe('group owner transfer (T-1187)', () => {
     });
     expect(left.status).toBe(200);
   });
+
+  // T-1990: a removal can never take the current owner, even from an admin.
+  it('refuses a removal of the new owner by the old admin', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const member = await contactOf(context, app, owner.id, 'member@example.com');
+    const group = await createGroup(owner.cookie, 'Team', [member.id]);
+
+    const transferred = await transferRequest(owner.cookie, group.id, member.id);
+    expect(transferred.status).toBe(200);
+
+    const refused = await app.request(
+      `${TEST_BASE_URL}/api/groups/${group.id}/members/${member.id}`,
+      { method: 'DELETE', headers: { cookie: owner.cookie } },
+    );
+    expect(refused.status).toBe(403);
+
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ role: string }>`SELECT role FROM group_members
+          WHERE group_id = ${group.id} AND user_id = ${member.id} LIMIT 1`;
+      }),
+    );
+    expect(row?.role).toBe('owner');
+  });
 });
 
 describe('group deletion (T-1243)', () => {

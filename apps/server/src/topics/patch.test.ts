@@ -7,6 +7,8 @@ import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
+import { requirePinManager } from '../pins/access';
+import { getTopic, requireManagedTopic } from './access';
 import { patchTopic } from './patch';
 import type { TopicServiceDeps } from './schemas';
 
@@ -100,5 +102,82 @@ describe('patchTopic done flag (T-1521)', () => {
       patchTopic(depsFor(context), { topicId, actorId: outsider, done: true }),
     ).rejects.toMatchObject({ status: 404, code: 'not_found' });
     expect(await doneAtOf(context, topicId)).toBeNull();
+  });
+});
+
+// T-1990: General belongs to the group, not to its creator. A creator who was
+// demoted (or handed the group over) no longer renames, manages or pins it;
+// the current owner/admin still does.
+describe('General manager rights follow the current owner (T-1990)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  async function demotedCreatorGroup(): Promise<{
+    ownerId: string;
+    creatorId: string;
+    generalTopicId: string;
+  }> {
+    const ownerId = await seedUser(context);
+    const creatorId = await seedUser(context);
+    const { generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [
+        { userId: ownerId, role: 'owner' },
+        { userId: creatorId, role: 'member' },
+      ],
+      [],
+    );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE topics SET created_by = ${creatorId} WHERE id = ${generalTopicId}`;
+      }),
+    );
+    return { ownerId, creatorId, generalTopicId };
+  }
+
+  it('refuses a rename by the demoted creator and keeps the owner in charge', async () => {
+    const { ownerId, creatorId, generalTopicId } = await demotedCreatorGroup();
+
+    await expect(
+      patchTopic(depsFor(context), {
+        topicId: generalTopicId,
+        actorId: creatorId,
+        name: 'Renamed',
+      }),
+    ).rejects.toMatchObject({ status: 403, code: 'forbidden' });
+    await expect(requireManagedTopic(context.db, generalTopicId, creatorId)).rejects.toMatchObject({
+      status: 403,
+    });
+
+    const renamed = await patchTopic(depsFor(context), {
+      topicId: generalTopicId,
+      actorId: ownerId,
+      name: 'Renamed',
+    });
+    expect(renamed.name).toBe('Renamed');
+  });
+
+  it('refuses a pin by the demoted creator and keeps the owner in charge', async () => {
+    const { ownerId, creatorId, generalTopicId } = await demotedCreatorGroup();
+    const topic = await getTopic(context.db, generalTopicId);
+    if (!topic) {
+      throw new Error('seed topic missing');
+    }
+    const chat = { kind: 'room' as const, chatJid: topic.roomLocalpart, topic };
+
+    await expect(requirePinManager(context.db, chat, creatorId)).rejects.toMatchObject({
+      status: 403,
+      code: 'forbidden',
+    });
+    await expect(requirePinManager(context.db, chat, ownerId)).resolves.toBeUndefined();
   });
 });

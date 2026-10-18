@@ -8,7 +8,12 @@ import { dropMemberRoles } from '../roles/service';
 import { addToPublicTopics } from '../topics/public-compat';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { archiveDrainedPrivateTopics, emitDroppedGroupTopicAis, syncGroupTopicRooms } from './ais';
+import {
+  archiveDrainedPrivateTopics,
+  emitDroppedGroupTopicAis,
+  removeGroupAi,
+  syncGroupTopicRooms,
+} from './ais';
 import { banMember, unbanMembers } from './bans';
 import { assertContacts, inviteNewMembers } from './invites';
 import { assertChannelKeepsAnAdmin, getGroupDetail, getMembership, requireGroup } from './queries';
@@ -17,6 +22,7 @@ import {
   mapXmppError,
   type AddGroupMembersInput,
   type GroupDetail,
+  type GroupRole,
   type RemoveGroupMemberInput,
 } from './schemas';
 
@@ -191,6 +197,36 @@ export async function removeGroupMember(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
+            // T-1990: take the same per-group lock the ownership hand-over
+            // uses, and re-read both roles under it. The pre-checks above are
+            // only fast answers: these reads are the authority, so a removal
+            // can never race a transfer or a role change into an ownerless
+            // group.
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-owner:' + input.groupId}))`;
+            const [lockedActor] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.actorId} LIMIT 1`;
+            if (!lockedActor) {
+              return yield* Effect.fail(
+                new HttpError(403, 'forbidden', 'Not a member of this group'),
+              );
+            }
+            const [lockedTarget] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId} LIMIT 1`;
+            if (!lockedTarget) {
+              return yield* Effect.fail(
+                new HttpError(404, 'not_found', 'That user is not a member of this group'),
+              );
+            }
+            if (!isSelf && lockedActor.role === 'member') {
+              return yield* Effect.fail(
+                new HttpError(403, 'forbidden', 'Only owners and admins can remove members'),
+              );
+            }
+            if (lockedTarget.role === 'owner') {
+              return yield* Effect.fail(
+                new HttpError(403, 'forbidden', 'The owner cannot be removed'),
+              );
+            }
             yield* Effect.tryPromise({
               try: () =>
                 adminClient.setAffiliation(
@@ -200,8 +236,11 @@ export async function removeGroupMember(
                 ),
               catch: (error) => error,
             });
+            // `role <> 'owner'` is the same refusal at the write itself: even
+            // if a hand-over slipped in, it can never delete the owner's row.
             yield* sql`DELETE FROM group_members
-              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}
+                AND role <> 'owner'`;
             // T-1846 (SG-8): a removal by an owner or admin bans the person,
             // so the public join and the invite links refuse them. A self-leave
             // never bans. Same transaction as the delete: no half state.
@@ -224,6 +263,35 @@ export async function removeGroupMember(
     );
   } catch (error) {
     throw mapXmppError(error);
+  }
+  // T-1990: a removed (or departed) member takes their AIs out of the group.
+  // `removeGroupAi` accepts the AI's owner as actor even after they left, and
+  // clears the AI's topic rows, rules, tools, routines and memory. Best effort
+  // per AI: a failure is logged with ids only and never fails the removal.
+  const ownedAis = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ga.ai_id AS ai_id FROM group_ais ga
+        INNER JOIN "ais" ON "ais".id = ga.ai_id
+        WHERE ga.group_id = ${input.groupId} AND "ais".owner = ${input.targetUserId}`;
+    }),
+  );
+  for (const { aiId } of ownedAis) {
+    try {
+      await removeGroupAi(db, adminClient, {
+        groupId: input.groupId,
+        actorId: input.targetUserId,
+        aiId,
+        domain: input.domain,
+        logger: input.logger,
+      });
+    } catch (error) {
+      input.logger.warn(
+        { err: error, groupId: input.groupId, aiId },
+        'could not remove a departed member AI',
+      );
+    }
   }
   // T-0116: leaving the group drops the member's role rows, and the topics
   // they reached only through a role re-sync. Best effort after the commit,

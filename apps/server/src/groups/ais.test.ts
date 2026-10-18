@@ -7,7 +7,10 @@ import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
+import type { TopicRow } from '../topics/access';
+import { desiredMembers } from '../topics/room-members';
 import { removeGroupAi } from './ais';
+import { removeGroupMember } from './members';
 
 async function seedTopic(
   context: TestContext,
@@ -127,5 +130,95 @@ describe('removeGroupAi clears the owner (T-1455)', () => {
     await remove(context, groupId, owner, otherAiId);
 
     expect(await ownerOf(context, generalTopicId)).toBe(ownerAiId);
+  });
+});
+
+describe('a removed member takes their AIs out (T-1990)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  async function groupAiIds(context: TestContext, groupId: string): Promise<string[]> {
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${groupId}`;
+      }),
+    );
+    return rows.map((row) => row.aiId);
+  }
+
+  async function topic(context: TestContext, topicId: string): Promise<TopicRow> {
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
+      }),
+    );
+    if (!row) {
+      throw new Error('seed topic missing');
+    }
+    return row;
+  }
+
+  it('removes the group AI and drops it from General room members', async () => {
+    const owner = await seedUser(context);
+    const member = await seedUser(context);
+    const { aiId, jid } = await seedAi(context, member);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      owner,
+      [
+        { userId: owner, role: 'owner' },
+        { userId: member, role: 'member' },
+      ],
+      [aiId],
+    );
+    const domain = context.config.xmpp.domain;
+    const general = await topic(context, generalTopicId);
+    expect((await desiredMembers(context.db, general, domain)).has(jid)).toBe(true);
+
+    await removeGroupMember(context.db, context.adminClient, {
+      groupId,
+      actorId: owner,
+      targetUserId: member,
+      domain,
+      logger: context.logger,
+    });
+
+    expect(await groupAiIds(context, groupId)).toEqual([]);
+    expect((await desiredMembers(context.db, general, domain)).has(jid)).toBe(false);
+  });
+
+  it('keeps an AI whose owner is still a member', async () => {
+    const owner = await seedUser(context);
+    const member = await seedUser(context);
+    const { aiId } = await seedAi(context, owner);
+    const { groupId } = await seedGroup(
+      context,
+      owner,
+      [
+        { userId: owner, role: 'owner' },
+        { userId: member, role: 'member' },
+      ],
+      [aiId],
+    );
+
+    await removeGroupMember(context.db, context.adminClient, {
+      groupId,
+      actorId: owner,
+      targetUserId: member,
+      domain: context.config.xmpp.domain,
+      logger: context.logger,
+    });
+
+    expect(await groupAiIds(context, groupId)).toEqual([aiId]);
   });
 });

@@ -1988,3 +1988,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1985](T-1985-claude-audit-permissions.md) | permissions and spend audit (findings private) | 2026-10-18 |
 | [T-1989](T-1989-monthly-spend-limit.md) | enforce the monthly AI spending limit | 2026-10-18 |
 | [T-1987](T-1987-claude-audit-message-pipeline.md) | message pipeline audit (findings private) | 2026-10-18 |
+| [T-1990](T-1990-group-membership-edges.md) | removed members take their AIs; owner lock; General rights | 2026-10-18 |

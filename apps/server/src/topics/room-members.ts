@@ -122,10 +122,12 @@ export async function desiredMembers(
 // topic's allowed `topic_ais` rows otherwise (see `allowedTopicAiIds`: for a
 // non-General topic an AI counts only while its owner is a topic member, so the
 // sync removes the AI from the room once its owner is not a member —
-// without deleting the row, so adding the owner back brings it back). Only
-// active AIs join a room; a stale row for a stopped or disabled AI no longer
-// counts. AIs invited into an archived topic are dropped too: archiving
-// keeps the rows but the gateway leaves the room.
+// without deleting the row, so adding the owner back brings it back). For
+// General the same owner rule applies: the AI counts only while its owner is
+// still a group member (T-1990), so a removed member's AI leaves the room even
+// if a cleanup write failed. Only active AIs join a room; a stale row for a
+// stopped or disabled AI no longer counts. AIs invited into an archived topic
+// are dropped too: archiving keeps the rows but the gateway leaves the room.
 async function addTopicAiMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -139,8 +141,11 @@ async function addTopicAiMembers(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ jid: string; status: string }>`SELECT ais.jid, ais.status FROM group_ais
+        return yield* sql<{ jid: string; status: string }>`SELECT "ais".jid, "ais".status
+          FROM group_ais
           INNER JOIN "ais" ON "ais".id = group_ais.ai_id
+          INNER JOIN group_members gm ON gm.group_id = group_ais.group_id
+            AND gm.user_id = "ais".owner
           WHERE group_ais.group_id = ${topic.groupId}`;
       }),
     );

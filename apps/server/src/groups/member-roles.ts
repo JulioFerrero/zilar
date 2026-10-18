@@ -60,14 +60,43 @@ export async function changeMemberRole(
   if (input.role === 'member' && group.kind === 'channel') {
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
+  // T-1990: the update runs under the same per-group lock as the hand-over and
+  // re-reads both roles inside it, so a role change cannot race a transfer into
+  // an ownerless group. `role <> 'owner'` is the same refusal at the write.
+  let previousRole: GroupRole = target.role;
   try {
     await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
-          sql`UPDATE group_members SET role = ${input.role}
-            WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`,
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-owner:' + input.groupId}))`;
+            const [lockedActor] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.actorId} LIMIT 1`;
+            if (lockedActor?.role !== 'owner') {
+              return yield* Effect.fail(new HttpError(404, 'not_found', 'Group not found'));
+            }
+            const [lockedTarget] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId} LIMIT 1`;
+            if (!lockedTarget) {
+              return yield* Effect.fail(
+                new HttpError(404, 'not_found', 'That user is not a member of this group'),
+              );
+            }
+            if (lockedTarget.role === 'owner') {
+              return yield* Effect.fail(
+                new HttpError(403, 'forbidden', 'The owner cannot be demoted'),
+              );
+            }
+            previousRole = lockedTarget.role;
+            if (lockedTarget.role === input.role) {
+              return;
+            }
+            yield* sql`UPDATE group_members SET role = ${input.role}
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}
+                AND role <> 'owner'`;
+          }),
         );
       }),
     );
@@ -107,7 +136,7 @@ export async function changeMemberRole(
           detail: {
             groupId: input.groupId,
             subjectUserId: input.targetUserId,
-            from: target.role,
+            from: previousRole,
             to: input.role,
           },
         },
