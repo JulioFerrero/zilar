@@ -6,12 +6,36 @@ import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
-import { ApiError } from '@/lib/api';
+import {
+  ApiError,
+  checkHandle as apiCheckHandle,
+  claimHandle as apiClaimHandle,
+  type HandleCheck,
+} from '@/lib/api';
 import { fromApi, type ApiFailure, toApiFailure } from '@zilar/client-core';
+import { suggestHandle as suggestHandleFor } from '@zilar/protocol';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { checkHandle, claimHandle, suggestHandleFor } from '@/lib/handles';
 import { dismissHandleGate } from '@/lib/handleGate';
+
+// Shared with the server, which is the authority.
+
+// Passed through unchanged: HandlePage matches ApiError with instanceof, which fromApi would replace.
+const passThrough = <A,>(call: () => Promise<A>): Promise<A> =>
+  Effect.runPromise(
+    Effect.tryPromise({
+      try: call,
+      catch: (cause) => cause,
+    }),
+  );
+
+function checkHandle(handle: string): Promise<HandleCheck> {
+  return passThrough(() => apiCheckHandle(handle));
+}
+
+function claimHandle(handle: string): Promise<{ handle: string }> {
+  return passThrough(() => apiClaimHandle(handle));
+}
 
 type AvailabilityCheck =
   { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };

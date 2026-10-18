@@ -10,6 +10,8 @@ import {
   mutedUntilFor,
   sortPinnedFirst,
   type MuteDurationId,
+  type ReplyRef,
+  type UiMention,
 } from '@zilar/chat-core';
 import type {
   ChatBackgroundChoice,
@@ -22,17 +24,49 @@ import type {
   Pin,
 } from '@/lib/api';
 import type { ChatStoreGroupApi } from './groupStoreTypes';
-import type {
-  ChatsState,
-  ConnectionStatus,
-  DraftState,
-  HistoryState,
-  SendAttachmentOptions,
-  SendStickerInput,
-  SendTextOptions,
-  TypingState,
-  VoiceRecording,
-} from './storeOptions';
+
+export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
+
+/** Whether the chat list has arrived: loading until the first /api/chats merge, error when
+ *  that first load fails. */
+export type ChatsState = 'loading' | 'ready' | 'error';
+
+export type HistoryState = 'loading' | 'ready' | 'error';
+
+export interface TypingState {
+  names: string[];
+}
+
+export interface DraftState {
+  turnId: string;
+  text: string;
+}
+
+export interface SendTextOptions {
+  replyTo?: ReplyRef;
+  mentions?: UiMention[];
+}
+
+export interface VoiceRecording {
+  blob: Blob;
+  durationMs: number;
+  waveform: number[];
+}
+
+export interface SendAttachmentOptions {
+  caption?: string;
+  replyTo?: ReplyRef;
+}
+
+export interface SendStickerInput {
+  stickerId: string;
+  packId: string;
+  url: string;
+  emoji?: string | undefined;
+  width: number;
+  height: number;
+  mime: 'image/webp' | 'image/png';
+}
 
 export interface ChatStore extends ChatStoreGroupApi {
   currentUserId: string;
@@ -193,17 +227,6 @@ export type ChatStoreState = ChatStore & {
   groupInfos: Record<string, GroupDetail>;
 };
 
-export type {
-  ChatsState,
-  ConnectionStatus,
-  DraftState,
-  HistoryState,
-  SendAttachmentOptions,
-  SendStickerInput,
-  SendTextOptions,
-  TypingState,
-  VoiceRecording,
-} from './storeOptions';
 export { matchesFolder, visibleChats } from './selectors';
 export { groupChats, folderUnread } from './chatGroups';
 export type { ChatGroup } from './chatGroups';

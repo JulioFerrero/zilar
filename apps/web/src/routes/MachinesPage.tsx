@@ -2,23 +2,175 @@ import { useMemo, useState } from 'react';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
-import { Ban, ChevronRight, Server } from 'lucide-react';
-import { listAis, listMachines } from '@/lib/api';
-import type { Machine, PublicAi } from '@/lib/api';
-import { fromApi } from '@zilar/client-core';
+import { Ban, ChevronRight, Server, Plus } from 'lucide-react';
+import {
+  listAis,
+  listMachines,
+  deleteMachine,
+  approveMachine,
+  denyMachine,
+  type Machine,
+  type PublicAi,
+} from '@/lib/api';
+import { fromApi, useDelayed } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
-import { AddMachineButton } from '@/components/machines/AddMachineButton';
 import { MachineListRow } from '@/components/machines/MachineListRow';
-import { MachineListSkeleton } from '@/components/machines/MachineListSkeleton';
-import { PendingRow } from '@/components/machines/PendingRow';
-import { RevokedRow } from '@/components/machines/RevokedRow';
-import type { ConfirmingState, ConfirmKind } from '@/components/machines/machineRowOps';
-import { EMPTY_CONFIRMING, failureText } from '@/components/machines/machineRowOps';
+import {
+  EMPTY_CONFIRMING,
+  clearFailure,
+  failureText,
+  useMachineAction,
+  type ConfirmingState,
+  type ConfirmKind,
+} from '@/components/machines/machineRowOps';
+import { Button } from '@/components/ais/AiPageShell';
+import { SKELETON_DELAY_MS } from '@/components/Skeleton';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { RevokedMachineCard } from '@/components/machines/RevokedMachineCard';
+import { PendingMachineCard } from '@/components/machines/PendingMachineCard';
+
+interface PendingRowProps {
+  machine: Machine;
+  confirmingDeny: boolean;
+  onConfirm: (id: string | null) => void;
+  onUpdate: (id: string, next: Machine) => void;
+  onRemove: (id: string) => void;
+}
+
+function PendingRow({ machine, confirmingDeny, onConfirm, onUpdate, onRemove }: PendingRowProps) {
+  const [approveState, approve, , approveError] = useMachineAction(
+    (id: string) =>
+      fromApi(() => approveMachine(id)).pipe(
+        Effect.tap((updated) => Effect.sync(() => onUpdate(id, updated))),
+      ),
+    'Could not approve the machine.',
+  );
+  const [denyState, deny, denyControls, denyError] = useMachineAction(
+    (id: string) =>
+      fromApi(() => denyMachine(id)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            onRemove(id);
+            onConfirm(null);
+          }),
+        ),
+      ),
+    'Could not deny the machine.',
+  );
+
+  const actionError = denyError ?? approveError ?? '';
+
+  return (
+    <PendingMachineCard
+      machine={machine}
+      approving={isWaiting(approveState)}
+      denying={isWaiting(denyState)}
+      confirmingDeny={confirmingDeny}
+      actionError={actionError}
+      onApprove={() => approve(machine.id)}
+      onAskDeny={() => {
+        clearFailure(denyState, denyControls);
+        onConfirm(machine.id);
+      }}
+      onCancelDeny={() => {
+        clearFailure(denyState, denyControls);
+        onConfirm(null);
+      }}
+      onConfirmDeny={() => deny(machine.id)}
+    />
+  );
+}
+
+interface RevokedRowProps {
+  machine: Machine;
+  confirmingDelete: boolean;
+  onConfirm: (id: string | null) => void;
+  onRemove: (id: string) => void;
+}
+
+function RevokedRow({ machine, confirmingDelete, onConfirm, onRemove }: RevokedRowProps) {
+  const [deleteState, deleteMachineRow, deleteControls, deleteError] = useMachineAction(
+    (id: string) =>
+      fromApi(() => deleteMachine(id)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            onRemove(id);
+            onConfirm(null);
+          }),
+        ),
+      ),
+    'Could not delete the machine.',
+  );
+
+  const actionError = deleteError ?? '';
+
+  return (
+    <RevokedMachineCard
+      machine={machine}
+      deleting={isWaiting(deleteState)}
+      confirmingDelete={confirmingDelete}
+      actionError={actionError}
+      onAskDelete={() => {
+        clearFailure(deleteState, deleteControls);
+        onConfirm(machine.id);
+      }}
+      onCancelDelete={() => {
+        clearFailure(deleteState, deleteControls);
+        onConfirm(null);
+      }}
+      onConfirmDelete={() => deleteMachineRow(machine.id)}
+    />
+  );
+}
+
+function MachineListSkeleton({ rows = 3 }: { rows?: number }) {
+  const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div role="status" aria-label="Loading machines" className="flex flex-col gap-3">
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          aria-hidden="true"
+          className={cn(
+            'flex flex-col gap-3 rounded-xl border border-divider bg-surface p-4',
+            !reduceMotion && 'animate-pulse',
+            reduceMotion && 'skeleton-reduced',
+          )}
+        >
+          <div className="flex items-start justify-between">
+            <div className="h-5 w-32 rounded-full bg-surface-raised" />
+            <div className="h-5 w-16 rounded-full bg-surface-raised" />
+          </div>
+          <div className="h-3.5 w-3/4 rounded-full bg-surface-raised" />
+          <div className="h-3.5 w-2/3 rounded-full bg-surface-raised" />
+          <div className="h-8 w-full rounded-md bg-surface-raised" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface AddMachineButtonProps {
+  onClick: () => void;
+}
+
+function AddMachineButton({ onClick }: AddMachineButtonProps) {
+  return (
+    <Button type="button" size="lg" onClick={onClick}>
+      <Plus aria-hidden="true" />
+      Add machine
+    </Button>
+  );
+}
 
 type PageStatus = 'loading' | 'ready' | 'error';
 

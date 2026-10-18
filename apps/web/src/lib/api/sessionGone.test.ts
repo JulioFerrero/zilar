@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http';
 import { CHAT_LIST_CACHE_KEY } from '@/store/chatListCache';
 import { MESSAGE_CACHE_KEY } from '@/store/messageCache';
-import { checkSession, sessionGone, type SessionGoneStorage } from './sessionGone';
+import { checkSession, sessionGone, type SessionGoneStorage } from '@/store/effects/ports';
 
-vi.mock('./chats', () => ({ getMe: vi.fn() }));
-vi.mock('../auth', () => ({ authClient: { signOut: vi.fn(() => Promise.resolve()) } }));
+vi.mock('@/lib/api/chats', () => ({ getMe: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ authClient: { signOut: vi.fn(() => Promise.resolve()) } }));
 
-import { getMe } from './chats';
+import { getMe } from '@/lib/api/chats';
 
 const mockedGetMe = vi.mocked(getMe);
 

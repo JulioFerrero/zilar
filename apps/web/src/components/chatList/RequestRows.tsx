@@ -10,10 +10,23 @@ import {
   declineContactRequest,
   getContacts,
   type ContactRequestView,
+  listContactRequests,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useContactRequests } from '@/lib/useContactRequests';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useContactRequestsPoll } from '@zilar/client-core';
+import { Effect } from 'effect';
+import { onForeground } from '@/lib/foreground';
+
+const list = (): Promise<ContactRequestView[]> =>
+  Effect.runPromise(Effect.promise(listContactRequests).pipe(Effect.map((page) => page.incoming)));
+
+function useContactRequests(enabled: boolean): {
+  requests: ContactRequestView[];
+  reload: () => void;
+} {
+  return useContactRequestsPoll(list, enabled, onForeground);
+}
 
 /** At most this many rows before the list collapses into "See all N requests". */
 const MAX_ROWS = 3;

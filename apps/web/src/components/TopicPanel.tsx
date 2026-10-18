@@ -9,11 +9,9 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { PinsSection } from './PinsPanel';
 import { TopicAddDialog, type AddAi, type AddPerson } from './panels/TopicAddDialog';
 import { TopicAisSection } from './panels/TopicAisSection';
-import { TopicDangerZone } from './panels/TopicDangerZone';
 import { TopicHeader } from './panels/TopicHeader';
 import { TopicMembersSection } from './panels/TopicMembersSection';
 import { TopicRolesSection } from './panels/TopicRolesSection';
-import { TopicRulesSection } from './panels/TopicRulesSection';
 import { TopicToolsRow } from './panels/TopicToolsRow';
 import { failInline } from './panels/topic-failure';
 import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
@@ -22,6 +20,83 @@ import { TopicMuteLeave } from './topic/TopicMuteLeave';
 import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
+import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
+
+function TopicDangerZone({
+  isManager,
+  isPrivate,
+  visibilityBusy,
+  archiving,
+  onMakePublic,
+  onMakePrivate,
+  onArchive,
+}: {
+  isManager: boolean;
+  isPrivate: boolean;
+  visibilityBusy: boolean;
+  archiving: boolean;
+  onMakePublic: () => void;
+  onMakePrivate: () => void;
+  onArchive: () => void;
+}) {
+  return (
+    <section aria-label="Danger zone" className="flex flex-col gap-2 px-2">
+      {isManager && (
+        <>
+          {isPrivate ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="self-start rounded-full px-4"
+              disabled={visibilityBusy}
+              onClick={onMakePublic}
+            >
+              Make public
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="self-start rounded-full px-4"
+              disabled={visibilityBusy}
+              onClick={onMakePrivate}
+            >
+              {visibilityBusy ? 'Saving…' : 'Make private'}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="destructive"
+            size="lg"
+            className="self-start rounded-full px-4"
+            disabled={archiving}
+            onClick={onArchive}
+          >
+            Archive topic
+          </Button>
+        </>
+      )}
+    </section>
+  );
+}
+
+function TopicRulesSection({
+  groupId,
+  topicId,
+  topicName,
+}: {
+  groupId: string;
+  topicId: string;
+  topicName: string;
+}) {
+  return (
+    <section aria-label={`Always allowed in ${topicName}`}>
+      <AlwaysAllowedList scope={{ groupId }} topicId={topicId} topicName={topicName} readOnly />
+    </section>
+  );
+}
 
 export function TopicPanel({
   chat,

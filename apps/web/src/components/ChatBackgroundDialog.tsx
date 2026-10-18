@@ -2,7 +2,11 @@ import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
-import { DEFAULT_CHAT_BACKGROUND_PRESET } from '@zilar/ui-tokens';
+import {
+  DEFAULT_CHAT_BACKGROUND_PRESET,
+  CHAT_BACKGROUND_PRESET_IDS,
+  type ChatBackgroundPresetId,
+} from '@zilar/ui-tokens';
 import {
   deleteBackground,
   listBackgrounds,
@@ -13,7 +17,7 @@ import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { prepareBackgroundImage } from '@/lib/background-image';
-import { DEFAULT_BACKGROUND_DIM } from '@/lib/chatBackground';
+import { DEFAULT_BACKGROUND_DIM, chatBackgroundStyle } from '@/lib/chatBackground';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { BackgroundImages } from './background/BackgroundImages';
 import { createBackgroundWrites } from './background/backgroundWrites';
@@ -25,10 +29,48 @@ import {
   UploadFailed,
   type UploadRequest,
   uploadErrorMessage,
+  presetLabel,
 } from './background/backgroundOps';
-import { PresetGrid } from './background/PresetGrid';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
+import { Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+function PresetGrid({
+  selected,
+  onChoose,
+}: {
+  selected: string | null;
+  onChoose: (id: ChatBackgroundPresetId) => void;
+}) {
+  return (
+    <div className="mt-4 grid grid-cols-4 gap-3">
+      {CHAT_BACKGROUND_PRESET_IDS.map((id) => {
+        const isSelected = selected === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-label={presetLabel(id)}
+            aria-pressed={isSelected}
+            onClick={() => onChoose(id)}
+            className={cn(
+              'chat-background relative aspect-square rounded-[10px] border transition-shadow',
+              isSelected ? 'border-accent ring-2 ring-accent/40' : 'border-border',
+            )}
+            style={chatBackgroundStyle({ kind: 'preset', id })}
+          >
+            {isSelected && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <Check className="size-5 text-white" aria-hidden="true" />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ChatBackgroundDialog({
   chat,

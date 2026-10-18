@@ -6,24 +6,31 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
 import { AiStatusLine } from '@/components/topic/AiStatusLine';
-import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { ChatMediaPanel } from '@/components/ChatMediaPanel';
 import { ChatSearchBar } from '@/components/ChatSearchBar';
 import { Composer } from '@/components/Composer';
-import { ComposerDock } from '@/components/ComposerDock';
 import { focusComposer } from '@/components/composer/useComposerFocus';
 import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
 import { ContactPanel } from '@/components/ContactPanel';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
-import { useMessageSelection } from '@/components/useMessageSelection';
 import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
@@ -34,6 +41,136 @@ import { TopicJoinView } from '@/components/topic/TopicJoinView';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { runWeb } from '@/lib/effect/runtime';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useMuteToggle } from '@/components/useMuteToggle';
+
+/** Subscribers see a read-only bar; the moderated room enforces posting, not this bar. */
+function ChannelComposerBar({
+  chat,
+  replyTo,
+  onCancelReply,
+}: {
+  chat: ChatSummary;
+  replyTo?: ReplyRef;
+  onCancelReply?: () => void;
+}) {
+  const info = useChatSelector((s) => s.groupInfo(chat.id));
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const { muted, busy, error, toggle } = useMuteToggle(chat);
+
+  // Unknown role means subscriber (read-only) until proven otherwise.
+  const role = chat.myRole ?? info?.members.find((member) => member.userId === currentUserId)?.role;
+  const canPost = role === 'owner' || role === 'admin';
+
+  if (canPost) {
+    return (
+      <Composer chatId={chat.id} replyTo={replyTo} onCancelReply={onCancelReply ?? (() => {})} />
+    );
+  }
+
+  return (
+    <div className="pointer-events-none relative px-3 pt-2 pb-3 *:pointer-events-auto wide:px-8 wide:pt-3 wide:pb-5">
+      <div className="flex items-center gap-3 rounded-[14px] bg-surface-raised px-4 py-2.5">
+        <p className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground">
+          Only admins can post here
+        </p>
+        <Button type="button" variant="ghost" className="shrink-0" disabled={busy} onClick={toggle}>
+          {muted ? 'Unmute' : 'Mute'}
+        </Button>
+      </div>
+      {error !== undefined && (
+        <p role="alert" className="mt-1 px-1 text-[12px] text-danger">
+          Could not change the mute. Try again.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function useMessageSelection({
+  chatId,
+  storeApi,
+  setForwarding,
+}: {
+  chatId: string;
+  storeApi: ReturnType<typeof useChatStoreApi>;
+  setForwarding: Dispatch<SetStateAction<UiMessage[] | null>>;
+}) {
+  // The ids checked in select mode; null means not selecting. Reset on chat change so a selection never leaks.
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
+  const [selectionChatId, setSelectionChatId] = useState(chatId);
+  if (selectionChatId !== chatId) {
+    setSelectionChatId(chatId);
+    setSelectedIds(null);
+  }
+
+  const startSelect = useCallback((message: UiMessage): void => {
+    setSelectedIds([message.id]);
+  }, []);
+
+  const toggleSelect = useCallback((message: UiMessage): void => {
+    setSelectedIds((current) => {
+      if (current === null) {
+        return current;
+      }
+      return current.includes(message.id)
+        ? current.filter((id) => id !== message.id)
+        : [...current, message.id];
+    });
+  }, []);
+
+  const selection = useMemo(
+    () => ({ ids: new Set(selectedIds ?? []), onToggle: toggleSelect, onStart: startSelect }),
+    [selectedIds, toggleSelect, startSelect],
+  );
+
+  const forwardSelected = (): void => {
+    if (selectedIds === null) {
+      return;
+    }
+    const ids = new Set(selectedIds);
+    setForwarding(
+      storeApi
+        .getState()
+        .messages(chatId)
+        .filter((message) => ids.has(message.id)),
+    );
+    setSelectedIds(null);
+  };
+
+  return { selectedIds, setSelectedIds, selection, forwardSelected };
+}
+
+/** Overlays the list and publishes its height as `--composer-h` so the list pads around it. */
+function ComposerDock({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const dock = ref.current;
+    if (dock === null) {
+      return;
+    }
+    const host = dock.parentElement;
+    if (host === null) {
+      return;
+    }
+    const publish = (): void => {
+      host.style.setProperty('--composer-h', `${dock.offsetHeight}px`);
+    };
+    publish();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+    observer?.observe(dock);
+    return () => {
+      observer?.disconnect();
+      host.style.removeProperty('--composer-h');
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+      {children}
+    </div>
+  );
+}
 
 type OpenPanel = 'ai' | 'group' | 'topic' | 'contact';
 

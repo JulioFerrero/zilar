@@ -6,12 +6,38 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { cn } from '@/lib/utils';
-import { getVoiceTranscript } from '@/lib/api';
+import { getVoiceTranscript, getVoiceTranscriptionStatus } from '@/lib/api';
 import { mediaSrc } from '@/lib/attachments';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
+import { AsyncResult } from 'effect/reactivity';
+
+/** Whether voice transcription is enabled on this server, fetched once and cached; starts
+ * as disabled and only switches on after the server says so. */
+let cached: boolean | undefined;
+
+function useVoiceTranscriptionEnabled(): boolean {
+  // The query runs once per mount, or not at all when the answer is cached.
+  const [enabled] = useQuery(
+    (): Effect.Effect<boolean> =>
+      cached === undefined ? enabledFromServer() : Effect.succeed(cached),
+    [],
+  );
+  return AsyncResult.getOrElse(enabled, () => false);
+}
+
+const enabledFromServer = (): Effect.Effect<boolean> =>
+  fromApi(() => getVoiceTranscriptionStatus()).pipe(
+    Effect.map((status) => status.enabled),
+    // Any failure reads as disabled: the control simply stays hidden.
+    Effect.catchTag('ApiFailure', () => Effect.succeed(false)),
+    Effect.tap((next) =>
+      Effect.sync(() => {
+        cached = next;
+      }),
+    ),
+  );
 
 const TICK_MS = 100;
 

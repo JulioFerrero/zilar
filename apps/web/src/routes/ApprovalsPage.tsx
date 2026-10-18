@@ -2,16 +2,98 @@ import { Effect, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Check, X } from 'lucide-react';
 import { decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, useDelayed } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { ApprovalRow } from '@/components/approvals/ApprovalRow';
-import { ApprovalsListSkeleton } from '@/components/approvals/ApprovalsListSkeleton';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { SKELETON_DELAY_MS } from '@/components/Skeleton';
+import { cn } from '@/lib/utils';
+import { Avatar } from '@/components/Avatar';
+import { IconButton } from '@/components/ui/icon-button';
+
+interface ApprovalRowProps {
+  approval: PublicApproval;
+  busy: null | 'approve' | 'deny';
+  actionError: string;
+  onApprove: () => void;
+  onDeny: () => void;
+}
+
+function ApprovalRow({ approval, busy, actionError, onApprove, onDeny }: ApprovalRowProps) {
+  const disableButtons = busy !== null;
+  const where =
+    approval.groupName === null ? approval.aiName : `${approval.aiName} · ${approval.groupName}`;
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-3.5 px-4 py-3.5">
+        <Avatar seed={approval.aiName} name={approval.aiName} size={32} />
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <span className="truncate text-[15px] font-medium">{approval.summary}</span>
+          {where !== '' && (
+            <span className="truncate text-[13px] text-muted-foreground">{where}</span>
+          )}
+        </div>
+        <IconButton
+          aria-label={`Deny: ${approval.summary}`}
+          disabled={disableButtons}
+          onClick={onDeny}
+        >
+          <X size={16} />
+        </IconButton>
+        <IconButton
+          variant="primary"
+          aria-label={`Approve: ${approval.summary}`}
+          disabled={disableButtons}
+          onClick={onApprove}
+        >
+          <Check size={16} />
+        </IconButton>
+      </div>
+      {actionError !== '' && (
+        <div className="px-4 pb-3.5">
+          <FieldError>{actionError}</FieldError>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalsListSkeleton({ rows = 2 }: { rows?: number }) {
+  const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div role="status" aria-label="Loading approvals" className="flex flex-col gap-3">
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          aria-hidden="true"
+          className={cn(
+            'flex flex-col gap-2 rounded-xl border border-divider bg-surface p-4',
+            !reduceMotion && 'animate-pulse',
+            reduceMotion && 'skeleton-reduced',
+          )}
+        >
+          <div className="h-5 w-40 rounded-full bg-surface-raised" />
+          <div className="h-3.5 w-3/4 rounded-full bg-surface-raised" />
+          <div className="h-3.5 w-2/3 rounded-full bg-surface-raised" />
+          <div className="mt-1 h-3 w-32 rounded-full bg-surface-raised" />
+          <div className="mt-2 flex gap-2">
+            <div className="h-8 w-20 rounded-full bg-surface-raised" />
+            <div className="h-8 w-16 rounded-full bg-surface-raised" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const REFRESH_INTERVAL_MS = 30_000;
 const NOTICE_TIMEOUT_MS = 3000;

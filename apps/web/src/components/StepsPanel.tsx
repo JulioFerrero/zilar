@@ -1,4 +1,4 @@
-import type { Contact } from '@zilar/api-contract';
+import type { Contact, TaskSteps } from '@zilar/api-contract';
 import { type AvatarPersonInput, type ChatSummary, formatClock } from '@zilar/chat-core';
 import { defaultOpenStepId, stepsView, type DisplayStep, fromApi } from '@zilar/client-core';
 import type { ProgressStep } from '@zilar/protocol';
@@ -14,7 +14,6 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { getTaskSteps } from '@/lib/api/agent-tasks';
 import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -25,6 +24,14 @@ import { IconButton } from './ui/icon-button';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { Well } from './ui/well';
+import { callApi } from '@/lib/effect/api-client';
+
+// Owner only: an unknown task and one the caller may not see answer the same 404, which
+// rejects with ApiError.
+
+function getTaskSteps(taskId: string): Promise<TaskSteps> {
+  return callApi((client) => client.agentTasks.steps({ params: { taskId } }));
+}
 
 function aiPersonOf(
   jid: string,

@@ -5,6 +5,85 @@ import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
 import { API_BASE } from './api/http';
 import type { Me } from './api/chats';
+import {
+  Machine,
+  type MachineStatus,
+  type PairingCode,
+  Topic as topicSchema,
+  type ApproverRole,
+  type Topic as ContractTopic,
+  type TopicAi,
+  type TopicMember,
+  type TopicRole,
+  type TopicVisibility,
+} from '@zilar/api-contract';
+import {
+  makeTopicsApi,
+  type CreateTopicInput,
+  type PatchTopicInput,
+  type SetTopicRolesInput,
+  type TopicTool,
+} from '@zilar/client-core';
+
+export type Topic = ContractTopic;
+export type { Machine, MachineStatus, PairingCode };
+export { Machine as machineSchema };
+export { topicSchema };
+export type { ApproverRole, TopicAi, TopicMember, TopicRole, TopicVisibility };
+export type { CreateTopicInput, PatchTopicInput, SetTopicRolesInput, TopicTool };
+
+const api = makeTopicsApi(callApi);
+export const {
+  addTopicAi,
+  addTopicMember,
+  archiveTopic,
+  createTopic,
+  getTopic,
+  getTopicPreview,
+  joinTopic,
+  listGroupTopics,
+  listTopicAis,
+  listTopicMembers,
+  listTopicTools,
+  patchTopic,
+  removeTopicAi,
+  removeTopicMember,
+  setTopicRoles,
+} = api;
+
+// effect-plain: the promise edge over the Effect client.
+
+export function listMachines(): Promise<Machine[]> {
+  return callApi((client) => client.machines.list()).then((rows) => [...rows]);
+}
+
+export function createPairingCode(): Promise<PairingCode> {
+  return callApi((client) => client.machines.createPairingCode());
+}
+
+export function approveMachine(id: string): Promise<Machine> {
+  return callApi((client) => client.machines.approve({ params: { id } }));
+}
+
+export async function denyMachine(id: string): Promise<void> {
+  await callApi((client) => client.machines.deny({ params: { id } }));
+}
+
+export function revokeMachine(id: string): Promise<Machine> {
+  return callApi((client) => client.machines.revoke({ params: { id } }));
+}
+
+export function renameMachine(id: string, name: string): Promise<Machine> {
+  // The server trims the name; the contract encodes the trimmed form.
+  return callApi((client) =>
+    client.machines.rename({ params: { id }, payload: { name: name.trim() } }),
+  );
+}
+
+export async function deleteMachine(id: string): Promise<void> {
+  await callApi((client) => client.machines.remove({ params: { id } }));
+}
+
 export { API_BASE, ApiError } from './api/http';
 
 // In mock mode the mock backend answers the same path; the real call is a same-origin fetch.
@@ -41,9 +120,7 @@ export function updateMeProfile(name: string, bio: string): Promise<Me> {
 
 export * from './api/chats';
 export * from './api/groups';
-export * from './api/topics';
 export * from './api/ais';
-export * from './api/machines';
 export * from './api/stickers';
 export * from './api/media';
 export * from './api/people';

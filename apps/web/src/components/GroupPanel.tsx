@@ -22,10 +22,39 @@ import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
 import { VisibilitySection } from './VisibilitySection';
-import { GroupPictureSection } from './panels/GroupPictureSection';
 import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
 import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
 import type { PanelFailure } from './panels/groupPanelOps';
+import { AvatarUploader } from './AvatarUploader';
+
+function GroupPictureSection({
+  groupId,
+  title,
+  currentUrl,
+  chatId,
+}: {
+  groupId: string;
+  title: string;
+  currentUrl?: string | undefined;
+  chatId: string;
+}) {
+  const storeApi = useChatStoreApi();
+  const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
+  const shown = changedUrl !== null ? changedUrl : currentUrl;
+  return (
+    <AvatarUploader
+      kind="group"
+      ownerId={groupId}
+      ownerName={title}
+      currentUrl={shown}
+      onChanged={(next) => {
+        setChangedUrl(next);
+        storeApi.getState().refreshChats();
+        storeApi.getState().refreshGroupInfo(chatId);
+      }}
+    />
+  );
+}
 
 export function GroupPanel({
   chat,

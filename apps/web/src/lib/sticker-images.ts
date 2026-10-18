@@ -1,9 +1,22 @@
 /** Fits stills inside 512 x 512 and encodes WebP (PNG fallback) within 512 KiB; the server
  * validates again. Moving files (GIF, video, animated WebP, APNG) skip the canvas so they
  * keep their motion and the server converts them; decode/encode are injectable for tests. */
-import { fitStickerSize, STICKER_PREP_MAX_DIM } from '@zilar/chat-core';
+import {
+  fitStickerSize,
+  STICKER_PREP_MAX_DIM,
+  STICKER_SNIFF_BYTES,
+  sniffMotionBytes,
+  type MotionKind,
+} from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
-import { sniffMotion, type MotionKind } from './sticker-motion';
+
+// effect-plain: the Blob slice and the async boundary web's prepare flow needs; the byte
+// rules live in @zilar/chat-core.
+
+async function sniffMotion(file: Blob): Promise<MotionKind | null> {
+  const bytes = new Uint8Array(await file.slice(0, STICKER_SNIFF_BYTES).arrayBuffer());
+  return sniffMotionBytes(bytes);
+}
 
 export { fitStickerSize, STICKER_PREP_MAX_DIM };
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;

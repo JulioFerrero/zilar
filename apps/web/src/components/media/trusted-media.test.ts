@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTrustedInlineVideoUrl } from './trusted-media';
+import { isTrustedInlineVideoUrl } from '@/components/message/AttachmentBody';
 
 const HOSTS: ReadonlySet<string> = new Set(['upload.zilar.test', 'zilar.test']);
 const NO_HOSTS: ReadonlySet<string> = new Set();

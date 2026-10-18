@@ -2,9 +2,63 @@ import type { GroupAi, PublicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { FieldError } from '../ais/AiPageShell';
 import { EntityAvatar } from '../EntityAvatar';
-import { GroupAiRow } from '../panels/ChannelAdminsSection';
 import { Button } from '../ui/button';
 import { SectionLabel } from '../ui/card';
+import { Effect } from 'effect';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { GroupAiRowView } from '../panels/GroupAiRowView';
+import { type ChannelFailure, describeFailure, storeCall } from '../panels/channelPanelOps';
+
+function GroupAiRow({
+  chatId,
+  ai,
+  addedBy,
+  canRemove,
+  confirming,
+  onConfirm,
+  onError,
+}: {
+  chatId: string;
+  ai: GroupAi;
+  addedBy: string;
+  canRemove: boolean;
+  confirming: boolean;
+  onConfirm: (aiId: string | undefined) => void;
+  onError: (message: string) => void;
+}) {
+  const storeApi = useChatStoreApi();
+  const [removeState, removeAi] = useAction<void, void, ChannelFailure>(() =>
+    Effect.sync(() => onError('')).pipe(
+      Effect.andThen(
+        storeCall(
+          () => storeApi.getState().removeGroupAi(chatId, ai.aiId),
+          'Could not remove the AI',
+        ),
+      ),
+      Effect.tap(() => Effect.sync(() => onConfirm(undefined))),
+      Effect.asVoid,
+      Effect.tapError((failure) =>
+        Effect.sync(() => onError(describeFailure(failure, 'Could not remove the AI'))),
+      ),
+    ),
+  );
+  const removing = isWaiting(removeState);
+
+  return (
+    <GroupAiRowView
+      ai={ai}
+      addedBy={addedBy}
+      canRemove={canRemove}
+      confirming={confirming}
+      busy={removing}
+      removeLabel={`Remove ${ai.name} from the channel`}
+      onAskRemove={() => onConfirm(ai.aiId)}
+      onConfirmRemove={() => removeAi()}
+      onCancel={() => onConfirm(undefined)}
+    />
+  );
+}
 
 export function ChannelAisPage({
   chatId,

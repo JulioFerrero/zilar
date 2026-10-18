@@ -1,12 +1,64 @@
 import { useState } from 'react';
 import { Plus, Star } from 'lucide-react';
-import type { StickerPack } from '@/lib/api';
+import { addStickerFavorite, removeStickerFavorite, type StickerPack } from '@/lib/api';
 import { isPanelStickerUrl } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import type { StickerChoice } from '../StickerPanel';
-import { FavoriteStar } from './FavoriteStar';
 import { StickerThumb } from './StickerThumb';
+import { Effect } from 'effect';
+import { fromApi } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
+
+/**
+ * The request is uninterruptible: a row leaves the list at once when its
+ * favorite is removed on the Favorites tab, and a failed request must still
+ * roll back.
+ */
+function FavoriteStar({
+  sticker,
+  starred,
+  onApply,
+  onUndo,
+}: {
+  sticker: StickerChoice;
+  starred: boolean;
+  onApply: (sticker: StickerChoice, wasStarred: boolean) => void;
+  onUndo: (sticker: StickerChoice, wasStarred: boolean) => void;
+}) {
+  const [, toggle] = useAction((wasStarred: boolean) =>
+    Effect.sync(() => onApply(sticker, wasStarred)).pipe(
+      Effect.andThen(
+        Effect.uninterruptible(
+          (wasStarred
+            ? fromApi(() => removeStickerFavorite(sticker.stickerId))
+            : fromApi(() => addStickerFavorite(sticker.stickerId))
+          ).pipe(Effect.tapError(() => Effect.sync(() => onUndo(sticker, wasStarred)))),
+        ),
+      ),
+    ),
+  );
+
+  return (
+    <button
+      type="button"
+      aria-label={
+        starred
+          ? `Unfavorite ${sticker.emoji ?? 'sticker'}`
+          : `Favorite ${sticker.emoji ?? 'sticker'}`
+      }
+      aria-pressed={starred}
+      title={starred ? 'Remove from favorites' : 'Add to favorites'}
+      onClick={() => toggle(starred)}
+      className={cn(
+        'absolute top-0.5 right-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none',
+        starred ? 'text-white' : 'text-muted-foreground opacity-80',
+      )}
+    >
+      <Star className={cn('size-3', starred && 'fill-current')} aria-hidden="true" />
+    </button>
+  );
+}
 
 export interface StickerGridProps {
   activeStickers: StickerChoice[];

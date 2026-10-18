@@ -2,13 +2,35 @@ import { useState } from 'react';
 import { Effect } from 'effect';
 import { useLocation, useNavigate } from 'react-router';
 import { OtpInput } from './OtpInput';
-import { InviteCodeField } from './InviteCodeField';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { useAuth } from '@/auth/AuthProvider';
 import { authClient, sendSignInCode, verifySignInCode } from '@/lib/auth';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
+import { parseInviteCode } from '@zilar/chat-core';
+
+function InviteCodeField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <TextInput
+      id="auth-invite-code"
+      label="Invite code"
+      value={value}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="none"
+      spellCheck={false}
+      placeholder="Paste your invite code or link"
+      onChange={(event) => onChange(parseInviteCode(event.target.value))}
+    />
+  );
+}
 
 const RESEND_SECONDS = 30;
 const RESEND_TICK_MS = 1000;

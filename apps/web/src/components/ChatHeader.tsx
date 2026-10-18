@@ -8,6 +8,8 @@ import {
   Palette,
   Search,
   Users,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { Data, Effect } from 'effect';
 import { useState } from 'react';
@@ -15,7 +17,6 @@ import { useNavigate } from 'react-router';
 import { EntityAvatar } from './EntityAvatar';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
-import { ChatHeaderSubtitle, ChatHeaderTitle } from './ChatHeaderLines';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AisHereKey } from './topic/AisHereKey';
 import { IconButton } from './ui/icon-button';
@@ -23,6 +24,73 @@ import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { AiBadge } from './AiBadge';
+import { TopicPeopleLine } from './topic/TopicPeopleLine';
+import { cn } from '@/lib/utils';
+
+function TypingDots({ className }: { className?: string }) {
+  return (
+    <span className={cn('inline-flex items-center gap-0.5', className)} aria-hidden="true">
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className="typing-dot size-1 rounded-full bg-current"
+          style={{ animationDelay: `${index * 0.2}s` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function ChatHeaderTitle({ chat, isTopic }: { chat: ChatSummary; isTopic: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
+      {chat.isAI && <AiBadge />}
+      {chat.visibility === 'public' && (
+        <Globe role="img" aria-label="Public" className="size-3.5 text-muted-foreground" />
+      )}
+      {isTopic && chat.topic?.visibility === 'private' && (
+        <Lock role="img" aria-label="Private" className="size-3.5 text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+function ChatHeaderSubtitle({
+  chat,
+  isTopic,
+  names,
+  groupTitle,
+  onOpen,
+  connection,
+  aiLine,
+  subtitle,
+  showTypingDots,
+}: {
+  chat: ChatSummary;
+  isTopic: boolean;
+  names: readonly string[];
+  groupTitle: string | undefined;
+  onOpen: (() => void) | undefined;
+  connection: string | undefined;
+  aiLine: string | undefined;
+  subtitle: string;
+  showTypingDots: boolean;
+}) {
+  if (isTopic && connection === undefined && aiLine === undefined) {
+    return <TopicPeopleLine chat={chat} groupTitle={groupTitle} names={names} onOpen={onOpen} />;
+  }
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
+    >
+      <span className="truncate">{subtitle}</span>
+      {showTypingDots && <TypingDots />}
+    </div>
+  );
+}
 
 const ARCHIVE_ERROR = 'Could not archive the topic.';
 const NO_NAMES: string[] = [];

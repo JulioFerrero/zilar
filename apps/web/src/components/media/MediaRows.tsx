@@ -3,7 +3,32 @@ import type { MediaItem } from '@/lib/api';
 import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { Button } from '@/components/ui/button';
 import { byline, formatDuration, rowSubtitle, type JumpTarget } from './mediaModel';
-import { useShowInChat } from './useShowInChat';
+import { Effect } from 'effect';
+import { fromApi } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
+import { useChatStoreApi } from '@/store/ChatStoreProvider';
+
+function useShowInChat(target: JumpTarget): (item: MediaItem) => void {
+  const storeApi = useChatStoreApi();
+  const [, open] = useAction((item: MediaItem) =>
+    fromApi(() => storeApi.getState().openAtMessage(target.chatId, item.messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          target.onOpened();
+          window.requestAnimationFrame(() => {
+            scrollToMessage(item.messageId);
+          });
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(target.onFailed)),
+    ),
+  );
+  return (item) => {
+    target.onStart();
+    open(item);
+  };
+}
 
 function ShowInChatButton({ item, jump }: { item: MediaItem; jump: JumpTarget }) {
   const showInChat = useShowInChat(jump);

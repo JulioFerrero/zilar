@@ -1,4 +1,4 @@
-import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { type ChatSummary, type UiMessage, isTrustedMediaUrl } from '@zilar/chat-core';
 import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
 import { useMemo } from 'react';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -6,7 +6,6 @@ import { ApprovalCard } from '../ApprovalCard';
 import { FileMessage } from '../FileMessage';
 import { GifMessage } from '../GifMessage';
 import { ImageMessage } from '../ImageMessage';
-import { isTrustedInlineVideoUrl } from '../media/trusted-media';
 import { ProgressCard } from '../ProgressCard';
 import { VoiceMessage } from '../VoiceMessage';
 import { cn } from '@/lib/utils';
@@ -17,6 +16,20 @@ import { MediaMetaPill } from './MediaMetaPill';
 import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
 import { SendFailure } from './SendFailure';
+
+/**
+ * A root-relative `/api/` path is same-origin by construction; an absolute URL
+ * must be http(s) on a trusted media host. Anything else (`data:`, `blob:`, a
+ * peer's arbitrary host) stays a click-to-load file card: a peer can put any
+ * URL in the payload, and `<video preload="metadata">` fetches it on render,
+ * leaking the reader's IP.
+ */
+export function isTrustedInlineVideoUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
+  if (url.startsWith('/api/')) {
+    return true;
+  }
+  return isTrustedMediaUrl(url, trustedHosts);
+}
 
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();

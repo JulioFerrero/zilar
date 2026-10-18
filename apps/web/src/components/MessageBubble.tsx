@@ -1,10 +1,15 @@
-import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import {
+  type ChatSummary,
+  type UiMessage,
+  type UiReaction,
+  replyQuoteContent,
+  senderColor,
+} from '@zilar/chat-core';
 import { isCardAllowedFrom, fromApi } from '@zilar/client-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
 import { EntityAvatar } from './EntityAvatar';
-import { ForwardedHeader } from './ForwardedHeader';
 import { AttachmentBody } from './message/AttachmentBody';
 import { BigEmoji } from './message/BigEmoji';
 import { doubleClickReply } from './message/doubleClickReply';
@@ -16,8 +21,6 @@ import { hidesBodyText } from './message/QuestionCard';
 import { MessageTombstone } from './message/MessageTombstone';
 import { bubbleFlags, draftAnimates } from './message/bubbleFlags';
 import { PersonLink } from './personLink';
-import { ReactionChips } from './ReactionChips';
-import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { Checkbox } from './ui/checkbox';
 import { useAction } from '@/lib/effect/use-action';
@@ -25,6 +28,117 @@ import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+import type { ForwardOrigin } from '@zilar/protocol';
+import { Forward } from 'lucide-react';
+import { Chip } from './ui/chip';
+
+/** Our own replies keep the accent instead of a sender colour. */
+const ACCENT = 'var(--accent)';
+
+function ReplyQuote({ message, onOpen }: { message: UiMessage; onOpen?: () => void }) {
+  const quote = message.replyTo;
+  // The wire reply carries no name: resolve the target from the loaded history.
+  const referenced = useChatSelector((state) =>
+    quote === undefined
+      ? undefined
+      : state.messagesByChat[message.chatId]?.find((item) => item.id === quote.id),
+  );
+  const currentUserId = useChatSelector((state) => state.currentUserId);
+  if (quote === undefined) {
+    return null;
+  }
+  const content = replyQuoteContent(quote, referenced, currentUserId);
+  if (content === undefined) {
+    return null;
+  }
+  const color = content.own ? ACCENT : senderColor(content.senderId);
+
+  const block = (
+    <>
+      <span className="w-[3px] shrink-0" style={{ backgroundColor: color }} aria-hidden="true" />
+      <div className="min-w-0 px-2 py-1">
+        <div className="truncate text-[13px] leading-4 font-semibold" style={{ color }}>
+          {content.senderName}
+        </div>
+        {content.text !== undefined && (
+          <div className="truncate text-[13px] leading-4 text-muted-foreground">{content.text}</div>
+        )}
+      </div>
+    </>
+  );
+
+  if (onOpen === undefined) {
+    return <div className="mb-1 flex overflow-hidden rounded-md bg-surface/70">{block}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Go to the message from ${content.senderName}`}
+      className="mb-1 flex w-full overflow-hidden rounded-md bg-surface/70 text-left transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      {block}
+    </button>
+  );
+}
+
+interface ReactionChipsProps {
+  reactions: UiReaction[];
+  own: boolean;
+  className?: string;
+  onToggle: (emoji: string) => void;
+}
+
+function chipLabel(reaction: UiReaction): string {
+  return reaction.mine
+    ? `${reaction.emoji} ${reaction.count}, including you`
+    : `${reaction.emoji} ${reaction.count}`;
+}
+
+function ReactionChips({ reactions, own, className, onToggle }: ReactionChipsProps) {
+  if (reactions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        'mt-1 flex max-w-full flex-wrap gap-1',
+        own ? 'justify-end' : 'justify-start',
+        className,
+      )}
+    >
+      {reactions.map((reaction) => (
+        <Chip
+          key={reaction.emoji}
+          pressed={reaction.mine}
+          ariaLabel={chipLabel(reaction)}
+          title={reaction.reactors.join(', ')}
+          onClick={() => onToggle(reaction.emoji)}
+          className={cn('reaction-chip', reaction.mine && 'reaction-chip-mine')}
+        >
+          <span aria-hidden="true">{reaction.emoji}</span>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {reaction.count}
+          </span>
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
+function ForwardedHeader({ origin }: { origin: ForwardOrigin }) {
+  const label =
+    origin.chat_name === undefined
+      ? `Forwarded from ${origin.sender_name}`
+      : `Forwarded from ${origin.sender_name} in ${origin.chat_name}`;
+  return (
+    <div className="flex items-center gap-1 text-[12px] italic text-muted-foreground">
+      <Forward className="size-3.5" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
 
 export { SendFailure } from './message/SendFailure';
 

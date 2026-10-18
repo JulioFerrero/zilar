@@ -1,8 +1,10 @@
-import { Effect } from 'effect';
+import { Effect, Data } from 'effect';
 import { ApiError } from '@/lib/api';
 import { type ApiFailure, toApiFailure } from '@zilar/client-core';
-import { StoreFailed } from '@/lib/errors';
 import { describeAiError } from '../ais/errors';
+
+/** message is the sentence the store wrote, or the component's fallback for a non-Error throw. */
+class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
 
 export type ChannelFailure = ApiFailure | StoreFailed;
 

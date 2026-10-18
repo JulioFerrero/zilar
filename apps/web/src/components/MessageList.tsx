@@ -7,7 +7,6 @@ import {
 import { ArrowDown } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MessageListRow, messageRowKey } from './MessageListRow';
-import { MessageAnnouncer } from './MessageAnnouncer';
 import { MessageListSkeleton } from './Skeleton';
 import { useMessageWindow } from './useMessageWindow';
 import { useMessageListScroll } from './useMessageListScroll';
@@ -18,6 +17,34 @@ import { EmptyChat } from './message/EmptyChat';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+/**
+ * Announces only a new incoming message appended to the open chat: history
+ * prepends, own sends and the first load are skipped.
+ */
+function MessageAnnouncer({ messages, meId }: { messages: readonly UiMessage[]; meId: string }) {
+  const [announcement, setAnnouncement] = useState('');
+  const previousLast = useRef<UiMessage | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousLast.current;
+    const last = messages.at(-1);
+    previousLast.current = last;
+    if (
+      previous !== undefined &&
+      last !== undefined &&
+      last.id !== previous.id &&
+      last.senderId !== meId &&
+      messages.includes(previous)
+    ) {
+      setAnnouncement(`New message from ${last.senderName}`);
+    }
+  }, [messages, meId]);
+  return (
+    <p role="status" aria-live="polite" className="sr-only">
+      {announcement}
+    </p>
+  );
+}
 
 const EMPTY_MESSAGES: UiMessage[] = [];
 

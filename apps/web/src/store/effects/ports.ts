@@ -63,10 +63,6 @@ import {
   setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
 } from '@/lib/api';
-import {
-  checkSession as checkSessionAdapter,
-  sessionGone as sessionGoneAdapter,
-} from '@/lib/api/sessionGone';
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice/convert';
 import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
@@ -82,6 +78,66 @@ import {
   webFlags,
 } from './portAdapters';
 import type { ApiClient, StorageLike } from './portTypes';
+import { ApiError } from '@/lib/api/http';
+import { authClient } from '@/lib/auth';
+import { resetHandleGateDismissal } from '@/lib/handleGate';
+import { writeStoredDevice } from '@/lib/push/deviceStorage';
+import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
+import { clearChatListCache } from '@/store/chatListCache';
+import { clearMessageCache } from '@/store/messageCache';
+
+// effect-plain: promise-edge adapters beside the ports; the pipeline starts one layer up.
+
+// A 200 means the session is alive and a 401 that it is gone; another status or a network
+// error is unknown, so it never signs anyone out.
+export const checkSession = (): Promise<SessionCheck> =>
+  Effect.runPromise(
+    Effect.matchEffect(
+      Effect.tryPromise({
+        try: () => getMe(),
+        catch: (error) => error,
+      }),
+      {
+        onFailure: (error: unknown) =>
+          Effect.succeed(
+            error instanceof ApiError && error.status === 401
+              ? ('gone' as SessionCheck)
+              : ('unknown' as SessionCheck),
+          ),
+        onSuccess: () => Effect.succeed('valid' as SessionCheck),
+      },
+    ),
+  );
+
+/** The storage `clearChatListCache` writes through, exposed for tests. */
+export type SessionGoneStorage = StorageLike | null;
+
+// Runs the persistent half of signOutStore (server sign-out, cache clears, push-device
+// clear so the next account re-registers) and leaves for /login. The <disable/> stanza
+// cannot be sent — the XMPP connection is down — but the local handle must not survive it.
+export const sessionGone = (goToLogin: () => void, storage?: SessionGoneStorage): void => {
+  const target = storage === undefined ? defaultSessionGoneStorage() : storage;
+  clearChatListCache(target);
+  clearMessageCache(target);
+  resetIsServerOwnerCache();
+  resetHandleGateDismissal();
+  try {
+    writeStoredDevice(null);
+  } catch {
+    // A blocked storage must never break the sign-out.
+  }
+  void authClient.signOut().finally(() => {
+    goToLogin();
+  });
+};
+
+const defaultSessionGoneStorage = (): SessionGoneStorage => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
 
 export type { ApiClient, StorageLike } from './portTypes';
 
@@ -189,10 +245,10 @@ export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
     bytes: bytesFromAttachmentPort(attachments),
     openDrafts: deps.openDrafts ?? subscribeToDrafts,
     goToLogin: deps.goToLogin ?? defaultGoToLogin,
-    checkSession: deps.checkSession ?? checkSessionAdapter,
+    checkSession: deps.checkSession ?? checkSession,
     // The revoked session lands on sign-in through the persistent half of signOutStore
     // (server sign-out, cache and device clears, then /login).
-    sessionGone: deps.sessionGone ?? (() => sessionGoneAdapter(deps.goToLogin ?? defaultGoToLogin)),
+    sessionGone: deps.sessionGone ?? (() => sessionGone(deps.goToLogin ?? defaultGoToLogin)),
     rows: realRows,
     visibility: { isVisible: deps.documentVisible ?? defaultVisible, onFocus: defaultOnFocus },
     drafts: deps.openDrafts ?? subscribeToDrafts,

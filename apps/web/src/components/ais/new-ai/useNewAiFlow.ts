@@ -9,6 +9,7 @@ import {
   defaultPersonaFor,
   modelSuggestionsFor,
   orbParamsFor,
+  orbDataUri,
   shuffleOrb,
   validateLimits,
   buildCreateBody,
@@ -31,8 +32,42 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useToast } from '@/components/ui/toast';
 import { describeAiError, type AiErrorInfo } from '../errors';
-import { orbPngBlob } from './orb-png';
 import { useKeyCheck } from './useKeyCheck';
+
+// `@zilar/ball-avatar` is not a web dependency; the orb parameters come back
+// from `orbDataUri`, so this names the same shape without importing it.
+type OrbPngParams = Parameters<typeof orbDataUri>[0];
+
+const ORB_PNG_SIDE = 256;
+
+/**
+ * Renders the orb's SVG data URI to a 256×256 PNG; a null blob means the
+ * browser could not decode or encode the image.
+ */
+function orbPngBlob(params: OrbPngParams, idSeed: string): Effect.Effect<Blob | null> {
+  return Effect.callback<Blob | null>((resume) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = ORB_PNG_SIDE;
+      canvas.height = ORB_PNG_SIDE;
+      const context = canvas.getContext('2d');
+      if (context === null) {
+        resume(Effect.succeed(null));
+        return;
+      }
+      context.drawImage(image, 0, 0, ORB_PNG_SIDE, ORB_PNG_SIDE);
+      canvas.toBlob((blob) => resume(Effect.succeed(blob)), 'image/png');
+    };
+    image.onerror = () => resume(Effect.succeed(null));
+    image.src = orbDataUri(params, idSeed);
+    return Effect.sync(() => {
+      image.onload = null;
+      image.onerror = null;
+    });
+  });
+}
 
 const COMPUTER_MODES: readonly AiComputerMode[] = ['off', 'cloud', 'runner', 'auto'];
 const TEMPLATES: readonly AiTemplateId[] = ['dev', 'marketing', 'fun'];

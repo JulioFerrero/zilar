@@ -1,10 +1,9 @@
 import { formatDuration, type ReplyRef } from '@zilar/chat-core';
-import { ArrowUp, Mic, Send, Smile, Trash2, X } from 'lucide-react';
+import { ArrowUp, Mic, Send, Smile, Trash2, X, Pencil } from 'lucide-react';
 import { useEffect, type KeyboardEvent, type RefObject } from 'react';
 import { AttachMenu } from '../attach/AttachMenu';
 import { AttachSendDialog } from '../attach/AttachSendDialog';
 import { AttachmentStrip } from './AttachmentStrip';
-import { EditBar } from '../EditBar';
 import { MentionPicker } from '../MentionPicker';
 import { StickerPanel } from '../StickerPanel';
 import { Button } from '../ui/button';
@@ -13,6 +12,29 @@ import { Well } from '../ui/well';
 import type { ComposerAttachments, SendPendingOptions } from './useComposerAttachments';
 import type { Mentions } from './useMentions';
 import type { VoiceRecorderController } from './composerShared';
+
+function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
+  return (
+    <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">
+      <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
+      <div className="min-w-0 flex-1 px-2.5 py-1.5">
+        <div className="flex items-center gap-1.5 truncate text-[13px] leading-4 font-semibold text-[#d4d4d4]">
+          <Pencil className="size-3.5 shrink-0" aria-hidden="true" />
+          Edit message
+        </div>
+        <div className="truncate text-[13px] leading-4 text-muted-foreground">{text}</div>
+      </div>
+      <button
+        type="button"
+        aria-label="Cancel edit"
+        onClick={onCancel}
+        className="flex w-9 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-raised"
+      >
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </Well>
+  );
+}
 
 const MENTION_PICKER_ID = 'mention-picker';
 const LINE_HEIGHT = 22;

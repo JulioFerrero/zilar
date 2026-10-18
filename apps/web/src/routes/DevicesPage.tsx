@@ -2,7 +2,6 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
-import { listSessions, revokeSession, type AuthSession } from '@/lib/api/devices';
 import { fromApi } from '@zilar/client-core';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -10,6 +9,19 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
+import type { AuthSession, AuthSessions } from '@zilar/api-contract';
+import { callApi } from '@/lib/effect/api-client';
+
+// The list never carries a session token or an IP address.
+
+function listSessions(): Promise<AuthSessions> {
+  return callApi((client) => client.auth.listSessions());
+}
+
+/** Signs out one other device; the server answers 204. */
+function revokeSession(id: string): Promise<void> {
+  return callApi((client) => client.auth.revokeSession({ params: { id } }));
+}
 
 const SIGN_OUT_ERROR = 'Could not sign out. Try again.';
 const LOAD_ERROR = 'Could not load your devices. Try again.';

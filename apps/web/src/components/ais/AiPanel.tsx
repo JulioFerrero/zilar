@@ -27,17 +27,30 @@ import { AiMemorySection } from './AiMemorySection';
 import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { RoutinesSection } from '@/components/tools/RoutinesSection';
 import { ToolsSection } from '@/components/tools/ToolsSection';
-import { describeFailure, type PanelStatus } from './aiPanelOps';
+import { describeFailure, type PanelStatus, stripAvatarUrl } from './aiPanelOps';
 import { AiFormFields, AiLimitsFields } from './AiFormFields';
 import { AiMachineSection } from './AiMachineSection';
 import { AiComputerSection } from './AiComputerSection';
 import { AiDelegationSection } from './AiDelegationSection';
 import { AiDangerZone } from './AiDangerZone';
-import { AiPictureSection } from './AiPictureSection';
 import { UsageBlock } from './AiUsageSection';
 import { validateLimits } from './limits';
-import { defaultModelFor, modelSuggestionsFor } from '@zilar/chat-core';
-import { buildPatch } from './aiForm';
+import { buildPatch, defaultModelFor, modelSuggestionsFor } from '@zilar/chat-core';
+import { AvatarUploader } from '@/components/AvatarUploader';
+
+function AiPictureSection({ ai, onChanged }: { ai: PublicAi; onChanged: (ai: PublicAi) => void }) {
+  return (
+    <AvatarUploader
+      kind="ai"
+      ownerId={ai.id}
+      ownerName={ai.name}
+      currentUrl={ai.avatarUrl}
+      onChanged={(url) =>
+        onChanged(url === undefined ? stripAvatarUrl(ai) : { ...ai, avatarUrl: url })
+      }
+    />
+  );
+}
 
 export { UsageBlock };
 

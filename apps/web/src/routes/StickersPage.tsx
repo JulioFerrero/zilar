@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Plus, Upload } from 'lucide-react';
+import { Plus, Upload, Star } from 'lucide-react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -26,9 +26,34 @@ import {
   loadPanel,
   refreshPanel,
   searchPacks,
+  unstarSticker,
 } from '@/components/sticker/pageActions';
 import { AddedPackRow, DiscoverPackRow, MyPackRow } from '@/components/sticker/PackRows';
-import { FavoriteRow } from '@/components/sticker/FavoriteRow';
+
+function FavoriteRow({ sticker, setters }: { sticker: Sticker; setters: PageSetters }) {
+  const [, runUnstar] = useAction<void, void, never>(() => unstarSticker(sticker.id, setters));
+  return (
+    <li className="relative flex size-20 items-center justify-center justify-self-center overflow-hidden rounded-[10px] border border-border bg-surface p-1">
+      <img
+        src={sticker.url}
+        alt={sticker.emoji ?? 'Sticker'}
+        loading="lazy"
+        width={72}
+        height={72}
+        className="max-h-full max-w-full object-contain"
+      />
+      <button
+        type="button"
+        aria-label={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
+        title={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
+        onClick={() => runUnstar()}
+        className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none text-white"
+      >
+        <Star className="size-3 fill-current" aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
 
 export { SETTINGS_COLUMN };
 export type { PackRowThumb } from '@/components/sticker/PackThumbs';

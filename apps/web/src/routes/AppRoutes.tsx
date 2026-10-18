@@ -1,15 +1,13 @@
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { hasDismissedHandleGate } from '@/lib/handleGate';
 import { useDelayed } from '@zilar/client-core';
-import { AddContactRoute } from './AddContactRoute';
 import { ChatShell } from './ChatShell';
 import { GroupHandleRoute } from './GroupHandleRoute';
 import { HandlePage } from './HandlePage';
 import { AisPage } from './AisPage';
-import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { BlockedPage } from './BlockedPage';
 import { ContactsPage } from './ContactsPage';
@@ -17,8 +15,64 @@ import { DevicesPage } from './DevicesPage';
 import { RequestsPage } from './RequestsPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NamePage } from './NamePage';
-import { ProfilePage } from './ProfilePage';
 import { SettingsHubPage } from './SettingsHubPage';
+import { AuthFlow } from '@/components/auth/AuthFlow';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { ProfileSettingsSection } from '@/components/ProfileSettingsSection';
+import { AddContactDialog } from '@/components/AddContactDialog';
+
+/** Share entry points: /u/:handle and /@handle. Logged in opens the Add contact dialog
+ * prefilled; logged out goes to login and returns to the real URL afterwards. */
+function AddContactRoute({ atHandle }: { atHandle?: string | undefined }) {
+  const auth = useAuth();
+  const params = useParams<{ handle?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(true);
+
+  // The real URL the visitor opened, recorded for the login return trip.
+  const here = `${location.pathname}${location.search}`;
+  const handle = atHandle ?? params.handle ?? '';
+
+  if (auth.status === 'loading') {
+    return null;
+  }
+  if (auth.status === 'guest') {
+    return <Navigate to="/login" replace state={{ from: here }} />;
+  }
+
+  const close = (): void => {
+    setOpen(false);
+    navigate('/', { replace: true });
+  };
+
+  if (!open) {
+    return null;
+  }
+  // Keyed by handle so /@alice then /@bob re-seeds the dialog state.
+  return <AddContactDialog key={handle} initialHandle={handle} onClose={close} />;
+}
+
+function ProfilePage() {
+  const navigate = useNavigate();
+  return (
+    <SettingsShell
+      title="Profile"
+      subtitle="Your picture and username, seen by your contacts."
+      onBack={() => navigate('/settings')}
+    >
+      <div className={SETTINGS_COLUMN}>
+        <ProfileSettingsSection />
+      </div>
+    </SettingsShell>
+  );
+}
+
+function InvitePage() {
+  // A missing code is undefined, so the invite step starts with an empty field.
+  const { code } = useParams<{ code: string }>();
+  return <AuthFlow inviteCode={code} heading="You're invited to Zilar" />;
+}
 
 // Settings, setup and login pages load on demand; the chat routes stay eager.
 const ConnectionsPage = lazy(() =>

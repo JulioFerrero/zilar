@@ -1,10 +1,37 @@
-import type { ChatSummary, RenderItem, UiMessage } from '@zilar/chat-core';
-import { Fragment, useState, type RefObject } from 'react';
-import { DateSeparator } from './DateSeparator';
+import {
+  formatDateSeparator,
+  type ChatSummary,
+  type RenderItem,
+  type UiMessage,
+} from '@zilar/chat-core';
+import { Fragment, useState, type RefObject, type Ref } from 'react';
 import { MessageBubble } from './MessageBubble';
-import { UnreadDivider } from './UnreadDivider';
 import { AlbumMembersProvider } from './message/AlbumGrid';
 import { HandoffLine } from './message/HandoffLine';
+
+/**
+ * A plain flow row: a sticky one pins every separator at once and covers
+ * messages, since they all share the list as containing block.
+ */
+function DateSeparator({ date }: { date: Date }) {
+  return (
+    <div className="flex justify-center py-2">
+      <span className="raised-pill rounded-full px-2.5 py-1 text-[12px] font-medium text-muted-foreground">
+        {formatDateSeparator(date, new Date())}
+      </span>
+    </div>
+  );
+}
+
+function UnreadDivider({ ref }: { ref?: Ref<HTMLDivElement> }) {
+  return (
+    <div ref={ref} className="my-3 w-full">
+      <div className="well-surface w-full rounded-[10px] px-3 py-1.5 text-center text-[12px] font-medium text-muted-foreground">
+        Unread messages
+      </div>
+    </div>
+  );
+}
 
 export interface MessageListRowProps {
   item: RenderItem;
