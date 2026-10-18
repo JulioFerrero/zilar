@@ -9,15 +9,13 @@
 // by its target id.
 
 import { decodePayload, type Payload } from '@zilar/protocol';
+import { findCloseTag, nextOpenTag } from '../markup/scan';
 import { correctionTarget, retractTarget } from '../search/snippet';
 
 // The agent payload namespace (packages/xmpp-core/src/namespaces.ts). The
 // server cannot import it, so the value is repeated with this pointer.
 const AGENT_NAMESPACE = 'urn:zilar:agent:0';
-const AGENT_PATTERN = new RegExp(
-  `<agent\\b[^>]*\\bxmlns\\s*=\\s*["']${AGENT_NAMESPACE}["'][^>]*>([\\s\\S]*?)</agent>`,
-  'i',
-);
+const AGENT_NAMESPACE_ATTR = new RegExp(`\\bxmlns\\s*=\\s*["']${AGENT_NAMESPACE}["']`, 'i');
 
 // The parser unescapes the five XML entities (in this order, so an escaped
 // ampersand is not double-decoded).
@@ -35,12 +33,23 @@ function unescapeXmlText(value: string): string {
 // never a throw. This is the one decoder the media extractor and the memory
 // indexer share.
 export function decodeAgentPayload(xml: string): Payload | null {
-  const match = AGENT_PATTERN.exec(xml);
-  if (match === null) {
-    return null;
+  let cursor = 0;
+  while (true) {
+    const open = nextOpenTag(xml, 'agent', cursor);
+    if (open === null) {
+      return null;
+    }
+    if (!AGENT_NAMESPACE_ATTR.test(open.attrs)) {
+      cursor = open.end;
+      continue;
+    }
+    const closeStart = findCloseTag(xml, 'agent', open.end);
+    if (closeStart === null) {
+      return null;
+    }
+    const result = decodePayload(unescapeXmlText(xml.slice(open.end, closeStart)));
+    return result.ok ? result.payload : null;
   }
-  const result = decodePayload(unescapeXmlText(match[1] ?? ''));
-  return result.ok ? result.payload : null;
 }
 
 /** True when an archive row is the live AI UI itself: an `<agent>` payload of

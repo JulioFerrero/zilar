@@ -7,6 +7,7 @@ import { bareJid, ownBareJid } from '../jid';
 import { isLiveAiUiEdit, isLiveAiUiRow } from '../notify/ai-cards';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, isTopicMember, type TopicRow } from '../topics/access';
+import { findCloseTag, nextOpenTag, openTagAttrs } from '../markup/scan';
 import { albumInfoFromXml } from '../xmpp/album-xml';
 import { localpartFor } from '../xmpp/provisioning';
 import type { ArchiveCandidate } from './archive-scan';
@@ -201,22 +202,41 @@ async function isMuted(
   );
 }
 
+const REPLY_FALLBACK_FOR = /\bfor\s*=\s*(["'])urn:xmpp:reply:0\1/;
+
 // A reply's XEP-0461 fallback quote is the head of the archived text, marked
 // by `<fallback for="urn:xmpp:reply:0"><body start end/></fallback>` in the
 // row's XML (start and end are code points into the text). The archive XML is
-// read defensively with regexes, the way `search/snippet.ts` reads it
-// (`stanzaFrom`, `correctionTarget`): a row whose XML does not parse keeps
-// today's text.
-function textWithoutReplyFallback(text: string, xml: string): string {
+// read defensively, the way `search/snippet.ts` reads it (`stanzaFrom`,
+// `correctionTarget`): a row whose XML does not parse keeps today's text.
+export function textWithoutReplyFallback(text: string, xml: string): string {
   if (!xml.includes('urn:xmpp:reply:0')) {
     return text;
   }
-  const fallback = xml.match(
-    /<fallback\b[^>]*\bfor\s*=\s*(["'])urn:xmpp:reply:0\1[^>]*>([\s\S]*?)<\/fallback\s*>/,
-  );
-  const bodyTag = fallback?.[2]?.match(/<body\b[^>]*>/);
-  const start = bodyTag?.[0].match(/\bstart\s*=\s*(["'])(\d+)\1/)?.[2];
-  const end = bodyTag?.[0].match(/\bend\s*=\s*(["'])(\d+)\1/)?.[2];
+  let cursor = 0;
+  let fallbackInner: string | null = null;
+  while (true) {
+    const open = nextOpenTag(xml, 'fallback', cursor);
+    if (open === null || !REPLY_FALLBACK_FOR.test(open.attrs)) {
+      if (open === null) {
+        break;
+      }
+      cursor = open.end;
+      continue;
+    }
+    const closeStart = findCloseTag(xml, 'fallback', open.end);
+    if (closeStart === null) {
+      break;
+    }
+    fallbackInner = xml.slice(open.end, closeStart);
+    break;
+  }
+  if (fallbackInner === null) {
+    return text;
+  }
+  const bodyTag = openTagAttrs(fallbackInner, 'body');
+  const start = bodyTag?.match(/\bstart\s*=\s*(["'])(\d+)\1/)?.[2];
+  const end = bodyTag?.match(/\bend\s*=\s*(["'])(\d+)\1/)?.[2];
   if (start === undefined || end === undefined) {
     return text;
   }

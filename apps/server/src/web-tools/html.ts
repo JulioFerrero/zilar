@@ -6,7 +6,11 @@
 // malformed HTML cannot hang the server; output is plain text the
 // adapters put in `modelText` (never in a summary).
 // effect-plain: pure HTML-to-text extraction; malformed input yields text, no I/O
+import { findCloseTag, nextOpenTag, stripComments, stripTags } from '../markup/scan';
+
 const MAX_HTML_INPUT_CHARS = 2 * 1024 * 1024;
+// Attribute regexes only ever read one bounded tag's text.
+const MAX_TAG_TEXT_CHARS = 2000;
 
 const DROP_ELEMENTS = new Set(['script', 'style', 'head', 'nav', 'noscript', 'template']);
 
@@ -44,7 +48,7 @@ const ENTITY_MAP: Record<string, string> = {
 
 export function extractText(html: string): string {
   const input = html.length > MAX_HTML_INPUT_CHARS ? html.slice(0, MAX_HTML_INPUT_CHARS) : html;
-  const withoutComments = input.replace(/<!--[\s\S]*?-->/g, ' ');
+  const withoutComments = stripComments(input);
   const out: string[] = [];
   const dropStack: string[] = [];
   // The href of the innermost open anchor, when not inside a dropped
@@ -73,7 +77,8 @@ export function extractText(html: string): string {
       continue;
     }
     const isClose = raw.startsWith('/');
-    const name = tagNameOf(isClose ? raw.slice(1) : raw);
+    const tagText = raw.slice(0, MAX_TAG_TEXT_CHARS);
+    const name = tagNameOf(isClose ? tagText.slice(1) : tagText);
     if (name === null) {
       continue;
     }
@@ -104,7 +109,7 @@ export function extractText(html: string): string {
       continue;
     }
     if (name === 'a') {
-      linkStack.push(linkHrefOf(raw));
+      linkStack.push(linkHrefOf(tagText));
       continue;
     }
     if (dropStack.length > 0) {
@@ -187,22 +192,16 @@ export interface AnchorParts {
 }
 
 export function anchorParts(fragment: string): AnchorParts | null {
-  const open = /<a\b([^>]*)>/i.exec(fragment);
+  const open = nextOpenTag(fragment, 'a', 0);
   if (open === null) {
     return null;
   }
-  const attrs = (open[1] ?? '') as string;
-  const afterOpen = fragment.slice(open.index + open[0].length);
-  const closeAt = afterOpen.search(/<\/a\s*>/i);
-  const inner = closeAt < 0 ? afterOpen : afterOpen.slice(0, closeAt);
-  const text = collapseWhitespace(decodeEntities(stripTags(inner)));
-  const href = linkHrefOf(`a ${attrs}`);
+  const closeAt = findCloseTag(fragment, 'a', open.end);
+  const inner = closeAt === null ? fragment.slice(open.end) : fragment.slice(open.end, closeAt);
+  const text = collapseWhitespace(decodeEntities(stripTags(inner, ' ')));
+  const href = linkHrefOf(`a ${open.attrs}`);
   if (text.length === 0 && href === null) {
     return null;
   }
   return { text, href };
-}
-
-function stripTags(value: string): string {
-  return value.replace(/<[^>]*>/g, ' ');
 }

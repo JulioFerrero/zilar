@@ -4,6 +4,8 @@
 // entity can ever be fetched. Items come back newest-first as far as a
 // tag scan can tell; the adapter caps counts and snippet lengths.
 // effect-plain: pure RSS/Atom parse; malformed input is a result value, not an error
+import { elementBlocks, firstElement, nextOpenTag, openTagAttrs, stripTags } from '../markup/scan';
+
 export interface FeedItem {
   title: string;
   link: string;
@@ -33,7 +35,7 @@ export function parseFeed(body: string): FeedParseResult {
 }
 
 function readRssItems(input: string): FeedItem[] {
-  const blocks = blocksOf(input, 'item');
+  const blocks = elementBlocks(input, 'item', MAX_FEED_ITEMS);
   return blocks.map((block) => ({
     title: firstText(block, ['title']),
     link: firstText(block, ['link']),
@@ -43,7 +45,7 @@ function readRssItems(input: string): FeedItem[] {
 }
 
 function readAtomItems(input: string): FeedItem[] {
-  const blocks = blocksOf(input, 'entry');
+  const blocks = elementBlocks(input, 'entry', MAX_FEED_ITEMS);
   return blocks.map((block) => ({
     title: firstText(block, ['title']),
     link: atomLink(block) ?? firstText(block, ['link']),
@@ -55,43 +57,33 @@ function readAtomItems(input: string): FeedItem[] {
 // The entry's alternate link: `<link href="…"/>` wins over a bare
 // `<link>…</link>` text, and only http(s) targets are kept.
 function atomLink(block: string): string | null {
-  const withHref = /<link\b[^>]*\bhref\s*=\s*("([^"]*)"|'([^']*)')[^>]*\/?>/i.exec(block);
-  if (withHref !== null) {
-    const href = (withHref[2] ?? withHref[3] ?? '').trim();
-    if (/^https?:\/\//i.test(href)) {
-      return href;
+  let cursor = 0;
+  while (true) {
+    const link = nextOpenTag(block, 'link', cursor);
+    if (link === null) {
+      return null;
     }
-  }
-  return null;
-}
-
-// Every `<tag>…</tag>` block in document order.
-function blocksOf(input: string, tag: string): string[] {
-  const pattern = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}\\s*>`, 'gi');
-  const blocks: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(input)) !== null) {
-    blocks.push(match[1] ?? '');
-    if (blocks.length >= MAX_FEED_ITEMS) {
-      break;
+    const href = attrOf(link.attrs, 'href')?.trim();
+    if (href !== null && href !== undefined) {
+      return /^https?:\/\//i.test(href) ? href : null;
     }
+    cursor = link.end;
   }
-  return blocks;
 }
 
 function firstText(block: string, tags: string[]): string {
   for (const tag of tags) {
-    const pattern = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}\\s*>`, 'i');
-    const match = pattern.exec(block);
-    if (match !== null && match[1] !== undefined) {
-      const text = plainText(match[1]);
+    const element = firstElement(block, tag);
+    if (element !== null) {
+      const text = plainText(element.inner);
       if (text.length > 0) {
         return text;
       }
     }
     if (tag.toLowerCase() === 'content') {
-      const selfClosed = new RegExp(`<${tag}\\b([^>]*)\\/\\s*>`, 'i').exec(block);
-      const src = selfClosed?.[1] !== undefined ? attrOf(selfClosed[1], 'src') : null;
+      const attrs = openTagAttrs(block, tag);
+      const selfClosed = attrs !== null && attrs.trimEnd().endsWith('/');
+      const src = selfClosed ? attrOf(attrs, 'src') : null;
       if (src !== null && src.length > 0) {
         return src;
       }
@@ -113,8 +105,7 @@ function attrOf(attrs: string, name: string): string | null {
 function plainText(value: string): string {
   const cdata = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(value.trim());
   const inner = cdata !== null && cdata[1] !== undefined ? cdata[1] : value;
-  return inner
-    .replace(/<[^>]*>/g, ' ')
+  return stripTags(inner, ' ')
     .replace(/&(#\d+|#x[0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);/g, (full, body: string) => {
       switch (body) {
         case 'amp':

@@ -1,4 +1,5 @@
 import { bareJid } from '../jid';
+import { openTagAttrs } from '../markup/scan';
 import type { MarkedSnippet } from './match';
 import type { ArchiveRow } from './service';
 
@@ -62,8 +63,8 @@ export function senderNameFor(
 // The stanza's `from` attribute, parsed defensively like the other tag
 // readers: a missing or malformed attribute is null, never a throw.
 export function stanzaFrom(xml: string): string | null {
-  const match = xml.match(/<message\b[^>]*\bfrom\s*=\s*(["'])(.*?)\1/s);
-  const value = match?.[2]?.trim();
+  const attrs = openTagAttrs(xml, 'message');
+  const value = attrs?.match(/\bfrom\s*=\s*(["'])([\s\S]*?)\1/)?.[2]?.trim();
   return value === undefined || value === '' ? null : value;
 }
 
@@ -72,8 +73,11 @@ export function chatJidFor(row: Pick<ArchiveRow, 'owner' | 'kind' | 'barePeer'>)
 }
 
 function tagAttribute(xml: string, tag: string): string | null {
-  const match = xml.match(new RegExp(`<${tag}[^>]*\\bid\\s*=\\s*["']([^"']+)["']`, 's'));
-  return match?.[1] ?? null;
+  const attrs = openTagAttrs(xml, tag);
+  if (attrs === null) {
+    return null;
+  }
+  return attrs.match(/\bid\s*=\s*["']([^"']+)["']/)?.[1] ?? null;
 }
 
 // A correction row carries `<replace xmlns="urn:xmpp:message-correct:0"

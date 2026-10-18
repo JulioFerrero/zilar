@@ -7,6 +7,7 @@
 // target is unwrapped, and anything that is not an http(s) URL is
 // dropped. Never retried: one attempt per call, and any failure, block
 // page, captcha or 0 parsed results is "search unavailable right now".
+import { findCloseTag, nextTag, stripTags } from '../markup/scan';
 
 export const SEARCH_HOST = 'html.duckduckgo.com';
 export const MAX_SEARCH_RESULTS = 8;
@@ -76,57 +77,73 @@ function hasResultToken(classAttr: string): boolean {
 // depth counting so nested divs do not cut a result short.
 function resultBlocks(html: string): string[] {
   const blocks: string[] = [];
-  const openPattern = /<div\b[^>]*\bclass="([^"]*)"[^>]*>/gi;
-  let open: RegExpExecArray | null;
-  while ((open = openPattern.exec(html)) !== null) {
-    if (!hasResultToken(open[1] ?? '')) {
+  let cursor = 0;
+  while (blocks.length < MAX_SEARCH_RESULTS) {
+    const open = nextTag(html, 'div', cursor);
+    if (open === null) {
+      break;
+    }
+    if (open.closing || !hasResultToken(attrValue(open.attrs, 'class'))) {
+      cursor = open.end;
       continue;
     }
-    const start = open.index;
-    const depthPattern = /<\/?div\b[^>]*>/gi;
-    depthPattern.lastIndex = open.index + open[0].length;
-    let depth = 1;
-    let tag: RegExpExecArray | null;
-    let end = -1;
-    while ((tag = depthPattern.exec(html)) !== null) {
-      depth += tag[0].startsWith('</') ? -1 : 1;
-      if (depth === 0) {
-        end = tag.index + tag[0].length;
-        break;
-      }
-    }
-    if (end < 0) {
+    const end = balancedDivEnd(html, open.end);
+    if (end === null) {
       break;
     }
-    blocks.push(html.slice(start, end));
-    openPattern.lastIndex = end;
-    if (blocks.length >= MAX_SEARCH_RESULTS) {
-      break;
-    }
+    blocks.push(html.slice(open.start, end));
+    cursor = end;
   }
   return blocks;
 }
 
+// The end of the div opened just before `from`, balanced by depth counting
+// so nested divs do not cut a result short.
+function balancedDivEnd(html: string, from: number): number | null {
+  let depth = 1;
+  let cursor = from;
+  while (depth > 0) {
+    const tag = nextTag(html, 'div', cursor);
+    if (tag === null) {
+      return null;
+    }
+    depth += tag.closing ? -1 : 1;
+    cursor = tag.end;
+  }
+  return cursor;
+}
+
 function anchorIn(block: string, className: string): { text: string; href: string | null } | null {
-  const anchorPattern = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = anchorPattern.exec(block)) !== null) {
-    const attrs = match[1] ?? '';
-    const classes = attrValue(attrs, 'class')
+  let cursor = 0;
+  while (true) {
+    const open = nextTag(block, 'a', cursor);
+    if (open === null) {
+      return null;
+    }
+    if (open.closing) {
+      cursor = open.end;
+      continue;
+    }
+    const closeStart = findCloseTag(block, 'a', open.end);
+    if (closeStart === null) {
+      return null;
+    }
+    const classes = attrValue(open.attrs, 'class')
       .split(/\s+/)
       .filter((entry) => entry.length > 0);
     if (!classes.includes(className)) {
+      cursor = closeStart + 1;
       continue;
     }
-    const inner = match[2] ?? '';
+    const inner = block.slice(open.end, closeStart);
     const text = collapseForSearch(decodeForSearch(inner));
-    const href = linkTarget(attrs);
+    const href = linkTarget(open.attrs);
     if (text.length === 0 && href === null) {
+      cursor = closeStart + 1;
       continue;
     }
     return { text, href };
   }
-  return null;
 }
 
 function attrValue(attrs: string, name: string): string {
@@ -149,8 +166,8 @@ function linkTarget(attrs: string): string | null {
 }
 
 function decodeForSearch(value: string): string {
-  return value
-    .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_full, body: string) => {
+  return stripTags(
+    value.replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_full, body: string) => {
       switch (body) {
         case 'amp':
           return '&';
@@ -165,8 +182,9 @@ function decodeForSearch(value: string): string {
         default:
           return ' ';
       }
-    })
-    .replace(/<[^>]*>/g, ' ');
+    }),
+    ' ',
+  );
 }
 
 function collapseForSearch(value: string): string {

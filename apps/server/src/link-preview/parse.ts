@@ -5,6 +5,8 @@
 // (it turns a body into plain text) and its entity decoder is private, so
 // this module reads the `<meta>`/`<title>` tags directly and carries its own
 // small decoder for attribute values.
+import { firstElement, nextOpenTag, stripComments } from '../markup/scan';
+
 const MAX_INPUT_CHARS = 256 * 1024;
 const MAX_TITLE_CHARS = 200;
 const MAX_DESCRIPTION_CHARS = 300;
@@ -43,7 +45,7 @@ export interface LinkPreviewData {
  */
 export function parseLinkPreview(html: string, pageUrl?: string): LinkPreviewData | null {
   const input = html.length > MAX_INPUT_CHARS ? html.slice(0, MAX_INPUT_CHARS) : html;
-  const withoutComments = input.replace(/<!--[\s\S]*?-->/g, ' ');
+  const withoutComments = stripComments(input);
   const meta = metaContent(withoutComments);
   const title = cap(
     pick(meta.get('og:title'), meta.get('twitter:title'), titleTagText(withoutComments)),
@@ -115,21 +117,25 @@ function cap(value: string | undefined, max: number): string | undefined {
 // (twitter:, description). The first tag for a key wins.
 function metaContent(html: string): Map<string, string> {
   const found = new Map<string, string>();
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
-    const attributes = readAttributes(match[0]);
+  let cursor = 0;
+  while (true) {
+    const tag = nextOpenTag(html, 'meta', cursor);
+    if (tag === null) {
+      break;
+    }
+    const attributes = readAttributes(tag.attrs);
     const key = (attributes.get('property') ?? attributes.get('name') ?? '').trim().toLowerCase();
     const content = attributes.get('content');
-    if (key.length === 0 || content === undefined || found.has(key)) {
-      continue;
+    if (key.length > 0 && content !== undefined && !found.has(key)) {
+      found.set(key, content);
     }
-    found.set(key, content);
+    cursor = tag.end;
   }
   return found;
 }
 
 function titleTagText(html: string): string | undefined {
-  const match = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html);
-  return match?.[1];
+  return firstElement(html, 'title')?.inner;
 }
 
 // Attribute order varies, so each tag is parsed into a name -> value map;
