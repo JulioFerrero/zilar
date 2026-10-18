@@ -15,7 +15,8 @@ import { cardEditTarget, isLiveAiUiRow } from '../notify/ai-cards';
 import type { RateLimiter } from '../rate-limit';
 import { cachedAllowedArchives } from './archives-cache';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
-import { readCandidateByOriginId } from './archive-scan';
+import { readCandidateByOriginId, type ArchiveCandidate } from './archive-scan';
+import { loadEditsForTargets } from '../search/edit-overlay';
 import { resolveCandidate } from './candidates';
 import type { FcmSender } from './fcm';
 import { createNativeSender } from './native-sender';
@@ -174,23 +175,53 @@ export function createPushGroupLayer(
             if (row === undefined) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
+            // A message retracted by its own sender is deleted for everyone:
+            // the preview answers 404. A correction by that sender replaces
+            // the preview text with the newest body.
+            const editTarget = cardEditTarget(row.xml);
+            const overlay = yield* Effect.tryPromise({
+              try: () =>
+                loadEditsForTargets(
+                  archive,
+                  { kind: 'all', owners: allowed },
+                  editTarget === null ? [row.originId] : [row.originId, editTarget],
+                ),
+              catch: () => xmppUnavailable(),
+            }).pipe(Effect.orDie);
+            const ownEdit = overlay.get(row.originId);
+            if (ownEdit?.retracted === true) {
+              throw new HttpError(404, 'not_found', 'Notification not found');
+            }
             // The live AI UI is not a message (T-1400): skip the card and an
             // edit of one, so an AI progress card's text is never previewed.
-            const editTarget = cardEditTarget(row.xml);
             const liveIds = new Set<string>();
             if (editTarget !== null) {
-              const targetRow = yield* Effect.tryPromise({
+              const targetEdit = overlay.get(editTarget);
+              // A retracted target hides its edits too, and an edit from
+              // another sender has no accepted entry here.
+              if (targetEdit === undefined || targetEdit.retracted) {
+                throw new HttpError(404, 'not_found', 'Notification not found');
+              }
+              if (
+                targetEdit.latestText !== undefined &&
+                targetEdit.latestText !== (row.text ?? '')
+              ) {
+                throw new HttpError(404, 'not_found', 'Notification not found');
+              }
+              const targetRow: ArchiveCandidate | undefined = yield* Effect.tryPromise({
                 try: () => readCandidateByOriginId(archive, allowed, editTarget),
                 catch: () => xmppUnavailable(),
               }).pipe(Effect.orDie);
               if (targetRow !== undefined && isLiveAiUiRow(targetRow.xml)) liveIds.add(editTarget);
             }
+            const candidate =
+              ownEdit?.latestText === undefined ? row : { ...row, text: ownEdit.latestText };
             const verdict = yield* Effect.promise(() =>
               resolveCandidate(
                 { db: deps.db, config: deps.config, now: () => new Date(now()) },
                 userId,
                 allowed,
-                row,
+                candidate,
                 liveIds,
               ),
             );

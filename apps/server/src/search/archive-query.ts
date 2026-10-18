@@ -11,15 +11,6 @@ export interface ArchiveQueryInput {
   beforeMicros: bigint | null;
 }
 
-export interface ArchiveEditRow {
-  owner: string;
-  barePeer: string;
-  kind: string;
-  originId: string;
-  timestamp: number | string | bigint;
-  xml: string;
-}
-
 // One fully parameterized query — values travel as `$n` bindings, never
 // string-built SQL, so a query containing SQL metacharacters is just text.
 // Matching folds accents/case (`translate(lower(txt), …)`) and matches the
@@ -47,7 +38,7 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
   const columns = `username AS owner, peer, bare_peer AS "barePeer", kind, nick,
     origin_id AS "originId", timestamp,
     ts_headline('simple', txt, to_tsquery('simple', ${tsquery}), ${headlineOptions}) AS headline,
-    xml`;
+    xml, txt AS "body"`;
   const match = `to_tsvector('simple', ${folded}) @@ to_tsquery('simple', ${tsquery})`;
   const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
   const cap = next(SEARCH_MAX_CANDIDATES);
@@ -63,38 +54,6 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
 
   return {
     text: `SELECT ${columns} FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} AND ${match} ORDER BY timestamp DESC LIMIT ${cap}`,
-    values,
-  };
-}
-
-// Corrections and retractions name their target origin_id in the `xml`
-// stanza but need not contain the query text, so a second bounded query
-// fetches them for the same archive scope. The route then shows the latest
-// text per target and drops anything retracted.
-export function buildArchiveEditsQuery(input: Omit<ArchiveQueryInput, 'tsquery'>): {
-  text: string;
-  values: unknown[];
-} {
-  const values: unknown[] = [];
-  const next = (value: unknown): string => {
-    values.push(value);
-    return `$${values.length}`;
-  };
-  const cutoff = next(input.cutoffMicros);
-  const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
-  const cap = next(SEARCH_MAX_CANDIDATES);
-
-  let scope: string;
-  if (input.filter?.kind === 'room') {
-    scope = `username = ${next(input.filter.room)}`;
-  } else if (input.filter?.kind === 'dm') {
-    scope = `username = ${next(input.owners.ownLocalpart)} AND bare_peer = ${next(input.filter.peer)}`;
-  } else {
-    scope = `(username = ANY(${next(input.owners.rooms)}) OR (username = ${next(input.owners.ownLocalpart)} AND bare_peer = ANY(${next(input.owners.dmPeers)})))`;
-  }
-
-  return {
-    text: `SELECT username AS owner, bare_peer AS "barePeer", kind, origin_id AS "originId", timestamp, xml FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} AND (xml LIKE ${next('%urn:xmpp:message-correct:0%')} OR xml LIKE ${next('%urn:xmpp:message-retract:1%')}) ORDER BY timestamp DESC LIMIT ${cap}`,
     values,
   };
 }

@@ -19,12 +19,14 @@ import {
 import { seedGroup } from '../test-support/seed';
 
 const ROOM_JID = `roompub@${TEST_XMPP_MUC_DOMAIN}`;
+const BOB = 'bob@zilar.localhost';
+const CAROL = 'carol@zilar.localhost';
 
 function row(overrides: Partial<ArchiveRow> & { originId: string; timestamp: bigint }): ArchiveRow {
   return {
     owner: ROOM_JID,
     peer: ROOM_JID,
-    barePeer: '',
+    barePeer: BOB,
     kind: 'groupchat',
     nick: 'Bob',
     headline: '',
@@ -34,9 +36,9 @@ function row(overrides: Partial<ArchiveRow> & { originId: string; timestamp: big
   };
 }
 
-// The two queries of the read (rows, then the correction/retraction rows) are
-// told apart by the retract namespace the edits query binds. Both must be
-// scoped to the topic's room JID; a wrong scope fails the test.
+// The queries of the read (rows, then the target rows and the
+// correction/retraction rows) are told apart by their `xml LIKE` filter. All
+// must be scoped to the topic's room JID; a wrong scope fails the test.
 function fakeArchive(
   roomJid: string,
   messages: ArchiveRow[],
@@ -45,7 +47,7 @@ function fakeArchive(
   return {
     query: async (text: string, values: unknown[]) => {
       expect(values[0]).toBe(roomJid);
-      return text.includes('message-retract') ? edits : messages;
+      return text.includes('xml LIKE') ? edits : messages;
     },
     close: async () => {},
   };
@@ -183,6 +185,49 @@ describe('GET /api/topics/:id/preview', () => {
       expect(denied.status).toBe(404);
       expect(errorCode(denied.json)).toBe('not_found');
     }
+  });
+
+  it('ignores another sender’s correction and retraction', async () => {
+    const target = row({
+      originId: 'm1',
+      timestamp: at(10),
+      body: 'original',
+      xml: `<message type="groupchat" from="${ROOM_JID}/Bob"><body>original</body></message>`,
+    });
+    const forgedRetraction = row({
+      originId: 'r1',
+      timestamp: at(20),
+      barePeer: CAROL,
+      nick: 'Carol',
+      body: 'fallback',
+      xml: `<message type="groupchat" from="${ROOM_JID}/Carol"><body>fallback</body><retract xmlns="urn:xmpp:message-retract:1" id="m1"/></message>`,
+    });
+    const forgedCorrection = row({
+      originId: 'c1',
+      timestamp: at(30),
+      barePeer: CAROL,
+      nick: 'Carol',
+      body: 'forged',
+      xml: `<message type="groupchat" from="${ROOM_JID}/Carol"><body>forged</body><replace xmlns="urn:xmpp:message-correct:0" id="m1"/></message>`,
+    });
+    buildApp(
+      fakeArchive(
+        ROOM_JID,
+        [target, forgedRetraction, forgedCorrection],
+        [forgedRetraction, forgedCorrection],
+      ),
+    );
+    const { member, groupId } = await setup();
+    const topicId = await seedTopic(groupId, member.id, {
+      name: 'Announcements',
+      roomLocalpart: 'roompub',
+    });
+
+    const { status, json } = await preview(member.cookie, topicId);
+
+    expect(status).toBe(200);
+    const messages = (json as { messages: Array<{ id: string; body: string }> }).messages;
+    expect(messages.map((message) => [message.id, message.body])).toEqual([['m1', 'original']]);
   });
 
   it('applies corrections and drops retracted and live AI rows', async () => {

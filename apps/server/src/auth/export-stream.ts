@@ -11,8 +11,9 @@
 import { Stream } from 'effect';
 import { bareJid } from '../jid';
 import { extractMessageContent } from '../media/extract';
-import { stanzaFrom, timestampToIso } from '../search/snippet';
-import type { ArchiveRow } from '../search/service';
+import { correctionTarget, retractTarget, stanzaFrom, timestampToIso } from '../search/snippet';
+import { loadEditsForTargets, type EditOverlayEntry, type EditScope } from '../search/edit-overlay';
+import type { ArchivePool, ArchiveRow } from '../search/service';
 
 export interface ExportProfile {
   id: string;
@@ -41,6 +42,8 @@ export interface ExportStreamInput {
   chats: AsyncIterable<ExportChat>;
   /** The caller's own bare JID, so a DM `from` maps to me/them. */
   ownBareJid: string;
+  /** The same archive the chats read, for the correction/retraction pass. */
+  archive: ArchivePool;
   byteCap: number;
 }
 
@@ -63,16 +66,28 @@ export function exportMessage(
   row: ArchiveRow,
   ownBareJid: string,
   chatKind: 'dm' | 'room',
+  edit?: EditOverlayEntry,
 ): ExportMessage {
   const content = extractMessageContent(row);
   const sender = stanzaFrom(row.xml) ?? '';
+  const retracted = edit?.retracted === true;
   return {
     id: row.originId,
     at: timestampToIso(row.timestamp),
     from: chatKind === 'room' ? sender : bareJid(sender) === ownBareJid ? 'me' : 'them',
-    body: content.body,
-    kind: content.kind,
+    body: retracted ? '' : (edit?.latestText ?? content.body),
+    kind: retracted ? 'deleted' : content.kind,
   };
+}
+
+// The archive scope of one exported chat, the same scope its pages read.
+function exportScope(chat: ExportChat, ownBareJid: string): EditScope {
+  if (chat.kind === 'room') {
+    return { kind: 'room', room: chat.jid };
+  }
+  const owner = bareJid(ownBareJid);
+  const at = owner.indexOf('@');
+  return { kind: 'dm', owner: at === -1 ? owner : owner.slice(0, at), peer: chat.jid };
 }
 
 /**
@@ -121,10 +136,21 @@ async function* exportChunks(
       );
       firstChat = false;
       let firstMessage = true;
+      const scope = exportScope(chat, input.ownBareJid);
       for await (const page of chat.pages) {
+        const overlay = await loadEditsForTargets(
+          input.archive,
+          scope,
+          page.map((row) => row.originId),
+        );
         for (const row of page) {
+          // A correction or retraction is an edit row, not a message: the
+          // original row carries the export entry, with the overlay applied.
+          if (retractTarget(row.xml) !== null || correctionTarget(row.xml) !== null) {
+            continue;
+          }
           const piece = `${firstMessage ? '' : ','}${JSON.stringify(
-            exportMessage(row, input.ownBareJid, chat.kind),
+            exportMessage(row, input.ownBareJid, chat.kind, overlay.get(row.originId)),
           )}`;
           const chunk = encoder.encode(piece);
           if (byteSize + chunk.byteLength > input.byteCap) {

@@ -4,11 +4,13 @@
 // joined. Topic rooms are members-only and their history lives in the
 // ejabberd MUC archive, so a non-member cannot fetch it over XMPP; the server
 // reads the archive for them, exactly like message search
-// (`../search/routes.ts`): one newest-first page of rows, one bounded query
-// for the corrections and retractions, then the same newest-wins merge.
+// (`../search/routes.ts`): one newest-first page of rows, then the shared
+// edit-overlay helper resolves that page's corrections and retractions
+// (target count × 20 edit reads, same-sender only).
 
 import type { TopicPreviewMessage } from '@zilar/api-contract';
 import { decodeAgentPayload, isLiveAiUiEdit, isLiveAiUiRow, liveAiUiIds } from '../notify/ai-cards';
+import { loadEditsForTargets } from '../search/edit-overlay';
 import { correctionTarget, retractTarget, timestampToIso } from '../search/snippet';
 import type { ArchivePool } from '../search/service';
 
@@ -18,7 +20,7 @@ export const TOPIC_PREVIEW_LIMIT = 30;
 // count against the limit but are not messages) do not starve it.
 export const TOPIC_PREVIEW_SCAN_LIMIT = 120;
 
-const MESSAGE_COLUMNS = `nick, origin_id AS "originId", timestamp, xml, txt AS "body"`;
+const MESSAGE_COLUMNS = `nick, bare_peer AS "barePeer", origin_id AS "originId", timestamp, xml, txt AS "body"`;
 
 // Every value travels as a `$n` binding, never string-built SQL; `roomJid` is
 // the room's bare JID, the `username` of its archive rows.
@@ -28,24 +30,6 @@ function buildRowsQuery(roomJid: string): { text: string; values: unknown[] } {
       WHERE username = $1 AND kind = 'groupchat'
       ORDER BY timestamp DESC LIMIT $2`,
     values: [roomJid, TOPIC_PREVIEW_SCAN_LIMIT],
-  };
-}
-
-// Corrections and retractions name their target origin_id in the stanza but
-// need not be messages themselves, so a second bounded query fetches them for
-// the same room (same shape as `buildArchiveEditsQuery`).
-function buildEditsQuery(roomJid: string): { text: string; values: unknown[] } {
-  return {
-    text: `SELECT ${MESSAGE_COLUMNS} FROM archive
-      WHERE username = $1 AND kind = 'groupchat'
-        AND (xml LIKE $2 OR xml LIKE $3)
-      ORDER BY timestamp DESC LIMIT $4`,
-    values: [
-      roomJid,
-      '%urn:xmpp:message-correct:0%',
-      '%urn:xmpp:message-retract:1%',
-      TOPIC_PREVIEW_SCAN_LIMIT,
-    ],
   };
 }
 
@@ -61,27 +45,15 @@ export async function readTopicPreview(
   limit = TOPIC_PREVIEW_LIMIT,
 ): Promise<TopicPreviewMessage[]> {
   const rowsQuery = buildRowsQuery(roomJid);
-  const editsQuery = buildEditsQuery(roomJid);
-  const [rows, editRows] = await Promise.all([
-    archive.query(rowsQuery.text, rowsQuery.values),
-    archive.query(editsQuery.text, editsQuery.values),
-  ]);
+  const rows = await archive.query(rowsQuery.text, rowsQuery.values);
 
-  // Newest wins per target: a correction after a row replaces its body, and a
-  // retraction after a row hides it (and every older correction of it).
-  const latestByTarget = new Map<string, bigint>();
-  const retractedByTarget = new Map<string, bigint>();
-  for (const edit of editRows) {
-    const at = BigInt(edit.timestamp);
-    const corrected = correctionTarget(edit.xml);
-    if (corrected !== null && (latestByTarget.get(corrected) ?? -1n) < at) {
-      latestByTarget.set(corrected, at);
-    }
-    const retracted = retractTarget(edit.xml);
-    if (retracted !== null && (retractedByTarget.get(retracted) ?? -1n) < at) {
-      retractedByTarget.set(retracted, at);
-    }
-  }
+  // Only the original sender's correction or retraction counts: the shared
+  // helper drops an edit from anyone else.
+  const targets = rows.flatMap((row) => {
+    const target = correctionTarget(row.xml);
+    return target === null || target === row.originId ? [row.originId] : [row.originId, target];
+  });
+  const overlay = await loadEditsForTargets(archive, { kind: 'room', room: roomJid }, targets);
 
   const liveIds = liveAiUiIds(rows);
   const seen = new Set<string>();
@@ -92,14 +64,20 @@ export async function readTopicPreview(
     if (retractTarget(row.xml) !== null) {
       continue;
     }
-    const key = correctionTarget(row.xml) ?? row.originId;
-    const at = BigInt(row.timestamp);
-    const retractedAt = retractedByTarget.get(key);
-    if (retractedAt !== undefined && retractedAt >= at) {
+    const correction = correctionTarget(row.xml);
+    const key = correction ?? row.originId;
+    const entry = overlay.get(key);
+    if (entry?.retracted === true) {
       continue;
     }
-    const latestAt = latestByTarget.get(key);
-    if (latestAt !== undefined && latestAt > at) {
+    // A correction row is only the message when it is the newest accepted
+    // correction; the original row it supersedes is hidden. An edit from
+    // another sender has no overlay entry.
+    if (correction !== null) {
+      if (entry?.latestText === undefined || entry.latestText !== (row.body ?? '')) {
+        continue;
+      }
+    } else if (entry?.latestText !== undefined) {
       continue;
     }
     if (seen.has(key)) {

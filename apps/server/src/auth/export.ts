@@ -168,6 +168,7 @@ export async function runExport(
       contacts,
       chats: exportChats(archive, allowed),
       ownBareJid: ownJid,
+      archive,
       byteCap: EXPORT_MAX_BYTES,
     },
     (summary) => recordExportDone(deps, userId, summary),

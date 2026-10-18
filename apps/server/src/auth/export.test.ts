@@ -60,6 +60,8 @@ interface SeedRow {
   timestamp: number;
   body: string;
   from: string;
+  /** A custom stanza, for correction and retraction rows. */
+  xml?: string;
 }
 
 async function seedArchive(client: PGlite, rows: SeedRow[]): Promise<void> {
@@ -72,7 +74,7 @@ async function seedArchive(client: PGlite, rows: SeedRow[]): Promise<void> {
         row.timestamp,
         row.peer,
         row.peer,
-        `<message type="chat" from="${row.from}"><body>${row.body}</body></message>`,
+        row.xml ?? `<message type="chat" from="${row.from}"><body>${row.body}</body></message>`,
         row.body,
         row.kind,
         row.originId,
@@ -227,6 +229,66 @@ describe('GET /api/me/export', () => {
     const ids = document.chats.flatMap((chat) => chat.messages.map((message) => message.id));
     expect(ids).toContain('alice-1');
     expect(ids).not.toContain('bob-1');
+  });
+
+  it('applies retractions and corrections to the exported rows', async () => {
+    const app = testApp(context);
+    const alice = await bootstrapUser(context, app, 'edits@example.com');
+    const bob = await contactOf(context, app, alice.id, 'bob-edits@example.com');
+    const bobJid = expectedJid(bob.id);
+    const owner = localpartFor(alice.id);
+    const retractXml = `<message type="chat" from="${bobJid}"><retract xmlns="urn:xmpp:message-retract:1" id="gone-1"/></message>`;
+    const correctXml = `<message type="chat" from="${bobJid}"><body>new text</body><replace xmlns="urn:xmpp:message-correct:0" id="edited-1"/></message>`;
+    await seedArchive(archiveClient, [
+      {
+        owner,
+        peer: bobJid,
+        kind: 'chat',
+        originId: 'gone-1',
+        timestamp: at('2026-05-01T10:00:00Z'),
+        body: 'secret text',
+        from: bobJid,
+      },
+      {
+        owner,
+        peer: bobJid,
+        kind: 'chat',
+        originId: 'edited-1',
+        timestamp: at('2026-05-01T10:01:00Z'),
+        body: 'old text',
+        from: bobJid,
+      },
+      {
+        owner,
+        peer: bobJid,
+        kind: 'chat',
+        originId: 'retract-gone-1',
+        timestamp: at('2026-05-01T10:02:00Z'),
+        body: '…',
+        from: bobJid,
+        xml: retractXml,
+      },
+      {
+        owner,
+        peer: bobJid,
+        kind: 'chat',
+        originId: 'edit-edited-1',
+        timestamp: at('2026-05-01T10:03:00Z'),
+        body: 'new text',
+        from: bobJid,
+        xml: correctXml,
+      },
+    ]);
+
+    const document = await exportDocument(exportTarget(), alice.cookie);
+    const messages = document.chats.flatMap((chat) => chat.messages);
+
+    expect(messages.map((message) => message.id)).toEqual(['gone-1', 'edited-1']);
+    expect(messages[0]).toMatchObject({ body: '', kind: 'deleted' });
+    expect(messages[1]?.body).toBe('new text');
+    const json = JSON.stringify(document);
+    expect(json).not.toContain('secret text');
+    expect(json).not.toContain('old text');
   });
 
   it('answers 403 reauth_required for a session older than 30 minutes', async () => {

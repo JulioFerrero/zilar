@@ -203,6 +203,25 @@ describe('GET /api/push/preview', () => {
     );
   });
 
+  it('hides a retracted message and previews a correction’s latest text', async () => {
+    const { alice, peer } = await setupDm();
+    const owner = localpartFor(alice.id);
+    const base = Date.parse('2026-06-01T00:00:00.000Z') * 1000;
+    const retract = `<message type="chat" from="${peer}/phone"><retract xmlns="urn:xmpp:message-retract:1" id="origin-1"/></message>`;
+    const correct = `<message type="chat" from="${peer}/phone"><body>New text</body><replace xmlns="urn:xmpp:message-correct:0" id="origin-2"/></message>`;
+    await seedArchive(archiveClient, [
+      dmRow(owner, peer, 'origin-1', 'Hello there'),
+      { ...dmRow(owner, peer, 'retract-1', '…'), xml: retract },
+      { ...dmRow(owner, peer, 'origin-2', 'Old text'), timestamp: base },
+      { ...dmRow(owner, peer, 'edit-2', 'New text'), timestamp: base + 1000, xml: correct },
+    ]);
+
+    expect((await preview(alice.cookie, 'origin-1')).status).toBe(404);
+    const corrected = await preview(alice.cookie, 'origin-2');
+    expect(corrected.status).toBe(200);
+    expect(corrected.json).toMatchObject({ body: 'New text' });
+  });
+
   it('returns the chat’s unread count as the notification badge (T-1897)', async () => {
     const { alice, peer } = await setupDm();
     // Recent rows so both sit above the 30-day floor of an unmarked chat.
@@ -303,7 +322,7 @@ describe('GET /api/push/preview', () => {
       {
         owner: roomJid,
         peer: roomJid,
-        barePeer: '',
+        barePeer: 'someone@zilar.localhost',
         kind: 'groupchat',
         nick: 'Someone',
         originId: 'origin-secret',

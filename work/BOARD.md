@@ -2014,3 +2014,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2016](T-2016-dead-code-cleanup.md) | delete dead files, unused deps and the mobile xmpp types copy | 2026-10-18 |
 | [T-1980](T-1980-pin-jump-archive-id.md) | pinned messages jump to their row again | 2026-10-18 |
 | [T-2015](T-2015-claude-share-plan.md) | plan to share duplicated web/phone logic | 2026-10-18 |
+| [T-2003](T-2003-retractions-server-reads.md) | deleted and edited messages stay so in search, export, push | 2026-10-18 |

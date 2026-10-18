@@ -7,13 +7,8 @@ import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import { allowedArchives, resolveChatFilter, type ArchivePool, type ArchiveRow } from './service';
 import { buildTsQuery, matchMessageTerms, searchTerms, windowSnippet } from './match';
-import {
-  buildArchiveEditsQuery,
-  buildArchiveQuery,
-  buildFuzzyCandidatesQuery,
-  exactInCodeMarks,
-  type ArchiveEditRow,
-} from './archive-query';
+import { buildArchiveQuery, buildFuzzyCandidatesQuery, exactInCodeMarks } from './archive-query';
+import { loadEditsForTargets, type EditOverlay, type EditScope } from './edit-overlay';
 import {
   chatJidFor,
   correctionTarget,
@@ -110,122 +105,136 @@ export const runSearchEffect = Effect.fnUntraced(function* (
   const searchFailed = (): HttpError =>
     new HttpError(502, 'search_failed', 'Message search failed, try again later');
   let rows: ArchiveRow[] = [];
-  let editRows: ArchiveEditRow[] = [];
   if (tsquery !== null) {
     const built = yield* Effect.try({
-      try: () => ({
-        rows: buildArchiveQuery({ tsquery, ...scopeInput }),
-        edits: buildArchiveEditsQuery(scopeInput),
-      }),
+      try: () => buildArchiveQuery({ tsquery, ...scopeInput }),
       catch: searchFailed,
     });
-    [rows, editRows] = yield* Effect.all(
-      [
-        Effect.tryPromise({
-          try: () => archive.query(built.rows.text, built.rows.values),
-          catch: searchFailed,
-        }),
-        Effect.tryPromise({
-          try: () => archive.query(built.edits.text, built.edits.values),
-          catch: searchFailed,
-        }),
-      ],
-      { concurrency: 2 },
-    );
+    rows = yield* Effect.tryPromise({
+      try: () => archive.query(built.text, built.values),
+      catch: searchFailed,
+    });
   }
 
-  // Corrections store the new full body in a second row naming the
-  // original origin_id; retractions store a fallback-body row naming the
-  // target. Neither need contain the query text, so they arrive through
-  // the edits query. Newest wins per chat+target: a correction target
-  // hides every older row for that target (the matching row itself may
-  // be an older correction), and a retraction hides everything plus the
-  // retract rows themselves (their txt is only the stock fallback).
-  const latestByTarget = new Map<string, bigint>();
-  const retractedByTarget = new Map<string, bigint>();
-  for (const edit of editRows) {
-    const chatJid = chatJidFor(edit);
-    const at = BigInt(edit.timestamp);
-    const corrected = correctionTarget(edit.xml);
-    if (corrected !== null) {
-      const key = `${chatJid}|${corrected}`;
-      if ((latestByTarget.get(key) ?? -1n) < at) {
-        latestByTarget.set(key, at);
-      }
-    }
-    const retracted = retractTarget(edit.xml);
-    if (retracted !== null) {
-      const key = `${chatJid}|${retracted}`;
-      if ((retractedByTarget.get(key) ?? -1n) < at) {
-        retractedByTarget.set(key, at);
-      }
-    }
-  }
-  const seen = new Set<string>();
-  const items: SearchItem[] = [];
-  // `as` keeps TypeScript from narrowing `oldest` to `null`: pushItem assigns it inside a closure.
-  let oldest = null as bigint | null;
-  const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
-  const pushItem = (
-    row: ArchiveRow,
-    chatJid: string,
-    key: string,
-    snippet: string,
-    marks: Array<[number, number]>,
-    match: 'exact' | 'fuzzy',
-  ): void => {
-    seen.add(key);
-    items.push({
-      chatJid,
-      messageId: row.originId,
-      senderName: senderNameFor(row, ownJid, allowed.peerNames),
-      at: timestampToIso(row.timestamp),
-      snippet,
-      marks,
-      match,
+  // Corrections and retractions are separate rows naming the target's origin
+  // id. They are read for every hit (and for an edit row's target) without the
+  // page cursor, so a retraction after page 1 still hides a page-2 message.
+  const editScope: EditScope =
+    filter === null
+      ? { kind: 'all', owners: allowed }
+      : filter.kind === 'dm'
+        ? { kind: 'dm', owner: allowed.ownLocalpart, peer: filter.peer }
+        : { kind: 'room', room: filter.room };
+  const editTargets = (source: readonly ArchiveRow[]): string[] =>
+    source.flatMap((row) => {
+      const target = correctionTarget(row.xml);
+      return target === null || target === row.originId ? [row.originId] : [row.originId, target];
     });
-    oldest = BigInt(row.timestamp);
+  const loadOverlay = (targetOriginIds: readonly string[]): Effect.Effect<EditOverlay, HttpError> =>
+    Effect.tryPromise({
+      try: () => loadEditsForTargets(archive, editScope, targetOriginIds),
+      catch: searchFailed,
+    });
+
+  // Both passes render against one overlay. The exact pass alone decides
+  // whether the fuzzy pass runs; when it does, the overlay is rebuilt over the
+  // union of exact rows and fuzzy candidates, so a fuzzy-only hit of a
+  // retracted (or corrected) message cannot slip through.
+  const render = (
+    overlay: EditOverlay,
+    fuzzyRows: readonly ArchiveRow[],
+  ): { items: SearchItem[]; oldest: bigint | null } => {
+    const seen = new Set<string>();
+    const items: SearchItem[] = [];
+    // `as` keeps TypeScript from narrowing `oldest` to `null`: pushItem assigns it inside a closure.
+    let oldest = null as bigint | null;
+    const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
+    const pushItem = (
+      row: ArchiveRow,
+      chatJid: string,
+      key: string,
+      snippet: string,
+      marks: Array<[number, number]>,
+      match: 'exact' | 'fuzzy',
+    ): void => {
+      seen.add(key);
+      items.push({
+        chatJid,
+        messageId: row.originId,
+        senderName: senderNameFor(row, ownJid, allowed.peerNames),
+        at: timestampToIso(row.timestamp),
+        snippet,
+        marks,
+        match,
+      });
+      oldest = BigInt(row.timestamp);
+    };
+    // A candidate survives when it is not a retract row, not retracted, and
+    // not superseded by a newer same-sender correction. A correction row is only
+    // a hit when it is itself the newest accepted correction; an edit from
+    // another sender has no overlay entry, so it never shows either.
+    const visibleKey = (row: ArchiveRow): string | null => {
+      // A retract row is never a hit itself: its `txt` is only the stock
+      // fallback sentence, and the XML namespace matched the query.
+      if (retractTarget(row.xml) !== null) {
+        return null;
+      }
+      const correction = correctionTarget(row.xml);
+      const target = correction ?? row.originId;
+      const entry = overlay.get(target);
+      if (entry?.retracted === true) {
+        return null;
+      }
+      if (correction !== null) {
+        if (entry?.latestText === undefined || entry.latestText !== (row.body ?? '')) {
+          return null;
+        }
+      } else if (entry?.latestText !== undefined) {
+        return null;
+      }
+      const key = `${chatJidFor(row)}|${target}`;
+      if (seen.has(key)) {
+        return null;
+      }
+      return key;
+    };
+    for (const row of rows) {
+      const key = visibleKey(row);
+      if (key === null) {
+        continue;
+      }
+      const chatJid = chatJidFor(row);
+      const { snippet, marks } = headlineToSnippet(row.headline);
+      // ts_headline cannot mark accent-folded hits (its match ran on the
+      // raw text), so re-mark in code when it marked nothing: the same
+      // token rule as the query, with folded matching on both sides.
+      const marked = exactInCodeMarks(terms, snippet, marks);
+      pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
+      if (items.length >= limit) {
+        break;
+      }
+    }
+    for (const row of fuzzyRows) {
+      if (items.length >= limit) {
+        break;
+      }
+      const key = visibleKey(row);
+      if (key === null) {
+        continue;
+      }
+      const body = row.body ?? '';
+      const spans = matchMessageTerms(terms, body, true);
+      if (spans === null) {
+        continue;
+      }
+      const chatJid = chatJidFor(row);
+      const { snippet, marks } = windowSnippet(body, spans);
+      pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
+    }
+    return { items, oldest };
   };
-  // A candidate survives when it is not a retract row, not retracted, and
-  // not superseded by a newer correction. Same handling for both passes.
-  const visibleKey = (row: ArchiveRow): string | null => {
-    // A retract row is never a hit itself: its `txt` is only the stock
-    // fallback sentence, and the XML namespace matched the query.
-    if (retractTarget(row.xml) !== null) {
-      return null;
-    }
-    const chatJid = chatJidFor(row);
-    const key = `${chatJid}|${correctionTarget(row.xml) ?? row.originId}`;
-    const at = BigInt(row.timestamp);
-    const retractedAt = retractedByTarget.get(key);
-    if (retractedAt !== undefined && retractedAt >= at) {
-      return null;
-    }
-    const latestAt = latestByTarget.get(key);
-    if (latestAt !== undefined && latestAt > at) {
-      return null;
-    }
-    if (seen.has(key)) {
-      return null;
-    }
-    return key;
-  };
-  for (const row of rows) {
-    const key = visibleKey(row);
-    if (key === null) {
-      continue;
-    }
-    const chatJid = chatJidFor(row);
-    const { snippet, marks } = headlineToSnippet(row.headline);
-    // ts_headline cannot mark accent-folded hits (its match ran on the
-    // raw text), so re-mark in code when it marked nothing: the same
-    // token rule as the query, with folded matching on both sides.
-    const marked = exactInCodeMarks(terms, snippet, marks);
-    pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
-    if (items.length >= limit) {
-      break;
-    }
-  }
+
+  let result = render(yield* loadOverlay(editTargets(rows)), []);
 
   // Typo-tolerance second pass: only when the first pass is short, never
   // for a query shorter than 3 characters. It reuses the same scope,
@@ -234,8 +243,8 @@ export const runSearchEffect = Effect.fnUntraced(function* (
   // semantics (`nextBefore` is the oldest returned timestamp), so exact
   // hits rank before fuzzy ones and paging stays correct.
   if (
+    result.items.length < limit &&
     tsquery !== null &&
-    items.length < limit &&
     q.trim().length >= SEARCH_MIN_FUZZY_QUERY_CHARS &&
     terms.length > 0
   ) {
@@ -247,43 +256,25 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       try: () => archive.query(fuzzy.text, fuzzy.values),
       catch: searchFailed,
     });
-    yield* Effect.try({
-      try: () => {
-        for (const row of candidates) {
-          if (items.length >= limit) {
-            break;
-          }
-          const key = visibleKey(row);
-          if (key === null) {
-            continue;
-          }
-          const body = row.body ?? '';
-          const spans = matchMessageTerms(terms, body, true);
-          if (spans === null) {
-            continue;
-          }
-          const chatJid = chatJidFor(row);
-          const { snippet, marks } = windowSnippet(body, spans);
-          pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
-        }
-      },
-      catch: searchFailed,
-    });
+    const overlay = yield* loadOverlay(editTargets([...rows, ...candidates]));
+    result = render(overlay, candidates);
   }
 
   // The log carries only the result count and duration — never the query.
   deps.logger.info(
     {
       userId,
-      results: items.length,
+      results: result.items.length,
       durationMs: Math.round(performance.now() - start),
     },
     'search',
   );
 
   return {
-    items,
-    ...(oldest === null || items.length < limit ? {} : { nextBefore: oldest.toString() }),
+    items: result.items,
+    ...(result.oldest === null || result.items.length < limit
+      ? {}
+      : { nextBefore: result.oldest.toString() }),
   };
 });
 
@@ -296,8 +287,12 @@ export {
 } from './snippet';
 export {
   buildArchiveQuery,
-  buildArchiveEditsQuery,
   buildFuzzyCandidatesQuery,
   type ArchiveQueryInput,
-  type ArchiveEditRow,
 } from './archive-query';
+export {
+  loadEditsForTargets,
+  type EditOverlay,
+  type EditOverlayEntry,
+  type EditScope,
+} from './edit-overlay';
