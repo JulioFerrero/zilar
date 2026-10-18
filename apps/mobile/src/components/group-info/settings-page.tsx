@@ -1,22 +1,45 @@
 import type { ListenerEagerness, PatchGroupPayload } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { Eye, Lock } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
-import { useGroupPicture } from '@/components/group-info/use-group-picture';
+import {
+  AVATAR_EXPORT_SIDE,
+  createAvatarFileUploader,
+  createPicturePicker,
+} from '@/components/settings/avatar-native';
 import { AvatarControl } from '@/components/settings/avatar-control';
+import { friendlyAvatarError, type AvatarPhase } from '@/components/settings/profile-logic';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
+import { API_URL } from '@/lib/auth';
 import type { GroupDetail } from '@/lib/chat-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { getSessionToken } from '@/lib/session-token';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type GroupListenerInfo = NonNullable<GroupDetail['listener']>;
+
+type PickedAvatar = Extract<AvatarPhase, { name: 'picked' }>;
+
+type PictureOperation =
+  | { readonly kind: 'pick' }
+  | { readonly kind: 'save'; readonly picked: PickedAvatar }
+  | { readonly kind: 'remove' };
+
+const PICK_ERROR = 'Could not pick that picture. Try again.';
+const SAVE_ERROR = 'Could not save the picture. Try again.';
+const REMOVE_ERROR = 'Could not remove the picture. Try again.';
+
+function groupAvatarSlot(groupId: string): string {
+  return `${API_URL}/api/avatars/group/${encodeURIComponent(groupId)}`;
+}
 
 type SettingsPageProps = {
   groupId: string;
@@ -47,10 +70,165 @@ export function SettingsPage({
   const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
   const reloadChats = useChatStore((state) => state.reloadChats);
 
-  const picture = useGroupPicture(groupId, avatarUrl, () => {
+  const onPictureChanged = () => {
     refreshGroupDetail(groupId);
     reloadChats();
-  });
+  };
+
+  const [token, setToken] = useState<string | undefined>(undefined);
+  const [phase, setPhase] = useState<AvatarPhase>({ name: 'idle' });
+  const [pictureBusy, setPictureBusy] = useState(false);
+  // The url a write just produced; null until then, so the detail's url wins.
+  const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getSessionToken()
+      .then((next) => {
+        if (alive) {
+          setToken(next);
+        }
+      })
+      .catch(() => {
+        // No bearer: the picture falls back to the initials.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // The bearer already loaded, else one fresh read; a failure reads as none.
+  const readToken = (): Effect.Effect<string | undefined> =>
+    Effect.promise(() => getSessionToken().catch(() => undefined));
+
+  const pickEffect = (): Effect.Effect<void> =>
+    Effect.tryPromise({
+      try: () => createPicturePicker().pickPicture(),
+      catch: () => PICK_ERROR,
+    }).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.status === 'picked') {
+            setPhase({
+              name: 'picked',
+              uri: result.picture.uri,
+              mimeType: result.picture.mimeType,
+            });
+          } else if (result.status === 'error') {
+            setPhase({ name: 'failed', message: result.message });
+          }
+        }),
+      ),
+      Effect.catch((message) => Effect.sync(() => setPhase({ name: 'failed', message }))),
+    );
+
+  const saveEffect = (picked: PickedAvatar): Effect.Effect<void> =>
+    Effect.sync(() =>
+      setPhase({
+        name: 'uploading',
+        uri: picked.uri,
+        mimeType: picked.mimeType,
+        progress: 0,
+      }),
+    ).pipe(
+      Effect.andThen(
+        Effect.gen(function* () {
+          const bearer = yield* readToken();
+          if (bearer === undefined) {
+            return yield* Effect.fail(SAVE_ERROR);
+          }
+          return yield* Effect.tryPromise({
+            try: () =>
+              createAvatarFileUploader().upload(
+                groupAvatarSlot(groupId),
+                {
+                  uri: picked.uri,
+                  mimeType: picked.mimeType,
+                  width: AVATAR_EXPORT_SIDE,
+                  height: AVATAR_EXPORT_SIDE,
+                },
+                bearer,
+                (fraction) =>
+                  setPhase({
+                    name: 'uploading',
+                    uri: picked.uri,
+                    mimeType: picked.mimeType,
+                    progress: fraction,
+                  }),
+              ),
+            catch: (cause) => friendlyAvatarError(cause),
+          });
+        }),
+      ),
+      Effect.tap((uploaded) =>
+        Effect.sync(() => {
+          setChangedUrl(uploaded.url);
+          setPhase({ name: 'idle' });
+          onPictureChanged();
+        }),
+      ),
+      Effect.catch((message) => Effect.sync(() => setPhase({ name: 'failed', message }))),
+    );
+
+  const removeEffect = (): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const bearer = yield* readToken();
+      if (bearer === undefined) {
+        return yield* Effect.fail(REMOVE_ERROR);
+      }
+      yield* Effect.tryPromise({
+        try: async () => {
+          const response = await fetch(groupAvatarSlot(groupId), {
+            method: 'DELETE',
+            credentials: 'omit',
+            headers: { authorization: `Bearer ${bearer}` },
+          });
+          if (!response.ok) {
+            throw new Error(REMOVE_ERROR);
+          }
+        },
+        catch: () => REMOVE_ERROR,
+      });
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setChangedUrl(undefined);
+          setPhase({ name: 'removed' });
+          onPictureChanged();
+        }),
+      ),
+      Effect.catch((message) => Effect.sync(() => setPhase({ name: 'failed', message }))),
+    );
+
+  const operation = (op: PictureOperation): Effect.Effect<void> => {
+    if (op.kind === 'pick') {
+      return pickEffect();
+    }
+    return op.kind === 'save' ? saveEffect(op.picked) : removeEffect();
+  };
+
+  const [, runPicture] = useAction(
+    (op: PictureOperation) =>
+      Effect.sync(() => {
+        setPictureBusy(true);
+      }).pipe(
+        Effect.andThen(operation(op)),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setPictureBusy(false);
+          }),
+        ),
+      ),
+    { mode: 'ignore' },
+  );
+
+  const pickPicture = () => runPicture({ kind: 'pick' });
+  const savePickedPicture = () => {
+    if (phase.name === 'picked') {
+      runPicture({ kind: 'save', picked: phase });
+    }
+  };
+  const removePicture = () => runPicture({ kind: 'remove' });
 
   const [write, runWrite] = useAction((patch: PatchGroupPayload) =>
     Effect.tryPromise({
@@ -75,13 +253,13 @@ export function SettingsPage({
             <AvatarControl
               ownerId={groupId}
               ownerName={title}
-              currentUrl={picture.shownUrl}
-              token={picture.token}
-              phase={picture.phase}
-              busy={picture.busy}
-              onPick={picture.pick}
-              onSavePicked={picture.savePicked}
-              onRemove={picture.remove}
+              currentUrl={changedUrl !== null ? changedUrl : avatarUrl}
+              token={token}
+              phase={phase}
+              busy={pictureBusy}
+              onPick={pickPicture}
+              onSavePicked={savePickedPicture}
+              onRemove={removePicture}
             />
           ) : null}
 

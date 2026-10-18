@@ -4,23 +4,28 @@ import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import {
+  MAX_PACK_STICKERS,
+  editorStickerCount,
   lookupFailureKind,
+  nextEditorKey,
   runDeletePack,
+  runSavePack,
+  takeFittingImages,
   type EditorNewItem,
 } from '@/components/stickers/pack-editor';
 import {
   createStickerImagePicker,
   createStickerPreparer,
+  type PickedStickerImage,
   type StickerImagePicker,
   type StickerImagePreparer,
 } from '@/components/stickers/sticker-native';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
-import { usePackItems, type PackVisibility } from '@/components/stickers/use-pack-items';
 import { interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem } from '@/lib/stickers';
 
-export type { PackVisibility };
+export type PackVisibility = 'private' | 'server';
 
 export type LoadStatus = 'loading' | 'ready' | 'load-error' | 'not-found' | 'forbidden';
 
@@ -31,47 +36,7 @@ export interface PackEditorDeps {
   preparer?: StickerImagePreparer | undefined;
 }
 
-export interface PackEditor {
-  packId: string | undefined;
-  status: LoadStatus;
-  title: string;
-  setTitle: (value: string) => void;
-  visibility: PackVisibility;
-  setVisibility: (value: PackVisibility) => void;
-  imported: boolean;
-  visibilityDisabled: boolean;
-  count: number;
-  packFull: boolean;
-  preparing: number;
-  skippedNote: boolean;
-  fresh: EditorNewItem[];
-  visibleSaved: StickerItem[];
-  token: string | undefined;
-  saving: boolean;
-  progress: { done: number; total: number } | undefined;
-  formError: string;
-  isCreate: boolean;
-  saveDisabled: boolean;
-  load: () => void;
-  save: () => void;
-  onBack: () => void;
-  pickImages: () => void;
-  retryItem: (key: string) => void;
-  removeFresh: (key: string) => void;
-  removeSaved: (stickerId: string) => void;
-  changeEmoji: (key: string, value: string) => void;
-  confirmingDelete: boolean;
-  deleteError: string;
-  deleting: boolean;
-  askDelete: () => void;
-  confirmDelete: () => void;
-  cancelDelete: () => void;
-  discardAsk: boolean;
-  keepEditing: () => void;
-  discard: () => void;
-}
-
-export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor {
+export function usePackEditor({ picker, preparer }: PackEditorDeps) {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const packId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -115,19 +80,278 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     router.back();
   }, [router]);
 
-  const items = usePackItems({
-    picker: activePicker,
-    preparer: activePreparer,
+  const [saved, setSaved] = useState<StickerItem[]>([]);
+  const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const [fresh, setFresh] = useState<EditorNewItem[]>([]);
+  const [preparing, setPreparing] = useState(0);
+  const [skippedNote, setSkippedNote] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | undefined>(undefined);
+  // Create mode: the pack minted on the first save, kept across Save clicks so a
+  // retry after a partial upload resumes into the same pack.
+  const createdPackIdRef = useRef<string | undefined>(undefined);
+  const createdTitleRef = useRef<string | undefined>(undefined);
+  const createdVisibilityRef = useRef<PackVisibility | undefined>(undefined);
+  // Brief §5: after a partial create save the screen stays open on the minted pack
+  // and the button reads `Save`. State (not a ref) keeps the lint `react(refs)` rule.
+  const [createdPackId, setCreatedPackId] = useState<string | undefined>(undefined);
+
+  const visibleSaved = saved.filter((sticker) => !removedIds.includes(sticker.id));
+  const count = editorStickerCount(visibleSaved.length, fresh);
+  const packFull = count >= MAX_PACK_STICKERS;
+  const hasFailedRows = fresh.some((item) => item.error !== undefined);
+  const readyCount = fresh.filter(
+    (item) => item.status === 'ready' || item.status === 'uploadFailed',
+  ).length;
+
+  const pickImages = useCallback(() => {
+    if (busyRef.current || saving) {
+      return;
+    }
+    const slotsLeft = MAX_PACK_STICKERS - count;
+    if (slotsLeft <= 0) {
+      return;
+    }
+    setFormError('');
+    const take = slotsLeft;
+    const prepareEach = (picked: readonly PickedStickerImage[]): Effect.Effect<void> =>
+      Effect.forEach(
+        picked,
+        (image) =>
+          Effect.promise(() => activePreparer.prepare(image)).pipe(
+            Effect.tap((prepared) =>
+              Effect.sync(() => {
+                if (prepared.status === 'prepared') {
+                  const row: EditorNewItem = {
+                    key: nextEditorKey(),
+                    uri: prepared.image.uri,
+                    mimeType: prepared.image.mimeType,
+                    width: prepared.image.width,
+                    height: prepared.image.height,
+                    bytes: prepared.image.bytes,
+                    emoji: '',
+                    status: 'ready',
+                  };
+                  setFresh((previous) => [...previous, row]);
+                } else {
+                  const row: EditorNewItem = {
+                    key: nextEditorKey(),
+                    uri: image.uri,
+                    mimeType: 'image/png',
+                    width: 0,
+                    height: 0,
+                    bytes: 0,
+                    emoji: '',
+                    status: 'failed-prepare',
+                    error: prepared.message,
+                  };
+                  setFresh((previous) => [...previous, row]);
+                }
+                setPreparing((active) => active - 1);
+              }),
+            ),
+          ),
+        { discard: true },
+      );
+    Effect.runFork(
+      Effect.promise(() => activePicker.pickImages()).pipe(
+        Effect.flatMap((result) =>
+          Effect.sync(() => {
+            if (result.status === 'error') {
+              setFormError(result.message);
+              return [];
+            }
+            if (result.status !== 'picked') {
+              return [];
+            }
+            const { taken, skipped } = takeFittingImages(result.images, take);
+            if (skipped) {
+              setSkippedNote(true);
+            }
+            if (taken.length > 0) {
+              setPreparing((active) => active + taken.length);
+            }
+            return taken;
+          }),
+        ),
+        Effect.flatMap((picked) => prepareEach(picked)),
+      ),
+    );
+  }, [activePicker, activePreparer, busyRef, count, saving, setFormError]);
+
+  const retryItem = useCallback(
+    (key: string) => {
+      setFormError('');
+      setFresh((previous) =>
+        previous.map((item) =>
+          item.key === key ? { ...item, status: 'ready' as const, error: undefined } : item,
+        ),
+      );
+    },
+    [setFormError, setFresh],
+  );
+
+  const removeFresh = useCallback(
+    (key: string) => {
+      setFormError('');
+      setFresh((previous) => {
+        const removed = previous.find((item) => item.key === key);
+        // Any sticker with a server id is already on the server, so a removal
+        // queues it for the next Save instead of orphaning it.
+        if (removed?.stickerId !== undefined) {
+          const stickerId = removed.stickerId;
+          setRemovedIds((previousIds) =>
+            previousIds.includes(stickerId) ? previousIds : [...previousIds, stickerId],
+          );
+        }
+        return previous.filter((item) => item.key !== key);
+      });
+    },
+    [setFormError, setFresh],
+  );
+
+  const removeSaved = useCallback(
+    (stickerId: string) => {
+      setRemovedIds((previous) =>
+        previous.includes(stickerId) ? previous : [...previous, stickerId],
+      );
+    },
+    [setRemovedIds],
+  );
+
+  const changeEmoji = useCallback(
+    (key: string, value: string) => {
+      setFresh((previous) =>
+        previous.map((row) => (row.key === key ? { ...row, emoji: value.slice(0, 8) } : row)),
+      );
+    },
+    [setFresh],
+  );
+
+  // Edit order on Save: patch title/visibility, then deletions, then uploads one
+  // by one (web order). A removed upload joins `removedIds`.
+  const save = useCallback(() => {
+    if (busyRef.current || saving) {
+      return;
+    }
+    const trimmed = title.trim();
+    if (trimmed === '') {
+      setFormError('Name the pack first.');
+      return;
+    }
+    if (fresh.some((item) => item.error !== undefined)) {
+      setFormError('Retry or remove the failed stickers first.');
+      return;
+    }
+    const pending = fresh.filter((item) => item.status !== 'uploaded');
+    if (packId === undefined && createdPackIdRef.current === undefined && pending.length === 0) {
+      setFormError('Add at least one sticker first.');
+      return;
+    }
+    setFormError('');
+    busyRef.current = true;
+    setSaving(true);
+    setProgress({ done: 0, total: pending.length });
+    const snapshot = {
+      title: trimmed,
+      visibility,
+      initialTitle,
+      initialVisibility,
+      removed: [...removedIds],
+      pending: pending.map((item) => ({
+        key: item.key,
+        uri: item.uri,
+        mimeType: item.mimeType,
+        emoji: item.emoji,
+      })),
+      createdPackId: createdPackIdRef.current,
+      createdTitle: createdTitleRef.current,
+      createdVisibility: createdVisibilityRef.current,
+    };
+    const saveEffect = Effect.promise(() =>
+      runSavePack({
+        api,
+        target:
+          packId !== undefined
+            ? { kind: 'edit', packId }
+            : {
+                kind: 'create',
+                createdPackId: snapshot.createdPackId,
+                createdTitle: snapshot.createdTitle,
+                createdVisibility: snapshot.createdVisibility,
+              },
+        title: snapshot.title,
+        visibility: snapshot.visibility,
+        initialTitle: snapshot.initialTitle,
+        initialVisibility: snapshot.initialVisibility,
+        removedIds: snapshot.removed,
+        pending: snapshot.pending,
+        onRow: (key, status, error) => {
+          setFresh((previous) =>
+            previous.map((row) => {
+              if (row.key !== key) {
+                return row;
+              }
+              if (status === 'uploading') {
+                return { ...row, status: 'uploading' as const, error: undefined };
+              }
+              if (status === 'uploaded') {
+                return { ...row, status: 'uploaded' as const, stickerId: error };
+              }
+              return { ...row, status: 'uploadFailed' as const, error };
+            }),
+          );
+        },
+        onProgress: (done, total) => {
+          setProgress({ done, total });
+        },
+        onRemovedFlushed: () => {
+          setRemovedIds([]);
+        },
+        onCreated: (created) => {
+          createdPackIdRef.current = created.id;
+          createdTitleRef.current = created.title;
+          createdVisibilityRef.current = created.visibility;
+        },
+      }),
+    );
+    Effect.runFork(
+      saveEffect.pipe(
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            if (outcome.ok) {
+              onSaved();
+            } else if (outcome.partial) {
+              if (outcome.created !== undefined) {
+                createdPackIdRef.current = outcome.created.id;
+                createdTitleRef.current = outcome.created.title;
+                createdVisibilityRef.current = outcome.created.visibility;
+                setCreatedPackId(outcome.created.id);
+              }
+            } else {
+              setFormError(outcome.formError);
+            }
+            busyRef.current = false;
+            setSaving(false);
+            setProgress(undefined);
+          }),
+        ),
+      ),
+    );
+  }, [
     api,
-    packId,
-    title,
-    visibility,
+    busyRef,
+    fresh,
     initialTitle,
     initialVisibility,
-    busyRef,
     onSaved,
-  });
-  const { setSaved } = items;
+    packId,
+    removedIds,
+    saving,
+    title,
+    visibility,
+  ]);
 
   const load = useCallback(() => {
     if (packId === undefined) {
@@ -185,16 +409,16 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     }, [load]),
   );
 
-  const isCreate = packId === undefined && items.createdPackId === undefined;
+  const isCreate = packId === undefined && createdPackId === undefined;
   const changed = isCreate
-    ? items.readyCount > 0
+    ? readyCount > 0
     : title.trim() !== initialTitle.trim() ||
       visibility !== initialVisibility ||
-      items.removedIds.length > 0 ||
-      items.fresh.length > 0;
+      removedIds.length > 0 ||
+      fresh.length > 0;
 
   const onBack = useCallback(() => {
-    if (items.saving) {
+    if (saving) {
       return;
     }
     if (changed) {
@@ -202,7 +426,7 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
       return;
     }
     router.back();
-  }, [changed, items.saving, router]);
+  }, [changed, saving, router]);
 
   const askDelete = useCallback(() => {
     setDeleteError('');
@@ -248,12 +472,9 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
   }, [router]);
 
   const imported = importedFrom !== undefined;
-  const visibilityDisabled = items.saving || imported;
+  const visibilityDisabled = saving || imported;
   const saveDisabled =
-    items.saving ||
-    items.preparing > 0 ||
-    items.hasFailedRows ||
-    (isCreate ? items.readyCount === 0 : !changed);
+    saving || preparing > 0 || hasFailedRows || (isCreate ? readyCount === 0 : !changed);
 
   return {
     packId,
@@ -264,26 +485,26 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     setVisibility,
     imported,
     visibilityDisabled,
-    count: items.count,
-    packFull: items.packFull,
-    preparing: items.preparing,
-    skippedNote: items.skippedNote,
-    fresh: items.fresh,
-    visibleSaved: items.visibleSaved,
+    count,
+    packFull,
+    preparing,
+    skippedNote,
+    fresh,
+    visibleSaved,
     token,
-    saving: items.saving,
-    progress: items.progress,
-    formError: items.formError,
+    saving,
+    progress,
+    formError,
     isCreate,
     saveDisabled,
     load,
-    save: items.save,
+    save,
     onBack,
-    pickImages: items.pickImages,
-    retryItem: items.retryItem,
-    removeFresh: items.removeFresh,
-    removeSaved: items.removeSaved,
-    changeEmoji: items.changeEmoji,
+    pickImages,
+    retryItem,
+    removeFresh,
+    removeSaved,
+    changeEmoji,
     confirmingDelete,
     deleteError,
     deleting,

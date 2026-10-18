@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
-import { Effect, Option } from 'effect';
+import * as Clipboard from 'expo-clipboard';
+import { Data, Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { ChevronLeft, Eye, Trash2 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,12 +11,8 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelPeoplePage } from '@/components/channel-info/people-page';
 import { ChannelInfoRoot } from '@/components/channel-info/root-page';
 import { useGroupManage } from '@/components/chat/group-manage-section';
+import type { CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
-import {
-  ChannelCallFailed,
-  callStore,
-  useChannelInvites,
-} from '@/components/chat/use-channel-invites';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
 import { ActivityPage } from '@/components/group-info/activity-page';
@@ -41,6 +38,23 @@ import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
+
+/** A store call that rejected; `code` is what the server said (empty when none). */
+class ChannelCallFailed extends Data.TaggedError('ChannelCallFailed')<{
+  readonly code: string;
+}> {}
+
+const codeOf = (error: unknown): string =>
+  typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : '';
+
+function callStore<A>(call: () => Promise<A>): Effect.Effect<A, ChannelCallFailed> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (error) => new ChannelCallFailed({ code: codeOf(error) }),
+  });
+}
 
 type ChannelMoreMenuProps = {
   open: boolean;
@@ -174,7 +188,105 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const listChannelMembers = useChatStore((state) => state.listChannelMembers);
   const changeChannelRole = useChatStore((state) => state.changeChannelRole);
   const leaveChannel = useChatStore((state) => state.leaveChannel);
-  const links = useChannelInvites(groupId);
+  const listInviteLinks = useChatStore((state) => state.listInviteLinks);
+  const createInviteLink = useChatStore((state) => state.createInviteLink);
+  const revokeInviteLink = useChatStore((state) => state.revokeInviteLink);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [linksNow, setLinksNow] = useState(() => Date.now());
+  const [links, setLinks] = useState<
+    {
+      id: string;
+      label: string | null;
+      tokenHint: string;
+      uses: number;
+      maxUses: number | null;
+      expiresAt: string | null;
+      revoked: boolean;
+      createdAt: string;
+    }[]
+  >([]);
+  const [linksBusy, setLinksBusy] = useState(false);
+  const [linksError, setLinksError] = useState('');
+  const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
+  const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
+
+  // The links list, each step an Effect run in the background; a new load clears the error first and a failed load keeps the last list.
+  const reloadLinks = (): Effect.Effect<void> =>
+    Effect.sync(() => setLinksError('')).pipe(
+      Effect.andThen(callStore(() => listInviteLinks(groupId))),
+      Effect.match({
+        onFailure: () => setLinksError('Could not load invite links. Try again.'),
+        onSuccess: (next) => setLinks(next),
+      }),
+    );
+
+  const openLinks = () => {
+    setLinksError('');
+    setCreatedUrl(undefined);
+    setRevokingId(undefined);
+    setLinksNow(Date.now());
+    setLinksOpen(true);
+    Effect.runFork(reloadLinks());
+  };
+
+  // The clipboard/share bridge: `expo-clipboard` and `Share` cannot run in Node tests, so the sheet takes callbacks and the screen wires the real modules at the edge.
+  const linksShare = useMemo(
+    () => ({
+      copyText: (text: string) =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Clipboard.setStringAsync(text),
+            catch: (error) => error,
+          }).pipe(Effect.asVoid),
+        ),
+      shareText: (text: string): Promise<void> =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Share.share({ message: text }),
+            catch: (error) => error,
+          }).pipe(Effect.asVoid),
+        ),
+    }),
+    [],
+  );
+
+  const onCreateLink = (input: CreateInviteLinkForm) => {
+    setLinksBusy(true);
+    setLinksError('');
+    Effect.runFork(
+      callStore(() => createInviteLink(groupId, input)).pipe(
+        Effect.tap((created) => Effect.sync(() => setCreatedUrl(created.url))),
+        Effect.andThen(reloadLinks()),
+        Effect.catchTag('ChannelCallFailed', () =>
+          Effect.sync(() => setLinksError('Could not create the invite link. Try again.')),
+        ),
+        Effect.ensuring(Effect.sync(() => setLinksBusy(false))),
+      ),
+    );
+  };
+
+  const onRevokeLink = (linkId: string) => {
+    setRevokingId(linkId);
+    setLinksError('');
+    Effect.runFork(
+      callStore(() => revokeInviteLink(groupId, linkId)).pipe(
+        Effect.andThen(reloadLinks()),
+        Effect.catchTag('ChannelCallFailed', () =>
+          Effect.sync(() => setLinksError('Could not revoke the invite link. Try again.')),
+        ),
+        Effect.ensuring(Effect.sync(() => setRevokingId(undefined))),
+      ),
+    );
+  };
+
+  const onDismissCreated = () => setCreatedUrl(undefined);
+
+  const onCloseLinks = () => {
+    if (!linksBusy) {
+      setLinksOpen(false);
+    }
+  };
+
   const content = useGroupContent(feedId);
   const visibility = useGroupVisibility(groupId);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -335,7 +447,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
           error={visibility.error}
           saved={visibility.saved}
           confirmingPrivate={visibility.confirmingPrivate}
-          share={links.share}
+          share={linksShare}
           onPick={visibility.pick}
           onHandleChange={visibility.changeHandle}
           onSave={visibility.save}
@@ -371,7 +483,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         onOpenFeed={() => router.push({ pathname: '/chat/[id]', params: { id: feedId } })}
         onOpenPeople={() => setPage('people')}
         onOpenAis={() => setPage('ais')}
-        onOpenLinks={links.open}
+        onOpenLinks={openLinks}
         onOpenMedia={content.openMedia}
         onOpenPins={content.openPins}
         onOpenActivity={() => setPage('activity')}
@@ -384,18 +496,18 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         }}
       />
       <InviteLinksSheet
-        visible={links.visible}
-        links={links.links}
-        busy={links.busy}
-        error={links.error}
-        createdUrl={links.createdUrl}
-        revokingId={links.revokingId}
-        now={links.now}
-        share={links.share}
-        onCreate={links.onCreate}
-        onRevoke={links.onRevoke}
-        onDismissCreated={links.onDismissCreated}
-        onClose={links.onClose}
+        visible={linksOpen}
+        links={links}
+        busy={linksBusy}
+        error={linksError}
+        createdUrl={createdUrl}
+        revokingId={revokingId}
+        now={linksNow}
+        share={linksShare}
+        onCreate={onCreateLink}
+        onRevoke={onRevokeLink}
+        onDismissCreated={onDismissCreated}
+        onClose={onCloseLinks}
       />
       <ChannelMoreMenu
         open={moreOpen}

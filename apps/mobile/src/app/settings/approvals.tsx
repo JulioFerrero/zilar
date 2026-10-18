@@ -1,16 +1,13 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
-import type { Effect } from 'effect';
+import { Effect } from 'effect';
 import { ShieldCheck, Check, X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { AisScreenShell } from '@/components/ais/screen-shell';
+import { useAisApi } from '@/components/ais/use-ais-api';
 import { RevokeConfirmDialog, AlwaysAllowedRow } from '@/components/approvals/always-allowed-row';
-import {
-  useApprovals,
-  type LoadStatus,
-  type OwnedRule,
-} from '@/components/approvals/use-approvals';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors';
@@ -18,12 +15,35 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/ui/card';
 import type { ApprovalRule, ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
-import type { RowBusy } from '../../components/approvals/rows';
+import { useApprovalsApi } from '@/components/chat/use-approvals-api';
+import { fromApi } from '@zilar/client-core';
+import {
+  claimDecision,
+  confirmationForDecision,
+  decideScreenRow,
+  groupRulesForScreen,
+  mergeRulesFanOut,
+  orderedRows,
+  revokeFailedOutcome,
+  rowsForList,
+  type DecideOutcome,
+  type OwnedScreenRule,
+  type RowsById,
+  type RowBusy,
+} from '@/components/approvals/rows';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
+
+type LoadStatus = 'loading' | 'ready' | 'error';
+
+/** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`). */
+type OwnedRule = OwnedScreenRule;
+
+const NOTICE_TIMEOUT_MS = 4000;
+const CLOCK_TICK_MS = 60_000;
 
 function PendingApprovalRow({
   approval,
@@ -238,8 +258,6 @@ function RulesSection({
   );
 }
 
-export type { OwnedRule } from '@/components/approvals/use-approvals';
-
 export default function ApprovalsScreen() {
   return (
     <RequireAuth>
@@ -250,28 +268,280 @@ export default function ApprovalsScreen() {
 
 function ApprovalsBody() {
   const router = useRouter();
-  const {
-    status,
-    errorMessage,
-    runLoad,
-    refreshing,
-    setRefreshing,
-    notice,
-    pendingList,
-    now,
-    nameFor,
-    decide,
-    rulesStatus,
-    ruleSections,
-    rulesError,
-    runRules,
-    askRevoke,
-    confirmRule,
-    setConfirmRule,
-    revokeState,
-    revokeError,
-    confirmRevoke,
-  } = useApprovals();
+  const { api } = useApprovalsApi();
+  const { api: aisApi } = useAisApi();
+
+  const [rows, setRows] = useState<RowsById>({});
+  const [status, setStatus] = useState<LoadStatus>('loading');
+  const [errorMessage, setErrorMessage] = useState('');
+  // Requests decided in this session: an in-flight list that lands after the
+  // decision must not bring their rows back.
+  const decidedIds = useRef(new Set<string>());
+  const [notice, setNotice] = useState('');
+  const [now, setNow] = useState<Date>(() => new Date());
+
+  const [aiNames, setAiNames] = useState<Record<string, string>>({});
+  const [ownedRules, setOwnedRules] = useState<OwnedRule[]>([]);
+  const [rulesStatus, setRulesStatus] = useState<LoadStatus>('loading');
+  const [rulesError, setRulesError] = useState('');
+  const [confirmRule, setConfirmRule] = useState<OwnedRule | null>(null);
+  const [revokeError, setRevokeError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  // Per-id in-flight guard: a second tap while the first POST is running does
+  // nothing (the disabled button alone cannot stop a tap before React re-renders).
+  const decidingIds = useRef(new Set<string>());
+
+  const [, showNotice] = useAction(
+    (message: string) =>
+      Effect.sync(() => setNotice(message)).pipe(
+        Effect.andThen(Effect.sleep(NOTICE_TIMEOUT_MS)),
+        Effect.andThen(Effect.sync(() => setNotice(''))),
+      ),
+    { mode: 'replace' },
+  );
+
+  const [, runLoad] = useAction(
+    (showLoading: boolean) =>
+      Effect.sync(() => {
+        if (showLoading) {
+          setStatus('loading');
+        }
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listApprovals(),
+            catch: (cause: unknown) =>
+              cause instanceof Error ? cause : new Error('Could not load approvals.'),
+          }),
+        ),
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            const visible = list.filter((approval) => !decidedIds.current.has(approval.id));
+            setRows((previous) => rowsForList(visible, previous, decidingIds.current));
+            setStatus('ready');
+            setErrorMessage('');
+          }),
+        ),
+        Effect.catch((error: Error) =>
+          Effect.sync(() => {
+            setStatus('error');
+            setErrorMessage(error.message);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRefreshing(false))),
+      ),
+    { mode: 'replace' },
+  );
+
+  // One AI-list fetch for display names; it goes through `useAisApi` so mock
+  // mode reads the mock AIs, and a failure leaves the names empty.
+  const aiList = Effect.tryPromise({
+    try: () => aisApi.listAis(),
+    catch: () => undefined,
+  }).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.map((list) => list ?? []),
+  );
+
+  const [, runRules] = useAction(
+    (pending: PublicApproval[]) =>
+      Effect.sync(() => setRulesStatus('loading')).pipe(
+        // One rules fetch per AI the person owns, even with nothing pending: a
+        // standing rule must stay revocable. Group rules are out of scope.
+        Effect.andThen(aiList),
+        Effect.flatMap((ais) => {
+          const names: Record<string, string> = {};
+          for (const ai of ais) {
+            names[ai.id] = ai.name;
+          }
+          setAiNames(names);
+          const aiIds = [
+            ...new Set([...ais.map((ai) => ai.id), ...pending.map((approval) => approval.aiId)]),
+          ];
+          // One AI's rules failure must not blank the others: `mergeRulesFanOut`
+          // skips it, and only when every AI fails does the section show an error.
+          return Effect.forEach(
+            aiIds,
+            (aiId) =>
+              fromApi(() => api.listAiApprovalRules(aiId)).pipe(
+                Effect.map((rules) => ({ status: 'fulfilled' as const, value: { aiId, rules } })),
+                Effect.catch((reason) => Effect.succeed({ status: 'rejected' as const, reason })),
+              ),
+            { concurrency: 'unbounded' },
+          );
+        }),
+        Effect.tap((settled) =>
+          Effect.sync(() => {
+            const merged = mergeRulesFanOut(settled);
+            if (merged === null) {
+              setRulesStatus('error');
+              setRulesError('Could not load the rules.');
+              return;
+            }
+            setOwnedRules(merged);
+            setRulesStatus('ready');
+            setRulesError('');
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setRulesStatus('error');
+            setRulesError('Could not load the rules.');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
+
+  useEffect(() => {
+    runLoad(true);
+  }, [runLoad]);
+
+  // Refresh on focus so coming back from a chat picks up decisions from elsewhere.
+  useFocusEffect(
+    useCallback(() => {
+      runLoad(false);
+    }, [runLoad]),
+  );
+
+  // Tick `now` every minute so the "expires in" countdown updates without a
+  // full reload.
+  const [, startClock, clockControls] = useAction<void, void, never>(() =>
+    Effect.forever(
+      Effect.sleep(CLOCK_TICK_MS).pipe(Effect.andThen(Effect.sync(() => setNow(new Date())))),
+    ),
+  );
+  useEffect(() => {
+    startClock();
+    return () => clockControls.interrupt();
+  }, [startClock, clockControls]);
+
+  const pendingList = useMemo(() => orderedRows(rows), [rows]);
+  const pendingAiKey = useMemo(
+    () => [...new Set(pendingList.map((row) => row.approval.aiId))].join(','),
+    [pendingList],
+  );
+  useEffect(() => {
+    if (status === 'ready') {
+      runRules(pendingList.map((row) => row.approval));
+    }
+    // Runs when the pending AI set changes, not every render: `pendingList` is
+    // rebuilt per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAiKey, status]);
+
+  const applyDecisionOutcome = (
+    id: string,
+    decision: ApprovalDecision,
+    outcome: DecideOutcome,
+  ): void => {
+    if (outcome.kind === 'decided') {
+      decidedIds.current.add(id);
+      setRows((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+      showNotice(confirmationForDecision(decision));
+    } else if (outcome.kind === 'gone') {
+      // Decided or expired elsewhere: drop the row and explain, rather than
+      // failing silently.
+      decidedIds.current.add(id);
+      setRows((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+      showNotice(outcome.message);
+    } else if (outcome.kind === 'stale') {
+      // The 409 race reloaded a row that is still pending: the decision did not
+      // land, so the row stays with the refreshed server state and no error.
+      setRows((previous) => {
+        const current = previous[id];
+        if (current === undefined) {
+          return previous;
+        }
+        return {
+          ...previous,
+          [id]: { approval: outcome.approval, busy: null, error: '' },
+        };
+      });
+    } else {
+      // Offline, 500, 403, …: clear `busy` and show the fixed inline message so
+      // the buttons work again.
+      setRows((previous) => {
+        const current = previous[id];
+        if (current === undefined) {
+          return previous;
+        }
+        return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
+      });
+    }
+  };
+
+  // One decision for one row: the row's action blocks a second tap, the claim
+  // keeps the id busy until the POST settles.
+  const decide = (id: string, decision: ApprovalDecision): Effect.Effect<void> => {
+    if (!claimDecision(decidingIds.current, id)) {
+      return Effect.void;
+    }
+    return Effect.sync(() => {
+      setRows((previous) => {
+        const current = previous[id];
+        if (current === undefined) {
+          decidingIds.current.delete(id);
+          return previous;
+        }
+        return { ...previous, [id]: { ...current, busy: decision, error: '' } };
+      });
+    }).pipe(
+      Effect.andThen(Effect.promise(() => decideScreenRow(api, id, decision))),
+      Effect.tap((outcome) => Effect.sync(() => applyDecisionOutcome(id, decision, outcome))),
+      Effect.ensuring(Effect.sync(() => decidingIds.current.delete(id))),
+    );
+  };
+
+  const askRevoke = useCallback((owned: OwnedRule) => {
+    setRevokeError('');
+    setConfirmRule(owned);
+  }, []);
+
+  const [revokeState, runRevoke] = useAction((id: string) =>
+    Effect.tryPromise({
+      try: () => api.revokeApprovalRule(id),
+      catch: (error: unknown) => revokeFailedOutcome(error),
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
+          setConfirmRule(null);
+        }),
+      ),
+      Effect.catch((outcome: { dropped: boolean; message: string }) =>
+        Effect.sync(() => {
+          if (outcome.dropped) {
+            // Already gone (revoked elsewhere): drop the row quietly.
+            setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
+            setConfirmRule(null);
+          } else {
+            setRevokeError(outcome.message);
+          }
+        }),
+      ),
+    ),
+  );
+
+  const confirmRevoke = (): void => {
+    if (confirmRule === null || isWaiting(revokeState)) {
+      return;
+    }
+    setRevokeError('');
+    runRevoke(confirmRule.rule.id);
+  };
+
+  const nameFor = useCallback((aiId: string) => aiNames[aiId] ?? aiId, [aiNames]);
+
+  const ruleSections = useMemo(() => groupRulesForScreen(ownedRules), [ownedRules]);
 
   return (
     <AisScreenShell
