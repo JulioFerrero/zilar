@@ -10,8 +10,7 @@ import {
   type ToolRunResult,
   type ToolVersion,
 } from '@/lib/tools';
-import { fromApi } from '@/lib/effect/api-effect';
-import { type ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 
 const MAX_RUN_INPUT_BYTES = 4 * 1024;

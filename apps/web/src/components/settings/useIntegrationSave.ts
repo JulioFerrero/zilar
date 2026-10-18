@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { getIntegrationsStatus, type IntegrationsStatus } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { useAction, type ActionState } from '@/lib/effect/use-action';
 
 export interface IntegrationSave<Op, Value, ValidationError> {

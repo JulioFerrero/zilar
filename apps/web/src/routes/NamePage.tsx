@@ -6,7 +6,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { updateMe } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 
 class NameSaveFailed extends Data.TaggedError('NameSaveFailed') {}

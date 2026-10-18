@@ -1,6 +1,6 @@
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { TextArea } from '@/components/ui/text-input';
-import { truncateOutput } from '@/lib/routines';
+import { truncateOutput } from '@zilar/chat-core';
 import type { ToolRun, ToolRunResult } from '@/lib/tools';
 import { TruncatedText } from './CodeBlock';
 import { runStatusText } from './toolDetailOps';

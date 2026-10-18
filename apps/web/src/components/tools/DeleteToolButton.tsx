@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { deleteTool } from '@/lib/tools';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { fromApi } from '@/lib/effect/api-effect';
-import { type ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { failureText } from './toolDetailOps';
 

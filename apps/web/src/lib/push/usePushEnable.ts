@@ -20,8 +20,7 @@ import {
   unsubscribeBrowser,
   type NotificationPermissionState,
 } from '@/lib/push';
-import { fromApi } from '@/lib/effect/api-effect';
-import { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, ApiFailure } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { readStoredDevice, writeStoredDevice, type StoredDevice } from '@/lib/push/deviceStorage';
 import {

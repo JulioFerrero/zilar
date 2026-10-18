@@ -8,8 +8,7 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { listConnections } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { shownFailure } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 

@@ -3,7 +3,7 @@ import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useRef } from 'react';
 import { MESSAGE_SEARCH_DEBOUNCE_MS, MESSAGE_SEARCH_LIMIT, activeQuery } from '@zilar/chat-core';
 import { searchMessages, type SearchItem } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
 export { MESSAGE_SEARCH_DEBOUNCE_MS };

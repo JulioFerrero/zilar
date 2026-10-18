@@ -4,7 +4,7 @@
 import { Duration, Effect } from 'effect';
 import type { PushConfig } from '@/lib/api';
 import { getPushConfig } from '@/lib/api';
-import type { StoreApi } from '@/store/atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import { readStoredDevice, writeStoredDevice, type StoredDevice } from './deviceStorage';
 

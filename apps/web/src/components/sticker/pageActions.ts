@@ -13,8 +13,7 @@ import {
   type Sticker,
   type StickerPack,
 } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { getStickerPack, type StickerPackDetail } from '@/lib/api/stickers';
 
 export type PageStatus = 'loading' | 'ready' | 'error';

@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from '@effect/atom-react';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
-import type { StoreApi } from '@/store/atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import { isMockMode } from '@/mock/gate';
 import { loadMockXmpp } from '@/mock/load';
 import { createRealChatStore } from '@/store/realStore';

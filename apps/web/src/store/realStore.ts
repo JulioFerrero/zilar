@@ -6,14 +6,14 @@ import { portsLayer, readPorts, type RealStoreDeps } from './effects/ports';
 import { makeLifetime } from './effects/runtime';
 import { scheduleMessageSave } from './effects/lifecycle';
 import { makeStoreContext } from './effects/storeContext';
-import { createAtomStore, type SetState, type StoreApi } from './atomStore';
+import { createAtomStore, type SetState, type StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from './store';
 
 export { CONNECT_RETRY_DELAYS_MS, TOPIC_REFRESH_INTERVAL_MS } from './effects/constants';
 export { mergeWithPainted, summariesFor } from './effects/chatRows';
 
 export { SEND_TIMEOUT_MS } from './effects/constants';
-export { sendFailureReasonFor } from './effects/sendFailure';
+export { sendFailureReasonFor } from '@zilar/client-core/store';
 export { DRAFT_END_FALLBACK_MS, DRAFT_IDLE_MS } from './effects/constants';
 
 export type { ApiClient, RealStoreDeps, StorageLike } from './effects/ports';

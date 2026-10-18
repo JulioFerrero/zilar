@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { groupSearchByChat, type SearchGroup } from '@zilar/chat-core';
 import { StateMessage } from '@/components/ui/state-message';
 import type { SearchItem } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useMessageSearch } from '@/lib/useMessageSearch';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';

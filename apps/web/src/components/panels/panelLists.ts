@@ -1,8 +1,7 @@
 import { Effect } from 'effect';
 import { useState } from 'react';
 import { ApiError } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import { ApiFailure, toApiFailure } from '@/lib/effect/errors';
+import { fromApi, ApiFailure, toApiFailure } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { textOf } from './topic-failure';
 

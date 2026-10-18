@@ -1,5 +1,5 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
-import { isCardAllowedFrom } from '@zilar/client-core';
+import { isCardAllowedFrom, fromApi } from '@zilar/client-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
@@ -20,7 +20,6 @@ import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { Checkbox } from './ui/checkbox';
-import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useSmoothText } from '@/lib/useSmoothText';

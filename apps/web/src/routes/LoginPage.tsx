@@ -4,7 +4,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { Button } from '@/components/ui/button';
 import { getSetupStatus } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 
 /** Sign-in, with a detour while the server still needs its first-run setup: the form would

@@ -2,10 +2,9 @@
 // chat summaries carry the optimistic paint; a failed write re-merges the saved rows, so
 // anything that landed meanwhile survives.
 import { Cause, Effect, Exit } from 'effect';
-import { applyChatPrefs } from '@zilar/chat-core';
+import { applyChatPrefs, mutedUntilFor, type MuteDurationId } from '@zilar/chat-core';
 import { updatePref as updatePrefCore, type PrefsStore } from '@zilar/client-core/store';
 import type { ChatBackgroundChoice, ChatPref, PutChatPrefInput } from '@/lib/api';
-import { mutedUntilFor, type MuteDurationId } from '@/lib/chatPrefs';
 import { syncBadgeInBackground } from './badge';
 import type { StoreCtx } from './ctx';
 import { Ports } from './ports';

@@ -8,7 +8,7 @@ import type {
 import type { Deferred } from 'effect';
 import type { ChatEntry, GroupDetail, Me } from '@/lib/api';
 import type { MediaTokenShape } from '@/lib/attachments';
-import type { SetState } from '../atomStore';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../store';
 import type { PortsShape } from './ports';
 import type { Lifetime } from './runtime';

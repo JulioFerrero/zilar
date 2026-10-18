@@ -1,6 +1,6 @@
 import { describeAiFailure, type AiErrorInfo } from '@zilar/chat-core';
 import { ApiError } from '@/lib/api';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 
 export type { AiErrorInfo };
 

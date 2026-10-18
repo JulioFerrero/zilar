@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { ApiError } from '@/lib/api';
-import { ApiFailure } from '@/lib/effect/errors';
+import { ApiFailure } from '@zilar/client-core';
 import type { NotificationPermissionState, PushBrowser } from '@/lib/push';
 
 /** A browser or store Promise. Its own error reaches friendlyError unchanged. */

@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 
 /**
  * The sentence shown for a failed call: the API's own message, or the fixed

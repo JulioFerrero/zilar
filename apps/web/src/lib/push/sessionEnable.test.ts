@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
-import type { StoreApi } from '@/store/atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import { disableSessionPush, startSessionEnable, type SessionEnableDeps } from './sessionEnable';
 

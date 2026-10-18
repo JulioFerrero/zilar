@@ -12,8 +12,7 @@ import {
   type TopicMember,
   type TopicTool,
 } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import { ApiFailure, isApiFailureCode } from '@/lib/effect/errors';
+import { fromApi, ApiFailure, isApiFailureCode } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';

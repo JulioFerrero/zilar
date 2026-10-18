@@ -2,7 +2,7 @@ import { Effect, Schedule } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { getApproval, type PublicApproval } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
 export type ApprovalPollingState =

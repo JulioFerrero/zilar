@@ -16,7 +16,7 @@ import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
 import { NewTopicDialog } from './NewTopicDialog';
 import { SearchBar } from './SearchBar';
-import { useDelayed } from '@/lib/useDelayed';
+import { useDelayed } from '@zilar/client-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';

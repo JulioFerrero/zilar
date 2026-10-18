@@ -1,4 +1,4 @@
-import { useDelayed } from '@/lib/useDelayed';
+import { useDelayed } from '@zilar/client-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 

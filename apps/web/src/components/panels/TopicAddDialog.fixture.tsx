@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import { TopicAddDialog, type AddAi, type AddPerson } from './TopicAddDialog';
 
 const people: AddPerson[] = [

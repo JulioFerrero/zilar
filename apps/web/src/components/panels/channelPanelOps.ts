@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { ApiError } from '@/lib/api';
-import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
+import { type ApiFailure, toApiFailure } from '@zilar/client-core';
 import { StoreFailed } from '@/lib/errors';
 import { describeAiError } from '../ais/errors';
 

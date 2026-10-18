@@ -17,7 +17,7 @@ import { blockUser, lookupByHandle, unblockUser } from '@/lib/api';
 import { refreshBlockedJids, useBlockedJids } from '@/lib/blockedJids';
 import { copyText } from '@/lib/clipboard';
 import { dmContactFor, dmHandleCandidate } from '@/lib/contacts';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';

@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { listApprovals } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
 /** The approvals waiting for the viewer; null means unknown or failed, so no badge shows.

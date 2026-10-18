@@ -11,6 +11,7 @@ import {
   type ChatSummary,
   type PreviewKind,
   type UiMessage,
+  previewMessage,
 } from '@zilar/chat-core';
 import {
   File,
@@ -29,7 +30,6 @@ import { AiActivityMarks } from './topic/AiActivityMarks';
 import { RowActions } from './chatList/RowActions';
 import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
-import { previewMessage } from '@/lib/preview-message';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';

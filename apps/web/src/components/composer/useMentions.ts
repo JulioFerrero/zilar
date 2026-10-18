@@ -19,7 +19,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
-import type { StoreApi } from '@/store/atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 
 const MENTION_MAX_ROWS = 6;

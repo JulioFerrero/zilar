@@ -8,7 +8,7 @@ import {
 } from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerFavorites, listStickerPacks } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { forgetRecentSticker, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';

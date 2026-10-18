@@ -11,7 +11,7 @@ import {
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StateMessage } from '@/components/ui/state-message';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { DeleteToolButton } from './DeleteToolButton';

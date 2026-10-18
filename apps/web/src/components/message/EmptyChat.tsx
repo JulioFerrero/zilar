@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { listAis, listConnections, type AiTemplate } from '@/lib/api';
 import { dmContactFor } from '@/lib/contacts';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AiBadge } from '../AiBadge';

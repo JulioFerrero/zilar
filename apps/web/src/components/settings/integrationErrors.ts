@@ -1,5 +1,5 @@
 import { Data } from 'effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 
 export { shownFailure } from '@/lib/effect/use-action';
 

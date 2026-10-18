@@ -7,8 +7,7 @@ import {
   listTopicToolDetails,
   type ToolListItem,
 } from '@/lib/tools';
-import { fromApi } from '@/lib/effect/api-effect';
-import { type ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';

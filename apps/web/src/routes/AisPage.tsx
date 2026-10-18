@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Plus, Zap } from 'lucide-react';
 import { listAis, listConnections, type PublicAi } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { shownFailure } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { AiHealthRow } from '@/components/ais/AiHealthRow';

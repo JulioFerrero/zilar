@@ -5,7 +5,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
-import type { VoiceRecorder } from '@/lib/voice';
+import type { VoiceRecorder } from '@/lib/voice/recorder';
 
 export interface PressState {
   startX: number;

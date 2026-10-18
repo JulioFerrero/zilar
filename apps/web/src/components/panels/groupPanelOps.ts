@@ -2,8 +2,7 @@ import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import type { GroupInviteLink, GroupRole } from '@/lib/api';
 import { listGroupInviteLinks, listGroupRoles } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting, type ActionState } from '@/lib/effect/use-action';
 import { describeAiError } from '../ais/errors';
 

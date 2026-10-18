@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { Machine } from '@/lib/api';
 import { approveMachine, denyMachine } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting } from '@/lib/effect/use-action';
 import { PendingMachineCard } from '@/components/machines/PendingMachineCard';
 import { clearFailure, useMachineAction } from '@/components/machines/machineRowOps';

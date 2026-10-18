@@ -3,7 +3,7 @@ import { Effect, Result, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 import { authClient } from '@/lib/auth';
 import { getMe } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { runWeb } from '@/lib/effect/runtime';
 import { useQuery } from '@/lib/effect/use-query';
 import { isMockMode } from '@/mock/gate';

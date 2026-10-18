@@ -3,11 +3,14 @@ import {
   PEOPLE_PREFIX_DEBOUNCE_MS,
   PEOPLE_SEARCH_MIN_LENGTH,
 } from '@zilar/chat-core';
-import { usePeoplePrefixSearch, type PeopleSearchState as SharedState } from '@zilar/client-core';
+import {
+  usePeoplePrefixSearch,
+  type PeopleSearchState as SharedState,
+  fromApi,
+} from '@zilar/client-core';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { searchDirectory, searchUsers, type DirectoryEntry, type HandleProfile } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 
 export { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH };

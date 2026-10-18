@@ -1,12 +1,10 @@
 import { Effect } from 'effect';
 import { useState } from 'react';
-import { approvalSentBy } from '@zilar/client-core';
+import { approvalSentBy, fromApi, type ApiFailure } from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
 import { decideApproval, getApproval, type ApprovalDecision, type ApprovalStatus } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useApprovalPolling } from '@/lib/useApprovalPolling';
 import { Button } from '@/components/ui/button';

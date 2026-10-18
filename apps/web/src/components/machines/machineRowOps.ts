@@ -1,7 +1,7 @@
 import type { Effect } from 'effect';
 import type { HttpClient } from 'effect/http';
 import { ApiError } from '@/lib/api';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import {
   isWaiting,
   shownFailure,

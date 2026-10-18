@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { Crown, UserMinus } from 'lucide-react';
 import { useState } from 'react';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import type { GroupDetail, TopicMember } from '@/lib/api';
 import { EntityAvatar } from '../EntityAvatar';
 import { PersonLink } from '../personLink';

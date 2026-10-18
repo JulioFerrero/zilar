@@ -2,7 +2,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { listMachines, setAiMachine, type PublicAi } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { FieldError } from './AiPageShell';

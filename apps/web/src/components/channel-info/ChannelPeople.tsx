@@ -1,7 +1,7 @@
 import { Crown, MoreVertical, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useState } from 'react';
 import type { GroupMember } from '@/lib/api';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import { FieldError } from '../ais/AiPageShell';
 import { EntityAvatar } from '../EntityAvatar';
 import { failureText } from '../panels/channelPanelOps';

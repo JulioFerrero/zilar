@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { MessageSquare, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { aiHealth, formatUsd, spendFraction, type AiHealthInput } from '@zilar/chat-core';
 import { deleteAi, type PublicAi } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { AiBadge } from '@/components/AiBadge';

@@ -3,8 +3,7 @@ import { Data, Effect } from 'effect';
 import { Button } from '@/components/ui/button';
 import { SecretInput } from '@/components/ui/text-input';
 import { replaceConnectionKey } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 
 class KeyMissing extends Data.TaggedError('KeyMissing') {}

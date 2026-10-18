@@ -12,7 +12,7 @@ import {
   type PublicAi,
   type UpdateAiInput,
 } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { AiBadge } from '@/components/AiBadge';
@@ -36,7 +36,7 @@ import { AiDangerZone } from './AiDangerZone';
 import { AiPictureSection } from './AiPictureSection';
 import { UsageBlock } from './AiUsageSection';
 import { validateLimits } from './limits';
-import { defaultModelFor, modelSuggestionsFor } from './models';
+import { defaultModelFor, modelSuggestionsFor } from '@zilar/chat-core';
 import { buildPatch } from './aiForm';
 
 export { UsageBlock };

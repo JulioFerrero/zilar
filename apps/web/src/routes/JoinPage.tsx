@@ -5,10 +5,9 @@ import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { joinByLink, previewJoinLink, type JoinPreview } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi, useDelayed } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useDelayed } from '@/lib/useDelayed';
 
 class OpenFailed extends Data.TaggedError('OpenFailed') {}
 

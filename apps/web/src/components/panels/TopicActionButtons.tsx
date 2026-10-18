@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
 import type * as React from 'react';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { failInline } from './topic-failure';
 

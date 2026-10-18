@@ -13,7 +13,7 @@ import {
 } from 'react';
 import type { GifChoice } from '../GifPanel';
 import type { StickerChoice } from '../StickerPanel';
-import type { StoreApi } from '@/store/atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import {
   MAX_ATTACHMENT_BYTES,

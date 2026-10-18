@@ -7,6 +7,8 @@ import {
   type ChatSummary,
   type PreviewKind,
   type UiMessage,
+  typingLabel,
+  previewMessage,
 } from '@zilar/chat-core';
 import {
   File,
@@ -30,8 +32,6 @@ import { Badge } from './ui/badge';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { useComposerDraft } from '@/lib/composer-drafts';
-import { typingLabel } from '@zilar/chat-core';
-import { previewMessage } from '@/lib/preview-message';
 import { cn } from '@/lib/utils';
 
 const EMPTY_MESSAGES: UiMessage[] = [];

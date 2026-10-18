@@ -5,7 +5,7 @@ import {
 } from '@zilar/client-core/store';
 import type { ChatEntry, Me } from '@/lib/api';
 import { loadInTabPreviews, showInTabNotification } from '@/lib/push/inTab';
-import type { SetState } from '../atomStore';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../store';
 import { summariesFor } from './chatRows';
 import type { StoreCtx } from './ctx';
@@ -21,7 +21,7 @@ import {
   rememberGroupIds as rememberGroupIdsHook,
 } from './lifecycle';
 import type { StoreLocals } from './locals';
-import { clearDraftTimeout, markTurnFinished } from './polling';
+import { clearDraftTimeout, markTurnFinished } from '@zilar/client-core/store';
 import type { PortsShape } from './ports';
 import { saveChatList as saveChatListHook } from './reads';
 import type { Lifetime } from './runtime';

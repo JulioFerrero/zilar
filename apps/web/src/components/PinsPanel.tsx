@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import type { Pin as PinRow } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';

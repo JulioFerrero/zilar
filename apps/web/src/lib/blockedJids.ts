@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useEffect, useSyncExternalStore } from 'react';
 import { isBlockedSender, localpartOf } from '@zilar/chat-core';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { listBlockedUsers } from './api';
 
 export { isBlockedSender };

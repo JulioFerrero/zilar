@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { getIntegrationsStatus } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 
 /** The owner is the user with the earliest createdAt: GET /api/settings/integrations answers

@@ -1,5 +1,16 @@
-import type { ChatSummary, EditsState, ReactionsState, UiMessage } from '@zilar/chat-core';
-import type { ChatFolder } from '@zilar/chat-core';
+import {
+  type ChatSummary,
+  type EditsState,
+  type ReactionsState,
+  type UiMessage,
+  type ChatFolder,
+  MUTE_DURATIONS,
+  applyChatPrefs,
+  effectivePrefFor,
+  mutedUntilFor,
+  sortPinnedFirst,
+  type MuteDurationId,
+} from '@zilar/chat-core';
 import type {
   ChatBackgroundChoice,
   ChatPref,
@@ -10,14 +21,6 @@ import type {
   MediaTab,
   Pin,
 } from '@/lib/api';
-import {
-  MUTE_DURATIONS,
-  applyChatPrefs,
-  effectivePrefFor,
-  mutedUntilFor,
-  sortPinnedFirst,
-} from '@/lib/chatPrefs';
-import type { MuteDurationId } from '@/lib/chatPrefs';
 import type { ChatStoreGroupApi } from './groupStoreTypes';
 import type {
   ChatsState,

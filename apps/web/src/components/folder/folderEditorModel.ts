@@ -1,6 +1,6 @@
 import { Data } from 'effect';
 import { type FolderChatType } from '@zilar/chat-core';
-import { type ApiFailure } from '@/lib/effect/errors';
+import { type ApiFailure } from '@zilar/client-core';
 
 export const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
   { type: 'dm', label: 'Personal chats' },

@@ -10,7 +10,7 @@ import { Square } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { listAis, stopAiTurn } from '@/lib/api/ais';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';

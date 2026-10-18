@@ -1,6 +1,6 @@
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
-import { useDelayed } from '@/lib/useDelayed';
+import { useDelayed } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 
 export function ApprovalsListSkeleton({ rows = 2 }: { rows?: number }) {

@@ -2,7 +2,7 @@ import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { EntityAvatar } from './EntityAvatar';

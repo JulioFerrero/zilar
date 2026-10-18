@@ -11,7 +11,7 @@ import type {
 import type { ChatEntry } from '@/lib/api';
 import { cleanFilename, type AttachmentPort } from '@/lib/attachments';
 import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
-import type { VoicePort } from '@/lib/voice';
+import type { VoicePort } from '@/lib/voice/convert';
 import { summariesFor } from './chatRows';
 import { fromPromise } from './util';
 import type { StorageLike } from './ports';

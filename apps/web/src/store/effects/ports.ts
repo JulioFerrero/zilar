@@ -68,7 +68,7 @@ import {
   sessionGone as sessionGoneAdapter,
 } from '@/lib/api/sessionGone';
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
-import { defaultVoicePort, type VoicePort } from '@/lib/voice';
+import { defaultVoicePort, type VoicePort } from '@/lib/voice/convert';
 import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
 import {
   bytesFromAttachmentPort,

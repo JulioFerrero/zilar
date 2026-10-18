@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { LinkText } from './LinkText';
 import { Button } from './ui/button';
 import type { Pin as PinRow } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';

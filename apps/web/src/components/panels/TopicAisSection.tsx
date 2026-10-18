@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { Brain, UserMinus } from 'lucide-react';
 import { useState } from 'react';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import type { TopicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';

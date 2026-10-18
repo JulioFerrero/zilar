@@ -12,7 +12,7 @@ import { TopicKeyboardNav } from '../TopicKeyboardNav';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
 import { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH } from '@/lib/usePeopleSearch';
-import { ContactRequestsRow } from './ContactRequestsRow';
+import { RequestRows as ContactRequestsRow } from './RequestRows';
 import type { ChatRows } from './rowsSelector';
 
 export interface ChatListBodyProps {

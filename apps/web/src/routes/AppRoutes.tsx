@@ -1,9 +1,9 @@
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { hasDismissedHandleGate } from '@/lib/handleGate';
-import { useDelayed } from '@/lib/useDelayed';
+import { useDelayed } from '@zilar/client-core';
 import { AddContactRoute } from './AddContactRoute';
 import { ChatShell } from './ChatShell';
 import { GroupHandleRoute } from './GroupHandleRoute';
@@ -135,149 +135,32 @@ export function AppRoutes() {
           }
         />
         <Route
-          path="/"
           element={
             <RequireAuth>
-              <ChatShell />
+              <Outlet />
             </RequireAuth>
           }
-        />
-        <Route
-          path="/c/:chatJid"
-          element={
-            <RequireAuth>
-              <ChatShell />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <RequireAuth>
-              <SettingsHubPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/connections"
-          element={
-            <RequireAuth>
-              <ConnectionsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/ais"
-          element={
-            <RequireAuth>
-              <AisPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/machines"
-          element={
-            <RequireAuth>
-              <MachinesPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/approvals"
-          element={
-            <RequireAuth>
-              <ApprovalsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/routines"
-          element={
-            <RequireAuth>
-              <RoutinesPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/notifications"
-          element={
-            <RequireAuth>
-              <NotificationsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/stickers"
-          element={
-            <RequireAuth>
-              <StickersPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/stickers/:packId"
-          element={
-            <RequireAuth>
-              <StickerPackPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/profile"
-          element={
-            <RequireAuth>
-              <ProfilePage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/requests"
-          element={
-            <RequireAuth>
-              <RequestsRoute />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/folders"
-          element={
-            <RequireAuth>
-              <FoldersRoute />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/blocked"
-          element={
-            <RequireAuth>
-              <BlockedRoute />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/contacts"
-          element={
-            <RequireAuth>
-              <ContactsRoute />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings/devices"
-          element={
-            <RequireAuth>
-              <DevicesRoute />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/explore"
-          element={
-            <RequireAuth>
-              <ExploreRoute />
-            </RequireAuth>
-          }
-        />
+        >
+          <Route path="/" element={<ChatShell />} />
+          <Route path="/c/:chatJid" element={<ChatShell />} />
+          <Route path="/settings" element={<SettingsHubPage />} />
+          <Route path="/settings/connections" element={<ConnectionsPage />} />
+          <Route path="/settings/ais" element={<AisPage />} />
+          <Route path="/settings/machines" element={<MachinesPage />} />
+          <Route path="/settings/approvals" element={<ApprovalsPage />} />
+          <Route path="/settings/routines" element={<RoutinesPage />} />
+          <Route path="/settings/notifications" element={<NotificationsPage />} />
+          <Route path="/settings/stickers" element={<StickersPage />} />
+          <Route path="/stickers/:packId" element={<StickerPackPage />} />
+          <Route path="/settings/profile" element={<ProfilePage />} />
+          <Route path="/settings/requests" element={<RequestsRoute />} />
+          <Route path="/settings/folders" element={<FoldersRoute />} />
+          <Route path="/settings/blocked" element={<BlockedRoute />} />
+          <Route path="/settings/contacts" element={<ContactsRoute />} />
+          <Route path="/settings/devices" element={<DevicesRoute />} />
+          <Route path="/explore" element={<ExploreRoute />} />
+          <Route path="/settings/integrations" element={<IntegrationsPage />} />
+        </Route>
         {/* Share links: /@handle opens the group card for a public group or
           the Add contact dialog for a person when logged in, and goes to
           login (returning afterwards) when logged out. react-router matches
@@ -291,14 +174,6 @@ export function AppRoutes() {
           pages), so a share link never redirects to /welcome/handle. */}
         <Route path="/u/:handle" element={<AddContactRoute />} />
         <Route path="/:atHandle" element={<AtHandleGate />} />
-        <Route
-          path="/settings/integrations"
-          element={
-            <RequireAuth>
-              <IntegrationsPage />
-            </RequireAuth>
-          }
-        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

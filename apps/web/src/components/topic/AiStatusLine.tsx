@@ -1,7 +1,7 @@
 import { liveStageFor, type ChatSummary, type TopicAiActivity } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { EntityAvatar } from '@/components/EntityAvatar';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';

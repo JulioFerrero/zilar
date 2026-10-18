@@ -14,8 +14,7 @@ import {
   deleteConnection,
   testConnection as testConnectionApi,
 } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, shownFailure, useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 

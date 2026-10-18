@@ -9,7 +9,7 @@ import {
   setFolders as setFoldersCore,
   stopTyping,
 } from '@zilar/client-core/store';
-import type { SetState } from '../atomStore';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../store';
 import type { StoreCtx } from './ctx';
 import {

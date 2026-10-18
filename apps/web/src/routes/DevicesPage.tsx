@@ -3,7 +3,7 @@ import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
 import { listSessions, revokeSession, type AuthSession } from '@/lib/api/devices';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';

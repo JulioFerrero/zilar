@@ -1,5 +1,5 @@
 import type { ToolVersion } from '@/lib/tools';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { ApiFailure } from '@zilar/client-core';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { CodeBlock } from './CodeBlock';
 import { failureText, hostsLine } from './toolDetailOps';

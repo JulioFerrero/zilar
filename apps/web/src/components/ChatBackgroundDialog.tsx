@@ -9,7 +9,7 @@ import {
   uploadBackground,
   type BackgroundListItem,
 } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { prepareBackgroundImage } from '@/lib/background-image';

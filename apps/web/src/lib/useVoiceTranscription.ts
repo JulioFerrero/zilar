@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { getVoiceTranscriptionStatus } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 
 /** Whether voice transcription is enabled on this server, fetched once and cached; starts

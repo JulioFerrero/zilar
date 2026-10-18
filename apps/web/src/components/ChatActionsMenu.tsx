@@ -1,8 +1,7 @@
-import type { ChatSummary } from '@zilar/chat-core';
+import { type ChatSummary, MUTE_DURATIONS } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { Archive, Bell, BellOff, Eraser, Mail, MailOpen, Pin, PinOff } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { MUTE_DURATIONS } from '@/lib/chatPrefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ConfirmDialog } from './ConfirmDialog';

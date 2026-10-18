@@ -7,7 +7,7 @@ import {
 } from '@zilar/chat-core';
 import { Duration, Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
-import type { UploadSlotRequester } from './voice';
+import type { UploadSlotRequester } from './voice/convert';
 
 export {
   cleanFilename,

@@ -3,13 +3,11 @@ import { Effect } from 'effect';
 import { RefreshCw } from 'lucide-react';
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import { fromApi, type ApiFailure, useDelayed } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { useDelayed } from '@/lib/useDelayed';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sendFailureReasonFor } from './sendFailure';
+import { sendFailureReasonFor } from '@zilar/client-core/store';
 
 describe('sendFailureReasonFor', () => {
   it('is always network when offline', () => {

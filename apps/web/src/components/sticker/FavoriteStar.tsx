@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { Star } from 'lucide-react';
 import { addStickerFavorite, removeStickerFavorite } from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import type { StickerChoice } from '../StickerPanel';

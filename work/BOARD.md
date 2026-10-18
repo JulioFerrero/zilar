@@ -2094,3 +2094,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2095](T-2095-gate-comment-merge-base.md) | gate: comment check diffs from the merge base | 2026-10-18 |
 | [T-2090](T-2090-phone-aliases-shims.md) | phone: drop error aliases, re-export shims, TextDecoder fallback | 2026-10-18 |
 | [T-2092](T-2092-tool-json-from-schemas.md) | AI tools: JSON parameters derived from the Effect schemas | 2026-10-18 |
+| [T-2094](T-2094-web-barrels-routes.md) | web: api barrel as export *, one auth layout route, no shims | 2026-10-18 |

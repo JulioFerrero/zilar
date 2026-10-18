@@ -1,5 +1,5 @@
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
-import { useDelayed } from '@/lib/useDelayed';
+import { useDelayed } from '@zilar/client-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 

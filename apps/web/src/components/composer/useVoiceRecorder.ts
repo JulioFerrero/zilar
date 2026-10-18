@@ -7,14 +7,9 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import {
-  VOICE_MAX_BYTES,
-  VOICE_MIN_MS,
-  VoiceError,
-  VoiceRecorder,
-  computeWaveform,
-} from '@/lib/voice';
-import type { StoreApi } from '@/store/atomStore';
+import { VOICE_MAX_BYTES, VOICE_MIN_MS, VoiceError, VoiceRecorder } from '@/lib/voice/recorder';
+import { computeWaveform } from '@/lib/voice/waveform';
+import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import {
   ComposerFailure,

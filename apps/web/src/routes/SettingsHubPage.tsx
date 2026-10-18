@@ -10,7 +10,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { SETTINGS_HUB_ICONS, webSettingsGroups } from '@/components/settings/hub/rows';
 import { useAuth } from '@/auth/AuthProvider';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { listMyRoutines } from '@/lib/tools';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
