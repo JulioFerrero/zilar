@@ -6,6 +6,7 @@ import { Effect } from 'effect';
 import {
   loadPins as loadPinsCore,
   pinMessage as pinMessageCore,
+  sanitizeMediaItems,
   unpinMessage as unpinMessageCore,
   type PinsStore,
 } from '@zilar/client-core/store';
@@ -38,26 +39,13 @@ export const refreshPinsFor = (ctx: StoreCtx, chatId: string): Effect.Effect<voi
 // An image or GIF item on an untrusted host is downgraded to a file-style item
 // by dropping its `url`, so the panel never auto-loads it (T-0434). With no
 // XMPP token yet, nothing is trusted and every such url is dropped.
-const sanitizeMediaPage = (ctx: StoreCtx, page: MediaPage): MediaPage => {
-  const trusted = ctx.mediaToken === undefined ? undefined : trustedMediaHosts(ctx.mediaToken);
-  return {
-    ...page,
-    items: page.items.map((item) => {
-      if (item.kind !== 'image' && item.kind !== 'gif') {
-        return item;
-      }
-      if (
-        item.url === undefined ||
-        trusted === undefined ||
-        !isTrustedMediaUrl(item.url, trusted)
-      ) {
-        const { url: _dropped, ...rest } = item;
-        void _dropped;
-        return rest;
-      }
-      return item;
-    }),
-  };
+const trustedMediaFilter = (ctx: StoreCtx): ((url: string) => boolean) | undefined => {
+  const token = ctx.mediaToken;
+  if (token === undefined) {
+    return undefined;
+  }
+  const hosts = trustedMediaHosts(token);
+  return (url) => isTrustedMediaUrl(url, hosts);
 };
 
 /** One page of the chat media panel, with untrusted urls dropped. */
@@ -76,7 +64,7 @@ export const loadChatMedia = (
         ...(before === undefined ? {} : { before }),
       }),
     );
-    return sanitizeMediaPage(ctx, page);
+    return { ...page, items: sanitizeMediaItems(page.items, trustedMediaFilter(ctx)) };
   });
 
 /** Pins a message: the pin shows at once and is replaced by the saved one. */

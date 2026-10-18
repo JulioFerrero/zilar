@@ -2023,3 +2023,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2025](T-2025-restore-server-xmpp-client.md) | restore @xmpp/client for the server build; gate builds it | 2026-10-18 |
 | [T-2024](T-2024-shared-media-retry.md) | one media-retry hook shared by web and phone | 2026-10-18 |
 | [T-2026](T-2026-phone-menu-longpress-fix.md) | phone: long-press opens the message menu again | 2026-10-18 |
+| [T-2029](T-2029-shared-media-sanitise.md) | one media-panel image trust rule shared by web and phone | 2026-10-18 |

@@ -945,7 +945,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - **The fix:** T-2025 restored it, and the gate now builds the server bundle.
                       - **Now live:** T-1980's pinned-card jump. Julio to test it on web.
                     - **Phone, main:**
-                      - long-press opens no menu since T-2018; T-2026 is fixing it;
+                      - the long-press menu broke in T-2018 and is fixed by T-2026, merged at `edd895b02`. Checked on the emulator: open, Copy, reopen on your own message, Pin;
                       - T-2022 (one row gesture) passed swipe, double tap and flings on the emulator, but went back to limit the double tap to the bubble.
                       - **Jank:** W3a is about 80% against main's 90% (interleaved). W3b isn't measurably better, and the measurements are noisy under load.
                     - **T-2014 is running:** the server takes room senders from `bare_peer` everywhere, including AI-card detection, the media index, names, AI context and memory, and preview cards only from AIs.

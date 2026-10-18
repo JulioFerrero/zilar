@@ -2,13 +2,13 @@ import { Effect } from 'effect';
 import {
   loadPins as loadPinsCore,
   pinMessage as pinMessageCore,
+  sanitizeMediaItems,
   unpinMessage as unpinMessageCore,
   type PinsStore,
 } from '@zilar/client-core/store';
 
 import { API_URL } from '../../lib/auth';
 import { isTrustedMediaUrl } from '../../lib/attachments';
-import type { MediaItem } from '../../lib/media-api';
 import type { Pin } from '../../lib/pins-api';
 import type { ChatStoreState } from '../types';
 import { Ports } from './ports';
@@ -131,25 +131,6 @@ export function makePins(ctx: StoreCtx): Pins {
     return role === 'owner' || role === 'admin';
   }
 
-  // The gallery never auto-loads an image or gif from a host outside the
-  // trusted set: the row keeps its metadata but loses `url`, so the sheet
-  // renders it as a file row (T-0436, mirroring the attachments rule).
-  function sanitizeMediaItem(item: MediaItem): MediaItem {
-    if (item.url === undefined) {
-      return item;
-    }
-    const resolved = resolveMediaUrl(item.url, API_URL);
-    if (
-      (item.kind === 'image' || item.kind === 'gif') &&
-      !isTrustedMediaUrl(resolved, s.mediaTrustedHosts)
-    ) {
-      const copy: MediaItem = { ...item };
-      delete copy.url;
-      return copy;
-    }
-    return { ...item, url: resolved };
-  }
-
   const actions: PinActions = {
     pins: (chatId) => {
       // Reading the revision subscribes the selector to pin publishes
@@ -196,7 +177,11 @@ export function makePins(ctx: StoreCtx): Pins {
             }),
           );
           return {
-            items: page.items.map((item) => sanitizeMediaItem(item)),
+            items: sanitizeMediaItems(
+              page.items,
+              (url) => isTrustedMediaUrl(url, s.mediaTrustedHosts),
+              (url) => resolveMediaUrl(url, API_URL),
+            ),
             next: page.next,
           };
         }),

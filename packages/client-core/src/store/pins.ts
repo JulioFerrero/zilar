@@ -98,6 +98,29 @@ export function pinSnapshotFor(chatId: string, message: PinSource): PinMessageIn
   };
 }
 
+/**
+ * Applies the media-panel trust rule (T-0434, T-0436): an `image` or `gif` on
+ * an untrusted host loses its `url`, so the panel never auto-loads it. With no
+ * trust function nothing is trusted. `resolve` turns a server-relative url
+ * into an absolute one before the check (native); other kinds keep it.
+ */
+export function sanitizeMediaItems<T extends { kind: string; url?: string | undefined }>(
+  items: readonly T[],
+  isTrusted: ((url: string) => boolean) | undefined,
+  resolve?: (url: string) => string,
+): T[] {
+  return items.map((item): T => {
+    const url = item.url === undefined ? undefined : (resolve?.(item.url) ?? item.url);
+    const media = item.kind === 'image' || item.kind === 'gif';
+    if (url === undefined || (media && isTrusted?.(url) !== true)) {
+      const copy = { ...item };
+      delete copy.url;
+      return copy;
+    }
+    return url === item.url ? item : { ...item, url };
+  });
+}
+
 const isRemovedPin = (value: void | { readonly id: string }): value is { readonly id: string } =>
   typeof value === 'object' && value !== null && typeof value.id === 'string';
 
