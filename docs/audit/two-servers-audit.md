@@ -10,6 +10,139 @@ the same Postgres and ejabberd** (`zero-downtime-plan.md:36`). Anything a server
 does on its own could then run twice, or lose its in-memory state when the old one
 stops. This audit lists that work, then designs a Postgres advisory-lock leader.
 
+## 0. Re-audit 2026-10-18 (main 9d595c6f3)
+
+Second pass, same method as §1, over `apps/server/src` at `9d595c6f3`. Every
+timer, long-lived connection, module-level cache and startup one-shot was
+searched (`setInterval`/`setTimeout`, `Effect.repeat`/`Schedule`, `runFork`,
+`new Map`/`new Set`/`let` at module scope, `createServer`, sockets, `spawn`,
+worker threads) and each one added or changed since `b447451b7` is below.
+§1–§6 are unchanged.
+
+What changed structurally: the leader lock owns the whole background set
+(`leader/start.ts`), which **fixes §1 rows 5 and 6** — the push component and the
+group push notifier no longer run on both copies. The two new leader jobs are
+`agent_task_events` retention and loading the saved topic-follow pauses
+(`leader/start.ts:210-215`). The hazards that remain are not duplicate background
+work: they are **HTTP routes that need the leader's live XMPP session and can
+land on the follower** (H1–H3), plus the shutdown budget (H4). Nothing that
+charges money, sends a push, runs a routine or writes a message can run twice
+while two copies overlap.
+
+### 0.1 New or changed work
+
+| # | What (where) | Cadence / life | Two instances at once | Duplicate already prevented? |
+| --- | --- | --- | --- | --- |
+| 1 | Leader lock, one dedicated Postgres connection (`leader/lock.ts:92-97,209-215`) | long-lived; polls every 1 s while follower (`LEADER_POLL_MS`) | one holder; the follower starts no leader work | **Safe:** session-level `pg_try_advisory_lock(730034, 1)` (`:213`); step-down stops the work **before** unlocking (`:143-167`), so the new leader never overlaps it. Not in §1 (it is the §3 design). |
+| 2 | Leader-only set behind the lock (`leader/start.ts:203-250`) | long-lived | the follower runs none of it | **Safe:** gateway `:181-191`, push component + group notifier `:86-149`, runner hub `:155-175`, approvals sweeper `:214`, task-event retention `:215`, recovery `:216-217`, routine scheduler `:218-227`. Fixes §1 rows 5 and 6 and makes rows 4, 7 and 9 single-instance. |
+| 3 | `agent_task_events` retention (`agents/log/retention.ts:51-78`; started `leader/start.ts:215`) | 60 s tick, deletes rows older than 30 d | only the leader deletes | **Safe:** leader-only, and `DELETE … WHERE at < cutoff` (`:24-25`) is idempotent even if two ran. Not in §1. |
+| 4 | Topic-follow state loaded at leader start (`agents/gateway/topic-follow.ts:96-116`; `leader/start.ts:210-212`) plus module state `followCache` (`:30`, 15 s TTL `:19`), `pausedFollows` (`:35`), `pauseDb` (`:40`) | once per leader start; read on every room message | the follower never loads them, so its pause/resume cannot persist (H2) | **Hazard H2** for the write path; the read cache is harmless (15 s, capped at 2 000 rooms, `:23,80-86`). Not in §1. |
+| 5 | Approval follow-up after a decision: `createOnDecided` runs the action then the gateway hook (`agents/gateway/approval-on-decided.ts:9-17`, hook type `agents/gateway/stop-types.ts:21-33`; wired `app/routes-ai.ts:47-55`; queue `agents/gateway/approval-follow-up.ts:33-90`) | once per decided approval, on the instance serving the request | the follower's `sessions` map is empty and `approvalFollowerOf` returns null (`stop-types.ts:29-33`), so `createOnDecided:16`'s `?.` drops the AI's follow-up turn | **Hazard H1.** Not in §1. |
+| 6 | Stop-turn route (`agents/gateway/stop.ts:35-51`; `ais/stop-turn.ts:28-38`; `ais/api.ts:305-317`) | per request | on the follower it finds no session and, without `pauseDb`, does not save the pause either | **Hazard H2.** Not in §1. |
+| 7 | Card answer correction (`message-blocks/respond.ts:259-278`; `message-blocks/api.ts:81-91`; `agents/gateway/live.ts:337-347`) | per card answer | the follower writes the answer but skips the XEP-0308 correction to the room card | **Hazard H3** (display only). Not in §1. |
+| 8 | Per-session turn-abort map (`agents/gateway/stop.ts:17-32`) | per live session, in memory | leader only | **Harmless:** a follower has no sessions to abort; losing the abort is H2. |
+| 9 | Per-turn settle timers (`agents/gateway/routine-run.ts:89-98`) | two `setTimeout`s per scheduled turn, cleared in `finally` | leader only | **Harmless:** per turn, not per process. |
+| 10 | AI catalog and price caches (`ai/catalog.ts:27,113,163`; `ai/catalog-map.ts:105`; `ai/cost.ts:24,38`) | 24 h per process, 10 s fetch timeout | both copies fetch models.dev once and keep their own copy | **Harmless:** no shared row; the static fallback is the same. Not in §1. |
+| 11 | Usage pending map and write (`ais/usage-store.ts:27,66-77,118-128`) | per provider call | only if the same AI were called from both copies, which the leader gateway prevents | **Safe:** the write is one `INSERT … ON CONFLICT (ai_id, day) DO UPDATE … + EXCLUDED` atomic increment (`:118-128`). |
+| 12 | Push archive-visibility cache (`push/archives-cache.ts:14-16,55-101`) | 15 s TTL, 5 000 users per process | a membership/block change made on one copy is stale on the other for ≤15 s | **Harmless:** that is already one copy's TTL; only the push path reads it (`:105-111`). Not in §1. |
+| 13 | Ejabberd schema check (`xmpp/schema-check.ts:58,124-130`) | once at boot, read-only `pg_catalog` query | both copies read the same catalog and cache the answer | **Harmless:** informational in `/health` (`health.ts:29-30`). |
+| 14 | Cloud-desk probe and socket (`hands/desk-status.ts:24-25,60-62,78`; `hands/cloud-hands.ts:80-124`) | 10 s cache, 2 s timeout; one Unix socket per probe/request | both copies probe the same `DESK_AGENT_SOCKET` | **Harmless:** the probe only sends `status`; desk work runs inside the leader's turns. |
+| 15 | Instance-owner claim (`setup/instance-owner.ts:54-75`) | lazy, on the first call with no stored owner | both copies could race to claim the oldest user | **Safe:** `takeSetupLockEffect` (`:59`) serialises it, the read is inside the lock, and the insert is `ON CONFLICT DO NOTHING` (`:68-70`). |
+| 16 | ffmpeg child process (`media/run-command.ts:31-63`; `stickers/convert.ts:227-295`) | one child per conversion, SIGKILL on timeout; temp dir per call (`convert.ts:289`) | two copies can convert two uploads at once | **Harmless:** per request, no shared temp path. Not in §1. |
+| 17 | Pinned web fetch (`web-tools/guarded-fetch-pinned.ts:123-138`) | one socket per request, idle + overall deadline | per request | **Harmless.** |
+| 18 | Runner hub and `isMachineOnline` (`startup/components.ts:59-62`; `leader/start.ts:155-175`; `machines/api.ts:97,167`) | leader holds the hub; the follower's closure returns false | the follower's machines list shows every machine offline during the overlap | **Harmless for correctness:** only the list's `online` is wrong; turn and desk work that needs the hub runs on the leader. Not in §1. |
+| 19 | Shutdown drain then step-down (`startup/lifecycle.ts:55-80`; default 5 s `config/server-schema.ts:182-188`) | once per SIGTERM | the old copy drains, steps down, then closes HTTP | **Hazard H4:** drain 5 s + gateway drain up to 8 s (`agents/gateway/contracts.ts:110`) + HTTP grace 3 s (`lifecycle.ts:15`) = 16 s against `FORCE_EXIT_MS = 15_000` (`:16`). Pre-existing: §2's 3 + 8 total missed the drain. |
+| 20 | Health state (`health-status.ts:33-37`; `health.ts:49-59,65`) | per process; ejabberd probe cached | the follower reports `push: 'unknown'`, `leader: false` | **Harmless:** the status code is Postgres + drain only (`health.ts:65`); already §1 row 12, plus the new `leader` field. |
+| 21 | Delegate-turn room pump fork (`agents/gateway/delegate-run.ts:127-138`) | one `Effect.runFork` per delegation, pumps that worker's pending room turns | it runs inside a gateway turn, so only the leader reaches it | **Harmless:** per turn on the leader, no shared row; a follower has no session and never forks it. Not in §1. |
+
+Still open from §1, unchanged: drafts hub and its SSE (rows 10 and 15,
+`drafts/hub.ts:156`, `drafts/api.ts:100-107`) remain per process; a client on the
+follower sees no live draft. Cosmetic, as §5 says.
+
+### 0.2 Hazards
+
+**H1. An approval decided through the follower runs the action but loses the AI's follow-up turn.**
+`POST /api/approvals/:id/decide` runs `runAction` and then
+`continueAfterApproval` on whichever copy serves the request
+(`app/routes-ai.ts:50-53`). `continueAfterApproval` queues only onto
+`deps.sessions` (`approval-follow-up.ts:53-56`), which is empty on a follower
+because the gateway never started; it returns silently after the conditional
+UPDATE has already consumed the approval (`approvals/service.ts:242-255`).
+Scenario: during the overlap the owner approves a tier-2 action, the request
+lands on the new copy, the action runs, the card is resolved, and the AI never
+says what happened or continues its task. Nothing retries it: the approval is no
+longer `pending`/`running`, so neither the sweeper nor `recoverStuck` sees it.
+Fix: write the follow-up as a row the leader claims (or make the decide route
+leader-only) instead of queueing on the leader's in-memory session.
+
+**H2. Stop, and the follow-pause it implies, is lost when the request hits the follower.**
+`stopTurn` looks up the live session (`agents/gateway/stop.ts:41-49`) and calls
+`pauseFollow`, which stores in memory and persists only when `pauseDb` is set
+(`topic-follow.ts:129-143,200-205`); `pauseDb` is set by `initTopicFollow`, which
+runs only on leader acquisition (`leader/start.ts:210-212`). On a follower the
+route answers `{ stopped: false }` (`ais/stop-turn.ts:36-37`), the turn on the
+leader keeps running, and the pause is never written, so after the handover the
+AI follows and answers the room again. The topic PATCH that pauses or resumes
+following has the same loss (`topics/patch.ts:167-176`). Scenario: the owner
+presses Stop on a runaway reply during the overlap, is told no turn is running,
+the AI keeps posting, and the pause dies with the old process.
+Fix: call `initTopicFollow` at boot on every copy so the pause persists, and
+have the leader re-read `topics.follow_paused_at` before sending a followed reply
+— or serve the stop and topic-write routes only on the leader.
+
+**H3. A card answered through the follower is recorded but never corrected in the room.**
+`respondToCard` gets `correctInRoom` only when the live gateway carries one
+(`message-blocks/api.ts:81-88`), and it returns false without a live session
+(`agents/gateway/live.ts:344-347`). The follower logs "Card correction skipped"
+and still answers 200 (`message-blocks/respond.ts:263-277`). Scenario: a member
+taps an Ask card during the overlap; the database says answered, but the card in
+the room still shows live buttons, so others tap a dead card. Nothing retries the
+correction. Display only: the answer itself is stored.
+Fix: store the answer as a pending correction the leader sends on its next tick,
+or make the respond route leader-only for now.
+
+**H4. A busy shutdown overruns the 15 s force-exit.**
+This one predates the split (the 10-13 §2 added up 3 + 8 and missed the drain):
+`stopServer` sleeps `SHUTDOWN_DRAIN_MS` (5 s by default,
+`config/server-schema.ts:182-188`), then `gateway.stop()` may drain a turn for up
+to 8 s (`agents/gateway/contracts.ts:110`), then HTTP close waits up to 3 s
+(`startup/lifecycle.ts:15,65-67`) — 16 s against `FORCE_EXIT_MS = 15_000`
+(`:16`). Scenario: a deploy while a turn is in flight; the old process exits 1
+about one second into the HTTP close, cutting in-flight requests, and Coolify can
+report the release as failed.
+Fix: raise `FORCE_EXIT_MS` to 25 s and the compose `stop_grace_period` to 30 s
+(now 20 s, `deploy/coolify/docker-compose.app.yml:78`), or lower the drain and
+grace so the sum stays under 15 s.
+
+### 0.3 Migrations
+
+`runMigrations` still runs in `bootServer` before the listener starts
+(`startup/boot.ts:75`), on **every** copy including a follower. Two simultaneous
+starts cannot interleave: `migrateSql` calls the migrator once per id
+(`effect/sql.ts:301-329`), which inserts the id and runs the file in one
+transaction; `effect_sql_migrations.migration_id` is the primary key
+(`effect Migrator.ts:146-149`), so the loser blocks on the row and then fails with
+a constraint conflict, which the migrator turns into `Locked` and swallows
+(`effect Migrator.ts:276-288,321-327`). The old copy never migrates again, so only
+the new one changes the schema. Each file's `SET lock_timeout = '5s'` (e.g.
+`drizzle/0075_notification-replies.sql:1`) keeps a blocked DDL from waiting on the
+old copy's queries.
+
+22 files were added since `b447451b7` (`0054`–`0075`). The current release's batch
+(`0069`–`0075`) is additive: two idempotent backfills (`0069`, `0070`), four new
+tables (`0071`, `0072`, `0073`, `0075`), and two nullable columns plus a partial
+unique index (`0074`). The only contract step in the range is `0059`, which drops
+`ai_daily_spend` and `llm_virtual_keys`; it shipped with the code that stopped
+using them, so it is behind the tip, but it shows the rule the split depends on:
+every future file must be expand-only.
+
+### 0.4 Verdict
+
+**3 hazards must be fixed first** — H1 (approval follow-up), H2 (Stop/follow
+pause), H3 (card correction, display-only); H4 is a one-line shutdown-budget fix
+to land with them. No background job, push, charge, routine or message can run
+twice: the leader lock is sound and covers every timer added since 10-13.
+
 ## 1. Background work, timers, long-lived connections and in-memory state
 
 | # | What (where) | Cadence / life | Two instances at once | Duplicate already prevented? |
