@@ -113,6 +113,16 @@ export async function main(): Promise<number> {
   // A crash or an old agent without a shutdown sweep can leave jails behind;
   // they carry a dead proxy credential, so remove them before serving.
   await stopAllJails(running, log, false);
+  // With the jails gone, any network they still leave behind is unused. This
+  // also catches networks from a crash before a jail was ever created.
+  try {
+    const removed = (await running.docker.cleanupNetworks?.()) ?? 0;
+    if (removed > 0) {
+      log(`removed ${removed} unused desk network(s)`);
+    }
+  } catch (error) {
+    log(`desk network cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
   // One log line per readiness change, never raw command output.
   let loggedReadiness: string | undefined;
   const pollReadiness = async (): Promise<void> => {

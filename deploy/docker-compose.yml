@@ -418,10 +418,8 @@ services:
 networks:
   zilar:
     name: zilar
-  # The jails' network: internal, so a jail has no route out on its own, and
-  # only desk-egress is on it as the way off. The name is fixed so the
-  # sidecar's `--network desk-net` finds it (the network is not a Compose
-  # service the jails belong to; the sidecar creates them on it).
+  # The egress lookup network: internal, joined only by desk-egress. Each jail
+  # now gets its own zilar-desk-<name> network shared only with the proxy.
   desk-net:
     name: desk-net
     internal: true

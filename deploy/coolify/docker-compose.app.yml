@@ -388,8 +388,8 @@ services:
         max-file: '3'
 
 networks:
-  # The jails' network: internal (no route out), and only desk-egress is on it
-  # as the way off. A fixed name so the sidecar's `--network desk-net` finds it.
+  # The egress lookup network: internal (no route out), joined only by
+  # desk-egress. Each jail now gets its own zilar-desk-<name> network.
   desk-net:
     name: desk-net
     internal: true

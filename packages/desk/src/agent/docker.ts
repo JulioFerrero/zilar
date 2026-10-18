@@ -7,9 +7,21 @@ import { Exit, Schema } from 'effect';
 import type { DeskChunk, DeskSpec, DeskToolCall } from '../hands';
 import { DeskError, ResponseSchema, type Request } from '../protocol';
 import type { DockerSettings } from './config';
-import { createArgs, execFile, proxyAddress } from './docker-args';
+import { createArgs, execFile, proxyAddress, type Exec } from './docker-args';
+import {
+  cleanupDeskNetworks,
+  connectEgress,
+  ensureDeskNetwork,
+  removeDeskNetwork,
+} from './docker-network';
 
 export { createArgs, proxyAddress };
+
+export type DockerLog = (message: string) => void;
+
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /** The only interface the lifecycle needs; tests swap in a fake. */
 export interface DockerLayer {
@@ -26,6 +38,8 @@ export interface DockerLayer {
   remove(name: string): Promise<void>;
   /** Every live desk container, so `Stop all` can kill them across restarts. */
   listDeskNames(): Promise<readonly string[]>;
+  /** Removes labelled networks no live jail uses; returns how many. */
+  cleanupNetworks?(): Promise<number>;
   /** True when the configured runtime is registered with the docker daemon. */
   runtimeAvailable(): Promise<boolean>;
   /** Pulls `ref` and returns its repo digest, or null when either step fails. */
@@ -133,43 +147,62 @@ function decodeDaemonLine(line: string): { readonly chunk: DeskChunk; readonly d
 }
 
 /** The real Docker layer: one `docker` CLI per operation, no shell. */
-export function createDockerLayer(settings: DockerSettings): DockerLayer {
+export function createDockerLayer(
+  settings: DockerSettings,
+  exec: Exec = execFile,
+  log: DockerLog = (message) => process.stderr.write(`desk-agent: ${message}\n`),
+): DockerLayer {
   return {
     async create(name, spec, workspaceDir, proxyUrl) {
+      let network = settings.network;
+      if (network !== 'none') {
+        try {
+          network = await ensureDeskNetwork(name, exec);
+        } catch (error) {
+          log(
+            `could not create network ${network} for ${name}; ` +
+              `Docker's default address pool is full or the daemon refused: ${reason(error)}`,
+          );
+          throw error instanceof DeskError
+            ? error
+            : new DeskError('jail_unavailable', `could not create the network for ${name}`);
+        }
+      }
       let address: string | null = null;
       if (proxyUrl !== null) {
         const host = new URL(proxyUrl).hostname;
-        address = await proxyAddress(settings.network, host);
+        if (network !== 'none') {
+          address = await connectEgress(network, host, exec);
+        }
+        if (address === null) {
+          // DESK_NETWORK is the proxy's own network; keep it as a fallback.
+          address = await proxyAddress(settings.network, host, exec);
+        }
         if (address === null) {
           // A computer with no web still beats no computer; say why it has none.
-          process.stderr.write(
-            `desk-agent: could not find ${host} on network ${settings.network}; ` +
-              `the jail for ${name} will have no web access\n`,
+          log(
+            `could not find ${host} on network ${network}; ` +
+              `the jail for ${name} will have no web access`,
           );
         }
       }
-      const args = createArgs(name, spec, workspaceDir, settings, proxyUrl, address);
+      const args = createArgs(name, spec, workspaceDir, settings, proxyUrl, address, network);
       try {
-        await execFile('docker', args);
+        await exec('docker', args);
       } catch {
         throw new DeskError('jail_unavailable', `could not create the jail for ${name}`);
       }
     },
     async start(name) {
       try {
-        await execFile('docker', ['start', name]);
+        await exec('docker', ['start', name]);
       } catch {
         throw new DeskError('jail_unavailable', `could not start the jail for ${name}`);
       }
     },
     async inspect(name) {
       try {
-        const running = await execFile('docker', [
-          'inspect',
-          '--format',
-          '{{.State.Running}}',
-          name,
-        ]);
+        const running = await exec('docker', ['inspect', '--format', '{{.State.Running}}', name]);
         return running.trim() === 'true';
       } catch {
         return false;
@@ -178,13 +211,16 @@ export function createDockerLayer(settings: DockerSettings): DockerLayer {
     run: readDaemon,
     async remove(name) {
       try {
-        await execFile('docker', ['rm', '-f', name]);
+        await exec('docker', ['rm', '-f', name]);
       } catch {
         // Already gone: stopping is idempotent.
       }
+      if (settings.network !== 'none') {
+        await removeDeskNetwork(name, exec);
+      }
     },
     async listDeskNames() {
-      const output = await execFile('docker', [
+      const output = await exec('docker', [
         'ps',
         '--all',
         '--filter',
@@ -197,12 +233,32 @@ export function createDockerLayer(settings: DockerSettings): DockerLayer {
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
     },
+    async cleanupNetworks() {
+      if (settings.network === 'none') {
+        return 0;
+      }
+      const names = await exec('docker', [
+        'ps',
+        '--all',
+        '--filter',
+        `label=${DESK_LABEL}=1`,
+        '--format',
+        '{{.Names}}',
+      ]);
+      return cleanupDeskNetworks(
+        names
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0),
+        exec,
+      );
+    },
     async runtimeAvailable() {
       if (settings.runtime === null) {
         return true;
       }
       try {
-        const output = await execFile('docker', ['info', '--format', '{{json .Runtimes}}']);
+        const output = await exec('docker', ['info', '--format', '{{json .Runtimes}}']);
         const parsed: unknown = JSON.parse(output);
         return (
           typeof parsed === 'object' &&
@@ -216,8 +272,8 @@ export function createDockerLayer(settings: DockerSettings): DockerLayer {
     },
     async pullAndResolveDigest(ref) {
       try {
-        await execFile('docker', ['pull', ref]);
-        const output = await execFile('docker', [
+        await exec('docker', ['pull', ref]);
+        const output = await exec('docker', [
           'image',
           'inspect',
           '--format',

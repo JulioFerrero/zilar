@@ -1998,3 +1998,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1988](T-1988-linear-markup-scans.md) | linear markup scans instead of backtracking regexes | 2026-10-18 |
 | [T-2002](T-2002-muc-rights-hardening.md) | people hold plain member rights in rooms; rooms unlisted | 2026-10-18 |
 | [T-1994](T-1994-media-index-edges.md) | media index: sender-only edits, link caps, no stuck pass | 2026-10-18 |
+| [T-1998](T-1998-desk-network-per-jail.md) | each AI computer jail gets its own private network | 2026-10-18 |

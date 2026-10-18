@@ -5,6 +5,13 @@ import type { DeskSpec } from '../hands';
 import type { DockerSettings } from './config';
 import { DESK_LABEL } from './docker';
 
+/** Runs one docker CLI call and resolves its stdout; tests swap in a fake. */
+export type Exec = (
+  command: string,
+  args: readonly string[],
+  signal?: AbortSignal,
+) => Promise<string>;
+
 export function execFile(
   command: string,
   args: readonly string[],
@@ -59,32 +66,33 @@ function isIpv4Literal(host: string): boolean {
   );
 }
 
-/**
- * Finds the egress proxy's IPv4 on the jail network. gVisor's own network stack
- * cannot reach Docker's embedded DNS, so the proxy name is pinned in the jail's
- * /etc/hosts instead (the lead's live check, plan §4.4).
- */
-export async function proxyAddress(network: string, host: string): Promise<string | null> {
-  if (isIpv4Literal(host)) {
-    return host;
-  }
-  try {
-    const found = await execFile('docker', [
-      'ps',
-      '-q',
-      '--filter',
-      `network=${network}`,
-      '--filter',
-      `label=com.docker.compose.service=${host}`,
-    ]);
-    const id = found
+/** The container id of the compose service `host`, on any network. */
+export async function egressContainerId(
+  host: string,
+  exec: Exec = execFile,
+): Promise<string | null> {
+  const found = await exec('docker', [
+    'ps',
+    '-q',
+    '--filter',
+    `label=com.docker.compose.service=${host}`,
+  ]);
+  return (
+    found
       .split('\n')
       .map((line) => line.trim())
-      .find((line) => line.length > 0);
-    if (id === undefined) {
-      return null;
-    }
-    const output = await execFile('docker', [
+      .find((line) => line.length > 0) ?? null
+  );
+}
+
+/** The container's IPv4 on `network`, or null when it is not attached there. */
+export async function containerAddress(
+  network: string,
+  id: string,
+  exec: Exec = execFile,
+): Promise<string | null> {
+  try {
+    const output = await exec('docker', [
       'inspect',
       '-f',
       `{{with index .NetworkSettings.Networks "${network}"}}{{.IPAddress}}{{end}}`,
@@ -92,6 +100,30 @@ export async function proxyAddress(network: string, host: string): Promise<strin
     ]);
     const address = output.trim();
     return address.length > 0 ? address : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Finds the egress proxy's IPv4 on the jail network. gVisor's own network stack
+ * cannot reach Docker's embedded DNS, so the proxy name is pinned in the jail's
+ * /etc/hosts instead (the lead's live check, plan §4.4).
+ */
+export async function proxyAddress(
+  network: string,
+  host: string,
+  exec: Exec = execFile,
+): Promise<string | null> {
+  if (isIpv4Literal(host)) {
+    return host;
+  }
+  try {
+    const id = await egressContainerId(host, exec);
+    if (id === null) {
+      return null;
+    }
+    return await containerAddress(network, id, exec);
   } catch {
     return null;
   }
@@ -105,6 +137,7 @@ export function createArgs(
   settings: DockerSettings,
   proxyUrl: string | null,
   proxyAddress: string | null = null,
+  network: string = settings.network,
 ): readonly string[] {
   const memory = spec.limits.memoryBytes;
   return [
@@ -136,7 +169,7 @@ export function createArgs(
     ...mountFlags(workspaceDir),
     ...(settings.cgroupParent === null ? [] : ['--cgroup-parent', settings.cgroupParent]),
     '--network',
-    settings.network,
+    network,
     ...(proxyUrl !== null && proxyAddress !== null
       ? ['--add-host', `${new URL(proxyUrl).hostname}:${proxyAddress}`]
       : []),
