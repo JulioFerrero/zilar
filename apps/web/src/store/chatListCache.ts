@@ -1,62 +1,10 @@
+// effect-plain: the sync localStorage seam for the shared codec; storage failures are swallowed.
 import type { ChatSummary } from '@zilar/chat-core';
-import { Result, Schema } from 'effect';
-import { struct } from '@zilar/protocol';
+import { decodeChatListCache, encodeChatListCache } from '@zilar/client-core/store';
 import type { StorageLike } from './realStore';
 
-// The last chat list the user saw, so a reload paints it at once in the same
-// order, with previews, instead of a bare list that re-sorts a second later.
-// It is only a first paint: the server and XMPP data replace it right after.
+// The last chat list, painted on reload; the payload is the shared client-core codec.
 export const CHAT_LIST_CACHE_KEY = 'zilar:chatList';
-const CACHE_VERSION = 1;
-const MAX_CACHED_CHATS = 200;
-
-// Unknown keys are kept, like the old zod `.passthrough()`: a newer build may
-// add fields to a cached summary and an older cache must still paint it.
-const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
-
-const lastMessageSchema = Schema.StructWithRest(
-  struct({
-    id: Schema.String,
-    chatId: Schema.String,
-    senderId: Schema.String,
-    senderName: Schema.String,
-    text: Schema.optional(Schema.String),
-    createdAt: Schema.String,
-    status: Schema.String,
-  }),
-  passthrough,
-);
-
-const cachedChatSchema = Schema.StructWithRest(
-  struct({
-    id: Schema.String,
-    title: Schema.String,
-    kind: Schema.String,
-    isAI: Schema.Boolean,
-    space: Schema.String,
-    unread: Schema.Number,
-    muted: Schema.Boolean,
-    lastMessage: Schema.optional(lastMessageSchema),
-  }),
-  passthrough,
-);
-
-const cacheSchema = struct({
-  version: Schema.Literal(CACHE_VERSION),
-  userId: Schema.String,
-  chats: Schema.mutable(Schema.Array(cachedChatSchema)),
-});
-
-// A cached `Date` comes back as a string. A valid date string becomes a
-// `Date`; anything else is dropped, so no caller can `.getTime()` a string
-// (T-1479: a leftover string blanked the web list).
-function rehydrateDate(value: unknown): Date | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
 
 /** The cached list for `userId`, or null when there is none or it is unusable. */
 export function readChatListCache(
@@ -68,43 +16,7 @@ export function readChatListCache(
   }
   try {
     const raw = storage.getItem(CHAT_LIST_CACHE_KEY);
-    if (raw === null) {
-      return null;
-    }
-    const parsed = Schema.decodeUnknownResult(cacheSchema)(JSON.parse(raw));
-    if (!Result.isSuccess(parsed) || (userId !== undefined && parsed.success.userId !== userId)) {
-      return null;
-    }
-    const chats = parsed.success.chats.map((chat) => {
-      const {
-        lastMessage,
-        lastSeenAt: _lastSeenAt,
-        online: _online,
-        createdAt: rawCreatedAt,
-        pinnedAt: rawPinnedAt,
-        ...rest
-      } = chat;
-      const summary = { ...rest } as unknown as ChatSummary;
-      const createdAt = rehydrateDate(rawCreatedAt);
-      if (createdAt !== undefined) {
-        summary.createdAt = createdAt;
-      }
-      const pinnedAt = rehydrateDate(rawPinnedAt);
-      if (pinnedAt !== undefined) {
-        summary.pinnedAt = pinnedAt;
-      }
-      if (lastMessage !== undefined) {
-        const messageCreatedAt = new Date(lastMessage.createdAt);
-        if (!Number.isNaN(messageCreatedAt.getTime())) {
-          summary.lastMessage = {
-            ...(lastMessage as unknown as NonNullable<ChatSummary['lastMessage']>),
-            createdAt: messageCreatedAt,
-          };
-        }
-      }
-      return summary;
-    });
-    return { userId: parsed.success.userId, chats };
+    return raw === null ? null : (decodeChatListCache(raw, userId) ?? null);
   } catch {
     return null;
   }
@@ -119,24 +31,7 @@ export function writeChatListCache(
     return;
   }
   try {
-    const payload = {
-      version: CACHE_VERSION,
-      userId,
-      chats: chats.slice(0, MAX_CACHED_CHATS).map((chat) => ({
-        ...chat,
-        // Presence is live state: never paint a stale "online".
-        online: undefined,
-        onlineCount: undefined,
-        lastSeenAt: undefined,
-        // T-1406: `aiStatus` is live too; never paint a stale "working".
-        aiStatus: undefined,
-        lastMessage:
-          chat.lastMessage === undefined
-            ? undefined
-            : { ...chat.lastMessage, createdAt: chat.lastMessage.createdAt.toISOString() },
-      })),
-    };
-    storage.setItem(CHAT_LIST_CACHE_KEY, JSON.stringify(payload));
+    storage.setItem(CHAT_LIST_CACHE_KEY, encodeChatListCache(userId, chats));
   } catch {
     // A full or blocked localStorage must never break messaging.
   }

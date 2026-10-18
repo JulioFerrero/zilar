@@ -2032,3 +2032,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2031](T-2031-shared-api-errors.md) | API error mapping and abortable calls shared by web and phone | 2026-10-18 |
 | [T-2032](T-2032-web-message-cache-shared.md) | web message cache uses the shared codec (-216 lines) | 2026-10-18 |
 | [T-2033](T-2033-markdown-ast-chat-core.md) | one safe Markdown AST in chat-core (mdast GFM) | 2026-10-18 |
+| [T-2027](T-2027-shared-chat-list-cache.md) | one chat-list cache codec shared by web and phone | 2026-10-18 |

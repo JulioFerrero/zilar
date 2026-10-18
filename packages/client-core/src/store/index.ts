@@ -63,3 +63,4 @@ export * from './sender-avatar';
 // T-2019: the shared offline message-cache codec.
 export * from './message-cache';
 export * from './draft-events';
+export * from './chat-list-cache';
