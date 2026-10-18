@@ -136,6 +136,9 @@ access_rules:
   muc_create:
     # Only the admin (server) account creates rooms (T-0002 follow-up 4).
     allow: admin
+  # Nick registration in rooms (XEP-0045 section 7.10) is admin-only (T-2002).
+  muc_register:
+    allow: admin
   configure:
     allow: admin
   announce:
@@ -201,12 +204,16 @@ modules:
       - allow: admin
     access_create: muc_create
     access_persistent: muc_create
+    access_register: muc_register
     access_mam:
       - allow
     default_room_options:
       members_only: true
       persistent: true
       mam: true
+      # Never listed or discoverable by strangers (T-2002).
+      public: false
+      public_list: false
       # Non-anonymous: every occupant sees members' real JIDs, so clients can
       # show who sent each message (Zilar groups are between known contacts).
       anonymous: false

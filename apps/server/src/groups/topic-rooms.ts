@@ -21,12 +21,13 @@ async function groupTopicRows(db: ServerDatabase, groupId: string): Promise<Topi
   return [...rows];
 }
 
-// T-0108: re-apply the desired members to every active topic room of the
-// group (public topics gain/lose the person; private topics drop anyone
-// whose `topic_members` row is gone). Best effort: the database is the
-// source of truth, and a failed room call is logged with the group id
-// (never a topic name), never thrown, so the group flow that just committed
-// is not rolled back by a room hiccup.
+// T-0108: re-apply the desired members to every topic room of the group,
+// archived ones included (T-2002: a removed person must not keep an
+// affiliation on an archived topic room). Public topics gain/lose the person;
+// private topics drop anyone whose `topic_members` row is gone. Best effort:
+// the database is the source of truth, and a failed room call is logged with
+// the group id (never a topic name), never thrown, so the group flow that just
+// committed is not rolled back by a room hiccup.
 export async function syncGroupTopicRooms(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -37,9 +38,6 @@ export async function syncGroupTopicRooms(
   const rows = await groupTopicRows(db, groupId);
   let failed = false;
   for (const topic of rows) {
-    if (topic.archivedAt !== null) {
-      continue;
-    }
     try {
       await syncTopicRoom({ db, adminClient, domain, logger }, topic);
     } catch {

@@ -30,6 +30,7 @@ import type { PromptRunner } from '../routines/execute-prompt';
 import type { ArchivePool } from '../search/service';
 import type { BuildToolAdaptersDeps } from '../tools/adapters';
 import type { ToolRunner } from '../tools/types';
+import { reconcileRoomRights } from '../groups/room-reconcile';
 import { reconcileRoomSubscriptionOptions } from '../topics/rooms';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 
@@ -76,6 +77,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
   let taskEventRetention: TaskEventRetentionHandle | null = null;
   let recoveryStuck: RecoveryStuckHandle | null = null;
   let routineScheduler: RoutineSchedulerHandle | null = null;
+  let roomReconcile: AbortController | null = null;
 
   // Push component (T-0119): off unless PUSH_ENABLED=true. A misconfigured flag
   // (keys, component credentials or storage key missing) logs one error and
@@ -174,6 +176,23 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       });
   }
 
+  // T-2002: one pass per leader start that moves existing rooms to the
+  // hardened rights (plain members, private and unlisted). Best effort and
+  // throttled; step-down aborts it.
+  function startRoomRightsReconcile(): void {
+    const controller = new AbortController();
+    roomReconcile = controller;
+    void reconcileRoomRights({
+      db,
+      adminClient: deps.adminClient,
+      domain: config.xmpp.domain,
+      logger,
+      signal: controller.signal,
+    }).catch((error: unknown) => {
+      logger.warn({ error: messageOf(error) }, 'room rights reconcile failed');
+    });
+  }
+
   // The gateway logs each AI in over XMPP, which can take a while when ejabberd
   // is slow or down: never block on it. Shutdown still awaits `gateway.stop()`,
   // which is safe while a start is in flight (sessions it no longer owns are
@@ -204,6 +223,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     async start(): Promise<void> {
       startPush();
       startRunnerHubWork();
+      startRoomRightsReconcile();
       // T-1493: reload the saved Stop pauses before the gateway reads them. A
       // failed load is logged and ignored: following simply resumes until the
       // next Stop, which is better than never starting the gateway.
@@ -229,6 +249,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     // Today's stop order (main.ts): runner hub, push, the agent gateway, the
     // two timers and the routine scheduler.
     async stop(): Promise<void> {
+      roomReconcile?.abort();
+      roomReconcile = null;
       if (runnerHub !== null) {
         await runnerHub.close();
         runnerHub = null;

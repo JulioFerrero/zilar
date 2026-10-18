@@ -26,19 +26,30 @@ function readGroupMembers(
   );
 }
 
+// T-2002: people never hold the MUC `owner` or `admin` affiliation, because a
+// raw XMPP client could use it to change the room config or grant membership.
+// The server does every membership change through the admin API, so people are
+// plain `member`s. The one exception is a channel's General room (its feed):
+// the room is moderated, and ejabberd persists voice only through an `admin`
+// or `owner` affiliation, so the channel's owner and admins hold `admin` there
+// and nowhere else. The reconcile re-asserts the room's membership rules.
+export function roomAffiliationFor(role: string, isChannelFeed: boolean): RoomAffiliation {
+  return isChannelFeed && (role === 'owner' || role === 'admin') ? 'admin' : 'member';
+}
+
 // Who belongs in the topic's room: every group member for General,
 // `topic_members` plus the holders of its roles for every other topic, plus
 // the AI memberships — every `group_ais` AI for General, the topic's
 // `topic_ais` rows otherwise.
-// The return maps each JID to the affiliation it should hold: the group owner
-// is the room's owner for General; for other topics the topic creator is
-// owner (when they are still allowed in), everyone else is a member. AIs are
-// always plain members. An AI that is not a member of a non-General topic is
-// never included, even when it is in the group: the room itself enforces it.
+// The return maps each JID to the affiliation it should hold (see
+// `roomAffiliationFor`): people are `member`s, with the channel feed's owner
+// and admins as the voice exception. AIs are plain members. An AI that is not
+// a member of a non-General topic is never included, even when it is in the
+// group: the room itself enforces it.
 // T-0124: a channel's General topic (its feed) keeps the voice mapping —
-// owner stays `owner`, admins stay `admin` (voice in the moderated room),
-// subscribers stay `member` (visitors, voiceless) — so a later join/leave
-// re-sync never demotes an admin back to a subscriber.
+// owner and admins keep voice, subscribers stay `member` (visitors,
+// voiceless) — so a later join/leave re-sync never demotes an admin back to a
+// subscriber.
 export async function desiredMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -59,14 +70,10 @@ export async function desiredMembers(
     const isChannelFeed = topic.isGeneral && group?.kind === 'channel';
     const rows = await readGroupMembers(db, topic.groupId);
     for (const row of rows) {
-      if (isChannelFeed && row.role === 'admin') {
-        wanted.set(jidFor(localpartFor(row.userId), domain), 'admin');
-        continue;
-      }
-      const ownerAffiliation = topic.isGeneral
-        ? row.role === 'owner'
-        : row.userId === topic.createdBy;
-      wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
+      wanted.set(
+        jidFor(localpartFor(row.userId), domain),
+        roomAffiliationFor(row.role, isChannelFeed),
+      );
     }
     await addTopicAiMembers(db, topic, wanted);
     // T-0124: an AI posts in the feed only while its owner is a channel
@@ -99,20 +106,14 @@ export async function desiredMembers(
     if (!byId.has(row.userId)) {
       continue;
     }
-    const ownerAffiliation = topic.isGeneral
-      ? byId.get(row.userId) === 'owner'
-      : row.userId === topic.createdBy;
-    wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
+    wanted.set(jidFor(localpartFor(row.userId), domain), 'member');
   }
   for (const userId of holderIds) {
     const jid = jidFor(localpartFor(userId), domain);
     if (wanted.has(jid)) {
       continue;
     }
-    const ownerAffiliation = topic.isGeneral
-      ? byId.get(userId) === 'owner'
-      : userId === topic.createdBy;
-    wanted.set(jid, ownerAffiliation ? 'owner' : 'member');
+    wanted.set(jid, 'member');
   }
   await addTopicAiMembers(db, topic, wanted);
   return wanted;

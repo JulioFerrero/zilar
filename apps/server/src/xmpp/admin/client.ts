@@ -142,6 +142,9 @@ export function createEjabberdAdminClient(
       } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
+        // T-2002: rooms are never listed or discoverable by strangers.
+        { name: 'public', value: 'false' },
+        { name: 'public_list', value: 'false' },
         { name: 'persistent', value: String(persistent) },
         { name: 'mam', value: String(mam) },
         // Push (T-0119): every room allows MUC/Sub subscriptions so members

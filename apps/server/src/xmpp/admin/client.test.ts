@@ -32,6 +32,21 @@ function kickUserOf(fetchImpl: FetchLike) {
   return kickUser;
 }
 
+describe('createRoom', () => {
+  it('always sends public=false and public_list=false', async () => {
+    const { requests, fetchImpl } = recorder('0');
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.createRoom('room1', { title: 'Team' });
+
+    const body = requests[0]?.body as { options: Array<{ name: string; value: string }> };
+    const options = new Map(body.options.map((entry) => [entry.name, entry.value]));
+    expect(options.get('public')).toBe('false');
+    expect(options.get('public_list')).toBe('false');
+    expect(options.get('members_only')).toBe('true');
+  });
+});
+
 describe('kickUser', () => {
   it('posts the localpart and the host to kick_user', async () => {
     const { requests, fetchImpl } = recorder('0');

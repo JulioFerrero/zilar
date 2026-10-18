@@ -1,4 +1,8 @@
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { runSql } from '../effect/sql';
 import type { RoomAffiliation } from '../xmpp/admin-client';
 import {
   createTestContext,
@@ -56,12 +60,84 @@ describe('topic room sync retry (T-1180)', () => {
     await drainPendingGroupSyncs();
     expect(adminClient.affiliations).toHaveLength(1);
     const roomId = adminClient.affiliations[0]!.roomId;
-    expect(adminClient.affiliationState.get(roomId)?.get(expectedJid(ownerId))).toBe('owner');
+    expect(adminClient.affiliationState.get(roomId)?.get(expectedJid(ownerId))).toBe('member');
 
     // The group was forgotten: a later drain does not re-sync a room that has
     // drifted since, because it is no longer pending.
     adminClient.affiliationState.delete(roomId);
     await drainPendingGroupSyncs();
     expect(adminClient.affiliationState.get(roomId)).toBeUndefined();
+  });
+});
+
+describe('archived topic rooms after a removal (T-2002)', () => {
+  let context: TestContext;
+  let adminClient: FakeAdminClient;
+
+  beforeEach(async () => {
+    adminClient = new FakeAdminClient();
+    context = await createTestContext({ adminClient });
+  });
+
+  afterEach(async () => {
+    stopRoomSyncRetry();
+    await context.close();
+  });
+
+  it('drops a removed person from an archived topic room', async () => {
+    const ownerId = await seedUser(context, { name: 'Owner' });
+    const removedId = await seedUser(context, { name: 'Removed' });
+    const { groupId } = await seedGroup(
+      context,
+      ownerId,
+      [
+        { userId: ownerId, role: 'owner' },
+        { userId: removedId, role: 'member' },
+      ],
+      [],
+    );
+    const roomLocalpart = `t${randomUUID().replaceAll('-', '').slice(0, 15)}`;
+    await runSql(
+      context.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const topicId = randomUUID();
+        yield* sql`INSERT INTO topics ${sql.insert({
+          id: topicId,
+          group_id: groupId,
+          name: 'Old plans',
+          glyph: 'O',
+          room_localpart: roomLocalpart,
+          visibility: 'private',
+          kind: 'chat',
+          status: 'open',
+          is_general: false,
+          archived_at: new Date(),
+          created_by: ownerId,
+        })}`;
+        yield* sql`INSERT INTO topic_members ${sql.insert(
+          [ownerId, removedId].map((userId) => ({
+            topic_id: topicId,
+            user_id: userId,
+            added_by: ownerId,
+          })),
+        )}`;
+        yield* sql`DELETE FROM group_members
+          WHERE group_id = ${groupId} AND user_id = ${removedId}`;
+      }),
+    );
+    adminClient.affiliationState.set(
+      roomLocalpart,
+      new Map([
+        [expectedJid(ownerId), 'member'],
+        [expectedJid(removedId), 'member'],
+      ]),
+    );
+
+    await syncGroupTopicRooms(context.db, adminClient, groupId, TEST_XMPP_DOMAIN, context.logger);
+
+    const room = adminClient.affiliationState.get(roomLocalpart);
+    expect(room?.has(expectedJid(removedId))).toBe(false);
+    expect(room?.get(expectedJid(ownerId))).toBe('member');
   });
 });

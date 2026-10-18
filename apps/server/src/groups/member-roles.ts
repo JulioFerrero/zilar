@@ -6,6 +6,7 @@ import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { roomAffiliationFor } from '../topics/room-members';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { assertChannelKeepsAnAdmin, getGroupDetail, getMembership, requireGroup } from './queries';
 import {
@@ -25,7 +26,8 @@ import {
 // `syncChannelVoice` so the affiliation heals on the next write. In a channel's
 // moderated room an admin gains voice (affiliation `admin`) and a demoted admin
 // loses it (`member` again), so the posting rule is enforced by the room, not
-// by the UI. Demoting the channel's last admin is refused
+// by the UI. In a plain group the person is a `member` either way (T-2002:
+// people never hold a MUC owner/admin affiliation outside a channel feed). Demoting the channel's last admin is refused
 // (`channel_needs_admin`), so the feed can never fall silent.
 export async function changeMemberRole(
   db: ServerDatabase,
@@ -110,7 +112,7 @@ export async function changeMemberRole(
     await adminClient.setAffiliation(
       group.roomLocalpart,
       jidFor(localpartFor(input.targetUserId), input.domain),
-      input.role,
+      roomAffiliationFor(input.role, group.kind === 'channel'),
     );
   } catch {
     input.logger.warn({ groupId: input.groupId }, 'could not set the member role affiliation');
@@ -154,8 +156,8 @@ export async function changeMemberRole(
 }
 
 // After a role change or a drifted room, this re-applies the voice mapping
-// of a channel room: every owner/admin holds affiliation admin/owner, every
-// subscriber `member`. A group room is left untouched. Best effort: failures
+// of a channel room: every owner/admin holds affiliation `admin` (voice, never
+// `owner`: T-2002), every subscriber `member`. A group room is left untouched. Best effort: failures
 // are logged with the group id (never member names) and never thrown. The
 // role-change path calls this when its own affiliation write fails, so a
 // committed row with a stale affiliation heals instead of diverging.
@@ -185,13 +187,11 @@ export async function syncChannelVoice(
     }),
   );
   for (const row of rows) {
-    const wanted: 'owner' | 'admin' | 'member' =
-      row.role === 'owner' ? 'owner' : row.role === 'admin' ? 'admin' : 'member';
     try {
       await adminClient.setAffiliation(
         group.roomLocalpart,
         jidFor(localpartFor(row.userId), domain),
-        wanted,
+        roomAffiliationFor(row.role, true),
       );
     } catch {
       logger.warn({ groupId }, 'could not sync the channel voice');

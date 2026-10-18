@@ -1996,3 +1996,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2000](T-2000-ledger-first-author.md) | first author wins in the message id ledger | 2026-10-18 |
 | [T-1997](T-1997-claude-audit-chat-scroll.md) | chat scroll performance audit and fix plan | 2026-10-18 |
 | [T-1988](T-1988-linear-markup-scans.md) | linear markup scans instead of backtracking regexes | 2026-10-18 |
+| [T-2002](T-2002-muc-rights-hardening.md) | people hold plain member rights in rooms; rooms unlisted | 2026-10-18 |
