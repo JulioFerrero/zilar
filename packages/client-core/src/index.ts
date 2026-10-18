@@ -20,6 +20,7 @@ export {
   type StoreApi,
   type UseBoundStore,
 } from './atom-store';
+export * from './stickers-api';
 export { ApiFailure, fromApi, isApiFailureCode, toApiFailure } from './errors';
 export { failureOf, isWaiting, makeUseAction, shownFailure } from './use-action';
 export type { ActionControls, ActionMode, ActionState, UseActionOptions } from './use-action';
