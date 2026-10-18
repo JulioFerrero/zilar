@@ -1,5 +1,6 @@
 import { Effect, Exit, Schema } from 'effect';
 import { ApiError, GifResult, toApiError } from '@zilar/api-contract';
+import { runApiAbortable } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -87,10 +88,6 @@ export interface GifsApi {
   trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage>;
 }
 
-function abortError(): DOMException {
-  return new DOMException('Aborted', 'AbortError');
-}
-
 /** The production `GifsApi`: bearer auth, `fetch`, build-time API URL. */
 export function createGifsApi(
   getToken: TokenProvider = getSessionToken,
@@ -105,26 +102,9 @@ export function createGifsApi(
     >,
     signal: AbortSignal | undefined,
   ): Promise<GifPage> => {
-    // A function, not a direct read, so TypeScript does not narrow `aborted`
-    // to `false` after the first check: the signal can still fire mid-request.
-    const isAborted = () => signal?.aborted === true;
-    if (isAborted()) {
-      throw abortError();
-    }
-    let page;
-    try {
-      // An abort is not an API failure: it interrupts the request and
-      // surfaces as the `AbortError` a `fetch` abort would give.
-      page = await Effect.runPromise(
-        Effect.mapError(call, toApiError),
-        signal === undefined ? undefined : { signal },
-      );
-    } catch (error) {
-      throw isAborted() ? abortError() : error;
-    }
-    if (isAborted()) {
-      throw abortError();
-    }
+    // An abort is not an API failure: it interrupts the request and
+    // surfaces as the `AbortError` a `fetch` abort would give.
+    const page = await runApiAbortable(Effect.mapError(call, toApiError), signal);
     const items: GifItem[] = [];
     for (const row of page.items) {
       const item = toGifItem(row, apiUrl);

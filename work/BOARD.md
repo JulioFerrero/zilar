@@ -2047,3 +2047,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2046](T-2046-routine-header-ai-gate.md) | routine header renders only for AI senders (web, phone) | 2026-10-18 |
 | [T-2045](T-2045-shared-people-prefix-search.md) | one people prefix-search hook shared by web and phone | 2026-10-18 |
 | [T-2022](T-2022-phone-one-row-gesture.md) | phone rows: one light pan for reply, double tap on the bubble | 2026-10-18 |
+| [T-2047](T-2047-api-effect-reexports.md) | fromApi re-exported from client-core; GIF search abort shared | 2026-10-18 |
