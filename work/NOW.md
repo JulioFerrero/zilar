@@ -933,7 +933,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - **Errors:** none since the deploy.
                     - **Merged and held since that deploy:** T-2012, T-1993, T-1992, T-2011, T-2013, T-2006, T-2009.
                     - **T-1980 (pin jump):** resolving its rebase conflict with T-2008.
-                    - **Phone scroll measurement** (emulator, "ai test › cards test", 299 messages): a baseline build of `72ff17678` (before W1) is running, then main (W1 + W2).
+                    - **Phone scroll measurement** (emulator, T-2017's mock "Viernes" chat with 1,092 messages, audit script, APKs alternated under the same load):
+                      - base (`scratch/perf-base` = `72ff17678` + mock data): 86% and 68% janky, p50 89 and 69 ms;
+                      - main with W1 + W2: 87% and 84% janky, p50 93 and 85 ms;
+                      - so W1 + W2 reach older pages sooner (one page further in 10 flings) but aren't smoother. The cost is per row.
+                      - APKs are in `tmp/apks/`. Next: measure W3a (T-2018, merged), W3b (T-2022, running), then W4 (row leaves, after T-2001).
+                    - **Share plan wave 1:** merged T-2019 (message cache; phone `editedAt` fix) and T-2021 (smooth text, −77 lines). T-2020 (drafts) was sent back for being +45 lines.
+                    - **Julio's 4 share decisions:** memory `decisions-1018-share`.
+                    - **DEPLOY BROKEN since 16:11:** the Coolify build of `6ab3d50f0` failed at `pnpm --filter @zilar/server build`.
+                      - **Cause:** T-2016 removed `@xmpp/client` from the server's dependencies, but the bundle pulls it in through xmpp-core. The gate doesn't run the production build, so it missed this.
+                      - **Production is fine:** it still runs `330d36482`.
+                      - **Fix:** T-2025 restores the dependency and adds the server build to the gate. Push right after it merges, then check that T-1980's pin jump is live.
+                    - **T-2014 is running:** the server takes room senders from `bare_peer` everywhere, including AI-card detection, the media index, names, AI context and memory, and preview cards only from AIs.
                       - W3 (one menu, one gesture) and W4 (row leaves) wait for T-2009, since they share files;
                       - measure with `dumpsys gfxinfo` before and after.
                     - **T-1980 (pin jump):** fix round sent. Its pre-review caught two real regressions: pins stored the archive id, and the alias direction would have hidden DM reactions from the other person.

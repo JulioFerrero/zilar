@@ -334,6 +334,7 @@ describe('gateSteps', () => {
       'lint',
       'typecheck',
       'effect',
+      'build @zilar/server',
       'tests @zilar/mobile',
     ]);
     expect(steps.at(-1)?.args).toEqual([
@@ -432,7 +433,7 @@ describe('gateSteps', () => {
       'main',
       { testFiles: ['apps/server/src/b.test.ts'] },
     );
-    expect(steps.slice(5).map((step) => step.label)).toEqual([
+    expect(steps.slice(6).map((step) => step.label)).toEqual([
       'tests @zilar/mobile',
       'tests @zilar/server',
     ]);
@@ -459,6 +460,34 @@ describe('gateSteps', () => {
 
   it('finds no package for files outside every package', () => {
     expect(packagesTouched(['docs/a.md', 'work/T-1.md'], workspace)).toEqual([]);
+  });
+});
+
+describe('server build step', () => {
+  const buildOf = (changed: string[]) =>
+    gateSteps(changed, workspace, 'main').find((step) => step.label === 'build @zilar/server');
+
+  it('builds the server bundle for a server, package or manifest change', () => {
+    for (const file of [
+      'apps/server/src/a.ts',
+      'packages/desk/src/a.ts',
+      'apps/web/package.json',
+    ]) {
+      expect(buildOf([file])).toEqual({
+        label: 'build @zilar/server',
+        command: 'pnpm',
+        args: ['--filter', '@zilar/server', 'build'],
+      });
+    }
+  });
+
+  it('skips the build when nothing it bundles changed', () => {
+    for (const file of ['apps/mobile/src/a.ts', 'docs/a.md', 'work/T-1.md', 'pnpm-lock.yaml']) {
+      expect(buildOf([file])).toMatchObject({
+        label: 'build @zilar/server',
+        skipReason: 'no server, package or manifest change',
+      });
+    }
   });
 });
 

@@ -1,7 +1,8 @@
 // Which checks the gate runs for a set of changed files. Lint and typecheck
 // cover the whole repo (typecheck only the affected packages); format checks
 // just the changed files unless `--full`; tests run only for the packages whose
-// files changed, always with the worker cap. By default
+// files changed, always with the worker cap; the server production build runs
+// when the server, a shared package or a manifest changes. By default
 // only the nearest tests run: the changed test files themselves plus, for each
 // changed source file, the tests sitting in the same folder. A few boot guards
 // (see BOOT_GUARD_TESTS) always run too. `--full` keeps the older behaviour of
@@ -185,6 +186,7 @@ export function gateSteps(
       env: { TURBO_SCM_BASE: base },
     },
     effectStep(changedFiles, base, exists),
+    buildStep(changedFiles),
   ];
   for (const pkg of packagesTouched(changedFiles, workspace)) {
     if (!pkg.hasTests) {
@@ -281,6 +283,33 @@ function effectStep(
       base,
       ...sources,
     ],
+  };
+}
+
+// The server production bundle, built the same way the deploy builds it. The
+// gate skipped this once (T-2025): a dependency the bundle imports through a
+// workspace package was no longer a production dependency, `pnpm gate` stayed
+// green, and the deploy failed at `pnpm --filter @zilar/server build`. Anything
+// under the server, the shared packages or any manifest can break the bundle.
+function buildStep(changedFiles: string[]): GateStep {
+  const needsBuild = changedFiles.some(
+    (file) =>
+      file.startsWith('apps/server/') ||
+      file.startsWith('packages/') ||
+      baseOf(file) === 'package.json',
+  );
+  if (!needsBuild) {
+    return {
+      label: 'build @zilar/server',
+      command: 'pnpm',
+      args: [],
+      skipReason: 'no server, package or manifest change',
+    };
+  }
+  return {
+    label: 'build @zilar/server',
+    command: 'pnpm',
+    args: ['--filter', '@zilar/server', 'build'],
   };
 }
 

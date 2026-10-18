@@ -20,6 +20,7 @@
     "@effect/platform-node": "4.0.4",
     "@effect/sql-pg": "4.0.4",
     "@types/web-push": "^3.6.4",
+    "@xmpp/client": "catalog:",
     "@xmpp/component": "^0.14.0",
     "@zilar/api-contract": "workspace:*",
     "@zilar/desk": "workspace:*",

@@ -352,6 +352,9 @@ importers:
       '@types/web-push':
         specifier: ^3.6.4
         version: 3.6.4
+      '@xmpp/client':
+        specifier: 'catalog:'
+        version: 0.14.0
       '@xmpp/component':
         specifier: ^0.14.0
         version: 0.14.0
