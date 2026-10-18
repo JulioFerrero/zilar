@@ -1,24 +1,21 @@
-import { cleanFilename, parseUrl } from '@zilar/chat-core';
+import {
+  classifyMime,
+  cleanFilename,
+  MAX_ATTACHMENT_BYTES,
+  mimeOrOctetStream,
+  parseUrl,
+} from '@zilar/chat-core';
 import { Duration, Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
 import type { UploadSlotRequester } from './voice';
-
-/** Hard cap on an attachment, mirroring the plan question D6 default. */
-export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
-
-/** Images the web treats as pictures. SVG is deliberately absent. */
-const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-]);
 
 export {
   cleanFilename,
   formatFileSize,
   gifBlobType,
   isTrustedMediaUrl,
+  MAX_ATTACHMENT_BYTES,
+  safeHttpUrl,
   trustedMediaHosts,
   type MediaTokenShape,
 } from '@zilar/chat-core';
@@ -33,21 +30,9 @@ export class AttachmentError extends Error {
   }
 }
 
-/**
- * The browser-reported MIME decides whether a file is an image. An SVG (and
- * anything with an empty or unknown type) is a file: it can carry script, so it
- * is never rendered as an image.
- */
+/** Whether the browser-reported MIME is an image; SVG and unknown types are files. */
 export function classify(file: File): 'image' | 'file' {
-  return IMAGE_MIME_TYPES.has(file.type) ? 'image' : 'file';
-}
-
-/** The URL to follow only when it is http(s); anything else (`javascript:`, `data:`) is not. */
-export function safeHttpUrl(url: string): string | undefined {
-  const parsed = parseUrl(url);
-  return parsed !== undefined && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-    ? url
-    : undefined;
+  return classifyMime(file.type);
 }
 
 /**
@@ -178,7 +163,7 @@ export const uploadAttachmentEffect = Effect.fnUntraced(function* (
     return yield* Effect.fail(new AttachmentError('too_large', 'That file is larger than 50 MB.'));
   }
 
-  const contentType = file.type === '' ? 'application/octet-stream' : file.type;
+  const contentType = mimeOrOctetStream(file.type);
   const slot = yield* Effect.promise(() =>
     requester.requestUploadSlot({
       filename: cleanFilename(file.name),

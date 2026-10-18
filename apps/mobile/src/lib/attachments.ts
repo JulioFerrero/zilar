@@ -9,28 +9,25 @@
  * shape below, and the trusted-media set is the same three hosts.
  */
 
-import { cleanFilename, isGifVideoName, isTrustedMediaUrl, parseUrl } from '@zilar/chat-core';
+import {
+  classifyMime,
+  cleanFilename,
+  isGifVideoName,
+  isTrustedMediaUrl,
+  mimeOrOctetStream,
+} from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
 
 export {
   cleanFilename,
   formatFileSize,
   isTrustedMediaUrl,
+  MAX_ATTACHMENT_BYTES,
+  safeHttpUrl,
   sanitizeIncomingAttachment,
   trustedMediaHosts,
   type MediaTokenShape,
 } from '@zilar/chat-core';
-
-/** Hard cap on an attachment: the ejabberd `mod_http_upload` `max_size`. */
-export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
-
-/** Images the client treats as pictures. SVG is deliberately absent. */
-const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-]);
 
 /**
  * A file the user picked on the device, before it is sent. The native picker
@@ -58,17 +55,7 @@ export interface PendingMobileFile {
  * it is never rendered as an image. Mirrors web `classify`.
  */
 export function classifyMobileFile(file: Pick<PendingMobileFile, 'mimeType'>): 'image' | 'file' {
-  const mime = (file.mimeType ?? '').toLowerCase();
-  return IMAGE_MIME_TYPES.has(mime) ? 'image' : 'file';
-}
-
-/** The URL to follow only when it is http(s); anything else is not. */
-export function safeHttpUrl(url: string): string | undefined {
-  const parsed = parseUrl(url);
-  if (parsed === undefined) {
-    return undefined;
-  }
-  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : undefined;
+  return classifyMime(file.mimeType);
 }
 
 /**
@@ -89,10 +76,7 @@ export function attachmentDataFor(
   height?: number;
 } {
   const kind = classifyMobileFile(file);
-  const mime =
-    file.mimeType === undefined || file.mimeType === ''
-      ? 'application/octet-stream'
-      : file.mimeType;
+  const mime = mimeOrOctetStream(file.mimeType);
   const data: ReturnType<typeof attachmentDataFor> = {
     kind,
     url,
@@ -220,7 +204,5 @@ export function extensionForMime(mimeType: string | undefined): string {
   }
 }
 
-/** The effective MIME of a picked asset: the reported type or the fallback. */
-export function mimeForAsset(mimeType: string | undefined): string {
-  return mimeType === undefined || mimeType === '' ? 'application/octet-stream' : mimeType;
-}
+/** The MIME sent for a picked asset: the reported type, or the octet-stream fallback. */
+export const mimeForAsset = mimeOrOctetStream;

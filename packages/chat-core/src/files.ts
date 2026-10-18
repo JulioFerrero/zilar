@@ -1,5 +1,17 @@
 import type { Attachment } from '@zilar/protocol';
 import { formatFileSize } from './media';
+import { parseUrl } from './url';
+
+/** Hard cap on an attachment: the ejabberd `mod_http_upload` `max_size`. */
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+
+/** Images the clients treat as pictures. SVG is deliberately absent: it can carry script. */
+const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
 
 /**
  * Types that say nothing about the bytes, so the file name's extension is the
@@ -40,4 +52,22 @@ export function isPdfAttachment(attachment: Pick<Attachment, 'name' | 'mime'>): 
     return true;
   }
   return GENERIC_MIME_TYPES.has(mime) && fileExtension(attachment.name) === 'PDF';
+}
+
+/** Whether the MIME is a raster image; SVG (it can carry script) and unknown types are files. */
+export function classifyMime(mime: string | undefined): 'image' | 'file' {
+  return IMAGE_MIME_TYPES.has((mime ?? '').toLowerCase()) ? 'image' : 'file';
+}
+
+/** The URL to follow only when it is http(s); `javascript:`, `data:` and garbage are not. */
+export function safeHttpUrl(url: string): string | undefined {
+  const parsed = parseUrl(url);
+  return parsed !== undefined && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+    ? url
+    : undefined;
+}
+
+/** The MIME to send: the reported type, or `application/octet-stream` when it is empty. */
+export function mimeOrOctetStream(mime: string | undefined): string {
+  return mime === undefined || mime === '' ? 'application/octet-stream' : mime;
 }
