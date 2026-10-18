@@ -50,6 +50,35 @@ function Field({
   );
 }
 
+type WithFieldProps = { [K in keyof FieldProps]: FieldProps[K] | undefined } & {
+  fieldId: string;
+  length: number;
+};
+
+function withField(
+  field: ReactNode,
+  { fieldId, label, hint, invalid, counter, length }: WithFieldProps,
+): ReactNode {
+  if (label === undefined && hint === undefined && counter === undefined) {
+    return field;
+  }
+  return (
+    <Field id={fieldId} label={label} hint={hint} invalid={invalid}>
+      {field}
+      {counter === undefined ? null : (
+        <p
+          className={cn(
+            'self-end font-mono text-[11px] text-subtle-foreground',
+            length > counter.max && 'text-danger',
+          )}
+        >
+          {length}/{counter.max}
+        </p>
+      )}
+    </Field>
+  );
+}
+
 export const FIELD_INPUT =
   'well-surface w-full rounded-[10px] px-3 py-2 text-sm text-foreground placeholder:text-subtle-foreground disabled:pointer-events-none disabled:opacity-50';
 
@@ -94,24 +123,7 @@ export function TextInput({
         {trailing}
       </div>
     );
-  if (label === undefined && hint === undefined && counter === undefined) {
-    return field;
-  }
-  return (
-    <Field id={fieldId} label={label} hint={hint} invalid={invalid}>
-      {field}
-      {counter === undefined ? null : (
-        <p
-          className={cn(
-            'self-end font-mono text-[11px] text-subtle-foreground',
-            length > counter.max && 'text-danger',
-          )}
-        >
-          {length}/{counter.max}
-        </p>
-      )}
-    </Field>
-  );
+  return withField(field, { fieldId, label, hint, invalid, counter, length });
 }
 
 export function SecretInput({
@@ -180,22 +192,5 @@ export function TextArea({
       onChange={handleChange}
     />
   );
-  if (label === undefined && hint === undefined && counter === undefined) {
-    return field;
-  }
-  return (
-    <Field id={fieldId} label={label} hint={hint} invalid={invalid}>
-      {field}
-      {counter === undefined ? null : (
-        <p
-          className={cn(
-            'self-end font-mono text-[11px] text-subtle-foreground',
-            length > counter.max && 'text-danger',
-          )}
-        >
-          {length}/{counter.max}
-        </p>
-      )}
-    </Field>
-  );
+  return withField(field, { fieldId, label, hint, invalid, counter, length });
 }

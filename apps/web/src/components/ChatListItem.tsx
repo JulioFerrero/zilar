@@ -24,6 +24,7 @@ import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { EntityAvatar } from './EntityAvatar';
 import { RowActions } from './chatList/RowActions';
+import { PreviewLine } from './chatList/PreviewLine';
 import { MessageTicks } from './MessageTicks';
 import { Badge } from './ui/badge';
 import { useChatSelector } from '@/store/ChatStoreProvider';
@@ -164,15 +165,7 @@ export const ChatListItem = memo(function ChatListItem({
                 <span className="text-danger">Draft:</span> {draftLine}
               </span>
             ) : (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
-                {KindIcon !== undefined && (
-                  <KindIcon className="size-3.5 shrink-0" aria-hidden="true" />
-                )}
-                <span className="truncate">
-                  {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
-                  {body}
-                </span>
-              </span>
+              <PreviewLine KindIcon={KindIcon} prefix={prefix} body={body} />
             )}
             {chat.unread > 0 ? (
               <Badge

@@ -33,6 +33,7 @@ import { previewMessage } from '@/lib/preview-message';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
+import { PreviewLine } from './chatList/PreviewLine';
 import { Badge } from './ui/badge';
 
 const NO_MESSAGES: UiMessage[] = [];
@@ -169,15 +170,7 @@ export function TopicRow({
                 <span className="truncate">{typingText}</span>
               </span>
             ) : (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
-                {KindIcon !== undefined && (
-                  <KindIcon className="size-3.5 shrink-0" aria-hidden="true" />
-                )}
-                <span className="truncate">
-                  {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
-                  {body}
-                </span>
-              </span>
+              <PreviewLine KindIcon={KindIcon} prefix={prefix} body={body} />
             )}
             {chat.unread > 0 ? (
               <Badge

@@ -6,6 +6,8 @@ import { loadMockRequest } from '@/mock/load';
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
 
+const INVALID_RESPONSE = 'The server sent an unexpected response';
+
 // One error class for every call, hand-written or derived from the contract.
 export { ApiError };
 
@@ -21,6 +23,19 @@ export function decodeResponse<T>(
 ): { ok: true; value: T } | { ok: false } {
   const result = Schema.decodeUnknownExit(schema)(raw);
   return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
+}
+
+/** Reads one response: the JSON body or null, then the error or decoded value. */
+async function readResponse<T>(response: Response, schema: ResponseSchema<T>): Promise<T> {
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw apiErrorFromBody(response.status, raw);
+  }
+  const parsed = decodeResponse(schema, raw);
+  if (!parsed.ok) {
+    throw new ApiError(response.status, 'invalid_response', INVALID_RESPONSE);
+  }
+  return parsed.value;
 }
 
 export async function request<T>(
@@ -48,20 +63,7 @@ export async function request<T>(
     }
   }
 
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw apiErrorFromBody(response.status, raw);
-  }
-
-  const parsed = decodeResponse(schema, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.value;
+  return readResponse(response, schema);
 }
 
 /**
@@ -98,17 +100,5 @@ export async function uploadBytes<T>(
       throw new ApiError(0, 'network_error', 'Could not reach the server');
     }
   }
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw apiErrorFromBody(response.status, raw);
-  }
-  const parsed = decodeResponse(schema, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.value;
+  return readResponse(response, schema);
 }
