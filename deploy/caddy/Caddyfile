@@ -9,6 +9,8 @@
 {
   admin off
   email {$ACME_EMAIL}
+  # On stop, close open WebSockets after 2 s instead of waiting forever (deploys were force-killed at 30 s).
+  grace_period 2s
 }
 
 {$ZILAR_DOMAIN} {

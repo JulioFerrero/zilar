@@ -1124,9 +1124,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - The lead wrote the full text in the spec; the worker places it word for word and checks the links.
     - **What changes:** about 150 lines instead of 250; the `get.zilar.app` one-liner plus the Coolify path; the stack now Effect (no Hono, Drizzle or LiteLLM).
     - **The product gap the README states:** the phone app's server URL is fixed at build time (`apps/mobile/src/lib/auth.ts:14`), so the release APKs only work with `chat.zilar.app`. A server picker in the app: **Julio said not now, maybe in the future** (2026-10-15). Don't spec it.
-  - **T-1594: the Coolify catalog demo is draft PR #1,** https://github.com/JulioFerrero/zilar/pull/1 (branch `task/T-1594-coolify-catalog-demo-pr`, task status `blocked`, never merge).
-    - **Contents:** the pinned `v0.2.0` template, the logo, the coolify-docs page and both PR texts.
-    - **Before a real submission (1,000 stars needed):** deploy that exact pinned file once.
+  - **T-1594 removed (Julio, 2026-10-18).** Done:
+    - closed draft PR #1;
+    - deleted its branch on GitHub and locally;
+    - removed the worktree and the lead state.
+
+    The last commit, `1d519f5de`, can be recovered from the reflog. It held the pinned `v0.2.0` template, the logo, the coolify-docs page and both PR texts.
   - **Julio OK'd tagging v0.2.0** after T-1593 merges.
   - **Coolify catalog:** upstream needs **1,000 GitHub stars**, and Zilar has 0. So **T-1594** builds a demo of both upstream PRs (template plus required docs page) under `deploy/coolify/catalog/`. The lead opens it as a **draft PR in our repo, never merged**, per Julio.
   - **Still before users can use the one-liner by default:** the rehearsal (now the template in a scratch project, no token), then tag v0.2.0 (Julio OK'd after the rehearsal). The latest tag, v0.1.13, has no `preflight.sh`, so until then use `--version main`.
