@@ -16,11 +16,7 @@ export type HoldHandlers = {
 export type FlagRef = { current: boolean };
 export type TickerRef = { current: Fiber.Fiber<unknown, unknown> | undefined };
 
-/**
- * Runs `tick` every `everyMs` (the first run after one interval) until the fiber is
- * interrupted. A throw inside one tick is dropped, so the next tick still runs
- * (as with `setInterval`).
- */
+// Runs `tick` every `everyMs` (first after one interval) until interrupted; a throw inside one tick is dropped, so the next still runs, like `setInterval`.
 export function startTicker(everyMs: number, tick: () => void): Fiber.Fiber<unknown, unknown> {
   const safeTick = Effect.sync(tick).pipe(Effect.catchDefect(() => Effect.void));
   return Effect.runFork(Effect.sleep(everyMs).pipe(Effect.andThen(safeTick), Effect.forever));
@@ -34,14 +30,7 @@ export function stopTicker(ref: TickerRef): void {
   }
 }
 
-/**
- * The hold gesture on the mic: grant starts, release sends, a slide past
- * `CANCEL_SLIDE_PX` or a lost touch cancels. A slide up past `LOCK_SLIDE_PX`
- * locks once, and from then on the release neither sends nor cancels: the
- * finger can lift and the recording keeps running (the row's buttons end it).
- * Built outside the component so the handlers may read refs (they only run in
- * touch events).
- */
+// The hold gesture on the mic: grant starts, release sends, a slide past `CANCEL_SLIDE_PX` or a lost touch cancels. A slide up past `LOCK_SLIDE_PX` locks once; then release neither sends nor cancels and the row's buttons end it.
 export function createHoldResponder(
   handlersRef: { current: HoldHandlers },
   heldRef: FlagRef,
@@ -51,8 +40,7 @@ export function createHoldResponder(
 ) {
   return PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    // The system (a permission dialog, a scroll takeover) must not steal the
-    // touch silently: a lost touch cancels the recording.
+    // A lost touch (a permission dialog, a scroll takeover) cancels the recording instead of continuing silently.
     onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => {
       heldRef.current = true;

@@ -6,7 +6,6 @@ import { Button } from '../ui/button';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { pinLabel, type SnapshotPinKind } from '../../lib/pin-snapshot';
 
-/** The pin fields the sheet reads (the store's `Pin` is assignable). */
 export interface SheetPin {
   id: string;
   messageId: string;
@@ -15,14 +14,7 @@ export interface SheetPin {
   kind: SnapshotPinKind;
 }
 
-/**
- * The pins list sheet (T-0135, the mobile twin of the web `PinsPanel`):
- * every pin with jump, and Unpin for people who may pin (disabled per row
- * while its unpin is in flight). Reachable from the banner's list button.
- *
- * Pure view (no hooks) so it stays render-testable like `ReactionChips`:
- * the screen subscribes the pins and owns the unpin flight.
- */
+// The pins list sheet: every pin with jump, and Unpin for people who may pin (disabled per row while its unpin is in flight). Pure view (no hooks) so it stays render-testable; the screen subscribes the pins and owns the unpin flight.
 export function PinsSheet({
   open,
   pins,

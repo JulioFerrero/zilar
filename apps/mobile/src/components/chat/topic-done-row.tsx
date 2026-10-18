@@ -6,18 +6,12 @@ import { ICON } from '@/lib/colors';
 import type { PatchTopicInput } from '@/lib/topics-api';
 
 type TopicDoneRowProps = {
-  /** The topic's done time (T-1521); null while the topic is open. */
   doneAt: string | null;
-  /** The chat screen's topic patch; a failure lands in the sheet's error line. */
   patch: (input: PatchTopicInput) => void;
   onError: (message: string) => void;
 };
 
-/**
- * Mark the topic done or reopen it (T-1540): any member who can see the topic
- * may flip it, so the row is not gated. "Mark as done" shows a check, "Reopen"
- * a counter-clockwise arrow.
- */
+// Mark the topic done or reopen it: any member who can see it may flip it, so the row is not gated. "Mark as done" shows a check, "Reopen" a counter-clockwise arrow.
 export function TopicDoneRow({ doneAt, patch, onError }: TopicDoneRowProps) {
   const done = doneAt !== null;
   return (

@@ -4,7 +4,6 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { cn } from '@/lib/utils';
 
-/** Three animated dots for `typing…` and `AI · working…`. */
 export function TypingDots({ color, className }: { color: string; className?: string }) {
   const reduceMotion = useReducedMotion();
   const [first] = useState(() => new Animated.Value(0.3));
@@ -49,7 +48,6 @@ export function TypingDots({ color, className }: { color: string; className?: st
   );
 }
 
-/** The single pulsing dot that marks `writing…` in the chat list (ui-style.md §5). */
 export function PulseDot({
   color,
   size = 6,

@@ -14,19 +14,14 @@ type BubbleActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  /** T-1247: any deletable DM message, including the peer's. */
   canDeleteForMe: boolean;
-  /** T-1247: a DM (not a group or AI chat). */
   isDm: boolean;
-  /** T-1247: this message is my own. */
   own: boolean;
-  /** T-1247: the sender's name, for the DM confirm body. */
   senderName: string;
   canForward: boolean;
   canPin: boolean | undefined;
   isPinned: boolean | undefined;
   myReactions: UiReaction[];
-  /** T-1274: an album's members, so Delete acts on the whole album. */
   albumMembers?: UiMessage[] | undefined;
   onReply: (message: UiMessage) => void;
   onEdit: ((message: UiMessage) => void) | undefined;
@@ -38,7 +33,6 @@ type BubbleActionsSheetProps = {
   react: (message: UiMessage, emoji: string) => void;
   setMenuOpen: (open: boolean) => void;
   setConfirmOpen: (open: boolean) => void;
-  /** The sheet closed itself (drag, backdrop tap, Android back). */
   onMenuClosed: () => void;
 };
 
@@ -46,8 +40,7 @@ function copyMessageText(text: string): void {
   Effect.runFork(Effect.tryPromise(() => Clipboard.setStringAsync(text)).pipe(Effect.ignore));
 }
 
-// The haptic is a native call the press does not wait for; it starts here,
-// in the press handler, and a failed haptic is ignored.
+// The haptic starts in the press handler and is not awaited; a failed one is ignored.
 export function openMessageMenu(open: () => void): void {
   tap();
   open();
@@ -81,24 +74,17 @@ export function BubbleActionsSheet({
   setConfirmOpen,
   onMenuClosed,
 }: BubbleActionsSheetProps) {
-  // The failed-text Retry/Delete and the T-1247 delete-for-me read straight
-  // from the store (like `chat-thread.tsx` reads `retrySticker`): threading
-  // them down would need `message-list.tsx`, which this task does not own.
+  // Failed-text Retry/Delete and delete-for-me read straight from the store, like `chat-thread.tsx`.
   const retryText = useChatStore((state) => state.retryText);
   const deleteFailedMessage = useChatStore((state) => state.deleteFailedMessage);
   const deleteForMe = useChatStore((state) => state.deleteForMe);
   const currentUserId = useChatStore((state) => state.currentUserId);
-  // The chat's one toast, for the "Copied" confirmation (T-1693). A sheet
-  // drawn outside a thread gets the no-op.
+  // The chat's one toast, for the "Copied" confirmation; a sheet outside a thread gets the no-op.
   const notify = useChatNotice();
-  // T-1274: on an album bubble Delete acts on every photo. The bubble hands
-  // over the grid's grouped members when its menu opens; with two or more, both
-  // confirms loop over all of them (an album is one sender, so the own/peer
-  // rule is unchanged). A lone photo keeps the single-message action.
+  // On an album bubble Delete acts on every photo; the bubble hands over the grid's members when its menu opens. An album is one sender, so the own/peer rule is unchanged.
   const deleteTargets = albumMembers ?? [message];
   const deleteTitle = albumMembers === undefined ? undefined : 'Delete album?';
-  // A failed own text (the core's `retryText` guard, mirrored): attachments,
-  // stickers, voice notes and images keep their own retry paths.
+  // A failed own text (the core's `retryText` guard, mirrored); attachments, stickers, voice notes and images keep their own retry paths.
   const failedText =
     message.senderId === currentUserId &&
     message.status === 'failed' &&
@@ -107,9 +93,7 @@ export function BubbleActionsSheet({
     message.attachment === undefined &&
     message.image === undefined &&
     message.card === undefined;
-  // A message with no wire id yet (still sending, or a failed send) is refused
-  // by React, Edit and Delete: the sheet disables them instead of letting the
-  // tap do nothing (UI-7).
+  // A message with no wire id yet (still sending, or failed) is refused by React, Edit and Delete: the sheet disables them instead of letting the tap do nothing.
   const canActNow = canAct(message);
   return (
     <MessageActionsSheet

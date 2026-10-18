@@ -7,11 +7,7 @@ type TranscribeConfirmProps = {
   onClose: () => void;
 };
 
-/**
- * The one-time model download confirm (T-0179): "Download the transcription
- * model? 17 MB, once. Everything stays on your phone." with Download /
- * Cancel on the kit `ConfirmDialog`. While busy the backdrop does nothing.
- */
+// The one-time model download confirm: "Download the transcription model? 17 MB, once. Everything stays on your phone." While busy the backdrop does nothing.
 export function VoiceTranscribeConfirm({
   open,
   busy,

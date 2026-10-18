@@ -28,7 +28,6 @@ export type MessageSearchStatus =
   | { status: 'error'; message: string; rateLimited: boolean; retry: () => void }
   | { status: 'unavailable' };
 
-/** True when the scrolled list is near its end and should page forward. */
 export function nearEnd(
   contentOffsetY: number,
   contentHeight: number,

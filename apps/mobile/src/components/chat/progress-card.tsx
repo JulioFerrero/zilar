@@ -20,10 +20,7 @@ function isLive(state: Progress['state']): boolean {
   return state === undefined || state === 'working';
 }
 
-/**
- * The elapsed to show: the time from `started_at` to now while working, so it
- * ticks; the frozen `elapsed_ms` once the task is over.
- */
+// The elapsed time: from `started_at` to now while working, so it ticks; the frozen `elapsed_ms` once over.
 function elapsedFor(progress: Progress, now: number): number | undefined {
   const parsed = progress.started_at === undefined ? undefined : Date.parse(progress.started_at);
   const started = parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined;
@@ -39,7 +36,6 @@ function elapsedFor(progress: Progress, now: number): number | undefined {
   return started === undefined ? undefined : Math.max(0, now - started);
 }
 
-/** The state icon of the collapsed line. */
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {
   if (state === 'done') {
     return <Check size={16} color={ACCENT} aria-hidden />;
@@ -53,7 +49,6 @@ function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMo
   return <ActivityIndicator size="small" color={ACCENT} animating={!reduceMotion} />;
 }
 
-/** The state icon of one checklist row. */
 function StepIcon({
   state,
   reduceMotion,
@@ -73,11 +68,7 @@ function StepIcon({
   return <Circle size={14} color={MUTED_FOREGROUND} aria-hidden />;
 }
 
-/**
- * The task card: one collapsed line (state icon, title, elapsed) that expands
- * to the step checklist and the summary. Without `steps` it falls back to the
- * old `stage`/`detail` shape, so an old server still renders (T-1419).
- */
+// The task card: one collapsed line that expands to the step checklist and summary. Without `steps` it falls back to the old `stage`/`detail` shape, so an old server still renders.
 export function ProgressCard({ data }: { data: Progress }) {
   const reduceMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
@@ -105,9 +96,7 @@ export function ProgressCard({ data }: { data: Progress }) {
   const expandable = steps.length > 0;
   const taskId = data.task_id;
 
-  // T-1422: the Stop button shows only for a working card the viewer can stop:
-  // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
-  // the viewer's own AI list). The chat id is the open chat's.
+  // Stop shows only for a working card the viewer can stop: the server set `can_stop` and the AI belongs to the viewer.
   const { api } = useAisApi();
   const chatJid = useChatStore((state) => state.activeChatId);
   const [ownedResult] = useQuery(() => Effect.promise(() => api.listAis()), [api, data.ai]);
@@ -175,9 +164,7 @@ export function ProgressCard({ data }: { data: Progress }) {
     </View>
   );
 
-  // T-1739: a finished card is one pressable line, as the board draws it: the
-  // state icon, the full title, the duration and a chevron. The press opens the
-  // full steps for the viewer's own AI, and expands them otherwise.
+  // A finished card is one pressable line: state icon, full title, duration and chevron. A press opens the full steps for the viewer's own AI, and expands them otherwise.
   const ownedTask = ownedAi !== null && taskId !== undefined ? { taskId, ai: ownedAi } : undefined;
   if (!live) {
     const pressable = ownedTask !== undefined || expandable;
@@ -217,8 +204,6 @@ export function ProgressCard({ data }: { data: Progress }) {
 
   return (
     <View className="self-stretch gap-1.5 py-0.5">
-      {/* T-1422: the Stop button sits at the right of the line; the steps stay
-          under it, as the board draws a working card. */}
       <View className="flex-row items-center gap-2">
         {header}
         {stopKey}

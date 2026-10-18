@@ -6,10 +6,7 @@ import { Button } from '../ui/button';
 import { Text } from '../ui/text';
 import type { MediaItem, MediaTab } from '../../lib/media-api';
 
-/**
- * Human file size, e.g. `512 B`, `2.0 KB`, `5.0 MB`. Shared by the file
- * rows and the media grid's fallback rows; `chat-core` has no size helper.
- */
+// Human file size, e.g. `512 B`, `2.0 KB`, `5.0 MB`; `chat-core` has no size helper.
 export function formatMediaSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return '0 B';
@@ -29,7 +26,6 @@ function rowKey(item: MediaItem): string {
   return `${item.messageId}:${item.linkUrl ?? item.kind}`;
 }
 
-/** The grid draws a tile only for a real remote image, never a mock or file. */
 function isRemoteImage(item: MediaItem): boolean {
   if (item.kind !== 'image' && item.kind !== 'gif') return false;
   const url = item.url?.toLowerCase();
@@ -40,7 +36,6 @@ function dateOf(item: MediaItem): string {
   return formatShortDate(new Date(item.at));
 }
 
-/** A metadata line joining only the parts the row actually has. */
 function metaLine(parts: (string | undefined)[]): string {
   return parts.filter((part): part is string => part !== undefined && part !== '').join(' · ');
 }
@@ -108,10 +103,7 @@ export function MediaRowList({
   );
 }
 
-/**
- * The shared chrome of the per-tab rows: the left body keeps each row's own
- * texts, and the trailing button is the same for every tab.
- */
+// The shared chrome of the per-tab rows: the left body keeps each row's texts, and the trailing button is the same for every tab.
 function MediaRow({
   item,
   label,

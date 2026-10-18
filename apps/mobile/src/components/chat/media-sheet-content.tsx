@@ -15,7 +15,6 @@ const TAB_OPTIONS: SegmentedOption[] = [
   { value: 'voice', label: 'Voice' },
 ];
 
-/** The empty sentence per tab, shown once a finished load has no rows. */
 export const MEDIA_EMPTY_TEXT: Record<MediaTab, string> = {
   media: 'No media yet',
   files: 'No files yet',
@@ -42,12 +41,7 @@ export interface MediaSheetContentProps {
   onRetry: () => void;
 }
 
-/**
- * The gallery's pure view (T-0436): the tabs, the grid or per-tab rows, the
- * empty/loading/error states and the Load more button. The connected
- * `MediaSheet` owns the load; this stays hook-free so tests can render it
- * directly.
- */
+// The gallery's pure view: tabs, grid or per-tab rows, empty/loading/error states and Load more. The connected `MediaSheet` owns the load; this stays hook-free so tests render it directly.
 export function MediaSheetContent({
   tab,
   status,

@@ -8,24 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 
-/** T-1788: a sent mention of someone who is not in the open topic. */
 export interface TopicNotIn {
   jid: string;
   name: string;
   kind: 'person' | 'ai';
-  /** The AI's `aiId` or the person's `userId`, for the Add call. */
   id: string;
   avatarUrl?: string | undefined;
 }
 
-/** T-1788: how the Add key of an "isn't in this topic" row reads. */
 export type TopicNotInState = 'idle' | 'busy' | 'failed';
 
-/**
- * T-1788: the centred row a sender sees after mentioning someone who is not in
- * the open topic (the phone twin of web's `TopicNotInRow`). The Add key puts
- * them in the topic; a failure shows a muted line in its place.
- */
+// The centred row a sender sees after mentioning someone who is not in the open topic: the Add key puts them in; a failure shows a muted line in its place.
 export function TopicNotInRow({
   name,
   avatarUrl,
@@ -64,14 +57,9 @@ export function TopicNotInRow({
   );
 }
 
-/** The Add call of one row failed. */
 class AddToTopicFailed extends Data.TaggedError('AddToTopicFailed') {}
 
-/**
- * T-1788: one "isn't in this topic" row with its own Add call, so two rows can
- * be added while the sender keeps typing. `onAdded` drops the row once the
- * person or AI is in (the server adds the group half first, T-1769).
- */
+// One row with its own Add call, so two rows can be added while the sender keeps typing; `onAdded` drops the row once the person or AI is in.
 export function AddToTopicRow({
   name,
   avatarUrl,

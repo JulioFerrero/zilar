@@ -16,7 +16,6 @@ const codeOf = (error: unknown): string =>
     ? String((error as { code: unknown }).code)
     : '';
 
-/** A store promise as an Effect: a rejection keeps its code for the message. */
 export function callStore<A>(call: () => Promise<A>): Effect.Effect<A, ChannelCallFailed> {
   return Effect.tryPromise({
     try: call,
@@ -24,13 +23,7 @@ export function callStore<A>(call: () => Promise<A>): Effect.Effect<A, ChannelCa
   });
 }
 
-/**
- * The channel screen's invite-links sheet state and writes (T-0144):
- * owner/admin only, like the web panel. The list loads when the sheet opens;
- * the created URL is kept only until dismissed, never stored. A failed load
- * keeps the sheet open with a message. It also owns the clipboard/share bridge
- * the shown-once block uses.
- */
+// The channel screen's invite-links sheet state and writes, owner/admin only like web. The list loads when the sheet opens; the created URL is kept only until dismissed, never stored.
 export function useChannelInvites(groupId: string) {
   const listInviteLinks = useChatStore((state) => state.listInviteLinks);
   const createInviteLink = useChatStore((state) => state.createInviteLink);
@@ -55,9 +48,7 @@ export function useChannelInvites(groupId: string) {
   const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
   const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
 
-  // The links list, each step an Effect run in the background (the old
-  // promise chains, same order and same messages). A new load clears the
-  // error first; a failed load keeps the last list.
+  // The links list, each step an Effect run in the background; a new load clears the error first and a failed load keeps the last list.
   const reloadLinks = (): Effect.Effect<void> =>
     Effect.sync(() => setLinksError('')).pipe(
       Effect.andThen(callStore(() => listInviteLinks(groupId))),
@@ -76,10 +67,7 @@ export function useChannelInvites(groupId: string) {
     Effect.runFork(reloadLinks());
   };
 
-  // The clipboard/share bridge for the shown-once block: `expo-clipboard`
-  // and React Native's `Share` cannot run in Node tests, so the sheet takes
-  // callbacks and this screen wires the real modules at the edge. The sheet
-  // takes Promises, so each bridge call runs its Effect to a Promise.
+  // The clipboard/share bridge: `expo-clipboard` and `Share` cannot run in Node tests, so the sheet takes callbacks and the screen wires the real modules at the edge.
   const linksShare = useMemo(
     () => ({
       copyText: (text: string) =>

@@ -35,27 +35,14 @@ type VoiceMessageProps = {
   message: UiMessage;
   onRetryVoice?: ((message: UiMessage) => void) | undefined;
   onCancelVoice?: ((message: UiMessage) => void) | undefined;
-  /** The shared one-at-a-time registry; tests inject a fake. */
   playback?: VoicePlayback | undefined;
-  /** The screen-owned player for this bubble; tests inject a fake. */
   controls?: VoicePlayerControls | undefined;
-  /** The on-device transcription engine; tests inject a fake. */
   whistle?: WhistlePort | undefined;
-  /** Stored transcripts; tests inject a fake map. */
   transcripts?: TranscriptMap | undefined;
-  /** Persists one transcript; tests inject a fake. */
   onSaveTranscript?: ((id: string, entry: StoredTranscript) => Promise<void> | void) | undefined;
 };
 
-/**
- * A voice bubble (T-0154, on-device transcription T-0179): play/pause, a
- * progress bar, elapsed/total time, and a speed toggle. Playback comes from
- * the local file while the upload runs and from the served URL after
- * (trusted hosts only — an untrusted voice shows the waveform and the
- * duration but never fetches). Only one voice plays at a time through the
- * shared registry. On phones with the Whistle engine a Transcribe button
- * runs the on-device model and keeps the text on the phone only.
- */
+// A voice bubble: play/pause, progress bar, elapsed/total time and a speed toggle. A local file plays while it uploads, then the served URL (trusted hosts only; an untrusted voice never fetches). One voice plays at a time; the Whistle engine transcribes on-device and keeps the text on the phone.
 export function VoiceMessage({
   voice,
   outgoing,
@@ -80,9 +67,7 @@ export function VoiceMessage({
   const [playError, setPlayError] = useState<string | undefined>(undefined);
   const bars = useMemo(() => sampleBars(voice.waveform, BAR_COUNT), [voice.waveform]);
 
-  // The host owns play state, progress and play failures; the bubble only
-  // mirrors its own subscription. Claiming only records UI state (finding
-  // 1): the shared player is never paused as a side effect of switching.
+  // Claiming only records UI state: the shared player is never paused as a side effect of switching.
   useEffect(() => {
     const stopState = subscribeVoiceState(message.id, (update) => {
       if (update.playing) {
@@ -160,10 +145,7 @@ export function VoiceMessage({
     onSaveTranscript,
   });
 
-  // Resolves the audio source lazily on play (the bearer must be fresh),
-  // then hands it to the screen-owned player. `resolvePlaySource` carries
-  // the request-id guard (finding 3): a stale resolve (an older tap whose
-  // source arrives after a newer tap) is ignored, so the last tap wins.
+  // Resolves the source lazily on play (the bearer must be fresh), with a request-id guard so a stale resolve loses to the last tap.
   const playRequestRef = useRef(0);
   const toggle = () => {
     if (!playable || controls === undefined) {

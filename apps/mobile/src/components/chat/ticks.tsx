@@ -35,11 +35,7 @@ export function Ticks({ status, color, size = 15 }: TicksProps) {
   );
 }
 
-/**
- * T-1317: the tick is decoration for the bubble's own `accessibilityLabel`, so
- * it must never be spoken (Android would otherwise read the icon as `￼`). The
- * two props cover both platforms; `accessible={false}` keeps the wrapper out.
- */
+// The tick is decoration for the bubble's `accessibilityLabel`, so it must never be spoken (Android would read it as `￼`). `accessible={false}` keeps the wrapper out.
 function TickIcon({ children }: { children: ReactNode }) {
   return (
     <View

@@ -12,10 +12,7 @@ const REACTORS_VISIBLE_MS = 3000;
 
 export interface ReactionChipsProps {
   reactions: UiReaction[];
-  /** True for my own outgoing bubble, which aligns the chips to the right. */
   outgoing: boolean;
-  /** Toggling my reaction on an existing chip removes it (the long-press sheet
-   *  shows the same emoji highlighted so the affordance is consistent). */
   onToggle?: (emoji: string) => void;
 }
 
@@ -25,11 +22,7 @@ function chipLabel(reaction: UiReaction): string {
     : `${reaction.emoji} ${reaction.count}`;
 }
 
-/**
- * The raised reaction pills under a bubble. Mine use a brighter accent to
- * match the chat-action sheet. With `onToggle` the chip is a toggle: tapping
- * a chip I already reacted with clears my reaction of that emoji.
- */
+// The raised reaction pills under a bubble. Mine use a brighter accent. With `onToggle` a chip is a toggle: tapping one I already reacted with clears it.
 export function ReactionChips({ reactions, outgoing, onToggle }: ReactionChipsProps) {
   const [shown, setShown] = useState<{ emoji: string; names: string[] } | null>(null);
 

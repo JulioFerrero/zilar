@@ -19,12 +19,7 @@ export type NewTopicInput = {
   aiIds: string[];
 };
 
-/**
- * The new-topic sheet (T-0112): name, Public/Private with the help text, the
- * member list for private (the creator locked in), and the viewer's group AIs
- * unticked with "AIs only read topics you add them to".
- * Thin view: the screen validates and creates.
- */
+// The new-topic sheet: name, Public/Private with help text, the member list for private (the creator locked in), and the group AIs unticked with "AIs only read topics you add them to". The screen validates and creates.
 export function NewTopicSheet({
   visible,
   groupTitle,

@@ -12,13 +12,7 @@ import {
 import type { CaretSelection } from '@/lib/emoji-data';
 import type { MentionMember, UiMention } from '@zilar/chat-core';
 
-/**
- * The composer's `@` mention tracking (T-0227, like web's `mentions` +
- * `picker`): the mention ranges carried with the text, the open query, the
- * input change handler and the pick handler. Edit mode keeps today's
- * behaviour (no picker while editing). A chat switch resets the tracked
- * mentions through `chatKey`; the draft text stays.
- */
+// The composer's `@` mention tracking: mention ranges with the text, the open query, input change and pick. Edit mode has no picker; a chat switch resets the mentions but keeps the draft.
 export function useComposerMentions({
   chatKey,
   mentionMembers,
@@ -42,10 +36,7 @@ export function useComposerMentions({
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | undefined>(
     undefined,
   );
-  // The screen passes `chatKey={chat.id}`: a switch resets the tracked
-  // mentions and the open query (a picked mention must never leak into
-  // another chat, like web), while the draft text stays. Seeding the initial
-  // value from `chatKey` skips the reset on the first render.
+  // A chat switch resets the mentions and query (a picked mention must never leak into another chat) but keeps the draft; seeding from `chatKey` skips the reset on the first render.
   const [trackedChatKey, setTrackedChatKey] = useState<string | undefined>(chatKey);
   if (chatKey !== undefined && trackedChatKey !== chatKey) {
     const reset = resetMentionStateForChatKey(trackedChatKey, chatKey, {
@@ -57,9 +48,7 @@ export function useComposerMentions({
     setMentionQuery(reset.state.query);
   }
 
-  // The `@` mention picker (T-0227, like web): only when the screen passes
-  // members (groups, never DMs) and never while editing. Sending and the
-  // `chatKey` chat switch both reset the tracked mentions.
+  // The picker appears only when the screen passes members (groups, never DMs) and never while editing.
   const mentionsEnabled = mentionMembers !== undefined && !editing;
   const candidates =
     mentionsEnabled && mentionQuery !== undefined
@@ -68,16 +57,7 @@ export function useComposerMentions({
   const pickerOpen = candidates.length > 0;
 
   const handleChange = (value: string) => {
-    // Deleting one character inside or right after a mention removes the
-    // whole token, like web's Backspace handler (RN has no reliable
-    // `onKeyPress` backspace signal). Only a real single-character delete at
-    // a collapsed caret takes the token path (T-0227 M1): a range replace
-    // with net −1 is normal typing, or the user's edit would be lost. Any
-    // other change retracks the ranges and the picker through the shared
-    // helper. The tracked `selection` is the pre-change caret
-    // (`onSelectionChange` for this keystroke has not fired yet), so shift
-    // it by the length delta to find the post-change caret; tapping a row
-    // and emoji insertion set it explicitly.
+    // Deleting one character inside or right after a mention removes the whole token, like web (RN has no reliable backspace signal). Only a single-character delete at a collapsed caret takes that path; any other change retracks the ranges.
     const caret = caretAfterChange(text, value, selection?.start);
     if (mentionsEnabled && mentions.length > 0 && isSingleCharBackspace(text, value, selection)) {
       const removed = backspaceMention(
@@ -111,9 +91,7 @@ export function useComposerMentions({
     }
   };
 
-  // Tapping a picker row replaces the `@query` with the token and puts the
-  // caret after it, like web's `pickMention`. The native field is controlled
-  // by `selection`, so setting it moves the caret on the next render.
+  // A picker row replaces the `@query` with the token and puts the caret after it; the field is controlled by `selection`.
   const pickMention = (member: MentionMember) => {
     const caret = selection?.start ?? text.length;
     const picked = pickMentionMember(text, caret, member, { mentions, query: mentionQuery });
@@ -126,8 +104,6 @@ export function useComposerMentions({
     setSelection({ start: picked.caret, end: picked.caret });
   };
 
-  // Emoji insertion shifts the caret like any change; the sheet calls this
-  // to retrack the ranges (no-op when mentions are off).
   const trackEmojiChange = (previousText: string, nextText: string, caret: number) => {
     if (!mentionsEnabled) {
       return;

@@ -30,10 +30,7 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 type NewChatAction = 'channel' | 'message' | 'invite' | 'join';
 
-/**
- * Creating a channel, or opening its screen, failed. `reason` is the original
- * error: `createErrorText` reads its code and never shows its text.
- */
+// A failed create or open: `reason` is the original error, whose code `createErrorText` reads; its text is never shown.
 class CreateFailed extends Data.TaggedError('CreateFailed')<{ readonly reason: unknown }> {}
 
 type ChannelInput = {
@@ -43,10 +40,7 @@ type ChannelInput = {
   handle?: string;
 };
 
-// The clipboard/share bridge for the invite box. `expo-clipboard` is imported
-// lazily (the native module does not load under Vitest/Node). The sheet takes
-// Promise callbacks, so each Effect runs through `runMobile` and a rejection
-// is still the original error.
+// `expo-clipboard` is imported lazily (the native module does not load under Vitest/Node); each Effect runs through `runMobile` so a rejection stays the original error.
 const copyToClipboard = (text: string): Effect.Effect<void, unknown> =>
   Effect.tryPromise({ try: () => import('expo-clipboard'), catch: (error) => error }).pipe(
     Effect.flatMap((Clipboard) =>
@@ -60,7 +54,6 @@ const shareViaSheet = (text: string): Effect.Effect<void, unknown> =>
     Effect.asVoid,
   );
 
-/** The 56 px primary FAB with a "New channel" / "New group" / "New message" / "Join" menu. */
 export function NewChatButton() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -68,16 +61,11 @@ export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [topicPickerOpen, setTopicPickerOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
-  // The menu and each action are separate native sheets (T-1451). A hand-off
-  // must wait for the current sheet to finish dismissing, or the next one
-  // presents in the same commit and comes up without its dimmed backdrop.
-  // `afterMenu` holds the follow-up to run once the menu has closed;
-  // `pendingInvite` marks the New message → Invite hand-off.
+  // The menu and each action are separate native sheets. A hand-off must wait for the current sheet to dismiss, or the next presents in the same commit without its dimmed backdrop.
   const afterMenu = useRef<(() => void) | undefined>(undefined);
   const pendingInvite = useRef(false);
   const createChannel = useChatStore((state) => state.createChannel);
-  // Closes the dialog and opens the new group's screen; a throw here reads
-  // like a failed create.
+  // Closes the dialog and opens the new group's screen; a throw here reads like a failed create.
   const openGroupScreen = (groupId: string) =>
     Effect.try({
       try: () => {
@@ -87,11 +75,7 @@ export function NewChatButton() {
       catch: (reason) => new CreateFailed({ reason }),
     });
 
-  // T-0144: creating a channel refreshes the chat list first (the store
-  // returns the new group id from the POST answer), then opens the
-  // channel screen. A failure reads inline, never raw.
-  // T-0228: public creates carry the handle; failures map to fixed
-  // sentences.
+  // A public create carries the handle; failures map to fixed sentences, never raw text.
   const [channelState, create] = useAction((input: ChannelInput) =>
     Effect.tryPromise({
       try: () => createChannel(input),
@@ -104,17 +88,9 @@ export function NewChatButton() {
     !channelBusy && channelFailure !== undefined
       ? createErrorText(channelFailure.reason, 'channel')
       : '';
-  // The invite box always talks to the real session API (a personal invite
-  // link is meaningless offline), and this menu must stay importable under
-  // the Node tests, whose `expo-router` mock has no `useGlobalSearchParams`.
+  // The invite box talks to the real session API: a personal invite link is meaningless offline.
   const invitesApi = useMemo(() => createInvitesApi(getSessionToken), []);
 
-  // The clipboard/share bridge for the invite box: `expo-clipboard` cannot be
-  // imported statically here (like `expo-secure-store` in `session-token.ts`,
-  // the native module does not load under Vitest/Node), so it is imported
-  // lazily and React Native's `Share` is only touched on press. The sheet
-  // takes callbacks and this menu wires the real modules at the edge (the
-  // `group/[id].tsx` pattern).
   const inviteShare = useMemo(
     () => ({
       copyText: (text: string): Promise<void> => runMobile(copyToClipboard(text)),
@@ -128,16 +104,14 @@ export function NewChatButton() {
     setMenuOpen(false);
   };
 
-  // Runs when the menu sheet has fully dismissed: an item tap queued a
-  // follow-up in `afterMenu`, a user dismissal queues nothing.
+  // Runs when the menu sheet has fully dismissed: a queued follow-up runs, a user dismissal queues nothing.
   const menuDismissed = () => {
     const run = afterMenu.current;
     afterMenu.current = undefined;
     run?.();
   };
 
-  // `Invite a friend` hands off from the New message sheet to the Invite
-  // sheet; the second presents only after the first has dismissed.
+  // `Invite a friend` hands off from the New message sheet; the second presents only after the first dismisses.
   const inviteFromMessage = () => {
     pendingInvite.current = true;
     setAction(undefined);
@@ -148,15 +122,13 @@ export function NewChatButton() {
     setAction(invite ? 'invite' : undefined);
   };
 
-  // Pastes a link in the menu: the form parses it locally and the app opens
-  // the join screen with the token (the token never appears in any message).
+  // The form parses a pasted link locally and opens the join screen with the token; the token never appears in any message.
   const joinWithToken = (token: string) => {
     setAction(undefined);
     router.push({ pathname: '/join/[token]', params: { token } });
   };
 
-  // T-1289/MUX-29: the picked group opens its own new-topic sheet on mount
-  // (`?newTopic=1` is read by the group screen).
+  // The picked group opens its own new-topic sheet on mount (`?newTopic=1` is read by the group screen).
   const openNewTopic = (groupId: string) => {
     setTopicPickerOpen(false);
     router.push({ pathname: '/group/[id]', params: { id: groupId, newTopic: '1' } });
@@ -175,8 +147,7 @@ export function NewChatButton() {
         style={[
           primaryKey,
           pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion),
-          // The floating tab bar (64 px + 12 px bottom gap) sits under the
-          // chats list, so the FAB floats above it (T-0233).
+          // The floating tab bar (64 px + 12 px gap) sits under the chats list, so the FAB floats above it.
           { bottom: Math.max(insets.bottom, 12) + 12 + 64 + 14 },
         ]}
       >

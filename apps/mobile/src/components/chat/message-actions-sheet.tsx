@@ -29,69 +29,39 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  /** True when the message can be named on the wire for a reaction (UI-7). */
   canReact: boolean;
-  /**
-   * The row label for the delete action (T-1247, the web's labels): "Delete" on
-   * my own DM message, "Delete for me" on the peer's, "Delete for everyone" in
-   * groups.
-   */
+  // The delete row's label: "Delete" on my own DM message, "Delete for me" on the peer's, "Delete for everyone" in groups.
   deleteLabel: string;
-  /**
-   * T-1274: the confirm's title when the delete acts on a whole album
-   * ("Delete album?"); undefined keeps the single-message title.
-   */
+  // The confirm's title when deleting a whole album; undefined keeps the single-message title.
   deleteTitle?: string | undefined;
-  /** T-1247: my own message in a DM, where the confirm offers both choices. */
   ownDelete: boolean;
-  /** T-1247: a DM delete, which uses the DM confirms instead of the group one. */
   dmDelete: boolean;
-  /** The peer's name, for the DM confirm body. */
   senderName: string;
-  /** A failed own text: the sheet starts with Retry and Delete (local only),
-   *  and hides Forward, Edit and Delete-for-everyone. */
+  // A failed own text: Retry and local Delete only; Forward, Edit and Delete-for-everyone are hidden.
   failed?: boolean | undefined;
-  /** Retry a failed text send (undefined hides the row). */
   onRetry?: (() => void) | undefined;
-  /** Delete a failed send locally, with no confirm (undefined hides the row). */
   onDeleteLocal?: (() => void) | undefined;
-  /** Forward for a forwardable message (undefined/false hides the row). */
   canForward?: boolean | undefined;
-  /** Pin/Unpin for those allowed (undefined hides the row). */
   canPin?: boolean | undefined;
   isPinned?: boolean | undefined;
-  /** My current reactions, so a chip I already reacted with is highlighted. */
   myReactions: UiReaction[];
   onReply: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onDelete: () => void;
   onForward?: () => void;
-  /** Enters select mode for this message (undefined hides the row). */
   onSelect?: (() => void) | undefined;
   onPin?: () => void;
-  /** Confirm-delete dialog state, controlled by the parent so the bubble can
-   *  restore focus on close. */
+  // Confirm-delete state, controlled by the parent so the bubble can restore focus on close.
   confirmOpen: boolean;
   onCloseConfirm: () => void;
-  /** The confirm's "Delete for everyone" action. */
   onConfirmDelete: () => void;
-  /** The confirm's "Delete for me" action (T-1247). */
   onConfirmDeleteForMe: () => void;
   onReact: (emoji: string) => void;
   onClose: () => void;
 };
 
-/**
- * Bottom sheet with the quick-reaction bar and Reply / Edit / Copy text /
- * Delete. The bar's last key opens the full emoji grid in place of the
- * actions, so any emoji can be a reaction (T-1932). In a group the delete row
- * is "Delete for everyone" behind a kit `ConfirmDialog`. In a DM (T-1247) the
- * peer's message offers "Delete for me" with the DM body, and my own offers
- * both choices in an in-sheet confirm. The parent just toggles `confirmOpen`.
- * A failed own text instead starts with Retry and (local-only, no-confirm)
- * Delete, and hides Forward, Edit and Delete.
- */
+// Bottom sheet with quick reactions and Reply / Edit / Copy / Delete. In a DM the peer's message offers "Delete for me" with the DM body, my own offers both; in a group it is "Delete for everyone" behind a ConfirmDialog. A failed own text starts with Retry and local Delete instead.
 export function MessageActionsSheet({
   visible,
   canCopy,
@@ -128,14 +98,12 @@ export function MessageActionsSheet({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [category, setCategory] = useState<EmojiCategoryId | 'recent' | undefined>('smileys');
 
-  // The parent closes the sheet on a pick; reset the grid during render, so a
-  // reopen starts on the actions and no effect synchronizes state.
+  // The parent closes on a pick; reset the grid during render, so a reopen starts on the actions.
   if (!visible && pickerOpen) {
     setPickerOpen(false);
   }
 
-  // `ActionSheet` draws a divider between its direct children, and a fragment
-  // counts as one child, so the rows are a flat array.
+  // `ActionSheet` draws a divider between direct children, and a fragment counts as one, so the rows are a flat array.
   const actions = [
     ...(failed
       ? [

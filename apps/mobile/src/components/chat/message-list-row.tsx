@@ -27,7 +27,6 @@ type MessageListSelection = {
 
 type MessageListRowProps = {
   item: ListEntry;
-  /** Whether the chat is a group; the only chat field a row reads. */
   isGroup: boolean;
   currentUserId: string;
   canPinChat: boolean;
@@ -73,9 +72,7 @@ function MessageListRowImpl({
   if (item.type === 'separator') {
     return <DateSeparator date={item.date} />;
   }
-  // An album item renders its head bubble; the grid inside its attachment body
-  // draws exactly this run, handed down so a peer's colliding id or a far
-  // sibling the grouping kept apart cannot merge in (T-1271).
+  // An album item renders its head bubble; the grid inside its attachment body draws exactly this run, so a colliding id or a far sibling cannot merge in.
   const albumMembers = item.item.kind === 'album' ? item.item.messages : null;
   return (
     <AlbumMembersProvider messages={albumMembers}>
@@ -108,7 +105,6 @@ function MessageListRowImpl({
   );
 }
 
-/** Whether two list entries would render the same row. */
 function isSameEntry(a: ListEntry, b: ListEntry): boolean {
   if (a === b) {
     return true;
@@ -132,11 +128,7 @@ function isSameEntry(a: ListEntry, b: ListEntry): boolean {
   return true;
 }
 
-/**
- * Whether two entries carry the same album members. `groupMessages` rebuilds
- * the `messages` array on every list rebuild, so the rows are compared element
- * by element: a sibling arriving from an older page must re-render the grid.
- */
+// Whether two entries carry the same album members; compared element by element because `groupMessages` rebuilds the array on every rebuild, and a sibling from an older page must re-render the grid.
 function sameAlbumMembers(a: MessageItem | AlbumItem, b: MessageItem | AlbumItem): boolean {
   const aMembers = a.kind === 'album' ? a.messages : null;
   const bMembers = b.kind === 'album' ? b.messages : null;
@@ -146,12 +138,7 @@ function sameAlbumMembers(a: MessageItem | AlbumItem, b: MessageItem | AlbumItem
   return aMembers.length === bMembers.length && aMembers.every((m, index) => m === bMembers[index]);
 }
 
-/**
- * Whether the row can skip a render. `item` is rebuilt by `groupMessages` on
- * every list rebuild (a draft frame is one every ~150 ms) even when the row did
- * not change, so it is compared field by field; every other prop is compared by
- * identity and the list keeps those stable via `useCallback`/`useStableHandler`.
- */
+// Whether the row can skip a render. `item` is rebuilt every list rebuild (a draft frame is one every ~150 ms), so it is compared field by field; the other props are compared by identity.
 function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps): boolean {
   return (
     isSameEntry(prev.item, next.item) &&
@@ -175,8 +162,5 @@ function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps):
   );
 }
 
-/**
- * Memoised (T-1188): with the list's stable handlers, a store tick such as a
- * draft frame only re-renders the row whose entry changed, not every loaded row.
- */
+// Memoised: with the list's stable handlers, a draft frame re-renders only the row whose entry changed.
 export const MessageListRow = memo(MessageListRowImpl, areRowPropsEqual);

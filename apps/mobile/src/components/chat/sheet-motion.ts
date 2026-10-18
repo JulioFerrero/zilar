@@ -58,27 +58,14 @@ function isExiting(exiting: SharedValue<boolean>): boolean {
   return exiting.value;
 }
 
-/**
- * The phone sheets' motion (T-1922, T-1928): the panel slides up from the
- * bottom in 260 ms when the sheet mounts and back down in 200 ms before it
- * closes, so enter and exit take the same path as the kit `BottomSheet`.
- * `close` is idempotent while the exit runs. `dragGesture` is the pan for the
- * sheet's grabber and header: it follows the finger down (pulling up
- * rubber-bands), lets go past a third of the panel or with a quick flick to
- * dismiss through the same `close` path, and springs back otherwise. With
- * reduced motion the panel never translates on its own: it just fades with the
- * `Modal`, the drag still follows the finger, and either close calls `onClose`
- * at once. Call this from a body that mounts only while the sheet is open.
- */
+// The phone sheets' motion: the panel slides up in 260 ms on mount and down in 200 ms before it closes, like the kit `BottomSheet`; `close` is idempotent while the exit runs. `dragGesture` follows the finger down (pulling up rubber-bands), dismisses past a third of the panel or with a quick flick, and springs back otherwise. With reduced motion it only fades, and either close calls `onClose` at once; call it from a body that mounts only while the sheet is open.
 export function useSheetMotion(onClose: () => void) {
   const reduceMotion = useReducedMotion();
   const offset = useSharedValue(reduceMotion ? 0 : WINDOW_HEIGHT);
-  // A plain object so the animations write the shared value outside render.
   const motion = useMemo<SheetMotionValues>(() => ({ offset }), [offset]);
   const [height, setHeight] = useState(WINDOW_HEIGHT);
   const measured = useRef(false);
-  // Read by the drag's worklets, so a drag that starts while the exit runs
-  // cannot cancel its animation and strand the panel.
+  // Read by the drag's worklets, so a drag during the exit cannot cancel its animation and strand the panel.
   const exiting = useSharedValue(false);
 
   useEffect(() => {
@@ -100,8 +87,7 @@ export function useSheetMotion(onClose: () => void) {
         return;
       }
       measured.current = true;
-      // The first frame hid the panel by the window height; restart the entry
-      // from the real height so the slide travels only the panel's distance.
+      // The first frame hid the panel by the window height; restart the entry from the real height so the slide travels only the panel's distance.
       if (!reduceMotion) {
         setOffset(motion, panelHeight);
         animateOpen(motion);

@@ -7,11 +7,7 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 
-/**
- * The chats screen's header (T-0138): the title and search well when the
- * search is closed, the autofocused search field with its Cancel button when
- * it is open. The screen owns the search state and the branches it drives.
- */
+// The chats screen's header: the title and search well when search is closed, the autofocused field with Cancel when open. The screen owns the search state.
 export function SearchHeader({
   searchOpen,
   search,

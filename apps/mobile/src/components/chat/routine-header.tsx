@@ -6,12 +6,7 @@ import { Pressable } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 
-/**
- * T-1722: the header a routine's live message shows above its text (the
- * approved `PhoneRoutineLive` board): a repeat icon, the routine title in muted
- * 13 px medium and its schedule in mono 12 px. The row is a Pressable that
- * opens Settings › Routines.
- */
+// The header a routine's live message shows above its text: a repeat icon, the routine title and its schedule. The row opens Settings › Routines.
 export function RoutineHeader({ routine }: { routine: RoutinePost }) {
   const router = useRouter();
   return (

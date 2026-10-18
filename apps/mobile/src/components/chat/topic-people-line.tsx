@@ -10,28 +10,20 @@ import type { GroupDetail } from '@/lib/chat-api';
 import { FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-/** The 22 px stack circle, its ring and the board's 7 px overlap (T-1780). */
 const STACK_SIZE = 22;
 const STACK_RING = 2;
 const STACK_OVERLAP = -7;
 const STACK_MAX = 4;
-/** One half of the 6 px writing dot's pulse. */
 const PULSE_MS = 700;
 const DOT_SIZE = 6;
 
-/** One person or AI the line draws: a topic member or one of its AIs. */
 export type TopicLinePerson = {
   id: string;
   name: string;
   avatarUrl?: string;
 };
 
-/**
- * The person behind one `topic.memberIds` id, when the group detail knows them.
- * An id the detail has not loaded yet has no person (callers skip it, the
- * header still counts it in the line's N). Shared by the header (T-1780) and
- * the topic-info sheet (T-1785).
- */
+// The person behind one `memberIds` id when the group detail knows them; an unloaded id has no person, but the header still counts it in N.
 export function memberPerson(
   memberId: string,
   detail: GroupDetail | undefined,
@@ -48,13 +40,9 @@ export function memberPerson(
 }
 
 type TopicPeopleLineProps = {
-  /** The topic's people, in stack order. */
   people: readonly TopicLinePerson[];
-  /** The topic's AIs, drawn after the people. */
   ais: readonly TopicLinePerson[];
-  /** The board's N: the topic's people plus its AIs. */
   count: number;
-  /** The display names writing right now; empty when nobody writes. */
   writers: readonly string[];
   /** The group's name, shown before `· N`; pressable when `onOpenGroup` is set. */
   groupName?: string;
@@ -62,7 +50,6 @@ type TopicPeopleLineProps = {
   className?: string;
 };
 
-/** The overlapping circles: up to four people or AIs, each ringed in the header's colour. */
 function Stack({ people }: { people: readonly TopicLinePerson[] }) {
   return (
     <View
@@ -90,7 +77,6 @@ function Stack({ people }: { people: readonly TopicLinePerson[] }) {
   );
 }
 
-/** The board's 6 px dot, pulsing unless reduce-motion is on. */
 function PulsingDot() {
   const reduceMotion = useReducedMotion();
   const [pulse] = useState(() => new Animated.Value(1));
@@ -137,7 +123,6 @@ function PulsingDot() {
   );
 }
 
-/** The `group · N` text, pressable when the group can be opened. */
 function GroupLine({
   groupName,
   count,
@@ -169,12 +154,7 @@ function GroupLine({
   );
 }
 
-/**
- * The topic header's second line (T-1780, the phone `PhoneHeader.dc.html` board):
- * the stack of the topic's people and AIs with `group · N` when nobody writes,
- * the writers' avatars with `writingLabel` and a pulsing dot while someone does.
- * Only this line swaps, so the header height never changes.
- */
+// The topic header's second line: the stack of the topic's people and AIs with `group · N` when nobody writes, the writers with `writingLabel` and a pulsing dot while someone does. Only this line swaps, so the header height never changes.
 export function TopicPeopleLine({
   people,
   ais,

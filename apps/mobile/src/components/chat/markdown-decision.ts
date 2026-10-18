@@ -6,18 +6,9 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 
-/**
- * The two Markdown wiring decisions, kept pure and next to the components so
- * they can be unit-tested: `MessageBubble` and `ChatListItem` only branch on the
- * result. Both delegate to the shared `shouldRenderMarkdown` rule, so the phone
- * and the web can never disagree about what counts as an AI reply.
- */
+// The two Markdown wiring decisions, kept pure and unit-tested; both delegate to the shared `shouldRenderMarkdown` rule, so phone and web cannot disagree about what counts as an AI reply.
 
-/**
- * Whether a message bubble renders its body as Markdown instead of `LinkText`.
- * The message's chat is looked up by `message.chatId`; an unknown chat stays
- * plain, so a chat the store has not loaded never renders Markdown.
- */
+// Whether a bubble renders Markdown instead of `LinkText`; an unknown chat stays plain, so a chat the store has not loaded never renders Markdown.
 export function rendersMarkdown(
   chats: readonly ChatSummary[],
   message: UiMessage,
@@ -27,11 +18,7 @@ export function rendersMarkdown(
   return chat !== undefined && shouldRenderMarkdown(chat, message, currentUserId);
 }
 
-/**
- * The chat-list preview body: an incoming AI reply (a DM AI or a group AI
- * reply) is flattened to one plain line, while a human message or your own
- * message in an AI chat shows its light Markdown markers stripped.
- */
+// The chat-list preview: an incoming AI reply is flattened to one plain line; a human message or your own in an AI chat shows its light Markdown markers stripped.
 export function plainPreviewBody(
   chat: ChatSummary,
   last: UiMessage | undefined,

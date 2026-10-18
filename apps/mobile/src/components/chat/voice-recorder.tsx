@@ -48,15 +48,12 @@ export {
 export type { RecorderBeginResult, RecorderDecisionDeps, RecorderFinishOutcome };
 
 type VoiceRecorderProps = {
-  /** Sends the finished recording with the optional reply, like web. */
   onSendVoice: (recording: SendVoiceRecording, options?: SendTextOptions) => void;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
-  /** True while the composer has text or a picked file (mic stays hidden). */
   canSend: boolean;
   /** The recorder; tests inject a fake so no microphone is needed. */
   recorder?: VoiceRecorderPort | undefined;
-  /** Builds a flat waveform placeholder; tests inject a fake. */
   waveformFor?: ((durationMs: number) => number[]) | undefined;
   disabled?: boolean | undefined;
   /** Tells the composer when a recording is active, so it can hide the other controls. */
@@ -66,17 +63,7 @@ type VoiceRecorderProps = {
 /** How often the recording row re-reads the live duration. */
 const TIMER_TICK_MS = 250;
 
-/**
- * The composer's mic button (T-0154): hold to record, release to send, slide
- * left while holding to cancel, slide up while holding to lock. While holding,
- * a timer row replaces the input: a red dot, the elapsed time and a hint, with
- * a 5-minute cap that stops the recording automatically. The mic stays mounted
- * under the finger for the whole unlocked hold (a remount would drop the
- * touch). Once locked the finger may lift: the row swaps to Cancel and Send and
- * the timer keeps running. Under one second is a miss press: the take is
- * discarded with nothing sent, and a "Hold to record, release to send" hint
- * shows above the composer for 1.5 s.
- */
+// Hold to record, release to send, slide left to cancel, slide up to lock. The mic stays mounted under the finger for the whole unlocked hold (a remount would drop the touch). Under one second is a miss press, discarded with a hint.
 export function VoiceRecorderButton({
   onSendVoice,
   replyTo,
@@ -109,8 +96,7 @@ export function VoiceRecorderButton({
       interruptFiber(hide);
     };
   }, [error]);
-  // A too-short press shows the hold hint for 1.5 s, like the error hide
-  // above: an `Effect.sleep` forked on a fiber, interrupted by the cleanup.
+  // A too-short press shows the hold hint for 1.5 s; the `Effect.sleep` fiber is interrupted by the cleanup.
   const [shortPressHint, setShortPressHint] = useState(false);
   useEffect(() => {
     if (!shortPressHint) {
@@ -127,12 +113,10 @@ export function VoiceRecorderButton({
   }, [shortPressHint]);
   const timerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const recordingRef = useRef(false);
-  // Set synchronously before the first await so a double tap cannot create
-  // two native recorders (finding 6); cleared once the start settles.
+  // Set synchronously before the first await, so a double tap cannot create two native recorders.
   const startingRef = useRef(false);
 
-  // Leaving the chat while recording stops the microphone and discards the
-  // recording (the OS recording indicator must go off).
+  // Leaving the chat while recording stops the microphone and discards the take (the OS indicator must go off).
   useEffect(
     () => () => {
       stopTicker(timerRef);
@@ -150,14 +134,12 @@ export function VoiceRecorderButton({
     stopTicker(timerRef);
   };
 
-  // Releases that arrive before the native recorder finished starting (the
-  // first start waits on the permission prompt) are replayed when it does.
+  // Releases that arrive before the native recorder finished starting (the first start waits on the permission prompt) are replayed.
   const heldRef = useRef(false);
   const cancelRef = useRef(false);
   const lockedRef = useRef(false);
 
-  // A failed haptic is ignored: the press itself still works without it
-  // (the call style of `swipe-to-reply.tsx` and `message-bubble-actions.tsx`).
+  // A failed haptic is ignored: the press still works without it.
   const haptic = (style: Haptics.ImpactFeedbackStyle): void => {
     Effect.runFork(
       Effect.tryPromise({
@@ -173,15 +155,10 @@ export function VoiceRecorderButton({
     }
     startingRef.current = true;
     setError(undefined);
-    // A throw from the native import or the permission request (e.g. the
-    // pre-rebuild state) is a handled mic failure, never a silent death
-    // (finding 1, round 3): the button shows the failed copy.
+    // A throw from the native import or the permission request is a handled mic failure, never a silent death.
     const onBegun = (result: RecorderBeginResult): void => {
       if (!result.started) {
-        // The gesture may have locked while the native start was still in
-        // flight (a slide up before it settles). A failed start must not leave
-        // `locked` set with `recording` false, which would render neither the
-        // row nor the mic and strand the composer until a remount.
+        // A failed start must not leave `locked` set with `recording` false, or the composer renders neither row nor mic.
         lockedRef.current = false;
         setLocked(false);
         setError(result.error);
@@ -198,8 +175,7 @@ export function VoiceRecorderButton({
       timerRef.current = startTicker(TIMER_TICK_MS, () => {
         const elapsed = recorder.currentDurationMs();
         setElapsedMs(elapsed);
-        // The 5-minute cap stops the recording automatically, like the
-        // server's `VOICE_MAX_DURATION_MS` refusal would.
+        // The 5-minute cap stops the recording, as the server's `VOICE_MAX_DURATION_MS` refusal would.
         if (elapsed >= VOICE_MAX_DURATION_MS) {
           finish(false);
         }
@@ -215,8 +191,7 @@ export function VoiceRecorderButton({
         ),
         Effect.catch(() =>
           Effect.sync(() => {
-            // Same as the `!started` branch: a start that throws must not
-            // strand a lock taken while it was in flight.
+            // A start that throws must not strand a lock taken while it was in flight.
             lockedRef.current = false;
             setLocked(false);
             setError(MIC_FAILED_MESSAGE);
@@ -276,8 +251,7 @@ export function VoiceRecorderButton({
     }
   };
 
-  // A slide up locks the recording hands-free: the finger may lift and the
-  // take keeps running until the row's Cancel or Send (or the 5-minute cap).
+  // A slide up locks hands-free: the finger may lift and the take runs until Cancel, Send or the 5-minute cap.
   const lock = () => {
     setWillCancel(false);
     setLocked(true);

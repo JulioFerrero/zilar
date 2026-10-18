@@ -5,12 +5,10 @@ import { interruptFiber } from '@/lib/effect/timers';
 import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 
-// T-1218: how long a failed swipe keeps its line above the chat list.
+// How long a failed swipe keeps its line above the chat list.
 const SWIPE_ERROR_MS = 4000;
-// T-1247: the same fixed line the core sets when a delete call fails.
 const DELETE_ERROR = 'Could not delete. Try again.';
 
-// Returns a copy of `keys` with `key` added (on) or removed (off).
 function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
   const next = new Set(keys);
   if (on) {
@@ -21,25 +19,17 @@ function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlyS
   return next;
 }
 
-/**
- * The chats screen's action-sheet state and pref writes (T-0135): the
- * long-press actions on a chat or group row. `chat-actions-host.tsx` renders
- * the sheet from it; the screen passes `openActions` down to the rows.
- */
 export function useChatActions() {
   const chats = useChatStore((state) => state.chats);
-  // The chat id (or `group:<groupId>`) whose action sheet is open; the
-  // sheet resolves it to the underlying rows below.
+  // The chat id (or `group:<groupId>`) whose action sheet is open; the sheet resolves it to the rows below.
   const [actionFor, setActionFor] = useState<string | null>(null);
   const [actionMuteOpen, setActionMuteOpen] = useState(false);
-  // T-1247: the Clear history in-sheet confirm is showing.
   const [actionClearOpen, setActionClearOpen] = useState(false);
   const setChatPref = useChatStore((state) => state.setChatPref);
   const markChatRead = useChatStore((state) => state.markChatRead);
   const clearHistory = useChatStore((state) => state.clearHistory);
   const [actionError, setActionError] = useState('');
-  // T-1218: one timer clears the swipe-failure line; a new save or unmount
-  // cancels it. A sheet error is cleared by its own close, never by this.
+  // One timer clears the swipe-failure line; a new save or unmount cancels it.
   const swipeErrorTimer = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const cancelSwipeErrorTimer = () => {
     interruptFiber(swipeErrorTimer.current);
@@ -51,9 +41,7 @@ export function useChatActions() {
     },
     [],
   );
-  // One change per chat at a time (one action per row): a second tap on the
-  // same chat while its change saves is dropped; other chats are not blocked.
-  // The ref is read only in handlers; the state drives the busy display.
+  // One change per chat at a time: a second tap while it saves is dropped, other chats are not blocked.
   const prefInFlight = useRef(new Set<string>());
   const [prefBusy, setPrefBusy] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -64,12 +52,7 @@ export function useChatActions() {
     setActionFor(id);
   };
 
-  // The rows behind the open action sheet: a group resolves to its General
-  // topic row (the pref row a group mute/pin sits on). T-0139: only a
-  // General row enables the pref rows — when General is absent (older
-  // servers send no `topics`, or it is archived/filtered out) the sheet
-  // still opens the group screen, but pin/mute/archive stay disabled, since
-  // a group pref on a non-General JID would mute one topic, not the group.
+  // The rows behind the sheet: a group resolves to its General topic row. Only a General row enables the pref rows, since a group pref on any other JID would mute one topic, not the group.
   const actionContext = useMemo(() => {
     if (actionFor === null) {
       return undefined;
@@ -88,14 +71,10 @@ export function useChatActions() {
 
   const actionChatId = actionContext?.chat?.id;
   const actionBusy = actionChatId !== undefined && prefBusy.has(actionChatId);
-  // T-1218: while no sheet is open, a save failure belongs to the swipe that
-  // caused it and shows on its own line; with a sheet open the sheet shows it.
+  // With no sheet open a save failure belongs to the swipe and shows on its own line; with the sheet open, the sheet shows it.
   const swipeError = actionFor === null ? actionError : '';
 
-  // A chat change that saves closes its sheet; a failure keeps it open with
-  // the message. `save` is the write itself, so a plain pref patch, the
-  // composite "Mark as read" and Clear history share one path. `errorText` is
-  // the fixed line a failure shows.
+  // A saving chat change closes its sheet; a failure keeps it open. `save` is the write itself, so a pref patch, Mark as read and Clear history share one path; `errorText` is the fixed failure line.
   const runPrefSave = (
     chatId: string,
     save: () => Promise<void>,
@@ -147,15 +126,12 @@ export function useChatActions() {
     runPrefSave(chatId, () => setChatPref(chatId, input));
   };
 
-  // T-1248: "Mark as unread" sets the manual pref; "Mark as read" runs the
-  // store action (the shared `recordRead` plus clearing the pref).
+  // "Mark as unread" sets the manual pref; "Mark as read" runs the store action (recordRead plus clearing the pref).
   const markUnread = (chatId: string) =>
     runPrefSave(chatId, () => setChatPref(chatId, { unreadMark: true }));
   const markRead = (chatId: string) => runPrefSave(chatId, () => markChatRead(chatId));
 
-  // T-1247: Clear history runs the store action (my own copy only) and keeps
-  // the row. An `unavailable` outcome (no port) closes like web; only `failed`
-  // shows the delete line.
+  // Clear history runs the store action (my own copy only) and keeps the row; only `failed` shows the delete line.
   const clearHistoryFor = (chatId: string) => {
     setActionClearOpen(false);
     runPrefSave(

@@ -25,9 +25,7 @@ import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
-/** Builds the mock-mode `AgentTasksApi` on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build, so
- * the mock module stays out of the bundle (the recipe of `use-ais-api`). */
+// Builds the mock-mode `AgentTasksApi` behind a literal build-time condition: Metro folds it to `false` in a release build, so the mock stays out of the bundle.
 function createMockAgentTasks(): AgentTasksApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -37,7 +35,6 @@ function createMockAgentTasks(): AgentTasksApi {
   throw new Error('The mock API is not part of this build');
 }
 
-/** The state icon of one step row; a status is never a word. */
 function StepStateIcon({
   state,
   reduceMotion,
@@ -57,7 +54,6 @@ function StepStateIcon({
   return <Square size={16} color={MUTED_FOREGROUND} aria-hidden />;
 }
 
-/** One step: its header toggles the actions logged under it. */
 function StepRow({
   step,
   open,
@@ -69,8 +65,7 @@ function StepRow({
   reduceMotion: boolean;
   onToggle: () => void;
 }) {
-  // Only a step with actions expands; one without shows no chevron and is not
-  // a toggle.
+  // Only a step with actions expands; one without shows no chevron and is not a toggle.
   const expandable = step.actions.length > 0;
   const Chevron = open ? ChevronDown : ChevronRight;
   const content = (
@@ -138,14 +133,7 @@ function StepRow({
   );
 }
 
-/**
- * The phone's "View steps" sheet (T-1562), the mobile twin of web's
- * `StepsPanel` (T-1535): the card's own steps with the actions logged under
- * each, opened from a finished card's "View steps" row. It lists the same steps
- * as the card — never model calls, tokens, money or the answer — and reads the
- * card's title, total and AI from the card message. A 404 or an empty log (the
- * log is kept 30 days) falls back to the card's steps with no actions.
- */
+// The phone's "View steps" sheet, the mobile twin of web's `StepsPanel`: the card's steps with the actions logged under each, opened from a finished card's "View steps" row. It never shows model calls, tokens, money or the answer. A 404 or an empty log (kept 30 days) falls back to the card's steps.
 export function StepsSheet({
   visible,
   onClose,
@@ -174,10 +162,7 @@ export function StepsSheet({
   );
 
   const [result, refresh] = useQuery(
-    // The steps are fetched only while the sheet is open: a chat full of
-    // finished cards must not make one request per card. A reopen starts a new
-    // request; the closed sheet requests nothing (`Effect.never`), like
-    // `invite-sheet.tsx`.
+    // Steps are fetched only while the sheet is open, so a chat full of finished cards makes no request per card; a reopen starts a new request.
     () => (visible ? fromApi(() => api.getTaskSteps(taskId)) : Effect.never),
     [api, taskId, visible],
   );
@@ -185,8 +170,7 @@ export function StepsSheet({
   const loaded = AsyncResult.isSuccess(result) ? result.value.steps : undefined;
   const { steps, loading, errored } = stepsView(loaded, failure?.status, card);
 
-  // The step holding the first failed action starts open; the reader's choice
-  // resets when the sheet closes, so it re-defaults the next time.
+  // The step holding the first failed action starts open; the choice resets when the sheet closes.
   const defaultOpen = defaultOpenStepId(steps);
   const [chosenOpen, setChosenOpen] = useState<string | null>();
   const openId = chosenOpen === undefined ? defaultOpen : chosenOpen;

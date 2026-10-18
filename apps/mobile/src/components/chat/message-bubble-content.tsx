@@ -36,50 +36,26 @@ type MessageBubbleProps = {
   isLastInGroup: boolean;
   currentUserId: string;
   onReply: (message: UiMessage) => void;
-  /** A live AI draft: the same bubble, recessed while it is written. */
   draft?: boolean;
-  /**
-   * The turn whose draft this final message continues (T-0056); the bubble
-   * reveals from the shown length until the reveal is done.
-   */
   revealTurnId?: string;
-  /** Called when the user picks a quick-reaction emoji or taps a chip. */
   onReact?: (message: UiMessage, emoji: string) => void;
-  /** Called when the sheet asks to edit the message. */
   onEdit?: (message: UiMessage) => void;
-  /** Called when the user confirms a delete-for-everyone. */
   onDelete?: (message: UiMessage) => void;
-  /** Called when the sheet asks to forward the message. */
   onForward?: (message: UiMessage) => void;
-  /** Multi-select mode (T-0445): shows the row checkbox and blocks the row's
-   *  own taps/long-presses while messages are picked for forwarding. */
   selecting?: boolean;
-  /** Whether this message is picked in select mode. */
   selected?: boolean;
-  /** Toggles this message in select mode. */
   onToggleSelect?: (message: UiMessage) => void;
-  /** Enters select mode with this message picked (the sheet's Select row). */
   onStartSelect?: (message: UiMessage) => void;
-  /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: (message: UiMessage) => void;
-  /** Called when the Retry is tapped on a failed attachment upload. */
   onRetryAttachment?: (message: UiMessage) => void;
-  /** Called when Cancel is tapped while an attachment uploads. */
   onCancelAttachment?: (message: UiMessage) => void;
-  /** Called when the Retry is tapped on a failed voice send. */
   onRetryVoice?: (message: UiMessage) => void;
-  /** Called when Cancel is tapped while a voice message uploads. */
   onCancelVoice?: (message: UiMessage) => void;
-  /** Called when a file row is tapped (system open sheet). */
   onOpenAttachment?: (message: UiMessage) => void;
-  /** The message id currently downloading for the open sheet. */
   openingAttachmentId?: string | undefined;
-  /** The shared voice player host from the chat screen (T-0154). */
   voiceHost?: VoicePlayerHost | undefined;
-  /** Pin/unpin gating for chat of this message (T-0135). */
   canPin?: boolean;
   isPinned?: boolean;
-  /** Called when the sheet asks to pin or unpin the message. */
   onPin?: (message: UiMessage) => void;
   onUnpin?: (message: UiMessage) => void;
 };
@@ -111,7 +87,6 @@ type MessageBubbleContentProps = {
   voiceHost?: VoicePlayerHost | undefined;
 };
 
-/** The per-kind body of a bubble, inside the bubble's pressable surface. */
 export function MessageBubbleContent({
   message,
   isGroup,
@@ -134,9 +109,7 @@ export function MessageBubbleContent({
   onCancelVoice,
   voiceHost,
 }: MessageBubbleContentProps) {
-  // Stable across reveal frames that repeat the same text, so `MarkdownText`'s
-  // memo still skips a re-parse. The `hidden` copy reserves the meta's width at
-  // the end of the last line; the visible copy is drawn bottom-right below.
+  // Stable across reveal frames that repeat the same text, so `MarkdownText`'s memo skips a re-parse. The hidden copy reserves the meta's width; the visible one is bottom-right.
   const trailingMeta = useMemo(
     () => (
       <>
@@ -194,7 +167,6 @@ export function MessageBubbleContent({
         />
       ) : message.card && isRenderedCard(message.card) ? (
         <>
-          {/* T-1756: a blocks card carries its own time row as its card footer. */}
           <PayloadCard
             card={message.card}
             senderId={message.senderId}
@@ -207,7 +179,7 @@ export function MessageBubbleContent({
               outgoing
                 ? undefined
                 : {
-                    // A direct chat records its card under the origin id (T-1825).
+                    // A direct chat records its card under the origin id.
                     messageId: isGroup ? message.id : (message.originId ?? message.id),
                     direct: !isGroup,
                     chatId: message.chatId,
@@ -216,9 +188,7 @@ export function MessageBubbleContent({
                   }
             }
           />
-          {/* T-1619: the progress card stands alone, so it shows no time or
-              "edited" row; a blocks card shows its time inside the card. Approval
-              and question cards keep theirs. */}
+          {/* A blocks card carries its time inside the card; a progress card shows none. */}
           {message.card.type === 'progress' || message.card.type === 'blocks' ? null : (
             <BubbleMeta
               message={message}
@@ -287,10 +257,7 @@ export function MessageBubbleContent({
   );
 }
 
-/**
- * The sticker kind (T-0838 split): no bubble surface, with the optional sender
- * header and a Retry on a failed send.
- */
+// The sticker kind: no bubble surface, with the optional sender header and a Retry on a failed send.
 export function StickerBubble({
   sticker,
   message,
@@ -337,7 +304,6 @@ export function StickerBubble({
   );
 }
 
-/** The standalone big-emoji kind. */
 export function BigEmojiBubble({
   message,
   text,

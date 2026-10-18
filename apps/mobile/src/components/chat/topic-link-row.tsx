@@ -17,18 +17,11 @@ const LABEL_MAX = 40;
 
 type TopicLinkRowProps = {
   topic: TopicInfo;
-  /** The chat screen's topic patch; a failure lands in the sheet's error line. */
   patch: (input: PatchTopicInput) => void;
-  /** Shows a fixed message (the https check) in the sheet's error line. */
   onError: (message: string) => void;
 };
 
-/**
- * The topic's link (T-1540) as an editable row in the topic info sheet: the
- * label (or the host) opens the URL, the pencil edits it, and the form keeps
- * the https check and the 40-character label. Without a link the row adds one;
- * an existing one can be removed.
- */
+// The topic's link as an editable row: the label (or host) opens the URL, the pencil edits it, the form keeps the https check and the 40-character label. Without a link the row adds one; an existing one can be removed.
 export function TopicLinkRow({ topic, patch, onError }: TopicLinkRowProps) {
   const [editing, setEditing] = useState(false);
   const [url, setUrl] = useState('');

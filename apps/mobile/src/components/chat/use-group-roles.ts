@@ -8,11 +8,7 @@ import type { CustomGroupRole } from '@/lib/roles-api';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The group screen's roles sheet state and writes (T-0137). The route keeps the
- * sheet and the header button; this owns the query, the busy/error flags and
- * the CRUD handlers the sheet calls.
- */
+// The group screen's roles sheet state and writes: the query, the busy/error flags and the CRUD handlers the sheet calls.
 export function useGroupRoles(groupId: string, members: readonly GroupMember[]) {
   const groupRoles = useChatStore((state) => state.groupRoles(groupId));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
@@ -27,8 +23,7 @@ export function useGroupRoles(groupId: string, members: readonly GroupMember[]) 
   const [rolesError, setRolesError] = useState('');
   const [rolesLoadError, setRolesLoadError] = useState('');
 
-  // The roles ride a query for the members/roles sheet; its first load maps
-  // through the same error helper as every retry (404 means the group is gone).
+  // The roles query also feeds the members/roles sheet; its first load maps through the same error helper as every retry (404 means the group is gone).
   const [, reloadRoles] = useQuery(
     () =>
       groupId === ''
@@ -40,10 +35,7 @@ export function useGroupRoles(groupId: string, members: readonly GroupMember[]) 
     [groupId, refreshGroupRoles],
   );
 
-  // Roles writes (T-0137) take the route's group id directly, so an empty
-  // group with no loaded topic rows still works. The store replaces its
-  // cache on success, so the sheet re-renders with server truth. The sheet
-  // awaits the returned promise, which settles on success and on failure.
+  // Roles writes take the group id directly, so an empty group with no loaded topic rows still works. The store replaces its cache on success; the sheet awaits the returned promise, which settles on success and failure.
   const runRolesWrite = (work: () => Promise<unknown>): Promise<void> => {
     setRolesBusy(true);
     setRolesError('');

@@ -7,12 +7,7 @@ export const BAR_COUNT = 24;
 // The bubble is at least this wide so the waveform can stretch to its end.
 export const VOICE_MIN_WIDTH = 236;
 
-/**
- * Resolves the play source and applies it only when the request is still
- * the latest (finding 3, round 3): two taps with out-of-order resolves play
- * only the latest tap's source. Extracted so tests drive the race without
- * rendering; the bubble runs the same function from `toggle`.
- */
+// Resolves the play source and applies it only when the request is still the latest, so two out-of-order resolves play only the latest tap's source. Extracted so tests drive the race without rendering.
 export function resolvePlaySourceEffect(
   input: { voice: VoiceMeta; localUri?: string | undefined; trustedHosts: ReadonlySet<string> },
   seen: { current: number },

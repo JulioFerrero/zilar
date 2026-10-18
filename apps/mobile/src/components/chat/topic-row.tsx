@@ -23,14 +23,7 @@ import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * One topic row on the topics screen (T-0112): the raised glyph tile, name
- * with a lock for private topics, pin/muted icons like the chat list rows
- * (T-0135), the AIs at work as state marks (T-1539), a one-line preview, the
- * time and the unread badge (grey while muted). A topic whose AIs are done
- * shows the green check and a muted name. General renders like every other
- * topic; ordering lives in `lib/topics`.
- */
+// One topic row: the raised glyph tile, name with a lock for private topics, pin/muted icons, the AIs at work as state marks, a one-line preview, the time and the unread badge (grey while muted). A topic whose AIs are done shows a green check and a muted name; ordering lives in `lib/topics`.
 export function TopicRow({
   chat,
   onPress,

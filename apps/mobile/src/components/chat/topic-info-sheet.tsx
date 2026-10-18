@@ -22,7 +22,6 @@ import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/to
 import type { ChatSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** The board's `.sec`: a 13 px label on the left, a mono count on the right. */
 function SectionHeader({ label, count }: { label: string; count: number }) {
   return (
     <View className="flex-row items-center justify-between px-1">
@@ -32,10 +31,6 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
   );
 }
 
-/**
- * The board's `.group` (`PhonePeople.dc.html`): a `#111` list, one hairline
- * between rows and none after the last.
- */
 function InfoGroup({ children }: { children: ReactNode }) {
   const items = Children.toArray(children);
   return (
@@ -49,13 +44,7 @@ function InfoGroup({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The board's AI owner label (T-1785): "yours" when the caller owns the AI,
- * "{first name}'s" for anyone else, and nothing when the group detail does not
- * know the owner (`GroupAi.ownerId` -> `GroupMember.name`). The Add sheet
- * (T-1789) passes `null` as `mineLabel`: the board shows no label on the
- * caller's own AIs there.
- */
+// "yours" when the caller owns the AI, "{first name}'s" otherwise, nothing when the owner is unknown; the Add sheet passes `null` as `mineLabel`.
 export function aiOwnerLabel(
   aiId: string,
   detail: GroupDetail | undefined,
@@ -79,61 +68,36 @@ export function aiOwnerLabel(
 type TopicInfoSheetProps = {
   chat: ChatSummary | null;
   groupTitle: string;
-  /** The group detail behind the topic, for people names and AI owners. */
   detail: GroupDetail | undefined;
-  /** The signed-in user id, to mark the caller's own row. */
   myUserId: string;
   canArchive: boolean;
   busy: boolean;
   error: string;
-  /** Closes the sheet and opens the Leave confirm (T-1798). */
   onAskLeave: () => void;
   onArchive: () => void;
   onClose: () => void;
-  /** The roles attached to this topic (empty until the first load). */
   roles: TopicRole[];
   rolesError: string;
-  /** True while the group detail behind the manager bit is still loading:
-   *  the sheet says the controls are loading instead of silently hiding
-   *  them as a read-only view. */
+  // While the group detail loads, say so instead of hiding the controls as a read-only view.
   rolesLoading: boolean;
-  /** A group-roles load failure: the add picker names it with a Retry
-   *  instead of silently degrading to attached-only. */
+  // A group-roles load failure: the add picker names it with a Retry instead of degrading to attached-only.
   groupRolesError: string;
   approverRole: ApproverRole | null;
-  /** The group's roles, for the manager's add picker. */
   groupRoles: CustomGroupRole[];
   canManageRoles: boolean;
   onToggleTopicRole: (roleId: string) => void;
   onPickApprover: (roleId: string | null) => void;
   onRetryRoles: () => void;
   onRetryGroupRoles: () => void;
-  /** The topic patch the link and done rows use (T-1540). */
   patch: (input: PatchTopicInput) => void;
-  /** A link or done save failure, shown under the link row. */
   patchError: string;
-  /** Sets (or clears) `patchError`, e.g. the link's https check. */
   onPatchError: (message: string) => void;
-  /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
-   * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
-  /** Opens the Add people or AIs sheet (T-1785 part 2). When unset the
-   * primary key is not shown. */
   onAdd?: () => void;
-  /** Opens the topic's Tools and routines page (T-1838). When unset the
-   *  row is not shown (a topic with no group behind it). */
   onOpenTools?: () => void;
 };
 
-/**
- * The topic-info sheet opened from the topic header (T-0112), redrawn in
- * T-1785 after `PhonePeople.dc.html`: the topic header, an optional
- * "Add people or AIs" key, the AIs with their owner labels and the topic's
- * people from `memberIds` (the group's members on General). The topic link,
- * the error line, the roles block, the Tools and routines row, Mute / Leave
- * and the Archive row stay below. The screen loads the data; the sheet only
- * renders it.
- */
+// The topic-info sheet from the topic header: header, add-people key, AIs with owner labels, people from `memberIds` (the group's on General), link, error, roles, tools, Mute/Leave and Archive. The screen loads; the sheet renders.
 export function TopicInfoSheet({
   chat,
   groupTitle,
@@ -164,9 +128,7 @@ export function TopicInfoSheet({
   onOpenTools,
 }: TopicInfoSheetProps) {
   const topic = chat?.topic;
-  // T-1834: General is the whole group, so its AIs are the group's
-  // (`group_ais`); a General topic has no `topic_ais` rows of its own.
-  // T-1885: the rows carry the AI's JID, so each one can open the AI.
+  // General is the whole group, so its AIs are `group_ais`; a General topic has no `topic_ais` rows. The rows carry the AI's JID so each opens the AI.
   const ais: TopicAi[] =
     topic?.isGeneral === true
       ? (detail?.ais ?? []).map((ai) => ({
@@ -182,8 +144,7 @@ export function TopicInfoSheet({
     ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
   }));
   const handles = new Map((detail?.members ?? []).map((m) => [m.userId, m.handle] as const));
-  // General lists the whole group; any other topic lists its own people from
-  // `memberIds`, skipping ids the group detail has not loaded yet.
+  // General lists the whole group; any other topic lists its own `memberIds`, skipping ids the detail has not loaded.
   const people: TopicLinePerson[] =
     topic?.isGeneral === true
       ? groupMembers
@@ -239,8 +200,7 @@ export function TopicInfoSheet({
               <InfoGroup>
                 {ais.map((ai) => {
                   const owner = aiOwnerLabel(ai.id, detail, myUserId);
-                  // T-1885: the avatar and the name open the AI; the owner
-                  // label and the memory key stay outside the tap.
+                  // The avatar and name open the AI; the owner label and memory key stay outside the tap.
                   const person = (
                     <>
                       <EntityAvatar

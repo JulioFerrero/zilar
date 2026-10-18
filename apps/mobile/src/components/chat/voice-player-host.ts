@@ -1,20 +1,9 @@
 /**
- * The screen-owned voice player host (T-0154, moved unchanged from
- * `voice-player.ts` by the T-1032 size split): a single `expo-audio` player
- * that every voice bubble shares. The chat screen creates it with
- * `useVoicePlayerHost` and hands `controls` to each `VoiceMessage`;
- * unmounting (leaving the chat) stops playback and releases the native player.
- *
- * One player at a time works like this: `play(B)` on the shared player
- * replaces the source (which stops A's audio natively) and notifies only
- * B's listener, so B shows playing; A's bubble is told to show paused
- * through its own listener — the shared player is never paused as a side
- * effect of switching. The registry (`createVoicePlayback`) is the UI-side
- * record of who is current; this host drives it from the real player events.
- *
- * The player is created lazily with `createAudioPlayer` (not the hook) so
- * the host lives outside any one bubble's lifecycle: a bubble unmounting
- * mid-play must not release the player another bubble is using.
+ * A single `expo-audio` player shared by every voice bubble. Switching sources
+ * stops the old audio natively and notifies only the new bubble; the old one
+ * shows paused through its own listener. Created lazily with
+ * `createAudioPlayer` so a bubble unmounting mid-play cannot release the player
+ * another bubble uses.
  */
 
 import { Effect } from 'effect';
@@ -43,7 +32,6 @@ import { getSessionToken } from '@/lib/session-token';
 import { createVoicePlayback, VOICE_SPEEDS } from '@/lib/voice-native';
 import type { VoicePlayback } from '@/lib/voice-native';
 
-/** The seekable voice player inside the bubble; the screen owns the registry. */
 export interface VoicePlayerControls {
   play(
     messageId: string,
@@ -58,19 +46,10 @@ export interface VoicePlayerControls {
 export type VoicePlayerHost = {
   playback: VoicePlayback;
   controls: VoicePlayerControls;
-  /**
-   * Keeps the live chat id (T-1185): the voice URL is routed through
-   * `GET /api/files?chat=…` per play, and the screen may be reused for
-   * another chat.
-   */
+  // The live chat id: the voice URL is routed through `GET /api/files?chat=…` per play, and the screen may be reused.
   setChatId(chatId: string): void;
 };
 
-/**
- * Creates the shared registry + controls for one chat; stops playback on
- * unmount. The chat id (T-1185) is pushed in from the screen so the voice URL
- * is proxied for the right chat.
- */
 export function useVoicePlayerHost(chatId: string): VoicePlayerHost {
   const [host] = useState<VoicePlayerHost>(() => createVoicePlayerHost());
   useEffect(() => {
@@ -85,12 +64,7 @@ export function useVoicePlayerHost(chatId: string): VoicePlayerHost {
   return host;
 }
 
-/**
- * A host whose player is injected (tests inject a fake; production lazily
- * creates the real `expo-audio` player). Every bubble of one chat shares
- * one host, so only one voice plays at a time. The chat id is set per play
- * so the voice URL can be routed through `GET /api/files` (T-1185).
- */
+// Every bubble of one chat shares one host, so only one voice plays at a time. Tests inject a fake player.
 export interface HostPlayer {
   play(): void;
   pause(): void;
@@ -100,7 +74,6 @@ export interface HostPlayer {
   remove(): void;
   /** Real-time status ticks (the 120 ms `updateInterval`); tests drive it. */
   addStatusListener?: ((listener: (status: PlayerStatusTick) => void) => void) | undefined;
-  /** Tests fire one status tick through the injected player. */
   __emitStatus?: ((status: PlayerStatusTick) => void) | undefined;
 }
 
@@ -111,7 +84,6 @@ export interface PlayerStatusTick {
   currentTime: number;
   /** Total duration in seconds, 0 when unknown. */
   duration: number;
-  /** Playback error message, or null when healthy. */
   error: string | null;
 }
 
@@ -132,8 +104,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
   const subscribeStatus = (player: NativePlayer, messageId: string): void => {
     const injected = (player as Partial<HostPlayer>).__emitStatus;
     if (injected !== undefined || player.addListener === undefined) {
-      // The injected fake drives ticks through `emitPlayerStatusForTest`
-      // (tests); a player without status events still plays.
+      // The injected fake drives ticks through `emitPlayerStatusForTest`; a player without status events still plays.
       injectedStatus.set(player, (status: PlayerStatusTick) =>
         onPlayerStatus(messageId, player, status),
       );
@@ -143,8 +114,6 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
     if (add === undefined) {
       return;
     }
-    // A player without status events still plays; the bubble keeps its
-    // optimistic state and the registry still gates one-at-a-time.
     attempt(() =>
       add.call(player, 'playbackStatusUpdate', (status: PlayerStatusTick) =>
         onPlayerStatus(messageId, player, status),
@@ -153,8 +122,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
   };
   const controls: VoicePlayerControls = {
     play(messageId, source, resumeMs?: number) {
-      // A trusted `/upload/` file on our API origin is routed through
-      // `GET /api/files` (T-1185); the bearer goes only to that origin.
+      // A trusted `/upload/` file on our API origin goes through `GET /api/files`; the bearer goes only to that origin.
       const target = mediaUrl(chatId, source.uri);
       const needsToken =
         source.headers === undefined && (target !== source.uri || isApiOriginUrl(target));
@@ -166,11 +134,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
           (token === undefined ? undefined : { authorization: `Bearer ${token}` });
         return headers === undefined ? { uri: target } : { uri: target, headers };
       };
-      // Resuming the paused message on its own live player: continue from
-      // the paused position instead of restarting at zero (finding 2,
-      // round 3). Pause keeps the instance alive, so the shared player is
-      // still it — distinguished from a racing fresh instance by the
-      // playerPlaybacks record below.
+      // Resume on the same live player continues from the paused position; a racing fresh instance is told apart by the `playerPlaybacks` record.
       const active = getSharedPlayer();
       if (
         active !== undefined &&
@@ -189,20 +153,12 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         return;
       }
       const startWith = (player: NativePlayer, atMs?: number): void => {
-        // Switching sources stops the previous audio natively: only the new
-        // bubble is notified, so it alone shows playing. The previous
-        // bubble is told to show paused through its own listener — the
-        // shared player is never paused as a side effect of switching.
-        // A new native instance always releases the old one and subscribes
-        // its own status, even for the same message (finding 2, round 2):
-        // two quick plays racing the async import would otherwise leak the
-        // first player and leave the bubble's bar dead.
+        // Switching sources stops the previous audio natively and notifies only the new bubble. A new native instance always releases the old one and subscribes its own status: two quick plays racing the async import would otherwise leak the first player.
         const previous = getActiveMessageId();
         const current = getSharedPlayer();
         if (current !== player) {
           const old = current;
           if (old !== undefined) {
-            // Releasing the previous player never breaks the switch.
             attempt(() => old.remove());
             injectedStatus.delete(old);
           }
@@ -210,9 +166,6 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
           playerPlaybacks.set(player, playback);
           subscribeStatus(player, messageId);
         } else if (previous === messageId) {
-          // Same player re-handed for the active message (the injected
-          // factory returns one instance): still continue from the paused
-          // position (finding 2, round 3).
           const atSeconds = Math.max(0, (atMs ?? 0) / 1000);
           if (atSeconds > 0) {
             attemptAsync(() => player.seekTo(atSeconds));
@@ -259,11 +212,8 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
     },
     pause() {
       const player = getSharedPlayer();
-      // Pausing a released player is not an error here.
       attempt(() => player?.pause());
-      // Pause keeps the native player alive for a resume (finding 2):
-      // only the registry and the active id clear, so playing the same
-      // message again seeks on this instance instead of minting one.
+      // Pause keeps the native player alive, so playing the same message again seeks on this instance.
       const active = getActiveMessageId();
       if (active !== undefined) {
         setActiveMessageId(undefined);
@@ -302,7 +252,6 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
   };
 }
 
-/** Test seam: a host with an injected player factory (finding 1). */
 export function createVoicePlayerHostForTest(createPlayer: () => HostPlayer): VoicePlayerHost {
   return createVoicePlayerHost(createPlayer);
 }

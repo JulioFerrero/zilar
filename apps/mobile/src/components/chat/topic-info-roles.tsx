@@ -10,10 +10,7 @@ import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, TopicRole, TopicVisibility } from '@/lib/topics-api';
 
-/**
- * An error line with a Retry button. The topic-roles and group-roles load
- * failures share this row; each keeps its own message and retry call.
- */
+// An error line with a Retry: the topic-roles and group-roles failures share the row, each with its own message and retry.
 function RetryRow({
   message,
   retryLabel,
@@ -41,20 +38,14 @@ function RetryRow({
 }
 
 type TopicInfoRolesProps = {
-  /** The topic's visibility: roles exist on private topics only. */
   visibility: TopicVisibility;
-  /** The roles attached to this topic (empty until the first load). */
   roles: TopicRole[];
   rolesError: string;
-  /** True while the group detail behind the manager bit is still loading:
-   *  the block says the controls are loading instead of silently hiding
-   *  them as a read-only view. */
+  // While the group detail loads, say so instead of hiding the controls as a read-only view.
   rolesLoading: boolean;
-  /** A group-roles load failure: the add picker names it with a Retry
-   *  instead of silently degrading to attached-only. */
+  // A group-roles load failure: the add picker names it with a Retry instead of degrading to attached-only.
   groupRolesError: string;
   approverRole: ApproverRole | null;
-  /** The group's roles, for the manager's add picker. */
   groupRoles: CustomGroupRole[];
   canManageRoles: boolean;
   onToggleTopicRole: (roleId: string) => void;
@@ -63,11 +54,7 @@ type TopicInfoRolesProps = {
   onRetryGroupRoles: () => void;
 };
 
-/**
- * The topic-info sheet's roles block (split out of `topic-info-sheet.tsx` in
- * T-1785): the attached access rows, the manager's add picker and the approver
- * picker. Behaviour is unchanged by the split.
- */
+// The topic-info sheet's roles block: attached access rows, the manager's add picker and the approver picker.
 export function TopicInfoRoles({
   visibility,
   roles,
@@ -84,17 +71,14 @@ export function TopicInfoRoles({
 }: TopicInfoRolesProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [approverOpen, setApproverOpen] = useState(false);
-  // The picker rows and approver options come from the shared helpers, so
-  // the block renders exactly what the unit tests pin (attached first, the
-  // rest sorted by name).
+  // The picker rows and approver options come from the shared helpers, so the block renders what the unit tests pin (attached first, the rest by name).
   const accessRows = topicAccessRows(visibility, roles, groupRoles);
   const attachedRows = accessRows.filter((row) => row.attached);
   const addableRows = accessRows.filter((row) => !row.attached);
   const approverOpts = approverOptions(roles, approverRole);
   const line = approverLine(approverRole);
 
-  // T-1838: a public topic has no roles at all, so the block is absent rather
-  // than a line about a feature that is not there.
+  // A public topic has no roles, so the block is absent rather than a line about a feature that is not there.
   if (visibility !== 'private') {
     return null;
   }

@@ -4,7 +4,6 @@ import { Text } from '@/components/ui/text';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
-/** The unread count pill shared by the chat, group and topic rows. */
 export function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
   return (
     <View

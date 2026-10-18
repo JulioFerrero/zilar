@@ -30,14 +30,7 @@ function without(id: string, ids: ReadonlySet<string>): ReadonlySet<string> {
   return next;
 }
 
-/**
- * T-1336: one row per incoming contact request at the top of the chat list
- * (All chats and Personal, above the pinned chats). Each row opens the person's
- * profile, carries Accept and a Decline icon; Accept adds the contact and opens
- * the DM, Decline drops the row for a 5-second Undo window before the call
- * reaches the server. More than three requests collapse into "See all N
- * requests", which opens the requests screen.
- */
+// One row per incoming contact request at the top of the chat list. Accept adds the contact and opens the DM; Decline drops the row for a 5-second Undo window before the call reaches the server. More than three collapse into "See all N requests".
 export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage) => void }) {
   const router = useRouter();
   const { api } = useContactsApi();
@@ -45,8 +38,6 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
   const storeApi = useChatStoreApi();
   const { requests, reload } = useContactRequests(api, true);
 
-  // A focus refresh (returning to the chats tab) on top of the hook's
-  // foreground/interval refresh, so a new request shows at once.
   useFocusEffect(
     useCallback(() => {
       reload();
@@ -81,20 +72,16 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
     void performRequestAction(api, request.id, 'accept', hide)
       .then(async (failure) => {
         if (failure !== null) {
-          // The helper can fall back to raw server text; a user-facing error is
-          // always a fixed sentence (finding 1).
+          // A user-facing error is always a fixed sentence, even when the helper falls back to raw server text.
           setError(ACCEPT_FAILED);
           return;
         }
         onToast({ id: Date.now(), text: `${request.other.name} added`, tone: 'notice' });
-        // The DM already exists on the server for a new contact; refresh the
-        // list so it lands at the top, then open it when its JID is known.
+        // The DM already exists server-side; refresh so it lands at the top, then open it when its JID is known.
         reloadChats();
         try {
           const contacts = await api.listContacts();
-          // Push the new contact into the store so the screens that read it
-          // (the profile DM resolver, the group add list) see them before the
-          // next boot (finding 1).
+          // Push the new contact into the store so the screens that read it see them.
           storeApi.setState({ contacts });
           const contact = contacts.find((entry) => entry.userId === request.other.userId);
           if (contact !== undefined) {
@@ -110,8 +97,7 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
       });
   };
 
-  // The decline waits out the Undo window; the row is gone from the list at
-  // once but the request still exists on the server until the timer fires.
+  // The decline waits out Undo: the row disappears at once but the request exists on the server until the timer fires.
   const commitDecline = (request: ContactRequestView): void => {
     pendingRef.current = undefined;
     setPendingDecline(undefined);
@@ -130,8 +116,7 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
       clearTimeout(timerRef.current);
       timerRef.current = undefined;
     }
-    // A second decline inside the Undo window commits the earlier one at once
-    // rather than overwriting it and losing the call (finding 2).
+    // A second decline inside Undo commits the earlier one at once instead of losing the call.
     const previous = pendingRef.current;
     if (previous !== undefined) {
       commitDecline(previous);

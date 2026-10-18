@@ -9,12 +9,7 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The group screen's visibility sheet state (T-0183). Owner only, like the web
- * panel: it reads server truth on open, keeps a debounced live availability
- * check for a changed handle, and saves through the directory API. The store
- * refreshes the detail so the header re-renders with server truth.
- */
+// The group screen's visibility sheet state, owner only like web: it reads server truth on open, keeps a debounced availability check for a changed handle, and saves through the directory API.
 export function useGroupVisibility(groupId: string) {
   const { api: directoryApi } = useDirectoryApi();
   const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
@@ -67,10 +62,7 @@ export function useGroupVisibility(groupId: string) {
     visibilityTruth.handle !== '' &&
     trimmedHandle.toLowerCase() === visibilityTruth.handle.toLowerCase();
 
-  // Debounced live availability for a changed handle (the group's own
-  // handle is skipped: the server sees its live row and would report
-  // "taken"). The query is the timer: a deps change or unmount interrupts a
-  // check still waiting, which replaces the old cleanup.
+  // Debounced availability for a changed handle; the group's own handle is skipped, since the server would report "taken". The query is the timer: a deps change or unmount interrupts a waiting check.
   const checkHandle = (value: string) =>
     Effect.sleep(300).pipe(
       Effect.andThen(

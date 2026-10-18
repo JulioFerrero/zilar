@@ -6,11 +6,7 @@ import { Text } from '@/components/ui/text';
 import { SEEN } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-/**
- * The dark translucent blob (T-1335): when a media message has no caption the
- * time and ticks sit on the photo, bottom-right, in white on
- * `rgba(0,0,0,0.45)`, like Telegram. The read ticks keep the bright seen colour.
- */
+// The dark translucent blob when a media message has no caption: time and ticks on the photo, bottom-right, white on `rgba(0,0,0,0.45)`. Read ticks keep the bright seen colour.
 const PILL: ViewStyle = { backgroundColor: 'rgba(0,0,0,0.45)' };
 
 export function MediaMetaPill({

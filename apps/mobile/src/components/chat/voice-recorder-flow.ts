@@ -9,14 +9,7 @@ import {
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 
-/**
- * The recorder button's decision logic, extracted so tests drive the exact
- * behaviour the component runs (finding 5): permission-denied copy with no
- * recorder created, the sub-1s miss press with nothing sent and a `too-short`
- * outcome the component answers with the hold hint, the too-long refusal,
- * and the happy path. The component calls the same steps in the same order
- * (`begin` → `finish`), so these tests pin its behaviour.
- */
+// The recorder button's decision logic, extracted so tests drive the same steps the component runs (`begin` → `finish`).
 
 export type RecorderDecisionDeps = {
   recorder: RecorderPort;
@@ -39,11 +32,7 @@ export const ERROR_VISIBLE_MS = 3000;
 export const SHORT_PRESS_HINT_MS = 1500;
 const WAVEFORM_BARS = 48;
 
-/**
- * Turns the sampled input levels (0..1) into the sent waveform: at most 48
- * bars, each the loudest sample of its slice, as 6..255 integers. No samples
- * (metering unavailable) falls back to the flat placeholder.
- */
+// At most 48 bars, each the loudest sample of its slice, as 6..255 integers; metering unavailable falls back to the flat placeholder.
 export function waveformFromLevels(levels: readonly number[], durationMs: number): number[] {
   if (levels.length === 0) {
     return flatWaveform(durationMs);
@@ -57,14 +46,9 @@ export function waveformFromLevels(levels: readonly number[], durationMs: number
   });
 }
 
-/**
- * Runs `begin`: asks the recorder to start and reports the denied copy when
- * the permission is refused. Resolves true once recording, false otherwise.
- * The caller owns the `starting` re-entry guard (see the component).
- */
+// Asks the recorder to start and reports the denied copy when permission is refused. The caller owns the `starting` re-entry guard.
 export type RecorderBeginResult = { started: true } | { started: false; error: string };
 
-/** The Effect behind `runRecorderBegin`: a rejected start fails with the original error. */
 export function runRecorderBeginEffect(
   deps: RecorderDecisionDeps,
 ): Effect.Effect<RecorderBeginResult, unknown> {
@@ -82,16 +66,7 @@ export function runRecorderBegin(deps: RecorderDecisionDeps): Promise<RecorderBe
   return Effect.runPromise(runRecorderBeginEffect(deps));
 }
 
-/**
- * Runs `finish`: stops (or cancels) and either sends or reports the plain
- * copy. Returns how the release ended so the component can react: `sent`
- * when the recording went out, `cancelled` for a slide-left cancel,
- * `too-short` for a press under `VOICE_MIN_MS` (a miss press records
- * nothing and says nothing itself; the component shows the hold hint), and
- * `refused` with the copy when the recording is refused. A too-short
- * recording is discarded through the recorder's `cancel`, so no file is
- * left behind.
- */
+// Stops (or cancels) and sends or reports the plain copy: `sent`, `cancelled`, `too-short` (discarded through `cancel`, no file left) or `refused` with the copy.
 export type RecorderFinishOutcome =
   | { kind: 'sent' }
   | { kind: 'cancelled' }
@@ -105,7 +80,6 @@ export function runRecorderFinish(
   return Effect.runPromise(runRecorderFinishEffect(deps, cancel));
 }
 
-/** The Effect behind `runRecorderFinish`: a rejected `stop` fails with the original error. */
 export function runRecorderFinishEffect(
   deps: RecorderDecisionDeps,
   cancel: boolean,
@@ -116,11 +90,7 @@ export function runRecorderFinishEffect(
       yield* discard;
       return { kind: 'cancelled' } as const;
     }
-    // A press shorter than the minimum is a miss press, not a recording: the
-    // live duration is checked before stopping so the take is discarded with
-    // `cancel` (no file is left behind) instead of `stop`. Nothing is sent; a
-    // failure of the duration read falls through to `stop` and the post-stop
-    // guard below.
+    // A press shorter than the minimum is a miss press: checked before stopping so the take is discarded with `cancel`, no file left. A failed duration read falls through to `stop`.
     const liveMs = yield* Effect.try(() => deps.recorder.currentDurationMs()).pipe(
       Effect.orElseSucceed(() => undefined),
     );

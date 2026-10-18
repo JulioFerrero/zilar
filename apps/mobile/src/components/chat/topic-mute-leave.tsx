@@ -19,24 +19,15 @@ const TRACK_BORDER = '#262626';
 
 type TopicMuteLeaveProps = {
   chat: ChatSummary;
-  /** The signed-in user id, to tell whether the caller is in the topic. */
   myUserId: string;
-  /** True while the sheet's own action runs. */
   disabled: boolean;
-  /** Closes the sheet and opens the Leave confirm. */
   onAskLeave: () => void;
 };
 
-/**
- * The board's bottom group in the In this topic sheet (`PhonePeople.dc.html`
- * :90-100): the Mute row with its 46×28 switch and the red Leave topic row.
- * Only people in a non-General topic see it; the confirm lives in
- * `leave-topic-sheet.tsx`. Mute is the topic's own pref row, forever or none.
- */
+// The bottom group of the In this topic sheet: the Mute row with its 46×28 switch and the red Leave topic row. Only people in a non-General topic see it; the confirm lives in `leave-topic-sheet.tsx`.
 export function TopicMuteLeave({ chat, myUserId, disabled, onAskLeave }: TopicMuteLeaveProps) {
   const setChatPref = useChatStore((state) => state.setChatPref);
-  // A group mute sits on the General row and covers every topic; the switch
-  // below writes only this topic's own row.
+  // A group mute sits on the General row and covers every topic; the switch below writes only this topic's own row.
   const groupMuted = useChatStore((state) =>
     chat.groupId === undefined
       ? false
@@ -57,8 +48,7 @@ export function TopicMuteLeave({ chat, myUserId, disabled, onAskLeave }: TopicMu
   }
 
   const muted = chat.muted === true;
-  // Clearing this topic's row does not lift the inherited group mute, so the
-  // switch must not accept a change it cannot make.
+  // Clearing this topic's row does not lift an inherited group mute, so the switch must not accept a change it cannot make.
   const inheritedMute = muted && groupMuted;
   const switchDisabled = disabled || busy || inheritedMute;
 

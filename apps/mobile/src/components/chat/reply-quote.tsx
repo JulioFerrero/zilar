@@ -8,14 +8,7 @@ import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * Quoted reply block at the top of a bubble: a bar and the name in the
- * replied-to sender's colour (the accent for our own messages), and the excerpt
- * or a media label ("Photo", "Voice message", …) when the target has no text.
- * With a chat-jump in scope it is a button that jumps to the quoted message on
- * tap (T-1667), while a long hold still opens the bubble menu; otherwise a
- * plain block, like select mode.
- */
+// Quoted reply block at the top of a bubble: a bar and the replied-to sender's name in their colour, and the excerpt or a media label when the target has no text. With a chat-jump it is a button that jumps to the message; a long hold still opens the bubble menu.
 export function ReplyQuote({ message }: { message: UiMessage }) {
   const reply = message.replyTo;
   const jump = useChatJump();

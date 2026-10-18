@@ -1,11 +1,4 @@
-/**
- * The UI-side record of who is playing (T-0154, moved unchanged from
- * `voice-player.ts` by the T-1032 size split): the shared player handle, the
- * per-bubble listeners, the speaker stubs the registry claims and resigns,
- * the progress/error subscriptions, and the routing of real player status
- * ticks to the owning bubble. `voice-player-host.ts` drives it; the barrel
- * `voice-player.ts` re-exports the public surface.
- */
+// The UI-side record of who is playing: the shared player handle, per-bubble listeners, speaker stubs, progress/error subscriptions, and routing of real status ticks to the owning bubble. `voice-player-host.ts` drives it.
 
 import { Effect } from 'effect';
 
@@ -31,22 +24,18 @@ const progressListeners = new Map<
   (update: { positionMs: number; durationMs: number }) => void
 >();
 
-/** Reads the shared player, so the host can drive it without owning it. */
 export function getSharedPlayer(): NativePlayer | undefined {
   return sharedPlayer;
 }
 
-/** Sets the shared player; the host calls this when it swaps the source. */
 export function setSharedPlayer(player: NativePlayer | undefined): void {
   sharedPlayer = player;
 }
 
-/** Reads the active message id the registry records. */
 export function getActiveMessageId(): string | undefined {
   return activeMessageId;
 }
 
-/** Records the active message id; the host calls this on play/pause. */
 export function setActiveMessageId(messageId: string | undefined): void {
   activeMessageId = messageId;
 }
@@ -61,12 +50,10 @@ export function releasePlayer(): Effect.Effect<void> {
   });
 }
 
-/** Runs one native call that may throw; a failure is dropped. */
 export function attempt(call: () => unknown): void {
   Effect.runSync(Effect.try(call).pipe(Effect.ignore));
 }
 
-/** Starts one native call that returns a Promise; a failure is dropped. */
 export function attemptAsync(call: () => PromiseLike<unknown>): void {
   Effect.runFork(Effect.tryPromise(call).pipe(Effect.ignore));
 }
@@ -78,7 +65,6 @@ export function currentRate(player: NativePlayer): VoiceSpeed {
   return (VOICE_SPEEDS as readonly number[]).includes(rate) ? (rate as VoiceSpeed) : 1;
 }
 
-/** A bubble reports its play progress through the host (drives the bar). */
 export function subscribeVoiceProgress(
   messageId: string,
   listener: (update: { positionMs: number; durationMs: number }) => void,
@@ -91,7 +77,6 @@ export function subscribeVoiceProgress(
   };
 }
 
-/** A play failure surfaces on the bubble that asked (finding 8). */
 const playErrorListeners = new Map<string, (message: string) => void>();
 
 export function subscribeVoicePlayError(
@@ -119,8 +104,7 @@ export function activeSpeaker(messageId: string, rate: VoiceSpeed) {
     speed: rate,
     play: () => {},
     pause: () => {
-      // The registry only records UI state: pausing the shared player here
-      // would also stop the bubble that just claimed it (finding 1).
+      // The registry only records UI state: pausing the shared player here would also stop the bubble that just claimed it.
     },
     seekTo: resolved,
     cycleSpeed: () => {},
@@ -147,7 +131,6 @@ function playbackFor(player: NativePlayer): VoicePlayback | undefined {
   return playerPlaybacks.get(player);
 }
 
-/** Routes one real-player status tick to the owning bubble (and the bar). */
 export function onPlayerStatus(
   messageId: string,
   player: NativePlayer,
@@ -180,7 +163,6 @@ export function onPlayerStatus(
   });
 }
 
-/** Test seam: drives one injected status tick (finding 1). */
 export function emitPlayerStatusForTest(player: HostPlayer, status: PlayerStatusTick): void {
   const emit = (player as { __emitStatus?: (status: PlayerStatusTick) => void }).__emitStatus;
   emit?.(status);
@@ -189,9 +171,7 @@ export function emitPlayerStatusForTest(player: HostPlayer, status: PlayerStatus
   }
 }
 
-/** Test seam: reset the module host state between tests. */
 export function resetVoicePlayerForTest(): void {
-  // Releasing never throws.
   attempt(() => sharedPlayer?.remove());
   sharedPlayer = undefined;
   activeMessageId = undefined;
@@ -206,7 +186,6 @@ export function resetVoicePlayerForTest(): void {
   playerPlaybacks.clear();
 }
 
-/** A bubble subscribes to its own play state through the host. */
 export function subscribeVoiceState(
   messageId: string,
   listener: (update: { playing: boolean; rate: VoiceSpeed }) => void,

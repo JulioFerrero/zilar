@@ -10,12 +10,7 @@ export interface MentionPickerProps {
   onSelect: (member: MentionMember) => void;
 }
 
-/**
- * The `@` member picker above a group composer (T-0227, the mobile twin of
- * web's `MentionPicker`). Rows are tapped (no hardware-key navigation on the
- * phone); the caller filters and caps the rows. Follows the board's phone
- * mention list (T-1842): 48 px rows, 30 px avatars and mono handles.
- */
+// The `@` member picker above a group composer, the mobile twin of web's `MentionPicker`: rows are tapped (no hardware-key navigation), and the caller filters and caps them.
 export function MentionPicker({ members, onSelect }: MentionPickerProps) {
   return (
     <View

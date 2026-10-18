@@ -32,28 +32,17 @@ type MessageListProps = {
   onForward?: (message: UiMessage) => void;
   onPin?: (message: UiMessage) => void;
   onUnpin?: (message: UiMessage) => void;
-  /** Message ids with a pin, from the screen's single pins subscription. */
   pinnedIds: readonly string[];
-  /** The message id to scroll to once it renders (a pin jump). */
   jumpToMessageId?: string | undefined;
   onJumped?: () => void;
-  /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: ((message: UiMessage) => void) | undefined;
-  /** Called when the Retry is tapped on a failed attachment upload. */
   onRetryAttachment?: ((message: UiMessage) => void) | undefined;
-  /** Called when Cancel is tapped while an attachment uploads. */
   onCancelAttachment?: ((message: UiMessage) => void) | undefined;
-  /** Called when the Retry is tapped on a failed voice send. */
   onRetryVoice?: ((message: UiMessage) => void) | undefined;
-  /** Called when Cancel is tapped while a voice message uploads. */
   onCancelVoice?: ((message: UiMessage) => void) | undefined;
-  /** Called when a file row is tapped (system open sheet). */
   onOpenAttachment?: ((message: UiMessage) => void) | undefined;
-  /** The message id currently downloading for the open sheet. */
   openingAttachmentId?: string | undefined;
-  /** The shared voice player host from the chat screen (T-0154). */
   voiceHost?: VoicePlayerHost | undefined;
-  /** Multi-select for forwarding (T-0445): present while picking messages. */
   selection?:
     | {
         ids: readonly string[];
@@ -63,15 +52,11 @@ type MessageListProps = {
     | undefined;
 };
 
-/** Whether the list's last row is a message the current user sent. */
 function isOutgoingMessage(entry: ListEntry | undefined, currentUserId: string): boolean {
   return entry?.type === 'message' && entry.item.message.senderId === currentUserId;
 }
 
-/**
- * Message list grouped by sender and day. Opening a chat with unread messages
- * scrolls to the "Unread messages" divider instead of the bottom.
- */
+/** Grouped by sender and day; opens at the unread divider, not the bottom. */
 export function MessageList({
   chat,
   onReply,
@@ -113,10 +98,7 @@ export function MessageList({
   const messages = useChatStore((state) => state.messages(chat.id));
   const { api: contactsApi } = useContactsApi();
   const blockedJids = useBlockedJids(contactsApi);
-  // A blocked person's group or channel messages are dropped before grouping,
-  // exactly as web does; my own messages always stay. DMs and AI chats are
-  // never filtered. The filter is memoised so a store update that leaves the
-  // inputs unchanged does not hand a new array to `groupMessages` and the list.
+  // A blocked person's group or channel messages are dropped before grouping, as web does; my own always stay. The filter is memoised so an unchanged store update does not hand `groupMessages` a new array.
   const visibleMessages = useMemo(
     () => filterBlockedMessages(chat, messages, blockedJids, currentUserId),
     [chat, messages, blockedJids, currentUserId],
@@ -125,8 +107,7 @@ export function MessageList({
     state.jumpTarget?.chatId === chat.id ? state.jumpTarget : undefined,
   );
   const clearJumpTarget = useChatStore((state) => state.clearJumpTarget);
-  // Unknown means never requested: the real store has no data without asking,
-  // so the first paint (before `openChat` runs) is loading, never empty.
+  // No data yet means never requested, so the first paint before `openChat` is loading, never empty.
   const historyLoad = useChatStore((state) => state.historyLoad[chat.id] ?? 'loading');
   const retryHistory = useChatStore((state) => state.retryHistory);
   const draft = useChatStore((state) => state.drafts[chat.id]);
@@ -135,8 +116,7 @@ export function MessageList({
   const hasMore = useChatStore((state) => state.hasMore(chat.id));
   const canPinChat = useChatStore((state) => state.canPin(chat.id));
   const draftText = draft?.text.trim() ?? '';
-  // The draft is rendered as the AI's next message, so grouping, styles and size
-  // are identical to the final message that replaces it.
+  // The draft renders as the AI's next message, so grouping and styles match the final message.
   const draftMessage = useMemo<UiMessage | undefined>(() => {
     if (draft === undefined || draftText.length === 0) {
       return undefined;
@@ -160,14 +140,7 @@ export function MessageList({
       ),
     [visibleMessages, draftMessage],
   );
-  // The anchor (the unread count) is fixed when the chat opens, before
-  // `openChat` clears it, so the divider does not move as new messages arrive.
-  // The index itself is recomputed from the live `items`, exactly like web
-  // (`apps/web/src/components/MessageList.tsx` passes `chat.unread` to
-  // `unreadDividerIndex` on every render): a count of unread from the end of the
-  // loaded messages. Snapshotting the index once, as this did before, pinned it
-  // to a page that had not loaded yet, so older pages prepended on scroll shifted
-  // every position and left the divider above an old message.
+  // The anchor (the unread count) is fixed when the chat opens, before `openChat` clears it; the index is recomputed from live `items` like web, so prepended pages do not move the divider.
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread, currentUserId);
 
@@ -182,8 +155,7 @@ export function MessageList({
         return;
       }
       const isDraft = item.message.id === draftMessage?.id;
-      // The final message keeps the draft's key so the bubble (and its reveal)
-      // is reused instead of snapping in as a new message.
+      // The final message keeps the draft's key so the bubble and its reveal are reused.
       const revealTurnId = isDraft ? draft?.turnId : finishedDraftMessages[item.message.id];
       list.push({
         type: 'message',
@@ -196,17 +168,9 @@ export function MessageList({
     return list;
   }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
-  // The list is inverted, so its data runs newest-first: offset 0 is the newest
-  // message at the bottom and a chat opens there with no mount scroll. Every
-  // index below is an index into this reversed data. The divider is inserted at
-  // `dividerIndex` in `entries`, so its reversed position is measured from the
-  // other end. On screen nothing changes: `inverted` flips the reversed data
-  // back into the date order the user sees.
+  // The list is inverted: data runs newest-first, offset 0 is the bottom, and every index below indexes this reversed data.
   const reversedEntries = useMemo(() => [...entries].reverse(), [entries]);
-  // The divider's reversed position. It stays on the same unread message as the
-  // list grows: a newer item moves `dividerIndex` and `entries.length` by the
-  // same one, and an older page prepended moves both by the same amount, so the
-  // mount scroll below does not re-run and yank the view back to the divider.
+  // The divider's reversed position stays on the same unread message as the list grows, so the mount scroll does not re-run.
   const reversedDividerIndex = dividerIndex === null ? null : entries.length - 1 - dividerIndex;
 
   const isGroup = chat.kind === 'group';
@@ -229,13 +193,10 @@ export function MessageList({
     });
 
   const jumpToBottom = useCallback(() => {
-    // The inverted list's bottom is offset 0.
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [listRef]);
 
-  // Stable so a re-render of the list does not hand the FlatList a new
-  // `renderItem` and re-render every visible row (T-1188). The memoised row and
-  // the reused entry objects do the rest.
+  // Stable so a re-render does not hand the FlatList a new `renderItem` and re-render every row.
   const renderItem = useCallback(
     ({ item }: { item: ListEntry }) => (
       <MessageListRow
@@ -281,9 +242,7 @@ export function MessageList({
     ],
   );
 
-  // Loading, error and empty are three different states: the empty text and
-  // the Retry only appear once the first page has settled. Live messages that
-  // arrive while loading render immediately, as before.
+  // Empty text and Retry appear once the first page settles; live messages render immediately.
   const view = messagesListView(historyLoad, entries.length);
   if (view !== 'messages') {
     if (view === 'skeleton') {
@@ -300,7 +259,7 @@ export function MessageList({
     return <EmptyChat chat={chat} />;
   }
 
-  // T-1905: a topic keeps a fixed gap under its newest message for the AI pill.
+  // A topic keeps a fixed gap under its newest message for the AI pill.
   return (
     <MessageMenuHost
       onReply={stableReply ?? onReply}
@@ -324,11 +283,7 @@ export function MessageList({
             windowSize={9}
             maxToRenderPerBatch={5}
             updateCellsBatchingPeriod={32}
-            // `minIndexForVisible: 1` anchors on the previous newest row, so a new
-            // message arriving at index 0 does not move someone reading older
-            // messages. `autoscrollToTopThreshold` makes the native adjustment scroll
-            // back to offset 0 (the inverted list's bottom) when the user was already
-            // there, so a new message follows without fighting the anchor.
+            // `minIndexForVisible: 1` anchors the previous newest row, so a new message does not move a reader of older messages; `autoscrollToTopThreshold` scrolls back to offset 0 when already there.
             maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: 40 }}
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
@@ -351,18 +306,14 @@ export function MessageList({
             }}
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
-            // Older pages sit at the inverted list's end, so reaching it asks for the
-            // previous page of history (replacing the top-offset check). Three
-            // viewports of warning keep a fling from hitting the end before the page
-            // arrives; the scroll hook then prefetches one page ahead.
+            // Older pages sit at the inverted end; three viewports of warning keep a fling from hitting it before the page arrives.
             onEndReachedThreshold={3}
             onEndReached={() => {
               if (hasMore) {
                 loadOlderPage();
               }
             }}
-            // Re-pins after a followed message's row has rendered, in case the
-            // maintain-visible adjustment moved the offset off the bottom.
+            // Re-pins after a followed message's row rendered, in case the maintain-visible adjustment moved off the bottom.
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             renderItem={renderItem}

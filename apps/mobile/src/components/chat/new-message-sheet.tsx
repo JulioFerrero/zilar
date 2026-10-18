@@ -11,7 +11,6 @@ import type { Contact } from '@/lib/contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
 // Case-insensitive prefix match on any word of the name, or on the handle.
-// The phone twin of web's `matchesFilter` (`NewMessageDialog.tsx:12-27`).
 function matchesFilter(contact: Contact, needle: string): boolean {
   if (needle === '') {
     return true;
@@ -28,14 +27,7 @@ function matchesFilter(contact: Contact, needle: string): boolean {
   return handle != null && handle.toLowerCase().startsWith(needle);
 }
 
-/**
- * The new-message box (T-0190; contacts T-1677): the phone twin of web's
- * `NewMessageDialog`. With no contacts it keeps the invite sentence; otherwise
- * it lists the contacts behind a "Search contacts" field and a tap opens the
- * DM, reloading the chat list when that chat is not in it yet. The kit bottom
- * sheet (T-1451) is the shell and `Invite a friend` stays its one sticky
- * footer key.
- */
+// The new-message box, the phone twin of web's `NewMessageDialog`: with no contacts it keeps the invite sentence; otherwise a search field lists contacts and a tap opens the DM, reloading the chat list when the chat is missing. `Invite a friend` is the one sticky footer key.
 export function NewMessageSheet({
   visible,
   onInvite,
@@ -51,9 +43,7 @@ export function NewMessageSheet({
   const reloadChats = useChatStore((state) => state.reloadChats);
   const [query, setQuery] = useState('');
 
-  // The sheet stays mounted while it is dismissed, so every close path
-  // (the close key, a drag, the backdrop, a contact tap) clears the filter and
-  // the next open starts clean.
+  // The sheet stays mounted while dismissed, so every close path clears the filter and the next open starts clean.
   const close = (): void => {
     setQuery('');
     onClose();
@@ -64,8 +54,7 @@ export function NewMessageSheet({
     return contacts.filter((contact) => matchesFilter(contact, needle));
   }, [contacts, query]);
 
-  // The DM already exists on the server for every contact; the chat list only
-  // has to catch up (`use-profile-dm.ts:62-71` does the same).
+  // The DM already exists server-side; the chat list only has to catch up.
   const openContact = (contact: Contact): void => {
     if (!chats.some((chat) => chat.id === contact.jid)) {
       reloadChats();

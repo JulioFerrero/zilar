@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { well } from '@/lib/depth';
 
-/** Full-width well strip shown above the first unread message. */
 export function UnreadDivider() {
   return (
     <View className="my-3 w-full px-3">

@@ -11,13 +11,8 @@ import {
 import { MAX_FONT_SCALE } from '@/components/ui/text';
 import { BORDER, well } from '@/lib/depth';
 
-/**
- * GFM tables for the mobile Markdown renderer. The shared parser hands the
- * table view its aligned inline cells; web renders the same tables with
- * `remark-gfm`.
- */
+// GFM tables for the mobile Markdown renderer: the shared parser hands the table its aligned inline cells; web renders the same tables with `remark-gfm`.
 
-/** The plain text of one cell, used only to estimate its column width. */
 function cellText(nodes: MdInline[]): string {
   return nodes
     .map((node) => {
@@ -36,20 +31,13 @@ function cellText(nodes: MdInline[]): string {
 
 const CELL_TEXT: TextStyle = { fontSize: 13, lineHeight: 18, fontFamily: 'Geist_400Regular' };
 const HEADER_TEXT: TextStyle = { fontFamily: 'Geist_600SemiBold' };
-// Geist at 13 px averages a little under 8 px per glyph. The estimate errs wide
-// so a column never breaks a word mid-word (`Medium` did at 56 px + 7 px/glyph);
-// the table scrolls horizontally, so a wider column costs no layout.
+// Geist at 13 px averages under 8 px per glyph. The estimate errs wide so a column never breaks a word mid-word; the table scrolls horizontally, so a wider column costs nothing.
 const CHAR_WIDTH = 8;
 const CELL_PADDING = 16;
 const MIN_COLUMN_WIDTH = 72;
 const MAX_COLUMN_WIDTH = 220;
 
-/**
- * Column widths from the widest cell, floored so the longest word always fits.
- * Cells use the system font scale (capped at MAX_FONT_SCALE), so the pixel
- * estimate and both bounds grow with `scale`; otherwise a scaled glyph is wider
- * than the column and a word breaks mid-word.
- */
+// Column widths from the widest cell, floored so the longest word always fits. Both bounds grow with the system font scale, so a scaled glyph never breaks a word mid-word.
 function columnWidths(rows: MdInline[][][], scale: number): number[] {
   const width = rows[0]?.length ?? 0;
   return Array.from({ length: width }, (_, column) => {
@@ -77,11 +65,7 @@ function textAlign(align: MdTableAlign | undefined): TextStyle['textAlign'] {
   return 'left';
 }
 
-/**
- * A bordered, horizontally scrollable grid that borrows the code-block colours
- * (`well`). `renderCell` renders the inline Markdown of one cell, so the table
- * shares the renderer's inline grammar without importing it back.
- */
+// A bordered, horizontally scrollable grid borrowing the code-block colours; `renderCell` renders one cell's inline Markdown, so the table shares the inline grammar without importing it back.
 export function MarkdownTable({
   align,
   rows,
@@ -132,8 +116,7 @@ export function MarkdownTable({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        // A horizontal ScrollView grows to fill the free height; without this
-        // the table stretches into a tall empty square (same reason as CodeBlock).
+        // A horizontal ScrollView grows to fill the free height; without this the table stretches into a tall empty square (same as CodeBlock).
         style={{ flexGrow: 0 }}
       >
         <View>

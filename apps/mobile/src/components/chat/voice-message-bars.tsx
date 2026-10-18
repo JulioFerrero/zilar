@@ -18,11 +18,7 @@ import {
 import type { UiMessage } from '@/lib/types';
 import { type VoiceSpeed, voiceErrorCopy } from '@/lib/voice-native';
 
-/**
- * The one "Aa" control both transcript toggles used to repeat (dedup). Callers
- * key it by the look so Android builds a fresh view instead of swapping one
- * gradient style for another on a live view (device report 2026-10-04).
- */
+// The one "Aa" control both transcript toggles share. Callers key it by the look, so Android builds a fresh view instead of swapping one gradient style for another on a live view.
 export function TranscriptToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
     <Pressable
@@ -39,7 +35,6 @@ export function TranscriptToggle({ show, onToggle }: { show: boolean; onToggle: 
   );
 }
 
-/** The bubble body once the send failed: waveform, duration and Retry. */
 export function VoiceMessageFailedBars({
   voice,
   bars,
@@ -56,8 +51,7 @@ export function VoiceMessageFailedBars({
   const idleColor = outgoing ? '#a3a3a3' : '#525252';
   const durationColor = outgoing ? '#525252' : MUTED_FOREGROUND;
   const peak = Math.max(...bars, 1);
-  // Why the send failed, when the store recorded it (finding 4). The web
-  // twin keeps the same fixed buckets; unknown errors stay generic.
+  // Why the send failed, when the store recorded it; the web twin keeps the same fixed buckets, unknown errors stay generic.
   const failureCopy =
     message.failureReason === undefined
       ? 'Could not send. Try again.'
@@ -100,7 +94,6 @@ export function VoiceMessageFailedBars({
   );
 }
 
-/** The play/pause transport row: waveform, elapsed time, speed and toggles. */
 export function VoiceMessageBars({
   voice,
   bars,
@@ -142,7 +135,6 @@ export function VoiceMessageBars({
   transcribeBusy: boolean;
   onTranscribe: () => void;
 }) {
-  // Played/unplayed bars follow the bubble they sit in (white outgoing).
   const playedColor = outgoing ? '#0a0a0a' : '#ededed';
   const idleColor = outgoing ? '#a3a3a3' : '#525252';
   const durationColor = outgoing ? '#525252' : MUTED_FOREGROUND;

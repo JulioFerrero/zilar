@@ -26,14 +26,7 @@ type StickerMessageProps = {
   onLongPress: () => void;
 };
 
-/**
- * A sticker without a bubble: at most 200 pt on the chat background, with
- * the time and ticks overlaid in a small pill. The image loads from the
- * payload `url` only when it is on the same origin as the Zilar API;
- * anything else shows the emoji or a placeholder so a hostile sender cannot
- * make every viewer's device fetch an arbitrary URL. The bearer token rides
- * along only to the API origin (the file route requires a session).
- */
+// A sticker without a bubble: at most 200 pt, with time and ticks in a small pill. The image loads only from the same origin as the Zilar API; anything else shows the emoji or a placeholder, so a hostile sender cannot make every device fetch an arbitrary URL. The bearer rides along only to the API origin.
 export function StickerMessage({ sticker, message, outgoing, onLongPress }: StickerMessageProps) {
   const [broken, setBroken] = useState(false);
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -45,8 +38,7 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
     if (!trusted) {
       return;
     }
-    // The token read is a fiber: cleanup interrupts it, so a late answer for
-    // an old URL never sets the token.
+    // The token read is a fiber: cleanup interrupts it, so a late answer for an old URL never sets the token.
     const read = Effect.runFork(
       Effect.promise(() => getSessionToken()).pipe(
         Effect.andThen((value) =>

@@ -6,17 +6,10 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { interruptFiber } from '@/lib/effect/timers';
 import { cn } from '@/lib/utils';
 
-/**
- * Quiet loading placeholders in the shape of the content they replace (T-0067).
- * `SKELETON_DELAY_MS` hides a load that finishes quickly: showing a skeleton for
- * one frame and then removing it is worse than a beat of blank.
- */
+// Quiet loading placeholders shaped like the content they replace. `SKELETON_DELAY_MS` hides a load that finishes quickly: one skeleton frame is worse than a beat of blank.
 export const SKELETON_DELAY_MS = 250;
 
-/**
- * True once the delay has passed. A load that settles sooner unmounts the
- * skeleton before it paints, so a fast load never flashes.
- */
+// True once the delay passed; a load that settles sooner unmounts the skeleton before it paints.
 export function useDelayedVisible(delayMs = SKELETON_DELAY_MS): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -70,7 +63,6 @@ function ChatSkeletonRow({ pulse }: { pulse: Animated.Value }) {
   );
 }
 
-/** Six chat rows in the list's own layout: 52 px avatar, name bar, preview bar. */
 export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {
   const visible = useDelayedVisible();
   const pulse = useSkeletonPulse();
@@ -101,7 +93,6 @@ const MESSAGE_ROWS = [
   { width: '60%' as const, outgoing: false },
 ];
 
-/** Bubble-shaped placeholders, alternating sides, on the chat background. */
 export function MessageListSkeleton() {
   const visible = useDelayedVisible();
   const pulse = useSkeletonPulse();

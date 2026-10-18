@@ -16,7 +16,6 @@ type VoiceRecordingRowProps = {
   onSend: () => void;
 };
 
-/** The red dot and the running timer, shared by both row variants. */
 function RecordingMeta({ elapsedMs }: { elapsedMs: number }) {
   return (
     <>
@@ -28,12 +27,7 @@ function RecordingMeta({ elapsedMs }: { elapsedMs: number }) {
   );
 }
 
-/**
- * The row that replaces the composer input while recording. With the finger
- * still down (T-1202) it shows the slide-to-cancel hint; once the recording is
- * locked (T-1280) the finger has lifted, so it swaps to a Cancel (trash) key
- * and a Send key modeled on the composer's send button.
- */
+// The row that replaces the composer while recording. With the finger still down it shows the slide-to-cancel hint; once locked the finger has lifted, so it swaps to a Cancel key and a Send key.
 export function VoiceRecordingRow({
   elapsedMs,
   willCancel,

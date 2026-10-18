@@ -7,22 +7,15 @@ import { Text } from '@/components/ui/text';
 
 type SelectionDeleteConfirmProps = {
   visible: boolean;
-  /** The selected messages a delete is allowed on (T-1666, web's rule). */
   deletable: readonly { senderName: string }[];
-  /** A DM (not an AI chat). */
   isDm: boolean;
-  /** Every deletable message is mine. */
   allMine: boolean;
   onCancel: () => void;
   onDeleteForMe: () => void;
   onDeleteForEveryone: () => void;
 };
 
-/**
- * The select-mode delete confirm (T-1666), mirroring web's `SelectionBar` copy:
- * an `ActionSheet` offering both choices for a DM where everything is mine,
- * otherwise a kit `ConfirmDialog`. The parent ends select mode after the delete.
- */
+// The select-mode delete confirm, mirroring web's copy: an `ActionSheet` with both choices for a DM where everything is mine, otherwise a kit `ConfirmDialog`. The parent ends select mode after the delete.
 export function SelectionDeleteConfirm({
   visible,
   deletable,

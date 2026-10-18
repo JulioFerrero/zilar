@@ -7,18 +7,10 @@ import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The AI's question card on the phone (T-1578): the question, then its 2-4 reply
- * chips in a wrapping row. A chip sends a normal reply that @mentions the asking
- * AI and quotes the question; after one tap the chips disable until the server
- * closes the question (step 6). No status words: plain outline pills.
- * T-1821: after a reload the answer is read back from the first reply in the
- * loaded messages that quotes the question, so the card stays answered.
- */
+// The AI's question card: the question, then 2-4 reply chips. A chip sends a normal reply that @mentions the asking AI and quotes the question; after one tap the chips disable until the server closes the question. After a reload the answer is read back from the first loaded reply that quotes it.
 export function QuestionCard({ question }: { question: Question }) {
   const sendText = useChatStore((state) => state.sendText);
-  // `PayloadCard` only sees the card, so the owning message is resolved here:
-  // it carries the chat id and the message id the reply quotes.
+  // `PayloadCard` only sees the card, so the owning message is resolved here for the chat and message ids the reply quotes.
   const message = useChatStore((state) => {
     const chatId = state.activeChatId;
     if (chatId === null) {

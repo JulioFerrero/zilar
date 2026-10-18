@@ -12,14 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 
-/**
- * The new-channel sheet (T-0144): a title plus an optional description
- * (≤ 300, the channel's short blurb). The screen creates the channel
- * through the store and navigates to it; failures read inline, never raw.
- * On the kit bottom sheet (T-1443): Create sits in the sticky footer and the
- * header's close key is the way out. The new-chat menu mounts it with
- * `visible` while its action is chosen (T-1451).
- */
+// The new-channel sheet: a title plus an optional description (≤ 300, the channel's short blurb). The screen creates the channel and navigates to it; failures read inline, never raw. Create sits in the sticky footer.
 export function NewChannelSheet({
   visible,
   busy,
@@ -40,25 +33,19 @@ export function NewChannelSheet({
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // T-0228: Private (default, invite-only) or Public (its own `@handle`,
-  // checked live, created in the same step).
+  // Private (default, invite-only) or Public (its own `@handle`, checked live, created in the same step).
   const [visibility, setVisibility] = useState<CreateVisibility>('private');
   const [handle, setHandle] = useState('');
   const [localError, setLocalError] = useState('');
   const { api: directoryApi } = useDirectoryApi();
-  // Memoized like the group sheet's, for the same reason: the effect deps
-  // only see visibility/handle, never a fresh closure identity.
+  // Memoized like the group sheet's: the effect deps see only visibility/handle, never a fresh closure identity.
   const checkHandle = useCallback(
     (value: string) => directoryApi.checkGroupHandle(value),
     [directoryApi],
   );
   const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
 
-  // The sheet is always mounted (`visible`), so a reopen must not carry the
-  // previous draft or its inline error. A successful create closes the sheet
-  // from the parent, so reset on `visible`, not on the close key. The
-  // adjusted-state render pattern keeps it out of an effect (the lint rule
-  // flags synchronous setState inside effects).
+  // The sheet is always mounted, so reset the previous draft and inline error on `visible`, not on the close key; the adjusted-state render pattern keeps it out of an effect.
   if (
     !visible &&
     (title !== '' ||

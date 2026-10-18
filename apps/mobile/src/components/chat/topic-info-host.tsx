@@ -17,7 +17,6 @@ type TopicInfoHostProps = {
   chat: ChatSummary;
 };
 
-/** The topic-info sheet and the AI-memory sheet it opens, for the topic branch. */
 export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const router = useRouter();
   const removeTopicMember = useChatStore((state) => state.removeTopicMember);
@@ -32,14 +31,12 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
 
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
-  // The Add sheet replaces the info sheet (the board's Close returns to the
-  // topic): one native sheet is presented at a time, like the AI memory sheet.
+  // One native sheet is presented at a time: the Add sheet replaces the info sheet (Close returns to the topic), like the AI memory sheet.
   const [addOpen, setAddOpen] = useState(false);
   const isManager = mayManageRoles(
     screen.detail?.members.find((member) => member.userId === screen.myUserId)?.role,
   );
-  // T-1838: the topic's own Tools and routines page, only when the group
-  // behind it is known (the page's manager bit reads the group's members).
+  // The topic's own Tools and routines page, only when the group behind it is known (the manager bit reads the group's members).
   const toolsGroupId = screen.chatGroupId;
   const toolsTopicId = chat.topic?.id;
   const openTools =

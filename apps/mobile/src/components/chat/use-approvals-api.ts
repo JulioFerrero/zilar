@@ -15,12 +15,7 @@ export interface ApprovalsApiHandle {
   mock: boolean;
 }
 
-/**
- * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
- * through `mockFetch`, so the chat's card and the Settings › Approvals rules
- * work end to end without a server.
- */
+// Picks the real API or the mock one from the route's `?mock=` param or `EXPO_PUBLIC_ZILAR_MOCK`. The mock runs on the shared backend through `mockFetch`, so the card and the Approvals rules work without a server.
 export function useApprovalsApi(): ApprovalsApiHandle {
   return useMockableApi(realApprovalsApi, mockApprovalsApi);
 }

@@ -16,7 +16,6 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 const EMPTY_MESSAGES: UiMessage[] = [];
 
-/** Which delete action one selected message allows, mirroring web's SelectionBar. */
 function deleteActionFor(
   message: UiMessage,
   meId: string,
@@ -31,12 +30,7 @@ function deleteActionFor(
   return isDm && message.deleted !== true ? 'me' : 'none';
 }
 
-/**
- * The bar shown while several messages are selected (T-0445): "N selected",
- * Cancel, Delete, Copy and Forward. Delete and Copy follow the single-message
- * rules (T-1666/WUX-32); Android back leaves select mode, or closes the open
- * confirm instead.
- */
+// The bar shown while several messages are selected: "N selected", Cancel, Delete, Copy and Forward. Delete and Copy follow the single-message rules; Android back leaves select mode, or closes the open confirm.
 export function SelectionBar({
   chat,
   selectedIds,
@@ -45,10 +39,8 @@ export function SelectionBar({
   onCancel,
 }: {
   chat: { id: string; kind: string; isAI?: boolean };
-  /** The checked message ids, in the order they were checked. */
   selectedIds: string[];
   onForward: () => void;
-  /** A successful copy (T-1693): the dock shows the chat's "Copied" notice. */
   onCopied?: () => void;
   onCancel: () => void;
 }) {
@@ -72,8 +64,7 @@ export function SelectionBar({
       ),
     [selected, meId, isDm],
   );
-  // "Delete for everyone" is offered only when every deletable message is mine;
-  // a DM selection holding a peer's message can only be deleted for me.
+  // "Delete for everyone" only when every deletable message is mine; a DM selection holding a peer's message can only be deleted for me.
   const allMine = deletable.every((message) => message.senderId === meId);
   const copyable = selected.filter(
     (message) => message.deleted !== true && (message.text ?? '').length > 0,

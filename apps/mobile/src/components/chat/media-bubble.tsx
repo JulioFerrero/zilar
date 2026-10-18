@@ -24,11 +24,7 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 
-/**
- * Whether a message is a media-first bubble (T-1335): a photo (legacy `image`
- * field or an `image` attachment), an album, or a GIF-origin video. Such a
- * message drops the bubble's padding so the media is the bubble, edge to edge.
- */
+// A photo (legacy `image` or an `image` attachment), an album, or a GIF-origin video drops the bubble's padding so the media is the bubble, edge to edge.
 export function isMediaFirstMessage(message: UiMessage, hosts: ReadonlySet<string>): boolean {
   if (message.image !== undefined || message.album !== undefined) {
     return true;
@@ -52,12 +48,7 @@ type MediaBubbleProps = {
   onCancelAttachment?: ((message: UiMessage) => void) | undefined;
 };
 
-/**
- * The body of a media-first bubble (T-1335). The media fills the bubble; with
- * no caption the time and ticks sit in a dark pill on the photo, and with a
- * caption the media stays edge to edge on top while the caption (and its meta)
- * render below in the normal text padding.
- */
+// The media fills the bubble; with no caption the time and ticks sit in a dark pill on the photo, with a caption they render below in the normal text padding.
 export function MediaBubble({
   message,
   outgoing,
@@ -75,8 +66,7 @@ export function MediaBubble({
   const [viewer, setViewer] = useState<{ messageId: string; albumIds?: readonly string[] } | null>(
     null,
   );
-  // Same viewer scoping as the attachment body: an album opens its members
-  // first, then the rest of the chat (T-1256).
+  // The same viewer scoping as the attachment body: an album opens its members first, then the rest of the chat.
   const photos = useMemo(() => photosOf(messages ?? []), [messages]);
   const viewerPhotos = useMemo<ViewerPhoto[]>(() => {
     if (viewer === null || viewer.albumIds === undefined) {
@@ -100,13 +90,7 @@ export function MediaBubble({
   const failed = message.failed === true;
   const gifVideo = attachment !== undefined && isGifVideoAttachment(attachment, hosts);
   const hasCaption = message.text !== undefined && message.text.length > 0;
-  // Whether the media body actually draws a picture: a legacy image, an album, a
-  // GIF video, or an image attachment in any state that shows a tile or photo —
-  // a trusted URL, a demo gradient, or the local `file://` preview while the
-  // upload runs (`render === 'local'`). The pill keeps the timestamp in every one
-  // of them, as the old attachment body's meta row rendered under every state;
-  // the click-to-load file row of an untrusted URL is handled by
-  // `untrustedImage` below.
+  // A picture is drawn for a legacy image, an album, a GIF video, or an image attachment with a trusted URL, a demo gradient or the local `file://` preview while it uploads; the pill keeps the timestamp in every one.
   const showsMedia =
     message.album !== undefined ||
     message.image !== undefined ||
@@ -116,20 +100,14 @@ export function MediaBubble({
       (imageGradient(attachment.url) !== undefined ||
         isLoadableMediaUrl(attachment.url, hosts) ||
         upload.localUri !== undefined));
-  // A received image whose URL is not on a trusted host renders the
-  // click-to-load file row, not the photo, but it is still a media-first body:
-  // the pill keeps its timestamp, as the old attachment body's meta row showed
-  // under every state.
+  // An untrusted image URL renders the click-to-load file row instead, but it is still media-first: the pill keeps its timestamp.
   const untrustedImage =
     attachment !== undefined &&
     attachment.kind === 'image' &&
     !gifVideo &&
     upload.localUri === undefined &&
     !showsMedia;
-  // A single photo bubble fits the photo at its ratio (T-1924): a tall phone
-  // screenshot used to shrink inside the fixed 240 px wrapper and leave a white
-  // bar beside it. Albums, GIF videos and the non-photo states (an untrusted
-  // file row, a failed upload) keep the full width.
+  // A single photo fits its ratio: a tall screenshot used to shrink inside the fixed 240 px wrapper and leave a white bar beside it. Albums, GIFs and non-photo states keep the full width.
   const imageSize =
     message.image ??
     (attachment !== undefined && attachment.kind === 'image' ? attachment : undefined);
@@ -254,11 +232,7 @@ type MediaImageProps = {
   onOpen?: (() => void) | undefined;
 };
 
-/**
- * An edge-to-edge image attachment: no border and no radius of its own, so the
- * bubble's clip gives it the bubble's corners. Trust, local preview, upload and
- * failure behave exactly like the attachment body's image branch.
- */
+// An edge-to-edge image attachment: no border or radius of its own, so the bubble's clip gives it the corners.
 function MediaImage({
   chatId,
   attachment,
@@ -272,9 +246,7 @@ function MediaImage({
   onOpen,
 }: MediaImageProps) {
   const media = useMediaRetry(attachment.url, localUri);
-  // The inner `Pressable`s swallow the outer bubble's `onLongPress`
-  // (`message-menu-context.tsx`): forward the menu open so a long hold still
-  // opens the message menu, while a short tap keeps opening the viewer.
+  // The inner `Pressable`s swallow the outer bubble's `onLongPress`, so forward the menu open; a short tap still opens the viewer.
   const openMenu = useOpenMessageMenu();
   const longPress =
     openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };

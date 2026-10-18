@@ -6,7 +6,6 @@ import { Button } from '../ui/button';
 import { Text } from '../ui/text';
 import { pinLabel, type SnapshotPinKind } from '../../lib/pin-snapshot';
 
-/** The pin fields the banner reads (the store's `Pin` is assignable). */
 export interface BannerPin {
   id: string;
   messageId: string;
@@ -15,19 +14,7 @@ export interface BannerPin {
   kind: SnapshotPinKind;
 }
 
-/**
- * The pinned-message banner under the chat header (T-0135, the mobile twin
- * of the web `PinnedBanner`): the latest pin's sender and snapshot text (or
- * a kind label for attachments), tap to jump to it when it is loaded, "n
- * pins" opens the list sheet. With several pins the banner cycles ("1 of
- * N"). A retracted original whose retraction the client has seen reads
- * "Message deleted" (the snapshot says so). Pin load failures surface here
- * with a dismiss key; a jump at a message that is not loaded shows
- * "Message not found" (mobile has no history paging yet).
- *
- * Pure view (no hooks) so it stays render-testable like `ReactionChips`:
- * the screen owns the pins subscription, the cycle index and the jump.
- */
+// The pinned-message banner: the latest pin's sender and snapshot text (or a kind label), tap to jump when loaded, "n pins" opens the list. A retracted original reads "Message deleted"; a jump at an unloaded message shows "Message not found" (mobile has no history paging).
 export function PinnedBanner({
   pins,
   pinsError,

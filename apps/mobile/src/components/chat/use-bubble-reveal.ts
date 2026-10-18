@@ -5,7 +5,6 @@ import { Animated } from 'react-native';
 import { GENERATING_FOREGROUND, SWAP_MS } from '@/components/chat/message-bubble-decor';
 import { type ActiveSource, useSmoothText } from '@/lib/use-smooth-text';
 
-/** The live-reveal state of one bubble (T-1674 split from `message-bubble.tsx`). */
 export function useBubbleReveal({
   message,
   outgoing,
@@ -30,8 +29,7 @@ export function useBubbleReveal({
     active: appActiveSource,
   });
   const generating = draft || (beyondDraft && !done);
-  // A bubble that was ever written live keeps the recessed shell and fades the
-  // incoming look in over it, so the swap has no jump.
+  // A bubble ever written live keeps the recessed shell and fades the incoming look in over it, so the swap has no jump.
   const everLive = !outgoing && (draft || revealTurnId !== undefined);
   const textColor = outgoing ? '#0a0a0a' : generating ? GENERATING_FOREGROUND : '#ededed';
   const [swap] = useState(() => new Animated.Value(generating ? 0 : 1));

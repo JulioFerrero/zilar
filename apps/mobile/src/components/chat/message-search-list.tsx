@@ -16,11 +16,7 @@ import { openSearchHitEffect } from './search-jump';
 import { SearchHitLine } from './search-snippet';
 import { useMessageSearch, type MessageSearchView } from './use-message-search';
 
-/**
- * One message hit: avatar, chat/topic breadcrumb, sender, time and snippet.
- * Tapping opens that chat or topic and jumps to the message once it loads
- * (see `openAtMessage` in the store).
- */
+// One message hit: avatar, chat/topic breadcrumb, sender, time and snippet. Tapping opens the chat and jumps to the message once it loads.
 const MessageSearchHit = memo(function MessageSearchHit({
   item,
   heading,
@@ -61,19 +57,12 @@ const MessageSearchHit = memo(function MessageSearchHit({
 interface MessageSearchListProps {
   searchApi: SearchApi;
   query: string;
-  /** Narrow to one chat ("Search in this chat" from a chat header). */
   chatFilter?: string;
   /** Called when the jump lands nowhere, so the screen can say so. */
   onNotFound: (chatJid: string) => void;
 }
 
-/**
- * The Messages section of the chat list (T-0138): hits grouped by chat,
- * newest group first, paging forward on scroll. Empty, loading, error and
- * rate-limited states, mirroring web's `MessageSearchResults`. The search
- * field itself lives in the chat list header (`src/app/index.tsx`); a tap on
- * a hit opens that chat at the message.
- */
+// The Messages section of the chat list: hits grouped by chat, newest first, paging on scroll. Empty, loading, error and rate-limited states mirror web.
 export function MessageSearchList({
   searchApi,
   query,
@@ -84,9 +73,7 @@ export function MessageSearchList({
   const search = useMessageSearch(searchApi, query, chatFilter);
   const chats = useChatStore((state) => state.chats);
   const openAtMessage = useChatStore((state) => state.openAtMessage);
-  // Mirrored from an effect, read only in the jump callback: assigning a ref
-  // during render would not update as expected (web does the same dance with
-  // its top-hit ref).
+  // Mirrored from an effect, read only in the jump callback: assigning a ref during render would not update.
   const notFoundRef = useRef(onNotFound);
   useEffect(() => {
     notFoundRef.current = onNotFound;
@@ -94,13 +81,7 @@ export function MessageSearchList({
 
   const openHit = useCallback(
     (item: SearchItem): void => {
-      // One attempt: the store's `openAtMessage` pages backwards at most
-      // `MESSAGE_JUMP_MAX_PAGES` history pages, then gives up with
-      // "Message not found" — the chat opens at its bottom with the notice,
-      // never a retry loop (T-0157).
-      // An unexpected failure (history or router) must not vanish: show the
-      // same miss notice instead of leaving the user on a spinner. Interruption
-      // is neither caught nor reported.
+      // One attempt: `openAtMessage` pages back at most `MESSAGE_JUMP_MAX_PAGES` pages, then gives up with "Message not found" and the chat opens at its bottom, never a retry loop. An unexpected failure shows the same miss notice.
       const miss = Effect.sync(() => {
         notFoundRef.current(item.chatJid);
       });
@@ -196,8 +177,7 @@ function MessageSearchGroups({
         <View key={`group:${group.chatJid}`}>
           {group.items.map((item) => {
             const chat = byId.get(item.chatJid);
-            // A topic hit shows `Group › Topic` (web does the same); the
-            // title is the topic name, `groupTitle` the group.
+            // A topic hit shows `Group › Topic`; the title is the topic name, `groupTitle` the group.
             const heading =
               chat?.topic !== undefined && chat.groupTitle !== undefined
                 ? searchResultTitle(chat.groupTitle, chat.title)

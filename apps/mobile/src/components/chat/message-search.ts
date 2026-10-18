@@ -34,23 +34,7 @@ export {
 };
 export type { DebouncedQuery, MessageSearchStatus, SearchGroup, SnippetPart, SearchScheduler };
 
-/**
- * The plain logic behind mobile message search (T-0138), kept pure and next
- * to the component so it can be unit-tested in Node: the debounced search
- * hook (`use-message-search.ts`) only wires timers and the API to this.
- *
- * The controller mirrors the web `useMessageSearch` state machine, plus
- * cursor paging: the hook owns the debounce timer and the React state, the
- * controller owns requests, cancellation and pages. Tests drive it with a
- * fake clock, like `SmoothTextReveal`.
- *
- * Split into `message-search-format` and `message-search-scheduler` (T-1031);
- * this barrel keeps the original path and exports every name unchanged.
- *
- * `defaultScheduler` stays here, not in `message-search-scheduler`: the barrel
- * is the only module that uses it, and its `Effect`/`Fiber` import keeps the
- * barrel's Effect kind (a plain scheduler module cannot).
- */
+// The pure logic behind mobile message search, unit-tested in Node; the hook only wires timers and the API to it. The controller owns requests, cancellation, cursor paging and their state; the hook owns the debounce timer and React state.
 
 // Each debounce is a fiber that sleeps; clearing it interrupts the fiber.
 const defaultScheduler: SearchScheduler = {
@@ -67,14 +51,7 @@ export interface MessageSearchControllerOptions {
   frames?: SearchScheduler;
 }
 
-/**
- * The request state machine behind `useMessageSearch`. `setQuery` + `setChat`
- * restart the debounce; `state` is what the hook renders (`loadMore` and
- * `retry` call back in). Superseded requests are cancelled with
- * `AbortController`; a late answer after a newer request is ignored by its
- * request id. The query text travels only to the search endpoint and is
- * never logged.
- */
+// The request state machine behind `useMessageSearch`: `setQuery` and `setChat` restart the debounce. Superseded requests abort; a late answer is ignored by request id. The query text goes only to the search endpoint and is never logged.
 export class MessageSearchController {
   private readonly api: SearchApi;
   private readonly onChange: () => void;
@@ -103,7 +80,6 @@ export class MessageSearchController {
     return this.current;
   }
 
-  /** The debounced query the hook renders from (`idle` below 2 chars). */
   get view(): MessageSearchStatus {
     const active = activeQuery(this.query);
     if (active === null) {
@@ -138,7 +114,6 @@ export class MessageSearchController {
     this.arm();
   }
 
-  /** Re-fires the current query (the error state's Retry). */
   retry(): void {
     if (this.disposed || this.debounced === null) {
       return;
@@ -147,14 +122,7 @@ export class MessageSearchController {
     this.fetch(this.debounced);
   }
 
-  /**
-   * Appends the next page with the cursor the server returned (`nextBefore`,
-   * an opaque microsecond stamp — never the last item's ISO date). A late
-   * page after a new query is dropped. A failed page keeps the items shown
-   * and reports the failure inline, so the spinner ends instead of retrying
-   * forever. A second call while a page is in flight aborts the superseded
-   * request (its result is dropped); the `pageError` retry re-enters here.
-   */
+  // Appends the next page with the server's opaque microsecond `nextBefore` cursor, never the last item's ISO date. A late page after a new query is dropped; a failed page keeps the items and reports inline, so the spinner ends.
   loadMore(): void {
     if (this.disposed || this.debounced === null) {
       return;
@@ -276,9 +244,7 @@ export class MessageSearchController {
     }
     const id = this.nextId();
     this.pageRequest = id;
-    // A fresh query owns paging from here: an older page load is dropped by
-    // its id, its controller is aborted so it never even lands, and the flag
-    // must not block the new query's pages.
+    // A fresh query owns paging: an older page is dropped by id and aborted, and the flag must not block the new query's pages.
     this.paging = false;
     this.pageController?.abort();
     this.pageController = null;

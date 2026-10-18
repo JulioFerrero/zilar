@@ -18,10 +18,8 @@ import { cn } from '@/lib/utils';
 
 export type AddTab = 'people' | 'ais';
 
-/** Per-row state while an add runs and after it settles. */
 type RowState = 'busy' | 'added' | 'failed';
 
-/** The board's `.sec`: a mono, tracked, upper-case label. */
 function SectionLabel({ label }: { label: string }) {
   return (
     <Text className="px-1 font-mono text-[11px] tracking-[0.06em] text-muted-foreground">
@@ -30,7 +28,6 @@ function SectionLabel({ label }: { label: string }) {
   );
 }
 
-/** The board's `.group`: a surface card with one hairline between rows. */
 function AddGroup({ children }: { children: ReactNode }) {
   const items = Children.toArray(children);
   return (
@@ -44,10 +41,7 @@ function AddGroup({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * One addable row: avatar, name, optional AI badge and sub-label. Its right
- * end shows Add, "Adding…", "Here" or a retryable "Couldn't add".
- */
+// One addable row: avatar, name, optional AI badge and sub-label; the right end shows Add, "Adding…", "Here" or a retryable "Couldn't add".
 function AddRow({
   id,
   name,
@@ -120,21 +114,15 @@ function AddRow({
 }
 
 export type TopicAddContentProps = {
-  /** The topic's name, for the "Add to …" title and the "already here" line. */
   topicName: string;
-  /** The group title, for the section heads and the `+ joins …` tag. */
   groupTitle: string;
-  /** The group detail behind the topic; undefined until it has loaded. */
   detail: GroupDetail | undefined;
-  /** The signed-in user id: the caller's own row is never offered. */
   myUserId: string;
-  /** A group owner or admin: only they see people and AIs from outside the group. */
+  // A group owner or admin: only they see people and AIs from outside the group.
   isManager: boolean;
   contacts: readonly Contact[];
   ownedAis: readonly { id: string; name: string }[];
-  /** The topic's people (undefined on older payloads: General means the group). */
   memberIds: readonly string[] | undefined;
-  /** The ids of the AIs already in the topic. */
   topicAiIds: readonly string[];
   isGeneral: boolean;
   addMember: (userId: string) => Promise<void>;
@@ -143,13 +131,7 @@ export type TopicAddContentProps = {
   initialTab?: AddTab;
 };
 
-/**
- * The body of the "Add people or AIs" sheet (T-1789), drawn to
- * `PhoneAdd.dc.html`: a People/AIs segment, a search well, the group's people
- * or AIs with Add or "Here", and — for a manager — the caller's contacts and
- * other AIs, who join the group in the same step. Split from the sheet shell
- * so the dev catalog can render both tabs inline.
- */
+// The body of the "Add people or AIs" sheet: a People/AIs segment, a search well, the group's people or AIs with Add or "Here", and for a manager the caller's contacts and other AIs. Split from the sheet shell so the dev catalog can render both tabs inline.
 export function TopicAddContent({
   topicName,
   groupTitle,
@@ -340,7 +322,6 @@ export function TopicAddContent({
 }
 
 type TopicAddSheetProps = {
-  /** The topic chat the sheet adds to; null hides the sheet. */
   chat: ChatSummary | null;
   groupTitle: string;
   detail: GroupDetail | undefined;
@@ -353,11 +334,7 @@ type TopicAddSheetProps = {
   onClose: () => void;
 };
 
-/**
- * The phone "Add people or AIs" sheet (T-1789), opened from the topic-info
- * sheet's primary key. The board's "New AI" row is left out: the phone has no
- * new-AI route (the sheet lives in the AIs tab), as the task's grep step says.
- */
+// Opened from the topic-info sheet's primary key. The board's "New AI" row is left out: the phone has no new-AI route.
 export function TopicAddSheet({
   chat,
   groupTitle,

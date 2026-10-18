@@ -34,11 +34,7 @@ export type VoiceTranscribeState = {
   closeConfirm: () => void;
 };
 
-/**
- * The voice bubble's transcription half (T-0179): the on-device state, the
- * stored-transcript read, and the transcribe/confirm flow. The rendered
- * structure stays in the bubble and the bars; this hook owns the logic.
- */
+// The voice bubble's transcription half: on-device state, the stored transcript read, and the transcribe/confirm flow. The bubble and bars only render.
 export function useVoiceTranscribe(input: {
   voice: VoiceMeta;
   messageId: string;
@@ -60,8 +56,7 @@ export function useVoiceTranscribe(input: {
     onSaveTranscript,
   } = input;
   const [showTranscript, setShowTranscript] = useState(false);
-  // The on-device transcript, kept locally (never on the wire): the stored
-  // value wins, then the freshly transcribed text of this session.
+  // The on-device transcript, kept locally (never on the wire): the stored value wins, then this session's fresh text.
   const [storedTranscripts, setStoredTranscripts] = useState<TranscriptMap | undefined>(
     () => transcripts,
   );
@@ -72,12 +67,10 @@ export function useVoiceTranscribe(input: {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const whistlePort = useMemo(() => whistle ?? createWhistlePort(), [whistle]);
   const transcribeRun = useRef(0);
-  // The one-shot model-download consent (T-0179, round 1): set only by the
-  // sheet's Download button for this run, consumed by `confirmDownload`.
+  // The one-shot model-download consent: set only by the sheet's Download for this run, consumed by `confirmDownload`.
   const transcribeConsent = useRef({ confirmed: false });
 
-  // A stored transcript is shown at once on the next app start: read it
-  // here when the caller did not inject one (no re-run).
+  // A stored transcript is shown at once on the next start; read here when the caller injected none.
   useEffect(() => {
     if (transcripts !== undefined) {
       return;
@@ -98,9 +91,7 @@ export function useVoiceTranscribe(input: {
   const hasTranscript = transcriptText !== undefined || voice.transcript !== undefined;
   const shownText = transcriptText?.text ?? voice.transcript?.text;
 
-  // The Transcribe button shows only on phones with the engine, only when
-  // no transcript exists yet, and only when the audio is playable. Probing
-  // the engine is synchronous and safe (it only reads the ABI list).
+  // Transcribe shows only on phones with the engine, with no transcript yet, and with playable audio. The engine probe is synchronous and safe (it only reads the ABI list).
   const whistleAvailable = Effect.runSync(
     Effect.try(() => whistlePort.isAvailable()).pipe(Effect.orElseSucceed(() => false)),
   );
@@ -112,9 +103,7 @@ export function useVoiceTranscribe(input: {
     setTranscribeBusy(true);
     setTranscribeError(undefined);
     setTranscribePhase(undefined);
-    // The model download needs the user's yes (round 1): the sheet's
-    // Download sets `transcribeConsent` for this run, and the gate
-    // consumes it — no yes, no download, the sheet re-opens instead.
+    // The model download needs the user's yes: Download sets `transcribeConsent` for this run and the gate consumes it; no yes, no download.
     const consent = transcribeConsent.current;
     const askDownload = (): boolean => {
       if (transcribeRun.current !== run) {
@@ -143,8 +132,7 @@ export function useVoiceTranscribe(input: {
         setTranscribeError('Could not read that voice message.');
         return;
       }
-      // A local file transcribes in place; a served URL downloads to the
-      // cache with its headers (the flow always deletes the cached file).
+      // A local file transcribes in place; a served URL downloads to the cache with its headers (the flow always deletes the cached file).
       const audioSource: VoiceTranscribeSource =
         localUri !== undefined && localUri !== ''
           ? { localUri }
@@ -211,8 +199,7 @@ export function useVoiceTranscribe(input: {
     if (!showTranscribe || transcribeBusy) {
       return;
     }
-    // The user's yes must be fresh (round 1): a previous confirm never
-    // carries over — the model check decides whether the sheet opens.
+    // The user's yes must be fresh: a previous confirm never carries over; the model check decides whether the sheet opens.
     transcribeConsent.current.confirmed = false;
     Effect.runFork(
       Effect.tryPromise(() => whistlePort.modelStatus()).pipe(

@@ -16,15 +16,13 @@ import { cn } from '@/lib/utils';
 export const TAIL_WIDTH = 9;
 export const TAIL_HEIGHT = 12;
 export const LONG_PRESS_MS = 350;
-// Mirrors `--generating-foreground` in `src/global.css` (the bubble text while
-// the AI is still writing).
+// Mirrors `--generating-foreground` in `src/global.css` (the bubble text while the AI writes).
 export const GENERATING_FOREGROUND = '#8f8f8f';
 const CARET_COLOR = '#bdbdbd';
 // The recessed generating look fades into the incoming look over this long.
 export const SWAP_MS = 400;
 
-// The bubble follows the app's foreground state so a reply that arrives while
-// the app was backgrounded snaps to its latest text instead of replaying.
+// The bubble follows the app's foreground state, so a reply arriving while backgrounded snaps to its latest text instead of replaying.
 export const appActiveSource: ActiveSource = {
   subscribe: (onActive) => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -67,8 +65,7 @@ export function BubbleMeta({
   color: string;
   className?: string;
 }) {
-  // Seen ticks render brighter than delivered ones: only `read` keeps the
-  // bright seen color, every earlier state keeps the passed meta color.
+  // Only `read` keeps the bright seen colour; earlier states keep the passed meta colour.
   const ticksColor = message.status === 'read' ? SEEN : color;
   return (
     <View className={cn('flex-row items-center gap-1', className)}>
@@ -109,7 +106,6 @@ export function DraftCaret({ reduceMotion }: { reduceMotion: boolean }) {
   );
 }
 
-/** The recessed `generating` label under a reply that is still being written. */
 export function GeneratingLabel() {
   return (
     <View className="mt-1 flex-row items-center gap-1.5">

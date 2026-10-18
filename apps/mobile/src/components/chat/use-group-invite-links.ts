@@ -9,13 +9,7 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The group screen's invite-links sheet state and writes (T-0136): owner/admin
- * only, like the web panel. The list loads when the sheet opens; the created
- * URL is kept only until dismissed, never stored. A failed load keeps the sheet
- * open with a message. It also owns the clipboard/share bridge the shown-once
- * block and the visibility sheet both use.
- */
+// The group screen's invite-links sheet state and writes, owner/admin only like web. The list loads when the sheet opens; the created URL is kept only until dismissed, never stored.
 export function useGroupInviteLinks(groupId: string) {
   const listInviteLinks = useChatStore((state) => state.listInviteLinks);
   const createInviteLink = useChatStore((state) => state.createInviteLink);
@@ -51,8 +45,7 @@ export function useGroupInviteLinks(groupId: string) {
     setLinksError('');
     setCreatedUrl(undefined);
     setRevokingId(undefined);
-    // Fresh clock for the expired/exhausted labels on every open: the sheet
-    // stays mounted while hidden, so a mount-time stamp would go stale.
+    // Fresh clock on every open: the sheet stays mounted while hidden, so a mount-time stamp would go stale.
     setLinksNow(Date.now());
     setLinksOpen(true);
     loadLinks(groupId);
@@ -92,10 +85,7 @@ export function useGroupInviteLinks(groupId: string) {
     runLinkRevoke(linkId);
   };
 
-  // The clipboard/share bridge for the shown-once block: `expo-clipboard`
-  // and React Native's `Share` cannot run in Node tests, so the sheet takes
-  // callbacks and this screen wires the real modules at the edge. The
-  // sheets await these, so each returns a Promise.
+  // The clipboard/share bridge: `expo-clipboard` and `Share` cannot run in Node tests, so the sheet takes callbacks and the screen wires the real modules.
   const share = useMemo(
     () => ({
       copyText: (text: string) =>

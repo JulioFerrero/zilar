@@ -14,8 +14,6 @@ import Animated, {
 
 const REPLY_THRESHOLD = 60;
 const MAX_TRANSLATE_X = 96;
-// The same stiff close as the old swipeable, so a short swipe snaps back
-// without wobbling the row.
 const SPRING_BACK = { damping: 1000, stiffness: 700, overshootClamping: true } as const;
 
 // A failed haptic is ignored: the swipe or the reaction still works without it.
@@ -27,10 +25,7 @@ function lightHaptic(): void {
   );
 }
 
-/**
- * The row's swipe: a rightward drag moves one shared value up to 96 px, past
- * 60 px it replies on release, and it always springs back.
- */
+// A rightward drag moves the row up to 96 px; past 60 px it replies on release, and it always springs back.
 function makePan(
   enabled: boolean,
   translateX: SharedValue<number>,
@@ -39,9 +34,7 @@ function makePan(
   return (
     Gesture.Pan()
       .enabled(enabled)
-      // One value sets only the activation distance, so the pan starts after a
-      // 12 px rightward drag; the array form would set a start threshold and
-      // activate at rest.
+      // Only the activation distance, so the pan starts after a 12 px rightward drag.
       .activeOffsetX(12)
       .failOffsetY([-10, 10])
       .onUpdate((event) => {
@@ -58,8 +51,7 @@ function makePan(
   );
 }
 
-// A stable callback (like `useStableIndexChange` in folder-pager.tsx): the pan
-// keeps its identity across renders while it still calls this render's reply.
+// A stable callback: the pan keeps its identity across renders while calling this render's reply.
 function useStableVoidCallback(callback: () => void): () => void {
   const latest = useRef(callback);
   useEffect(() => {
@@ -68,43 +60,24 @@ function useStableVoidCallback(callback: () => void): () => void {
   return useMemo(() => () => latest.current(), []);
 }
 
-// The bubble's double-tap lives in its own detector (bubble-gesture.tsx) but
-// must not cancel the row's swipe, so it finds the pan here and runs beside it.
+// The bubble's double-tap lives in its own detector but must not cancel the row's swipe, so it finds the pan here and runs beside it.
 const RowPanContext = createContext<PanGesture | null>(null);
 
-/** The enclosing row's swipe, or null when the bubble is used on its own. */
 export function useRowPan(): PanGesture | null {
   return useContext(RowPanContext);
 }
 
 type RowGestureProps = {
-  /** The colour of the reply arrow revealed by a right swipe. */
   color: string;
   onReply: () => void;
-  /** False while the row is in select mode. */
   swipeEnabled?: boolean;
   children: ReactNode;
 };
 
-/**
- * W3b (T-2022): the row's swipe-to-reply without the `ReanimatedSwipeable`
- * (nine shared values, four animated styles and its own pan per row). One pan
- * drives one shared value:
- *
- * - it only starts on a rightward drag (`activeOffsetX`) and fails at once on
- *   vertical movement (`failOffsetY`), so a list fling never swipes a row;
- * - the shared value moves the row up to 96 px and fades in the reply arrow
- *   past `REPLY_THRESHOLD`; releasing past it fires a Light haptic and replies,
- *   and the row always springs back.
- *
- * The double-tap-to-react stays on the bubble itself (`BubbleGesture`) so a tap
- * on an avatar or a reaction chip is not swallowed by it; that tap runs
- * simultaneously with this pan through `useRowPan`.
- */
+// Swipe-to-reply without `ReanimatedSwipeable`: one pan, one shared value. It starts only on a rightward drag and fails on vertical movement, so a fling never swipes a row; past `REPLY_THRESHOLD` a haptic fires and replies, and the row always springs back.
 export function RowGesture({ color, onReply, swipeEnabled = true, children }: RowGestureProps) {
   const translateX = useSharedValue(0);
-  // The pan keeps its identity across renders: it reads the reply callback
-  // through a stable function, so a re-render does not rebuild the gesture.
+  // The pan keeps its identity across renders by reading the reply through a stable function.
   const fireReply = useStableVoidCallback(() => {
     lightHaptic();
     onReply();

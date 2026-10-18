@@ -5,13 +5,7 @@ import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { usePersonRoute } from '@/components/chat/person-pressable';
 
-/**
- * A mention chip that opens the person it names when the app can place them
- * (T-1877): a contact or an existing chat opens its DM, anyone else with a
- * handle opens their profile. A nested RN `Text` cannot sit inside a
- * `Pressable`, so the chip handles its own taps; with a link it also forwards
- * the bubble's long hold to the message menu.
- */
+// A mention chip that opens the person it names when the app can place them: a contact or an existing chat opens its DM, anyone else with a handle opens their profile. A nested RN `Text` cannot sit inside a `Pressable`, so the chip handles its own taps and forwards the bubble's long hold.
 export function MentionText({
   jid,
   text,
@@ -26,8 +20,7 @@ export function MentionText({
   if (route === undefined) {
     return <RNText style={style}>{text}</RNText>;
   }
-  // The chip swallows the enclosing bubble's `onLongPress` once it handles
-  // taps, so forward the menu open while a short tap opens the person.
+  // The chip swallows the bubble's `onLongPress` once it handles taps, so forward the menu open while a short tap opens the person.
   const longPress =
     openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   return (

@@ -15,8 +15,7 @@ import { well } from '../../lib/depth';
 import { safeLinkTarget } from '../../lib/links';
 import { MarkdownTable } from './markdown-table';
 
-// The bubble text, code and inline-code looks, shared with `link-text.tsx`
-// (T-1227) so the plain path matches the full Markdown renderer.
+// The bubble's text, code and inline-code looks, shared with `link-text.tsx` so the plain path matches the full renderer.
 export const BODY: TextStyle = { fontSize: 15, lineHeight: 20, fontFamily: 'Geist_400Regular' };
 export const CODE: TextStyle = { fontSize: 13, lineHeight: 18, fontFamily: 'GeistMono_400Regular' };
 const BLOCK_GAP = 6;
@@ -30,10 +29,7 @@ function headingStyle(level: number): TextStyle {
   return { fontSize: size, lineHeight: Math.round(size * 1.35), fontFamily: 'Geist_600SemiBold' };
 }
 
-/**
- * The URL to open for a link. The shared parser only emits `http:`, `https:`
- * and `mailto:`, and `safeLinkTarget` guards every other scheme.
- */
+// The URL to open for a link: the shared parser emits only `http:`, `https:` and `mailto:`, and `safeLinkTarget` guards every other scheme.
 function openTarget(href: string): string | undefined {
   return /^mailto:/i.test(href) ? href : safeLinkTarget(href);
 }
@@ -191,7 +187,6 @@ function ListBlock({ block, color }: { block: Extract<MdBlock, { type: 'list' }>
   );
 }
 
-/** A fenced code block, shared with the plain bubble path (T-1227). */
 export function CodeBlock({
   block,
   color,
@@ -204,8 +199,7 @@ export function CodeBlock({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        // A horizontal ScrollView grows to fill the free height; without this
-        // the code block stretches into a tall empty grey square.
+        // A horizontal ScrollView grows to fill the free height; without this the code block stretches into a tall empty grey square.
         style={{ flexGrow: 0 }}
       >
         <RNText style={[CODE, { color }]}>{block.value}</RNText>
@@ -275,19 +269,7 @@ function BlockView({
   }
 }
 
-/**
- * Renders a safe Markdown reply with React Native `Text` and `View` only: no
- * raw HTML and no remote image. The shared chat-core parser (T-2033) produces
- * the same AST web renders through react-markdown. Memoized on `text`, `color`
- * and `trailing`, so a reveal frame that repeats the same text does not
- * re-parse the whole reply.
- *
- * `trailing` is the caret plus an invisible copy of the time/ticks meta that
- * reserves the meta's width. Telegram puts the meta at the bottom-right and the
- * bubble draws it there (`META_OVERLAY`); the reserved width keeps it inline
- * after a short final paragraph and pushes a full line's meta to its own
- * right-aligned row, so it never wraps to the left.
- */
+// Renders a safe Markdown reply with `Text` and `View` only: no raw HTML, no remote image. Memoized on `text`, `color` and `trailing`, so a reveal frame that repeats text does not re-parse. `trailing` is the caret plus an invisible meta copy that reserves its width, keeping the meta bottom-right.
 export const MarkdownText = memo(function MarkdownText({
   text,
   color,

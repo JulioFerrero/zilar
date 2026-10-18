@@ -3,11 +3,7 @@ import { View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
-/**
- * The custom role chips next to a member's name (T-0137, the mobile twin of
- * the web `GroupPanel` chips): one muted mono chip per role. Everyone sees
- * the same chips — role membership is not secret.
- */
+// The custom role chips next to a member's name: one muted mono chip per role. Everyone sees the same chips — role membership is not secret.
 export function RoleChips({ roles }: { roles: readonly { id: string; name: string }[] }) {
   if (roles.length === 0) {
     return null;

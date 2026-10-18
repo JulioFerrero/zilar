@@ -3,10 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 
 export type MessageHandler = (message: UiMessage) => void;
 
-// A handler that keeps its identity while the screen hands over a new closure
-// each render, so the memoised bubbles do not re-render for it. It stays
-// `undefined` while the screen passes none, because the bubble hides the
-// matching action then.
+// A handler that keeps its identity while the screen hands over a new closure each render, so memoised bubbles do not re-render; `undefined` while the screen passes none, because the bubble hides that action.
 export function useStableHandler(handler: MessageHandler | undefined): MessageHandler | undefined {
   const latest = useRef(handler);
   useEffect(() => {

@@ -10,10 +10,7 @@ export interface SearchScheduler {
 
 type SearchInput = Parameters<SearchApi['searchMessages']>[0];
 
-/**
- * Runs one search request as a fiber. `onPage` or `onError` runs on that fiber
- * once the request settles; an error thrown by `onPage` is not sent to `onError`.
- */
+// Runs one search request as a fiber; `onPage` or `onError` runs on that fiber once it settles, and a throw from `onPage` is not sent to `onError`.
 export function settleSearch(
   api: SearchApi,
   input: SearchInput,

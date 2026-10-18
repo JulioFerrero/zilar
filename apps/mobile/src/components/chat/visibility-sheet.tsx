@@ -11,11 +11,7 @@ import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
 import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
 
-/**
- * Visibility helpers (T-0183): the same rules as the web
- * `VisibilitySection`. The owner only may change visibility; everyone else
- * never sees the sheet (the screen gates it on the member role).
- */
+// The same rules as web's `VisibilitySection`: only the owner may change visibility; everyone else never sees the sheet.
 
 /** The owner only may change visibility (same rule as web `GroupPanel`). */
 export function mayChangeVisibility(role: string | undefined): boolean {
@@ -59,12 +55,7 @@ export function visibilitySaveError(error: unknown): string {
   return 'Could not save the visibility. Try again.';
 }
 
-/**
- * The visibility sheet (T-0183): private or public with the @handle and the
- * live availability check. Going private explains that the group disappears
- * from Explore at once while members stay. The screen loads the truth and
- * performs the save; the sheet is the thin view.
- */
+// The visibility sheet: private or public with the @handle and a live availability check. Going private explains that the group leaves Explore at once while members stay. The screen loads and saves; the sheet is a thin view.
 export function VisibilitySheet({
   visible,
   groupTitle,
@@ -95,7 +86,6 @@ export function VisibilitySheet({
   error: string;
   saved: boolean;
   confirmingPrivate: boolean;
-  /** Clipboard bridge injected by the screen (`expo-clipboard` can't run in Node tests). */
   share: { copyText: (text: string) => Promise<void> };
   onPick: (next: GroupVisibility) => void;
   onHandleChange: (next: string) => void;
@@ -103,10 +93,7 @@ export function VisibilitySheet({
   onCancelPrivate: () => void;
   onClose: () => void;
 }) {
-  // `copied` resets when the sheet closes: keyed render state would need the
-  // screen to remount the sheet, so the copy button resets on close here.
-  // The effect only starts the reset fiber; the fiber applies it once (the
-  // lint rule flags synchronous setState inside effects).
+  // `copied` resets when the sheet closes; the effect only starts the reset fiber (lint flags synchronous setState in effects).
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

@@ -14,14 +14,7 @@ export type TopicPrefAction =
   | { kind: 'pin'; pinned: boolean }
   | { kind: 'archive'; archived: boolean };
 
-/**
- * The long-press sheet on a topic row (T-0112, extended in T-0135): Pin /
- * Unpin, Mute with the durations (Unmute when muted), Archive chat /
- * Unarchive for the per-user archive, plus Archive topic for everyone for
- * managers (never General — the caller hides it). Pure view (no hooks) so
- * it stays render-testable like `ReactionChips`: the screen owns the mute
- * submenu and performs the actions.
- */
+// The long-press sheet on a topic row: Pin/Unpin, Mute with durations (Unmute when muted), Archive chat/Unarchive, plus Archive topic for everyone for managers (never General — the caller hides it). Pure view (no hooks) so it stays render-testable.
 export function TopicActionsSheet({
   chat,
   canArchive,

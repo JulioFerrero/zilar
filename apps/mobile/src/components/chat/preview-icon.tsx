@@ -10,7 +10,6 @@ import {
 
 import { MUTED_FOREGROUND } from '@/lib/colors';
 
-/** The lucide icon for each `previewKind`, in the kind's own order. */
 const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
   photo: ImageIcon,
   album: Images,
@@ -19,11 +18,7 @@ const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
   card: File,
 };
 
-/**
- * The small muted lucide icon a chat row draws before a non-text preview
- * (`Photo`, `3 photos`, `Voice message…`, the file name, `Attachment`); the
- * emoji stay out of the app chrome. Renders nothing for a plain text preview.
- */
+// The small muted lucide icon before a non-text preview (`Photo`, `3 photos`, …); emoji stay out of the app chrome. Renders nothing for plain text.
 export function PreviewIcon({ kind, size = 14 }: { kind: PreviewKind | undefined; size?: number }) {
   if (kind === undefined) {
     return null;

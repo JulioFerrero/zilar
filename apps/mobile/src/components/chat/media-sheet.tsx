@@ -45,12 +45,7 @@ const INITIAL_SHEET_STATE: SheetState = {
   error: '',
 };
 
-/**
- * The chat media sheet (T-0436): the Media/Files/Links/Voice tabs reachable
- * from the header button. It loads one page when it opens and whenever the
- * tab changes, pages with the cursor, and jumps to a message (then closes).
- * The screen mounts it only while it is open.
- */
+// The chat media sheet: Media/Files/Links/Voice tabs, one page loaded on open and per tab change, cursor paging, and a jump to a message (then close). The screen mounts it only while open.
 export function MediaSheet({
   chatId,
   title = 'Media, files and links',
@@ -60,14 +55,12 @@ export function MediaSheet({
   const loadChatMedia = useChatStore((state) => state.loadChatMedia);
   const [state, setState] = useState<SheetState>(INITIAL_SHEET_STATE);
   const [reloadTick, setReloadTick] = useState(0);
-  // Guarded synchronously so a double tap landing before React re-renders
-  // the disabled button can never fire two page loads (like `AiActivity`).
+  // Guarded synchronously, so a double tap before React re-renders the disabled button cannot fire two page loads.
   const loadingMoreRef = useRef(false);
   const { tab } = state;
 
   useEffect(() => {
-    // The cleanup interrupts the load, so an answer for an old tab or chat
-    // never replaces the current one.
+    // The cleanup interrupts the load, so an answer for an old tab or chat never replaces the current one.
     const fiber = Effect.runFork(
       Effect.tryPromise(() => loadChatMedia(chatId, tab)).pipe(
         Effect.match({
@@ -126,7 +119,7 @@ export function MediaSheet({
     const targetTab = state.tab;
     loadingMoreRef.current = true;
     setState((current) => ({ ...current, loadingMore: true, error: '' }));
-    // Not tied to the sheet's lifetime: a page in flight still lands, as before.
+    // Not tied to the sheet's lifetime: a page in flight still lands.
     Effect.runFork(
       Effect.tryPromise(() => loadChatMedia(chatId, targetTab, cursor)).pipe(
         Effect.match({

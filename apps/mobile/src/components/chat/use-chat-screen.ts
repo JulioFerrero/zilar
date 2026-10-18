@@ -12,11 +12,6 @@ import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 
-/**
- * The chat screen's store subscriptions, local state and handlers. The route
- * stays the screen (`app/chat/[id].tsx`) and renders the branches; the pieces
- * it repeats live in `components/chat/`.
- */
 export function useChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; notFound?: string; notice?: string }>();
@@ -31,13 +26,10 @@ export function useChatScreen() {
   const pinsError = useChatStore((state) =>
     state.pinsError?.chatId === chatId ? state.pinsError.message : undefined,
   );
-  // One memoized ids array for the message list: a pins publish with
-  // unchanged membership keeps the reference, so the list does not
-  // re-render on every 60 s tick or unrelated pins change.
+  // One memoized ids array: a pins publish with unchanged membership keeps the reference, so the list does not re-render on every 60 s tick.
   const pinnedIds = useMemo(() => pins.map((pin) => pin.messageId), [pins]);
   const dismissPinsError = useChatStore((state) => state.dismissPinsError);
-  // The messages are read at call time (T-2009, C5): subscribing the screen to
-  // `messagesByChat` re-rendered it, and every mounted row, on every message.
+  // Messages are read at call time: subscribing the screen to `messagesByChat` re-rendered it and every row on every message.
   const store = useChatStoreApi();
   const cancelEdit = useChatStore((state) => state.cancelEdit);
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -49,10 +41,7 @@ export function useChatScreen() {
     (state) => state.chats.find((item) => item.id === chatId)?.groupId,
   );
   const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
-  // Mount loads the detail only when nothing fresh is cached: the cached
-  // path dedupes in-flight loads too, so opening the chat and the group
-  // screen costs one GET, not one per mount (T-0139). Explicit refreshes
-  // after a write still force through `refreshGroupDetail`.
+  // Mount loads detail only when nothing fresh is cached; the cache dedupes in-flight loads, so a remount costs no extra GET.
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const groupRoles = useChatStore((state) => state.groupRoles(chatGroupId ?? ''));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
@@ -61,15 +50,11 @@ export function useChatScreen() {
   const { api: memoryApi } = useAiMemoryApi();
 
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
-  // A search jump that gave up ("Message not found") lands here with
-  // `?notFound=1`: the chat opens at its bottom with a short inline notice.
-  // Local state, dismissed once, so going back and re-entering clears it.
+  // A search jump that gave up lands here with `?notFound=1`: the chat opens at its bottom with a short notice, dismissed once.
   const [jumpMissed, setJumpMissed] = useState(params.notFound === '1');
-  // A partial AI create lands here with `?notice=partial`: a quiet notice shown
-  // once, like the search-jump miss above (T-1472).
+  // A partial AI create lands here with `?notice=partial`: a quiet notice shown once.
   const [partialNotice, setPartialNotice] = useState(params.notice === 'partial');
-  // A short "Copied" notice asked for by the tiles (T-1693): the thread shows
-  // it through its one toast and clears it, like the search-jump miss above.
+  // A short "Copied" notice asked for by the tiles; the thread shows it through its one toast.
   const [notice, setNotice] = useState<string | null>(null);
   // The topic rows in the info sheet (link, done) report a save failure here.
   const [topicError, setTopicError] = useState('');
@@ -86,30 +71,24 @@ export function useChatScreen() {
   const [infoRolesError, setInfoRolesError] = useState('');
   const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
-  // Multi-select for forwarding (T-0445): the checked message ids while the
-  // SelectionBar replaces the composer.
+  // Multi-select for forwarding: the checked ids while the SelectionBar replaces the composer.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // The chat is open only while its screen is focused: a screen pushed over
-  // it (group info, profile) blurs it, so incoming messages stay unread and
-  // unmarked until the user comes back (UI-11). Mount alone is not enough.
+  // The chat is open only while its screen is focused: a screen pushed over it blurs it, so messages stay unread until the user returns.
   useFocusEffect(
     useCallback(() => {
       if (!chatId) {
         return;
       }
       openChat(chatId);
-      // Leaving the chat (or switching to another one) clears the open chat,
-      // so a message arriving on the list is not marked seen (T-1147).
+      // Leaving or switching clears the open chat, so a message arriving on the list is not marked seen.
       return () => {
         closeChat(chatId);
       };
     }, [chatId, openChat, closeChat]),
   );
 
-  // Leaving the chat stops its 60 s pins poll. `openChat` of another chat
-  // stops it too; this effect only covers the leave/unmount case. The
-  // effect stays above the `!chat` return, like the redirect effect below.
+  // Leaving the chat stops its 60 s pins poll; this effect covers leave/unmount, and stays above the `!chat` return.
   const stopPinsPoll = useChatStore((state) => state.stopPinsPoll);
   useEffect(() => {
     return () => {
@@ -117,18 +96,14 @@ export function useChatScreen() {
     };
   }, [stopPinsPoll]);
 
-  // An edit belongs to one chat: leaving it (or switching chats) drops the
-  // edit mode so the composer of another chat never shows a stale edit bar.
+  // An edit belongs to one chat: leaving or switching drops the edit mode, so the composer never shows a stale bar.
   useEffect(() => {
     return () => {
       cancelEdit();
     };
   }, [chatId, cancelEdit]);
 
-  // Selecting is per chat: leaving or switching drops the checked messages.
-  // Adjust during render (React's derived-state pattern) so a switch never
-  // shows the previous chat's checks, and so `react/set-state-in-effect`
-  // stays quiet.
+  // Selecting is per chat: leaving or switching drops the checks, adjusted during render so no stale checks flash.
   const [selectedIdsChatId, setSelectedIdsChatId] = useState(chatId);
   if (selectedIdsChatId !== chatId) {
     setSelectedIdsChatId(chatId);
@@ -141,9 +116,7 @@ export function useChatScreen() {
   const startSelection = useCallback((message: UiMessage) => {
     setSelectedIds([message.id]);
   }, []);
-  // Memoised on the ids, with stable handlers: a message change must not hand
-  // the list a new selection object and re-render every mounted row (T-2009,
-  // C5).
+  // Memoised on the ids with stable handlers, so a message change does not re-render every mounted row.
   const selection = useMemo(
     () => ({ ids: selectedIds, onToggle: toggleSelectedMessage, onStart: startSelection }),
     [selectedIds, toggleSelectedMessage, startSelection],
@@ -156,11 +129,7 @@ export function useChatScreen() {
     setForwarding(list);
   };
 
-  // The manager bit (archive gate, role controls) and the owner picker read
-  // the group detail, so load it for the topic's group: opening a topic
-  // directly (deep link) must not demote a manager to a silent read-only
-  // view. A load failure keeps the read-only view with a neutral notice in
-  // the info sheet.
+  // The manager controls and owner picker read the group detail, so load it for the topic's group: a deep link must not demote a manager. A failure keeps the read-only view.
   const detailGroupId = chat?.groupId ?? chatGroupId;
   useEffect(() => {
     if (detailGroupId !== undefined && detailGroupId !== '') {
@@ -168,10 +137,7 @@ export function useChatScreen() {
     }
   }, [detailGroupId, ensureGroupDetail]);
 
-  // A topic that disappears while open goes back to the topics screen with a
-  // short notice that never names the topic (the store sets it on refresh).
-  // The effect lives above the `!chat` early return on purpose: every hook
-  // runs on every render, whether or not the chat has loaded yet.
+  // A topic that disappears while open goes back with a notice that never names it. Above the `!chat` return on purpose: hooks run on every render.
   const redirectGroupId =
     chat?.topic !== undefined && topicNotice !== undefined && chat.groupId === topicNotice.groupId
       ? topicNotice.groupId
@@ -226,8 +192,7 @@ export function useChatScreen() {
   const patch = (input: Parameters<typeof patchTopic>[1]): void => {
     setTopicError('');
     runInBackground(() => patchTopic(chatId, input), {
-      // The row keeps its server state (the store only applies the patch on
-      // success), so a failure needs no rollback, just the inline error.
+      // The store only applies the patch on success, so a failure needs no rollback, just the inline error.
       onFailure: () => setTopicError('Could not save. Try again.'),
     });
   };
@@ -235,8 +200,7 @@ export function useChatScreen() {
   const refreshInfoRoles = () => {
     setInfoRolesError('');
     setInfoGroupRolesError('');
-    // Loads map a 404 to "no longer available" (refreshable) and never show
-    // raw server messages; a 403 stays the neutral denied line.
+    // Loads map 404 to "no longer available" and never show raw server text; 403 stays the neutral denied line.
     runInBackground(() => refreshTopicRoles(chatId), {
       onFailure: (error) => setInfoRolesError(describeRolesError(error, 'load')),
     });

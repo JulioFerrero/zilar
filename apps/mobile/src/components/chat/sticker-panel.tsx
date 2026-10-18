@@ -32,12 +32,7 @@ export const STICKER_GRID_COLUMNS = 5;
 export const STICKER_GRID_GAP = 8;
 export const STICKER_GRID_PADDING = 16;
 
-/**
- * The sticker cell size for a sheet of the given width: 5 equal columns
- * with equal gaps and the sheet's side padding, so the grid has no uneven
- * gaps or crowded items (T-0175 addenda). The thumbnail breathes inside
- * its cell with a 4 px margin.
- */
+// The sticker cell size for a sheet width: 5 equal columns with equal gaps and the sheet's side padding; the thumbnail has a 4 px margin.
 export function stickerCellSize(sheetWidth: number): number {
   const usable =
     sheetWidth - STICKER_GRID_PADDING * 2 - STICKER_GRID_GAP * (STICKER_GRID_COLUMNS - 1);
@@ -54,20 +49,12 @@ export const DEFAULT_SHEET_WIDTH = 360;
 
 export type StickerPanelState = 'loading' | 'ready' | 'error' | 'empty';
 
-/**
- * Whether the panel may show a thumbnail inline: same-origin file URLs
- * only. Anything else (a hostile URL planted in recents storage) shows the
- * emoji tile, so the device never fetches it.
- */
+// Same-origin file URLs only: anything else (a hostile URL in recents storage) shows the emoji tile, so the device never fetches it.
 export function isPanelStickerUrl(url: string, apiUrl: string): boolean {
   return isSameOriginStickerUrl(url, apiUrl);
 }
 
-/**
- * Runs an Effect for as long as the component's effect lasts: the returned
- * cleanup interrupts it, so a late answer never reaches an unmounted or
- * re-keyed view (the old `cancelled` flag).
- */
+// Runs an Effect for the component's lifetime; the cleanup interrupts it so a late answer never reaches an unmounted or re-keyed view.
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);
   return () => {
@@ -87,12 +74,7 @@ type StickerPanelProps = {
   onClose: () => void;
 };
 
-/**
- * The Stickers tab body (T-0175): the pack strip (Recent first) and the 5-column
- * grid with equal cells and equal gaps. Rendered inside `StickerPanel` and
- * inside the tabbed `EmojiSheet`; the session token loads here so both hosts
- * stay thin.
- */
+// The Stickers tab body: pack strip (Recent first) and the 5-column grid. Rendered inside `StickerPanel` and the tabbed `EmojiSheet`, so the session token loads here.
 export function StickerGrid({
   packs,
   state,
@@ -103,8 +85,7 @@ export function StickerGrid({
   onRetry,
 }: Omit<StickerPanelProps, 'open' | 'onClose'>) {
   const [token, setToken] = useState<string | undefined>(undefined);
-  // The grid measures its sheet (`onLayout`) instead of reading the window:
-  // inside the half-height sheet the window is wider than the content.
+  // Measure the sheet with `onLayout`, not the window: inside the half-height sheet the window is wider than the content.
   const [sheetWidth, setSheetWidth] = useState(DEFAULT_SHEET_WIDTH);
   const [brokenRecentIds, setBrokenRecentIds] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -241,12 +222,7 @@ export function StickerGrid({
   );
 }
 
-/**
- * The sticker panel bottom sheet (T-0143): a pack tab row (first: Recent), a
- * grid of stickers, tap-to-send. Pure view so it stays render-testable like
- * `PinsSheet`: the composer owns the packs load and the recents storage.
- * The body is `StickerGrid`, shared with the tabbed `EmojiSheet` (T-0175).
- */
+// The sticker panel bottom sheet: pack tabs (Recent first), grid, tap-to-send. A pure view so it stays render-testable; the composer owns the load and recents storage.
 export function StickerPanel({ open, ...props }: StickerPanelProps) {
   if (!open) {
     return null;
@@ -254,10 +230,7 @@ export function StickerPanel({ open, ...props }: StickerPanelProps) {
   return <StickerPanelBody open={open} {...props} />;
 }
 
-/**
- * The open panel's body. Split out so closing unmounts it, restarting the
- * panel's slide on the next open (hooks cannot run after the early return).
- */
+// Split out so closing unmounts it and the next open restarts the slide (hooks cannot run after the early return).
 function StickerPanelBody({
   open,
   packs,
@@ -316,7 +289,6 @@ function StickerPanelBody({
   );
 }
 
-/** A panel thumbnail: a same-origin file URL loads; anything else is emoji. */
 function StickerThumb({
   sticker,
   token,
@@ -356,11 +328,7 @@ export type RecentsStorage = {
   write: (raw: string) => Promise<void>;
 };
 
-/**
- * Records a sent sticker in per-device recents (with its dimensions, so a
- * re-send from Recent puts the real size on the wire); a failing storage
- * never breaks sending.
- */
+// Records a sent sticker in per-device recents with its dimensions, so a re-send puts the real size on the wire.
 export function persistRecent(
   storage: RecentsStorage,
   recents: readonly RecentStickerEntry[],

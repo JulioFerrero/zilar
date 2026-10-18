@@ -4,15 +4,9 @@ import { Text } from '@/components/ui/text';
 import type { SearchItem } from '@/lib/search-api';
 import { snippetParts } from './message-search';
 
-// The snippet's mark color: the accent at rest, like web's `<mark>` wash.
 const MARK_BACKGROUND = '#2a2a2a';
 
-/**
- * One message hit's snippet with its matched ranges highlighted. The snippet
- * is plain text from the server (plus character ranges); every slice renders
- * through nested `Text`, never through HTML or a link, so a hostile snippet
- * cannot inject markup or tappable links.
- */
+// A hit's snippet with its matched ranges highlighted. The snippet is plain server text plus character ranges; every slice renders through nested `Text`, never HTML or a link, so a hostile snippet cannot inject markup or tappable links.
 export function SearchSnippet({
   snippet,
   marks,
@@ -42,7 +36,6 @@ export function SearchSnippet({
   );
 }
 
-/** The sender + time + snippet line under a hit's chat heading. */
 export function SearchHitLine({ item }: { item: SearchItem }) {
   return (
     <View className="mt-0.5 flex-row items-baseline gap-1.5">

@@ -28,19 +28,12 @@ function previewTime(at: string): string {
   return Number.isNaN(date.getTime()) ? '' : formatTime(date);
 }
 
-/**
- * A public topic the caller has not joined (T-1798): its recent messages,
- * read-only, with one "Join {title}" key where the composer sits. The board is
- * `PhoneJoin.dc.html`. Joining runs the store action, whose answer repaints the
- * chat row, so the screen swaps this view for the normal thread.
- */
+// A public topic the caller has not joined: its recent messages, read-only, with one "Join {title}" key where the composer sits. Joining runs the store action, whose answer repaints the row and swaps this view for the thread.
 export function TopicJoinView({ chat }: { chat: ChatSummary }) {
   const joinTopic = useChatStore((state) => state.joinTopic);
-  // The preview lives on the mock-aware topics port; the store action resolves
-  // the topic id behind this chat row first.
+  // The preview lives on the mock-aware topics port; the store action resolves the topic id behind this chat row first.
   const topicPreview = useChatStore((state) => state.topicPreview);
-  // The screen remounts this view with a `key` per topic, so this id is fixed
-  // for the life of the mount. A result for anything else is ignored.
+  // The screen remounts this view with a key per topic, so this id is fixed for the mount; a result for anything else is ignored.
   const mountedChatId = useRef(chat.id);
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -107,11 +100,7 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
             paddingVertical: 16,
           }}
           renderItem={({ item }) => {
-            // A preview row may carry the decoded `<agent>` payload with an
-            // empty body. Like the web twin, only the display-only cards are
-            // drawn here (no sender to check, no respond target); anything
-            // else falls back to the row's text. A row with neither a drawable
-            // card nor text has nothing to show and is skipped.
+            // A preview row may carry the decoded `<agent>` payload with an empty body; only display-only cards are drawn (no sender to check, no respond target), and a row with neither card nor text is skipped.
             const payload = isValid(PayloadSchema)(item.payload) ? item.payload : undefined;
             const card =
               payload !== undefined && (payload.type === 'blocks' || payload.type === 'progress')
@@ -138,8 +127,7 @@ export function TopicJoinView({ chat }: { chat: ChatSummary }) {
               <View className="max-w-[85%] flex-row items-end gap-2 self-start">
                 <EntityAvatar person={{ id: item.nick, name: item.nick }} size={28} />
                 {card !== undefined ? (
-                  // Blocks and progress cards carry their own surface, like the
-                  // thread: no bubble around them (T-1807, T-1814).
+                  // Blocks and progress cards carry their own surface, like the thread: no bubble around them.
                   <View className="shrink">
                     {senderName}
                     <PayloadCard

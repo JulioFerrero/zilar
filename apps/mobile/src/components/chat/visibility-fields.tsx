@@ -16,13 +16,7 @@ export interface HandleCheckState {
   reason?: string | undefined;
 }
 
-/**
- * The `Private` / `Public` row shared by the New group and New channel
- * sheets (T-0228, the mobile twin of web's `NewGroupDialog` visibility
- * section): Private is invite-only (default), Public asks for an `@handle`
- * with the live availability check. Switching back to Private clears the
- * check; the parent keeps the handle text.
- */
+// Private is invite-only (default); Public asks for an `@handle` with a live availability check. Switching back to Private clears the check; the parent keeps the handle text.
 export function VisibilityFields({
   kind,
   visibility,
@@ -115,12 +109,7 @@ export function VisibilityFields({
   );
 }
 
-/**
- * The debounced live handle check (T-0228): 300 ms after typing stops, like
- * the group screen's visibility effect. `rate_limited` reads unavailable
- * with its reason; other failures clear the result. Late results after
- * unmount are ignored.
- */
+// Debounced live handle check, 300 ms after typing stops. `rate_limited` reads unavailable with its reason; other failures clear the result; late results after unmount are ignored.
 export function useHandleCheck(
   visibility: CreateVisibility,
   handle: string,
@@ -129,10 +118,7 @@ export function useHandleCheck(
   const trimmed = handle.trim();
   const [result, setResult] = useState<HandleCheckState | null>(null);
   const [checking, setChecking] = useState(false);
-  // `check` is an inline closure in both sheets, so it stays out of the
-  // effect deps (a fresh identity every render would re-run the debounce
-  // and re-fire the check in a loop). The ref is written during the effect
-  // setup below, never read during render.
+  // `check` is an inline closure in both sheets, so it stays out of the deps: a fresh identity would re-run the debounce in a loop.
   const checkRef = useRef(check);
 
   useEffect(() => {
@@ -143,8 +129,7 @@ export function useHandleCheck(
     if (visibility !== 'public' || trimmed === '') {
       return;
     }
-    // The debounce and the check run in one fiber; the cleanup interrupts it,
-    // so a late answer after a change or unmount is never applied.
+    // Debounce and check run in one fiber; the cleanup interrupts it, so a late answer is never applied.
     const pending = Effect.runFork(
       Effect.sleep(300).pipe(
         Effect.andThen(Effect.sync(() => setChecking(true))),
@@ -187,11 +172,7 @@ export function useHandleCheck(
   };
 }
 
-/**
- * The Public Create guards (T-0228, same as web's `create`): an empty
- * handle names the missing handle; a check that said unavailable repeats
- * its reason sentence. Otherwise undefined and Create may go ahead.
- */
+// Public Create guards: an empty handle names the missing one; an unavailable check repeats its reason sentence.
 export function publicCreateError(
   visibility: CreateVisibility,
   handle: string,
@@ -212,11 +193,7 @@ export function publicCreateError(
   return undefined;
 }
 
-/**
- * The empty-name and Public-handle guards for the group sheet (T-0228, the
- * same sentences the sheet shows inline). Returns the payload when Create
- * may go ahead, otherwise the sentence to show.
- */
+// Empty-name and Public-handle guards; returns the payload or the sentence to show.
 export function groupCreateGuard(
   title: string,
   visibility: CreateVisibility,
@@ -241,7 +218,6 @@ export function groupCreateGuard(
   };
 }
 
-/** Merges the selected member ids into the guarded payload. */
 export function buildGroupCreateInput(
   title: string,
   selected: string[],
@@ -258,11 +234,7 @@ export function buildGroupCreateInput(
   return { input: { ...guard.input, memberIds: selected } };
 }
 
-/**
- * The empty-name and Public-handle guards for the channel sheet (the same
- * sentences the sheet shows inline). Returns the payload when Create may
- * go ahead, otherwise the sentence to show.
- */
+// The channel sheet's empty-name and Public-handle guards.
 export function channelCreateGuard(
   title: string,
   visibility: CreateVisibility,
@@ -287,7 +259,6 @@ export function channelCreateGuard(
   };
 }
 
-/** Merges the trimmed description into the guarded payload. */
 export function buildChannelCreateInput(
   title: string,
   description: string,
@@ -310,11 +281,7 @@ export function buildChannelCreateInput(
   };
 }
 
-/**
- * Maps a failed public create to a fixed sentence (T-0228, the same codes
- * as `visibilitySaveError`): handle codes name the retry, everything else
- * stays the per-kind fallback. Never server text.
- */
+// Maps a failed public create to a fixed sentence by code; never server text.
 export function createErrorText(error: unknown, kind: 'group' | 'channel'): string {
   const fallback =
     kind === 'group'

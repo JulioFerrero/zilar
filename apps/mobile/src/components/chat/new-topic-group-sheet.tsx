@@ -11,29 +11,13 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 type NewTopicCandidate = { id: string; title: string; seed: string };
 
-/**
- * How long the picker waits for group details before it shows what it has
- * (T-1289 fix). The store's `ensureGroupDetail` swallows a failed load, so a
- * group whose detail never lands would otherwise leave the spinner on forever.
- */
+// The picker waits at most this long for group details: `ensureGroupDetail` swallows a failed load, so a detail that never lands would leave the spinner on forever.
 export const NEW_TOPIC_LOAD_CAP_MS = 5000;
 
 /** How often a detail that has not landed yet is asked for again. */
 export const NEW_TOPIC_RETRY_MS = 1000;
 
-/**
- * The "+" menu's New topic picker (T-1289/MUX-29): the groups where this
- * viewer may create a topic. Each group's detail is read with the **same
- * accessor the group screen uses** — `state.groupDetail(groupId)` through the
- * `useChatStore` hook (`apps/mobile/src/app/group/[id].tsx:64`), with the same
- * `currentUserId` (`:70`) and `members` (`:104`) — so a group the group screen
- * offers is listed here too. The details are kept to the groups `mayCreateTopic`
- * allows; picking one opens that group's new-topic flow.
- *
- * Details stream in: a group is listed as soon as its detail lands, the spinner
- * only covers the window before anything shows, and `NEW_TOPIC_LOAD_CAP_MS`
- * bounds that window even if a detail never arrives.
- */
+// The "+" menu's New topic picker: the groups where this viewer may create a topic, read through the same store accessor the group screen uses (`groupDetail`, `currentUserId`, `members`), so a group the screen offers is listed here. Details stream in, and a cap bounds the wait.
 export function NewTopicGroupSheet({
   visible,
   onClose,
@@ -45,7 +29,6 @@ export function NewTopicGroupSheet({
 }) {
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
-  // The group screen's own viewer id (`app/group/[id].tsx:70`).
   const currentUserId = useChatStore((state) => state.currentUserId);
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
 
@@ -67,12 +50,7 @@ export function NewTopicGroupSheet({
     return [...groups.values()];
   }, [chats]);
 
-  // Eligibility read through the store subscription with the group screen's
-  // accessor, so a detail that lands after mount re-fires the selector even
-  // when a `groupDetailsRevision` subscription alone would not. The value is
-  // one joined string so the `useSyncExternalStore` snapshot stays stable:
-  // `id` when a detail is present but not eligible, `id\u0001` when eligible,
-  // and an empty piece while the detail is still missing.
+  // Eligibility read through the store subscription with the group screen's accessor, so a detail landing after mount re-fires the selector. The snapshot is one joined string: `id` for not eligible, `id\u0001` for eligible, empty while missing.
   const detailKey = useChatStore((state) =>
     candidates
       .map((group) => {
@@ -108,9 +86,7 @@ export function NewTopicGroupSheet({
     return { eligible: candidates.filter((group) => eligibleIds.has(group.id)), checked: loaded };
   }, [candidates, detailKey]);
 
-  // A bounded wait for the details that never land. Reset on close with the
-  // adjusted-state render pattern (no set-state-in-effect), and restarted by
-  // the effect below while the sheet is open.
+  // A bounded wait for details that never land, reset on close and restarted while the sheet is open.
   const [capExpired, setCapExpired] = useState(false);
   if (!visible && capExpired) {
     setCapExpired(false);
@@ -125,10 +101,7 @@ export function NewTopicGroupSheet({
     };
   }, [visible]);
 
-  // Loads each group's detail while the sheet is open, and retries any detail
-  // that has not landed yet every `NEW_TOPIC_RETRY_MS` (the store's
-  // `ensureGroupDetail` swallows a failed load), until it lands, the cap fires
-  // or the sheet closes. One dropped load cannot strand the picker.
+  // Loads each group's detail while open and retries a missing one every `NEW_TOPIC_RETRY_MS`, until it lands, the cap fires or the sheet closes.
   const [retryTick, setRetryTick] = useState(0);
   useEffect(() => {
     if (!visible) {
@@ -147,11 +120,9 @@ export function NewTopicGroupSheet({
   }, [visible, candidates, ensureGroupDetail, checked, capExpired, retryTick]);
 
   const hasCandidates = candidates.length > 0;
-  // Don't judge the list before `/api/chats` has answered: an empty candidate
-  // set during the first load is "not there yet", not "no groups".
+  // Don't judge the list before `/api/chats` answered: an empty candidate set during the first load is "not there yet", not "no groups".
   const chatsReady = chatsLoad !== 'loading';
-  // Every fetch has settled once every detail landed; a failed load never
-  // lands, so the cap is the failure path out of the spinner.
+  // A failed load never lands, so the cap is the failure path out of the spinner.
   const settled = chatsReady && (!hasCandidates || checked >= candidates.length || capExpired);
   const loading = !settled && eligible.length === 0;
 

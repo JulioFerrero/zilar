@@ -5,13 +5,7 @@ import { MessageSearchController, type MessageSearchStatus } from './message-sea
 
 export type MessageSearchView = MessageSearchStatus & { loadMore?: () => void };
 
-/**
- * Message search over `GET /api/search` (T-0138), the mobile twin of web's
- * `useMessageSearch`: debounced 300 ms, superseded requests cancelled,
- * hidden entirely when the server answers 501 (`search_unavailable`). Pages
- * forward with the server's `nextBefore` cursor. The query text travels only
- * to the search endpoint and is never logged.
- */
+// Message search over `GET /api/search`, the mobile twin of web's hook: debounced 300 ms, superseded requests cancelled, hidden when the server answers 501 (`search_unavailable`), paging with `nextBefore`. The query text goes only to the search endpoint and is never logged.
 export function useMessageSearch(
   searchApi: SearchApi,
   query: string,
