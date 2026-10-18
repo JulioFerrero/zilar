@@ -1,4 +1,5 @@
 import type { XmppElement } from '@xmpp/client';
+import { bareJid, jidDomain } from '../jid';
 import {
   CARBONS_NAMESPACE,
   DELAY_NAMESPACE,
@@ -94,32 +95,53 @@ export interface MentionInput {
 
 type Envelope = {
   inner: XmppElement;
+  forwarded: boolean;
+  archived: boolean;
   forwardedDelay?: string;
   archiveId?: string;
 };
 
-export function unwrapMessage(stanza: XmppElement): Envelope {
+// XEP-0280 §11: a carbon is trusted only when it comes from my own account.
+function carbonTrusted(stanza: XmppElement, ctx: ParseContext): boolean {
+  const from = stanza.attrs['from'];
+  if (from === undefined) return true;
+  return ctx.me !== undefined && bareJid(from) === ctx.me;
+}
+
+// A MAM result comes from my own account or from the queried room's bare JID.
+export function mamResultTrusted(stanza: XmppElement, ctx: ParseContext): boolean {
+  const from = stanza.attrs['from'];
+  if (from === undefined) return true;
+  if (ctx.me !== undefined && bareJid(from) === ctx.me) return true;
+  return bareJid(from) === from && jidDomain(from) === ctx.mucDomain;
+}
+
+export function unwrapMessage(stanza: XmppElement, ctx: ParseContext): Envelope {
   const carbon =
     stanza.getChild('sent', CARBONS_NAMESPACE) ?? stanza.getChild('received', CARBONS_NAMESPACE);
   const mamResult = stanza.getChild('result', MAM_NAMESPACE);
-  const container = carbon ?? mamResult;
+  const live: Envelope = { inner: stanza, forwarded: false, archived: false };
+  const trustedCarbon = carbon !== undefined && carbonTrusted(stanza, ctx) ? carbon : undefined;
+  const trustedResult =
+    mamResult !== undefined && mamResultTrusted(stanza, ctx) ? mamResult : undefined;
+  const container = trustedCarbon ?? trustedResult;
   if (container === undefined) {
-    return { inner: stanza };
+    return live;
   }
 
   const forwarded = container.getChild('forwarded', FORWARD_NAMESPACE);
   const inner = forwarded?.getChild('message');
   if (forwarded === undefined || inner === undefined) {
-    return { inner: stanza };
+    return live;
   }
 
-  const envelope: Envelope = { inner };
+  const envelope: Envelope = { inner, forwarded: true, archived: trustedResult !== undefined };
   const stamp = forwarded.getChild('delay', DELAY_NAMESPACE)?.attrs['stamp'];
   if (stamp !== undefined) {
     envelope.forwardedDelay = stamp;
   }
-  if (mamResult !== undefined && mamResult.attrs['id'] !== undefined) {
-    envelope.archiveId = mamResult.attrs['id'];
+  if (trustedResult !== undefined && trustedResult.attrs['id'] !== undefined) {
+    envelope.archiveId = trustedResult.attrs['id'];
   }
   return envelope;
 }

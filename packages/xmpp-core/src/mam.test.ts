@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { xml } from '@xmpp/client';
-import { DATA_FORMS_NAMESPACE, MAM_NAMESPACE, RSM_NAMESPACE } from './namespaces';
+import {
+  DATA_FORMS_NAMESPACE,
+  FORWARD_NAMESPACE,
+  MAM_NAMESPACE,
+  MUC_USER_NAMESPACE,
+  RSM_NAMESPACE,
+} from './namespaces';
 import { buildMamQuery, orderOldestFirst, parseMamFin, toHistoryPage } from './mam';
+import { decodeMessageStanza, type ParseContext } from './stanza';
+import { mamResultTrusted } from './stanza/parse-context';
 import type { ChatMessage } from './types';
+
+const ctx: ParseContext = {
+  me: 'bob@zilar.localhost',
+  domain: 'zilar.localhost',
+  mucDomain: 'rooms.zilar.localhost',
+  now: () => new Date('2026-09-27T12:00:00.000Z'),
+};
 
 function message(id: string, timestamp: string, body: string): ChatMessage {
   return {
@@ -164,5 +179,53 @@ describe('toHistoryPage', () => {
       first: 'a',
     });
     expect(toHistoryPage(messages, { complete: false })).not.toHaveProperty('first');
+  });
+});
+
+describe('MAM result trust', () => {
+  function result(outerFrom: string): ReturnType<typeof xml> {
+    return xml(
+      'message',
+      { from: outerFrom, to: 'bob@zilar.localhost/laptop' },
+      xml(
+        'result',
+        { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-1' },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml(
+            'message',
+            { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-1' },
+            xml('body', {}, 'archived'),
+            xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@zilar.localhost' })),
+          ),
+        ),
+      ),
+    );
+  }
+
+  it('trusts the item jid inside a result from the room', () => {
+    const stanza = result('project@rooms.zilar.localhost');
+    expect(mamResultTrusted(stanza, ctx)).toBe(true);
+    expect(decodeMessageStanza(stanza, ctx).message).toMatchObject({
+      id: 'archive-1',
+      fromJid: 'alice@zilar.localhost',
+      fromResolved: true,
+    });
+  });
+
+  it('trusts a result from my own account', () => {
+    expect(mamResultTrusted(result('bob@zilar.localhost'), ctx)).toBe(true);
+  });
+
+  it('does not unwrap a result from another user or from a room occupant', () => {
+    for (const from of [
+      'mallory@zilar.localhost/laptop',
+      'project@rooms.zilar.localhost/mallory',
+    ]) {
+      const stanza = result(from);
+      expect(mamResultTrusted(stanza, ctx)).toBe(false);
+      expect(decodeMessageStanza(stanza, ctx).message).toBeUndefined();
+    }
   });
 });

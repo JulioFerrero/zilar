@@ -26,6 +26,7 @@ import {
   sanitizeReactions,
   type ParseContext,
 } from './stanza';
+import type { Occupant } from './types';
 import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './text';
 import { createPresence } from './core-effect/presence';
 import type { CoreRuntime } from './core-effect/config';
@@ -250,8 +251,45 @@ describe('buildUploadSlotRequest and parseUploadSlot', () => {
   });
 });
 
+const roomJid = 'project@rooms.zilar.localhost';
+
+function rosterCtx(...entries: Array<[nick: string, realJid: string]>): ParseContext {
+  const roster = new Map<string, Occupant>(
+    entries.map(([nick, realJid]) => [
+      `${roomJid}/${nick}`,
+      { jid: `${roomJid}/${nick}`, nick, available: true, realJid },
+    ]),
+  );
+  return { ...ctx, rosterFor: (room) => (room === roomJid ? roster : undefined) };
+}
+
+function carbon(kind: 'sent' | 'received', outerFrom: string | undefined): XmppElement {
+  return xml(
+    'message',
+    outerFrom === undefined ? { type: 'chat' } : { from: outerFrom, type: 'chat' },
+    xml(
+      kind,
+      { xmlns: CARBONS_NAMESPACE },
+      xml(
+        'forwarded',
+        { xmlns: FORWARD_NAMESPACE },
+        xml(
+          'message',
+          {
+            from: 'alice@zilar.localhost/phone',
+            to: 'bob@zilar.localhost',
+            type: 'chat',
+            id: 'c-1',
+          },
+          xml('body', {}, 'forged dm'),
+        ),
+      ),
+    ),
+  );
+}
+
 describe('decodeMessageStanza: live messages', () => {
-  it('parses a groupchat message with the real sender JID', () => {
+  it('parses a groupchat message with the real sender JID from the room roster', () => {
     const stanza = xml(
       'message',
       {
@@ -261,10 +299,9 @@ describe('decodeMessageStanza: live messages', () => {
         id: 'm-1',
       },
       xml('body', {}, 'hello room'),
-      mucUser('alice@zilar.localhost'),
     );
 
-    const { message } = decodeMessageStanza(stanza, ctx);
+    const { message } = decodeMessageStanza(stanza, rosterCtx(['alice', 'alice@zilar.localhost']));
     expect(message).toMatchObject({
       id: 'm-1',
       chatJid: 'project@rooms.zilar.localhost',
@@ -277,14 +314,13 @@ describe('decodeMessageStanza: live messages', () => {
     expect(message?.timestamp.toISOString()).toBe('2026-09-27T12:00:00.000Z');
   });
 
-  it('marks my own room reflection as outgoing via the item JID', () => {
+  it('marks my own room reflection as outgoing via the roster', () => {
     const stanza = xml(
       'message',
       { from: 'project@rooms.zilar.localhost/bob', type: 'groupchat', id: 'm-2' },
       xml('body', {}, 'mine'),
-      mucUser('bob@zilar.localhost', { affiliation: 'owner', role: 'moderator' }),
     );
-    const { message } = decodeMessageStanza(stanza, ctx);
+    const { message } = decodeMessageStanza(stanza, rosterCtx(['bob', 'bob@zilar.localhost']));
     expect(message?.outgoing).toBe(true);
     expect(message?.fromJid).toBe('bob@zilar.localhost');
   });
@@ -376,15 +412,93 @@ describe('decodeMessageStanza: live messages', () => {
     });
   });
 
-  it('reads the timestamp from a delay element', () => {
+  it('reads the timestamp from the server delay of an offline message', () => {
     const stanza = xml(
       'message',
       { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-6' },
       xml('body', {}, 'delayed'),
-      xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T08:30:00.000Z' }),
+      xml('delay', {
+        xmlns: DELAY_NAMESPACE,
+        from: 'zilar.localhost',
+        stamp: '2026-09-26T08:30:00.000Z',
+      }),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message?.timestamp.toISOString()).toBe('2026-09-26T08:30:00.000Z');
+  });
+
+  it('ignores the sender-supplied delay of a live message', () => {
+    const delay = xml('delay', {
+      xmlns: DELAY_NAMESPACE,
+      from: 'alice@zilar.localhost',
+      stamp: '2020-01-01T00:00:00.000Z',
+    });
+    const dm = xml(
+      'message',
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-6a' },
+      xml('body', {}, 'back-dated'),
+      delay,
+    );
+    const group = xml(
+      'message',
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-6b' },
+      xml('body', {}, 'back-dated'),
+      xml('delay', {
+        xmlns: DELAY_NAMESPACE,
+        from: 'zilar.localhost',
+        stamp: '2020-01-01T00:00:00Z',
+      }),
+    );
+    expect(decodeMessageStanza(dm, ctx).message?.timestamp.toISOString()).toBe(
+      '2026-09-27T12:00:00.000Z',
+    );
+    expect(decodeMessageStanza(group, ctx).message?.timestamp.toISOString()).toBe(
+      '2026-09-27T12:00:00.000Z',
+    );
+  });
+});
+
+describe('decodeMessageStanza: sender trust', () => {
+  it('resolves a live groupchat sender from the roster, not a forged item jid', () => {
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.zilar.localhost/mallory', type: 'groupchat', id: 'm-7' },
+      xml('body', {}, 'hi'),
+      mucUser('owner@zilar.localhost'),
+    );
+    const { message } = decodeMessageStanza(
+      stanza,
+      rosterCtx(['mallory', 'mallory@zilar.localhost'], ['owner', 'owner@zilar.localhost']),
+    );
+    expect(message).toMatchObject({ fromJid: 'mallory@zilar.localhost', fromResolved: true });
+  });
+
+  it('leaves a live groupchat sender unresolved when the roster has no entry', () => {
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.zilar.localhost/mallory', type: 'groupchat', id: 'm-8' },
+      xml('body', {}, 'hi'),
+      mucUser('owner@zilar.localhost'),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message).toMatchObject({
+      fromJid: 'project@rooms.zilar.localhost/mallory',
+      fromResolved: false,
+    });
+  });
+
+  it('does not unwrap a carbon whose outer from is another user', () => {
+    const forged = carbon('received', 'mallory@zilar.localhost/laptop');
+    expect(decodeMessageStanza(forged, ctx).message).toBeUndefined();
+    const fromRoom = carbon('sent', 'project@rooms.zilar.localhost/mallory');
+    expect(decodeMessageStanza(fromRoom, ctx).message).toBeUndefined();
+  });
+
+  it('unwraps a carbon from my own account', () => {
+    for (const outer of ['bob@zilar.localhost/laptop', 'bob@zilar.localhost', undefined]) {
+      const { message } = decodeMessageStanza(carbon('received', outer), ctx);
+      expect(message).toMatchObject({ fromJid: 'alice@zilar.localhost', body: 'forged dm' });
+    }
   });
 });
 

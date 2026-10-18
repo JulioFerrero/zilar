@@ -40,7 +40,7 @@ import { conversationJid, fromNick, messageId, resolveSender } from './resolve-s
 import { CHAT_STATES } from './reactions';
 
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
-  const envelope = unwrapMessage(stanza);
+  const envelope = unwrapMessage(stanza, ctx);
   const inner = envelope.inner;
   // A delivered notice is a bodiless headline, which has no chat kind; parse it
   // before the kind guard so it is not dropped (T-1245).
@@ -59,6 +59,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     kind,
     from,
     itemJid: mucUserItem(inner)?.attrs['jid'],
+    archived: envelope.archived,
     occupantId: occupantIdOf(inner),
     me: ctx.me,
     myNick: kind === 'groupchat' ? ctx.myNickFor?.(roomJid) : undefined,
@@ -109,7 +110,12 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
       kind,
       fromJid: sender.jid,
       fromResolved: sender.resolved,
-      timestamp: timestamp(inner, envelope.forwardedDelay, ctx),
+      timestamp: timestamp(
+        inner,
+        envelope.forwardedDelay,
+        ctx,
+        !envelope.forwarded && kind === 'chat',
+      ),
       outgoing: sender.outgoing,
     };
     const originId = originIdOf(inner);

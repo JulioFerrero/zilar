@@ -24,13 +24,16 @@ function isOutgoing(
   return (me !== undefined && realJid === me) || (myNick !== undefined && nick === myNick);
 }
 
-// Resolves a sender to a real bare JID, in the spec's order: a JID carried by
-// the message itself, then the message's occupant-id, then the nick against the
-// room roster. Falls back to the occupant JID when nothing resolves.
+// Resolves a sender to a real bare JID, in the spec's order: the muc#user item
+// JID (trusted only in an archived copy, where the server adds it; a live
+// message's item is sender-controlled), then the message's occupant-id, then
+// the nick against the room roster. Falls back to the occupant JID when nothing
+// resolves.
 export function resolveSender(input: {
   kind: ChatKind;
   from: string;
   itemJid?: string | undefined;
+  archived?: boolean | undefined;
   occupantId?: string | undefined;
   me?: string | undefined;
   myNick?: string | undefined;
@@ -45,7 +48,7 @@ export function resolveSender(input: {
   const nick = jidResource(input.from);
   const carryOccupantId = input.occupantId !== undefined ? { occupantId: input.occupantId } : {};
 
-  if (input.itemJid !== undefined && input.itemJid !== '') {
+  if (input.archived === true && input.itemJid !== undefined && input.itemJid !== '') {
     const jid = bareJid(input.itemJid);
     return {
       jid,

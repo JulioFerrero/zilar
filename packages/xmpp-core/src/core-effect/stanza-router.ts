@@ -12,6 +12,7 @@ import {
   parseRosterPush,
   stanzaErrorCondition,
 } from '../stanza';
+import { mamResultTrusted } from '../stanza/parse-context';
 import type { CoreRuntime } from './config';
 
 export type StanzaRouterApi = {
@@ -24,7 +25,9 @@ export function createStanzaRouter(runtime: CoreRuntime): StanzaRouterApi {
     if (queryId === undefined) return;
     const pending = runtime.pendingQueries.get(queryId);
     if (pending === undefined) return;
-    const decoded = decodeMessageStanza(stanza, runtime.parseContext());
+    const context = runtime.parseContext();
+    if (!mamResultTrusted(stanza, context)) return;
+    const decoded = decodeMessageStanza(stanza, context);
     if (decoded.message !== undefined) pending.messages.push(decoded.message);
   }
 

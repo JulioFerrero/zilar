@@ -22,12 +22,21 @@ import {
   type ReplyRef,
 } from './reactions';
 
+// A live message's own <delay> is sender-controlled and ignored. The one
+// exception is a DM delivered from the offline store, which the server stamps
+// with its own domain as the delay's `from`.
+function serverDelayStamp(stanza: XmppElement, ctx: ParseContext): string | undefined {
+  const delay = stanza.getChild('delay', DELAY_NAMESPACE);
+  return delay?.attrs['from'] === ctx.domain ? delay.attrs['stamp'] : undefined;
+}
+
 export function timestamp(
   stanza: XmppElement,
   forwardedDelay: string | undefined,
   ctx: ParseContext,
+  trustOwnDelay: boolean,
 ): Date {
-  const stamp = stanza.getChild('delay', DELAY_NAMESPACE)?.attrs['stamp'] ?? forwardedDelay;
+  const stamp = forwardedDelay ?? (trustOwnDelay ? serverDelayStamp(stanza, ctx) : undefined);
   if (stamp !== undefined) {
     const date = new Date(stamp);
     if (!Number.isNaN(date.getTime())) {
