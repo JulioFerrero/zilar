@@ -1,14 +1,7 @@
-// Shared schema-issue walker (T-1057, dedup F6): the first decode message, like
-// the old `parsed.error.issues[0]?.message`, used by auth, routines, tools,
-// audit, setup and the xmpp admin client.
-//
-// Walks the issue tree depth-first. In Effect v4 a filter that returned a string
-// carries it on the `InvalidValue` message annotation, while `{ message }` on
-// length checks does not reach it: callers fall back to `SchemaError.message`.
-// The options keep the four historical variants identical:
-// - `filterAnnotations`: read a `Filter`'s own annotation first (routines, tools);
-// - `leafTypes`: name `InvalidType` and `MissingKey` leaves (audit);
-// - `firstChildOnly`: only the first `Composite` child, silent on `AnyOf` (setup).
+// The first decode message, walking the issue tree depth-first. A filter that
+// returned a string keeps it on the `InvalidValue` message annotation; a
+// `{ message }` on a length check does not reach it, so callers fall back to
+// `SchemaError.message`. The options keep the historical variants identical.
 import { SchemaIssue } from 'effect';
 
 export interface FirstIssueMessageOptions {

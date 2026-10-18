@@ -1,16 +1,5 @@
-// Contact requests (T-0163): adding by `@username` sends a request the
-// other person must accept. Unknown handles, retired handles and
-// not-allowed requests answer the same 404 wherever specified.
-//
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-//
-// T-0983 size split: the shared types, limits and query helpers live in
-// `./queries`, the public reads in `./reads`, the error helpers in
-// `./errors` and the decisions (accept, decline and cancel) in `./decide`.
-// This path keeps the mutating service functions and re-exports the same
-// public names it always did.
+// Adding by `@username` sends a request the other person must accept. An unknown
+// handle, a retired one and a not-allowed request answer the same 404.
 
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
@@ -43,22 +32,13 @@ export type { OtherUserProfile } from './reads';
 export { acceptContactRequest, cancelContactRequest, declineContactRequest } from './decide';
 export type { ContactRequestRow, ContactRequestStatus, ContactRequestView } from './queries';
 
-// Creates a pending request `fromId -> handle`. Refuses: to yourself (400),
-// to an existing contact (409 `already_contact`), a duplicate pending
-// request in either direction (409 `request_exists` — the reverse request is
-// returned so the web can offer "Accept"), more than 20 pending outgoing
-// (429), a re-request within 7 days after a decline (429
-// `declined_recently`). The target-handle resolve, the contact check, the
-// duplicate and cooldown reads, the outgoing-cap count and the insert all
-// run in one transaction under the per-sender advisory lock, so the check-
-// then-act cannot double-create under concurrency and a racing accept
-// cannot leave a stale pending row behind: the in-transaction contact read
-// sees the committed pair.
+// Refuses self, an existing contact, a pending request in either direction, more
+// than 20 pending outgoing, and a re-request within 7 days of a decline. Every
+// check and the insert share one transaction under the per-sender advisory lock,
+// so check-then-act cannot double-create.
 //
-// Race recovery lives OUTSIDE the transaction (see below): on real Postgres
-// a unique violation aborts the tx, so any read issued on it afterwards
-// fails with 25P02. The same-direction backstop is the partial unique
-// index, the opposite-direction backstop is the unordered-pair index.
+// Recovery reads run outside the transaction: a unique violation aborts it, so
+// any later read fails with 25P02.
 export async function createContactRequest(
   deps: ContactRequestsDeps,
   fromId: string,
@@ -75,13 +55,10 @@ export async function createContactRequest(
         return yield* sql.withTransaction(
           Effect.gen(function* () {
             yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + fromId}))`;
-            // The handle is resolved INSIDE the transaction, under the sender
-            // lock: a handle that moved (or an account deleted) between the
-            // HTTP layer and here must answer the same 404, never a 500 from a
-            // dangling FK insert. The per-pair key below is folded into the
-            // sender lock's critical section instead of a second take (PGlite
-            // has one connection per database: two concurrent advisory takes
-            // on it would self-deadlock).
+            // Resolved inside the transaction: a handle that moved must answer the
+            // same 404, never a 500 from a dangling FK. The per-pair key is folded
+            // into this lock because PGlite has one connection and a second
+            // concurrent take would self-deadlock.
             const target = yield* resolveHandleUser(sql, handle);
             targetId = target.id;
             if (target.id === fromId) {
@@ -89,11 +66,9 @@ export async function createContactRequest(
                 new HttpError(400, 'invalid_request', 'You cannot add yourself'),
               );
             }
-            // Block effects are silent: when the target blocked the sender,
-            // the request is stored `declined` but answers exactly like a
-            // normal new request (the route still returns 201 with
-            // `status: pending` to the sender). When the sender blocked the
-            // target, they must unblock first (409 `blocked`).
+            // Silent block: when the target blocked the sender, the row is stored
+            // `declined` but answers like a normal new request. A sender who blocked
+            // the target must unblock first (409).
             const [blockedByTarget] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
               WHERE user_id = ${target.id} AND blocked_user_id = ${fromId} LIMIT 1`;
             const [blockedBySender] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
@@ -102,9 +77,6 @@ export async function createContactRequest(
               return yield* Effect.fail(new HttpError(409, 'blocked', 'Unblock this person first'));
             }
             const silentDecline = blockedByTarget !== undefined;
-            // The duplicate check serializes on the sender lock taken above
-            // (same critical section as the cap count), so no second lock
-            // order exists to deadlock.
 
             if (yield* isContactEffect(sql, fromId, target.id)) {
               return yield* Effect.fail(
@@ -119,8 +91,8 @@ export async function createContactRequest(
               );
             }
             if (outgoingFirst) {
-              // The other side already asked: answer with that request so the
-              // web can offer "Accept" instead of creating a second row.
+              // The other side already asked: return it so the web can offer
+              // "Accept" instead of creating a second row.
               return { request: outgoingFirst, reverseOf: outgoingFirst };
             }
 
@@ -133,12 +105,9 @@ export async function createContactRequest(
               );
             }
 
-            // The 7-day re-request cooldown: the single most recent decline of
-            // this exact direction (`ORDER BY decided_at DESC LIMIT 1` — no
-            // unbounded read), INSIDE the transaction like every other row this
-            // decision depends on. Silent declines (the target blocked the
-            // sender) skip it: they must keep answering like fresh requests,
-            // never 429.
+            // Only the single most recent decline of this direction, inside the
+            // transaction. A silent decline skips it: it must answer like a fresh
+            // request, never 429.
             if (!silentDecline) {
               const [lastDeclined] = yield* sql<{ decidedAt: Date | null }>`SELECT decided_at
                 FROM contact_requests
@@ -175,14 +144,13 @@ export async function createContactRequest(
         );
       }),
     );
-    // Audited after the commit: a rolled-back create leaves no audit row.
-    // Only a fresh row has no `reverseOf`.
+    // After the commit, so a rolled-back create leaves no audit row. Only a fresh
+    // row has no `reverseOf`.
     if (created.reverseOf === undefined) {
       auditFor(deps, 'contact_request.created', fromId, created.request.id);
     }
-    // Silent to the sender: a request stored `declined` because the target
-    // blocked them answers like a normal new pending request — `pending`
-    // with no `decidedAt` — while the stored row stays `declined`.
+    // A row stored `declined` because the target blocked the sender answers like a
+    // normal pending request, while the stored row stays `declined`.
     if (created.request.status === 'declined') {
       return {
         ...created,
@@ -194,20 +162,15 @@ export async function createContactRequest(
     if (error instanceof HttpError) {
       throw error;
     }
-    // A concurrent create won the race and this transaction aborted with a
-    // unique violation (on real Postgres the tx is dead from here on, so
-    // the recovery reads MUST use `deps.db`, a fresh connection — never the
-    // aborted tx). Same-direction loser: the partial unique index fired.
-    // Opposite-direction loser: the unordered-pair index fired. Either way
-    // re-read the authoritative row outside and answer like the pre-check:
-    // the reverse-direction loser returns the winner's row so its caller
-    // can offer "Accept" exactly like the serial reverse case.
+    // A concurrent create won and this transaction aborted, so the recovery reads
+    // MUST use `deps.db` (a fresh connection), never the dead one. Re-read the
+    // authoritative row and answer like the pre-check: a reverse-direction loser
+    // returns the winner's row so its caller can offer "Accept".
     const resolvedTargetId = targetId;
     if (!isPendingPairViolation(error) || resolvedTargetId === undefined) {
       throw error;
     }
-    // The recovery reads run on `deps.db` (a fresh connection): the test seam
-    // fires here and can commit the winner the aborted transaction never saw.
+    // The test seam fires here and can commit the winner the aborted tx never saw.
     await deps.onRecovery?.();
     const raced = await runSql(
       deps.db,

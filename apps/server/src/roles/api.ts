@@ -1,12 +1,3 @@
-// Group roles module on the Effect `HttpApi` adapter (T-0525): the same
-// methods, paths, statuses and bodies as the deleted router (`routes.ts`),
-// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). The `groups`
-// module still owns the other `/groups/...` routes, so only these exact paths
-// mount. Its service runs on effect/sql.
-//
-// The schemas and the group live in the shared contract (`@zilar/api-contract`,
-// T-0892); this file keeps the handlers and layers.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -72,7 +63,6 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
           createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
         ),
       )
-      // Renames a role (owner/admin only).
       .handle(
         'rename',
         handler(logger, (request, user) =>
@@ -85,7 +75,6 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // Deletes a role (owner/admin only), 204 with no body.
       .handle(
         'remove',
         handler(logger, async (request, user) => {

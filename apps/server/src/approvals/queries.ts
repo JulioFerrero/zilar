@@ -6,10 +6,8 @@ import type { ApprovalRow } from '../db/rows';
 import { canDecide, canDecideMany } from './access';
 import type { ApprovalStatus, PublicApproval } from './schemas';
 
-// The raw shape the driver returns for one `approvals` row. The effect/sql
-// client camelCases the columns but may hand back `timestamptz` as an ISO
-// string rather than a `Date`; `toApprovalRow` normalises the three
-// timestamp columns so the rest of the module keeps the `ApprovalRow` type.
+// The driver may hand back `timestamptz` as ISO strings; `toApprovalRow`
+// normalises them so the rest of the module keeps the `ApprovalRow` type.
 export type ApprovalSqlRow = Omit<ApprovalRow, 'decidedAt' | 'expiresAt' | 'createdAt'> & {
   decidedAt: Date | string | null;
   expiresAt: Date | string;
@@ -29,13 +27,8 @@ export function toApprovalRow(raw: ApprovalSqlRow): ApprovalRow {
   };
 }
 
-// The approver-role holder names for a batch of topics, keyed by topic id.
-// One batched query for the whole list response — never one query per row.
-// Only holders who are still group members are named (a departed user is
-// never listed even if their row survived the leave cleanup); topics
-// without an approver role get no entry (callers map them to `[]`). One
-// role may approve several topics: holder names fan out to every topic
-// sharing the role.
+// One query for the batch. A departed member is never named, and one role's
+// holders fan out to every topic sharing it.
 export async function approverNamesForTopics(
   db: ServerDatabase,
   topicIds: Array<string | null>,
@@ -97,10 +90,8 @@ export async function approverNamesForTopics(
   return names;
 }
 
-// Lists the pending, unexpired approval requests `userId` may decide: their
-// own AIs, plus groups they own or administer — in both cases only for
-// topics they can see (a blind admin never counts a private topic's rows).
-// Newest first, capped at 100.
+// The user's own AIs plus groups they administer, only for topics they can
+// see. Newest first, capped at 100.
 export async function listDecidableApprovals(
   db: ServerDatabase,
   userId: string,
@@ -142,9 +133,8 @@ export async function listDecidableApprovals(
     }),
   );
   const rows = rawRows.map(toApprovalRow);
-  // A group admin who cannot see a private topic must not count its rows
-  // in the pending badge: drop anything outside their visible topics.
-  // Approver names ride the same batch so the card needs no extra read.
+  // Drop rows outside the viewer's visible topics, so a blind admin never counts
+  // a private topic in the badge.
   const approverNames = await approverNamesForTopics(
     db,
     rows.map((row) => row.topicId),
@@ -163,8 +153,8 @@ function approverNamesFor(row: { topicId: string | null }, names: Map<string, st
   return row.topicId === null ? [] : (names.get(row.topicId) ?? []);
 }
 
-// One request by id, visible only to a user who may decide it. The read model
-// maps a past-due `pending` row to `expired` without writing.
+// Visible only to a user who may decide it; a past-due `pending` row reads as
+// `expired` without a write.
 export async function getDecidableApproval(
   db: ServerDatabase,
   approvalId: string,
@@ -190,10 +180,8 @@ export async function getDecidableApproval(
   return toPublicApproval(row, now, false, null, approverNamesFor(row, names));
 }
 
-// Used by the future sweeper (and the tests). Marks past-due `pending` rows
-// `denied` with `note = 'expired'` so the read model and a hard `pending`
-// query agree. Returns the swept rows' ids and AI/group ids so the sweeper
-// can write one audit entry per row. The conditional `WHERE` keeps a
+// Marks past-due `pending` rows `denied` with `note = 'expired'`, so the read
+// model and a hard `pending` query agree. The conditional `WHERE` keeps a
 // concurrent decision from being overwritten.
 export async function expireStale(
   db: ServerDatabase,
@@ -235,19 +223,9 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
   return rows.map((row) => row.groupId);
 }
 
-// The read shape: a past-due `pending` row is mapped to `expired` without
-// writing, and so is a row the sweeper already denied (`denied`, note
-// `expired`, no human decider): the reader must not see "Denied" for a request
-// nobody denied. `decided_by` is intentionally omitted.
-//
-// `alwaysEligible` is supplied by the caller because the service does not
-// own the action registry — the gateway does. The route passes the
-// predicate it built from the registry.
-// `topicName` is supplied by the caller (the route) because the service
-// does not gate visibility — the route passes the name only for topics the
-// viewer can see, else null. Same for `approverNames`: the list/single
-// readers above resolve them, and the decision route resolves them for the
-// decided row.
+// A past-due `pending` row and a sweeper-denied one both read as `expired`, so
+// nobody sees "Denied" for a request nobody denied. `decided_by` is omitted,
+// and the route supplies `alwaysEligible` and the visible names.
 export function toPublicApproval(
   row: ApprovalRow,
   now: Date,

@@ -1,8 +1,3 @@
-// The XMPP token route on the Effect `HttpApi` adapter (T-0533): the same
-// method, path, limiter order, logs and answer as the deleted router
-// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Its services run on effect/sql.
-
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { XmppGroup, XmppTokenRateLimit } from '@zilar/api-contract';
@@ -20,9 +15,8 @@ import { ensureXmppAccount } from './provisioning';
 import { issueXmppToken } from './token';
 
 export const TOKEN_TTL_SECONDS = 300;
-// Every page load, tab and reconnect mints one token. 30 per 10 min locked a
-// real user out after a morning of reloads (2026-09-28); 120 still stops a
-// runaway loop (one token every 5 s on average).
+// Every page load, tab and reconnect mints one token. 30 per 10 min locked a real
+// user out; 120 still stops a runaway loop (one token every 5 s on average).
 export const TOKEN_RATE_LIMIT_MAX = 120;
 export const TOKEN_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
@@ -31,14 +25,11 @@ export interface XmppApiDependencies {
   db: ServerDatabase;
   adminClient: EjabberdAdminClient;
   xmppConfig: XmppConfig;
-  /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
   logger: Logger;
 }
 
-// The token budget runs before provisioning, exactly like the old route's
-// `limiter.allow` -> `ensureXmppAccount` order. The schema, the group and the
-// tag live in the shared contract (`@zilar/api-contract`, T-1111).
+// The token budget runs before provisioning, as before.
 const RATE_LIMIT_MESSAGE = 'Too many token requests';
 
 const XmppApi = HttpApi.make('xmpp').add(XmppGroup);
@@ -55,7 +46,6 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(XmppApi, 'xmpp', (handlers) =>
     handlers.handle(
       'token',
-      // The token budget was already charged by `XmppTokenRateLimit`.
       handler(logger, (_request, user) =>
         Effect.gen(function* () {
           const { jid, provisioned } = yield* Effect.promise(() =>
@@ -68,9 +58,8 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
             throw xmppUnavailable();
           }
 
-          // Retry any roster items a failed sign-up could not push. A failure
-          // here is not fatal: the user can still chat and the next request
-          // retries.
+          // Retry any roster items a failed sign-up could not push; a failure is
+          // not fatal, and the next request retries.
           const roster = yield* Effect.promise(() =>
             syncRoster(deps.db, deps.adminClient, deps.xmppConfig.domain, user.id),
           );

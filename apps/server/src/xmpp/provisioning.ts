@@ -1,7 +1,3 @@
-// T-0574: every query runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`). The exported functions stay `async` so
-// callers and tests keep their shape.
-
 import { createHash } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -10,9 +6,8 @@ import type { XmppAccountRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { EjabberdAdminClient } from './admin-client';
 
-// XMPP localparts must be `[a-z0-9._-]` (see the admin client). The localpart
-// is the Better Auth user id lowercased, which fits for a normal id. An id that
-// still has other characters (or is longer than 64) falls back to a derived one.
+// XMPP localparts must be `[a-z0-9._-]`. The user id lowercased fits normally;
+// anything else falls back to a derived one.
 const SAFE_LOCALPART = /^[a-z0-9._-]{1,64}$/;
 const HASH_CHARS = 20;
 
@@ -21,11 +16,9 @@ export type XmppAccountStatus = {
   provisioned: boolean;
 };
 
-// The localpart of an XMPP account. Better Auth's default ids are random
-// alphanumeric strings (for example `ZHj28vfbcT5vss0u0vWhveDDnx5ptPkk`), so
-// lowercasing is enough and the id itself becomes the localpart. Only an id
-// that is still invalid after lowercasing falls back to `u` plus the first 20
-// base32 characters of `sha256(userId)`, which is stable and collision-resistant.
+// Better Auth's ids are random alphanumeric, so lowercasing is enough. An id that
+// is still invalid falls back to `u` plus 20 base32 characters of its sha256,
+// which is stable and collision-resistant.
 export function localpartFor(userId: string): string {
   const lowered = userId.toLowerCase();
   if (SAFE_LOCALPART.test(lowered)) {
@@ -38,10 +31,9 @@ export function jidFor(localpart: string, domain: string): string {
   return `${localpart}@${domain}`;
 }
 
-// Ensures the user has an XMPP account, both in our database and in ejabberd.
-// The row is upserted first so the mapping exists even when ejabberd is down
-// (`provisioned = false`). `registerUser` is idempotent, and the unique
-// constraints plus `ON CONFLICT` make concurrent calls safe.
+// The row is upserted first, so the mapping exists even when ejabberd is down
+// (`provisioned = false`). `registerUser` is idempotent and `ON CONFLICT` makes
+// concurrent calls safe.
 export async function ensureXmppAccount(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,

@@ -1,9 +1,7 @@
-// People prefix search (T-1148, T-1286): Telegram-style lookup by
-// `@username` only, used by the chat-list search. T-1286 (SG-7) dropped the
-// display-name clauses, which let anyone enumerate every user by name; a
-// query now matches an exact handle or a handle prefix. Only users with a
-// handle are returned, unknown handles are not, and a person who blocked the
-// viewer is never listed. The query is never logged.
+// Telegram-style lookup by `@username` only: an exact handle or a handle prefix.
+// Display-name search was dropped because it let anyone enumerate every user.
+// Only users with a handle are returned, a blocker is never listed, and the
+// query is never logged.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -18,15 +16,12 @@ export type HandleRelation = Awaited<ReturnType<typeof relationFor>>;
 
 export type UserSearchEntry = OtherUserProfile & { relation: HandleRelation };
 
-// `%`, `_` and the escape char in a query are literal text, never wildcards.
-// PostgreSQL `LIKE` treats backslash as the escape by default, so no `ESCAPE`
-// clause is needed (same rule as the directory search).
+// `%`, `_` and the escape char are literal text; PostgreSQL `LIKE` treats
+// backslash as the escape by default, so no `ESCAPE` clause is needed.
 function escapeLike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
-// Trims, strips one leading `@` and lowercases. Under 3 characters there is
-// nothing to search: `[]` without a round trip.
 export function normalizeUserSearchQuery(query: string): string {
   const trimmed = query.trim();
   const withoutAt = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
@@ -47,11 +42,8 @@ export async function searchUsers(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // T-1286 (SG-7): matches an exact handle or a handle prefix only —
-      // never a display name, which let the whole user base be enumerated.
-      // Exact handle first, then handle prefix, tied by display name. The
-      // viewer and anyone who blocked the viewer (silently, like
-      // `profileForHandle`) are excluded.
+      // Exact handle or handle prefix only, never a display name, which would let
+      // the whole user base be enumerated. The viewer and a blocker are excluded.
       return yield* sql<{
         userId: string;
         handle: string;
@@ -72,9 +64,7 @@ export async function searchUsers(
         LIMIT ${USER_SEARCH_LIMIT}`;
     }),
   );
-  // SG-7 (T-1437): one batched read for every row's relation instead of one
-  // `relationFor` round trip per row. The output order and content stay the
-  // same; a row's relation is what `relationFor` would return for it.
+  // One batched read for every row's relation instead of a round trip per row.
   const relations = await relationsFor(
     db,
     viewerId,

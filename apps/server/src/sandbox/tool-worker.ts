@@ -15,9 +15,8 @@ import {
   type WorkerErrorKind,
 } from './tool-worker-vm';
 
-// Runs inside the worker thread. It owns the QuickJS runtime for one tool
-// execution and talks to the parent only through small JSON messages: log
-// lines stream out, fetch requests go out and responses come back in.
+// Owns the QuickJS runtime for one tool execution. It talks to the parent only
+// through small JSON messages: logs out, fetch requests out and responses in.
 
 interface WorkerParams {
   source: string;
@@ -119,8 +118,7 @@ const run = Effect.gen(function* () {
 
     context.setProp(context.global, '__zilar_input', track(context.newString(params.inputJson)));
 
-    // T-1766: install the `fmt` helpers before the tool source runs. QuickJS
-    // has no `Intl`, so tools format numbers through these instead.
+    // QuickJS has no `Intl`, so install `fmt` before the tool runs.
     const preludeResult = evalInVm(TOOL_PRELUDE);
     if (preludeResult.error) {
       const dumped = dumpVmError(context, preludeResult.error);
@@ -257,7 +255,7 @@ const run = Effect.gen(function* () {
   });
 
   // A failed dispose stops the handle loop; the context and runtime are still
-  // disposed. The runtime may be out of memory; the worker exits anyway.
+  // disposed, since the runtime may be out of memory.
   const disposeVm = Effect.gen(function* () {
     for (let index = handles.length - 1; index >= 0; index -= 1) {
       const handle = handles[index] as QuickJSHandle;

@@ -1,8 +1,3 @@
-// AIs module on the Effect `HttpApi` adapter (T-0555): the same methods,
-// paths, statuses (201 on create, 204 on delete, 503 gating), bodies, audit
-// calls and step order as the deleted router (`routes.ts`), mounted by the
-// Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-
 import { Layer } from 'effect';
 import { HttpApiBuilder } from 'effect/http-api';
 import { AisSchemaErrors, type PublicAi as WireAi } from '@zilar/api-contract';
@@ -47,25 +42,19 @@ export interface AisApiDependencies {
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: AiLogger;
-  /** Absent when the key cipher is not configured: routes that touch an AI
-   * answer 503 instead of failing halfway. */
+  /** Absent when the key cipher is not configured: those routes answer 503. */
   cipher?: KeyCipher;
-  /** T-1425/T-1603: true when the desk agent answers ready, so the Computer
-   * picker can offer Zilar cloud. Defaults to a probe that answers false. */
+  /** True when the desk agent is ready, so the picker can offer Zilar cloud. */
   cloud?: () => Promise<boolean>;
-  /** Audit recorder (T-0083): when present, a successful stop / resume that
-   * actually flipped the AI's status writes one entry; an idempotent repeat
-   * writes nothing; a 4xx writes nothing. The recorder swallows its own
-   * errors, so the response is never affected. */
+  /** A stop/resume that flipped the status writes one entry; idempotent
+   * repeats and 4xx write nothing. */
   audit?: AuditRecorder;
-  /** T-1422: the live agent gateway's turn-stop hook, or null when the gateway
-   * is disabled. Read lazily, because the app is built before the gateway. */
+  /** Read lazily: the app is built before the gateway exists. */
   getGateway?: () => TurnStopper | null;
 }
 
-// The spend summary the AI list and detail carry (T-0058). Null when the usage
-// read fails or times out (T-1405: it now reads `ai_usage`): the UI shows
-// "unavailable" and turns fail open.
+// Null when the usage read fails or times out: the UI shows "unavailable" and
+// turns fail open.
 export interface AiUsageSummary {
   todayUsd: number;
   windowUsd: number;
@@ -73,13 +62,9 @@ export interface AiUsageSummary {
 
 export type PublicAiWithUsage = PublicAi & { usage: AiUsageSummary | null };
 
-// The usage read is a database sum, but it still races this timeout so a slow
-// database answers `usage: null` rather than holding the whole list.
+// Races the database sum so a slow read answers null instead of holding the list.
 export const USAGE_TIMEOUT_MS = 2_000;
 
-// The service rows carry `createdAt` as a `Date`; the wire carries its ISO
-// string, which is what `JSON.stringify` wrote before the contract declared
-// the view.
 function toWire(ai: PublicAi | PublicAiWithUsage): WireAi {
   return { ...ai, createdAt: ai.createdAt.toISOString() };
 }
@@ -92,9 +77,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const cloud = deps.cloud ?? (async () => false);
 
   const requireConfigured = (): { cipher: KeyCipher } => {
-    // Unreachable when called through create/patch/remove: the AisConfigured
-    // endpoint middleware already answered 503. Kept as a backstop so the
-    // handler never runs half-configured.
+    // Unreachable through the mount (the gate answers 503 first); kept as a backstop.
     if (cipher === undefined) {
       throw new HttpError(503, 'ais_unavailable', 'AI management is not configured on this server');
     }
@@ -109,9 +92,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     domain: deps.config.xmpp.domain,
   });
 
-  // T-0165: every AI response that already carries a name gets `avatarUrl`
-  // when the AI has a picture (omitted when none, like today). One query
-  // for the whole list, never one per AI.
+  // One query for the whole list, never one per AI.
   const withAvatars = async (list: PublicAi[]): Promise<PublicAi[]> => {
     if (list.length === 0) {
       return list;
@@ -126,9 +107,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     );
   };
 
-  // Reads one AI's usage with a per-AI timeout. On any failure or timeout the
-  // AI answers `usage: null`: spend is best-effort decoration on the
-  // management API, never a reason to fail it.
+  // Spend is best-effort decoration here, never a reason to fail the route.
   const withUsage = async (ai: PublicAi): Promise<PublicAiWithUsage> => {
     const usage = await Promise.race([
       getAiUsage({ db: deps.db }, ai.id).catch(() => null),
@@ -149,8 +128,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     try {
       await audit.record(entry);
     } catch {
-      // The recorder contract says it must not throw, but a buggy one
-      // must not break the AI route either.
+      // A buggy recorder must not break the route.
     }
   }
 
@@ -161,21 +139,15 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
         handler(effectLogger, async (_request, user) => {
           const ais = await listAis(deps.db, user.id);
           const withAvatarList = await withAvatars(ais);
-          // Owner only, as today: every id here came from the owner's own listing.
-          // The reads run in parallel so one slow AI never holds the whole list.
           const rows = await Promise.all(withAvatarList.map((ai) => withUsage(ai)));
-          // T-1504: one failure read for the whole list, never one per AI.
           const decorated = await withLastFailures(deps.db, rows);
           return decorated.map(toWire);
         }),
       )
-      // T-1395: read-only models.dev catalog; needs no configured gateway.
       .handle(
         'catalog',
         handler(effectLogger, () => getAiCatalog()),
       )
-      // T-1425/T-1603: read-only, session-required; asks the desk agent whether
-      // it is ready instead of guessing from env.
       .handle(
         'computerOptions',
         handler(effectLogger, async () => ({ cloud: await cloud() })),
@@ -241,21 +213,8 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           return deleteAi(serviceDeps(configured), request.params.id, user.id);
         }),
       )
-      // T-0080: the owner's kill switch. Stop disconnects the AI at once and
-      // prevents the gateway from waking it back up; resume reconnects it. Both
-      // answer the public AI, so the panel can re-render against the server
-      // truth without a second GET. Unlike the other writes they need only the
-      // database: a kill switch must work when the cipher or the gateway are
-      // not configured or are down.
-      //
-      // T-0083: when an `audit` recorder is wired in, a real status flip writes
-      // one entry (`ai.stopped` / `ai.resumed`); an idempotent repeat writes
-      // nothing. The pre-read here is owner-checked, so a stranger gets the same
-      // 404 whether or not the recorder is present, and we use it only to know
-      // whether the service call actually changed the state. The service stays
-      // free of audit code. The `try/catch` around `audit.record` is a defensive
-      // backstop: the standard recorder swallows its own errors, but a custom or
-      // buggy one must never turn a 200 into a 500 here.
+      // Stop/resume need only the database, so the kill switch works when the
+      // cipher or the gateway is down. Audit only on a real status flip.
       .handle(
         'stop',
         handler(effectLogger, async (request, user) => {
@@ -302,8 +261,6 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           return toWire(ai);
         }),
       )
-      // T-1422: stop the turn running in one chat. Owner only; answers
-      // `{ stopped }`, false when no turn was running or the gateway is off.
       .handle(
         'stopTurn',
         handler(effectLogger, (request, user) =>
@@ -316,14 +273,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // T-0091: assign or clear the AI's home machine. The audit entry is
-      // written only when the value actually changed, mirroring how `stop` /
-      // `resume` skip the audit on an idempotent call: a recorder that swallows
-      // errors must not turn a 200 into a 500 here either. The `try/catch`
-      // around `audit.record` is the same defensive backstop as the kill-switch
-      // routes. `before.machineId` and `ai.machineId` are always either the
-      // same string or one of them is `null`, so the inequality check is
-      // straightforward.
+      // Audit only when the value changed, mirroring stop/resume.
       .handle(
         'assignMachine',
         handler(effectLogger, async (request, user) => {

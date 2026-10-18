@@ -1,6 +1,3 @@
-// Contact-request query helpers (T-0983 size split, moved unchanged from
-// `./service`): handle resolution, the contact/pair probes, the row-to-view
-// mapping and the shared row types and dependency seam.
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
@@ -11,9 +8,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export const MAX_PENDING_OUTGOING = 20;
 export const RE_REQUEST_COOLDOWN_DAYS = 7;
-// The list endpoint caps each side server-side; the outgoing cap above is
-// the binding one, so 100 newest per side is headroom, not a limit anyone
-// should hit.
+// The outgoing cap above is the binding one, so 100 per side is headroom.
 export const MAX_LIST_ROWS = 100;
 
 export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
@@ -39,28 +34,21 @@ export interface ContactRequestsDeps {
   audit?: AuditRecorder;
   adminClient?: EjabberdAdminClient;
   domain?: string;
-  /** Override the clock in tests. Defaults to the wall clock. */
   now?: () => Date;
   /**
-   * Test-only seam: called inside the create transaction immediately before
-   * the insert. A test throws a pair-index unique violation here to reach the
-   * recovery path, which PGlite cannot reproduce by racing (it serializes on
-   * one connection). Never set in production.
+   * Test only: throws a pair-index violation to reach the recovery path, which
+   * PGlite cannot reproduce by racing (one connection).
    */
   onInsert?: () => void;
   /**
-   * Test-only seam: called on the fresh connection before the recovery reads.
-   * A test uses it to trace the recovery reads and to commit the concurrent
-   * winner that landed between the pre-check and the insert. Never set in
-   * production.
+   * Test only: runs on the fresh connection before the recovery reads, so a test
+   * can commit the winner that landed between the pre-check and the insert.
    */
   onRecovery?: () => void | Promise<void>;
 }
 
-// Resolves an exact, case-insensitive handle to its user row under the
-// caller's transaction connection. Unknown and retired handles answer the
-// same 404 `not_found`, so failures never reveal which one it was. There is
-// deliberately no prefix or partial search.
+// Exact, case-insensitive lookup under the caller's transaction. Unknown and
+// retired handles answer the same 404, so failures never reveal which.
 export function resolveHandleUser(
   sql: SqlClient.SqlClient,
   handle: string,
@@ -150,10 +138,8 @@ export function toView(
   };
 }
 
-// One joined query for every distinct other party: display name + image
-// from `user`, handle from `handles`. Missing users (deleted between the
-// list read and here — nearly impossible inside one request) fall back to
-// the `toView` defaults.
+// One joined query for every distinct other party; a user deleted mid-request
+// falls back to the `toView` defaults.
 export function profilesByUserEffect(
   otherIds: string[],
 ): Effect.Effect<

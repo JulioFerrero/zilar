@@ -32,8 +32,7 @@ import type {
   UserResource,
 } from './types';
 
-// MUC/Sub nodes a push device subscribes to: room messages only. Presence,
-// affiliations and subject changes never notify.
+// Room messages only; presence, affiliations and subject changes never notify.
 const PUSH_SUBSCRIPTION_NODES = 'urn:xmpp:mucsub:nodes:messages';
 
 export function createEjabberdAdminClient(
@@ -42,8 +41,7 @@ export function createEjabberdAdminClient(
 ): EjabberdAdminClient {
   const transport = createAdminTransport(config, fetchImpl);
   const { call, expectOk, expectMutationResult } = transport;
-  // `typeof` keeps `fail`'s `never` return type, so the methods' control flow
-  // still narrows after an `if (Exit.isFailure(...)) fail(...)`.
+  // `typeof` keeps `fail`'s `never` return type, so control flow still narrows.
   const fail: typeof transport.fail = transport.fail;
 
   return {
@@ -84,10 +82,8 @@ export function createEjabberdAdminClient(
       return parsed.value === 0;
     },
 
-    // The sessions ejabberd holds for the user, as resource strings (the
-    // command answers `[resource...]`; an offline user answers `[]`). A
-    // non-empty list only says "a session exists": pending and hibernated
-    // sessions show too, and those are the ones ejabberd itself pushes.
+    // The command answers `[resource...]`; an offline user answers `[]`. Pending
+    // and hibernated sessions show too, so a non-empty list only says one exists.
     async userResources(localpart: string): Promise<UserResource[]> {
       const user = parseName(localpart, 'localpart');
       const response = await call('user_resources', { user, host: config.domain });
@@ -110,14 +106,10 @@ export function createEjabberdAdminClient(
       expectMutationResult('change_password', response);
     },
 
-    // T-1982: revoking or signing out a device ends all of the user's XMPP
-    // streams, so a revoked device stops receiving at once. The other devices
-    // reconnect with fresh tokens, so they only blip.
-    //
-    // ejabberd answers a raw result string such as `Kicked sessions: 2`; an
-    // offline user answers `Kicked sessions: 0`, which is success. A number is
-    // tolerated for older builds. Anything else is a failure the caller logs
-    // and ignores.
+    // Revoking a device ends all of the user's streams, so it stops receiving at
+    // once; the other devices reconnect with fresh tokens and only blip.
+    // ejabberd answers `Kicked sessions: N` (0 is success); a bare number is
+    // tolerated for older builds.
     async kickUser(localpart: string, reason: string): Promise<void> {
       const user = parseName(localpart, 'localpart');
       const response = await call('kick_user', { user, host: config.domain });
@@ -142,13 +134,12 @@ export function createEjabberdAdminClient(
       } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
-        // T-2002: rooms are never listed or discoverable by strangers.
         { name: 'public', value: 'false' },
         { name: 'public_list', value: 'false' },
         { name: 'persistent', value: String(persistent) },
         { name: 'mam', value: String(mam) },
-        // Push (T-0119): every room allows MUC/Sub subscriptions so members
-        // with a push device can subscribe for offline notifications.
+        // Every room allows MUC/Sub, so a member with a push device gets offline
+        // notifications.
         { name: 'allow_subscription', value: String(allowSubscription) },
       ];
       if (anonymous !== undefined) {
@@ -243,7 +234,7 @@ export function createEjabberdAdminClient(
         service: config.mucDomain,
         nodes: PUSH_SUBSCRIPTION_NODES,
       });
-      // The command answers the subscribed node list, not a status code.
+      // The answer is the subscribed node list, not a status code.
       const result = expectOk('subscribe_room', response);
       const parsed = Schema.decodeUnknownExit(Schema.Array(Schema.String))(result);
       if (Exit.isFailure(parsed)) {
@@ -327,9 +318,8 @@ export function createEjabberdAdminClient(
       return parsed.value;
     },
 
-    // One raw stanza, used for the live delivered notice (T-1245). `from` and
-    // `to` may be full JIDs; its answer is the same rescode as the other
-    // mutations (`mod_admin_extra` `send_stanza`, `result = {res, rescode}`).
+    // `from` and `to` may be full JIDs; the answer is the same rescode as the
+    // other mutations.
     async sendStanza(from: string, to: string, stanza: string): Promise<void> {
       const sendFrom = parseJid(from, 'from');
       const sendTo = parseJid(to, 'to');

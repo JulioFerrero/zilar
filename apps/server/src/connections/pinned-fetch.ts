@@ -1,11 +1,8 @@
 // effect-plain: a fetch-compatible node:http(s) request; the Promise is the fetch contract
-// T-1396: the only way a request to a user's OpenAI-compatible base URL
-// leaves the server. Every call re-resolves the host, refuses an address the
-// IP guard blocks (so DNS rebinding to a private address is caught here, not
-// only at save), and connects to the pinned public address with the base
-// host's SNI and `Host` — the same pinning `web-tools/guarded-fetch.ts` and
-// `sandbox/host-fetch.ts` use. Redirects are never followed: a 3xx is handed
-// back to the caller unchanged.
+// The only way a request to a user's base URL leaves the server. Every call
+// re-resolves the host and refuses a blocked address, so DNS rebinding is caught
+// here too, then connects to the pinned public address with the base host's SNI
+// and `Host`. Redirects are never followed: a 3xx is returned unchanged.
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -15,24 +12,17 @@ import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import { resolveAll, resolvePublic, type ResolveHost } from './base-url';
 
-/** The socket half, separated so a test can answer without a real socket. */
 export type PinnedTransport = (url: URL, address: string, init: RequestInit) => Promise<Response>;
 
 export interface PinnedFetchOptions {
-  /** DNS seam; defaults to `node:dns`. Tests inject one. */
   resolver?: ResolveHost;
-  /** Transport seam; defaults to a pinned `node:http(s)` request. */
   transport?: PinnedTransport;
-  /**
-   * Test only: accept an address the IP guard blocks, so a model-call test can
-   * reach a loopback fake server. Production callers never set it and the
-   * guard stays on by default.
-   */
+  /** Test only: accept a blocked address so a test can reach a loopback fake. */
   allowBlockedAddresses?: boolean;
 }
 
-// A refused request. The message is fixed: it never carries the URL or the
-// resolved address, so it cannot leak an internal host name into a log.
+// The message is fixed: it never carries the URL or resolved address, so it
+// cannot leak an internal host name into a log.
 export class PinnedFetchError extends Error {
   constructor() {
     super('The base URL request was refused');
@@ -47,8 +37,6 @@ function bareHost(host: string): string {
     .replace(/^\[|\]$/g, '');
 }
 
-// Resolves the host to the address to connect to. The public check is
-// `resolvePublic` (skipped only for the test-only `allowBlockedAddresses`).
 async function pinnedAddress(
   host: string,
   resolver: ResolveHost,
@@ -89,8 +77,7 @@ function writeBody(request: ClientRequest, body: RequestInit['body']): void {
     return;
   }
   if (typeof body === 'object' && 'getReader' in body) {
-    // The model call streams its request too: pipe the fetch body straight to
-    // the socket, which ends the request when the source ends.
+    // Pipe the fetch body straight to the socket, which ends with the source.
     Readable.fromWeb(body as ReadableStream<Uint8Array>).pipe(request);
     return;
   }
@@ -122,8 +109,8 @@ function responseFrom(res: IncomingMessage): Response {
   });
 }
 
-// Connects to the pinned address while SNI and `Host` keep the host name, so
-// the certificate matches and a virtual host routes correctly.
+// SNI and `Host` keep the host name, so the certificate matches and a virtual
+// host routes correctly.
 const defaultTransport: PinnedTransport = (url, address, init) => {
   const secure = url.protocol === 'https:';
   const requestFn: typeof httpsRequest = secure
@@ -171,9 +158,8 @@ const defaultTransport: PinnedTransport = (url, address, init) => {
 };
 
 /**
- * A `fetch` for one validated base URL. A request to any other host is
- * refused before a socket is opened; each allowed request re-resolves the
- * host and pins the connection to a public address.
+ * A request to any other host is refused before a socket opens; each allowed
+ * request re-resolves the host and pins a public address.
  */
 export function createPinnedFetch(baseUrl: string, options: PinnedFetchOptions = {}): FetchLike {
   const base = new URL(baseUrl);
@@ -198,11 +184,9 @@ export function createPinnedFetch(baseUrl: string, options: PinnedFetchOptions =
 }
 
 /**
- * The fetch a model call uses for a custom provider: a pinned fetch for
- * `openai-compatible`, `undefined` for every other provider (whose clients use
- * their own fixed transport). Kept here so the call path cannot forget the
- * guard. `options` is a test seam (an injected resolver / the allow-private
- * hook); production passes none.
+ * A pinned fetch for `openai-compatible`, `undefined` for every other provider
+ * (whose clients use their own fixed transport), so the call path cannot forget
+ * the guard.
  */
 export function customProviderFetch(
   target: ModelTarget,

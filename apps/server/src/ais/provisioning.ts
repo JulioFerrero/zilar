@@ -20,11 +20,9 @@ import {
 import { aiLocalpart, compensateCreate } from './provisioning-xmpp';
 import { emitAiLifecycle, findOwnedAi, toPublicAi } from './queries';
 
-// Creates an AI: rows, XMPP account and both roster items. The provider key is
-// not read here: the AI's turn decrypts the owner's connection per call. All
-// remote failures roll the account back and answer 502. The AI is inserted
-// `disabled` and only switched to `active` once every step has succeeded, so a
-// crash can never leave a usable-looking half AI.
+// Creates rows, the XMPP account and both roster items; the key is decrypted per
+// turn. The AI is inserted `disabled` and flipped `active` only after every step,
+// so a crash never leaves a usable-looking half AI.
 export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promise<PublicAi> {
   const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
   if (!connection) {
@@ -48,9 +46,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
   const ownerLocalpart = localpartFor(input.ownerId);
   const ownerJid = jidFor(ownerLocalpart, deps.domain);
 
-  // The owner needs an XMPP account before the AI can be in their roster. A
-  // failure here is an external failure like any other, but no AI rows exist
-  // yet, so there is nothing to compensate.
+  // No AI rows exist yet, so a failure here leaves nothing to compensate.
   let ownerName: string;
   try {
     await ensureXmppAccount(deps.db, deps.adminClient, input.ownerId, deps.domain);
@@ -120,8 +116,8 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
   return toPublicAi(created);
 }
 
-// Updates an AI's name, persona or limits. The external steps come first, so a
-// chat-service failure leaves the stored AI unchanged.
+// External steps come first, so a chat-service failure leaves the stored AI
+// unchanged.
 export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promise<PublicAi> {
   const ai = await findOwnedAi(deps.db, input.id, input.ownerId);
   if (!ai) {
@@ -136,14 +132,11 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
     );
   }
 
-  // T-1423: `runner` and `auto` run on the AI's assigned machine, so a mode
-  // change to either without one is refused the same way an unknown field is.
+  // `runner` and `auto` run on the AI's assigned machine, so both need one.
   if ((input.computerMode === 'runner' || input.computerMode === 'auto') && ai.machineId === null) {
     throw new HttpError(400, 'invalid_request', 'Runner and auto modes need an assigned machine');
   }
 
-  // The model swap goes first: a failure there leaves the name, persona and
-  // limits untouched too.
   const newModel = input.model ?? ai.model;
   const newConnectionId = input.providerConnectionId ?? ai.providerConnectionId;
   if (newModel !== ai.model || newConnectionId !== ai.providerConnectionId) {
@@ -181,8 +174,8 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
             input.acceptsDelegation !== undefined ||
             input.computerMode !== undefined
           ) {
-            // Every column here is NOT NULL, so a null means "keep the current
-            // value": COALESCE gives a partial update.
+            // Every column is NOT NULL, so a null means "keep": COALESCE gives a
+            // partial update.
             yield* sql`UPDATE ais SET
               name = COALESCE(${input.name ?? null}, name),
               persona = COALESCE(${input.persona ?? null}, persona),
@@ -218,12 +211,8 @@ export interface ChangeAiModelInput {
   providerConnectionId: string;
 }
 
-// Switches an AI to a new model (and optionally a new provider connection).
-// Nothing is registered remotely: the AI row's `model` and
-// `provider_connection_id` are the only state, and each turn reads the owner's
-// connection and decrypts the key itself. The connection is validated exactly
-// as `createAi` does (owned, active, an LLM provider), and the read and the
-// update share one transaction so a concurrent change is never overwritten.
+// The row is the only state: the read and the update share one transaction so a
+// concurrent change is never overwritten.
 export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInput): Promise<void> {
   const model = input.model.trim();
   if (model === '') {
@@ -238,8 +227,7 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
     return;
   }
   // A foreign or missing connection answers the same 404 as a foreign AI, so
-  // existence is never leaked; a known-but-unusable one answers the same 400
-  // `createAi` gives.
+  // existence is never leaked; a known-but-unusable one answers the same 400.
   const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
   if (!connection) {
     throw new HttpError(404, 'not_found', 'AI not found');
@@ -262,8 +250,7 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(
           Effect.gen(function* () {
-            // The state is diffed inside the transaction, so the row the update
-            // lands on is the one just read.
+            // Diffed inside the transaction, so the update lands on the row just read.
             const [fresh] = yield* sql<{
               owner: string;
               model: string;
@@ -303,10 +290,8 @@ async function findUserName(db: ServerDatabase, userId: string): Promise<string>
   return row?.name ?? '';
 }
 
-// `numeric` columns are strings; two decimal places is the currency precision
-// the schema stores. A `null` bound means "no limit" and is stored as NULL.
-// Comparisons (perDayUsd <= perMonthUsd, the monthly cap) already happened on
-// the numbers at the route boundary.
+// `numeric` comes back as a string; two decimals is the stored precision. A null
+// bound means "no limit" and is stored as NULL.
 function usd(value: number | null): string | null {
   return value === null ? null : value.toFixed(2);
 }

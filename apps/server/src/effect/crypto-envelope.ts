@@ -1,12 +1,9 @@
-// Shared versioned AES-256-GCM envelope encryption. It is the single copy of
-// the derive/encrypt/decrypt trio that the push, provider-key and instance
-// settings ciphers used to repeat; each caller passes its own HKDF label and
-// its own error class so a blob sealed for one purpose can never be opened as
-// another.
+// One copy of derive/encrypt/decrypt. Each caller passes its own HKDF label and
+// error class, so a blob sealed for one purpose can never open as another.
 //
-// A stored blob is `v1:<salt>:<iv>:<ciphertext>:<tag>`, each part base64url.
-// AES-256-GCM authenticates everything together: tampering, or decrypting with
-// the wrong master key, fails loudly instead of returning garbage.
+// A blob is `v1:<salt>:<iv>:<ciphertext>:<tag>` (base64url); GCM authenticates
+// everything together, so tampering or a wrong key fails instead of returning
+// garbage.
 // effect-plain: synchronous AES-GCM decrypt; failure is the caller's typed error
 import {
   createCipheriv,
@@ -29,8 +26,6 @@ export interface Envelope {
   decrypt(masterKey: string, envelope: string): string;
 }
 
-// `label` is mixed into the derived key with HKDF; `fail` is called on every
-// failure to open a blob, so each caller keeps its own typed error.
 export function makeEnvelope(label: string, fail: () => Error): Envelope {
   function deriveKey(masterKey: string, salt: Buffer): Buffer {
     return Buffer.from(hkdfSync('sha256', masterKey, salt, label, 32));

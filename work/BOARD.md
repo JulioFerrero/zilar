@@ -2089,3 +2089,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2085](T-2085-comments-server-routines-chats-actions-auth-tools.md) | comments: server routines, chats, actions, auth, tools (-1,439) | 2026-10-18 |
 | [T-2080](T-2080-comments-web-rest.md) | comments: web lib, store, routes, auth (-1,379) | 2026-10-18 |
 | [T-2091](T-2091-web-dead-components.md) | web: delete unused select, buttons, radio items, GIF probe | 2026-10-18 |
+| [T-2086](T-2086-comments-server-mid.md) | comments: server web-tools, ais, xmpp, machines, more (-1,366) | 2026-10-18 |

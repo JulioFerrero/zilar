@@ -2,10 +2,8 @@ import type { MachineRow } from '../db/rows';
 import { fingerprintOfPublicKey } from './crypto';
 import type { MachineStatus } from './service';
 
-// The owner-facing shape. The public key is never returned: `fingerprint`
-// (the first 16 hex chars of sha256(public key bytes)) lets the owner compare
-// the machine with what the runner shows locally. `online` is true only
-// when the runner hub is on and the machine has a live tunnel connection.
+// The public key is never returned: `fingerprint` (16 hex chars of its sha256)
+// lets the owner compare. `online` needs both the hub and a live tunnel.
 export interface PublicMachine {
   id: string;
   name: string;

@@ -2,10 +2,7 @@ import { parentPort } from 'node:worker_threads';
 import { Effect } from 'effect';
 import type { QuickJSContext, QuickJSHandle, QuickJSRuntime } from 'quickjs-emscripten';
 
-// VM-side helpers for the sandbox worker: dumping VM errors, streaming logs to
-// the parent and the CPU-accounted entry points into QuickJS. They take the
-// runtime and the context as parameters, so `tool-worker.ts` keeps only the
-// control flow.
+// Dumping VM errors, streaming logs and the CPU-accounted QuickJS entry points.
 
 export type WorkerErrorKind =
   | 'timeout'
@@ -63,10 +60,8 @@ export function interruptedResult(
   return null;
 }
 
-// cpuMs counts only time the VM is actually executing JS, never time spent
-// waiting on fetch. Every entry into the VM (evalCode, callFunction,
-// executePendingJobs) opens a segment; leaving closes it and accumulates. The
-// depth counter keeps nested entries (evalCode inside a host function) from
+// cpuMs counts only JS execution, never waiting on fetch. Every VM entry opens a
+// segment and leaving accumulates; the depth counter keeps nested entries from
 // corrupting the total.
 export function createCpuTracker() {
   let cpuUsedMs = 0;
@@ -90,10 +85,9 @@ export function createCpuTracker() {
 
 type CpuTracker = ReturnType<typeof createCpuTracker>;
 
-// All VM entries go through these so cpu accounting stays complete. Never call
-// runtime.executePendingJobs() from inside a host function (text, json, fetch):
-// that would pump jobs re-entrantly from inside VM execution. The main loop
-// already pumps after every return.
+// All VM entries go through these so cpu accounting stays complete. Never pump
+// jobs from inside a host function (`text`, `json`, `fetch`): it would run jobs
+// re-entrantly; the main loop pumps after every return.
 export function createVmTools(runtime: QuickJSRuntime, context: QuickJSContext, cpu: CpuTracker) {
   const { enterVm, exitVm } = cpu;
 
@@ -128,8 +122,7 @@ export function createVmTools(runtime: QuickJSRuntime, context: QuickJSContext, 
     handles.push(handle);
     return handle;
   };
-  // Pumps that run outside VM execution (async fetch continuation, error
-  // paths) go through settleVm, so the VM time they spend also counts as cpu.
+  // Pumps outside VM execution also count as cpu.
   const settleVm = (settle: (handle: QuickJSHandle) => void, handle: QuickJSHandle): void => {
     enterVm();
     try {

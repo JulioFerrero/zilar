@@ -1,25 +1,9 @@
-// Connections module on the Effect `HttpApi` adapter (T-0557): the same
-// methods, paths, statuses (201 on create, 204 on delete), bodies, texts and
-// per-route step order as the old router (`routes.ts`), which has since been
-// deleted along with its thin wrapper; mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-//
 // These routes carry provider API keys. A key never appears in a response, a
-// log line or an error text: the list/create views omit the encrypted key,
-// the decrypt/test failures log ids only, and a probe throw is redacted with
-// `redactKey` before it reaches the log.
+// log line or an error text: the views omit the encrypted key, decrypt/test
+// failures log ids only, and a probe throw is redacted with `redactKey`.
 //
-// The create body is decoded manually inside its handler (Effect Schema, same
-// rules and strictness as the old zod schema) instead of as an endpoint
-// payload, so the route keeps its exact order: `requireCipher` (503) runs
-// before the decode (400), exactly like the old session -> cipher -> decode
-// sequence. The test limiter is checked inside its handler after the owned
-// lookup (404 -> 429), for the same reason. No decode text changes: an
-// invalid JSON body answers `Invalid JSON body`, a schema violation answers
-// `Invalid connection request`.
-//
-// `ProviderIdSchema` in `./providers` is the single source of the provider
-// literals, shared with the service and the probe boundary.
+// The create body is decoded inside its handler so `requireCipher` (503) still
+// runs before the decode (400), as before.
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -56,8 +40,7 @@ import {
 export const CONNECTION_TEST_RATE_LIMIT_MAX = 5;
 export const CONNECTION_TEST_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
-// T-1984: every write has a limit. Create resolves a host name the user chose,
-// so both writes share one per-user budget.
+// Create resolves a host name the user chose, so both writes share one budget.
 export const CONNECTION_WRITE_RATE_LIMIT_MAX = 10;
 export const CONNECTION_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
@@ -65,12 +48,9 @@ export interface ConnectionsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: ConnectionsLogger;
-  /** Absent when ZILAR_KEY_ENCRYPTION_KEY is not configured: every route then
-   * answers 503 instead of touching keys. */
+  /** Absent when the master key is not configured: every route answers 503. */
   cipher?: KeyCipher;
-  /** Injected in tests so no request ever hits a real provider. */
   probe?: ProviderProbe;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
 
@@ -87,22 +67,18 @@ export interface ConnectionsApiDependencies extends ConnectionsRoutesDependencie
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// A connection on the wire: the encrypted key is not part of `PublicConnection`
-// (`./service`), so it can never reach a response; `createdAt` travels as its
-// ISO string.
+// The encrypted key is not part of `PublicConnection`, so it cannot reach a
+// response.
 function toWire(connection: PublicConnection): ConnectionView {
   return { ...connection, createdAt: connection.createdAt.toISOString() };
 }
 
-// Marks a body that is not JSON at all, so the handler can answer `Invalid
-// JSON body` instead of the schema-violation text (JSON never yields a symbol).
+// A symbol, so it cannot collide with a decoded JSON body.
 const INVALID_JSON = Symbol('connections/invalid-json');
 
-// T-1396: the save-time guard for a custom base URL. The shape check runs
-// first (https, no credentials/query/fragment, port 443), then the host is
-// resolved and a private address refused, so an internal host is rejected at
-// save as well as on every later probe and model call. The fixed message never
-// carries the URL, and a rejection travels as an `HttpError` defect (400).
+// The shape check runs first, then the host is resolved and a private address
+// refused, so an internal host is rejected at save as well as on every later
+// call. The fixed message never carries the URL.
 async function validatedBaseUrl(raw: string): Promise<string> {
   try {
     const normalized = validateBaseUrl(raw);
@@ -113,10 +89,8 @@ async function validatedBaseUrl(raw: string): Promise<string> {
   }
 }
 
-// The base URL to store for a create request (T-1429). A client URL is allowed
-// only for `openai-compatible` (the contract refuses it everywhere else); a
-// catalog provider resolves its own models.dev base URL through the same
-// checks, and an id no catalog knows is a 400.
+// A client URL is allowed only for `openai-compatible`; a catalog provider
+// resolves its own base URL through the same checks, and an unknown id is 400.
 async function connectionBaseUrl(
   provider: string,
   clientBaseUrl: string | undefined,
@@ -127,9 +101,7 @@ async function connectionBaseUrl(
   if ((PROVIDER_IDS as readonly string[]).includes(provider)) {
     return null;
   }
-  // A restart leaves the catalog unmapped; load it once (cached, or the
-  // fallback on failure) before an id is refused, so a known compatible
-  // provider is not lost to a cold process.
+  // A cold process has no catalog map; load it once before refusing an id.
   let catalogUrl = catalogBaseUrl(provider);
   if (catalogUrl === null) {
     await getAiCatalog();
@@ -141,9 +113,8 @@ async function connectionBaseUrl(
   return validatedBaseUrl(catalogUrl);
 }
 
-// `create` declares its payload in the contract for the derived client but is
-// served with `handleRaw`: the body is decoded by hand in the handler (see the
-// header).
+// Declared in the contract for the derived client, but served with `handleRaw`
+// because the handler decodes the body itself.
 const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
 
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
@@ -164,9 +135,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
       now,
     });
 
-  // The envelope reports defects through `error`. The route tests may
-  // inject a warn-only fake logger, which keeps `error` absent; forward to
-  // `warn` only in that case so the message is never dropped.
+  // A warn-only test logger has no `error`; forward to `warn` so nothing is lost.
   const defectLogger = {
     error: (fields: Record<string, unknown>, message: string) => {
       if (deps.logger.error) {
@@ -177,7 +146,6 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
     },
   } as unknown as Logger;
 
-  // Without a cipher every route answers 503 instead of touching keys.
   function requireCipher(): KeyCipher {
     if (deps.cipher === undefined) {
       throw new HttpError(
@@ -246,11 +214,9 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
           }),
         ),
       )
-      // Replaces the stored key in place (T-1292). Like `create`, the body is
-      // decoded by hand so `requireCipher` (503) still runs before the decode
-      // (400). The update is owner-scoped in one transaction, so another user's
-      // connection answers 404 and the AIs on it have their model id cleared.
-      // The new key never reaches the response or a log line.
+      // Decoded by hand so `requireCipher` (503) runs before the decode (400). The
+      // update is owner-scoped, so another user's connection answers 404. The key
+      // never reaches the response or a log line.
       .handleRaw(
         'update',
         handler(defectLogger, (request, user) =>
@@ -297,8 +263,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               throw new HttpError(500, 'key_unreadable', 'The stored key could not be decrypted');
             }
 
-            // A probe rejection surfaces as a defect, which `yield*` does not
-            // throw into a surrounding `try`; map it to a value so the
+            // A probe rejection is a defect, not a throw; map it to a value so the
             // redacted log below runs instead of a bare 500.
             const probed = yield* Effect.promise(() =>
               probeImpl.testKey(connection.provider, key, connection.baseUrl),
@@ -326,8 +291,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
           }),
         ),
       )
-      // Deletes a connection (204, no body). In use by an AI is a 409 with a
-      // bare count, never the AI names.
+      // In use by an AI is a 409 with a bare count, never the AI names.
       .handle(
         'remove',
         handler(defectLogger, (request, user) =>

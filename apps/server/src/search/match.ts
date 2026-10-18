@@ -1,14 +1,10 @@
-// Smarter search matching (T-0142): accent/case folding, prefix tsquery
-// building, and the in-code fuzzy second pass. No database extension is
-// used: the archive query stays bounded (own scope, 12-month cutoff, at most
-// SEARCH_MAX_CANDIDATES rows) and fuzzy scoring runs here in Node.
+// Accent/case folding, prefix tsquery building and the in-code fuzzy pass. No
+// database extension: the archive query stays bounded and fuzzy scoring runs in
+// Node.
 //
-// Folding parity: the SQL side folds with
-// `translate(lower(txt), FOLD_FROM, FOLD_TO)` (see buildArchiveQuery) and
-// `foldText` below must produce the identical mapping. Both are 1:1
-// character maps over the same pair, applied after lowercasing, so accented
-// capitals fold the same way on both sides. Characters outside the map
-// (æ, œ, ß, ð, …) are left unfolded on both sides: they still match exactly.
+// `foldText` must produce the identical 1:1 mapping as the SQL
+// `translate(lower(txt), FOLD_FROM, FOLD_TO)`; characters outside the map stay
+// unfolded on both sides and still match exactly.
 
 export interface WordSpan {
   word: string;
@@ -45,10 +41,8 @@ export function foldText(value: string): string {
   return out;
 }
 
-// Query tokens: folded lowercase words. Anything that is only
-// operators/punctuation yields no tokens (the route answers an empty list).
-// Tokens come from [\p{L}\p{N}]+, so they can never contain tsquery syntax
-// and are safe to quote into a tsquery string passed as a binding.
+// Folded lowercase words from `[\p{L}\p{N}]+`, so a token can never contain
+// tsquery syntax. Operators or punctuation alone yield no tokens.
 export function searchTerms(query: string): string[] {
   return foldText(query).match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -60,8 +54,8 @@ export function buildTsQuery(terms: string[]): string {
     .join(' & ');
 }
 
-// Words with code-point offsets (the marks unit: headlineToSnippet counts
-// [...snippet].length, so a UTF-16 index would drift on emoji).
+// Code-point offsets: the marks unit counts code points, so a UTF-16 index would
+// drift on emoji.
 export function splitWords(text: string): WordSpan[] {
   const spans: WordSpan[] = [];
   const pattern = /[\p{L}\p{N}]+/gu;
@@ -73,9 +67,8 @@ export function splitWords(text: string): WordSpan[] {
   return spans;
 }
 
-// Damerau-Levenshtein (optimal string alignment: one adjacent transposition
-// counts as one edit) with an early exit past `cap`. Inputs are short
-// (folded words), so the full matrix is cheap.
+// Damerau-Levenshtein (optimal string alignment: an adjacent transposition is one
+// edit) with an early exit past `cap`.
 export function damerauDistance(a: string, b: string, cap: number): number {
   const s = [...a];
   const t = [...b];
@@ -118,13 +111,9 @@ export function damerauDistance(a: string, b: string, cap: number): number {
   return prev[m]!;
 }
 
-// One matched span per query term, or null when a term has no match.
-// Exact mode (the first pass): earlier terms are whole words, the last term
-// also matches by prefix — the same rule the tsquery encodes, used to add
-// in-code marks for hits ts_headline cannot mark (accent-folded words).
-// Fuzzy mode (the second pass): terms of 1-3 characters match exactly or by
-// prefix only (never by distance); terms of 4-7 allow distance 1, 8+ allow
-// distance 2; the last term additionally matches by prefix at any length.
+// Exact mode: earlier terms are whole words and the last matches by prefix, the
+// same rule the tsquery encodes. Fuzzy mode: 1-3 characters match exactly or by
+// prefix, 4-7 allow distance 1, 8+ distance 2, and the last term also by prefix.
 export function matchMessageTerms(
   terms: string[],
   text: string,
@@ -171,8 +160,7 @@ export function matchMessageTerms(
   return matched;
 }
 
-// Sorted, merged, clamped into [0, max]: out-of-range offsets are impossible
-// by construction, and emoji/multi-byte text stays aligned (code points).
+// Sorted, merged and clamped into [0, max], in code points so emoji stay aligned.
 export function mergeMarks(marks: Array<[number, number]>, max: number): Array<[number, number]> {
   const sorted = [...marks].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const merged: Array<[number, number]> = [];
@@ -192,9 +180,8 @@ export function mergeMarks(marks: Array<[number, number]>, max: number): Array<[
   return merged;
 }
 
-// Plain-text snippet for fuzzy hits: a window around the first matched word
-// with the matched spans shifted into it (same wire shape as ts_headline
-// hits: plain text plus marks, never HTML).
+// A window around the first matched word, with spans shifted into it: plain text
+// plus marks, never HTML.
 export function windowSnippet(
   text: string,
   spans: WordSpan[],

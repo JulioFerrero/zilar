@@ -1,11 +1,7 @@
-// T-1792 (Wave 2 B9): a room member answers the interactive card an AI posted.
-// The route records the answer in `block_responses`, merges every answer into
-// the card, saves the merged state and corrects the card in the room as the
-// AI, so everyone sees the new state. It never wakes the AI: for the decision
-// kinds the client also sends the normal `@AI` reply.
-//
-// A card the caller may not see answers the same 404 as a missing one, so ids
-// cannot be probed.
+// A room member answers the interactive card an AI posted: record, merge, save
+// and correct the card in the room as the AI. It never wakes the AI. A card the
+// caller may not see answers the same 404 as a missing one, so ids cannot be
+// probed.
 
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -25,15 +21,15 @@ import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse
 
 const FORM_VALUE_MAX = 120;
 
-// A threshold counts as a number once spaces, commas and one leading currency
-// sign are removed; anything else is not a number the card can draw.
+// A threshold is a number once spaces, commas and one leading currency sign are
+// removed.
 function isNumberText(text: string): boolean {
   const numeric = text.replace(/[ ,]/g, '').replace(/^[$€£]/, '');
   return numeric.length > 0 && Number.isFinite(Number(numeric));
 }
 
-// T-1848: an alert answer changes the switch and/or the threshold. At least one
-// must be present, and the threshold must be a number.
+// The switch and/or threshold; at least one must be present, and the threshold
+// must be a number.
 function alertAnswer(value: BlocksRespondValue): Record<string, unknown> {
   const on = value.done;
   if (on !== undefined && typeof on !== 'boolean') {
@@ -68,9 +64,7 @@ export interface CorrectCardInput {
 export interface CardRespondDeps {
   db: ServerDatabase;
   logger: Logger;
-  /** The live gateway's room correction; absent = no send (tests, no gateway). */
   correctInRoom?: (input: CorrectCardInput) => Promise<boolean>;
-  /** Routine pause/resume audit; absent = not recorded (tests). */
   audit?: AuditRecorder;
 }
 
@@ -96,8 +90,8 @@ function cardDataOf(card: BlockCardRow): BlocksData {
   return decoded.value;
 }
 
-// A topic card needs a visible topic and, outside General, topic membership;
-// a group-only card needs group membership. Anything else is the same 404.
+// A topic card needs a visible topic and, outside General, membership; a
+// group-only card needs membership. Anything else is the same 404.
 async function requireCardAccess(
   db: ServerDatabase,
   card: BlockCardRow,
@@ -122,8 +116,7 @@ async function requireCardAccess(
     return;
   }
   if (card.groupId === null && card.topicId === null) {
-    // T-1824: a DM card lives only in the AI's DM, so its owner is the one
-    // person who may answer it; everyone else gets the same 404.
+    // A DM card lives only in the AI's DM, so only its owner may answer it.
     const ownerId = await loadAiOwnerId(db, card.aiId);
     if (ownerId === null || ownerId !== userId) {
       throw cardNotFound();
@@ -137,8 +130,8 @@ type RecordedResponse =
   | { kind: 'poll'; optionIds: string[] }
   | { kind: 'item'; itemId: string; value: Record<string, unknown> };
 
-// The answer validated against the block's kind, in the shape `cards.ts`
-// stores. Anything that does not fit answers 400.
+// The answer validated against the block's kind; anything that does not fit
+// answers 400.
 function recordedResponse(
   block: Block,
   itemId: string | undefined,
@@ -214,8 +207,7 @@ function recordedResponse(
   }
 }
 
-// One query for every actor of the card, so `applyResponses` can put the
-// checklist ticker's name on the item.
+// One query for every actor, so `applyResponses` can name the checklist ticker.
 async function loadNameLookup(
   db: ServerDatabase,
   rows: readonly BlockResponseRow[],
@@ -236,8 +228,7 @@ async function loadNameLookup(
   return (actorId) => names.get(actorId);
 }
 
-// The merged data must still be a valid card; if it is not, the stored data
-// stays and the break is logged rather than written.
+// If the merged data no longer decodes, keep the stored data and log the break.
 function decodeMerged(
   merged: BlocksData,
   stored: BlocksData,
@@ -252,9 +243,8 @@ function decodeMerged(
   return stored;
 }
 
-// The correction is best-effort: a stopped AI, a session that left the room
-// or a send error is logged with the card id and the outcome, never fails the
-// request.
+// Best effort: a stopped AI, a left room or a send error is logged and never
+// fails the request.
 async function correctCard(
   deps: CardRespondDeps,
   card: BlockCardRow,
@@ -284,8 +274,7 @@ async function correctCard(
   }
 }
 
-// The viewer's own poll picks for one card, keyed by block. Same access as
-// an answer: a card the caller may not see answers the same 404.
+// Same access as an answer: a card the caller may not see answers the same 404.
 export async function myPicks(
   db: ServerDatabase,
   userId: string,

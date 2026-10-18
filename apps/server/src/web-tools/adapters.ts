@@ -1,14 +1,9 @@
-// T-0125: the five gateway-level web tools. Registered next to the
-// tool adapters when `WEB_TOOLS_ENABLED=true`; nothing is registered
-// when the flag is off. Untrusted content (pages, feeds, prices,
-// search results) reaches the model only as `modelText` inside the
-// gateway's `<untrusted-tool-output>` wrapper — never in a summary.
+// The five gateway-level web tools, registered only when `WEB_TOOLS_ENABLED`.
+// Untrusted content (pages, feeds, prices, search results) reaches the model only
+// as `modelText` inside the gateway's untrusted wrapper, never in a summary.
 //
-// Tiers follow the exfiltration rule: fixed-host adapters are tier 0
-// (`web.wikipedia`, `web.price` — the caller cannot choose where the
-// request goes), everything that fetches a caller-chosen URL or sends
-// free text to a third party is tier 1 (`web.fetch`, `web.feed`,
-// `web.search`).
+// Fixed-host adapters are tier 0; anything that fetches a caller-chosen URL or
+// sends free text to a third party is tier 1.
 import type { ActionAdapter } from '../actions/registry';
 import { webFeedAdapter } from './feed-adapter';
 import { webFetchAdapter } from './fetch-adapter';
@@ -34,8 +29,7 @@ export { formatFeedItems } from './feed-adapter';
 export { parseWikipediaExtract, parseWikipediaSearch, wikipediaHost } from './wikipedia-adapter';
 export type { WikipediaArticle } from './wikipedia-adapter';
 
-// Builds the web adapters. `searchProvider: 'none'` unregisters
-// `web.search`; everything else is always registered when enabled.
+// `searchProvider: 'none'` unregisters `web.search`; everything else always runs.
 export function buildWebToolsAdapters(
   deps: BuildWebToolsAdaptersDeps = {},
 ): ActionAdapter<unknown>[] {

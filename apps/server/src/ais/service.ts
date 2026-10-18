@@ -1,8 +1,3 @@
-// Barrel for the AI service (T-0956): the original `ais/service.ts` was split
-// into feature modules (`queries`, `provisioning`, `provisioning-xmpp`,
-// `persona`, `status`). Importers keep this path and every name and kind it
-// exported before.
-
 export { MAX_MONTHLY_USD } from '@zilar/api-contract';
 
 export type {

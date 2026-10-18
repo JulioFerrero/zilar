@@ -29,8 +29,7 @@ function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encode
   return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
 }
 
-// Configuration the XMPP module needs. Env var names are kept as the schema
-// keys so error messages can name the variable that is missing or invalid.
+// Env var names are the schema keys, so an error can name the bad variable.
 export const xmppEnvSchema = Schema.Struct({
   EJABBERD_API_URL: withDefault(
     Schema.String.pipe(Schema.check(Schema.makeFilter(isHttpUrl))),
@@ -69,9 +68,8 @@ export type XmppConfig = {
   jwtSecret: string;
 };
 
-// Maps Effect's issue tree to one line per invalid variable. Only names and
-// code-written messages are used, never a value, so a secret can never leak
-// through a configuration error.
+// One line per invalid variable. Only names and code-written messages, never a
+// value, so a secret cannot leak through a configuration error.
 function formatIssues(issue: SchemaIssue.Issue, path: ReadonlyArray<PropertyKey> = []): string[] {
   switch (issue._tag) {
     case 'Composite':

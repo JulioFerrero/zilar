@@ -1,8 +1,5 @@
-// The AI API declaration and the two layers the mount applies to it (T-1457):
-// the schema-error renderer that turns a malformed body into 400
-// `invalid_request`, and the availability gate that answers 503 before any
-// payload is decoded. Split out of `api.ts` so the routes file stays inside the
-// 400-line budget.
+// The AI API declaration and the two mount layers: the schema-error renderer
+// (malformed body → 400) and the 503 gate that runs before any payload decode.
 
 import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
@@ -17,13 +14,8 @@ export const renderSchemaError: SchemaErrorRender = (error) =>
     new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
   );
 
-// Runs the 503 availability gate before the payload is decoded, exactly like
-// the old routes' `requireConfigured()` -> `safeParse` order: a malformed
-// body on an unconfigured server still answers 503, not 400. `requires:
-// CurrentUser` is satisfied by `Session`. The gate needs no decode, so it
-// also covers the no-payload writes (delete) for free; stop/resume/machine
-// need only the DB and skip it, as they did before. The only requirement is
-// the key cipher (to seal provider keys at rest).
+// The 503 gate runs before the payload is decoded, so a malformed body on an
+// unconfigured server answers 503, not 400.
 
 export function configuredLayer(deps: { cipher?: KeyCipher }): Layer.Layer<AisConfigured> {
   return Layer.succeed(

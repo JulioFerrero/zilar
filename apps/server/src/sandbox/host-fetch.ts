@@ -4,9 +4,8 @@ import { isIP } from 'node:net';
 import { Data, Duration, Effect } from 'effect';
 import { classifyIp, isIpLiteral } from './ip-guard';
 
-// The narrow bridge between the sandbox and the network. Every rule lives
-// here so it can be unit-tested with fakes; the VM layer only passes the
-// validated address through.
+// Every network rule lives here so it can be tested with fakes; the VM layer
+// only passes the validated address through.
 export interface HostFetchRequest {
   url: string;
   method: string;
@@ -35,8 +34,7 @@ export interface FetchBridgeOptions {
   allowedHosts: readonly string[];
   fetchTimeoutMs: number;
   maxResponseBytes: number;
-  // Note: maxFetches is enforced in the worker (it owns the counter), not
-  // here, so it is intentionally not part of these options.
+  // maxFetches is enforced in the worker, which owns the counter.
   resolver?: DnsResolver | undefined;
 }
 
@@ -144,8 +142,7 @@ export function createDefaultFetcher(options: {
     fetchPinnedHttps(request.url, request.address, options, signal);
 }
 
-// The request is an `Effect.callback`: the first outcome wins, and an
-// interrupted fiber destroys the request so its socket is released.
+// The first outcome wins, and an interrupted fiber destroys the request.
 export function fetchPinnedHttpsEffect(
   url: URL,
   address: string,
@@ -216,10 +213,9 @@ export function fetchPinnedHttpsEffect(
       req.destroy();
     });
   }).pipe(
-    // T-1993: `req.setTimeout` is only an idle timeout, so a host that drips one
-    // byte at a time could hold the socket for ever. This is the hard overall
-    // deadline; on expiry the fiber is interrupted and the finalizer destroys
-    // the request.
+    // `req.setTimeout` is only an idle timeout, so a host dripping one byte at a
+    // time could hold the socket forever. This is the hard deadline; on expiry
+    // the finalizer destroys the request.
     Effect.timeoutOrElse({
       duration: Duration.millis(options.fetchTimeoutMs),
       orElse: () => Effect.fail(new Error('fetch timeout')),

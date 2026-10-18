@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/machines/service.ts (size split)
+// effect-plain: a synchronous ed25519 check.
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { pairingSignatureMessage } from './codes';
 
@@ -9,10 +9,9 @@ export function fingerprintOfPublicKey(publicKeyBase64: string): string {
     .slice(0, 16);
 }
 
-// Proof-of-possession check: `signature` must be an ed25519 signature by
-// `publicKey` over `zilar-pair:v1:<NORMALIZED_CODE>`. Returns false (never
-// throws) for a malformed key, a malformed signature, or a signature over
-// anything else — including someone else's public key.
+// Proof of possession: an ed25519 signature by `publicKey` over
+// `zilar-pair:v1:<code>`. A malformed input or someone else's key answers false,
+// never a throw.
 export function verifyPairingSignature(
   publicKeyBase64: string,
   signatureBase64: string,

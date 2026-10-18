@@ -1,12 +1,7 @@
-// T-0125: best-effort web search behind a port, so a real provider
-// (SearXNG, Exa) can later be added as one adapter. The only provider in
-// this task is `duckduckgo-html`: one GET at
-// `https://html.duckduckgo.com/html/?q=<query>`, parsed for result
-// titles, URLs and snippets (at most 8). DuckDuckGo wraps result links
-// in its own redirect (`//duckduckgo.com/l/?uddg=<target>&…`); the
-// target is unwrapped, and anything that is not an http(s) URL is
-// dropped. Never retried: one attempt per call, and any failure, block
-// page, captcha or 0 parsed results is "search unavailable right now".
+// Best-effort search behind a port, so another provider can be added later. The
+// `duckduckgo-html` provider does one GET, parses at most 8 results and unwraps
+// DuckDuckGo's redirect; a non-http(s) target is dropped. Never retried: any
+// failure, block page or 0 results is "unavailable".
 import { findCloseTag, nextTag, stripTags } from '../markup/scan';
 
 export const SEARCH_HOST = 'html.duckduckgo.com';
@@ -32,10 +27,8 @@ export function isBlockedPage(html: string): boolean {
   return BLOCK_MARKERS.some((marker) => marker.test(html));
 }
 
-// Reads the recorded shape of the DuckDuckGo HTML result page: each
-// `.result` block carries a `.result__a` title anchor and an optional
-// `.result__snippet`. Title anchors without an unwrappable http(s) URL
-// are skipped; snippets are plain text (empty is fine).
+// Each `.result` block carries a `.result__a` title anchor and an optional
+// `.result__snippet`. A title without an http(s) URL is skipped.
 export function parseDuckDuckGo(html: string): WebSearchResult[] {
   if (isBlockedPage(html)) {
     return [];
@@ -67,14 +60,12 @@ export function parseDuckDuckGo(html: string): WebSearchResult[] {
   return results;
 }
 
-// Only a whole `result` token marks a result block: `results`,
-// `results_links` and `result__body` are containers, not results.
+// Only a whole `result` token counts: `results` and `result__body` are containers.
 function hasResultToken(classAttr: string): boolean {
   return classAttr.split(/\s+/).includes('result');
 }
 
-// Every top-level `<div class="… result …">…</div>` block, balanced by
-// depth counting so nested divs do not cut a result short.
+// Balanced by depth, so nested divs do not cut a result short.
 function resultBlocks(html: string): string[] {
   const blocks: string[] = [];
   let cursor = 0;
@@ -97,8 +88,6 @@ function resultBlocks(html: string): string[] {
   return blocks;
 }
 
-// The end of the div opened just before `from`, balanced by depth counting
-// so nested divs do not cut a result short.
 function balancedDivEnd(html: string, from: number): number | null {
   let depth = 1;
   let cursor = from;
@@ -160,8 +149,7 @@ function linkTarget(attrs: string): string | null {
   if (/^https?:\/\//i.test(href)) {
     return href;
   }
-  // DuckDuckGo wraps result links in its own redirect
-  // (`//duckduckgo.com/l/?uddg=<target>&…`): unwrap to the target.
+  // Unwrap DuckDuckGo's own redirect (`//duckduckgo.com/l/?uddg=…`).
   return unwrapDuckDuckGo(href);
 }
 
@@ -191,11 +179,8 @@ function collapseForSearch(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-// `//duckduckgo.com/l/?uddg=<url-encoded target>&…` → the target, when
-// it is an http(s) URL. The href may carry `&amp;` escapes from the
-// page markup; those are decoded first. A plain http(s) href passes
-// through unchanged; anything else (relative links, javascript:) is
-// dropped.
+// `//duckduckgo.com/l/?uddg=<target>` → the target when it is http(s); `&amp;` is
+// decoded first. A plain http(s) href passes through, anything else is dropped.
 export function unwrapDuckDuckGo(href: string | null): string | null {
   if (href === null) {
     return null;

@@ -1,10 +1,7 @@
-// T-0125: a small hand-written HTML extractor. No new dependency.
-//
-// Drops script/style/head/nav (and comments), keeps the title, headings,
-// paragraphs, list items and link text with hrefs, decodes the common
-// entities, and collapses whitespace. Input is capped so huge or
-// malformed HTML cannot hang the server; output is plain text the
-// adapters put in `modelText` (never in a summary).
+// A small hand-written HTML extractor, no dependency. Drops script/style/head/nav
+// and comments; keeps the title, headings, paragraphs, list items and http(s)
+// link text. Input is capped so malformed HTML cannot hang the server, and the
+// output is plain text for `modelText`.
 // effect-plain: pure HTML-to-text extraction; malformed input yields text, no I/O
 import { decodeHtmlEntities } from '../markup/entities';
 import { findCloseTag, nextOpenTag, stripComments, stripTags } from '../markup/scan';
@@ -43,8 +40,7 @@ export function extractText(html: string): string {
   const withoutComments = stripComments(input);
   const out: string[] = [];
   const dropStack: string[] = [];
-  // The href of the innermost open anchor, when not inside a dropped
-  // element. Only http(s) targets are kept.
+  // The innermost open anchor's href, when not inside a dropped element.
   const linkStack: (string | null)[] = [];
   let pos = 0;
   while (pos < withoutComments.length) {
@@ -123,8 +119,7 @@ function tagNameOf(raw: string): string | null {
   return match[0].toLowerCase();
 }
 
-// The anchor's href, kept only when it is an http(s) target: javascript:,
-// mailto: and relative links never reach the model.
+// Only http(s) targets: javascript, mailto and relative links never reach the model.
 function linkHrefOf(rawTag: string): string | null {
   const match = /\bhref\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(rawTag);
   if (match === null) {
@@ -152,9 +147,7 @@ function collapseWhitespace(value: string): string {
     .join('\n');
 }
 
-// Pulls one anchor's visible text and href out of an HTML fragment such
-// as a search-result block. Used by the search provider to read the
-// result title and unwrap redirect links to the target URL.
+// An anchor's text and href from a search-result fragment.
 export interface AnchorParts {
   text: string;
   href: string | null;

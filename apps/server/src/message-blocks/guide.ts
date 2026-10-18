@@ -1,13 +1,8 @@
 import { BlockIconSchema, MAX_ROWS, MAX_SHORT, MAX_TEXT, type Block } from '@zilar/protocol';
 
-// T-1768: one general card guide shared by the `post_blocks` tool description
-// and the tool guide (which every AI turn with tools carries). Before this, the
-// AI learned cards from one prices-shaped paragraph in `post_blocks` and a
-// single line for saved tools, so any other kind of data had no guidance.
-//
-// `CARD_KINDS` is the set the web and mobile apps can draw today. The protocol
-// (`packages/protocol/src/blocks.ts`) validates more kinds than that; a tool
-// whose card uses an undrawn kind is told so, never silently downgraded.
+// The card guide shared by the `post_blocks` tool description and every AI turn
+// with tools. `CARD_KINDS` is what the apps draw today; a tool whose card uses
+// an undrawn kind is told so, never silently downgraded.
 
 export const CARD_KINDS: readonly Block['kind'][] = [
   'figure',
@@ -29,9 +24,8 @@ export const CARD_KINDS: readonly Block['kind'][] = [
   'callout',
 ];
 
-// The kinds people can act on. Only `post_blocks` cards in a group or topic
-// draw them (a DM card stays read-only), so the `post_blocks` description adds
-// the interactive guide and the saved-tool guide does not.
+// Only `post_blocks` cards in a group or topic draw these (a DM card is
+// read-only), so only that guide adds the interactive rules.
 export const INTERACTIVE_KINDS: readonly Block['kind'][] = [
   'buttons',
   'poll',
@@ -41,12 +35,8 @@ export const INTERACTIVE_KINDS: readonly Block['kind'][] = [
   'alert',
 ];
 
-// The general rules, kept short: a header, how to choose a kind, how to write
-// values, and where the time and source live. The shape map is written out as a
-// markdown table so the model matches the data it has to the kind that fits.
-//
-// The valid icons are read from the protocol literal so the guide can never
-// drift from `BlockIconSchema`; any other name fails the whole card decode.
+// The rules stay short. The icons come from the protocol literal, so the guide
+// cannot drift from `BlockIconSchema`; any other name fails the card decode.
 const CARD_ICONS = BlockIconSchema.literals.join('|');
 export const CARD_RULES = [
   'A card is a header plus 1-6 blocks.',
@@ -84,8 +74,7 @@ export const CARD_RULES = [
   '`text` is a one-line plain summary for notifications.',
 ].join('\n');
 
-// The exact fields of every kind, read from `packages/protocol/src/blocks-*.ts`,
-// one compact line per kind in `CARD_KINDS`. Optionals are marked `?`.
+// The exact fields of every kind; optionals are marked `?`.
 export const CARD_SHAPES = [
   'kind=figure {rows:[{label,value,change?:{direction:up|down|flat,text}}]}',
   'kind=number {label,value,code?,change?:{direction:up|down|flat,text},points?:number[]}',
@@ -106,10 +95,8 @@ export const CARD_SHAPES = [
   'kind=callout {tone:success|warning|error|info,text}',
 ].join('\n');
 
-// The interactive kinds: what each one is for, and the fields it needs. The
-// bounds and the id pattern come from `packages/protocol/src/blocks-choices.ts`;
-// `votes`, `selected`, `chosen` and `sent` are filled by the server when people
-// answer.
+// The bounds and id pattern come from the protocol; `votes`, `selected`,
+// `chosen` and `sent` are filled by the server when people answer.
 export const INTERACTIVE_RULES = [
   'Use an interactive kind only when people must act. `buttons`, `choice`, `rating` and `form` ask for a decision; the answer comes back to you as a reply that mentions you.',
   'When a person asks for buttons, a poll, a choice, a rating or a form, post that kind with post_blocks; do not use ask_people for it.',
@@ -131,9 +118,8 @@ export const INTERACTIVE_SHAPES = [
   'kind=alert {id,title,field:{label,value},on:boolean,note?}',
 ].join('\n');
 
-// The media kinds: a photo or an uploaded file. Like the interactive kinds they
-// belong to `post_blocks` cards only (a saved-tool or routine card drops them),
-// so the saved-tool guide stays without them.
+// Media belong to `post_blocks` cards only; a saved-tool or routine card drops
+// them.
 export const MEDIA_KINDS: readonly Block['kind'][] = ['images', 'file'];
 
 export const MEDIA_RULES = [

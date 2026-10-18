@@ -1,9 +1,5 @@
-// The one place a model call is made (docs/audit/effect-ai-plan.md §5.1).
-// `ModelClient.chat` builds a provider client for this call only (the AI's own
-// decrypted key), converts our messages and tools to Effect AI shapes, streams
-// when a delta callback is given, and maps every `AiError` back to the existing
-// `ChatCompletionError` seam so the failure classification and the user-facing
-// reply texts stay exactly as they were.
+// The one place a model call is made: builds a provider client per call from
+// the AI's decrypted key and maps every `AiError` to `ChatCompletionError`.
 import { Duration, Effect, Schedule, Stream } from 'effect';
 import { AiError, type Response as AiResponse, type Tool } from 'effect/ai';
 import { FetchHttpClient, type HttpClient } from 'effect/http';
@@ -21,21 +17,16 @@ import { buildLanguageModel, type ModelTarget } from './providers';
 export type { ModelTarget } from './providers';
 export type { ModelRequestMessage, ModelToolDefinition } from './model-prompt';
 
-// The failure seam lives in `model-errors.ts`; re-exported here so callers keep
-// importing `ChatCompletionError` and `chatErrorFromAiError` from this module.
 export { ChatCompletionError, chatErrorFromAiError } from './model-errors';
 
-// How long one model call waits before the turn tells the owner to retry.
 export const MODEL_CHAT_TIMEOUT_MS = 90_000;
 
-// One raw tool call the model asked for, straight off the response.
 export interface ChatToolCall {
   id: string;
   name: string;
   argsJson: string;
 }
 
-// Token usage for one call: the four counters `ai_usage` keeps (T-1400).
 export interface ChatUsage {
   inputTokens: number;
   outputTokens: number;
@@ -46,13 +37,7 @@ export interface ChatUsage {
 export interface ModelCallResult {
   content: string | null;
   toolCalls: ChatToolCall[];
-  /**
-   * AI-5: `length` when the provider cut the reply at the token cap. This is
-   * the SDK's normalized reason, not the provider's raw `finish_reason`:
-   * `length`/`stop` pass through, `tool_calls`/`function_call` become
-   * `tool-calls`, and anything else becomes `unknown`. Only `length` is read
-   * today (`cutShortSuffix` in `replies.ts`).
-   */
+  /** `length` when the provider cut the reply at the token cap; the only value read today. */
   finishReason?: string;
   usage: ChatUsage;
 }
@@ -63,26 +48,16 @@ export interface ModelCallInput {
   tools?: ModelToolDefinition[];
   /** Called with the cumulative text every time the stream grows. */
   onDelta?: (textSoFar: string) => void;
-  /** Called with the token counters when the provider reports them. */
   onUsage?: (usage: ChatUsage) => void;
   maxTokens?: number;
   timeoutMs?: number;
   /** Extra secrets to redact from every error (e.g. a connection key). */
   secrets?: readonly string[];
-  /** Transport seam for tests: the `fetch` the client sends through. Ignored for
-   * `openai-compatible`, which always uses the pinned fetch (T-1396). */
+  /** Test transport; ignored for `openai-compatible`, which always uses the pinned fetch. */
   fetchImpl?: FetchLike;
-  /**
-   * T-1422: the turn's abort signal. When it fires, the call fails at once and
-   * the model stream is interrupted, so a stopped turn spends no more time.
-   */
+  /** The turn's abort signal: firing it fails the call at once and interrupts the stream. */
   signal?: AbortSignal;
-  /**
-   * T-1396, test only: options for the custom provider's pinned fetch (an
-   * injected DNS resolver, or the allow-private hook for a loopback fake
-   * server). A caller-supplied `fetchImpl` never replaces the pinned fetch for
-   * `openai-compatible`; inject these instead.
-   */
+  /** Test only: pinned-fetch options for the custom provider (resolver, or the allow-private hook for a loopback fake). */
   pinnedFetchOptions?: PinnedFetchOptions;
 }
 
@@ -117,10 +92,8 @@ function argsJsonOf(params: unknown): string {
   }
 }
 
-// One call through the provider client. No retry here: the caller owns the
-// deadline and the streamed-once rule. Every call streams (`stream_options`
-// carries usage), and `onDelta` only decides whether the caller sees the text
-// as it grows.
+// No retry here: the caller owns the deadline and the streamed-once rule. Every
+// call streams, and `onDelta` only decides whether text is shown as it grows.
 function callOnce(
   input: ModelCallInput,
 ): Effect.Effect<ModelCallResult, AiError.AiError, HttpClient.HttpClient> {
@@ -128,10 +101,7 @@ function callOnce(
     const model = yield* buildLanguageModel(input.target, input.maxTokens);
     const prompt = toPrompt(input.messages);
     const toolkit = toToolkit(input.tools ?? []);
-    // `Tool.HandlerServices` types the toolkit as carrying handlers even when
-    // it carries none; the cast drops that phantom requirement. Nothing is
-    // resolved by the framework here (`disableToolCallResolution`), so no
-    // handler is ever invoked.
+    // The toolkit's handler type is phantom (`disableToolCallResolution`), so the cast is safe.
     const options = {
       prompt,
       disableToolCallResolution: true as const,
@@ -175,27 +145,18 @@ function callOnce(
   });
 }
 
-// One retry for the failures worth retrying (a 429, a 5xx, a refused or
-// timed-out connection), and only while nothing has streamed yet. `effect/ai`
-// never retries: `AiError.isRetryable` is a flag, not a schedule.
+// One retry for a 429, 5xx, refused or timed-out connection, and only before
+// anything streamed: `effect/ai` never retries.
 function isRetryable(error: ChatCompletionError): boolean {
   return error.status === 0 || error.status === 429 || error.status >= 500;
 }
 
-// T-1396: the transport for one call. A custom provider is ALWAYS called
-// through the pinned fetch — a caller-supplied `fetchImpl` must never replace
-// it, or the SSRF guard would be dropped. Tests inject the pinned fetch's
-// resolver / allow-private hook through `pinnedFetchOptions` instead of
-// swapping the fetch. Without a base URL there is nothing safe to call, so the
-// call fails rather than falling back to the default client.
-// T-1422: the fixed failure a stopped turn gets. It is a `status: 0` error
-// (transient) but the retry loop never retries an aborted turn, because the
-// signal is checked in `chat`'s retry condition.
+// A custom provider is ALWAYS called through the pinned fetch: a caller-supplied
+// `fetchImpl` must never replace it, or the SSRF guard is dropped.
+// status 0 is transient by shape, but `chat` never retries an aborted turn.
 const TURN_STOPPED_DETAIL = 'the request was stopped';
 
-// T-1422: races one model-call effect against the turn's abort signal, so an
-// abort interrupts the in-flight stream and fails the call at once. Without a
-// signal the effect passes through unchanged.
+// Races the call against the turn's abort signal so an abort interrupts the in-flight stream.
 function withAbort<A, E, R>(
   effect: Effect.Effect<A, E, R>,
   signal: AbortSignal | undefined,
@@ -237,17 +198,13 @@ export function chat(input: ModelCallInput): Promise<ModelCallResult> {
   };
   const call: ModelCallInput = {
     ...input,
-    // AI-3: the streamed-once rule has to hold on every call. The wrapper is
-    // always installed, not only when the caller wants deltas, so a call that
-    // already streamed text is never repeated as a second paid request.
+    // Always installed: a call that already streamed text is never repeated as a second paid request.
     onDelta: (textSoFar) => {
       streamed = true;
       input.onDelta?.(textSoFar);
     },
   };
-  // Each attempt gets what is left of the deadline (AI-3), never a fresh
-  // window: the timeout is built inside the suspend, so a retry after a slow
-  // first attempt waits the remainder, not the full timeout again.
+  // Each attempt gets what is left of the deadline, never a fresh window.
   const attempt = (): Effect.Effect<ModelCallResult, ChatCompletionError> => {
     const transport = modelTransport(call);
     const once = Effect.provide(callOnce(call), FetchHttpClient.layer).pipe(
@@ -269,8 +226,7 @@ export function chat(input: ModelCallInput): Promise<ModelCallResult> {
   const program = Effect.suspend(attempt).pipe(
     Effect.retry({
       schedule: Schedule.max([Schedule.recurs(1), Schedule.spaced(RETRY_DELAY_MS)]),
-      // T-1422: an aborted turn never retries; the error is transient by shape
-      // (status 0) but the owner asked to stop.
+      // An aborted turn never retries, though its error is transient by shape.
       while: (error) =>
         !streamed &&
         input.signal?.aborted !== true &&

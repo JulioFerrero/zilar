@@ -1,26 +1,11 @@
-// T-0125: shared building blocks for the gateway-level web tools.
+// The guard for the gateway-level web tools. Everything they return is untrusted
+// content: adapters put it in `modelText` only, and a summary carries host names
+// and counts, never page content.
 //
-// Everything these tools return is untrusted content (a web page can say
-// "ignore your instructions"). Adapters put it in `modelText` only; the
-// gateway already wraps it in `<untrusted-tool-output>`, audits action
-// names and args hashes only, and never logs URLs, queries or content.
-// Summaries below carry host names and counts, never page content.
-//
-// The network path reuses the sandbox's guard: DNS resolved with
-// `dnsLookup`, every address classified by `classifyIp` (private,
-// loopback, link-local, 6to4, Teredo and friends refused), the request
-// pinned to the validated IP with SNI/`Host` kept as the hostname.
-// Redirects are never followed — a 3xx is returned as a result the model
-// can retry with the new URL (same checks apply to the retry).
-//
-// T-0484: the guard runs as an `Effect` pipeline inside, with `Promise`
-// exports at the edge (see `docs/EFFECT_GUIDE.md`). Each failure mode is a
-// `Data.TaggedError`; the edge maps them to the same fixed result objects as
-// before, so callers and tests are unchanged. `fetchPinned` is an
-// `Effect.callback` over `https.request`: the idle timeout and the byte cap
-// stay on the request, the hard overall deadline is `Effect.timeoutOrElse`,
-// and interruption destroys the request. The pinned request itself lives in
-// `guarded-fetch-pinned.ts`.
+// DNS is resolved and every address classified (private, loopback, link-local,
+// 6to4, Teredo refused), then the request is pinned to the validated IP with
+// SNI/`Host` kept. Redirects are never followed; a 3xx is a result the model can
+// retry with the new URL.
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
@@ -44,9 +29,8 @@ import {
 export const WEB_FETCH_TIMEOUT_MS = 10_000;
 export const WEB_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
-// Only these response bodies are read. Anything else (images, PDFs,
-// binaries) returns `unsupported content type <type>`. The check runs on
-// the media type only (before `;`), case-insensitive.
+// Anything else (images, PDFs, binaries) returns an unsupported type. The check
+// runs on the media type only (before `;`), case-insensitive.
 export const WEB_ALLOWED_CONTENT_TYPES: readonly string[] = [
   'text/html',
   'text/plain',
@@ -63,10 +47,8 @@ export type DnsLookup = (host: string) => Promise<string[]>;
 export interface GuardedGetOptions {
   allowedHosts: readonly string[];
   /**
-   * T-1234: skip the exact-host allowlist check and accept any public host.
-   * Every other guard stays (https only, port 443, no credentials, no
-   * redirects, the DNS pin and the private/loopback/link-local refusal), so a
-   * caller that fetches a user-supplied URL still cannot reach the LAN.
+   * Skips the exact-host allowlist only. Every other guard stays, so a caller
+   * fetching a user-supplied URL still cannot reach the LAN.
    */
   anyPublicHost?: boolean;
   headers?: Record<string, string>;
@@ -74,17 +56,13 @@ export interface GuardedGetOptions {
   timeoutMs?: number;
   maxResponseBytes?: number;
   /**
-   * T-1240: when `true`, reaching `maxResponseBytes` ends the read and
-   * returns the bytes read so far as a successful body instead of failing
-   * as `too-large`. Every other check stays. Link previews use this: a
-   * page's `<head>` sits in the first few KB, while a whole page can be
-   * larger than the cap.
+   * Reaching the byte cap returns what was read as a success instead of
+   * `too-large`. Link previews use it: the `<head>` is in the first few KB.
    */
   truncateAtMax?: boolean;
   /**
-   * T-1252: replace the default text allowlist with this one. Link preview
-   * images pass the image types only, so an SVG or an HTML page is refused
-   * exactly like any other unsupported content type.
+   * Replaces the default allowlist. Link preview images pass image types only, so
+   * an SVG or an HTML page is refused.
    */
   allowedContentTypes?: readonly string[];
   fetcher?: PinnedFetcher;
@@ -104,19 +82,15 @@ export interface GuardedBody {
   contentType: string | null;
   location: string | null;
   text: string;
-  /** T-1252: the raw bytes, for a caller that asks for an image allowlist. */
   bytes: Uint8Array;
 }
 
-// A failed get. `summary` is fixed wording only; `detail` carries text that
-// came from the remote server (a redirect's `Location`) and must reach the
-// model only as `modelText`, never in a summary.
+// `summary` is fixed wording; `detail` carries remote text (a redirect's
+// `Location`) and reaches the model only as `modelText`.
 export type GuardedGetResult =
   { ok: true; body: GuardedBody } | { ok: false; summary: string; detail?: string };
 
-// Internal failure modes, one tag per category from the spec. The `Promise`
-// edge maps each to exactly the `{ ok: false, summary, detail? }` object the
-// old code returned; these classes never leave this module.
+// Internal only: the `Promise` edge maps each to a fixed result object.
 class BadUrl extends Data.TaggedError('BadUrl')<{ readonly reason: BadUrlReason }> {}
 
 class HostNotAllowed extends Data.TaggedError('HostNotAllowed') {}
@@ -227,10 +201,8 @@ const guardedGetEffect = Effect.fnUntraced(function* (
           try: () => fetcher(url, pinned, fetchOptions),
           catch: classifyFetchError,
         });
-  // `timeoutOrElse` is the hard overall deadline: the request keeps its own
-  // idle timeout, but a server that drips one byte at a time could hold the
-  // connection for ever. On expiry it interrupts the fetch — the real
-  // request's finalizer destroys it.
+  // The hard overall deadline: a server dripping one byte at a time could hold
+  // the idle-timeout request forever. Expiry interrupts and destroys it.
   const { response, raw } = yield* pinnedFetch.pipe(
     Effect.timeoutOrElse({
       duration: Duration.millis(fetchOptions.timeoutMs),

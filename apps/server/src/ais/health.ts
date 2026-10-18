@@ -1,14 +1,10 @@
-// T-1504: the AI health read behind the picture's health dot. "Failing" is
-// only known to the task log, so this module reads the latest logged turn
-// `error` per AI that no `answer` has followed, from the last 7 days. It is
-// best-effort decoration like `usage`: a failed read leaves every AI healthy
-// (`lastFailure: null`) rather than failing the list.
+// The latest logged turn `error` no `answer` has followed, from the last 7
+// days. Best effort: a failed read leaves every AI healthy, not the list failed.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-/** One AI's latest unanswered failure, as the wire carries it. */
 export interface LastFailure {
   kind: string;
   at: string;
@@ -16,8 +12,7 @@ export interface LastFailure {
 
 export type WithLastFailure<T> = T & { lastFailure: LastFailure | null };
 
-// The window a failure stays interesting in; the retention sweeper deletes the
-// log after 30 days, so 7 is a product choice, not a storage bound.
+// A product choice: the log is kept 30 days, but 7 is what stays interesting.
 const FAILURE_WINDOW = '7 days';
 
 // `data->>'kind'` is text or null (a row written before the field existed).
@@ -27,10 +22,8 @@ interface LastFailureRow {
   at: Date;
 }
 
-// The latest unanswered `error` per AI, in one query for the whole list:
-// `DISTINCT ON (ai_id)` keeps the newest error, and the `NOT EXISTS` drops an
-// AI whose error an `answer` has cleared. With no ids it answers an empty map
-// and runs no query.
+// `DISTINCT ON` keeps the newest error and `NOT EXISTS` drops one an answer has
+// cleared. No ids means no query.
 export async function lastFailures(
   db: ServerDatabase,
   aiIds: readonly string[],
@@ -52,7 +45,6 @@ export async function lastFailures(
   );
   const failures = new Map<string, LastFailure>();
   for (const row of rows) {
-    // A row without a kind cannot say why it failed, so it is left out.
     if (row.kind === null) {
       continue;
     }
@@ -61,9 +53,7 @@ export async function lastFailures(
   return failures;
 }
 
-// The list decorator: one failure read for the whole list, so the list never
-// runs a query per AI. Any failure of the read gives every AI `lastFailure:
-// null`.
+// One read for the whole list; any failure gives every AI `lastFailure: null`.
 export async function withLastFailures<T extends { id: string }>(
   db: ServerDatabase,
   list: readonly T[],

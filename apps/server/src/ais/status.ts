@@ -5,15 +5,10 @@ import { HttpError } from '../errors';
 import type { AiServiceDeps, PublicAi } from './persona';
 import { emitAiLifecycle, findOwnedAi, toPublicAi } from './queries';
 
-// Stops an AI (T-0080): owner-only. It needs only the database, so the kill
-// switch keeps working when the key cipher or XMPP are down. Accepts only `active`, answers the same
-// 404 as `getOwnedAi` for a foreign or missing id (so existence is never
-// leaked). Idempotent on `stopped` (returns the AI unchanged). `disabled` —
-// provisioning still in flight — answers 409 `not_active` so a resume can
-// never accidentally flip a half-built AI to `active`. The conditional update
-// (`WHERE status = 'active'`) keeps a resume racing a delete from
-// resurrecting anything: a delete wins because the row is gone, and a second
-// stop wins because the row already left `active`.
+// Owner-only and DB-only, so the kill switch works when the cipher or XMPP are
+// down. A foreign id answers the same 404; idempotent on `stopped`; `disabled`
+// answers 409 so a resume cannot flip a half-built AI. The conditional update
+// loses to a racing delete or second stop.
 export async function stopAi(
   deps: Pick<AiServiceDeps, 'db'>,
   id: string,
@@ -40,9 +35,8 @@ export async function stopAi(
     }),
   );
   if (updated.length === 0) {
-    // A concurrent stop/resume/delete raced between the read and the update.
-    // Re-read under the owner's view: if the row is now `stopped`, return it
-    // (idempotent success); otherwise surface the same 409 as above.
+    // A concurrent stop/resume/delete raced the update: re-read under the owner's
+    // view.
     const fresh = await findOwnedAi(deps.db, ai.id, ownerId);
     if (fresh === null) {
       throw new HttpError(404, 'not_found', 'AI not found');
@@ -55,17 +49,14 @@ export async function stopAi(
   emitAiLifecycle({ type: 'stopped', aiId: ai.id });
   const reloaded = await findOwnedAi(deps.db, ai.id, ownerId);
   if (reloaded === null) {
-    // The row was deleted between the update and the read; the lifecycle
-    // event already went out, and the caller gets a 404-shape answer.
+    // Deleted between the update and the read; the caller gets a 404.
     throw new HttpError(404, 'not_found', 'AI not found');
   }
   return toPublicAi(reloaded);
 }
 
-// Resumes an AI (T-0080): owner-only, mirror of `stopAi`. Accepts only
-// `stopped`, idempotent on `active`, 409 on `disabled`. The conditional update
-// makes a resume racing a stop or delete a no-op: the row either is `stopped`
-// still (stop won) or no longer exists (delete won).
+// Mirror of `stopAi`: accepts only `stopped`, idempotent on `active`, 409 on
+// `disabled`. The conditional update makes a racing stop or delete win.
 export async function resumeAi(
   deps: Pick<AiServiceDeps, 'db'>,
   id: string,
@@ -115,14 +106,9 @@ export interface AssignMachineInput {
   machineId: string | null;
 }
 
-// T-0091: assign an AI to one of the owner's approved machines (or clear
-// it back to the platform). Owner-only: a foreign AI answers the same 404
-// the other AI routes give. A machine that is missing, foreign, or not
-// `approved` (pending or revoked) answers 404 `machine_not_found`, so the
-// caller cannot tell which case they hit. Setting the same value is a
-// no-op (200, no change) — the route skips the audit write on its end.
-// Only `status` independent of whether the AI is `active`, `stopped` or
-// `disabled`: the home machine is just a pointer the UI reads.
+// Owner-only. A machine that is missing, foreign or not `approved` answers the
+// same 404, so the caller cannot tell which. The AI's own status does not
+// matter: the home machine is only a pointer.
 export async function assignMachine(
   deps: Pick<AiServiceDeps, 'db'>,
   input: AssignMachineInput,

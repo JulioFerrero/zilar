@@ -1,5 +1,5 @@
-// Worker-safe sandbox limits: this module must not import a schema library
-// (no Effect, no zod), because the worker thread loads it on every spawn.
+// Worker-safe: this module must not import a schema library, because the worker
+// thread loads it on every spawn.
 
 export const MAX_SOURCE_BYTES = 64 * 1024;
 
@@ -74,8 +74,7 @@ export function resolveLimits(input: Partial<SandboxLimits> | undefined): Sandbo
 
 export const FETCH_DENIED_PREFIX = 'fetch_denied: ';
 
-// Prefixes a fetch failure message exactly once: callers may pass a message
-// that already carries the marker (worker rejections), so strip it first.
+// Exactly once: callers may pass a message that already carries the marker.
 export function withFetchPrefix(message: string): string {
   const stripped = message.replace(/^fetch_denied:\s*/i, '');
   return `${FETCH_DENIED_PREFIX}${stripped}`;

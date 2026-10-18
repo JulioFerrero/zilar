@@ -21,16 +21,9 @@ import {
   type CreatedApprovalRule,
 } from './schemas';
 
-// Validates input at the boundary and writes one row. The AI must exist; if
-// `groupId` is set, `topicId` must name a topic of that group (both set or
-// both absent — personal chat). `expiresAt` must be in the future and at
-// most 24 hours ahead. Per-AI pending cap is 50.
-//
-// The Effect version lets the action gateway yield it inside its
-// `sql.withTransaction`, so the approval row and the `pending_actions` row
-// commit together. The validation errors are typed `ApprovalServiceError`
-// failures (not defects), so callers that catch around the Effect see the
-// same error instance the old `throw` produced.
+// The AI must exist, and `topicId` must name a topic of `groupId` when one is
+// set. `expiresAt` is at most 24 hours ahead and the per-AI pending cap is 50.
+// An Effect so the gateway can yield it inside its transaction.
 export function createApprovalEffect(
   input: CreateApprovalInput,
   now: Date,
@@ -78,8 +71,7 @@ export function createApprovalEffect(
           new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic'),
         );
       }
-      // The topic must belong to the group; the AI's membership of the topic
-      // is checked by the gateway before this service is reached.
+      // The AI's membership of the topic is checked by the gateway first.
       const [topic] = yield* sql<{ id: string; groupId: string }>`SELECT id, group_id FROM topics
         WHERE id = ${data.topicId as string} LIMIT 1`;
       if (!topic || topic.groupId !== groupId) {
@@ -142,8 +134,6 @@ export function createApprovalEffect(
   });
 }
 
-// Async wrapper kept for the routes, the sweeper and the tests during the
-// transition (the action gateway yields `createApprovalEffect` directly).
 export async function createApproval(
   db: ServerDatabase,
   input: CreateApprovalInput,
@@ -152,16 +142,9 @@ export async function createApproval(
   return runSql(db, createApprovalEffect(input, now));
 }
 
-// Atomically decides a pending, unexpired request, but only if `userId` may
-// decide it (AI owner, or group owner/admin when the request was raised in a
-// group). A user who may not decide gets the same null as a missing id, so
-// existence is never leaked. Two racing decisions: the conditional update
-// makes exactly one win.
-//
-// T-0099: when `decision === 'approve_always'` and `alwaysEligible(action)`
-// is `true`, an `approval_rules` row is created in the same transaction.
-// The decision itself still proceeds: the request runs once (the existing
-// `onDecided` path), and the rule applies to future matching requests.
+// A user who may not decide gets the same null as a missing id, so existence is
+// never leaked. Two racing decisions: the conditional update makes exactly one
+// win.
 export interface DecideApprovalResult {
   row: ApprovalRow;
   rule: CreatedApprovalRule | null;
@@ -195,8 +178,7 @@ export async function decideApproval(
     return null;
   }
   const row = toApprovalRow(rawRow);
-  // Authorisation comes first: a caller who may not decide must not learn
-  // whether the request is expired or already decided.
+  // Authorization first: no expiring or decided information before it.
   if (!(await canDecide(db, row, params.userId))) {
     return null;
   }
@@ -207,11 +189,8 @@ export async function decideApproval(
     throw new ApprovalServiceError('not_pending', 'Approval request has already been decided');
   }
 
-  // T-0099: an "approve_always" decision that cannot create a rule (the
-  // action is unknown, the adapter opted out, or the adapter reports a
-  // cost) is refused before the row is updated so no state changes.
-  // T-0101: for a group approval the decider must also be a group
-  // owner/admin; a personal-chat approval needs no group check.
+  // An `approve_always` that cannot create a rule is refused before any state
+  // changes. In a group the decider must also be a group owner/admin.
   if (params.decision === 'approve_always') {
     const eligible = params.alwaysEligible ?? (() => false);
     if (!eligible(row.action)) {
@@ -228,10 +207,8 @@ export async function decideApproval(
     }
   }
 
-  // The decision + (optional) rule creation share one transaction. If
-  // either fails, both roll back. The decision is one conditional UPDATE; the
-  // rule (on approve_always) is inserted on the same `effect/sql` client, so
-  // `sql.withTransaction` wraps both.
+  // The decision and the optional rule share one transaction: if either fails,
+  // both roll back.
   let createdRule: CreatedApprovalRule | null = null;
   const updated = await runSql(
     db,
@@ -248,9 +225,7 @@ export async function decideApproval(
             RETURNING *`;
           const decisionRow = rows[0];
           if (!decisionRow) {
-            // A concurrent decision won, or the row expired between our
-            // checks and the update. Signal "no row updated" so the caller
-            // can re-read and pick the right error.
+            // A concurrent decision or expiry won; signal "no row updated".
             return undefined;
           }
 
@@ -282,8 +257,7 @@ export async function decideApproval(
   );
 
   if (!updated) {
-    // A concurrent decision won, or the row expired between our checks and the
-    // update. Re-read to give the caller a stable error.
+    // A concurrent decision or expiry won; re-read for a stable error.
     const [rawFresh] = await runSql(
       db,
       Effect.gen(function* () {

@@ -1,11 +1,7 @@
-// Converts our wire shapes (`ModelRequestMessage`, `ChatToolDefinition`) into
-// the Effect AI `Prompt`/`Toolkit` shapes. Kept apart from `model-client.ts`
-// and only used there: when the agent loop moves onto `Prompt`/`Tool` directly
-// (docs/audit/effect-ai-plan.md §5.1) this whole file is deleted.
+// Converts our wire shapes into the Effect AI `Prompt`/`Toolkit` shapes.
 import type { JsonSchema } from 'effect';
 import { Prompt, Tool, Toolkit } from 'effect/ai';
 
-// The message shape the context builder produces and the tool loop appends to.
 export interface ModelRequestMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -17,7 +13,6 @@ export interface ModelRequestMessage {
   tool_call_id?: string;
 }
 
-// Our tool definition, JSON-schema shaped (`agents/tools/definitions.ts`).
 export interface ModelToolDefinition {
   type: 'function';
   function: {
@@ -27,9 +22,8 @@ export interface ModelToolDefinition {
   };
 }
 
-// A provider sends tool arguments as a JSON string; an empty or malformed
-// string becomes `{}` so the prompt still decodes. The executor keeps the
-// original string and validates it itself.
+// An empty or malformed arguments string becomes `{}` so the prompt still
+// decodes; the executor validates the original itself.
 function parseArguments(argsJson: string): unknown {
   if (argsJson.trim() === '') {
     return {};
@@ -41,8 +35,8 @@ function parseArguments(argsJson: string): unknown {
   }
 }
 
-// A tool result only carries the call id; the prompt needs the tool name too,
-// so the name is read from the assistant `tool_calls` it answers.
+// A tool result only carries the call id; the name comes from the assistant
+// `tool_calls` it answers.
 function toolNamesById(messages: readonly ModelRequestMessage[]): Map<string, string> {
   const names = new Map<string, string>();
   for (const message of messages) {
@@ -53,7 +47,6 @@ function toolNamesById(messages: readonly ModelRequestMessage[]): Map<string, st
   return names;
 }
 
-// One `ModelRequestMessage` as the encoded prompt message Effect AI accepts.
 function encodeMessage(
   message: ModelRequestMessage,
   names: Map<string, string>,
@@ -103,10 +96,8 @@ export function toPrompt(messages: readonly ModelRequestMessage[]): Prompt.Promp
   return Prompt.make(messages.map((message) => encodeMessage(message, names)));
 }
 
-// Our tool definitions as one toolkit value. `Tool.dynamic` takes the raw JSON
-// Schema unchanged, and a dynamic tool needs no handler: the agent loop
-// validates and executes every call itself (`agents/tool-exec.ts`), so the
-// handler here is never invoked (`disableToolCallResolution`).
+// A dynamic tool needs no handler: the agent loop validates and executes every
+// call itself (`disableToolCallResolution`), so the one here is never invoked.
 export function toToolkit(
   definitions: readonly ModelToolDefinition[],
 ): Toolkit.WithHandler<Record<string, Tool.Any>> | undefined {

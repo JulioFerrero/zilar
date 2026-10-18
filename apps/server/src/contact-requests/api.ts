@@ -1,11 +1,3 @@
-// Contact requests on the Effect `HttpApi` adapter (T-0515): the same
-// methods, paths, statuses and bodies as the deleted router (`routes.ts`),
-// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
-// runs on effect/sql.
-//
-// The schemas, the group and its middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0894); this file keeps the handlers and layers.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
@@ -63,7 +55,6 @@ export interface ContactRequestsApiDependencies {
   adminClient: EjabberdAdminClient;
   audit?: AuditRecorder;
   logger: Logger;
-  /** Injected in tests so the rate windows can advance without waiting. */
   now?: () => number;
   createLimiter?: RateLimiter;
   readLimiter?: RateLimiter;
@@ -126,17 +117,11 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
 
   const groupLayer = HttpApiBuilder.group(ContactRequestsApi, 'contactRequests', (handlers) =>
     handlers
-      // Creates a pending request to the owner of `handle`. Unknown handles
-      // answer the same 404 as retired ones. When the other side already asked,
-      // answers 200 `{ request, incoming: true }` so the web can offer
-      // "Accept"; otherwise 201 `{ request }`. Both statuses are declared on
-      // the endpoint, so the handler returns the value and the schema picks
-      // the status.
+      // Unknown handles answer the same 404 as retired ones. A reverse pending
+      // request answers 200 with `incoming: true`, so the web can offer "Accept".
       .handle(
         'create',
         handler(logger, async (request, user) => {
-          // The create budget was already charged by `ContactRequestCreateRateLimit`,
-          // before the payload decode.
           const { request: created, reverseOf } = await createContactRequest(
             service(),
             user.id,
@@ -148,7 +133,6 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
           return { request: toJson(created) };
         }),
       )
-      // The viewer's pending requests: `{ incoming, outgoing }`, newest first.
       .handle(
         'list',
         handler(logger, (_request, user) => listContactRequests(service(), user.id)),
@@ -160,31 +144,28 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
           request: toJson(await acceptContactRequest(service(), request.params.id, user.id)),
         })),
       )
-      // Declines a request (recipient only). Not-actable and unknown ids
-      // answer the same 404.
+      // Recipient only; not-actable and unknown ids answer the same 404.
       .handle(
         'decline',
         handler(logger, async (request, user) => ({
           request: toJson(await declineContactRequest(service(), request.params.id, user.id)),
         })),
       )
-      // Cancels a request (sender only). Not-actable and unknown ids answer
-      // the same 404.
+      // Sender only; not-actable and unknown ids answer the same 404.
       .handle(
         'cancel',
         handler(logger, async (request, user) => ({
           request: toJson(await cancelContactRequest(service(), request.params.id, user.id)),
         })),
       )
-      // Exact, case-insensitive handle lookup: `{ userId, name, handle, image,
-      // relation }`. Unknown and retired handles answer the same 404. Never an
-      // email.
+      // Exact, case-insensitive handle lookup. Unknown and retired handles answer
+      // the same 404. Never an email.
       .handle(
         'byHandle',
         handler(logger, (request, user) => profileForHandle(db, user.id, request.params.handle)),
       )
-      // Telegram-style prefix search by `@username` only (T-1286, SG-7): up
-      // to 10 matching people. The query itself is never logged.
+      // Prefix search by `@username` only, up to 10 people. The query is never
+      // logged.
       .handle(
         'search',
         handler(logger, async (request, user) => ({
@@ -193,13 +174,11 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
       ),
   );
 
-  // The create budget runs before the payload is decoded, exactly like the old
-  // route's `createLimiter.allow` -> `safeParse` order: an invalid body still
-  // spends budget. The read budget covers list, accept, decline and cancel.
+  // The create budget runs before the payload is decoded, so an invalid body
+  // still spends it. The read budget covers list, accept, decline and cancel.
   const apiLayer = HttpApiBuilder.layer(ContactRequestsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // A payload decode failure answers one fixed message, not the schema's text.
     Layer.provide(
       schemaErrorLayerFor(
         ContactRequestsSchemaErrors,

@@ -5,9 +5,8 @@ import { runSql } from '../effect/sql';
 import { syncTopicRoom } from '../topics/rooms';
 import type { RolesServiceDeps } from './schemas';
 
-// Re-syncs every non-archived topic room of the group that grants access to
-// any of `roleIds`. Best effort per room (logged with the group id, never a
-// topic name): the database is the source of truth.
+// Re-syncs every non-archived topic room granting access to any `roleIds`. Best
+// effort per room, logged with the group id and never a topic name.
 export async function syncTopicsWithRoles(
   deps: RolesServiceDeps,
   groupId: string,

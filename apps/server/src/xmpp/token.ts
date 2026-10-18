@@ -3,9 +3,8 @@ import { SignJWT } from 'jose';
 import { JidSchema, decodeOrThrow } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
-// JWT login: our server signs a short-lived HS256 token and the client sends it
-// as the SASL PLAIN password. ejabberd verifies it with the same secret, read
-// from the JWK file written by infra/ejabberd/jwt-entrypoint.sh.
+// The client sends the short-lived HS256 token as the SASL PLAIN password;
+// ejabberd verifies it with the same secret from the JWK file.
 export const MAX_TOKEN_TTL_SECONDS = 600;
 
 const TtlSecondsSchema = Schema.Number.pipe(

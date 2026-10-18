@@ -24,25 +24,20 @@ export interface PublicAi {
   persona: string;
   model: string;
   jid: string;
-  // `stopped` is the kill-switch (T-0080): the owner paused the AI. It is
-  // distinct from `disabled` (provisioning in progress), so a resume can
-  // never be allowed to flip a half-built AI to `active`.
+  // `stopped` is the kill switch; `disabled` means provisioning in progress, so
+  // a resume can never flip a half-built AI to active.
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
-  // T-0091: the AI's home machine id, or null when it runs on the platform.
-  // CamelCase like the rest of the public AI fields.
+  // The home machine id, or null when it runs on the platform.
   machineId: string | null;
-  // T-1409: where the AI's desk runs (`off` by default). Only `cloud` is wired
-  // so far; the column also allows `runner` and `auto`.
+  // Where the AI's desk runs (`off` by default); the column also allows
+  // `runner` and `auto`.
   computerMode: AiComputerMode;
-  // T-0474: delegation opt-ins (plan §8, decision 3). `canDelegate` lets the
-  // AI hand out tasks; `acceptsDelegation` lets it receive them. Both off by
-  // default.
+  // Delegation opt-ins, both off by default.
   canDelegate: boolean;
   acceptsDelegation: boolean;
-  // T-0165: the AI's picture, when it has one. Attached at read time by
-  // the routes; absent (not null) when none, like the chat list.
+  // Attached at read time; absent (not null) when none, like the chat list.
   avatarUrl?: string | undefined;
   createdAt: Date;
 }
@@ -73,23 +68,18 @@ export interface UpdateAiInput {
   limits?: AiLimits;
   model?: string;
   providerConnectionId?: string;
-  // T-0474: the two delegation opt-ins, owner only like the rest.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
-  // T-1409/T-1423: where the AI's computer runs. `runner` and `auto` need an
-  // assigned machine, refused with a 400 in `updateAi` otherwise.
+  // `runner` and `auto` need an assigned machine; `updateAi` answers 400 otherwise.
   computerMode?: AiComputerMode;
 }
 
-// The persona ceiling the API enforces (`CreateAiSchema`), repeated here so a
-// chat-driven change can never store more than the routes accept.
+// Matches the API ceiling, so a chat-driven change cannot store more than the
+// routes accept.
 export const CHAT_PERSONA_MAX_LENGTH = 4000;
 
-// Shapes an AI's persona from its DM, for the gateway only. The AI id always
-// comes from the gateway's own session, never from the model's arguments, and
-// only `persona`/`previous_persona` change: the model, limits, keys and name
-// are untouched. In one transaction the current persona is kept as
-// `previous_persona` and the new one stored. Returns the stored persona.
+// The AI id comes from the gateway's session, never from the model's
+// arguments, and only the persona columns change.
 export async function setPersonaFromChat(
   db: ServerDatabase,
   aiId: string,
@@ -120,10 +110,8 @@ export async function setPersonaFromChat(
   return trimmed;
 }
 
-// Undoes the latest chat-driven persona change, for the gateway only. When
-// there is nothing to undo it returns `"nothing to undo"` and stores nothing.
-// Otherwise it swaps the two, so a second undo re-applies the change (a
-// toggle, one level deep).
+// Swaps the two personas, so a second undo re-applies the change (a toggle,
+// one level deep).
 export async function revertPersonaFromChat(
   db: ServerDatabase,
   aiId: string,
@@ -167,7 +155,7 @@ export function resolvePersona(template: AiTemplate, persona: string | undefined
 }
 
 // Fixed messages: no gateway or chat-service detail (which could echo a key)
-// ever reaches the client.
+// reaches the client.
 export function provisioningFailed(): HttpError {
   return new HttpError(502, 'ai_provisioning_failed', 'The AI could not be provisioned');
 }

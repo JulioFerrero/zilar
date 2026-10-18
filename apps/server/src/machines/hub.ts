@@ -14,33 +14,26 @@ export interface HubLogger {
 
 export interface CreateHubKeyRegistryOptions {
   db: ServerDatabase;
-  /** Source of approve/revoke events; the cache subscribes on construction. */
   registry: HubRegistrySource;
   logger: HubLogger;
   refreshMs?: number;
-  /**
-   * Start the periodic refresh timer on creation. Off in tests so they do
-   * not leak timers between cases; the hub always sets it to true.
-   */
+  /** Off in tests so they leak no timers; the hub sets it to true. */
   autoStartTimer?: boolean;
 }
 
-// The minimum surface the cache needs from the durable registry. The real
-// `DbMachineRegistry` satisfies this; tests can pass a stand-in.
+// The minimum the cache needs; tests can pass a stand-in.
 export interface HubRegistrySource {
   onRevoke(listener: (machineId: string) => void): () => void;
   onApprove(listener: (machineId: string, publicKey: string) => void): () => void;
 }
 
-// The minimum interface the hub needs from the durable registry at runtime.
 export interface HubMachineLookup extends HubRegistrySource {
   touchLastSeen(machineId: string, at: Date): Promise<void>;
 }
 
-// The in-memory cache the tunnel speaks to. `getPublicKey` is synchronous —
-// the tunnel re-reads the key after the challenge to catch a mid-handshake
-// revoke — so the cache mirrors the database only at refresh boundaries and
-// at synchronous approve/revoke events delivered by the durable registry.
+// `getPublicKey` is synchronous because the tunnel re-reads it after the
+// challenge to catch a mid-handshake revoke, so the cache mirrors the database
+// only at refresh boundaries and at synchronous approve/revoke events.
 export interface HubKeyRegistry extends KeyRegistry {
   refresh(): Promise<void>;
   close(): void;
@@ -58,10 +51,8 @@ export function createHubKeyRegistry({
   const keys = new Map<string, string>();
   const revokeListeners = new Set<(machineId: string) => void>();
   let refreshFiber: Fiber.Fiber<number, never> | null = null;
-  // Approve/revoke events that land while a refresh query is in flight. The
-  // query may have read the database before the change committed, so the
-  // events win over its result: a machine revoked mid-refresh must never come
-  // back into the cache from a stale read.
+  // Events that land during a refresh win over its result: a machine revoked
+  // mid-refresh must never come back from a stale read.
   let inFlight: { revoked: Set<string>; approved: Map<string, string> } | null = null;
 
   function fireRevoke(machineId: string): void {
@@ -88,8 +79,7 @@ export function createHubKeyRegistry({
         next.set(id, publicKey);
       }
     } catch (error) {
-      // A failed refresh keeps the old map; the cache survives a transient
-      // database blip and we do not silently authenticate the wrong set.
+      // Keep the old map: a blip must not silently authenticate the wrong set.
       logger.error({ err: serializeError(error) }, 'runner hub key refresh failed');
       return;
     } finally {
@@ -112,15 +102,9 @@ export function createHubKeyRegistry({
     }
   }
 
-  // The periodic refresh is one Effect program: `refresh` repeated with a
-  // fixed spacing (the delay starts when the previous run finishes), with the
-  // whole program delayed once so the first run comes after one interval,
-  // exactly as the old `setTimeout` chain did. `refresh` catches its own
-  // database errors, but anything it throws outside that guard (a listener
-  // bug, say) is caught here and logged, so the fiber survives it and keeps
-  // rescheduling — the old `void refresh().finally(scheduleRefresh)` chain
-  // always re-armed the same way. `close` interrupts the fiber in place of
-  // the old `timer`/`closed` flags.
+  // The first run comes after one interval, then spaced after each finish. A
+  // defect outside `refresh`'s own guard is caught and logged, so the fiber
+  // keeps rescheduling; `close` interrupts it.
   const refreshLoop = Effect.repeat(
     Effect.promise(() => refresh()).pipe(
       Effect.catchDefect((defect) =>
@@ -136,11 +120,9 @@ export function createHubKeyRegistry({
     refreshFiber = Effect.runFork(refreshLoop);
   }
 
-  // The durable registry drives the cache synchronously: the routes call
-  // `notifyApproved` / `notifyRevoked` after the DB write commits, and the
-  // cache mirrors them so the tunnel sees the change in the same tick (no
-  // 30 s refresh race). `cache.revoke` then fires the tunnel's `onRevoke`
-  // listener, which closes the live WebSocket with CLOSE_REVOKED.
+  // The routes call `notifyApproved`/`notifyRevoked` after the commit, so the
+  // cache updates in the same tick instead of waiting for a refresh; a revoke
+  // then closes the live WebSocket with CLOSE_REVOKED.
   const unsubscribeDurableApprove = registry.onApprove((machineId, publicKey) => {
     inFlight?.revoked.delete(machineId);
     inFlight?.approved.set(machineId, publicKey);
@@ -216,11 +198,7 @@ export interface StartRunnerHubOptions {
   highWaterMarkBytes?: number;
   /** Refresh cadence for the approved-key cache; default 30 s. */
   refreshMs?: number;
-  /**
-   * How often the hub polls live connections to update `last_seen_at`.
-   * Defaults to `LAST_SEEN_MIN_INTERVAL_MS` (60 s). Tests shorten it so the
-   * assertions do not wait a minute.
-   */
+  /** Defaults to `LAST_SEEN_MIN_INTERVAL_MS`; tests shorten it. */
   pollIntervalMs?: number;
 }
 
@@ -228,16 +206,12 @@ export interface RunnerHub {
   isOnline(machineId: string): boolean;
   close(): Promise<void>;
   port: number;
-  /**
-   * T-1423: the desk ops bound to a live runner, or null when it is offline.
-   * Read per turn, so a runner that drops out is refused on the next turn.
-   */
+  /** The desk ops bound to a live runner; read per turn, so a dropped runner is refused next turn. */
   deskFor(machineId: string): RunnerDesk | null;
 }
 
-// Bumps `last_seen_at` at most once every 60 s while the machine is still
-// connected, so the database does not become the bottleneck of the heartbeat
-// loop. The exact value is not load-bearing: it is a hint for the UI.
+// Bumps `last_seen_at` at most once a minute, so the heartbeat loop does not
+// bottleneck the database; the value is only a hint for the UI.
 const LAST_SEEN_MIN_INTERVAL_MS = 60_000;
 
 export async function startRunnerHub({
@@ -260,8 +234,8 @@ export async function startRunnerHub({
     autoStartTimer: true,
   });
 
-  // The cache loads before the tunnel starts, so the very first handshake
-  // already finds an approved key for everyone who is approved right now.
+  // Load before the tunnel starts, so the first handshake already finds every
+  // approved key.
   await cache.refresh();
 
   const server = await TunnelServer.start(
@@ -286,20 +260,15 @@ export async function startRunnerHub({
     try {
       await registry.touchLastSeen(machineId, new Date(now));
     } catch {
-      // A failed write only logs the id, never the time or any other detail.
+      // Log the id only, never the time or any other detail.
       logger.warn({ machineId }, 'runner hub failed to write last_seen_at');
       lastSeenWrites.delete(machineId);
     }
   };
 
-  // The tunnel has no "became ready" event, so a poll walks the approved ids
-  // and writes `last_seen_at` for the live ones (throttled per machine). Like
-  // the key refresh, the loop is one Effect program: the first run after one
-  // interval, then every `pollIntervalMs` after the previous run finished.
-  // `flushLastSeen` catches its own write errors, but anything else the walk
-  // throws is caught here and logged so the fiber survives it and reschedules,
-  // as the old `void pollOnce().finally(schedulePoll)` chain did. `close`
-  // interrupts the fiber in place of the old `timer`/`stopped` flags.
+  // The tunnel has no "became ready" event, so a poll writes `last_seen_at` for
+  // the live approved ids. First run after one interval, then spaced; a defect
+  // is logged so the fiber keeps rescheduling.
   async function pollOnce(): Promise<void> {
     for (const id of cache.approvedIds()) {
       if (server.isRunnerLive(id)) {
@@ -323,13 +292,11 @@ export async function startRunnerHub({
   logger.info({ port: server.port }, 'runner hub listening');
 
   return {
-    // Read straight from the tunnel so the flag is never stale, and never
-    // true for a machine whose key has just been revoked.
+    // Read from the tunnel, so the flag is never stale and never true after a revoke.
     isOnline(machineId: string): boolean {
       return cache.getPublicKey(machineId) !== null && server.isRunnerLive(machineId);
     },
 
-    // T-1423: the same liveness gate, plus the bound desk ops for the runner.
     deskFor(machineId: string): RunnerDesk | null {
       if (cache.getPublicKey(machineId) === null || !server.isRunnerLive(machineId)) {
         return null;

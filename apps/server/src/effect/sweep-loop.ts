@@ -1,16 +1,13 @@
-// The one background sweep loop behind every copied timer (T-2038): the
-// approvals sweeper, the stuck-action recovery timer and the task-event
-// retention sweeper all started with the same Effect scaffolding.
+// The one background sweep loop behind every timer copy.
 import { Effect, Schedule, type Fiber } from 'effect';
 
 export interface SweepLoopHandle {
   close(): void;
 }
 
-// Starts `tick` after one interval, then every `intervalMs`. Each tick runs
-// uninterruptibly, so `close()` only interrupts the sleep: an in-flight tick
-// finishes and no new one is scheduled. Callers run `close()` before the
-// database close so the in-flight queries settle on the live connection.
+// Runs `tick` after one interval, then every `intervalMs`, uninterruptibly:
+// `close()` only interrupts the sleep, so an in-flight tick finishes. Callers
+// close this before the database so its queries settle on a live connection.
 export function startSweepLoop(intervalMs: number, tick: () => Promise<void>): SweepLoopHandle {
   const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
   const loop = Effect.sleep(intervalMs).pipe(

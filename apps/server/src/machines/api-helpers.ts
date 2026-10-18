@@ -1,12 +1,8 @@
-// Private helpers of the machines API (`api.ts`, T-1127), split out to keep
-// that file under the 400-line limit.
-
 import type { Machine } from '@zilar/api-contract';
 import { HttpError } from '../errors';
 import { MachineServiceError, type PublicMachine } from './service';
 
-// The wire form of a `PublicMachine`: the dates as the ISO strings
-// `JSON.stringify` produced on the old route.
+// The dates travel as ISO strings.
 export function toMachineView(machine: PublicMachine): Machine {
   return {
     ...machine,
@@ -27,6 +23,5 @@ export function toConflict(error: unknown): unknown {
   throw error;
 }
 
-// Used to tell a malformed JSON body from a shape violation after the sentinel
-// has been replaced by the decoded value.
+// Tells a malformed JSON body from a shape violation after decoding.
 export const INVALID_JSON = Symbol('invalid-json');

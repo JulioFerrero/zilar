@@ -1,6 +1,4 @@
-// The AI routes' logger is a small `{ warn }` shape, but the shared error
-// envelope logs defects with `error`. Both read the same `(fields, message)`
-// pair, so adapt one to the other without touching the service's shape.
+// The AI logger has `{ warn }`; the shared error envelope logs defects with `error`.
 
 import type { Logger } from 'pino';
 import type { AiLogger } from './service';

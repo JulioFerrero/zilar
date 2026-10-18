@@ -4,9 +4,6 @@ import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { FetchResponse } from './host-fetch';
 import { withFetchPrefix, type SandboxLimits } from './limits';
 
-// The fetch bridge between the QuickJS guest and the parent thread: every
-// `fetch()` becomes a small JSON message out and a `fetch-result` message in.
-
 export interface WorkerFetchPayload {
   id: number;
   url: string;
@@ -17,8 +14,8 @@ export interface WorkerFetchPayload {
 
 type Deferred = ReturnType<QuickJSContext['newPromise']>;
 
-// The first matching `fetch-result` wins. The timeout is an Effect timer: when
-// it fires, the callback is interrupted and its finalizer removes the listener.
+// The first matching `fetch-result` wins; the timeout's finalizer removes the
+// listener.
 export function waitForFetchResponse(
   id: number,
   fetchTimeoutMs: number,
@@ -73,8 +70,8 @@ export interface FetchBridgeDeps {
   rejectWith: (deferred: { reject: (handle: QuickJSHandle) => void }, text: string) => void;
 }
 
-// Installs the guest `fetch` implementation. It reads and bumps the run's
-// fetch count through the callbacks so the worker entry keeps owning it.
+// Reads and bumps the run's fetch count through the callbacks, so the worker
+// entry keeps owning it.
 export function createFetchBridge(
   deps: FetchBridgeDeps,
 ): (urlHandle: QuickJSHandle, initHandle?: QuickJSHandle) => QuickJSHandle {
@@ -91,12 +88,9 @@ export function createFetchBridge(
   } = deps;
   let fetchId = 0;
 
-  // Everything after the url check, as one Effect. The caller starts it with
-  // `runPromise`, which runs the fiber up to its first wait synchronously, so
-  // the early rejection and the 'fetch' message still happen before
-  // `fetchImpl` returns. A failure here becomes a rejection of the tool's
-  // fetch promise; a throw from `rejectWith` itself rejects the run, which
-  // crashes the worker exactly as the old unhandled rejection did.
+  // `runPromise` runs the fiber to its first wait synchronously, so the early
+  // rejection and the 'fetch' message happen before `fetchImpl` returns. A
+  // failure becomes a rejection of the tool's promise.
   const fetchEffect = (
     deferred: Deferred,
     urlText: string,

@@ -11,14 +11,11 @@ export type CreateRoomOptions = {
   persistent?: boolean;
   mam?: boolean;
   anonymous?: boolean;
-  // T-0124: a moderated room gives plain members the visitor role (no voice,
-  // so they cannot post); admins/owners keep voice. Channels use this; group
-  // rooms leave it off so every member can write.
+  // A moderated room gives plain members the visitor role (no voice); admins and
+  // owners keep voice. Channels use this; group rooms leave it off.
   moderated?: boolean;
-  // T-0124: with `membersByDefault: false`, affiliated members join a
-  // moderated room as visitors (read, no voice) instead of participants.
-  // Channels set this; groups and topic rooms leave it off (ejabberd's
-  // default `true`), so every member keeps voice there.
+  // With `false`, affiliated members join a moderated room as visitors.
+  // Channels set it; groups and topic rooms keep ejabberd's `true`.
   membersByDefault?: boolean;
   /** MUC/Sub (XEP-0369): members can subscribe to the room for push. */
   allowSubscription?: boolean;
@@ -33,9 +30,7 @@ export type AddRosterItemOptions = {
 export type CreatedResult = { created: boolean };
 
 export type SendDirectInvitationOptions = {
-  /** Invitation reason shown to the user, or omitted for none. */
   reason?: string;
-  /** Room password, or omitted when the room has none. */
   password?: string;
 };
 
@@ -45,29 +40,21 @@ export type EjabberdAdminClient = {
   registerUser(localpart: string): Promise<CreatedResult>;
   unregisterUser(localpart: string): Promise<void>;
   userExists(localpart: string): Promise<boolean>;
-  // The user's connected XMPP resources (ejabberd `user_resources`). One or
-  // more entries means a session exists — pending and hibernated sessions
-  // show too, and those are the ones ejabberd itself pushes to.
+  // One or more entries means a session exists; pending and hibernated sessions
+  // show too.
   userResources(localpart: string): Promise<UserResource[]>;
   changePassword(localpart: string, password: string): Promise<void>;
   /**
-   * Ends every XMPP stream of the user through the ejabberd `kick_user`
-   * command (T-1982). `reason` goes into a failure message only: ejabberd's
-   * `kick_user` takes the user and host, not a reason.
-   *
-   * Optional so an older test double still satisfies the type; every real
-   * client implements it.
+   * Ends every XMPP stream of the user. `reason` goes into a failure message
+   * only; `kick_user` takes the user and host. Optional for older doubles.
    */
   kickUser?(localpart: string, reason: string): Promise<void>;
   createRoom(roomId: string, options?: CreateRoomOptions): Promise<CreatedResult>;
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
   destroyRoom(roomId: string): Promise<void>;
-  /** Changes one MUC room option (for example `allow_subscription`). */
   changeRoomOption(roomId: string, option: string, value: string): Promise<void>;
-  /** Subscribes a user to a MUC/Sub room (XEP-0369) for push delivery. */
   subscribeRoom(roomId: string, userJid: string, nick: string): Promise<void>;
-  /** Removes a MUC/Sub room subscription again. */
   unsubscribeRoom(roomId: string, userJid: string): Promise<void>;
   sendDirectInvitation(
     roomId: string,
@@ -81,10 +68,7 @@ export type EjabberdAdminClient = {
   ): Promise<void>;
   deleteRosterItem(localpart: string, contactJid: string): Promise<void>;
   getRoster(localpart: string): Promise<RosterEntry[]>;
-  /**
-   * Sends one raw stanza from `from` to `to` through the ejabberd
-   * `send_stanza` command (T-1245). Both are JIDs; `to` may carry a resource.
-   */
+  /** One raw stanza; both are JIDs and `to` may carry a resource. */
   sendStanza(from: string, to: string, stanza: string): Promise<void>;
 };
 

@@ -1,7 +1,5 @@
-// A derived-contract client for smoke tests that mount their own app (with a
-// key cipher and the like), which `createSmokeHarness` cannot do. Same
-// transport as the harness's `cookieClient`: the session cookie on
-// every request, `fetch` injected so no socket opens.
+// A derived client for smoke tests that mount their own app; `fetch` is injected
+// so no socket opens.
 
 import { Effect } from 'effect';
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http';

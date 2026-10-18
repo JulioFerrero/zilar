@@ -2,17 +2,14 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { HttpError } from '../errors';
 
-// T-1991: a role is a way into every private topic that lists it, so a
-// group manager who cannot see one of those topics must not be able to hand
-// the role to anyone — themselves included. The user guide promises that a
-// group owner or admin who is not in a private topic cannot see it.
+// A role is a way into every private topic that lists it, so a group manager who
+// cannot see one of those topics must not be able to hand the role to anyone,
+// themselves included.
 export const PRIVATE_TOPIC_GRANT_MESSAGE =
   "You can't add people to a role that opens a private topic you're not in";
 
-// Runs on the caller's transaction client, so the refusal and the insert
-// share one statement stream and a refusal writes nothing. The visibility
-// expression mirrors `canSeeTopic` for private topics: a group member who is
-// a direct topic member or holds one of the topic's roles.
+// Runs on the caller's transaction client, so a refusal writes nothing. The
+// visibility expression mirrors `canSeeTopic` for private topics.
 export function assertRoleGrantAllowed(
   sql: SqlClient.SqlClient,
   roleId: string,

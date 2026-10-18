@@ -11,16 +11,11 @@ export interface ArchiveQueryInput {
   beforeMicros: bigint | null;
 }
 
-// One fully parameterized query — values travel as `$n` bindings, never
-// string-built SQL, so a query containing SQL metacharacters is just text.
-// Matching folds accents/case (`translate(lower(txt), …)`) and matches the
-// LAST query term as a prefix (`to_tsquery` with `:*`, built from sanitized
-// tokens by buildTsQuery — never string-concatenated SQL: the tsquery text
-// itself is a `$n` binding, and each token is [\p{L}\p{N}]+ quoted with `"`).
-// An empty tsquery (a query of only operators/punctuation) matches nothing:
-// `@@` on an empty query is false and the route answers an empty list.
-// The `WHERE username = … AND timestamp > …` prefix keeps the scan on the
-// existing `(username, timestamp)` index inside the 12-month / 5 000-row cap.
+// One fully parameterized query: values travel as `$n` bindings and the tsquery
+// text itself is a binding, so SQL metacharacters are just text. Matching folds
+// accents/case and matches the last term as a prefix. The `(username,
+// timestamp)` prefix keeps the scan on the index inside the 12-month/5 000-row
+// cap.
 export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; values: unknown[] } {
   const values: unknown[] = [];
   const next = (value: unknown): string => {
@@ -58,9 +53,8 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
   };
 }
 
-// The fuzzy second pass scores candidates in code, so it fetches the same
-// bounded scope (same permission scoping, cutoff, cap, newest first) with no
-// text filter. `body` carries the full `txt` for scoring and windowing.
+// The fuzzy pass scores in code, so it fetches the same bounded scope with no
+// text filter; `body` carries the full text for scoring and windowing.
 export function buildFuzzyCandidatesQuery(input: Omit<ArchiveQueryInput, 'tsquery'>): {
   text: string;
   values: unknown[];
@@ -89,9 +83,8 @@ export function buildFuzzyCandidatesQuery(input: Omit<ArchiveQueryInput, 'tsquer
   };
 }
 
-// When ts_headline marks nothing (accent-folded hits: its match ran on the
-// raw text), mark the same terms in code on the headline text. Returns the
-// headline marks unchanged when they exist.
+// `ts_headline` cannot mark accent-folded hits, so mark the terms in code when it
+// marked nothing.
 export function exactInCodeMarks(
   terms: string[],
   snippet: string,

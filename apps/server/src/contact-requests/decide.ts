@@ -1,5 +1,3 @@
-// Contact-request decisions (T-0983 size split, moved unchanged from
-// `./service`): the accept, decline and cancel decisions.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { removePairRosterItems } from '../blocks/roster';
@@ -15,14 +13,9 @@ import {
   type ContactRequestsDeps,
 } from './queries';
 
-// Accepts a request (recipient only). The status flip runs in a transaction
-// under a per-request advisory lock, so a double click flips once and a
-// failure before the flip leaves nothing behind. The contact-pair creation
-// and roster sync follow outside the transaction but are idempotent: every
-// re-accept of an `accepted` row re-runs them, so a half-finished first
-// accept (flipped but pair missing) repairs on retry.
-// Creates the mutual contact exactly like an invite does (the shared
-// `addContactPair` + roster sync with the same retry).
+// Recipient only. The status flip runs under a per-request advisory lock, so a
+// double click flips once. The pair creation and roster sync follow outside the
+// transaction but are idempotent, so a re-accept repairs a half-finished one.
 export async function acceptContactRequest(
   deps: ContactRequestsDeps,
   id: string,
@@ -66,8 +59,8 @@ export async function acceptContactRequest(
               WHERE id = ${id} AND status = 'pending'
               RETURNING *`;
             if (!flipped) {
-              // A concurrent decision won the race: re-read so an accepted row
-              // still answers idempotently instead of 404ing.
+              // A concurrent decision won: re-read so an accepted row still answers
+              // idempotently instead of 404ing.
               const [raced] = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
                 WHERE id = ${id} LIMIT 1`;
               if (raced && raced.status === 'accepted') {
@@ -84,12 +77,9 @@ export async function acceptContactRequest(
     }),
   );
 
-  // T-1992: while either side blocks the other the pair must stay gone, even
-  // for a legacy accepted row a block did not cancel. The block read and the
-  // pair insert run in one transaction under both sides' `user-block:` locks
-  // (the keys `blockUser` takes in its own transaction), so a block that
-  // commits between the check and the repair waits for this transaction and
-  // then deletes the pair, and a block that won is seen by the check.
+  // While either side blocks the other the pair stays gone, even for a legacy
+  // accepted row. The block read and pair insert share one transaction under both
+  // sides' `user-block:` locks, the keys `blockUser` takes.
   const [lockLow, lockHigh] = [settled.fromUserId, settled.toUserId].sort();
   const repaired = await runSql(
     deps.db,
@@ -97,9 +87,8 @@ export async function acceptContactRequest(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          // Sorted keys: two accepts of opposite-direction requests between
-          // the same pair take the locks in the same order, so they cannot
-          // deadlock.
+          // Sorted keys, so two accepts of opposite-direction requests take the
+          // locks in the same order and cannot deadlock.
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockLow}))`;
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockHigh}))`;
           const [block] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
@@ -109,10 +98,8 @@ export async function acceptContactRequest(
           if (block !== undefined) {
             return false;
           }
-          // T-1992: a removal cancels the accepted row and deletes the pair in
-          // one transaction under these same pair locks. Re-read the row here,
-          // inside the lock, so a removal that committed after the settle read
-          // above is seen and the repair does not re-add the pair.
+          // A removal cancels the row and deletes the pair under these same locks.
+          // Re-read inside the lock so the repair does not re-add the pair.
           const [current] = yield* sql<{ status: string }>`SELECT status FROM contact_requests
             WHERE id = ${settled.id} LIMIT 1`;
           if (current?.status !== 'accepted') {
@@ -132,12 +119,9 @@ export async function acceptContactRequest(
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.fromUserId);
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.toUserId);
   }
-  // T-1992: a block can commit between the pair insert and the roster sync,
-  // after the sync read the pair but before it wrote the roster item. Re-check
-  // now that every roster write is done, and undo both the pair and the roster
-  // items, so a blocked pair cannot keep the `both` subscription. When the
-  // block commits after this check, its own transaction deletes the pair and
-  // removes the roster items.
+  // A block can commit between the pair insert and the roster sync, after the
+  // sync read the pair. Re-check after every write and undo both, so a blocked
+  // pair cannot keep the `both` subscription; a later block cleans up itself.
   if (repaired && (await pairHasBlock(deps.db, settled.fromUserId, settled.toUserId))) {
     await runSql(
       deps.db,
@@ -158,8 +142,8 @@ export async function acceptContactRequest(
       });
     }
   }
-  // Audited once, after the commit and the pair write, by the call that
-  // actually flipped the row; an idempotent re-accept adds nothing.
+  // Audited once, by the call that actually flipped the row; a re-accept adds
+  // nothing.
   if (flippedNow) {
     auditFor(deps, 'contact_request.accepted', viewerId, settled.id);
   }
@@ -203,8 +187,7 @@ async function decideContactRequest(
   return row;
 }
 
-// Declines a request (recipient only). A request the caller may not act on
-// and an unknown id answer the same 404.
+// Recipient only; not-actable and unknown ids answer the same 404.
 export async function declineContactRequest(
   deps: ContactRequestsDeps,
   id: string,
@@ -213,8 +196,6 @@ export async function declineContactRequest(
   return decideContactRequest(deps, id, viewerId, 'declined', 'to', 'contact_request.declined');
 }
 
-// Cancels a request (sender only). A request the caller may not act on and
-// an unknown id answer the same 404.
 export async function cancelContactRequest(
   deps: ContactRequestsDeps,
   id: string,

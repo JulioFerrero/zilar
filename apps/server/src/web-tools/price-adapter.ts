@@ -1,4 +1,3 @@
-// T-0993: the `web.price` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
 import { guardedGet } from './guarded-fetch';
@@ -17,10 +16,8 @@ import {
 } from './prices';
 import { guardedOptions, withWebRateLimit, type WebToolsState } from './shared';
 
-// `web.price`: latest price per symbol, keyless. Tier 0: both hosts are
-// fixed. Upper-cased crypto symbols go to CoinGecko; every other symbol
-// is aliased to a Yahoo ticker (the Stooq spellings, gold, the indexes)
-// and fetched one request at a time.
+// Tier 0: both hosts are fixed. Upper-cased crypto symbols go to CoinGecko; any
+// other symbol is aliased to a Yahoo ticker and fetched one request at a time.
 const webPriceArgsSchema = Schema.Struct({
   symbols: Schema.Array(Schema.String.check(Schema.isPattern(PRICE_SYMBOL_PATTERN))).check(
     Schema.isMinLength(1),
@@ -28,16 +25,14 @@ const webPriceArgsSchema = Schema.Struct({
   ),
 });
 
-// The HTTP status inside a guarded-fetch failure summary (`fetch failed
-// with status 404`), or null for a failure that carries none (timeout,
-// host not allowed). Fixed wording only, never page content.
+// The status inside a guarded-fetch summary, or null when it carries none
+// (timeout, host not allowed). Never page content.
 function statusFromSummary(summary: string): number | null {
   const match = /status (\d{1,3})/.exec(summary);
   return match === null ? null : Number(match[1]);
 }
 
-// One warn line per failed provider request: the action, the fixed host
-// and the status, never a URL, a symbol or response content.
+// The action, the fixed host and the status; never a URL, symbol or content.
 function warnFetchFailure(state: WebToolsState, host: string, summary: string): void {
   state.logger.warn(
     { action: 'web.price', host, status: statusFromSummary(summary) },

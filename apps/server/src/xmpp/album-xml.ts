@@ -1,8 +1,6 @@
-// The `<album xmlns='urn:zilar:album:0' id index count/>` marker T-1267 puts
-// on every photo of an album (`packages/xmpp-core/src/stanza/album.ts`). The
-// archive XML is read with regexes, the way the retraction check and
-// `textWithoutReplyFallback` read it; the §1.4 bounds mirror `ALBUM_ID_MAX`
-// and `ALBUM_MAX`, so a malformed marker leaves the message a single photo.
+// The `<album xmlns='urn:zilar:album:0' id index count/>` marker on every photo
+// of an album, read with regexes. The bounds mirror the stanza parser, so a
+// malformed marker leaves the message a single photo.
 
 const ALBUM_MARKER = 'urn:zilar:album:0';
 const ALBUM_ID_MAX = 64;
@@ -36,8 +34,7 @@ export function albumInfoFromXml(xml: string): AlbumInfo | undefined {
   return { id, count };
 }
 
-// A non-negative integer attribute; anything else (`x`, `1.5`, `-1`, ``) makes
-// the marker unusable, like `parseAlbum`'s `parseAlbumNumber`.
+// A non-negative integer attribute; anything else makes the marker unusable.
 function numericAttribute(tag: string, name: string): number | undefined {
   const value = tag.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(\\d+)\\1`))?.[2];
   if (value === undefined) {

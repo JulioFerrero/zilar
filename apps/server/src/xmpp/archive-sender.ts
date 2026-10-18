@@ -1,7 +1,6 @@
-// T-2004: display names for room senders. The archive row's `bare_peer` holds
-// the real sender's bare JID (ejabberd stores no muc#user item; it builds that
-// when serving MAM), so names are looked up by that JID from our own tables.
-// No stanza parsing lives here: stored XML can only carry a forged item.
+// The archive row's `bare_peer` holds the real sender's bare JID, so names are
+// looked up by it from our own tables. No stanza parsing: stored XML can only
+// carry a forged item.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -9,10 +8,8 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { bareJid } from '../jid';
 
-// Display names for room senders, looked up by their real JID from our own
-// tables (a user through `xmpp_accounts`, an AI through `ais`) in one query.
-// The keys are bare and lowercased; an unknown JID is absent, so the caller
-// decides its fallback.
+// One query over users and AIs. Keys are bare and lowercased; an unknown JID is
+// absent, so the caller decides its fallback.
 export async function senderNamesByJid(
   db: ServerDatabase,
   jids: readonly string[],

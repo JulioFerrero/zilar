@@ -1,9 +1,7 @@
-// T-0125: a small hand-written feed reader for RSS and Atom. No new
-// dependency. DTDs and entities are refused: any body containing
-// `<!DOCTYPE` or `<!ENTITY` is rejected before parsing, so no external
-// entity can ever be fetched. Items come back newest-first as far as a
-// tag scan can tell; the adapter caps counts and snippet lengths.
 // effect-plain: pure RSS/Atom parse; malformed input is a result value, not an error
+// A small hand-written RSS/Atom reader, no dependency. A body containing
+// `<!DOCTYPE` or `<!ENTITY` is rejected before parsing, so no external entity
+// can be fetched.
 import { elementBlocks, firstElement, nextOpenTag, openTagAttrs, stripTags } from '../markup/scan';
 
 export interface FeedItem {
@@ -54,8 +52,7 @@ function readAtomItems(input: string): FeedItem[] {
   }));
 }
 
-// The entry's alternate link: `<link href="…"/>` wins over a bare
-// `<link>…</link>` text, and only http(s) targets are kept.
+// `<link href="…"/>` wins over bare link text; only http(s) targets are kept.
 function atomLink(block: string): string | null {
   let cursor = 0;
   while (true) {
@@ -100,8 +97,7 @@ function attrOf(attrs: string, name: string): string | null {
   return match[2] ?? match[3] ?? match[4] ?? null;
 }
 
-// CDATA first, then strip inner tags, decode the common entities and
-// collapse whitespace.
+// CDATA first, then strip tags, decode entities and collapse whitespace.
 function plainText(value: string): string {
   const cdata = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(value.trim());
   const inner = cdata !== null && cdata[1] !== undefined ? cdata[1] : value;

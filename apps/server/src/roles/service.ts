@@ -27,9 +27,8 @@ function mapRoleError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
-  // A concurrent create/rename that clashed on the case-insensitive name
-  // lands here (the pre-check passed, the unique index refused): answer 409
-  // like the pre-check does, not 503.
+  // A concurrent create/rename that clashed on the unique name index answers 409
+  // like the pre-check, not 503.
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
@@ -53,8 +52,7 @@ function auditEntry(
     costCurrency: null as 'EUR' | 'USD' | null,
     costAmount: null as number | null,
     result: 'ok' as const,
-    // Ids only: a group-role action never carries names, so a private
-    // topic's name cannot leak through the log.
+    // Ids only, so a private topic's name cannot leak through the log.
     detail: { groupId, ...extra },
   };
 }
@@ -66,10 +64,9 @@ export async function createRole(
   name: string,
 ): Promise<GroupRoleDetail> {
   await requireGroupManager(deps.db, groupId, actorId);
-  // The duplicate check stays outside (the unique index + 409 mapping below
-  // keep it race-safe), but the count check and the insert run in one
-  // transaction under a per-group advisory lock: two concurrent creates
-  // past the cap would otherwise both read under 20 and both insert.
+  // The unique index keeps the duplicate check race-safe; the count and the
+  // insert share one transaction under a per-group lock, so two creates past the
+  // cap cannot both insert.
   const existing = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -144,8 +141,7 @@ export async function renameRole(
   if (siblings.some((row) => row.id !== role.id && row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
-  // The unique index owns the race: a concurrent rename to the same name
-  // lands in `mapRoleError` as a 409, like the pre-check.
+  // The unique index owns the race; the clash lands in `mapRoleError` as a 409.
   try {
     await runSql(
       deps.db,
@@ -173,9 +169,8 @@ export async function renameRole(
   return toRoleDetail(deps.db, updated);
 }
 
-// Deletes the role everywhere (assignments, topic access, approver columns
-// fall back to null by `ON DELETE SET NULL`) and re-syncs the topics that
-// granted it access.
+// Deletes the role everywhere (assignments and topic access cascade, approver
+// columns fall back to null) and re-syncs the topics that granted it access.
 export async function deleteRole(
   deps: RolesServiceDeps,
   groupId: string,
@@ -184,8 +179,7 @@ export async function deleteRole(
 ): Promise<void> {
   await requireGroupManager(deps.db, groupId, actorId);
   await requireRoleInGroup(deps.db, groupId, roleId);
-  // Capture the affected topics before the cascade removes the rows: after
-  // the delete there is nothing left to query.
+  // Capture the topics before the cascade removes the rows.
   const accessRows = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -237,7 +231,6 @@ export async function deleteRole(
         costCurrency: null,
         costAmount: null,
         result: 'ok',
-        // Ids only, like every other role audit row.
         detail: { groupId, topicId, roleId },
       });
     }
@@ -245,9 +238,8 @@ export async function deleteRole(
   }
 }
 
-// Replaces the role's assignment set. Every id must be a group member; the
-// affected topic rooms re-sync so new holders join and removed holders leave
-// a private topic they reach only through this role.
+// Every id must be a group member. Affected rooms re-sync, so a removed holder
+// leaves a private topic reached only through this role.
 export async function setRoleMembers(
   deps: RolesServiceDeps,
   groupId: string,
@@ -272,11 +264,9 @@ export async function setRoleMembers(
       throw new HttpError(400, 'invalid_request', 'Role holders must be group members');
     }
   }
-  // The whole replace-the-set runs in one transaction under the group's
-  // advisory lock, and the current set is read INSIDE it: two concurrent
-  // PUTs serialize, and the second diffs against the first's commit, so
-  // the result is last-writer-wins instead of a merge of stale baselines.
-  // The room re-sync and the audit rows below use that same read.
+  // One transaction under the group lock, with the current set read inside it:
+  // two concurrent PUTs serialize, so the result is last-writer-wins rather than
+  // a merge of stale baselines.
   let added: string[] = [];
   let removed: string[] = [];
   try {
@@ -293,9 +283,8 @@ export async function setRoleMembers(
             const wantedIds = new Set(wanted);
             const nextAdded = wanted.filter((id) => !currentIds.has(id));
             const nextRemoved = [...currentIds].filter((id) => !wantedIds.has(id));
-            // T-1991: whoever receives the role must be grantable by this
-            // actor. The check sits inside the transaction and before the
-            // insert, so a refusal writes nothing.
+            // Checked inside the transaction and before the insert, so a refusal
+            // writes nothing.
             yield* assertRoleGrantAllowed(sql, role.id, actorId, nextAdded);
             if (nextAdded.length > 0) {
               yield* sql`INSERT INTO group_member_roles ${sql.insert(
@@ -336,12 +325,9 @@ export async function setRoleMembers(
   return toRoleDetail(deps.db, role);
 }
 
-// Drops the member's role rows of this group when they leave (or are
-// removed), then re-syncs the topics whose access they held through a role.
-// Called from the remove/leave flow after the membership row is gone; never
-// throws for a user with no roles. Scoped to this group's roles: rows held
-// in other groups survive untouched. Returns the removed role ids so the
-// caller can audit the loss.
+// Runs after the membership row is gone and re-syncs the topics the user reached
+// through a role. Scoped to this group's roles; never throws for no roles.
+// Returns the removed ids for the caller's audit.
 export async function dropMemberRoles(
   deps: RolesServiceDeps,
   groupId: string,

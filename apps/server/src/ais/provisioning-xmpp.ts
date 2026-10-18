@@ -6,19 +6,14 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { type AiServiceDeps, teardownFailed } from './persona';
 import { emitAiLifecycle, findOwnedAi } from './queries';
 
-// The localpart of an AI XMPP account: the `ai-` prefix plus a stable,
-// id-derived suffix. For our random UUIDs this is `ai-<uuid>`; anything exotic
-// falls back to the same hash the user provisioning uses. Always valid for the
-// admin client's `[a-z0-9._-]{1,64}` rule.
+// `ai-` plus an id-derived suffix, always valid for the admin client's
+// `[a-z0-9._-]{1,64}` rule.
 export function aiLocalpart(aiId: string): string {
   return `ai-${localpartFor(aiId)}`.slice(0, 64);
 }
 
-// Tears an AI down: remove both roster items, unregister the XMPP account, drop
-// any virtual-key row a pre-T-1401 AI still carries, then delete the AI rows.
-// Teardown is resumable: every step skips work that is already done, so a delete
-// that failed part way (ejabberd down) can be retried without failing on an
-// item that is already gone.
+// Teardown is resumable: every step skips work already done, so a delete that
+// failed part way (ejabberd down) can be retried.
 export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<void> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
@@ -28,7 +23,6 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
   const ownerLocalpart = localpartFor(ownerId);
   const ownerJid = jidFor(ownerLocalpart, deps.domain);
 
-  // 1. The owner's roster item for the AI. Skip it when it is already gone.
   try {
     const roster = await deps.adminClient.getRoster(ownerLocalpart);
     if (hasRosterItem(roster, ai.jid)) {
@@ -39,9 +33,6 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
     throw teardownFailed();
   }
 
-  // 2. The AI's own account. If it is already gone, there is nothing left on
-  //    that side; otherwise remove the owner's item from its roster first, then
-  //    unregister.
   try {
     if (await deps.adminClient.userExists(ai.localpart)) {
       const roster = await deps.adminClient.getRoster(ai.localpart);
@@ -55,8 +46,6 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
     throw teardownFailed();
   }
 
-  // 3. Nothing is left on the gateway side, so the AI row goes in one
-  //    transaction.
   await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -115,8 +104,7 @@ export async function compensateCreate(
   }
 }
 
-// Whether a roster already holds an item for `jid`, so teardown can skip a
-// delete that a previous attempt already performed.
+// Lets teardown skip a delete a previous attempt already performed.
 function hasRosterItem(entries: ReadonlyArray<{ jid: string }>, jid: string): boolean {
   return entries.some((entry) => entry.jid === jid);
 }

@@ -1,14 +1,9 @@
-// The Hono-free core shared by every Effect HTTP module (T-0694, plan §4
-// B1.1): the session middleware, the request-id and socket-address readers,
-// the one error envelope, and the route types a module hands back to `app.ts`.
-// This file must never import the edge framework packages; the edge that
-// mounts these handlers lives in `./edge.ts`.
+// The core shared by every Effect HTTP module: session middleware, request-id
+// and socket-address readers, and the one error envelope. This file must never
+// import the edge packages; the edge lives in `./edge.ts`.
 //
-// One error encoding: any handler failure is rendered exactly like
-// `app.onError` — `HttpError` as `{ error: { ...detail, code, message,
-// requestId } }` with its status, anything else as the 500 `internal_error`
-// branch. The request id Hono generated is forwarded as the `x-request-id`
-// header so both branches can carry it.
+// `HttpError` renders with its status, anything else as the 500 branch, and both
+// carry the request id.
 
 import { CurrentUser, SchemaErrors, Session, type SessionUser } from '@zilar/api-contract';
 import { Effect, Layer, type Context } from 'effect';
@@ -21,10 +16,7 @@ import { HttpError } from '../errors';
 export const REQUEST_ID_HEADER = 'x-request-id';
 export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
 
-// The session middleware tags live in the shared contract (T-0891), so a group
-// moved there and a server module use the same classes. An absent session
-// short-circuits with the same body as `requireSession`, before any query or
-// body decoding runs.
+// An absent session short-circuits before any query or body decoding runs.
 export { CurrentUser, SchemaErrors, Session, type SessionUser };
 
 export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
@@ -34,14 +26,12 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
       Effect.fnUntraced(function* (httpEffect) {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const requestId = requestIdOf(request);
-        // T-0858: only reads trust the session cache cookie. A write looks the
-        // session up without it, so a revoked session cannot write. The
-        // handler still sees the untouched request.
+        // Only reads trust the session cache cookie, so a revoked session cannot
+        // write; the handler still sees the untouched request.
         const lookupHeaders = isReadMethod(request.method)
           ? new Headers(request.headers)
           : headersWithoutSessionCache(request.headers);
-        // A rejection from the auth store is a defect outside the handler
-        // envelope; render it through the same 500 branch as `app.onError`.
+        // A rejected auth lookup is a defect; render it through the 500 branch.
         const session = yield* Effect.promise(() =>
           auth.api.getSession({ headers: lookupHeaders }),
         ).pipe(
@@ -64,16 +54,13 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
   );
 }
 
-/** A schema-error tag a group declares; its layer renders the decode failure. */
 export type SchemaErrorTag<Id> = Context.Service<
   Id,
   HttpApiMiddleware.HttpApiMiddleware<never, never, never>
 >;
 
 /**
- * What a schema-error layer answers: a fixed message, or a function of the
- * error and the request that returns the `HttpError` (400 `invalid_request` is
- * the usual one) or a full response (the handles check answers 200).
+ * A fixed message, or a function returning an `HttpError` or a full response.
  */
 export type SchemaErrorRender =
   | string
@@ -83,12 +70,8 @@ export type SchemaErrorRender =
     ) => Effect.Effect<HttpError | HttpServerResponse.HttpServerResponse>);
 
 /**
- * The one schema-error layer: a params, query or payload decode failure
- * renders as 400 `invalid_request` through the shared envelope. With no
- * `render` the message is the schema's own text; a string is a fixed message.
- * A group declares `SchemaErrors` with `.middleware(SchemaErrors)` and the
- * module provides `schemaErrorLayer(logger)`; a group with its own tag
- * provides `schemaErrorLayerFor(tag, logger, render?)`.
+ * A decode failure renders as 400 `invalid_request` through the shared envelope.
+ * With no `render` the message is the schema's own text; a string is fixed.
  */
 export function schemaErrorLayer(logger: Logger): Layer.Layer<SchemaErrors> {
   return schemaErrorLayerFor(SchemaErrors, logger);
@@ -117,8 +100,7 @@ function isReadMethod(method: string): boolean {
   return method === 'GET' || method === 'HEAD';
 }
 
-// Better Auth names the cache cookie `<prefix>session_data`, in chunks
-// (`session_data.0`) when large.
+// Better Auth names the cookie `<prefix>session_data`, chunked when large.
 export function headersWithoutSessionCache(source: Headers | Record<string, string>): Headers {
   const headers = new Headers(source);
   const cookie = headers.get('cookie');
@@ -137,15 +119,13 @@ export function requestIdOf(request: HttpServerRequest.HttpServerRequest): strin
 }
 
 /**
- * Reads the socket address `forwardRequest` stamped onto the request. A
- * client can never forge it: the header is deleted and re-set at the edge.
+ * The edge deletes and re-sets this header, so a client can never forge it.
  */
 export function socketAddressOf(request: HttpServerRequest.HttpServerRequest): string {
   return request.headers[SOCKET_ADDRESS_HEADER] ?? 'unknown';
 }
 
 /**
- * The `HttpError` branch of `app.onError`, byte-identical to its body:
  * `detail` keys can never overwrite `code`, `message` or `requestId`.
  */
 export function httpErrorResponse(
@@ -165,7 +145,6 @@ export function httpErrorResponse(
   );
 }
 
-/** The unknown-failure branch of `app.onError`: log, then a 500 envelope. */
 export function failureResponse(
   logger: Logger,
   requestId: string,
@@ -182,10 +161,8 @@ export function failureResponse(
 }
 
 /**
- * Runs an endpoint handler and renders every failure through the shared
- * envelope. Handler bodies lift promise rejections as defects (Effect.promise),
- * so `catchDefect` sees the original error and never swallows typed failures
- * or interruption.
+ * Handler bodies lift promise rejections as defects, so `catchDefect` sees the
+ * original error and never swallows typed failures or interruption.
  */
 export function withErrorEnvelope<A, R>(
   effect: Effect.Effect<A, never, R>,
@@ -198,12 +175,8 @@ export function withErrorEnvelope<A, R>(
 }
 
 /**
- * The endpoint handler every module repeats: reads the request id, the signed-in
- * user, runs `body(request, user)` and renders every defect through the shared
- * envelope. `body` may return a Promise (a rejection is a defect, like
- * `Effect.promise`) or an Effect that cannot fail. Use it as
- * `.handle('name', handler(logger, (request, user) => service(user.id, request.params.id)))`.
- * The group must declare `Session`, which provides `CurrentUser`.
+ * Reads the request id and the signed-in user, runs `body` and renders every
+ * defect through the shared envelope. The group must declare `Session`.
  */
 export function handler<
   Req extends { readonly request: HttpServerRequest.HttpServerRequest },
@@ -238,15 +211,13 @@ export interface EffectApiRoute {
 
 export type EffectApiWebHandler = (request: Request) => Promise<Response>;
 
-/** What a module hands back to `app.ts`: the fetch handler and its routes. */
 export interface EffectApiMount {
   readonly handler: EffectApiWebHandler;
   readonly routes: ReadonlyArray<EffectApiRoute>;
 }
 
 /**
- * The routes of an `HttpApi`, in the `{ method, path }` shape the edge routes
- * by. The group's `.prefix('/api')` is already part of each endpoint path.
+ * The endpoint paths already include the group's `.prefix('/api')`.
  */
 export function reflectRoutes<Id extends string, Groups extends HttpApiGroup.Constraint>(
   api: HttpApi.HttpApi<Id, Groups>,
@@ -262,10 +233,9 @@ export function reflectRoutes<Id extends string, Groups extends HttpApiGroup.Con
 }
 
 /**
- * The shared mount: serves the API layer as a web handler and lists its routes
- * from the API itself, so a module keeps no hand-written route array. The
- * edge keeps the request log (redacted path); the router's own logger prints
- * full URLs, so it stays off. Failures are logged by the envelope instead.
+ * Serves the API layer as a web handler and lists its routes from the API, so a
+ * module keeps no hand-written array. The router logger stays off: it prints
+ * full URLs, while the edge logs a redacted path.
  */
 export function mountApi<Id extends string, Groups extends HttpApiGroup.Constraint>(
   api: HttpApi.HttpApi<Id, Groups>,

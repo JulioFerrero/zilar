@@ -7,8 +7,7 @@ import { HttpError } from '../errors';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { toMissingGroup, toMissingRole } from './schemas';
 
-// The actor's membership. A non-member sees the same 404 as a missing group,
-// so group ids cannot be probed.
+// A non-member sees the same 404 as a missing group, so ids cannot be probed.
 export async function requireGroupMembership(
   db: ServerDatabase,
   groupId: string,
@@ -51,10 +50,8 @@ export async function requireRoleInGroup(
   return role;
 }
 
-// The holders of one role with their names, sorted by name. Joined to the
-// group's membership, so a departed user is never listed even if their row
-// somehow survived the leave cleanup. Shared by the list and the
-// single-role reads so every shape agrees.
+// Joined to the group's membership, so a departed user is never listed even if
+// their row survived cleanup. Shared by the list and single-role reads.
 export async function holdersOfRole(
   db: ServerDatabase,
   role: GroupRoleRow,
@@ -74,8 +71,7 @@ export async function holdersOfRole(
   return [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
 }
 
-// The user ids holding any of `roleIds` that are still group members.
-// Used to re-sync the affected topic rooms after an assignment change.
+// The holders of any `roleIds` still in the group, to re-sync affected rooms.
 async function holderUserIds(
   db: ServerDatabase,
   groupId: string,
@@ -101,9 +97,8 @@ async function holderUserIds(
   return new Set(rows.map((row) => row.userId).filter((id) => memberIds.has(id)));
 }
 
-// The member list of one non-General topic: `topic_members` plus the holders
-// of its roles who are still group members. Sorted by user id; callers join
-// names. General topics have no rows here.
+// `topic_members` plus the role holders still in the group. General topics have
+// no rows here.
 export async function topicRoleHolderIds(
   db: ServerDatabase,
   topicId: string,
@@ -127,8 +122,7 @@ export async function topicRoleHolderIds(
   );
 }
 
-// Whether the user holds any role listed in `topic_role_access` for the
-// topic. Group membership is checked by the caller.
+// Group membership is checked by the caller.
 export async function holdsTopicRole(
   db: ServerDatabase,
   topicId: string,

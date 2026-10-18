@@ -2,8 +2,7 @@ import { Exit, Schema } from 'effect';
 import { type Payload, BlocksDataSchema, encodePayload } from '@zilar/protocol';
 import { firstIssueReason } from '../agents/tool-arg-issues';
 
-// The blocks an AI or a saved tool produced, before they are checked. `blocks`
-// is `unknown` on purpose: it is decoded and validated here, not by the caller.
+// `blocks` is `unknown` on purpose: it is decoded and validated here.
 export type BlocksInput = {
   title?: unknown;
   icon?: unknown;
@@ -11,9 +10,7 @@ export type BlocksInput = {
   blocks: unknown;
 };
 
-// Turns unchecked blocks into a checked `blocks` payload, or a short reason the
-// model can read. Never throws. Called by the `post_blocks` AI tool (B6) and by
-// saved-tool and routine output (B7).
+// A checked `blocks` payload, or a short reason the model can read. Never throws.
 export function buildBlocksPayload(
   input: BlocksInput,
   fallback: string,
@@ -23,8 +20,7 @@ export function buildBlocksPayload(
     return { ok: false, reason: 'fallback text is required' };
   }
 
-  // Keys that are `undefined` are dropped so an absent `title` is not read as
-  // an excess key by the strict decode below.
+  // Drop `undefined` keys, so an absent `title` is not read as an excess key.
   const candidate: Record<string, unknown> = { fallback: trimmed };
   for (const key of ['title', 'icon', 'meta', 'blocks'] as const) {
     const value = input[key];

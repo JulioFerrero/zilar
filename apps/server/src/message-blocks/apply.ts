@@ -12,10 +12,8 @@ import type {
 import { MAX_SHORT } from '@zilar/protocol';
 import type { BlockResponseRow } from '../db/rows';
 
-// The pure state merge (B8a): every reader (the route, the correction) turns a
-// card's stored responses into the drawn card state the same way. Returns a new
-// `BlocksData`; the input is never mutated and the result still decodes as
-// `BlocksDataSchema`.
+// The pure state merge every reader uses. Returns a new `BlocksData`; the input
+// is never mutated and the result still decodes as `BlocksDataSchema`.
 
 type NameOf = (actorId: string) => string | undefined;
 
@@ -58,7 +56,6 @@ function latestRow(
   return latest;
 }
 
-// The latest row per `item_id` of one block.
 function latestByItem(
   rows: readonly BlockResponseRow[],
   blockId: string,
@@ -165,8 +162,8 @@ function applyForm(block: FormBlock, rows: readonly BlockResponseRow[], nameOf: 
   };
 }
 
-// T-1848: the latest answer sets the switch and/or the threshold; a field the
-// row lacks keeps the card's value.
+// The latest answer sets the switch and/or threshold; a missing field keeps the
+// card's value.
 function applyAlert(block: AlertBlock, rows: readonly BlockResponseRow[]): AlertBlock {
   const row = latestRow(rows, block.id);
   if (row === undefined) {

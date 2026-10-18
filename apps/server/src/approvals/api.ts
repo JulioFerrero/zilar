@@ -1,8 +1,3 @@
-// Approvals module on the Effect `HttpApi` adapter (T-0553): the same
-// methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the deleted router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { ApprovalsGroup, ApprovalsSchemaErrors } from '@zilar/api-contract';
@@ -62,11 +57,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
     if (onDecided === undefined) {
       return;
     }
-    // Fire-and-forget hook: the response is returned to the user before
-    // the hook settles, and a throwing hook is logged rather than
-    // surfaced. The action gateway uses this to execute a pending
-    // action; a throw there must not turn a 200 into a 5xx for the user
-    // who just approved the request.
+    // Fire-and-forget: the response returns first, and a throwing hook is logged
+    // rather than surfacing as a 5xx for the user who just approved.
     void Promise.resolve()
       .then(() => onDecided(approvalId))
       .catch((error: unknown) => {
@@ -155,10 +147,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 new Date(now()),
               ),
             ).pipe(
-              // `decideApproval` rejects with `ApprovalServiceError` for
-              // validation and quota failures; the rejection surfaces as a
-              // defect (`Effect.promise` never fails typed), so map it here
-              // — a `try/catch` around `yield*` cannot see Effect failures.
+              // `Effect.promise` surfaces the rejection as a defect, so map
+              // `ApprovalServiceError` here.
               Effect.catchDefect((defect) => {
                 if (defect instanceof ApprovalServiceError) {
                   const status =
@@ -176,10 +166,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               throw new HttpError(404, 'not_found', 'Approval not found');
             }
             const { row: updated, rule } = result;
-            // A 409 (already decided / expired) is not logged; an ok decision
-            // always is. `note` is intentionally dropped: the audit log must never
-            // carry free text. `detail.decision` uses the wire enum so the log
-            // matches what the request sent.
+            // The audit log never carries free text, so `note` is dropped.
             if (deps.audit !== undefined) {
               yield* Effect.promise(() =>
                 deps.audit!.record({
@@ -195,10 +182,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                   detail: { decision: payload.decision },
                 }),
               );
-              // T-0099: when `approve_always` succeeded, audit the rule creation
-              // as a separate entry. Subject is the rule id, not the approval id,
-              // so an audit reader can join the two. `detail.scope` makes the
-              // personal-vs-group chat obvious without exposing the id.
+              // An `approve_always` rule gets its own entry, with the rule id as
+              // subject so an audit reader can join the two.
               if (rule !== null) {
                 yield* Effect.promise(() =>
                   deps.audit!.record({
@@ -245,24 +230,20 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
           }),
         ),
       )
-      // T-0099: rule management routes. All three require a session.
-      // T-0110: rules are scoped to (AI, topic). The AI route returns rules of
-      // topics the AI owner can see; the group route returns rules of topics
-      // the viewer can see. Rows carry `topicId` and `topicName`.
+      // Rules are scoped to (AI, topic), and a route only returns topics its
+      // viewer can see.
       .handle(
         'aiRules',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
             const aiId = request.params.id;
             const aiRow = yield* Effect.promise(() => loadAiOwnerRow(deps.db, aiId));
-            // A stranger and a non-owner get the same 404 as a missing AI, so
-            // existence is never leaked.
+            // A stranger and a non-owner get the same 404 as a missing AI.
             if (aiRow === null || aiRow.owner !== user.id) {
               throw new HttpError(404, 'not_found', 'AI not found');
             }
             const rules = yield* Effect.promise(() => listActiveRulesForAi(deps.db, aiId));
-            // Only rules of topics the owner can see: a rule in a private topic
-            // the owner was removed from stays hidden until they are added back.
+            // A rule in a private topic the owner was removed from stays hidden.
             const visible: PublicApprovalRule[] = [];
             for (const rule of rules) {
               if (rule.topicId === null) {
@@ -298,8 +279,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               if (topic.archivedAt !== null) {
                 continue;
               }
-              // A group admin who cannot see a private topic must not see its
-              // rules either: only topics the viewer can see contribute rows.
+              // A group admin who cannot see a private topic must not see its rules.
               if (!(yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
                 continue;
               }
@@ -320,8 +300,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
           Effect.gen(function* () {
             const ruleId = request.params.id;
             const existing = yield* Effect.promise(() => loadApprovalRule(deps.db, ruleId));
-            // Same 404 shape for missing id and unauthorized: existence is never
-            // leaked.
+            // Missing and unauthorized answer the same 404.
             if (existing === null) {
               throw new HttpError(404, 'not_found', 'Approval rule not found');
             }
@@ -334,8 +313,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             const result = yield* Effect.promise(() =>
               revokeRule(deps.db, { ruleId, actorId: user.id, now: new Date(now()) }),
             );
-            // `revokeRule` returns `null` only when the row vanished mid-call;
-            // an already-revoked row returns its data and we answer 204.
+            // `null` only when the row vanished mid-call; an already-revoked row
+            // answers 204.
             if (result === null) {
               throw new HttpError(404, 'not_found', 'Approval rule not found');
             }

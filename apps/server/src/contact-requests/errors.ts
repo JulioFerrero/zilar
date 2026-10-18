@@ -1,6 +1,3 @@
-// Contact-request error helpers (T-0983 size split, moved unchanged from
-// `./service`): the shared 404 and the unique-violation probe for the
-// pending-request indexes.
 import { SqlError } from 'effect/sql';
 import { HttpError } from '../errors';
 
@@ -8,11 +5,8 @@ export function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
 }
 
-// Whether `error` is a unique violation on one of the pending-request
-// indexes: either the structured `effect/sql` `UniqueViolation` reason (which
-// carries the constraint identifier) or a plain `{ code: '23505', constraint }`
-// object (plain driver errors and the recovery test's doubles).
-// Matched by code/constraint — never by message text.
+// Recognises the pending-request partial unique indexes by code or constraint,
+// never by message text.
 export function isPendingPairViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {
     const reason = error.reason;

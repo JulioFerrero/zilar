@@ -19,10 +19,9 @@ import {
 } from './types';
 import { outputJsonSchema, sanitizeMessage, workerEventSchema } from './run-tool-schemas';
 
-// The public entry point. It never runs tool code in this thread: every
-// execution spawns a worker with the QuickJS VM, and the worker is
-// terminated when the wall clock passes. The parent validates fetch
-// requests (allowlist + SSRF guard) and performs the real HTTPS calls.
+// Never runs tool code in this thread: every execution spawns a QuickJS worker,
+// terminated when the wall clock passes. The parent validates fetch requests
+// (allowlist + SSRF guard) and performs the real HTTPS calls.
 
 export interface RunToolParams {
   source: string;
@@ -33,14 +32,12 @@ export interface RunToolParams {
   resolver?: DnsResolver;
 }
 
-// The worker failed to start (missing tsx hook, `worker_threads` refused). It
-// is a control signal inside this module only: the Promise boundary turns it
-// into the same fixed `sandbox_failure` result the old try/catch returned.
+// A control signal only: the Promise boundary turns it into a fixed
+// `sandbox_failure` result.
 class SandboxStartFailed extends Data.TaggedError('SandboxStartFailed') {}
-// The worker's V8 heap holds the harness (Effect, the QuickJS glue, and the tsx
-// loader under test), ~45 MiB, plus queued log lines — never the tool's own
-// memory, which the wasm heap caps with `setMemoryLimit`. The old 16 MiB
-// headroom left V8 a couple of MiB of slack and it aborted the worker under load.
+// The worker's V8 heap holds the harness (Effect, the QuickJS glue, the tsx
+// loader), ~45 MiB, plus queued logs, never the tool's own memory (the wasm heap
+// caps that). 16 MiB of headroom aborted the worker under load.
 const WORKER_HEAP_HEADROOM_BYTES = 96 * 1024 * 1024;
 
 export async function runTool(params: RunToolParams): Promise<RunToolResult> {
@@ -77,17 +74,14 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       maxResponseBytes: limits.maxResponseBytes,
     });
 
-  // Production runs the bundle: `dist/tool-worker.mjs` sits next to
-  // `dist/index.mjs`, is plain JavaScript and needs no loader.
+  // The bundle is `dist/tool-worker.mjs`, plain JavaScript needing no loader.
   const bundled = !import.meta.url.endsWith('.ts');
   const workerPath = fileURLToPath(
     new URL(bundled ? './tool-worker.mjs' : './tool-worker.ts', import.meta.url),
   );
-  // The worker entry is TypeScript. The main thread may run under tsx, plain
-  // node, or vitest (whose workers do not inherit a TS loader), so always
-  // bootstrap through an eval wrapper that registers tsx's CJS hook and then
-  // requires the entry. Both paths are resolved from this module, never from
-  // the process working directory, so the server can start anywhere.
+  // The worker entry is TypeScript, and vitest workers do not inherit a TS
+  // loader, so always bootstrap through an eval wrapper that registers tsx's CJS
+  // hook. Both paths resolve from this module, so the server can start anywhere.
   const workerOptions = {
     workerData: {
       source: params.source,
@@ -146,15 +140,12 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
     fetchCount,
   });
 
-  // The worker is a scoped resource: `acquireRelease` terminates it on every
-  // exit path — success, failure, or the wall-clock timeout interrupting the
-  // run. The listeners resume one `Effect.callback`; a later event is ignored
-  // by `resume`, the same guard `settled` provided. Fetch requests keep the
-  // old handling: validated here, then answered asynchronously.
+  // `acquireRelease` terminates the worker on every exit path, including the
+  // timeout. One `Effect.callback` resumes; a later event is ignored. Fetch
+  // requests are validated here, then answered asynchronously.
   const runWorker = (worker: Worker): Effect.Effect<RunToolResult> => {
     let fetchCount = 0;
-    // T-1993: one run owns its in-flight fetch. When the run settles, times out
-    // or the worker is terminated, the signal destroys any open request.
+    // One run owns its in-flight fetch; settling or terminating aborts it.
     const inFlight = new AbortController();
     return Effect.callback<RunToolResult>((resume) => {
       const settle = (result: RunToolResult): void => {
@@ -202,10 +193,8 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
               fetchFailed(check.message);
               return;
             }
-            // The fetcher ignores tool-supplied headers: the real request always
-            // sends only `accept: */*` plus the fixed `ZilarTool/1` user-agent.
-            // Anything the tool passes (authorization, cookies, …) never leaves
-            // the sandbox, so there is nothing to forward or merge here.
+            // Tool-supplied headers never leave the sandbox: the real request sends
+            // only `accept: */*` and the fixed `ZilarTool/1` user agent.
             let response;
             try {
               response = await fetcher(check.request, inFlight.signal);

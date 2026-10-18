@@ -8,12 +8,9 @@ import { isGroupManager, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic } from '../topics/access';
 import type { ApprovalDecision } from './schemas';
 
-// Whether `userId` may decide `row`: the AI owner, or — when the request
-// was raised in a topic — that group's owner or admin who can also see the
-// topic. T-0116: or a holder of the topic's approver role who can see the
-// topic. A group admin who cannot see a private topic gets the same false
-// as a missing id, so existence is never leaked. The AI owner keeps
-// deciding only while they can see the topic.
+// The AI owner, a group owner/admin who can see the topic, or a holder of the
+// topic's approver role. Any of them only while they can see the topic; an
+// invisible row gets the same false as a missing id.
 export async function canDecide(
   db: ServerDatabase,
   row: ApprovalRow,
@@ -34,13 +31,9 @@ export async function canDecide(
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       return false;
     }
-    // The approver role grants decide rights and nothing else: the holder
-    // must see the topic (checked above), and the role never widens AI
-    // management, rules or other topics. The join ties the role to the
-    // approval's group, so the check is self-sufficient even if a stale
-    // membership row ever survived a group leave. (`topicId` set implies
-    // `groupId` set by the topic-scope CHECK; the guard below is for the
-    // type checker.)
+    // The approver role grants decide rights and nothing else: it never widens
+    // AI management, rules or other topics. The join ties it to the approval's
+    // group, so a stale membership row cannot grant it elsewhere.
     const approverRoleId = topic.approverRoleId;
     if (approverRoleId !== null && row.groupId !== null) {
       const groupId = row.groupId;
@@ -69,10 +62,8 @@ export async function canDecide(
   return isGroupManager(db, groupId, userId);
 }
 
-// The same rules as `canDecide` for many rows at once: the AI owners, the
-// topics, the user's group roles, topic access and approver-role holdings are
-// read in a fixed number of queries, then each row is decided in memory.
-// Returns row id -> decision.
+// `canDecide` for many rows: a fixed number of queries, then each row decided
+// in memory. Returns row id -> decision.
 export async function canDecideMany(
   db: ServerDatabase,
   rows: ReadonlyArray<ApprovalRow>,

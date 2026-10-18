@@ -1,10 +1,8 @@
 import { Result, Schema } from 'effect';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 
-// `approved_always` is treated exactly like `approved_once` for the
-// single-use path; T-0099 adds a separate standing-rule flow that the
-// decision route triggers when the adapter is always-eligible and the
-// decider chose `approve_always`.
+// `approved_always` runs like `approved_once`; the standing rule it creates is
+// separate.
 export type ApprovalStatus =
   'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed';
 
@@ -32,9 +30,8 @@ const worstCaseSchema = Schema.Struct({
   amount: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 
-// The only validation text the callers ever see is the refine below; every
-// other failure is mapped to `Invalid approval request` so no input value can
-// reach an error message (Effect's default texts may quote the value).
+// Only the refine text reaches callers; every other failure becomes the fixed
+// text, because Effect's default messages may quote the input value.
 const GROUP_TOPIC_REFINE_MESSAGE = 'groupId and topicId must be set together';
 export const INVALID_APPROVAL_REQUEST_MESSAGE = 'Invalid approval request';
 
@@ -50,7 +47,7 @@ export const CreateApprovalInputSchema = Schema.Struct({
   requestedBy: requestedBySchema,
   expiresAt: Schema.Date,
 }).pipe(
-  // T-0110: the scope is (AI, topic) — group and topic ids travel together.
+  // Group and topic ids travel together: the scope is (AI, topic).
   Schema.check(
     Schema.makeFilter((data) =>
       (data.groupId === undefined) === (data.topicId === undefined)
@@ -62,9 +59,8 @@ export const CreateApprovalInputSchema = Schema.Struct({
 
 export type CreateApprovalInput = typeof CreateApprovalInputSchema.Type;
 
-// Strict decode (unknown keys rejected, like the old `z.strictObject`). The
-// refine text is preserved; any other failure falls back to the fixed generic
-// text, so a value is never echoed.
+// Unknown keys are rejected; any failure other than the refine falls back to the
+// fixed text, so a value is never echoed.
 export function parseCreateApprovalInput(input: unknown): CreateApprovalInput {
   const result = Schema.decodeUnknownResult(CreateApprovalInputSchema, {
     onExcessProperty: 'error',
@@ -78,16 +74,8 @@ export function parseCreateApprovalInput(input: unknown): CreateApprovalInput {
   throw new ApprovalServiceError('invalid_request', message);
 }
 
-// T-0099: the predicate the routes pass to `decideApproval` so the
-// service can accept or refuse an `approve_always` decision. Absent =
-// "nothing is always-eligible", so `approve_always` is refused with 400
-// `always_not_allowed`.
 export type AlwaysEligiblePredicate = (action: string) => boolean;
 
-// T-0099: the result of an `approve_always` decision, returned by the
-// service so the route can write the matching audit entries (one for
-// `approval.decided` and one for `approval_rule.created`). The decision
-// itself is still a normal approval — the rule sits next to it.
 export interface CreatedApprovalRule {
   id: string;
   action: string;
@@ -100,11 +88,8 @@ export interface PublicApproval {
   id: string;
   aiId: string;
   groupId: string | null;
-  /** The topic the request was raised in. Null for personal chats. */
   topicId: string | null;
-  /** The topic's name, or null for personal chats. The route blanks this
-   *  for topics the viewer cannot see (which cannot happen for a returned
-   *  row); the field stays for the client. */
+  /** Null for personal chats; the route blanks it for an invisible topic. */
   topicName: string | null;
   action: string;
   summary: string;
@@ -117,22 +102,15 @@ export interface PublicApproval {
   note: string | null;
   expiresAt: Date;
   createdAt: Date;
-  // T-0099: `true` when the action is on the always-eligible list (the
-  // adapter opted in via `allowAlways: true` and reports no cost). The
-  // client uses this to decide whether to show the "Approve always"
-  // button.
+  // True when the adapter opted in via `allowAlways` and reports no cost.
   alwaysEligible: boolean;
-  // T-0134: the display names of the holders of the topic's approver role,
-  // resolved server-side so the card does not call `getTopic` per approval
-  // (N+1). Sorted by name, empty for personal chats and topics without an
-  // approver role. Only topics the viewer can see ever reach the list, and
-  // role membership is not secret, so no names leak.
+  // Resolved server-side to avoid an N+1. Only visible topics reach the list,
+  // and role membership is not secret, so no names leak.
   approverNames: string[];
 }
 
-// Thrown for validation and quota failures so routes can map them to 4xx with
-// stable codes. Unknown or unauthorised ids return null instead, so routes
-// answer 404.
+// Routes map this to 4xx with a stable code; unknown or unauthorized ids return
+// null instead, so they answer 404.
 export class ApprovalServiceError extends Error {
   readonly errorCode:
     | 'invalid_request'

@@ -44,8 +44,7 @@ export async function listMachines(db: ServerDatabase, ownerUserId: string): Pro
   return [...rows];
 }
 
-// The full set of approved (machine id, public key) pairs. Used by the hub
-// to refresh its in-memory cache; nothing else needs this view.
+// The hub refreshes its cache from this; nothing else needs the view.
 export async function listApprovedMachineKeys(
   db: ServerDatabase,
 ): Promise<Array<{ id: string; publicKey: string }>> {
@@ -60,8 +59,7 @@ export async function listApprovedMachineKeys(
   return [...rows];
 }
 
-// Looks up one machine owned by `ownerUserId`. Returns null for a missing id
-// and for an id owned by someone else alike, so existence is never leaked.
+// A missing id and a foreign one both answer null, so existence is never leaked.
 export async function findOwnedMachine(
   db: ServerDatabase,
   id: string,
@@ -114,12 +112,9 @@ export async function denyMachine(
   return row !== undefined;
 }
 
-// Revocation is permanent: the row stays `revoked` (keeping the public key
-// reserved) and the machine must pair again with a new key. T-0091: the
-// `machine_id` on any AI that pointed at it must be cleared in the same
-// transaction, so the UI can never leave a revoked machine displayed as an
-// AI's home. `SET NULL` on the FK handles the rarer "delete the row"
-// case automatically.
+// Permanent: the row stays `revoked` (reserving the key) and the machine must
+// pair again with a new key. Any AI pointing at it is cleared in the same
+// transaction, so the UI never shows a revoked machine as a home.
 export async function revokeMachine(
   db: ServerDatabase,
   id: string,
@@ -167,8 +162,8 @@ export async function renameMachine(
   return row ?? null;
 }
 
-// Only pending and revoked machines can be deleted; an approved machine must
-// be revoked first so its live connections are closed before the row goes.
+// An approved machine must be revoked first, so its live connections close
+// before the row goes.
 export async function deleteMachine(
   db: ServerDatabase,
   id: string,

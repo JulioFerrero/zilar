@@ -19,15 +19,13 @@ export interface AiUsage {
   monthlyWarning: boolean;
 }
 
-// The UTC day (`YYYY-MM-DD`) a usage reading belongs to. `ai_usage` rows are
-// keyed by UTC day, so the daily window always ends at 00:00 UTC.
+// `ai_usage` is keyed by UTC day, so the daily window ends at 00:00 UTC.
 export function utcDayString(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
-// `numeric` columns come back as strings from node-postgres (and PGlite), so
-// the limit and sum rows stay `string` and the read below converts them. A
-// `null` bound (T-1408) means the owner set no limit.
+// `numeric` comes back as a string from node-postgres (and PGlite), so the rows
+// stay `string`. A null bound means the owner set no limit.
 interface AiLimitRow {
   perDayUsd: string | null;
   perMonthUsd: string | null;
@@ -38,12 +36,8 @@ interface AiUsageSumRow {
   windowUsd: string;
 }
 
-// Reads one AI's spend from `ai_usage` (T-1405): today's `cost_usd` sum and the
-// sum over the last 30 UTC days (today included, the 31st day back excluded).
-// The limit fields keep working from `ai_limits` as before; an AI with no
-// limits row answers null and callers fail open. T-1408: a NULL bound means no
-// limit, so the reached/warning flags stay false for it. A database error
-// throws and the caller decides.
+// Today's spend and the last 30 UTC days (today included). A null bound means no
+// limit, so its flags stay false; an AI with no limits row answers null.
 export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsage | null> {
   const day = utcDayString((deps.now ?? (() => new Date()))());
   const [limits] = await runSql(
@@ -91,9 +85,7 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
   };
 }
 
-// Cents-safe 80% checks: integer cents avoid float surprises at exactly 80%
-// (1.60 of 2.00 must warn). `today >= 0.8 * perDay` becomes
-// `todayCents * 5 >= perDayCents * 4` with no floats involved.
+// Integer cents avoid float surprises at exactly 80% (1.60 of 2.00 must warn).
 function toCents(value: number): number {
   return Math.round(value * 100);
 }

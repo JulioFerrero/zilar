@@ -5,50 +5,29 @@ import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 
-// T-0099: standing approval rules. A rule grants a single AI the right to
-// run a single action in one chat (a group, or the personal chat with its
-// owner when `groupId` is null) without a fresh approval card. Rules are
-// soft-revoked (`revoked_at`/`revoked_by`) — the row stays around so the
-// audit reader can show the history, but `findActiveRule` only returns
-// rows where `revokedAt IS NULL`. Deletion of the AI, the group or the
-// `created_by` user cascades.
+// A rule grants one AI one action in one chat without a fresh approval card.
+// Rules are soft-revoked so the audit history survives; only `revokedAt IS
+// NULL` counts as active.
 
-// The "scope" the public list returns. `personal` means `group_id IS NULL`
-// (the DM between the AI and its owner); `group` means a real group.
+// `personal` means the DM between the AI and its owner; `group` a real group.
 export type ApprovalRuleScope = 'personal' | 'group';
 
-// One row, exactly as the public routes return it. `id`, the action, the
-// scope, the optional `groupId`/`topicId` pair (or the topic name, for rows
-// the viewer may see), who created it and when. Never the args or the
-// `revokedAt`/`revokedBy` — those are internal.
+// Never the args or `revokedAt`/`revokedBy`: those are internal.
 export interface PublicApprovalRule {
   id: string;
   action: string;
   scope: ApprovalRuleScope;
   groupId: string | null;
-  /** The topic the rule applies in. Null for personal-chat rules. */
   topicId: string | null;
-  /** The topic's name, or null for personal rules. The route blanks this
-   *  for topics the viewer cannot see (which cannot happen for a returned
-   *  row); the field stays for the client. */
+  /** Null for personal rules; the route blanks it for an invisible topic. */
   topicName: string | null;
   createdAt: Date;
   createdBy: string;
 }
 
-// The atomic idempotent write that turns an "approve_always" decision
-// into a standing rule. Three guarantees:
-//   - one rule per (aiId, topicIdOrNull, action) when active, enforced by
-//     the partial unique indexes on `approval_rules`
-//   - if an active rule already exists, the existing row is returned and
-//     `created === false`
-//   - if the caller is not the AI owner and (for a group) not a group
-//     owner/admin, returns `null` so the caller cannot probe existence
-//
-// The read and the insert run on the caller's `effect/sql` client:
-// `createRuleEffect` is yielded inside the decision's `sql.withTransaction`
-// so the decision + rule are atomic, and `createRule` runs it standalone
-// for the routes and tests.
+// One active rule per (AI, topic, action), enforced by the partial unique
+// indexes. An existing rule returns `created: false`; an unauthorized caller
+// gets `null`, so existence cannot be probed.
 export interface CreateRuleInput {
   aiId: string;
   groupId: string | null;
@@ -62,10 +41,6 @@ export interface CreateRuleResult {
   created: boolean;
 }
 
-// The active-rule read and the atomic insert both run on the `effect/sql`
-// client now, so `approvals/service.ts` can yield them inside its
-// `sql.withTransaction` and the decision + rule share one transaction.
-// `createRule` stays as the `async` wrapper the routes and tests call.
 export function findActiveRuleEffect(input: {
   aiId: string;
   groupId: string | null;
@@ -87,12 +62,8 @@ export function findActiveRuleEffect(input: {
   });
 }
 
-// Inserts an active rule, as an Effect so the caller can run it inside its
-// transaction. Returns the new row and `created: true`, or the existing
-// active row and `created: false` when one already exists for the same
-// (aiId, chat, action). No race protection beyond the partial unique
-// indexes — two concurrent callers racing on the same key both reach this
-// function, one wins the insert and the other falls back to a re-read.
+// Returns the new row with `created: true`, or the existing active row. Two
+// racers both reach here; one wins the insert and the other re-reads.
 export function createRuleEffect(
   input: CreateRuleInput,
   now: Date,
@@ -108,9 +79,8 @@ export function createRuleEffect(
       return { rule: toPublicRule(existing), created: false };
     }
 
-    // `ON CONFLICT DO NOTHING` (not a caught unique violation): inside a
-    // Postgres transaction a failed statement aborts the whole transaction, so
-    // a concurrent inserter winning the partial unique index must not raise.
+    // `ON CONFLICT DO NOTHING`, not a caught violation: a failed statement
+    // aborts the whole transaction.
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<ApprovalRuleRow>`INSERT INTO approval_rules
         (id, ai_id, group_id, topic_id, action, created_by, created_at)
@@ -141,7 +111,6 @@ export function createRuleEffect(
   });
 }
 
-// Async wrapper kept for routes and tests during the transition.
 export async function createRule(
   db: ServerDatabase,
   input: CreateRuleInput,
@@ -150,9 +119,6 @@ export async function createRule(
   return runSql(db, createRuleEffect(input, now));
 }
 
-// One-shot lookup the action gateway uses before creating an approval:
-// "is there an active rule for (ai, topic, action)?" Returns null when
-// there is not, or when the rule is for a different topic/action.
 export async function findActiveRule(
   db: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
@@ -160,8 +126,7 @@ export async function findActiveRule(
   return runSql(db, findActiveRuleEffect(input));
 }
 
-// Lists the active rules for an AI. The AI's owner only — the routes
-// gate this; the helper does not.
+// The routes gate the caller to the AI's owner; the helper does not.
 export async function listActiveRulesForAi(
   db: ServerDatabase,
   aiId: string,
@@ -177,8 +142,7 @@ export async function listActiveRulesForAi(
   return rows.map(toPublicRule);
 }
 
-// Lists the active rules of one topic. The route gates callers to viewers
-// of the topic; the helper does not.
+// The route gates callers to viewers of the topic; the helper does not.
 export async function listActiveRulesForTopic(
   db: ServerDatabase,
   topicId: string,
@@ -194,13 +158,8 @@ export async function listActiveRulesForTopic(
   return [...rows];
 }
 
-// Soft-revoke one rule by id. Returns:
-//   - the rule row the caller can pass to the audit log when revoked
-//   - `null` when the id is unknown or the rule belongs to a different
-//     AI/group the caller is not allowed to manage (the same shape for
-//     both so existence is never leaked).
-//
-// The route also passes `actorId` so the audit log records who revoked.
+// `null` for an unknown and an unauthorized rule alike, so existence is never
+// leaked; the route passes `actorId` for the audit log.
 export interface RevokeRuleInput {
   ruleId: string;
   actorId: string;
@@ -221,8 +180,8 @@ export async function revokeRule(
         return null;
       }
       if (row.revokedAt !== null) {
-        // Idempotent: an already-revoked row returns its data so the route
-        // can answer 204 without writing again or auditing twice.
+        // Idempotent: return the row so the route answers 204 without a second
+        // write or audit entry.
         return { row };
       }
       const [updated] = yield* sql<ApprovalRuleRow>`UPDATE approval_rules
@@ -236,9 +195,8 @@ export async function revokeRule(
   );
 }
 
-// Bulk revoke helper used by the lifecycle tests and topic-AI removal.
-// Revokes the AI's active rules in one topic. `now` is supplied so the
-// caller's transaction and the revocation share a timestamp.
+// `now` is supplied so the caller's transaction and the revocation share a
+// timestamp.
 export async function revokeActiveRulesForAiInTopic(
   tx: ServerDatabase,
   input: { aiId: string; topicId: string; actorId: string | null; now: Date },
@@ -256,9 +214,8 @@ export async function revokeActiveRulesForAiInTopic(
   return rows.map((row) => ({ id: row.id, action: row.action }));
 }
 
-// Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules in
-// every topic of the group. It updates `approval_rules` directly, so the caller
-// supplies `now` to share the timestamp with the rest of its work.
+// Revokes the AI's active rules in every topic of the group; the caller
+// supplies `now` to share the timestamp.
 export function revokeActiveRulesForAiInGroupEffect(input: {
   aiId: string;
   groupId: string;
@@ -275,9 +232,7 @@ export function revokeActiveRulesForAiInGroupEffect(input: {
   });
 }
 
-// Maps a row to the public shape. `scope` is derived from `group_id`:
-// null means personal chat, anything else means a group topic. `topicName`
-// is left null here; the route fills it in for topics the viewer can see.
+// `topicName` is left null here; the route fills it in for visible topics.
 export function toPublicRule(row: ApprovalRuleRow): PublicApprovalRule {
   return {
     id: row.id,

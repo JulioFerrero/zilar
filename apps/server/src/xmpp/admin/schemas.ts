@@ -1,8 +1,8 @@
 import { Schema } from 'effect';
 import { isJid, struct } from '@zilar/protocol';
 
-// Localparts and room ids are lowercase by design; they become part of a JID.
-// They are validated before any HTTP request goes out.
+// Localparts and room ids are lowercase and become part of a JID; validated
+// before any HTTP request goes out.
 export const NameSchema = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter((value: string) =>
@@ -20,8 +20,6 @@ export const PasswordSchema = Schema.String.pipe(
   ),
 );
 
-// The shared protocol rule, re-checked here; `isJid` is the same rule the
-// protocol package applies to `JidSchema`.
 const BareJidSchema = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter((value: string) =>
@@ -36,7 +34,6 @@ export type RoomAffiliation = Schema.Schema.Type<typeof RoomAffiliationSchema>;
 export const RosterSubscriptionSchema = Schema.Literals(['none', 'to', 'from', 'both']);
 export type RosterSubscription = Schema.Schema.Type<typeof RosterSubscriptionSchema>;
 
-// A roster entry as returned by `get_roster`.
 export const RosterEntrySchema = struct({
   jid: BareJidSchema,
   nick: Schema.String,

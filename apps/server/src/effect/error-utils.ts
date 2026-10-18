@@ -1,11 +1,8 @@
-// Shared server error helpers (T-1043, dedup F6): the two "error name" bodies
-// and the widest unique-violation check, collected here from their local
-// copies so every module logs and classifies failures the same way.
+// Shared error-name helpers and the widest unique-violation check, so every
+// module logs and classifies failures the same way.
 import { SqlError } from 'effect/sql';
 
-// The `Error.name` of a thrown value, or its type for a non-Error. Callers
-// that must keep this string have their own reason; the class-name variant is
-// `errorClassName`.
+// The `Error.name` of a thrown value, or its type for a non-Error.
 export function errorName(error: unknown): string {
   if (error instanceof Error) {
     return error.name;
@@ -13,18 +10,14 @@ export function errorName(error: unknown): string {
   return typeof error;
 }
 
-// The constructor class name of a thrown Error, or its type for a non-Error.
-// Used where logs must not carry a subclass-supplied `name`.
+// The constructor name, used where logs must not carry a subclass-supplied `name`.
 export function errorClassName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-// Whether `error` is a unique-constraint violation: either the structured
-// `effect/sql` `UniqueViolation` reason or a driver error carrying the
-// Postgres `23505` code. Driver failures can be wrapped, so the code may sit on
-// a nested `cause` (`groups/service.ts` calls this on its `effect/sql` insert).
-// Walk the chain; the message check is a last-resort fallback
-// for the wrapped shape only, never matched instead of a code.
+// Either the structured `UniqueViolation` reason or the Postgres `23505` code,
+// which a wrapped driver error can carry on a nested `cause`. The message check
+// is a last resort, never matched instead of a code.
 export function isUniqueViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {
     return error.reason._tag === 'UniqueViolation';

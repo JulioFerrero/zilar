@@ -1,8 +1,6 @@
-// Shared Node starter for the Effect edge (T-0733, B1.6): serves a
-// `ZilarEdge`'s `layer` on its own `node:http` server, so `index.ts` and
-// tests share one start/stop path instead of reaching for an adapter.
-// `NodeHttpServer` fills `HttpServerRequest.remoteAddress` from the real
-// socket.
+// Serves a `ZilarEdge`'s `layer` on its own `node:http` server, so `index.ts`
+// and tests share one start/stop path. `NodeHttpServer` fills `remoteAddress`
+// from the real socket.
 
 import { NodeHttpServer } from '@effect/platform-node';
 import { Effect, Layer, ManagedRuntime } from 'effect';
@@ -12,11 +10,7 @@ import type { ZilarEdge } from './edge';
 
 export interface ServeEdgeOnNodeOptions {
   readonly port: number;
-  /**
-   * How long `close()` waits before dropping live connections (SSE draft
-   * streams never end on their own). `index.ts` passes its
-   * `CONNECTION_GRACE_MS`; tests use the default.
-   */
+  /** How long `close()` waits before dropping live connections (SSE never ends). */
   readonly connectionGraceMs?: number;
 }
 
@@ -53,8 +47,8 @@ export async function serveEdgeOnNode(
     httpServer,
     port,
     close: async () => {
-      // `close()` waits for every open connection, so drop idle ones at
-      // once and live ones after the grace, then release the runtime.
+      // `close()` waits for every open connection: drop idle ones at once, live
+      // ones after the grace, then release the runtime.
       await new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
         httpServer.closeIdleConnections();

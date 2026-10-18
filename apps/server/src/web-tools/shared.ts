@@ -1,6 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/web-tools/adapters.ts (size split)
-// T-0993: the shared state, constants and helpers for the web-tool
-// adapters, split out of `web-tools/adapters.ts` unchanged.
+// effect-plain: the shared state, constants and helpers for the web adapters.
 import type { ActionContext, ActionResult } from '../actions/registry';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { serverVersion } from '../version';
@@ -12,9 +10,8 @@ import {
 } from './guarded-fetch';
 import { duckduckgoUrl, parseDuckDuckGo, SEARCH_HOST, type WebSearchProvider } from './search';
 
-// At most 30 web actions per AI per topic per hour: a plain safety
-// limit against runaway loops, not usage or cost tracking. The window
-// is in memory only.
+// A plain safety limit against runaway loops, not usage or cost tracking; the
+// window is in memory only.
 export const WEB_ACTIONS_PER_HOUR = 30;
 export const WEB_ACTION_WINDOW_MS = 60 * 60 * 1000;
 
@@ -31,9 +28,7 @@ export const MAX_WIKIPEDIA_EXTRACT_CHARS = 3000;
 
 export type WebSearchProviderName = 'duckduckgo-html' | 'none';
 
-// The slice of the server logger the web tools use: one structured warn
-// line per provider failure. A no-op stands in when the caller passes none,
-// so tests need no logger.
+// One structured warn line per provider failure; a no-op when none is passed.
 export interface WebToolsLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
@@ -91,15 +86,13 @@ export function duckduckgoProvider(
   };
 }
 
-// Wikipedia's API etiquette asks for a descriptive User-Agent; the
-// contact is deliberately vague (no personal address in code).
+// The API asks for a descriptive User-Agent; no personal address in code.
 export function wikipediaUserAgent(): string {
   return `Zilar/${serverVersion} (self-hosted; contact via server admin)`;
 }
 
-// The shared gate for every web action. Counts all five actions in one
-// (AI, topic) window; over the cap the adapter answers a plain summary
-// line the model can read, without fetching.
+// One (AI, topic) window for all five actions; over the cap the adapter answers a
+// plain summary line without fetching.
 function webRateLimitKey(ctx: ActionContext): string {
   return `${ctx.aiId}\n${ctx.groupId ?? ''}\n${ctx.topicId ?? ''}`;
 }
@@ -129,9 +122,7 @@ export function guardedOptions(
   };
 }
 
-// A failed get: the fixed summary, plus any text that came from the remote
-// server (a redirect target) as `modelText` so it sits inside the untrusted
-// block instead of the summary.
+// Remote text (a redirect target) goes to `modelText`, inside the untrusted block.
 export function failureResult(failed: { summary: string; detail?: string }): {
   summary: string;
   modelText?: string;

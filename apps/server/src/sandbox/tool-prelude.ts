@@ -1,8 +1,6 @@
-// T-1766: the `fmt` prelude for the tool sandbox. QuickJS has no `Intl`, so a
-// tool cannot rely on `toLocaleString` for rounding or grouping. This plain-JS
-// source is evaluated once inside the VM after the globals and before the tool
-// source; it installs a frozen `fmt` global. Keep it small: it runs under the
-// tool's own CPU and memory limits.
+// QuickJS has no `Intl`, so tools cannot rely on `toLocaleString` for rounding or
+// grouping. This source runs once in the VM before the tool and installs a frozen
+// `fmt`; keep it small, since it runs under the tool's own limits.
 export const TOOL_PRELUDE = `
 globalThis.fmt = Object.freeze((() => {
   const DASH = '\u2014';

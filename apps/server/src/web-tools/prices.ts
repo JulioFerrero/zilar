@@ -1,16 +1,7 @@
-// T-0125: keyless market prices. Two sources, one table in code:
-//
-// - crypto through CoinGecko's public "simple price" endpoint
-//   (`GET https://api.coingecko.com/api/v3/simple/price?ids=<id>&vs_currencies=usd&include_last_updated_at=true`),
-//   with a small built-in symbol table (`BTC→bitcoin`, `ETH→ethereum`,
-//   …). A symbol with no row is reported as unknown, never guessed.
-// - indexes, stocks, gold through Yahoo's chart endpoint
-//   (`GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=1d`,
-//   one request per symbol), reading `chart.result[0].meta`. Stooq's CSV
-//   endpoint this replaced is gone (404/403).
-//
-// Both hosts are fixed. Every number must be finite or the symbol is
-// reported as unavailable. No API key anywhere.
+// Keyless prices from two fixed hosts: CoinGecko's simple-price endpoint for the
+// crypto table below (a symbol with no row is unknown, never guessed), and
+// Yahoo's chart endpoint for everything else, one request per symbol. Every
+// number must be finite or the symbol is unavailable. No API key.
 import { Schema } from 'effect';
 
 export const COINGECKO_HOST = 'api.coingecko.com';
@@ -20,8 +11,7 @@ export const MAX_PRICE_SYMBOLS = 10;
 
 export const PRICE_SYMBOL_PATTERN = /^[A-Za-z0-9.^=_-]{1,20}$/;
 
-// The only crypto the adapter knows: anything else is reported as an
-// unknown symbol so the model can retry it as a Yahoo symbol instead.
+// Anything else is reported unknown, so the model can retry it as a Yahoo symbol.
 export const CRYPTO_IDS: Record<string, string> = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
@@ -48,10 +38,8 @@ export function yahooUrl(symbol: string): string {
   return `https://${YAHOO_HOST}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
 }
 
-// Old Stooq spellings (and plain names the model reaches for) resolve to
-// Yahoo tickers, case-insensitively and before the lookup. Anything else
-// passes through; a Stooq-style `.us` suffix is dropped (`aapl.us` →
-// `AAPL`).
+// Old Stooq spellings resolve to Yahoo tickers, case-insensitively. Anything else
+// passes through; a Stooq-style `.us` suffix is dropped (`aapl.us` → `AAPL`).
 const YAHOO_ALIASES: Record<string, string> = {
   SPX: '^GSPC',
   '^SPX': '^GSPC',
@@ -68,8 +56,6 @@ const YAHOO_ALIASES: Record<string, string> = {
   DOW: '^DJI',
 };
 
-// A human name for a Yahoo ticker that is not obvious, shown in the
-// price line.
 export const YAHOO_LABELS: Record<string, string> = {
   'GC=F': 'gold (COMEX futures)',
 };
@@ -101,8 +87,7 @@ export interface PriceLine {
   line: string;
 }
 
-// CoinGecko: one line per id in request order. Unknown ids and
-// non-finite prices say so in plain words.
+// One line per id in request order; unknown ids and bad prices say so in words.
 export function coingeckoLines(
   symbols: string[],
   ids: string[],
@@ -164,10 +149,8 @@ export interface YahooQuote {
   symbol: string;
 }
 
-// Yahoo chart JSON: a non-null `chart.error`, a missing `result`, or a
-// non-finite `regularMarketPrice` all mean "unavailable". `currency`
-// falls back to USD, `symbol` to empty; `regularMarketTime` (unix
-// seconds) is optional.
+// A non-null `chart.error`, a missing `result` or a non-finite price all mean
+// "unavailable". `currency` falls back to USD and `symbol` to empty.
 export function parseYahooChart(body: string): YahooQuote | null {
   let parsed: typeof yahooChartSchema.Type;
   try {

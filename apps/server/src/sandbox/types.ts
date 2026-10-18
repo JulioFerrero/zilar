@@ -1,7 +1,6 @@
 import { Option, Schema } from 'effect';
 
-// The sandbox worker imports these straight from `./limits` so it never loads
-// Effect; they are re-exported here so existing importers stay unchanged.
+// The worker imports these from `./limits` directly so it never loads Effect.
 export {
   DEFAULT_LIMITS,
   FETCH_DENIED_PREFIX,
@@ -62,8 +61,8 @@ export function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | 
   if (output.text.length > maxBytes) {
     return null;
   }
-  // `blocks` and `card` pass through unchecked: a broken shape is rejected
-  // later by `buildBlocksPayload`, so a bad tool never breaks its own run.
+  // `blocks` and `card` pass through unchecked; `buildBlocksPayload` rejects a
+  // broken shape later, so a bad tool never breaks its own run.
   return {
     text: output.text,
     ...(output.data === undefined ? {} : { data: output.data }),

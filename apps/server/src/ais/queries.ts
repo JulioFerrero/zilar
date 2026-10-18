@@ -36,8 +36,7 @@ export async function listAis(db: ServerDatabase, ownerId: string): Promise<Publ
   return rows.map(toPublicAi);
 }
 
-// Every active AI, for the agent gateway (T-0034). The gateway resolves the
-// AI id itself from this listing and never from message content.
+// The gateway resolves the AI id from this listing, never from message content.
 export interface ActiveAiForGateway {
   id: string;
   jid: string;
@@ -45,9 +44,8 @@ export interface ActiveAiForGateway {
   owner: string;
   name: string;
   persona: string;
-  // T-1409: the AI's computer mode, so a turn only offers the desk tools when
-  // the desk is actually enabled for it. T-1423: the assigned machine id, so
-  // `runner`/`auto` can resolve to that runner.
+  // Desk tools are offered only when the mode enables them; `runner`/`auto`
+  // resolve through `machineId`.
   computerMode: AiComputerMode;
   machineId: string | null;
 }
@@ -74,11 +72,8 @@ export async function listActiveAisForGateway(db: ServerDatabase): Promise<Activ
   );
 }
 
-// In-process notifier so the gateway learns about created, deleted,
-// stopped and resumed AIs without polling. The gateway also reconciles
-// periodically as a safety net, so a missed event only delays a connect,
-// never loses it. T-0080 added `stopped`/`resumed` for the owner kill switch:
-// `stopped` disconnects the AI at once; `resumed` reconnects it.
+// In-process notifier so the gateway learns about lifecycle changes without
+// polling; its periodic reconcile is the safety net for a missed event.
 export type AiLifecycleEvent = {
   type: 'created' | 'deleted' | 'stopped' | 'resumed';
   aiId: string;
@@ -94,8 +89,8 @@ export function onAiLifecycle(listener: (event: AiLifecycleEvent) => void): () =
 }
 
 export function emitAiLifecycle(event: AiLifecycleEvent): void {
-  // Deleting from a Set while iterating it is safe: a listener that
-  // unsubscribes mid-emit is simply not visited again.
+  // Deleting from a Set while iterating is safe: an unsubscribed listener is
+  // simply not visited again.
   for (const listener of aiLifecycleListeners) {
     try {
       listener(event);
@@ -105,9 +100,8 @@ export function emitAiLifecycle(event: AiLifecycleEvent): void {
   }
 }
 
-// One AI owned by `ownerId`, or null for a missing id and a foreign one alike,
-// so existence is never leaked. The internal shape carries the localpart and
-// identity the public shape deliberately omits.
+// A missing id and a foreign one both answer null, so existence is never leaked.
+// The internal shape carries the localpart the public one omits.
 export async function findOwnedAi(
   db: ServerDatabase,
   id: string,
@@ -143,8 +137,7 @@ export async function findOwnedAi(
   );
 }
 
-// One AI by id, with its connection's provider, for the gateway-only paths
-// that have no owner in hand. Not exported: no route may use it.
+// Gateway-only, with no owner check: never use it from a route.
 export async function findAiForGateway(
   db: ServerDatabase,
   aiId: string,
@@ -152,7 +145,6 @@ export async function findAiForGateway(
   return runSql(db, findGatewayAiEffect(aiId));
 }
 
-// The public form of one owned AI, shaped for the API and the wizard.
 export async function getOwnedAi(
   db: ServerDatabase,
   id: string,
@@ -162,13 +154,8 @@ export async function getOwnedAi(
   return row ? toPublicAi(row) : null;
 }
 
-// Reads one AI with its connection's provider through `effect/sql`. The
-// gateway-only paths share it so the row is always fresh under the lock. It is
-// one statement, so a caller inside `sql.withTransaction` reads on the
+// One statement, so a caller inside `sql.withTransaction` reads on the
 // transaction's connection.
-//
-// Columns are listed explicitly and camelCased by `transformResultNames`, so
-// the row matches `GatewayAiRecord`.
 export function findGatewayAiEffect(
   aiId: string,
 ): Effect.Effect<GatewayAiRecord | null, SqlError.SqlError, SqlClient.SqlClient> {
@@ -202,8 +189,7 @@ export function findGatewayAiEffect(
   });
 }
 
-// The internal row: the public columns plus the identity the routes must never
-// answer with.
+// The public columns plus the identity routes must never answer with.
 interface AiRecord {
   id: string;
   name: string;
@@ -223,8 +209,7 @@ interface AiRecord {
   acceptsDelegation: boolean;
 }
 
-// The AI row plus its connection's provider, for the gateway-only paths that
-// need to build the provider-qualified model name.
+// The AI row plus its connection's provider, for the provider-qualified model name.
 interface GatewayAiRecord extends AiRecord {
   provider: string;
   owner: string;

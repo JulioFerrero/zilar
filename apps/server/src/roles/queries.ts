@@ -34,9 +34,7 @@ export async function listRoles(
   return details;
 }
 
-// Every role of the group each member holds, for the `GET members` shape.
-// Returns one entry per group member (sorted with the group list); the
-// caller filters to what it needs.
+// Every role each member holds; the caller filters to what it needs.
 export async function roleHoldersByGroup(
   db: ServerDatabase,
   groupId: string,
@@ -77,9 +75,8 @@ export async function roleHoldersByGroup(
   return result;
 }
 
-// The roles attached to one topic with their holder counts, plus the
-// approver role. Sorted by name. Only roles of the topic's group are ever
-// returned.
+// The roles attached to one topic with holder counts, plus the approver role;
+// only roles of the topic's group are returned.
 export async function rolesOfTopic(
   db: ServerDatabase,
   topicId: string,

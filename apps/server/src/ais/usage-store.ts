@@ -1,7 +1,5 @@
-// T-1405: the write side of `ai_usage`. Every model call adds its tokens and
-// its computed cost to one row per AI per UTC day (docs/audit/effect-ai-plan.md
-// §5.3). The upsert is a single `INSERT … ON CONFLICT` so two calls that land
-// at once can never lose a counter; a failure logs and never fails the turn.
+// Every call adds its tokens and cost to one row per AI per UTC day; the single
+// `INSERT … ON CONFLICT` keeps concurrent calls from losing a counter.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { ensureModelPrices } from '../ai/catalog';
@@ -20,16 +18,15 @@ export interface UsageStoreDeps {
   logger?: UsageStoreLogger;
 }
 
-// T-1461: every in-flight `recordUsage` promise, keyed by AI id. The budget
-// gate settles these before it reads `ai_usage`, so a fast tool loop or
-// back-to-back turns cannot read spend that is missing the write that just
-// finished. The writes stay fire and forget: this map only observes them.
+// Every in-flight `recordUsage`, keyed by AI id. The budget gate settles these
+// before reading spend, so a fast loop cannot read stale counters. The writes
+// stay fire and forget: this map only observes them.
 const pendingUsage = new Map<string, Set<Promise<void>>>();
 
 const DEFAULT_SETTLE_TIMEOUT_MS = 3000;
 
-// Observes one in-flight write until it settles, then forgets it. The write
-// itself is the caller's; both outcomes (settled or not) drop it from the map.
+// Observes one write until it settles, then forgets it; the write is the
+// caller's.
 function trackPendingUsage(aiId: string, write: Promise<void>): void {
   let inFlight = pendingUsage.get(aiId);
   if (inFlight === undefined) {
@@ -44,16 +41,13 @@ function trackPendingUsage(aiId: string, write: Promise<void>): void {
       pendingUsage.delete(aiId);
     }
   };
-  // `then` with both handlers, so a rejection still forgets the write and the
-  // derived promise never rejects (the write itself never rejects anyway).
+  // Both handlers, so a rejection still forgets the write and never escapes.
   void write.then(forget, forget);
 }
 
 /**
- * Waits for the AI's current in-flight usage writes to reach `ai_usage`, or
- * `timeoutMs`, whichever comes first. Never rejects: a hanging write cannot
- * hold a turn open past the timeout. The budget gate calls this before it
- * reads spend so a fast loop cannot run on stale counters.
+ * Waits for in-flight usage writes or `timeoutMs`, whichever comes first; never
+ * rejects, so a hanging write cannot hold a turn open.
  */
 export async function settlePendingUsage(
   aiId: string,
@@ -78,11 +72,8 @@ export async function settlePendingUsage(
 }
 
 /**
- * Adds one call's usage to the AI's `ai_usage` row for the UTC day `now` falls
- * in. The cost is computed from the catalog prices (see `ai/cost.ts`); the
- * whole thing is best effort: a failure logs with the AI id only and resolves,
- * so a turn is never failed by its own accounting. T-1461: the returned promise
- * is tracked so the budget gate can wait for it (bounded) before reading spend.
+ * Best effort: a failure logs with the AI id only and resolves, so a turn is
+ * never failed by its own accounting. The promise is tracked for the budget gate.
  */
 export function recordUsage(
   deps: UsageStoreDeps,
@@ -107,8 +98,8 @@ async function writeUsage(
 ): Promise<void> {
   const day = utcDayString(now);
   try {
-    // A cold process may not have the catalog prices yet; warm them once so
-    // the first call is priced. The fetch is best effort and never rejects.
+    // A cold process has no catalog prices yet; warm them so the first call is
+    // priced.
     await ensureModelPrices(provider, model);
     const cost = costOf(provider, model, usage, deps.logger).toFixed(6);
     await runSql(

@@ -25,8 +25,8 @@ export const SEARCH_RATE_LIMIT_MAX = 30;
 export const SEARCH_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export { SEARCH_MAX_LIMIT } from '@zilar/api-contract';
 export const SEARCH_DEFAULT_LIMIT = 20;
-// No expression index is possible in the ejabberd database, so every search
-// scans only the last 12 months and at most 5 000 candidate rows.
+// No expression index is possible in ejabberd, so a search scans 12 months and at
+// most 5 000 candidates.
 export const SEARCH_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 export const SEARCH_MAX_CANDIDATES = 5000;
 
@@ -37,7 +37,6 @@ export interface SearchRoutesDependencies {
   logger: Logger;
   /** Absent when XMPP_ARCHIVE_DATABASE_URL is unset → every search 501s. */
   archive?: ArchivePool;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
 
@@ -55,7 +54,6 @@ export interface SearchItem {
   at: string;
   snippet: string;
   marks: Array<[number, number]>;
-  /** Which pass produced the hit. Both clients ignore unknown fields. */
   match?: 'exact' | 'fuzzy';
 }
 
@@ -64,11 +62,9 @@ export interface SearchResult {
   nextBefore?: string;
 }
 
-// The search core shared by the Effect `HttpApi` adapter (`api.ts`): session,
-// archive and rate-limit checks run in the endpoint middleware (in the same
-// order as the old Hono route), so this starts at the decoded query. Failures
-// are typed `HttpError`s; the adapter turns them into defects for the envelope.
-// The log carries only the result count and duration — never the query.
+// The search core: session, archive and rate-limit checks already ran in the
+// middleware, so this starts at the decoded query. Failures are typed
+// `HttpError`s. The log carries only the count and duration, never the query.
 export const runSearchEffect = Effect.fnUntraced(function* (
   deps: SearchRoutesDependencies,
   userId: string,
@@ -96,9 +92,8 @@ export const runSearchEffect = Effect.fnUntraced(function* (
   const cutoffMicros = BigInt(Date.now() - SEARCH_WINDOW_MS) * 1000n;
   const beforeMicros = query.before === undefined ? null : BigInt(query.before);
 
-  // Sanitized folded tokens (never raw SQL): earlier terms are whole
-  // words, the last term matches as a prefix. No tokens means a query of
-  // only operators/punctuation — answer an empty list, not a 500.
+  // No tokens means a query of only operators or punctuation: answer an empty
+  // list, not a 500.
   const terms = searchTerms(q);
   const tsquery = terms.length === 0 ? null : buildTsQuery(terms);
 
@@ -118,9 +113,8 @@ export const runSearchEffect = Effect.fnUntraced(function* (
     });
   }
 
-  // Corrections and retractions are separate rows naming the target's origin
-  // id. They are read for every hit (and for an edit row's target) without the
-  // page cursor, so a retraction after page 1 still hides a page-2 message.
+  // Edits are read without the page cursor, so a retraction after page 1 still
+  // hides a page-2 message.
   const editScope: EditScope =
     filter === null
       ? { kind: 'all', owners: allowed }
@@ -138,23 +132,20 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       catch: searchFailed,
     });
 
-  // Both passes render against one overlay. The exact pass alone decides
-  // whether the fuzzy pass runs; when it does, the overlay is rebuilt over the
-  // union of exact rows and fuzzy candidates, so a fuzzy-only hit of a
-  // retracted (or corrected) message cannot slip through.
+  // Both passes render against one overlay. When the fuzzy pass runs, the overlay
+  // is rebuilt over the union, so a fuzzy-only hit of a retracted message cannot
+  // slip through.
   const render = async (
     overlay: EditOverlay,
     fuzzyRows: readonly ArchiveRow[],
   ): Promise<{ items: SearchItem[]; oldest: bigint | null }> => {
     const seen = new Set<string>();
     const items: SearchItem[] = [];
-    // `as` keeps TypeScript from narrowing `oldest` to `null`: pushItem assigns it inside a closure.
+    // `as` stops TypeScript narrowing to null: pushItem assigns it in a closure.
     let oldest = null as bigint | null;
     const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
-    // The names of the real room senders in this page, one batched read (never
-    // one per hit). The nick is only their fallback, never the name shown, so
-    // a failed lookup degrades to that fallback instead of failing the page:
-    // the hits are already in hand.
+    // One batched read of the real room senders' names. A failed lookup falls back
+    // to the nick rather than failing the page: the hits are already in hand.
     const roomNames = await senderNamesByJid(
       deps.db,
       [...rows, ...fuzzyRows].flatMap((row) =>
@@ -182,13 +173,11 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       });
       oldest = BigInt(row.timestamp);
     };
-    // A candidate survives when it is not a retract row, not retracted, and
-    // not superseded by a newer same-sender correction. A correction row is only
-    // a hit when it is itself the newest accepted correction; an edit from
-    // another sender has no overlay entry, so it never shows either.
+    // A candidate survives when it is not a retract row, not retracted and not
+    // superseded by a newer same-sender correction. An edit row is a hit only
+    // when it is the newest accepted correction.
     const visibleKey = (row: ArchiveRow): string | null => {
-      // A retract row is never a hit itself: its `txt` is only the stock
-      // fallback sentence, and the XML namespace matched the query.
+      // A retract row is never a hit: its text is only the stock fallback sentence.
       if (retractTarget(row.xml) !== null) {
         return null;
       }
@@ -218,9 +207,8 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       }
       const chatJid = chatJidFor(row);
       const { snippet, marks } = headlineToSnippet(row.headline);
-      // ts_headline cannot mark accent-folded hits (its match ran on the
-      // raw text), so re-mark in code when it marked nothing: the same
-      // token rule as the query, with folded matching on both sides.
+      // ts_headline cannot mark accent-folded hits, so re-mark in code when it
+      // marked nothing, with folded matching on both sides.
       const marked = exactInCodeMarks(terms, snippet, marks);
       pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
       if (items.length >= limit) {
@@ -250,12 +238,9 @@ export const runSearchEffect = Effect.fnUntraced(function* (
   const firstOverlay = yield* loadOverlay(editTargets(rows));
   let result = yield* Effect.promise(() => render(firstOverlay, []));
 
-  // Typo-tolerance second pass: only when the first pass is short, never
-  // for a query shorter than 3 characters. It reuses the same scope,
-  // cutoff, cap and newest-first order, de-duplicates against the first
-  // pass (same edit/retraction handling), and keeps the same cursor
-  // semantics (`nextBefore` is the oldest returned timestamp), so exact
-  // hits rank before fuzzy ones and paging stays correct.
+  // Typo tolerance: only when the first pass is short, and never under 3
+  // characters. Same scope, cutoff, cap and order, de-duplicated against the
+  // first pass, so exact hits rank first and paging stays correct.
   if (
     result.items.length < limit &&
     tsquery !== null &&
@@ -274,7 +259,6 @@ export const runSearchEffect = Effect.fnUntraced(function* (
     result = yield* Effect.promise(() => render(overlay, candidates));
   }
 
-  // The log carries only the result count and duration — never the query.
   deps.logger.info(
     {
       userId,

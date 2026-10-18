@@ -1,17 +1,7 @@
 // effect-plain: a fetch, a 24 h cache and a fallback; the mapping (Effect Schema) lives in catalog-map.ts
-// T-1395: the models.dev catalog behind the wizard's model step.
-//
-// Fetches the public `https://models.dev/api.json` (verified 2026-10-14: 229
-// providers, each `{ id, env, npm, name, doc, models }`; a model carries
-// `id`, `name`, `release_date`, `reasoning`, `tool_call`, `status`,
-// `modalities { input, output }`, `limit { context }` and
-// `cost { input, output, cache_read, cache_write }` in USD per million
-// tokens). It keeps our six native LLM providers plus, since T-1429, every
-// provider that speaks the OpenAI-compatible API, caches the answer in memory
-// for 24 h, and on any failure serves the last good copy or the static list.
-// The cache prices never reach the public catalog response; `cost.ts` reads
-// them through `setModelPrices` (T-1405). The mapping itself lives in
-// `./catalog-map`.
+// The models.dev catalog: caches the answer in memory for 24 h, and on any
+// failure serves the last good copy or the static list. Cache prices never
+// reach the public response; the mapping lives in `./catalog-map`.
 
 import type { AiCatalog, AiCatalogProvider } from '@zilar/api-contract';
 import { modelPricesFor, setModelPrices } from './cost';
@@ -40,16 +30,13 @@ const FALLBACK_MODEL_IDS: Record<ProviderId, readonly string[]> = {
 };
 
 /**
- * The public catalog providers, exactly as the contract carries them. Pure, so
- * the test drives it with a fixture; `getAiCatalog` uses the internal mapper
- * in `./catalog-map`, which also keeps the cache prices out of this response.
+ * Public providers only; cache prices stay out of this response.
  */
 export function mapCatalog(raw: unknown): AiCatalogProvider[] {
   return mapCatalogDocument(raw).providers;
 }
 
-// When models.dev cannot be reached and no good copy exists only the natives
-// are listed: the compatible base URLs cannot be known offline (T-1429).
+// Offline the compatible base URLs are unknown, so only the natives are listed.
 export function fallbackProviders(): AiCatalogProvider[] {
   return PROVIDERS.map((id) => ({
     id,
@@ -112,8 +99,7 @@ async function readCappedBody(response: Response, cap: number): Promise<string |
 
 let cache: { readonly catalog: AiCatalog; readonly at: number } | null = null;
 
-// Test seam: drops the in-memory cache and the compatible base URL map it
-// fills, so a later `getAiCatalog` maps the document again (a cold process).
+// Test seam: drops the cache and the base URL map it fills, like a cold process.
 export function resetCatalogCache(): void {
   cache = null;
   resetCatalogBaseUrls();
@@ -125,9 +111,7 @@ export interface CatalogDeps {
 }
 
 /**
- * The catalog, cached for 24 h. A live fetch is `source: 'models.dev'; a fresh
- * or stale good copy on failure is `cache`; with no copy at all it is the
- * static list as `fallback`. Never rejects: the route always answers a body.
+ * Cached for 24 h; never rejects, so the route always answers a body.
  */
 export async function getAiCatalog(deps: CatalogDeps = {}): Promise<AiCatalog> {
   const now = (deps.now ?? Date.now)();
@@ -163,10 +147,8 @@ export async function getAiCatalog(deps: CatalogDeps = {}): Promise<AiCatalog> {
 let pricesRequest: Promise<void> | null = null;
 
 /**
- * T-1405: makes the catalog prices available for cost accounting when a model
- * is not in the price map yet (a cold process, before anything fetched the
- * catalog). The fetch is shared and never rejects, so a failure just leaves
- * the price unknown and the call records cost 0. Best effort only.
+ * Warms prices for a model the map lacks (cold process). Shared, never rejects:
+ * a failure leaves the price unknown and the call records cost 0.
  */
 export function ensureModelPrices(provider: string, model: string): Promise<void> {
   if (modelPricesFor(provider, model) !== null) {
@@ -177,11 +159,9 @@ export function ensureModelPrices(provider: string, model: string): Promise<void
     () => undefined,
   );
   const request = pricesRequest;
-  // Release the shared promise once it settles. Keeping the resolved promise
-  // forever would price every later call for this model as 0 until a restart:
-  // the warm-up may have failed (leaving the prices empty) or models.dev may
-  // have added the model after the catalog cache was built. The next call
-  // retries; concurrent callers still share the one in-flight request.
+  // Release the promise once it settles: keeping it would price every later call
+  // for this model as 0, because the warm-up may have failed or the model may
+  // have been added since the cache was built.
   return request.finally(() => {
     if (pricesRequest === request) {
       pricesRequest = null;

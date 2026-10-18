@@ -1,18 +1,8 @@
-// T-0496: the `effect/sql` entry point for the server. One place builds the
-// SQL client (`@effect/sql-pg` in production, `@effect/sql-pglite` in tests
-// and for the migration adoption check) and runs the pins pilot through it.
-//
-// Conventions:
-// - run a query with the `sql` tagged template: `` yield* sql<Row>`SELECT ...` ``;
-//   the statement is an Effect, so `yield*` executes it and returns rows.
-// - result columns are camelCased by `transformResultNames`, matching the
-//   row types in `db/rows.ts`.
-// - run a transaction with `sql.withTransaction(effect)`; every statement in
-//   the effect uses the transaction connection.
-// - advisory locks stay raw SQL inside the transaction:
-//   `` yield* sql`SELECT pg_advisory_xact_lock(hashtext(${key}))` ``.
-// - keep the module's exported functions `async` and surface them through
-//   `ManagedRuntime.runPromise`, so routes and existing tests do not change.
+// The `effect/sql` entry point: one place builds the client (pg in production,
+// pglite in tests) and runs queries through it. Columns are camelCased by
+// `transformResultNames`; `sql.withTransaction` makes every statement use the
+// transaction connection; advisory locks stay raw SQL inside it. Exported
+// functions are `async` over `ManagedRuntime.runPromise`.
 
 import type { PGlite } from '@electric-sql/pglite';
 import { PgClient } from '@effect/sql-pg';
@@ -26,28 +16,25 @@ import type { ServerDatabase } from '../db/client';
 export const SQL_POOL_MAX = 10;
 export const SQL_MIGRATIONS_TABLE = 'effect_sql_migrations';
 
-// The committed migrations: `apps/server/drizzle`. From source this file sits
-// in `src/effect/`; the production bundle is `dist/index.mjs`, one level down.
+// `apps/server/drizzle`. From source this file is in `src/effect/`; the bundle
+// is `dist/index.mjs`, one level down.
 export const migrationsFolder = fileURLToPath(
   new URL(import.meta.url.endsWith('.ts') ? '../../drizzle' : '../drizzle', import.meta.url),
 );
 
 export type SqlRuntime = ManagedRuntime.ManagedRuntime<SqlClient.SqlClient, SqlError.SqlError>;
 
-// The columns the server stores are snake_case; the row types in `db/rows.ts`
-// are camelCase. The client transforms result names once so both agree.
 export function snakeToCamel(name: string): string {
   return name.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
 // A production key is the plain `{ kind: 'postgres', url }` record; anything else
-// is a test's raw PGlite handle. No `instanceof`, so production never loads PGlite.
+// is a test's PGlite. No `instanceof`, so production never loads PGlite.
 export function isPgliteDatabase(db: ServerDatabase): db is PGlite {
   return !('kind' in db && db.kind === 'postgres');
 }
 
-// PGlite and its `effect/sql` driver are devDependencies, so they load on demand
-// and only on the test path.
+// PGlite is a devDependency, so it loads on demand and only on the test path.
 function pgliteLayer(client: PGlite): Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> {
   return Layer.unwrap(
     Effect.promise(() => import('@effect/sql-pglite')).pipe(
@@ -62,13 +49,9 @@ function pgliteLayer(client: PGlite): Layer.Layer<SqlClient.SqlClient, SqlError.
   );
 }
 
-// `transformResultNames` camelCases column names to match the row types in
-// `db/rows.ts`, but a jsonb value is data: its keys must read back exactly as
-// they were written, so `transformJson: false` stops the driver renaming them too.
+// A jsonb value is data: its keys must read back as written, so
+// `transformJson: false` stops the driver renaming them too.
 
-// The layer behind a database key. Tests hand over their raw PGlite, production
-// a `DATABASE_URL`; either way modules read through this layer and no route or
-// test has to learn about `effect/sql`.
 export function sqlLayerFor(
   db: ServerDatabase,
   databaseUrl: string,
@@ -105,8 +88,7 @@ export function sqlRuntimeFor(db: ServerDatabase): SqlRuntime {
 }
 
 /**
- * Runs an effect that needs the SQL client on the runtime registered for `db`.
- * One shared copy for every module's service.
+ * Runs an effect on the runtime registered for `db`.
  */
 export function runSql<A, E>(
   db: ServerDatabase,
@@ -115,10 +97,9 @@ export function runSql<A, E>(
   return sqlRuntimeFor(db).runPromise(effect);
 }
 
-// Disposes the runtime for one database and forgets it, so a later
-// `sqlRuntimeFor(db)` throws instead of handing back a closed pool. The entry
-// is removed first: a second dispose call is a no-op (idempotent), and no
-// other caller can race a half-disposed runtime.
+// Forgets the runtime first, so a second dispose is a no-op and no caller can
+// race a half-disposed one; a later `sqlRuntimeFor` throws instead of handing
+// back a closed pool.
 export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
   const runtime = runtimes.get(db);
   if (runtime === undefined) {
@@ -128,10 +109,8 @@ export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
   await runtime.dispose();
 }
 
-// Test layer: a fresh PGlite per use, started from a snapshot of a database
-// migrated by `migrateSql`. The snapshot idea is the one `test-support.ts` uses;
-// this copy exists so a module test can ask for a SQL client without going
-// through `createTestContext`.
+// A fresh PGlite per use, started from a snapshot of a migrated database, so a
+// module test can ask for a client without `createTestContext`.
 let migratedSnapshot: Promise<Blob> | undefined;
 
 async function snapshotOfMigratedDatabase(): Promise<Blob> {
@@ -159,10 +138,8 @@ export const SqlTest: Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> = Laye
   }),
 );
 
-// Loads `apps/server/drizzle/*.sql` as `effect/sql` migrations. The core
-// loader only imports `.ts`/`.js` modules, so this reads the committed SQL
-// files and runs every statement between the `--> statement-breakpoint`
-// markers.
+// Reads the committed `.sql` files (the core loader only imports modules) and
+// runs each statement between the `--> statement-breakpoint` markers.
 export function sqlFileLoader(directory: string): Migrator.Loader {
   return Effect.tryPromise({
     try: async () => {
@@ -173,20 +150,16 @@ export function sqlFileLoader(directory: string): Migrator.Loader {
         if (match === null) {
           continue;
         }
-        // The effect migrator treats migration_id 0 as "nothing applied": an
-        // empty journal maps to 0 and every `id <= 0` is skipped. Offset the
-        // file number so `0000_*.sql` becomes id 1 and nothing is lost.
+        // The migrator treats id 0 as "nothing applied", so offset the file number:
+        // `0000_*.sql` becomes id 1 and nothing is lost.
         const id = Number(match[1] ?? '') + 1;
         const name = match[2] ?? '';
         const migration = Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const contents = yield* Effect.promise(() => readFile(join(directory, entry), 'utf8'));
-          // OPS-5: Migrator.make runs the migrations it was given in one
-          // transaction (`sql.withTransaction`, effect Migrator.ts:315) and
-          // `migrateSql` calls it once per id (sql.ts:274), so each migration
-          // has its own transaction. `SET LOCAL` therefore scopes the lock wait
-          // to this migration and is reset at its commit or rollback; a plain
-          // `SET` would leak the timeout onto the session's later queries.
+          // Each migration gets its own transaction, so `SET LOCAL` scopes the lock
+          // wait to it and resets at commit; a plain `SET` would leak the timeout
+          // onto the session's later queries.
           yield* sql.unsafe("SET LOCAL lock_timeout = '5s'");
           for (const raw of contents.split('--> statement-breakpoint')) {
             const statement = raw.trim().replace(/;\s*$/, '');
@@ -208,9 +181,8 @@ export function sqlFileLoader(directory: string): Migrator.Loader {
   });
 }
 
-// Generic migrator: tracks applied migrations in `effect_sql_migrations` and
-// runs only the pending ones. Dialect detection lives in the `SqlClient`, so
-// the same call works against Postgres and PGlite.
+// Tracks applied migrations in `effect_sql_migrations` and runs the pending
+// ones; dialect detection lives in the `SqlClient`.
 export function runSqlMigrations(options: {
   loader: Migrator.Loader;
 }): Effect.Effect<
@@ -221,13 +193,10 @@ export function runSqlMigrations(options: {
   return Migrator.make({})({ loader: options.loader, table: SQL_MIGRATIONS_TABLE });
 }
 
-// One-time adoption seed (D3). A database drizzle already migrated has one row
-// in `drizzle.__drizzle_migrations` per applied file, applied in file order.
-// That count is the highest migration id already applied (file N is id N+1),
-// so the effect journal gets it as its only row and the committed history is
-// skipped. It runs only while the effect journal is empty, so every later
-// start is a no-op. `drizzle.__drizzle_migrations` is only read, never written.
-// Returns the adopted count the first time it seeds, `undefined` otherwise.
+// Adoption seed: a drizzle-migrated database has one `__drizzle_migrations` row
+// per applied file, and that count is the highest id already applied (file N is
+// id N+1). It seeds that count as the only journal row, only while the journal
+// is empty, and never writes `drizzle.__drizzle_migrations`.
 function adoptDrizzleJournal(): Effect.Effect<
   number | undefined,
   SqlError.SqlError,
@@ -258,12 +227,9 @@ function adoptDrizzleJournal(): Effect.Effect<
   });
 }
 
-// OPS-6: the migrator skips every id at or below the latest applied one
-// (`currentId <= latestMigrationId`, effect Migrator.ts:258), so an on-disk file
-// numbered below the tip that is not in the journal never runs. Warn for each
-// one so the gap is visible at start. The journal is `effect_sql_migrations`
-// (SQL_MIGRATIONS_TABLE, sql.ts:27; the effect default at Migrator.ts:118) and
-// its id column is `migration_id` (Migrator.ts:170 and sql.ts:239).
+// The migrator skips every id at or below the latest applied one, so a file
+// numbered below the tip and missing from the journal never runs. Warn for each
+// so the gap is visible at start.
 function warnSkippedMigrations(
   migrations: ReadonlyArray<Migrator.ResolvedMigration>,
 ): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
@@ -277,9 +243,8 @@ function warnSkippedMigrations(
     const rows = yield* sql<{ migrationId: number; name: string }>`
       SELECT migration_id, name FROM ${sql(SQL_MIGRATIONS_TABLE)} ORDER BY migration_id DESC`;
     const applied = new Set(rows.map((row) => row.migrationId));
-    // Adoption seeds one row at the drizzle tip (adoptDrizzleJournal) whose id
-    // is the highest already applied; every id up to it was applied by drizzle
-    // and is not journaled row by row, so that prefix is not a gap.
+    // Adoption seeds one row at the drizzle tip; every id up to it was applied by
+    // drizzle and is not journaled row by row, so that prefix is not a gap.
     const adopted = rows.find((row) => row.name === 'adopted-from-drizzle');
     const appliedThrough = adopted?.migrationId ?? 0;
     const latest = Math.max(0, ...applied);
@@ -293,11 +258,9 @@ function warnSkippedMigrations(
   });
 }
 
-// The server's migrator (D3). It adopts a drizzle-migrated database, then runs
-// each committed migration in id order. `runSqlMigrations` skips every id at
-// or below the journal's latest and locks the journal table inside its own
-// transaction, so one call per id commits each migration on its own: when a
-// later migration fails, the earlier ones stay committed and journaled.
+// Adopts a drizzle-migrated database, then runs each migration in id order, one
+// transaction per id: when a later migration fails, the earlier ones stay
+// committed and journaled.
 export function migrateSql(
   directory: string = migrationsFolder,
 ): Effect.Effect<
@@ -311,9 +274,8 @@ export function migrateSql(
       yield* Effect.logInfo(`migrations: adopted ${adopted} drizzle migrations`);
     }
     const migrations = yield* sqlFileLoader(directory);
-    // A read-only warning must never keep the server from starting: a transient
-    // journal probe failure is logged once and ignored, while the migrations
-    // below still fail loudly.
+    // A read-only warning must never keep the server from starting; the
+    // migrations below still fail loudly.
     yield* warnSkippedMigrations(migrations).pipe(
       Effect.catchCause(() => Effect.logWarning('migrations: could not check for skipped files')),
     );
@@ -328,8 +290,7 @@ export function migrateSql(
   });
 }
 
-// Runs `migrateSql` on a raw PGlite handle. The caller owns the handle and
-// closes it.
+// The caller owns the PGlite handle and closes it.
 export function migratePglite(
   pglite: PGlite,
 ): Promise<ReadonlyArray<readonly [id: number, name: string]>> {

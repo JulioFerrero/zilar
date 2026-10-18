@@ -1,8 +1,5 @@
-// Search module on the Effect `HttpApi` adapter (T-0558): the same method,
-// path, step order, statuses and bodies as the deleted router
-// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // The archive query core lives in `routes.ts` (`runSearchEffect`); this module
-// owns the Effect query schema, the 501/429 guards and the adapter wiring.
+// owns the query schema, the 501/429 guards and the adapter wiring.
 
 import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
@@ -28,13 +25,8 @@ import {
 
 export type { SearchRoutesDependencies };
 
-// The schemas, the group and the middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0894).
-//
-// Any query decode failure is the fixed text `Invalid search query`.
-// The archive and rate-limit guards run before the query is decoded, exactly
-// like the old route's session -> 501 -> limiter -> decode order. `requires:
-// CurrentUser` is satisfied by `Session`.
+// Any query decode failure is the fixed text. The archive and rate-limit guards
+// run before the query is decoded, as before.
 function guardsLayer(
   deps: SearchRoutesDependencies,
   limiter: RateLimiter,

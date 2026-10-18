@@ -4,20 +4,16 @@ import { redactSecrets } from '../ai/http';
 import { createPinnedFetch } from './pinned-fetch';
 import type { ProviderId } from './providers';
 
-// "Test key" probe. Each provider gets one cheap GET that returns 2xx only when
-// the key is valid. The key is sent only to the provider's own API, never
-// stored or returned, and the outcome message is a fixed, sanitised string so
-// the key (or any provider echo of it) can never reach the client or the log.
+// Each provider gets one cheap GET that returns 2xx only when the key is valid.
+// The key goes only to the provider's own API, never stored or returned, and
+// every outcome message is fixed so an echo of the key cannot reach the client.
 
 export type ProbeOutcome = { ok: true } | { ok: false; message: string };
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface ProviderProbe {
-  /**
-   * T-1396: `baseUrl` is the stored URL for the OpenAI-compatible provider and
-   * ignored by every other one. T-1429: `provider` may also be a catalog id.
-   */
+  /** `baseUrl` is used by the compatible path only; `provider` may be a catalog id. */
   testKey(provider: string, key: string, baseUrl?: string | null): Promise<ProbeOutcome>;
 }
 
@@ -62,16 +58,14 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
       'x-github-api-version': '2022-11-28',
     }),
   },
-  // T-1396: the user's own base URL; the key is a bearer token like OpenAI's.
   'openai-compatible': {
     buildUrl: (_key, baseUrl) => `${baseUrl ?? ''}/models`,
     buildHeaders: (key) => ({ authorization: `Bearer ${key}` }),
   },
 };
 
-// T-1429: a catalog provider (a models.dev id we did not hardcode) probes
-// exactly like the user's own OpenAI-compatible endpoint, through the pinned
-// fetch. An id the endpoint table does not name is such a provider.
+// A catalog provider probes exactly like the user's own OpenAI-compatible
+// endpoint, through the pinned fetch.
 function usesCompatiblePath(provider: string): boolean {
   return (
     provider === 'openai-compatible' ||
@@ -81,14 +75,12 @@ function usesCompatiblePath(provider: string): boolean {
 }
 
 function endpointFor(provider: string): Endpoint {
-  // `usesCompatiblePath` proved the id is a known endpoint when it is false.
   return usesCompatiblePath(provider)
     ? ENDPOINTS['openai-compatible']
     : ENDPOINTS[provider as ProviderId];
 }
 
-// A failed or timed-out fetch. Internal only: it never reaches a caller, it is
-// turned into the "unreachable" outcome below.
+// Internal only: it never reaches a caller, it becomes the "unreachable" outcome.
 class ProbeUnreachable extends Data.TaggedError('ProbeUnreachable') {}
 
 function outcomeFor(response: Response): ProbeOutcome {
@@ -107,9 +99,8 @@ function outcomeFor(response: Response): ProbeOutcome {
   return { ok: false, message: 'The provider returned an unexpected response' };
 }
 
-// T-1396: for a custom endpoint only a 2xx means the key works; a 401/403 is a
-// bad key and everything else (including a 404 on a base URL without `/models`)
-// is "unreachable", the honest answer from the spec.
+// For a custom endpoint only a 2xx means the key works; a 401/403 is a bad key,
+// and everything else is "unreachable".
 function outcomeForCustom(response: Response): ProbeOutcome {
   if (response.status === 401 || response.status === 403) {
     return { ok: false, message: 'The provider rejected the key' };
@@ -120,8 +111,7 @@ function outcomeForCustom(response: Response): ProbeOutcome {
   return { ok: false, message: 'The provider is unreachable' };
 }
 
-// Every outcome is a value, so the effect has no error channel. The fetch
-// receives the Effect abort signal, which fires when the probe is interrupted.
+// The effect has no error channel; the fetch gets the abort signal.
 export function testKeyEffect(
   fetchImpl: FetchLike,
 ): (provider: string, key: string, baseUrl: string | null) => Effect.Effect<ProbeOutcome> {
@@ -145,10 +135,8 @@ export function testKeyEffect(
         orElse: () => Effect.fail(new ProbeUnreachable()),
       }),
     );
-    // Unreachable is a distinct, honest answer: not a false failure of the key
-    // and not a false success. The message carries no detail from the error
-    // object because a URL (Google puts the key in the query) could echo the
-    // key back.
+    // The message carries no detail from the error object: a URL could echo the
+    // key back (Google puts it in the query).
     const mapOutcome = usesCompatiblePath(provider) ? outcomeForCustom : outcomeFor;
     return yield* probe.pipe(
       Effect.map(mapOutcome),
@@ -162,8 +150,7 @@ export function testKeyEffect(
 export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe {
   return {
     testKey(provider, key, baseUrl = null) {
-      // A custom or catalog endpoint is only ever called through the pinned
-      // fetch, which re-resolves and refuses a private address on every probe.
+      // Only the pinned fetch calls a custom endpoint; it re-resolves every probe.
       if (usesCompatiblePath(provider)) {
         if (baseUrl === null || baseUrl === '') {
           return Promise.resolve({ ok: false, message: 'The provider is unreachable' });
@@ -175,8 +162,7 @@ export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe
   };
 }
 
-// Redacts a key from a message, reusing the AI module's helper. The `sk-` rule
-// in that helper also catches credential-shaped keys the provider may echo.
+// The shared helper's `sk-` rule also catches credential-shaped echoes.
 export function redactKey(message: string, key: string): string {
   return redactSecrets(message, [key]);
 }

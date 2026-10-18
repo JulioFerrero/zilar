@@ -1,11 +1,5 @@
-// The per-user rate-limit middleware every Effect HTTP module repeats, built
-// once. A tag declared in `@zilar/api-contract` gets its layer from
-// `rateLimitLayer(tag, limiter, message)`; a module-local tag is declared with
-// `makeRateLimit(tagName, message)` and provided with `.layer(limiter)`.
-//
-// Order is load-bearing: the middleware runs after `Session` and before the
-// payload decode, so the budget is spent first, exactly like the old routes'
-// `limiter.allow(user.id)` then service order.
+// The per-user rate-limit middleware. Order is load-bearing: it runs after
+// `Session` and before the payload decode, so the budget is spent first.
 
 import { CurrentUser } from '@zilar/api-contract';
 import { Effect, Layer } from 'effect';
@@ -29,9 +23,7 @@ type RateLimitTag<Self, Id extends string> = HttpApiMiddleware.ServiceClass<
 >;
 
 /**
- * The per-user budget for a rate-limit tag. It answers 429 `rate_limited` with
- * `message` once `limiter.allow(user.id)` is false, otherwise it runs the
- * endpoint.
+ * Answers 429 `rate_limited` with `message` once `limiter.allow` is false.
  */
 export function rateLimitLayer<Self, Id extends string>(
   tag: RateLimitTag<Self, Id>,
@@ -57,7 +49,6 @@ export function rateLimitLayer<Self, Id extends string>(
 }
 
 export function makeRateLimit(tagName: string, message: string) {
-  // `requires: CurrentUser` is satisfied by `Session`.
   class RateLimit extends HttpApiMiddleware.Service<RateLimit, { requires: CurrentUser }>()(
     tagName,
   ) {}

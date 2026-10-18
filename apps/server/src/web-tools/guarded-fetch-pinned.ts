@@ -1,10 +1,5 @@
-// The pinned HTTPS request of the fetch guard: DNS resolves a host to
-// addresses, the caller validates them, and `fetchPinned` issues the GET
-// pinned to one validated IP with SNI/`Host` kept as the hostname.
-//
-// `FetchFailed` is the failure mode of the request itself; `classifyFetchError`
-// maps a thrown `Error` to it. `guarded-fetch.ts` owns the guard pipeline and
-// imports this module.
+// `fetchPinned` GETs one validated address with SNI/`Host` kept as the hostname;
+// `FetchFailed` is the request's failure mode.
 import { request as httpsRequest } from 'node:https';
 import { Data, Effect, type Effect as EffectType } from 'effect';
 import { classifyFetchFailureReason, type FetchFailureReason } from './guarded-fetch-helpers';
@@ -40,8 +35,7 @@ export function fetchPinned(
   };
   const path = `${url.pathname}${url.search}`;
   return Effect.callback<PinnedFetchResult, FetchFailed>((resume) => {
-    // `resume` may only run once; the body end, a truncation, a stream error
-    // and the request error all race to reach it.
+    // The body end, a truncation, a stream error and a request error race here.
     let settled = false;
     const succeed = (result: PinnedFetchResult): void => {
       if (!settled) {
@@ -96,8 +90,7 @@ export function fetchPinned(
           }
           if (total + chunk.length > maxResponseBytes) {
             if (truncateAtMax) {
-              // Answer with what was read up to the cap: the `<head>` is in
-              // the first few KB, the rest of a big page is not needed.
+              // The `<head>` is in the first few KB; the rest is not needed.
               chunks.push(chunk.subarray(0, maxResponseBytes - total));
               succeed(body());
               req.destroy();
@@ -120,9 +113,7 @@ export function fetchPinned(
         });
       },
     );
-    // `setTimeout` on the request is an idle timeout, so a server that drips
-    // one byte at a time is ended between bytes. The hard overall deadline is
-    // the `Effect.timeoutOrElse` around this effect in `guardedGetEffect`.
+    // An idle timeout only; the hard deadline is the `timeoutOrElse` in `guardedGetEffect`.
     req.setTimeout(timeoutMs, () => {
       req.destroy(new Error('fetch timeout'));
     });
@@ -133,8 +124,7 @@ export function fetchPinned(
       failWith(error);
     });
     req.end();
-    // Runs when the fiber is interrupted (overall deadline or caller abort):
-    // destroy the request so its socket is released.
+    // Interruption destroys the request, so its socket is released.
     return Effect.sync(() => {
       req.destroy();
     });

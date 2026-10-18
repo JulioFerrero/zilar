@@ -1,13 +1,9 @@
-// effect-plain: the Promise edge over the async routine helpers; a routine
-// failure is logged and never fails the card answer.
-// T-1856: an answer on an alert card that is linked to a routine changes that
-// routine. The threshold lands in `input.threshold`, off pauses it, and on
-// resumes it only when the person paused it — a failure, hosts or approval
-// pause stays put, and the card keeps the switch the person set. The routine
-// side is best-effort: errors are logged with ids only and never fail the
-// answer.
-// T-1860: only the routine's manager answers a linked alert. Anyone else gets
-// the card's usual 404 and nothing is recorded. Pause and resume are audited.
+// effect-plain: a routine failure is logged and never fails the card answer.
+//
+// An alert answer changes its linked routine: the threshold, off pauses, and on
+// resumes only when the person paused it. Only the routine's manager may answer
+// a linked alert; anyone else gets the card's usual 404. Pause and resume are
+// audited.
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -24,14 +20,14 @@ export interface AlertRoutineDeps {
   audit?: AuditRecorder;
 }
 
-// An unknown card and a card the caller may not answer read the same, so the
-// card's ids cannot be probed through a link.
+// An unknown card and a card the caller may not answer read the same, so ids
+// cannot be probed.
 function cardNotFound(): HttpError {
   return new HttpError(404, 'card_not_found', 'Card not found');
 }
 
-// An unlinked alert has no manager to check; a linked one is answerable only
-// by the routine's manager (the AI's owner, or a group owner/admin).
+// An unlinked alert has no manager; a linked one is answerable only by the
+// routine's manager (the AI owner, or a group owner/admin).
 export async function requireAlertManager(
   db: ServerDatabase,
   cardId: string,
@@ -48,14 +44,11 @@ export async function requireAlertManager(
   }
 }
 
-// The same strip rule the card answer uses: spaces, commas and one leading
-// currency sign. `respond.ts` has already rejected anything else.
+// The same strip rule as `respond.ts`, which already rejected anything else.
 function parseThreshold(text: string): number {
   return Number(text.replace(/[ ,]/g, '').replace(/^[$€£]/, ''));
 }
 
-// Applies one recorded alert answer to the routine linked to this card block.
-// No link means nothing happens.
 export async function applyAlertToRoutine(
   deps: AlertRoutineDeps,
   card: BlockCardRow,

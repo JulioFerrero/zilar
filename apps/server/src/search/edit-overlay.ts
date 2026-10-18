@@ -1,11 +1,8 @@
-// effect-plain: a Promise over the read-only ArchivePool, the same Promise
-// edge search/service.ts wraps; the Effect layer adapts it at the call site.
-// Corrections and retractions archive as their own rows naming the target's
-// origin id, next to the original row ejabberd keeps. Every server read (search,
-// the account export, the push preview, the topic preview) resolves them through
-// this one helper: the target set is read in full (no time cursor, no search
-// window), and only an edit whose sender equals the target's sender counts. A
-// forged retraction or correction from another account is ignored.
+// effect-plain: a Promise over the read-only pool.
+//
+// Corrections and retractions archive as their own rows naming the target. Every
+// read resolves them here: the target set is read in full, and only an edit
+// whose sender equals the target's sender counts, so a forged one is ignored.
 
 import { bareJid } from '../jid';
 import type { ArchivePool, SearchOwner } from './service';
@@ -19,7 +16,6 @@ export type EditScope =
 export interface EditOverlayEntry {
   /** A retraction from the target's sender: the message is deleted for everyone. */
   retracted: boolean;
-  /** The newest accepted correction's full body, when one exists. */
   latestText?: string;
 }
 
@@ -36,8 +32,7 @@ export interface EditArchiveRow {
   body?: string | null;
 }
 
-// Each target may have many edits, but a target count times this bound keeps the
-// scan small while still finding every edit of a normal page of messages.
+// A target count times this bound keeps the scan small.
 const EDITS_PER_TARGET = 20;
 
 const CORRECTION_PATTERN = '%urn:xmpp:message-correct:0%';
@@ -72,7 +67,6 @@ function scopePredicate(scope: EditScope, next: Binder['next']): string {
   return `(username = ANY(${rooms}) OR (username = ${ownLocalpart} AND bare_peer = ANY(${dmPeers})))`;
 }
 
-/** The corrected or retracted target of an edit row, or null for a message. */
 export function editTarget(xml: string): string | null {
   return correctionTarget(xml) ?? retractTarget(xml);
 }
@@ -81,9 +75,8 @@ function isSpace(char: string | undefined): boolean {
   return char !== undefined && ' \t\n\r'.includes(char);
 }
 
-// The attribute value of the first matching tag, read with indexOf: never a
-// regex over the whole stanza. Whitespace around `=` is allowed. A missing or
-// malformed attribute is null.
+// Read with indexOf, never a regex over the whole stanza. Whitespace around `=`
+// is allowed; a missing or malformed attribute is null.
 function attributeValue(tag: string, name: string): string | null {
   let from = 0;
   for (;;) {
@@ -131,9 +124,8 @@ function messageFrom(xml: string): string | null {
   return attributeValue(xml.slice(tagStart, tagEnd), 'from');
 }
 
-// A room compares ejabberd's stored `bare_peer`, the real sender's bare JID:
-// the nick is a free display name anyone can take, and stored room XML normally
-// carries no muc#user item. A DM compares the sender's bare JID from the stanza.
+// A room compares `bare_peer`, the real sender: the nick is free text anyone can
+// take. A DM compares the sender's bare JID from the stanza.
 export function rowSenderKey(row: Pick<EditArchiveRow, 'kind' | 'barePeer' | 'xml'>): string {
   if (row.kind === 'groupchat') {
     return `room:${bareJid(row.barePeer).toLowerCase()}`;
@@ -143,11 +135,8 @@ export function rowSenderKey(row: Pick<EditArchiveRow, 'kind' | 'barePeer' | 'xm
 }
 
 /**
- * Every accepted correction and retraction of `targetOriginIds` in `scope`,
- * newest first. The edits read has no time cursor and no search-window cap (an
- * old retraction must still hide a page-2 hit), only a cap of the target count
- * times 20. Edits from any other sender than the target's are dropped, so a
- * forged retraction or correction never hides or rewrites a message.
+ * Every accepted edit of `targetOriginIds`, newest first. No time cursor: an old
+ * retraction must still hide a page-2 hit. A foreign sender's edit is dropped.
  */
 export async function loadEditsForTargets(
   archive: ArchivePool,

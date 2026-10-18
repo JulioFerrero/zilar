@@ -1,19 +1,14 @@
-// T-1429: maps the models.dev document to our catalog providers. Our six
-// native providers keep their ids and names; every other provider whose `npm`
-// is `@ai-sdk/openai-compatible` and that carries an `https://` API base URL
-// joins them as a `compatible` provider. The compatible base URLs stay in the
-// server-only `baseUrls` map below (`catalogBaseUrl`) and never reach the
-// public catalog; only the provider metadata does.
+// Maps the models.dev document to our catalog providers. Providers whose `npm`
+// is `@ai-sdk/openai-compatible` join as `compatible`, and their base URLs stay
+// server-only: only the metadata reaches the public catalog.
 //
-// The document is decoded loosely and each model on its own: models.dev ships
-// thousands of entries, and one malformed provider or model must not drop the
-// rest.
+// Decoded loosely and per model: models.dev ships thousands of entries, and one
+// malformed provider or model must not drop the rest.
 
 import { Option, Schema } from 'effect';
 import type { AiCatalogModel, AiCatalogProvider } from '@zilar/api-contract';
 import { priceKey, type ModelPrices } from './cost';
 
-// models.dev uses the same provider ids we do, so the mapping is the identity.
 export const PROVIDERS = [
   'openai',
   'anthropic',
@@ -63,7 +58,6 @@ const ModelsDevModel = Schema.Struct({
   ),
 });
 
-// The provider record is decoded loosely: an unknown or missing field is fine.
 const ModelsDevProvider = Schema.Struct({
   name: Schema.optional(Schema.String),
   doc: Schema.optional(Schema.String),
@@ -74,9 +68,8 @@ const ModelsDevProvider = Schema.Struct({
 
 type ModelsDevModelType = typeof ModelsDevModel.Type;
 
-// A model without a text input or a text output (an image, audio or embedding
-// model) is not a chat model. A model with no `modalities` is kept: the data
-// cannot prove it is not text.
+// A model without text in and out (image, audio, embedding) is not a chat model;
+// a missing `modalities` is kept because the data cannot prove otherwise.
 function isTextModel(model: ModelsDevModelType): boolean {
   const modalities = model.modalities;
   if (modalities === undefined) {
@@ -100,11 +93,9 @@ function toCatalogModel(model: ModelsDevModelType): AiCatalogModel {
   };
 }
 
-// The models.dev base URLs of the compatible providers, keyed by provider id.
-// Rebuilt on every mapping and never part of the response.
+// Server-only: rebuilt on every mapping and never part of the response.
 const baseUrls = new Map<string, string>();
 
-/** T-1429: the base URL models.dev gives a compatible provider, or null. */
 export function catalogBaseUrl(id: string): string | null {
   return baseUrls.get(id) ?? null;
 }
@@ -176,11 +167,8 @@ function compatibleProviders(root: Record<string, unknown>): CompatibleEntry[] {
 }
 
 /**
- * Maps the models.dev document to our providers: the natives in their fixed
- * order, then the compatible ones by name. Deprecated and non-text models are
- * dropped, each provider's models are sorted newest first, and the per-model
- * prices (including cache prices) are kept for the cost module. An unknown or
- * missing provider is skipped.
+ * Natives in fixed order, then compatibles by name; deprecated and non-text
+ * models dropped, prices kept for the cost module.
  */
 export function mapCatalogDocument(raw: unknown): {
   providers: AiCatalogProvider[];

@@ -5,10 +5,8 @@ import type { ServerDatabase } from '../db/client';
 import type { BlockCardInsert, BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 
-// The storage for interactive cards (B8a): the card row keyed by the origin id
-// the gateway chose when sending, the stanza id it comes back as, and one row
-// per interaction. The pure merge that turns responses into the drawn state
-// lives in `apply.ts`.
+// Card storage: one row per card and one per interaction. The pure merge lives
+// in `apply.ts`.
 
 export interface RecordCardInput {
   originId: string;
@@ -19,8 +17,7 @@ export interface RecordCardInput {
   data: BlocksData;
 }
 
-// Writes the card at post time. The caller has already validated `data`
-// against `BlocksDataSchema`.
+// The caller has already validated `data` against `BlocksDataSchema`.
 export async function recordCard(
   db: ServerDatabase,
   input: RecordCardInput,
@@ -56,10 +53,9 @@ export async function recordCard(
   return created;
 }
 
-// T-1579 shape: the card an AI posts comes back from the room as an outgoing
-// reflection whose stanza id (XEP-0359) is what clients quote, while the row was
-// written under the origin id the gateway chose when sending. Stamps the stanza
-// id once, and only when it is still null. Returns whether the row changed.
+// The posted card comes back as an outgoing reflection whose stanza id
+// (XEP-0359) is what clients quote, while the row keeps the origin id. Stamp it
+// once, only while null. Returns whether the row changed.
 export async function rekeyCard(
   db: ServerDatabase,
   originId: string,
@@ -78,8 +74,7 @@ export async function rekeyCard(
   return updated.length > 0;
 }
 
-// The card a client quotes, whether it still carries the origin id or the
-// stanza id it was re-keyed to.
+// Either the origin id or the stanza id a card was re-keyed to.
 export async function findCard(db: ServerDatabase, id: string): Promise<BlockCardRow | null> {
   const [row] = await runSql(
     db,
@@ -101,8 +96,7 @@ export interface UpsertResponseInput {
   value: unknown;
 }
 
-// Records one interaction, or replaces the actor's earlier one for the same
-// block and item: a checklist tick is set once per (card, block, item, actor).
+// A checklist tick is set once per (card, block, item, actor).
 export async function upsertResponse(
   db: ServerDatabase,
   input: UpsertResponseInput,
@@ -138,8 +132,8 @@ export interface ReplacePollVotesInput {
   optionIds: string[];
 }
 
-// A poll vote is replaceable: one person's choice is the set of options they
-// last picked, so the delete and the inserts run in one transaction.
+// A poll vote is the set of options last picked, so the delete and inserts share
+// one transaction.
 export async function replacePollVotes(
   db: ServerDatabase,
   input: ReplacePollVotesInput,
@@ -171,8 +165,7 @@ export async function replacePollVotes(
   );
 }
 
-// Every response of a card, oldest first, so `applyResponses` can take the
-// latest row per item.
+// Oldest first, so `applyResponses` can take the latest row per item.
 export async function listResponses(
   db: ServerDatabase,
   cardId: string,
@@ -189,8 +182,7 @@ export async function listResponses(
   return [...rows];
 }
 
-// Replaces the drawn card data (B9), e.g. after a reveal or a correction.
-// Returns whether the card exists.
+// Replaces the drawn card data. Returns whether the card exists.
 export async function saveCardData(
   db: ServerDatabase,
   originId: string,

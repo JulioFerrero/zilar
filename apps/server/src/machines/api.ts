@@ -1,14 +1,6 @@
-// Machines and runner pairing on the Effect `HttpApi` adapter (T-0572): the
-// same methods, paths, statuses, bodies, texts, logs, audit entries and per
-// route step order as the deleted router (`routes.ts`), mounted by the Effect
-// edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-//
-// Two details keep the tests unchanged:
-// - the owner routes run the session middleware before anything else, and the
-//   public pair route runs the global then per-IP limiter before the body;
-// - the per-IP limiter reads `socketAddressOf` (the socket edge stamps the
-//   header); tests stamp the socket header themselves before calling the
-//   handler.
+// Owner routes run the session middleware first; the public pair route runs the
+// global then per-IP limiter before the body. The per-IP limiter reads
+// `socketAddressOf`, the header the edge stamps.
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -56,14 +48,12 @@ import {
 export const PAIRING_CODE_RATE_LIMIT_MAX = 10;
 export const PAIRING_CODE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-// The public pair route is the brute-force target: 30 attempts per minute
-// across all callers, plus 10 per minute per IP.
+// The pair route is the brute-force target: 30/min across callers plus 10/min per IP.
 export const PAIR_GLOBAL_RATE_LIMIT_MAX = 30;
 export const PAIR_IP_RATE_LIMIT_MAX = 10;
 export const PAIR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
-// T-1995: every owner write (rename, approve, deny, revoke, delete) shares one
-// per-user budget.
+// Every owner write shares one per-user budget.
 export const MACHINE_WRITE_RATE_LIMIT_MAX = 30;
 export const MACHINE_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
@@ -71,28 +61,19 @@ export interface MachinesApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: MachinesLogger;
-  /** Audit recorder; production wires the server's own recorder. */
   audit?: AuditRecorder;
   /** Shared with the tunnel hub so revokes close live connections. */
   registry?: DbMachineRegistry;
-  /** Injected in tests so rate-limit windows can advance without waiting. */
   now?: () => number;
-  /** Injected by app.ts when the runner hub is on; absent = hub off. */
   isMachineOnline?: (machineId: string) => boolean;
 }
 
-// The pino surface: the Effect envelope logs an unhandled failure through the
-// same `error` method the old `onError` used.
 export type MachinesLogger = Logger;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// The group, the body schemas and the reply schemas live in the shared
-// contract (`@zilar/api-contract`, `machines.ts`, T-0895). `rename` and `pair`
-// declare their payloads for the derived client but are served with
-// `handleRaw`: they read the body by hand (their own 400 texts, and `pair`
-// answers every failure with the same `invalid_code`), so the error order
-// stays.
+// `rename` and `pair` declare payloads for the derived client but are served
+// with `handleRaw`: they read the body by hand for their own 400 texts.
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
 
 export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount {
@@ -129,8 +110,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     }
   }
 
-  // `audit.record` stays awaited: a write failure rejects the route just like
-  // the old `await`.
+  // Awaited: an audit write failure rejects the route.
   async function recordAudit(entry: {
     actorUserId: string;
     action: string;
@@ -153,8 +133,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     });
   }
 
-  // Runs a service call whose rejection may be a `MachineServiceError`, which
-  // answers 409 with the service's code; anything else stays a 500.
+  // A `MachineServiceError` answers 409 with its code; anything else stays a 500.
   async function orConflict<A>(run: () => Promise<A>): Promise<A> {
     try {
       return await run();
@@ -168,8 +147,6 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'createPairingCode',
         handler(logger, async (_request, user) => {
-          // The pairing-code budget is spent by `PairingCodeRateLimit`, which
-          // reads this limiter through the layer below.
           const created = await orConflict(() =>
             createPairingCode(deps.db, user.id, new Date(now())),
           );
@@ -324,10 +301,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
               const normalized = Option.isSome(parsed)
                 ? normalizePairingCode(parsed.value.code)
                 : null;
-              // The code-consume and the signature check run together and the
-              // route branches once afterwards, so the timing does not reveal
-              // which one failed. Every failure below answers the identical 400
-              // invalid_code. The `Promise.all` shape is kept on purpose.
+              // Consume and signature check run together and branch once, so timing
+              // does not reveal which failed; every failure answers 400 invalid_code.
               const [consumed, signatureOk] = yield* Effect.promise(() =>
                 Promise.all([
                   normalized === null
@@ -382,8 +357,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
   const apiLayer = HttpApiBuilder.layer(MachinesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // Pairing codes are minted sparingly; the budget is spent right after the
-    // session, before any query.
+    // Spent right after the session, before any query.
     Layer.provide(
       rateLimitLayer(
         MachinesPairingCodeRateLimit,

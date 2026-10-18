@@ -1,4 +1,3 @@
-// T-0993: the `web.fetch` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
 import { guardedGet } from './guarded-fetch';
@@ -15,9 +14,8 @@ import {
   type WebToolsState,
 } from './shared';
 
-// `web.fetch`: read one caller-chosen page. Tier 1: the URL is a
-// data-exfiltration channel, so the topic's "always allow here" rules
-// and the kill switch apply.
+// Tier 1: the URL is a data-exfiltration channel, so the topic's allow rules and
+// the kill switch apply.
 const webFetchArgsSchema = Schema.Struct({
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_FETCH_URL_CHARS)),
   maxChars: Schema.optional(

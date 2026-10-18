@@ -4,26 +4,18 @@ import type { AuditEntry } from '../audit/service';
 import { startSweepLoop } from '../effect/sweep-loop';
 import { expireStale } from './service';
 
-// The minimum slice of pino's Logger the sweeper needs. The real server wires
-// its own logger; tests can pass a captor.
+// The minimum slice of pino's Logger the sweeper needs.
 export interface SweeperLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
 }
 
 export interface StartApprovalsSweeperOptions {
   db: ServerDatabase;
-  /**
-   * Audit recorder. Each swept row writes exactly one `approval.expired`
-   * entry. Production wires the server's own `createAuditRecorder`, which
-   * already swallows write errors so the timer keeps running; tests may
-   * pass a strict recorder to verify a failing sweep does not stop the
-   * timer.
-   */
+  /** Each swept row writes exactly one `approval.expired` entry. */
   audit: { record: (entry: AuditEntry) => Promise<void> };
   logger: SweeperLogger;
   /** Tick cadence in milliseconds. Defaults to 60 s. */
   intervalMs?: number;
-  /** Source of the wall clock; tests override it. */
   now?: () => Date;
 }
 
@@ -31,10 +23,8 @@ export interface ApprovalsSweeperHandle {
   close(): void;
 }
 
-// `expireStale` already has a conditional update (`status = 'pending' AND
-// expires_at < now`), so two sweeps racing are safe: the second just sees an
-// empty `RETURNING`. We also gate the next tick on the previous one finishing
-// so a slow database cannot stack overlapping sweeps.
+// `expireStale`'s conditional update makes racing sweeps safe: the second sees
+// an empty `RETURNING`.
 export function startApprovalsSweeper({
   db,
   audit,
@@ -48,8 +38,7 @@ export function startApprovalsSweeper({
     try {
       swept = await expireStale(db, at);
     } catch (error) {
-      // Log the bare error and nothing else: no row ids, no AI ids. The
-      // row data will come back from a successful next tick anyway.
+      // No row or AI ids in the log; the next successful tick brings the data.
       logger.error({ err: serializeError(error) }, 'approvals sweeper tick failed');
       return;
     }
@@ -73,12 +62,10 @@ export function startApprovalsSweeper({
     }
   }
 
-  // First run after one interval, not at boot, so the timer delay never
-  // blocks startup.
+  // First run after one interval, not at boot, so the delay never blocks startup.
   return startSweepLoop(intervalMs, tick);
 }
 
-// Reduce a thrown error to `{ name, message }`, matching `machines/hub.ts`.
 function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     return { name: error.name, message: error.message };

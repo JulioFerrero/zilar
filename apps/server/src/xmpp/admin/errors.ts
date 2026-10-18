@@ -1,6 +1,5 @@
 // effect-plain: pure ejabberd error-text helpers; the schema-issue walker moved to effect/schema-issues
-// Every failure coming from ejabberd (HTTP status or an error body) is wrapped
-// in this type. Messages never include the admin credentials.
+// Every ejabberd failure; messages never include the admin credentials.
 export class EjabberdApiError extends Error {
   readonly command: string;
   readonly status: number;
@@ -13,9 +12,7 @@ export class EjabberdApiError extends Error {
   }
 }
 
-// ejabberd answers errors either as a bare JSON string ("Room already exists")
-// or as `{ "status": "error", "code": …, "message": … }`. This extracts a
-// readable detail from both.
+// ejabberd answers either a bare JSON string or `{ status, code, message }`.
 export function errorText(body: unknown): string {
   if (typeof body === 'string') {
     return body === '' ? 'no response body' : body;

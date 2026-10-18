@@ -1,7 +1,5 @@
-// The durable machine lookup, on `effect/sql` (see `../effect/sql`). The
-// runtime for `db` is resolved at call time from `sqlRuntimeFor`, never when
-// the registry is built: `index.ts` creates the registry before `createApp`
-// registers the runtime.
+// The runtime for `db` is resolved at call time, because `index.ts` creates the
+// registry before `createApp` registers the runtime.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -11,20 +9,17 @@ import { runSql } from '../effect/sql';
 export type RevokeListener = (machineId: string) => void;
 export type ApproveListener = (machineId: string, publicKey: string) => void;
 
-// The durable lookup the tunnel hub uses to trust connecting machines. Only
-// `approved` machines expose their key: pending and revoked machines (and
-// unknown ids) resolve to null, so the hub cannot authenticate them.
+// Only `approved` machines expose their key: pending, revoked and unknown ids
+// resolve to null, so the hub cannot authenticate them.
 export interface DbMachineRegistry {
   getApprovedPublicKey(machineId: string): Promise<string | null>;
   touchLastSeen(machineId: string, at: Date): Promise<void>;
   onRevoke(listener: RevokeListener): () => void;
-  // Called by the machines routes after a revoke commits. Runs this
-  // process's listeners synchronously, so the hub can close live
-  // connections. Cross-process fan-out is out of scope for this task.
+  // Runs this process's listeners synchronously after a revoke commits, so the
+  // hub closes live connections. Cross-process fan-out is out of scope.
   notifyRevoked(machineId: string): void;
   onApprove(listener: ApproveListener): () => void;
-  // Called by the machines routes after an approve commits, so the hub can
-  // trust a freshly-approved machine without waiting for its 30 s refresh.
+  // So the hub trusts a fresh approval without waiting for its 30 s refresh.
   notifyApproved(machineId: string, publicKey: string): void;
 }
 
@@ -45,8 +40,7 @@ export function createDbMachineRegistry(db: ServerDatabase): DbMachineRegistry {
       return row?.publicKey ?? null;
     },
 
-    // The hub writes this when a machine connects. A missing id is a no-op:
-    // the row may have been deleted between the lookup and the write.
+    // A missing id is a no-op: the row may be deleted between lookup and write.
     async touchLastSeen(machineId: string, at: Date): Promise<void> {
       await runSql(
         db,

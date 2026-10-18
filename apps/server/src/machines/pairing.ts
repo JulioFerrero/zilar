@@ -41,8 +41,8 @@ export async function createPairingCode(
   now: Date,
 ): Promise<{ code: string; expiresAt: Date }> {
   const expiresAt = new Date(now.getTime() + PAIRING_CODE_TTL_MS);
-  // T-1995: the count and the insert share one transaction under a per-owner
-  // lock, so parallel requests cannot both slip under the cap.
+  // The count and insert share one transaction under a per-owner lock, so
+  // parallel requests cannot both slip under the cap.
   return runSql(
     db,
     Effect.gen(function* () {
@@ -61,9 +61,8 @@ export async function createPairingCode(
               ),
             );
           }
-          // A hash collision resolves to a fresh code; with 64 bits of entropy
-          // it will not happen, but the unique constraint makes a retry
-          // mandatory.
+          // A hash collision resolves to a fresh code; the unique constraint makes
+          // the retry mandatory.
           for (let attempt = 0; attempt < 3; attempt += 1) {
             const code = generatePairingCode();
             const normalized = normalizePairingCode(code);
@@ -86,9 +85,8 @@ export async function createPairingCode(
   );
 }
 
-// Atomically consumes a code: marks it used only when it is still unused and
-// unexpired, and returns the row. Two concurrent requests for one code yield
-// exactly one row; the loser sees null.
+// Marks a code used only while unused and unexpired; two concurrent requests
+// yield exactly one row, and the loser sees null.
 export async function consumePairingCode(
   db: ServerDatabase,
   codeHash: string,
@@ -114,10 +112,9 @@ export interface PairMachineInput {
   capabilities: Record<string, unknown>;
 }
 
-// Inserts the machine as `pending`. Quotas are counted and the row inserted in
-// one transaction under a per-owner lock, so concurrent pairs cannot both slip
-// under the caps; a duplicate public key — including one on a revoked machine,
-// whose row is kept — fails with `key_in_use`.
+// Inserts as `pending`: quotas and insert share one transaction under a
+// per-owner lock. A duplicate public key, including one on a revoked row, fails
+// with `key_in_use`.
 export async function insertPendingMachine(
   db: ServerDatabase,
   input: PairMachineInput,

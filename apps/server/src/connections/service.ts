@@ -10,15 +10,13 @@ import type { ProviderId } from './providers';
 
 export type ConnectionRow = ProviderConnectionRow;
 
-// T-1984: a user keeps at most this many active provider keys; the create
-// route answers 409 `limit_reached` at the cap.
+// The create route answers 409 `limit_reached` at this cap.
 export const CONNECTIONS_MAX_PER_USER = 50;
 
 export interface PublicConnection {
   id: string;
   provider: ProviderId;
   label: string | null;
-  /** T-1396: the custom provider's base URL; `null` for every other provider. */
   baseUrl: string | null;
   status: 'active' | 'revoked';
   createdAt: Date;
@@ -32,12 +30,9 @@ export interface CreateConnectionInput {
   baseUrl: string | null;
 }
 
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
 // `provider` is a validated ProviderId on every write, so the cast is safe. The
-// plaintext key is never part of this shape: callers that need it go through
-// `decryptForGatewayUse`.
+// plaintext key never enters this shape; callers that need it use the gateway
+// seam below.
 function toPublicConnection(row: ConnectionRow): PublicConnection {
   return {
     id: row.id,
@@ -75,9 +70,8 @@ export async function createConnection(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          // The count and the insert share one transaction under a per-owner
-          // advisory lock: two concurrent creates at the cap would otherwise
-          // both read under it and both insert.
+          // The count and insert share one transaction under a per-owner advisory
+          // lock: two concurrent creates at the cap would otherwise both insert.
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'connections:' + input.owner}))`;
           const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
             FROM provider_connections
@@ -111,9 +105,8 @@ export interface UpdateConnectionKeyInput {
   encryptedKey: string;
 }
 
-// Replaces the stored key in place (T-1292). One transaction: the row update is
-// owner-scoped, so a row another user owns is not touched and the caller sees
-// null (the route answers 404). The plaintext key never enters this shape.
+// Owner-scoped, so another user's row is untouched and the caller sees null (the
+// route answers 404). The plaintext key never enters this shape.
 export async function updateConnectionKey(
   db: ServerDatabase,
   input: UpdateConnectionKeyInput,
@@ -139,8 +132,7 @@ export async function updateConnectionKey(
   return row === undefined ? null : toPublicConnection(row);
 }
 
-// Looks up one connection owned by `owner`. Returns null for a missing id and
-// for an id owned by someone else alike, so existence is never leaked.
+// A missing id and a foreign one both answer null, so existence is never leaked.
 export async function findOwnedConnection(
   db: ServerDatabase,
   id: string,
@@ -175,10 +167,8 @@ export async function deleteConnection(
   return row !== undefined;
 }
 
-// How many AIs still use a connection. The `ais.provider_connection_id` foreign
-// key is RESTRICT, so the delete route turns "in use" into a clean 409 before
-// the database can refuse the delete. The result is a bare count: the route
-// never lists the AIs.
+// The FK is RESTRICT, so the route turns "in use" into a clean 409 before the
+// database refuses. The result is a bare count; the route never lists the AIs.
 export async function countAisUsingConnection(
   db: ServerDatabase,
   connectionId: string,
@@ -194,10 +184,9 @@ export async function countAisUsingConnection(
   return Number(row?.total ?? 0);
 }
 
-// The seam for the LLM gateway: decrypts a stored key in memory for the one
-// request that needs it. This is the only place outside `crypto` that the
-// plaintext exists, and it never crosses a route or a response. M2 wires this
-// into the gateway's request path; nothing calls it yet.
+// The gateway seam: decrypts a key in memory for one request. Outside `crypto`
+// this is the only place the plaintext exists, and it never crosses a route or
+// a response.
 export function decryptForGatewayUseEffect(
   cipher: KeyCipher,
   connectionId: string,
@@ -216,9 +205,7 @@ export function decryptForGatewayUseEffect(
   });
 }
 
-// Promise wrapper kept for callers that are still plain `async` (routes and
-// `createAi`); the model transactions use `decryptForGatewayUseEffect` directly
-// so the read rides the transaction's connection.
+// Model transactions use the Effect directly so the read rides theirs.
 export async function decryptForGatewayUse(
   db: ServerDatabase,
   cipher: KeyCipher,

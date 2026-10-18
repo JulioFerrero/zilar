@@ -1,5 +1,3 @@
-// Contact-request reads (T-0983 size split, moved unchanged from `./service`):
-// the list endpoint, the viewer-to-other relation and the by-handle profile.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -17,11 +15,9 @@ import {
   type ContactRequestView,
 } from './queries';
 
-// Lists the viewer's pending requests, newest first: `{ incoming, outgoing }`
-// with the other person's name, handle and image. Never an email. Incoming
-// requests from people the viewer blocked are never listed. Names, images
-// and handles resolve in ONE joined query over the distinct other ids —
-// never one select per row.
+// Pending requests, newest first, with name, handle and image; never an email.
+// A sender the viewer blocked is never listed, and the profiles resolve in one
+// joined query.
 export async function listContactRequests(
   deps: ContactRequestsDeps,
   viewerId: string,
@@ -66,11 +62,8 @@ export async function listContactRequests(
 export type ViewerRelation =
   'self' | 'blocked' | 'contact' | 'request_sent' | 'request_received' | 'none';
 
-// The relation between the viewer and the owner of a handle, for
-// `GET /api/users/by-handle/:handle`: `self`, `blocked`, `contact`,
-// `request_sent`, `request_received` or `none`. `blocked` is checked first
-// after `self` and means the viewer blocked the other side. Unknown and
-// retired handles answer the same 404 as `resolveHandleUser`.
+// `blocked` is checked right after `self` and means the viewer blocked the other
+// side. Unknown and retired handles answer the same 404 as `resolveHandleUser`.
 export async function relationFor(
   db: ServerDatabase,
   viewerId: string,
@@ -102,13 +95,8 @@ export async function relationFor(
   );
 }
 
-// SG-7 (T-1437): the batched form of `relationFor` for a viewer and many
-// others. The result per user is identical to calling `relationFor` for that
-// user alone — `self` first, then `blocked`, `contact`, the pending direction
-// and `none` — but the three probes run once over the whole set instead of
-// three to four times per user. The same query count holds for a search page.
-// Callers that need one relation keep `relationFor`; the batched read is for
-// the people search (`searchUsers`).
+// The batched form of `relationFor`: the same per-user result, with the three
+// probes run once over the whole set, for the people search.
 export async function relationsFor(
   db: ServerDatabase,
   viewerId: string,
@@ -194,9 +182,8 @@ export async function profileForHandle(
       return found ?? null;
     }),
   );
-  // Reuse the row just read: an unknown handle and a retired handle answer
-  // the same 404. So does a handle whose owner blocked the viewer: the
-  // blocked person is never told the account exists.
+  // An unknown handle and a retired one answer the same 404. So does a handle
+  // whose owner blocked the viewer: the account's existence is never revealed.
   if (!row || !row.userId) {
     throw new HttpError(404, 'not_found', 'No user with that username');
   }

@@ -8,9 +8,8 @@ export const SEARCH_MIN_FUZZY_QUERY_CHARS = 3;
 const START_SEL = '\u0001';
 const STOP_SEL = '\u0002';
 
-// `ts_headline` marks hits with the StartSel/StopSel sentinels. Split the
-// headline into plain text plus character ranges, so the client highlights
-// with spans and never renders HTML.
+// Splits the `ts_headline` sentinels into plain text plus ranges, so the client
+// highlights with spans and never renders HTML.
 export function headlineToSnippet(headline: string): MarkedSnippet {
   let snippet = '';
   const marks: Array<[number, number]> = [];
@@ -42,9 +41,8 @@ const isSpace = (char: string | undefined): boolean => char !== undefined && WHI
 const BLOCKQUOTE = '>';
 const LIST_MARKERS = ['-', '*', '+'];
 
-// Message text often carries Markdown, but the client shows the snippet as
-// plain text. Strip the common markup and remap the marks onto the stripped
-// text so the highlight still lands on the hit.
+// Strip common Markdown and remap the marks, so the highlight still lands on the
+// hit in the plain-text snippet.
 export function plainSnippet({ snippet, marks }: MarkedSnippet): MarkedSnippet {
   const chars = [...snippet];
   const keep = Array.from({ length: chars.length }, () => true);
@@ -120,8 +118,8 @@ export function plainSnippet({ snippet, marks }: MarkedSnippet): MarkedSnippet {
     }
   }
 
-  // Collapse whitespace and record where every code point boundary lands in
-  // the stripped text, so a mark maps to the same span of visible characters.
+  // Record where every boundary lands in the stripped text, so a mark maps to the
+  // same span of visible characters.
   const boundary = Array.from({ length: chars.length + 1 }, () => 0);
   let out = '';
   let i = 0;
@@ -183,17 +181,15 @@ export function senderNameFor(
   peerNames: Map<string, string>,
   roomNames: ReadonlyMap<string, string> = new Map(),
 ): string {
-  // A room row names the real sender in `bare_peer`, never in the free-text
-  // nick; our tables supply the display name for that JID. The nick is only a
-  // fallback when there is no name, then `Unknown`.
+  // The real room sender is `bare_peer`, never the free-text nick; the nick is
+  // only a fallback, then `Unknown`.
   if (row.kind === 'groupchat') {
     const sender = row.barePeer === '' ? null : bareJid(row.barePeer);
     const name = sender === null ? undefined : (roomNames.get(sender) ?? peerNames.get(sender));
     return name ?? (row.nick === '' ? 'Unknown' : row.nick);
   }
-  // In a DM archive the caller's own outgoing messages are stored under the
-  // same `bare_peer` as incoming ones. The stanza's `from` decides: a `from`
-  // naming the caller means the caller sent it.
+  // Outgoing DMs share `bare_peer` with incoming ones; the stanza's `from`
+  // decides, so a `from` naming the caller means the caller sent it.
   const from = stanzaFrom(row.xml);
   if (from !== null && bareJid(from) === ownBareJid) {
     return 'You';
@@ -201,8 +197,7 @@ export function senderNameFor(
   return peerNames.get(row.barePeer) ?? 'Unknown';
 }
 
-// The stanza's `from` attribute, parsed defensively like the other tag
-// readers: a missing or malformed attribute is null, never a throw.
+// A missing or malformed attribute is null, never a throw.
 export function stanzaFrom(xml: string): string | null {
   const attrs = openTagAttrs(xml, 'message');
   const value = attrs?.match(/\bfrom\s*=\s*(["'])([\s\S]*?)\1/)?.[2]?.trim();
@@ -221,8 +216,7 @@ function tagAttribute(xml: string, tag: string): string | null {
   return attrs.match(/\bid\s*=\s*["']([^"']+)["']/)?.[1] ?? null;
 }
 
-// A correction row carries `<replace xmlns="urn:xmpp:message-correct:0"
-// id="…"/>` naming the original origin_id.
+// `<replace xmlns="urn:xmpp:message-correct:0" id="…"/>` names the original id.
 export function correctionTarget(xml: string): string | null {
   if (!xml.includes('urn:xmpp:message-correct:0')) {
     return null;
@@ -230,8 +224,7 @@ export function correctionTarget(xml: string): string | null {
   return tagAttribute(xml, 'replace');
 }
 
-// A retraction row carries `<retract xmlns="urn:xmpp:message-retract:1"
-// id="…"/>` naming the retracted origin_id.
+// `<retract xmlns="urn:xmpp:message-retract:1" id="…"/>` names the retracted id.
 export function retractTarget(xml: string): string | null {
   if (!xml.includes('urn:xmpp:message-retract:1')) {
     return null;

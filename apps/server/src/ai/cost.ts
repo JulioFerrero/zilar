@@ -1,7 +1,5 @@
-// T-1405: what one model call costs, in USD, from the models.dev prices the
-// catalog keeps (docs/audit/effect-ai-plan.md §5.3). The catalog is the source;
-// `setModelPrices` is filled by `ai/catalog.ts` when it maps models.dev, and by
-// tests. Prices are USD per million tokens, as models.dev reports them.
+// What one model call costs, in USD, from the models.dev prices the catalog
+// keeps. Prices are USD per million tokens.
 import type { ChatUsage } from './model-client';
 
 export interface ModelPrices {
@@ -15,34 +13,28 @@ export interface CostLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
-// Provider and model ids are namespaced so a model id that contains the
-// separator can never collide with another provider's entry.
+// Namespaced so a model id containing the separator cannot collide with
+// another provider's entry.
 export function priceKey(provider: string, model: string): string {
   return `${provider}\u0000${model}`;
 }
 
 let prices: ReadonlyMap<string, ModelPrices> = new Map();
 
-/** Replaces the price table (the catalog on a map, tests with a fixture). */
 export function setModelPrices(entries: ReadonlyMap<string, ModelPrices>): void {
   prices = new Map(entries);
 }
 
-/** The price entry for a provider and model, or null when the catalog lacks it. */
 export function modelPricesFor(provider: string, model: string): ModelPrices | null {
   return prices.get(priceKey(provider, model)) ?? null;
 }
 
-// One warning per unknown provider/model per process: a model the catalog does
-// not know must not spam the log on every call.
+// One warning per unknown model per process, so a call does not spam the log.
 const warned = new Set<string>();
 
 /**
- * The USD cost of one call: uncached input × input price, output × output
- * price, cache reads × the cache-read price, cache writes × the cache-write
- * price. A model whose cache prices are missing falls back to its input price
- * (the provider charges uncached rate). An unknown model costs 0 and logs one
- * warning carrying the provider and model ids only.
+ * Cache prices fall back to the input price (what the provider charges
+ * uncached); an unknown model costs 0 and logs one warning with ids only.
  */
 export function costOf(
   provider: string,

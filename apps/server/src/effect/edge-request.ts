@@ -1,9 +1,5 @@
-// The request-level helpers of the HTTP edge (T-1123, split of `./edge.ts`):
-// route matching, the request id, CORS, the request-log path and the error
-// bodies. They moved unchanged so `./edge.ts` keeps the interfaces and
-// `createEdge`; `./edge.ts` re-exports the public helpers and this file must
-// not import it (no cycle). This is the front door for every request, so the
-// CORS and origin logic stays exactly as it was.
+// Route matching, request id, CORS, the request-log path and the error bodies
+// for the edge. This file must not import `./edge.ts` (no cycle).
 
 import { HttpServerResponse } from 'effect/http';
 import type { ServerConfig } from '../config';
@@ -75,12 +71,9 @@ export function allowedOrigins(config: ServerConfig): string[] {
   return [...origins];
 }
 
-// Join tokens (T-0115), sign-up invite codes, GIF media tokens (T-0122) and
-// avatar ids (unguessable uuids) are bearer secrets, so the request log
-// redacts every segment after `/api/join/`, `/api/invites/`,
-// `/api/gifs/media/` and `/api/avatars/`
-// (`/api/join/<token>` and any variant such as a trailing slash, which 404s in
-// routing but still reaches this log line).
+// Join tokens, invite codes, GIF media tokens and avatar ids are bearer
+// secrets, so the log redacts the segment after each, including a trailing-slash
+// variant that 404s in routing but still reaches this line.
 export function logPath(path: string): string {
   if (path.startsWith('/api/join/')) {
     return '/api/join/:token';
@@ -134,12 +127,9 @@ function appendVary(
   return HttpServerResponse.setHeader('Vary', `${existing}, ${value}`)(response);
 }
 
-// Hono CORS parity on `/api/*`: an allowed request `Origin` is echoed with
-// `Access-Control-Allow-Origin`, credentials are always on, preflight
-// (`OPTIONS`) answers here with the allow-methods list and echoes the
-// requested headers, and `Vary: Origin` is set on every `/api` response. A
-// disallowed or absent origin gets no allow-origin header (but keeps the
-// credentials flag and the Vary, as Hono does).
+// An allowed origin is echoed, credentials are always on, and `Vary: Origin` is
+// set on every response. A disallowed or absent origin gets no allow-origin
+// header but keeps the credentials flag, as before.
 export function applyCors(
   response: HttpServerResponse.HttpServerResponse,
   allowedOrigin: string | null,
@@ -189,7 +179,7 @@ export function forwardEdgeRequest(
 ): Request {
   const headers = new Headers(request.headers);
   headers.set(REQUEST_ID_HEADER, requestId);
-  // Strip any client-forged value first: only the edge may set it.
+  // Only the edge may set it.
   headers.delete(SOCKET_ADDRESS_HEADER);
   headers.set(SOCKET_ADDRESS_HEADER, socketAddress);
   return new Request(request, { headers });

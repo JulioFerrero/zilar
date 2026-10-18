@@ -11,17 +11,10 @@ export interface ApprovalVerifyResult {
   decision?: ApprovalDecision;
 }
 
-// Verifies an approval for the engine. Returns `{ ok: true, decision }` only
-// when the request is `approved_once` or `approved_always`, unexpired, and
-// `argsHash` matches the stored hash (compared with `timingSafeEqual` so the
-// answer cannot be used to recover the hash byte by byte). For both
-// approvals the status is flipped to `consumed` with a conditional update so a second
-// call fails. Any other state — wrong hash, not decided, denied, expired,
-// already consumed — returns `{ ok: false }` with no detail.
-//
-// `approved_always` is treated like `approved_once` here on purpose: standing
-// rules (always-allow for one action across requests) are a separate spec and
-// the current behaviour is to make every approval consume.
+// Only an unexpired `approved_once`/`approved_always` with a matching hash
+// verifies, and the hash is compared with `timingSafeEqual` so the answer leaks
+// nothing. The conditional flip to `consumed` makes a second call fail. Every
+// other state returns `{ ok: false }` with no detail.
 export async function verifyApproval(
   db: ServerDatabase,
   params: { approvalId: string; argsHash: string },

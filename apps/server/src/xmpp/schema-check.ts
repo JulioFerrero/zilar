@@ -2,18 +2,14 @@ import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import type { ArchivePool } from '../search/service';
 
-// OPS-7: ejabberd's tables live outside our migrations, and `update_sql_schema`
-// cannot repair a shape that drifted at an unchanged version (T-1146). At
-// startup the server reads the real column shapes and compares them against the
-// shapes production is known to use, so a mismatch shows up in `/health`
-// instead of breaking push silently.
+// ejabberd's tables live outside our migrations, so at startup the server reads
+// the real shapes and compares them, so drift shows in `/health` instead of
+// breaking push silently.
 //
-// The columns come from `pg_catalog`, not `information_schema`: the read-only
-// `zilar_archive` role has SELECT on `archive` only, so `information_schema`
-// would hide `muc_room` and `push_session` from it.
+// `pg_catalog`, not `information_schema`: the read-only role has SELECT on
+// `archive` only, so the latter would hide two of the tables.
 export type EjabberdSchemaStatus = 'ok' | 'drift' | 'unknown';
 
-/** The committed shape of the three tables, as `name type` pairs. */
 export const EJABBERD_EXPECTED_COLUMNS: Record<string, readonly string[]> = {
   archive: [
     'username text',
@@ -32,9 +28,8 @@ export const EJABBERD_EXPECTED_COLUMNS: Record<string, readonly string[]> = {
   push_session: ['username text', 'timestamp bigint', 'service text', 'node text', 'xml text'],
 };
 
-// `format_type` renders the same type spellings `CREATE TABLE` takes. The
-// `pg_catalog` join lists columns without needing table privileges, and the
-// `current_schema()` filter keeps another schema's same-named table out.
+// `format_type` renders the spellings `CREATE TABLE` takes, and
+// `current_schema()` keeps another schema's same-named table out.
 const COLUMNS_SQL = `
   select c.relname as table_name,
          a.attname as column_name,
@@ -58,9 +53,8 @@ type SchemaColumnRow = {
 let cached: EjabberdSchemaStatus | undefined;
 
 /**
- * Compares the live column shapes of `archive`, `muc_room` and `push_session`
- * against [EJABBERD_EXPECTED_COLUMNS]. A missing, extra or retyped column is
- * `drift`; a query that cannot run at all is `unknown`.
+ * A missing, extra or retyped column is `drift`; a query that cannot run is
+ * `unknown`.
  */
 export async function checkEjabberdSchema(
   pool: ArchivePool,
@@ -85,8 +79,7 @@ export async function checkEjabberdSchema(
     found.get(row.table_name)?.add(`${row.column_name} ${row.data_type}`);
   }
 
-  // Log table and column names only: the public `/health` body and our logs
-  // must never carry the pool's connection details.
+  // Table and column names only: never the pool's connection details.
   const drifted: { table: string; columns: string[] }[] = [];
   for (const [table, expected] of Object.entries(EJABBERD_EXPECTED_COLUMNS)) {
     const expectedPairs = new Set(expected);
@@ -117,9 +110,8 @@ export async function checkEjabberdSchema(
 }
 
 /**
- * Runs the check once, at startup, when the archive pool exists, and caches the
- * result for `/health`. Returns the pool unchanged so the caller keeps its
- * single expression.
+ * Runs once at startup and caches the result for `/health`; returns the pool
+ * unchanged for the caller's single expression.
  */
 export function startEjabberdSchemaCheck(pool: ArchivePool, logger: Logger): ArchivePool {
   cached = 'unknown';
@@ -129,7 +121,6 @@ export function startEjabberdSchemaCheck(pool: ArchivePool, logger: Logger): Arc
   return pool;
 }
 
-/** The cached startup result, or `undefined` before a check has started. */
 export function ejabberdSchemaStatus(): EjabberdSchemaStatus | undefined {
   return cached;
 }

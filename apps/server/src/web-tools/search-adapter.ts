@@ -1,4 +1,3 @@
-// T-0993: the `web.search` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
 import { truncateChars } from '../text';
@@ -10,10 +9,8 @@ import {
 } from './search';
 import { MAX_SEARCH_QUERY_CHARS, withWebRateLimit, type WebToolsState } from './shared';
 
-// `web.search`: best-effort search through the provider port. Tier 1:
-// the query leaves the server, so the description warns the model not
-// to put private or sensitive text in it. Any failure or 0 results is
-// "search unavailable right now" with a hint at the reliable tools.
+// Tier 1: the query leaves the server, so the description warns against private
+// text. Any failure or 0 results is "unavailable" with a hint at reliable tools.
 const webSearchArgsSchema = Schema.Struct({
   query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SEARCH_QUERY_CHARS)),
 });
@@ -32,8 +29,8 @@ export function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     },
     execute: withWebRateLimit(state, async (args) => {
       const parsed = args as { query: string };
-      // One attempt per call, never a retry loop: the provider returns
-      // `[]` on any failure and the adapter answers "unavailable".
+      // One attempt: the provider returns `[]` on failure and the adapter answers
+      // "unavailable".
       let results: WebSearchResult[];
       try {
         results = await state.searchProvider.search(parsed.query, { limit: MAX_SEARCH_RESULTS });

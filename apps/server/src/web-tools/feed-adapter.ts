@@ -1,4 +1,3 @@
-// T-0993: the `web.feed` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
 import { parseFeed } from './feed';
@@ -14,8 +13,7 @@ import {
   type WebToolsState,
 } from './shared';
 
-// `web.feed`: read one caller-chosen RSS/Atom feed. Tier 1: the URL is
-// a data-exfiltration channel, like `web.fetch`.
+// Tier 1: the URL is a data-exfiltration channel, like `web.fetch`.
 const webFeedArgsSchema = Schema.Struct({
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_FETCH_URL_CHARS)),
   limit: Schema.optional(

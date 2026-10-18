@@ -1,25 +1,9 @@
-// The Effect HTTP edge (T-0730, plan §2.1 architecture A): builds the whole
-// outer edge with `effect/http` and dispatches to the existing module web
-// handlers. The modules do not change.
+// The outer HTTP edge. In order: request id, masked request log (also for a
+// throw), CORS and the origin guard on `/api/*`, `/api/auth/*` to
+// `auth.handler`, each mount route, then `/health`, 404 and the error envelope.
 //
-// Behaviour mirrors `app.ts` before the flip, in the same order:
-//  1. the request id (Hono `requestId()` semantics, `x-request-id` in and out),
-//  2. the masked request log (also when the request throws),
-//  3. CORS + the origin guard on `/api/*`,
-//  4. `/api/auth/*` straight to `auth.handler`,
-//  5. each mount route with the two forwarded headers,
-//  6. `/health`, the 404 catch-all, and the error envelope.
-//
-// Dispatch notes:
-// - One `HttpRouter.use` registration performs the dispatch against the mount
-//   route table (Hono-style: exact method plus case-sensitive, strict path
-//   match with `:param` segments), so `/api/auth/*` keeps Hono's precedence
-//   by being checked before any mount route. Layer-building hundreds of
-//   `HttpRouter.add` fragments is avoided.
-// - Defects (a throwing module handler, a throwing `auth.handler`, a rejected
-//   `health()`) are caught with `Effect.catchCause` and rendered through
-//   the same error envelope as `app.onError`; `Cause.defects` carries the
-//   original thrown value, checked with `instanceof HttpError` first.
+// `/api/auth/*` is checked before any mount route, so it keeps precedence.
+// Defects are caught and rendered through the same envelope as before.
 
 import { Cause, Effect, Layer, Option } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
@@ -78,26 +62,18 @@ export interface ZilarEdge {
   request: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   routes: ReadonlyArray<EdgeRoute>;
   dispose: () => Promise<void>;
-  /**
-   * The same `appLayer` the web handler uses, so a Node server can serve it
-   * (B1.6: `HttpRouter.serve(app.layer, …)` with `NodeHttpServer.layer`).
-   * Under `NodeHttpServer` the dispatch reads `request.remoteAddress`, the
-   * real socket address.
-   */
+  /** Served by a Node server; dispatch then reads `request.remoteAddress`. */
   layer: Layer.Layer<never, unknown, HttpRouter.HttpRouter>;
 }
 
-// T-1983: Better Auth keeps its own IP rule (for its rate limits and the
-// stored session IP) and cannot read TRUSTED_PROXY_HOPS, so the edge resolves
-// the IP once, with the same rule as the limiters, and passes it down. An
-// incoming CLIENT_IP_HEADER is overwritten so a client cannot choose its own.
+// Better Auth cannot read TRUSTED_PROXY_HOPS, so the edge resolves the IP once
+// with the limiters' rule. An incoming CLIENT_IP_HEADER is overwritten, so a
+// client cannot choose its own.
 function withClientIp(request: Request, socketAddress: string, trustedProxyHops: number): Request {
   const headers = new Headers(request.headers);
   const forwardedFor = headers.get('x-forwarded-for') ?? undefined;
-  // `'unknown'` means the transport has no peer socket at all (the web
-  // handler used by tests; `NodeHttpServer` always has one). Only then treat
-  // X-Forwarded-For as a one-hop stand-in, so those callers still get a
-  // per-client bucket. A real socket never falls into this branch.
+  // `'unknown'` means no peer socket (the web handler used by tests). Only then
+  // treat X-Forwarded-For as a one-hop stand-in; a real socket never does.
   const hops = trustedProxyHops > 0 || socketAddress !== NO_SOCKET ? trustedProxyHops : 1;
   headers.set(CLIENT_IP_HEADER, clientIpFrom({ forwardedFor, socketAddress }, hops));
   return new Request(request, { headers });
@@ -125,11 +101,9 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     const start = performance.now();
     const requestId = resolveRequestId(request.headers[REQUEST_ID_HEADER] ?? null);
     const method = request.method;
-    // Hono parity (`hono-base.js` `#dispatch`): HEAD is routed as GET. Under
-    // `toWebHandler` the Effect `HttpEffect` layer strips the body from the
-    // final web response; under `NodeHttpServer` Node's `http` omits the body
-    // for HEAD itself. Logging, the preflight check and the origin guard keep
-    // the raw method.
+    // HEAD routes as GET (as before). Under `toWebHandler` the Effect layer
+    // strips the body; under `NodeHttpServer` Node does. Logging, preflight and
+    // the origin guard keep the raw method.
     const routeMethod = method === 'HEAD' ? 'GET' : method;
     const url = new URL(request.url, 'http://localhost');
     const pathname = url.pathname;
@@ -160,12 +134,8 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     };
 
     const dispatch = Effect.gen(function* () {
-      // The socket address is the Node server's `remoteAddress`, or `'unknown'`
-      // when there is no socket (web-handler callers such as tests).
       const socketAddress = Option.getOrElse(request.remoteAddress, () => NO_SOCKET);
-      // CORS preflight on /api/* answers here, before the origin guard and
-      // routing, like the Hono cors middleware (204, echoed request headers,
-      // `Vary: Origin`).
+      // CORS preflight on /api/* answers before the origin guard and routing.
       if (isApi && method === 'OPTIONS') {
         const response = withId(
           cors(
@@ -178,8 +148,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
         return response;
       }
 
-      // Origin guard on /api/*: unsafe methods with a disallowed Origin
-      // answer 403 before anything else runs.
+      // Unsafe methods with a disallowed Origin answer 403 before anything runs.
       if (isApi && origin && UNSAFE_METHODS.has(method) && allowedOrigin === null) {
         const forbidden = new HttpError(403, 'forbidden', 'Origin is not allowed');
         const response = withId(
@@ -189,7 +158,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
         return response;
       }
 
-      // better-auth passthrough keeps Hono's precedence over mounts.
+      // Auth passthrough keeps precedence over mounts.
       if (pathname === '/api/auth' || pathname.startsWith('/api/auth/')) {
         const webRequest = yield* HttpServerRequest.toWeb(request);
         const authRequest = withClientIp(webRequest, socketAddress, config.TRUSTED_PROXY_HOPS);
@@ -232,9 +201,8 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
       return response;
     });
 
-    // `app.onError` parity: an HttpError renders with its status, anything
-    // else is logged and renders the 500 envelope. A request-log line is
-    // emitted for throws too, with the rendered status.
+    // An HttpError renders with its status; anything else is logged and renders
+    // the 500 envelope. A throw still gets a request-log line.
     return Effect.catchCause(dispatch, (cause: Cause.Cause<unknown>) => {
       const thrown: unknown = Cause.squash(cause);
       const render = (

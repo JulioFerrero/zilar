@@ -1,4 +1,3 @@
-// T-0993: the `web.wikipedia` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
 import { guardedGet } from './guarded-fetch';
@@ -10,9 +9,8 @@ import {
   type WebToolsState,
 } from './shared';
 
-// `web.wikipedia`: search + page extract on a fixed host. Tier 0: the
-// caller picks only the query and the language, never the host. `lang`
-// is letters-only so it cannot smuggle a different host in.
+// Tier 0: the caller picks only the query and the language, never the host.
+// `lang` is letters-only so it cannot smuggle a different host in.
 const webWikipediaArgsSchema = Schema.Struct({
   query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   lang: Schema.optional(
