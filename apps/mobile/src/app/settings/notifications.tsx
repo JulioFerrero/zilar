@@ -12,13 +12,11 @@ import { Card, SectionLabel } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
-import { LastPushReceivedLine, PushDevicesSection } from '@/components/settings/push-diagnostics';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { API_URL } from '@/lib/auth';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { createApiClient } from '@/lib/effect/api-client';
-import { fromApi } from '@zilar/client-core';
-import { interruptFiber } from '@zilar/client-core';
+import { fromApi, interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { readLastPushReceived } from '@/lib/push/last-received';
 import {
@@ -30,6 +28,66 @@ import {
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
+import { describeUserAgent, formatRelativeAudit } from '@zilar/chat-core';
+
+/** The native apps' user agents say nothing useful, so name them by kind. */
+function deviceName(device: PushDevice): string {
+  if (device.kind === 'fcm') {
+    return 'Android app';
+  }
+  if (device.kind === 'apns') {
+    return 'iPhone app';
+  }
+  return describeUserAgent(device.userAgent);
+}
+
+function PushDevicesSection({
+  devices,
+  thisDeviceId,
+}: {
+  devices: readonly PushDevice[];
+  thisDeviceId: string | null;
+}) {
+  const now = new Date();
+  return (
+    <View className="gap-2">
+      <SectionLabel>Devices</SectionLabel>
+      {devices.length === 0 ? (
+        <Text className="text-[14px] text-muted-foreground">No devices yet.</Text>
+      ) : (
+        <Card>
+          {devices.map((device) => (
+            <View key={device.id} className="px-3 py-2.5">
+              <Text className="text-[15px] font-medium text-foreground">
+                {deviceName(device)}
+                {thisDeviceId !== null && device.id === thisDeviceId ? ' (this phone)' : ''}
+              </Text>
+              <Text className="mt-0.5 text-[13px] text-muted-foreground">
+                {device.lastUsedAt !== null
+                  ? `Last push: ${formatRelativeAudit(new Date(device.lastUsedAt), now)}`
+                  : 'No push yet'}
+                {device.inactive ? ' · inactive' : ''}
+              </Text>
+              {device.failedAt !== null ? (
+                <Text className="mt-0.5 text-[13px] text-danger">
+                  {`Failed ${formatRelativeAudit(new Date(device.failedAt), now)}: ${device.lastFailure ?? 'unknown'}`}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </Card>
+      )}
+    </View>
+  );
+}
+
+function LastPushReceivedLine({ at }: { at: string | null }) {
+  const text =
+    at === null
+      ? 'Last push received on this phone: never'
+      : `Last push received on this phone: ${formatRelativeAudit(new Date(at), new Date())}`;
+  return <Text className="px-1 text-[13px] text-muted-foreground">{text}</Text>;
+}
 
 type PermissionView = 'enabled' | 'not-enabled' | 'blocked';
 type PageStatus = 'loading' | 'ready' | 'error';

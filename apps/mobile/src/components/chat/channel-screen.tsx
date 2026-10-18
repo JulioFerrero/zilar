@@ -1,16 +1,14 @@
 import { useRouter } from 'expo-router';
 import { Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Eye, Trash2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ScrollView, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { ChannelMoreMenu } from '@/components/channel-info/more-menu';
 import { ChannelPeoplePage } from '@/components/channel-info/people-page';
 import { ChannelInfoRoot } from '@/components/channel-info/root-page';
-import { ChannelSettingsPage } from '@/components/channel-info/settings-page';
 import { useGroupManage } from '@/components/chat/group-manage-section';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
 import {
@@ -37,6 +35,116 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';
+import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
+import { ScreenHeader } from '@/components/ui/screen-header';
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
+import { TextField } from '@/components/ui/text-field';
+
+type ChannelMoreMenuProps = {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  busy: boolean;
+  error: string;
+  onDelete: () => void;
+};
+
+function ChannelMoreMenu({ open, onClose, title, busy, error, onDelete }: ChannelMoreMenuProps) {
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteName, setDeleteName] = useState('');
+
+  const closeDelete = () => {
+    if (!busy) {
+      setDeleteOpen(false);
+      setDeleteName('');
+    }
+  };
+
+  return (
+    <>
+      <ActionSheet
+        visible={open}
+        onClose={onClose}
+        onDismissed={() => {
+          if (pendingDelete) {
+            setPendingDelete(false);
+            setDeleteOpen(true);
+          }
+        }}
+        closeLabel="Close more actions"
+      >
+        <ActionSheetItem
+          label="Delete channel"
+          icon={Trash2}
+          destructive
+          onPress={() => {
+            setPendingDelete(true);
+            onClose();
+          }}
+        />
+      </ActionSheet>
+
+      <BottomSheet
+        visible={deleteOpen}
+        onClose={closeDelete}
+        closeLabel="Close delete channel"
+        title="Delete channel"
+        footer={
+          <Button
+            variant="destructive"
+            accessibilityLabel="Delete channel"
+            disabled={busy || deleteName.trim() !== title}
+            onPress={onDelete}
+          >
+            <Text>{busy ? 'Deleting…' : 'Delete channel'}</Text>
+          </Button>
+        }
+      >
+        <Text className="text-[13px] leading-5 text-muted-foreground">
+          Delete {title} for everyone? The channel and its messages go away. This can&apos;t be
+          undone.
+        </Text>
+        <View className="mt-3">
+          <TextField
+            value={deleteName}
+            onChangeText={setDeleteName}
+            placeholder={title}
+            accessibilityLabel="Type the channel name to confirm"
+          />
+        </View>
+        {error !== '' ? (
+          <Text accessibilityRole="alert" className="pt-2 text-[13px] text-danger">
+            {error}
+          </Text>
+        ) : null}
+      </BottomSheet>
+    </>
+  );
+}
+
+type ChannelSettingsPageProps = {
+  onBack: () => void;
+  onOpenVisibility: () => void;
+};
+
+function ChannelSettingsPage({ onBack, onOpenVisibility }: ChannelSettingsPageProps) {
+  return (
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <ScreenHeader variant="sub" title="Settings" onBack={onBack} />
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <View className="gap-3 px-4 pt-1">
+          <InfoRowGroup>
+            <InfoRow icon={Eye} label="Visibility" onPress={onOpenVisibility} />
+          </InfoRowGroup>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
 type ChannelScreenProps = {
   groupId: string;

@@ -14,14 +14,81 @@ import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type { Topic } from '../../lib/topics-api';
 import type { ChatStoreState } from '../types';
 import { makeGroupActions } from './group-actions';
-import {
-  makeGroupMembershipActions,
-  type GroupMembershipActions,
-} from './group-membership-actions';
 import { makeGroupRolesActions } from './group-roles-actions';
-import { makeGroupSettingsActions, type GroupSettingsActions } from './group-settings-actions';
 import { Ports } from './ports';
 import { failAfter, lift, orElse, type StoreCtx } from './runtime';
+
+interface GroupMembershipHelpers {
+  readonly ensureGroupDetail: (
+    groupId: string,
+    force?: boolean,
+  ) => Effect.Effect<void, never, Ports>;
+  readonly refreshQuietly: Effect.Effect<void, never, Ports>;
+}
+
+/** Permissions are enforced by the server; these actions never decide them. */
+type GroupMembershipActions = Pick<
+  ChatStoreState,
+  'addGroupMembers' | 'removeGroupMember' | 'addGroupAi' | 'removeGroupAi'
+>;
+
+function makeGroupMembershipActions(
+  ctx: StoreCtx,
+  helpers: GroupMembershipHelpers,
+): GroupMembershipActions {
+  const { groups: groupsApi } = ctx.ports;
+  const { ensureGroupDetail, refreshQuietly } = helpers;
+
+  const writeAndReload = (write: () => Promise<void>, groupId: string): Promise<void> =>
+    ctx.run(
+      Effect.gen(function* () {
+        yield* lift(write);
+        yield* ensureGroupDetail(groupId, true);
+        yield* refreshQuietly;
+      }),
+    );
+
+  return {
+    addGroupMembers: (groupId, userIds) =>
+      writeAndReload(() => groupsApi.addGroupMembers(groupId, userIds), groupId),
+    removeGroupMember: (groupId, userId) =>
+      writeAndReload(() => groupsApi.removeGroupMember(groupId, userId), groupId),
+    addGroupAi: (groupId, aiId) =>
+      writeAndReload(() => groupsApi.addGroupAi(groupId, aiId), groupId),
+    removeGroupAi: (groupId, aiId) =>
+      writeAndReload(() => groupsApi.removeGroupAi(groupId, aiId), groupId),
+  };
+}
+
+interface GroupSettingsHelpers {
+  readonly ensureGroupDetail: (
+    groupId: string,
+    force?: boolean,
+  ) => Effect.Effect<void, never, Ports>;
+  readonly refreshQuietly: Effect.Effect<void, never, Ports>;
+}
+
+/** Permissions are enforced by the server; this action never decides them. */
+type GroupSettingsActions = Pick<ChatStoreState, 'patchGroupSettings'>;
+
+function makeGroupSettingsActions(
+  ctx: StoreCtx,
+  helpers: GroupSettingsHelpers,
+): GroupSettingsActions {
+  const { groups: groupsApi } = ctx.ports;
+  const { ensureGroupDetail, refreshQuietly } = helpers;
+
+  return {
+    patchGroupSettings: (groupId, patch) =>
+      ctx.run(
+        Effect.gen(function* () {
+          yield* lift(() => groupsApi.patchGroupSettings(groupId, patch));
+          yield* ensureGroupDetail(groupId, true);
+          yield* refreshQuietly;
+        }),
+      ),
+  };
+}
 
 export type GroupActions = Pick<
   ChatStoreState,

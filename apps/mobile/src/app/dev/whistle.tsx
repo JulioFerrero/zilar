@@ -6,16 +6,57 @@ import { AudioLines, Download, Mic, Play } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { UiMessage } from '@zilar/chat-core';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { createVoiceRecorder } from '@/lib/voice-recorder';
-import { lastVoiceNoteOf } from '@/lib/whistle-last-note';
 import { createWhistlePort, type WhistlePort, type WhistleStatus } from '@/lib/whistle-port';
 import type { WhistleTranscript } from '@/lib/whistle-port-types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { mobileUploadOf } from '../../lib/types';
+
+/**
+ * Scans every chat newest-first and returns the first message with a `voice` payload and a playable URI.
+ */
+
+interface LastVoiceNote {
+  messageId: string;
+  chatId: string;
+  uri: string;
+  durationMs: number;
+}
+
+/** Sorts newest-first by id tail when timestamps tie (local ids grow). */
+function compareNewestFirst(left: UiMessage, right: UiMessage): number {
+  const time = right.createdAt.getTime() - left.createdAt.getTime();
+  return time !== 0 ? time : right.id.localeCompare(left.id);
+}
+
+function lastVoiceNoteOf(messagesByChat: Record<string, UiMessage[]>): LastVoiceNote | undefined {
+  const all: UiMessage[] = Object.values(messagesByChat).flat();
+  all.sort(compareNewestFirst);
+  for (const message of all) {
+    if (message.voice === undefined || message.deleted === true) {
+      continue;
+    }
+    const { localUri } = mobileUploadOf(message);
+    const url = message.voice.url;
+    const uri = localUri ?? url ?? '';
+    if (uri === '') {
+      continue;
+    }
+    return {
+      messageId: message.id,
+      chatId: message.chatId,
+      uri,
+      durationMs: Math.max(0, message.voice.duration_ms),
+    };
+  }
+  return undefined;
+}
 
 type Phase =
   | { kind: 'idle' }

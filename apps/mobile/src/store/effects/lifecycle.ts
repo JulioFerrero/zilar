@@ -1,3 +1,4 @@
+// effect-plain: the async expo-file-system seam for the shared codec; failures are swallowed.
 import type { XmppCore } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import {
@@ -14,20 +15,87 @@ import {
   type HistoryState,
   type LifecycleCtx,
   type StoreAppHooks,
+  decodeChatListCache,
+  encodeChatListCache,
 } from '@zilar/client-core/store';
+import type { ChatSummary } from '@zilar/chat-core';
 
 import type { ChatEntry, Contact, Me } from '../../lib/chat-api';
-import {
-  clearChatListCache,
-  readChatListCache,
-  writeChatListCache,
-} from '../../lib/chat-list-cache';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { dismissChatNotifications, syncBadge } from '../../lib/push/badge';
 import { markCachePainted } from '../../lib/startup-paint';
 import type { ChatStoreState, LoadState } from '../types';
 import type { StoreCtx } from './runtime';
+
+const CHAT_LIST_CACHE_FILE_NAME = 'zilar-chat-list.json';
+
+function cacheUri(documentDirectory: string): string {
+  return documentDirectory + CHAT_LIST_CACHE_FILE_NAME;
+}
+
+async function readCacheFile(): Promise<string | null> {
+  try {
+    const { documentDirectory, readAsStringAsync } = await import('expo-file-system/legacy');
+    if (documentDirectory === null) {
+      return null;
+    }
+    return await readAsStringAsync(cacheUri(documentDirectory));
+  } catch {
+    return null;
+  }
+}
+
+async function writeCacheFile(contents: string): Promise<void> {
+  try {
+    const { documentDirectory, writeAsStringAsync } = await import('expo-file-system/legacy');
+    if (documentDirectory === null) {
+      return;
+    }
+    await writeAsStringAsync(cacheUri(documentDirectory), contents);
+  } catch {
+    // Ignore the failure: messaging must not depend on the cache.
+  }
+}
+
+async function deleteCacheFile(): Promise<void> {
+  try {
+    const { documentDirectory, deleteAsync } = await import('expo-file-system/legacy');
+    if (documentDirectory === null) {
+      return;
+    }
+    await deleteAsync(cacheUri(documentDirectory), { idempotent: true });
+  } catch {
+    // Ignore the failure on the way out.
+  }
+}
+
+/**
+ * `chats` keeps unknown fields, so a newer build's cache still paints.
+ */
+export async function readChatListCache(): Promise<{
+  userId: string;
+  chats: ChatSummary[];
+} | null> {
+  const raw = await readCacheFile();
+  return raw === null ? null : (decodeChatListCache(raw) ?? null);
+}
+
+function writeChatListCache(userId: string, chats: readonly ChatSummary[]): void {
+  if (userId === '') {
+    return;
+  }
+  try {
+    void writeCacheFile(encodeChatListCache(userId, chats));
+  } catch {
+    // A serialization failure must never break messaging.
+  }
+}
+
+/** Called on sign-out, so one user's list never paints as another's. */
+function clearChatListCache(): void {
+  void deleteCacheFile();
+}
 
 export interface Lifecycle {
   start(): void;

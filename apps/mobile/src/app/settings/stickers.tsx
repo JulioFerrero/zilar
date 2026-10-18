@@ -1,12 +1,11 @@
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { Plus, Star } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { View } from 'react-native';
+import { View, Pressable } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { DiscoverTab } from '@/components/stickers/discover-tab';
-import { FavoritesTab } from '@/components/stickers/favorites-tab';
 import { PackSheet } from '@/components/stickers/pack-sheet';
 import { PacksTab } from '@/components/stickers/packs-tab';
 import { TelegramImportSheet } from '@/components/stickers/telegram-import-sheet';
@@ -16,9 +15,78 @@ import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
-import { ICON } from '@/lib/colors';
+import { ICON, FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@zilar/client-core';
-import type { StickerPack } from '@/lib/stickers';
+import {
+  type StickerPack,
+  isSameOriginStickerUrl,
+  stickerImageSource,
+  type StickerItem,
+} from '@/lib/stickers';
+import { Image } from 'expo-image';
+import { Text } from '@/components/ui/text';
+import { API_URL } from '@/lib/auth';
+
+function FavoritesTab({
+  favorites,
+  tile,
+  token,
+  busy,
+  actionError,
+  onUnstar,
+}: {
+  favorites: StickerItem[];
+  tile: number;
+  token: string | undefined;
+  busy: boolean;
+  actionError: string;
+  onUnstar: (stickerId: string) => void;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-[16px] font-semibold text-foreground">Favorites</Text>
+      {actionError !== '' ? (
+        <Text accessibilityRole="alert" className="text-[14px] text-danger">
+          {actionError}
+        </Text>
+      ) : null}
+      {favorites.length === 0 ? (
+        <StateMessage kind="empty" title="No favorites yet. Starred stickers show up here." />
+      ) : (
+        <View accessibilityLabel="Favorite stickers" className="flex-row flex-wrap gap-2">
+          {favorites.map((sticker) => (
+            <View
+              key={sticker.id}
+              className="items-center justify-center rounded-[10px] border border-border bg-surface p-1"
+              style={{ width: tile, height: tile }}
+            >
+              {isSameOriginStickerUrl(sticker.url, API_URL) ? (
+                <Image
+                  source={stickerImageSource(sticker.url, API_URL, token)}
+                  accessibilityLabel={sticker.emoji ?? 'Sticker'}
+                  style={{ width: tile - 8, height: tile - 8 }}
+                  contentFit="contain"
+                />
+              ) : (
+                <Text accessibilityLabel={sticker.emoji ?? 'Sticker'}>{sticker.emoji ?? ''}</Text>
+              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove favorite"
+                disabled={busy}
+                hitSlop={10}
+                onPress={() => onUnstar(sticker.id)}
+                className="absolute right-0.5 top-0.5 h-6 w-6 items-center justify-center rounded-full bg-black/70 active:opacity-70 disabled:opacity-60"
+              >
+                <Star size={12} color={FOREGROUND} fill={FOREGROUND} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
 
 export { favoriteTileSize } from '@/components/stickers/tile-size';
 

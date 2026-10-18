@@ -1,9 +1,23 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Copy,
+  Image,
+  Bell,
+  BellOff,
+  Check,
+  Inbox,
+  MessageCircle,
+  Search,
+  UserPlus,
+  X,
+  Ban,
+} from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { type AvatarPersonInput, chatSubtitle } from '@zilar/chat-core';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import {
@@ -14,23 +28,393 @@ import {
 } from '@/components/contacts/add-contact';
 import { performBlock, performUnblock } from '@/components/contacts/blocks';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { buildActions } from '@/components/profile/profile-actions';
-import { ProfileBlock } from '@/components/profile/profile-block';
-import { ProfileHeader } from '@/components/profile/profile-header';
-import { ProfileInfo } from '@/components/profile/profile-info';
-import { ProfileMedia } from '@/components/profile/profile-media';
 import type { ProfilePerson } from '@/components/profile/profile-person';
-import { useProfileDm } from '@/components/profile/use-profile-dm';
-import { ActionTiles } from '@/components/ui/action-tiles';
+import { ActionTiles, type ActionTile } from '@/components/ui/action-tiles';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
-import { ICON } from '@/lib/colors';
-import { domainOfJid, normalizeHandleInput } from '@/lib/contacts-api';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { domainOfJid, normalizeHandleInput, type ContactRelation } from '@/lib/contacts-api';
 import { goBackOrHome } from '@/lib/navigation';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { MediaSheet } from '@/components/chat/media-sheet';
+import { openSearchHitEffect } from '@/components/chat/search-jump';
+import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
+import { Button } from '@/components/ui/button';
+import { resolveDmChatId } from '@/components/chat/dm-chat-id';
+import { mutedUntilFor } from '@/lib/chat-prefs';
+
+/**
+ * Lifts a *-api.ts call into an Effect that fails with the thrown error itself:
+ * the failure helpers read its class, status and code.
+ */
+function profileDmFromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
+
+type UseProfileDmOptions = {
+  profile: ProfilePerson | null;
+  domain: string | undefined;
+  runPref: (work: Effect.Effect<unknown, unknown>) => void;
+  setActionError: (message: string) => void;
+  setToast: (toast: ToastMessage) => void;
+};
+
+function useProfileDm({ profile, domain, runPref, setActionError, setToast }: UseProfileDmOptions) {
+  const router = useRouter();
+  const chats = useChatStore((state) => state.chats);
+  const contacts = useChatStore((state) => state.contacts);
+  const reloadChats = useChatStore((state) => state.reloadChats);
+  const setChatPref = useChatStore((state) => state.setChatPref);
+
+  const dmChatId =
+    profile === null || domain === undefined
+      ? undefined
+      : resolveDmChatId(profile.userId, contacts, domain);
+  const dmChat = dmChatId === undefined ? undefined : chats.find((chat) => chat.id === dmChatId);
+  const muted = dmChat?.muted === true;
+
+  // The DM already exists on the server for every contact; the chat list only has
+  // to catch up: push the chat id and reload the list. The lowercased id only
+  // matches when the server kept it (`resolveDmChatId`), else a fixed error.
+  const openMessage = (): void => {
+    if (dmChatId === undefined) {
+      setActionError('Could not open that chat. Try again.');
+      return;
+    }
+    if (!chats.some((chat) => chat.id === dmChatId)) {
+      reloadChats();
+    }
+    router.push({ pathname: '/chat/[id]', params: { id: dmChatId } });
+  };
+
+  const toggleMute = (): void => {
+    if (dmChatId === undefined) {
+      return;
+    }
+    const input = muted
+      ? { mutedUntil: null }
+      : { mutedUntil: mutedUntilFor('forever', new Date()) };
+    runPref(profileDmFromThrown(() => setChatPref(dmChatId, input)));
+  };
+
+  const openSearch = (): void => {
+    if (dmChatId === undefined) {
+      return;
+    }
+    router.push({ pathname: '/', params: { searchChat: dmChatId } });
+  };
+
+  // Copies "@handle"; the toast confirms it. The clipboard module loads on first use.
+  const copyUsername = (): void => {
+    if (profile === null) {
+      return;
+    }
+    const text = `@${profile.handle}`;
+    Effect.runFork(
+      Effect.tryPromise({ try: () => import('expo-clipboard'), catch: (cause) => cause }).pipe(
+        Effect.flatMap((Clipboard) =>
+          Effect.tryPromise({
+            try: () => Clipboard.setStringAsync(text),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => setToast({ id: Date.now(), text: 'Username copied', tone: 'notice' })),
+        ),
+        Effect.ignore,
+      ),
+    );
+  };
+
+  const status =
+    dmChat !== undefined
+      ? chatSubtitle(dmChat, new Date())
+      : profile === null
+        ? ''
+        : `@${profile.handle}`;
+  const online = dmChat?.online === true;
+
+  return { dmChatId, muted, status, online, openMessage, toggleMute, openSearch, copyUsername };
+}
+
+/**
+ * True when the inline block confirm must be dropped because the card shows a
+ * different person or relation: a successful block or unblock changes the
+ * relation, so resetting on that keeps the confirm from reopening.
+ */
+function shouldResetBlockConfirm(
+  previous: { userId: string; relation: ContactRelation },
+  next: { userId: string; relation: ContactRelation },
+): boolean {
+  return previous.userId !== next.userId || previous.relation !== next.relation;
+}
+
+type ProfileBlockProps = {
+  userId: string;
+  name: string;
+  relation: ContactRelation;
+  busy: boolean;
+  onBlock: () => void;
+  onUnblock: () => void;
+};
+
+/**
+ * The Block / Unblock row at the bottom of the profile, in the destructive red
+ * token. The card's `shouldResetBlockConfirm` rule drops a stale confirm when
+ * the person or the relation changes, e.g. right after a successful block.
+ */
+function ProfileBlock({ userId, name, relation, busy, onBlock, onUnblock }: ProfileBlockProps) {
+  const [confirming, setConfirming] = useState(false);
+  const [last, setLast] = useState({ userId, relation });
+  if (shouldResetBlockConfirm(last, { userId, relation })) {
+    setLast({ userId, relation });
+    setConfirming(false);
+  }
+
+  if (relation === 'self') {
+    return null;
+  }
+
+  if (relation === 'blocked') {
+    return (
+      <Button
+        accessibilityLabel="Unblock"
+        disabled={busy}
+        onPress={onUnblock}
+        variant="outline"
+        size="default"
+        className="self-center rounded-full px-6"
+      >
+        <Text>{busy ? 'Unblocking…' : 'Unblock'}</Text>
+      </Button>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <View className="rounded-xl bg-surface-raised px-3 py-2.5">
+        <Text className="text-[14px] leading-5 text-foreground">
+          Block {name}? They are not told. You won&apos;t see their contact requests.
+        </Text>
+        <View className="mt-2 flex-row gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            accessibilityLabel="Confirm block"
+            disabled={busy}
+            onPress={onBlock}
+          >
+            <Ban size={14} color="#ffffff" />
+            <Text>{busy ? 'Blocking…' : 'Block'}</Text>
+          </Button>
+          <Button
+            accessibilityLabel="Cancel the block"
+            disabled={busy}
+            onPress={() => setConfirming(false)}
+            variant="outline"
+            size="sm"
+          >
+            <Text>Cancel</Text>
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Block"
+      disabled={busy}
+      onPress={() => setConfirming(true)}
+      className="items-center rounded-xl border border-border bg-surface px-3 py-3 active:bg-surface-raised"
+    >
+      <Text className="text-[15px] font-medium text-danger">Block</Text>
+    </Pressable>
+  );
+}
+
+type ProfileAction = ActionTile;
+
+function buildActions({
+  profile,
+  sent,
+  busy,
+  hasDm,
+  muted,
+  openMessage,
+  toggleMute,
+  openSearch,
+  send,
+  cancel,
+  accept,
+  decline,
+  openRequests,
+}: {
+  profile: ProfilePerson | null;
+  sent: boolean;
+  busy: boolean;
+  hasDm: boolean;
+  muted: boolean;
+  openMessage: () => void;
+  toggleMute: () => void;
+  openSearch: () => void;
+  send: () => void;
+  cancel: () => void;
+  accept: () => void;
+  decline: () => void;
+  openRequests: () => void;
+}): ProfileAction[] {
+  if (profile === null) {
+    return [];
+  }
+  const disabled = busy;
+  if (profile.relation === 'contact') {
+    const actions: ProfileAction[] = [
+      { key: 'message', label: 'Message', icon: MessageCircle, onPress: openMessage, disabled },
+    ];
+    if (hasDm) {
+      actions.push({
+        key: 'mute',
+        label: muted ? 'Unmute' : 'Mute',
+        icon: muted ? BellOff : Bell,
+        onPress: toggleMute,
+        disabled,
+      });
+      actions.push({
+        key: 'search',
+        label: 'Search',
+        icon: Search,
+        onPress: openSearch,
+        disabled,
+      });
+    }
+    return actions;
+  }
+  if (profile.relation === 'request_received') {
+    return [
+      { key: 'accept', label: 'Accept', icon: Check, onPress: accept, disabled },
+      { key: 'decline', label: 'Decline', icon: X, onPress: decline, disabled },
+      { key: 'requests', label: 'Requests', icon: Inbox, onPress: openRequests, disabled },
+    ];
+  }
+  if (profile.relation === 'request_sent' || (profile.relation === 'none' && sent)) {
+    return [{ key: 'cancel', label: 'Cancel', icon: X, onPress: cancel, disabled }];
+  }
+  if (profile.relation === 'none') {
+    return [
+      {
+        key: 'send',
+        label: 'Send request',
+        icon: UserPlus,
+        onPress: send,
+        disabled,
+      },
+    ];
+  }
+  return [];
+}
+
+type ProfileMediaProps = {
+  chatId: string;
+};
+
+function ProfileMedia({ chatId }: ProfileMediaProps) {
+  const router = useRouter();
+  const openAtMessage = useChatStore((state) => state.openAtMessage);
+  const [open, setOpen] = useState(false);
+
+  const jump = (messageId: string) => {
+    setOpen(false);
+    Effect.runFork(
+      openSearchHitEffect(
+        {
+          openAtMessage,
+          pushChat: (id) => router.push({ pathname: '/chat/[id]', params: { id } }),
+          pushChatNotFound: (id) =>
+            router.push({ pathname: '/chat/[id]', params: { id, notFound: '1' } }),
+          onNotFound: () => {},
+        },
+        chatId,
+        messageId,
+      ).pipe(
+        Effect.catch(() => Effect.void),
+        Effect.catchDefect(() => Effect.void),
+      ),
+    );
+  };
+
+  return (
+    <>
+      <InfoRowGroup>
+        <InfoRow icon={Image} label="Shared media" onPress={() => setOpen(true)} />
+      </InfoRowGroup>
+      {open ? <MediaSheet chatId={chatId} onJump={jump} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+type ProfileInfoProps = {
+  handle: string;
+  bio?: string | undefined;
+  onCopyUsername: () => void;
+};
+
+function ProfileInfo({ handle, bio, onCopyUsername }: ProfileInfoProps) {
+  return (
+    <View className="gap-0 overflow-hidden rounded-xl border border-border bg-surface">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Copy username"
+        onPress={onCopyUsername}
+        className="flex-row items-center justify-between px-3 py-2.5 active:bg-surface-raised"
+      >
+        <View className="min-w-0 flex-1">
+          <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND }}>
+            Username
+          </Text>
+          <Text numberOfLines={1} className="mt-0.5 text-[15px] text-foreground">
+            @{handle}
+          </Text>
+        </View>
+        <Copy size={18} color={MUTED_FOREGROUND} />
+      </Pressable>
+      {bio === undefined || bio === '' ? null : (
+        <View className="border-t border-divider px-3 py-2.5">
+          <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND }}>
+            Bio
+          </Text>
+          <Text className="mt-0.5 text-[15px] leading-5 text-foreground">{bio}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+type ProfileHeaderProps = {
+  person: AvatarPersonInput;
+  status: string;
+  online: boolean;
+};
+
+function ProfileHeader({ person, status, online }: ProfileHeaderProps) {
+  return (
+    <View className="items-center gap-1 pt-4">
+      <EntityAvatar person={person} size={104} />
+      <Text className="mt-2 text-[22px] font-semibold text-foreground">{person.name}</Text>
+      <View className="flex-row items-center gap-1.5">
+        {online ? <View className="h-2 w-2 rounded-full bg-online" /> : null}
+        <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+          {status}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 /** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the failure helpers read its class, status and code. */
 function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {

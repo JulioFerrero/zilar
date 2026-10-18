@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
 
@@ -9,12 +9,7 @@ import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
 import { buildPatch } from '@/components/ais/form';
 import { LimitsFields } from '@/components/ais/limits-fields';
-import { validateLimits } from '@/components/ais/limits';
-import { MachinePicker } from '@/components/ais/machine-picker';
-import { ComputerPicker } from '@/components/ais/computer-picker';
-import { useComputerMode } from '@/components/ais/use-computer-mode';
-import { ModelPicker } from '@/components/ais/model-picker';
-import { ProviderPicker } from '@/components/ais/provider-picker';
+import { ComputerPicker, type ComputerMode } from '@/components/ais/computer-picker';
 import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
@@ -22,7 +17,15 @@ import { ToolsSection } from '@/components/ais/tools-section';
 import { useToolsApi } from '@/components/ais/use-tools-api';
 import { useAuditApi } from '@/components/ais/use-audit-api';
 import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
-import { defaultModelFor } from '@zilar/chat-core';
+import {
+  defaultModelFor,
+  validateLimits,
+  isLlmProvider,
+  providerLabel,
+  formatContextTokens,
+  formatModelPrices,
+  modelSuggestionsFor,
+} from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
@@ -32,10 +35,302 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
+import type {
+  Connection as AisConnection,
+  PublicAi,
+  UpdateAiInput,
+  Connection,
+  AisApi,
+} from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
+import { OptionGlyph, OptionRow } from '../../components/ais/option-row';
+import { Wrench } from 'lucide-react-native';
+import type { AiCatalogModel } from '@zilar/api-contract';
+import { ACCENT } from '@/lib/colors';
+
+function ModelPicker({
+  provider,
+  value,
+  onChange,
+  models = [],
+}: {
+  provider: string;
+  value: string;
+  onChange: (model: string) => void;
+  models?: readonly AiCatalogModel[];
+}) {
+  const [query, setQuery] = useState('');
+  const suggestions = modelSuggestionsFor(provider);
+
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (term === '') {
+      return models;
+    }
+    return models.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(term));
+  }, [models, query]);
+
+  return (
+    <View className="gap-3">
+      <View className="gap-1">
+        <Text className="text-[14px] font-medium text-foreground">Model</Text>
+        <TextField
+          value={value}
+          onChangeText={onChange}
+          accessibilityLabel="Model"
+          placeholder={`${providerLabel(provider)} model name`}
+          maxLength={256}
+          autoCapitalize="none"
+          autoCorrect={false}
+          className="py-2.5"
+        />
+      </View>
+
+      {models.length > 0 ? (
+        <View className="gap-2">
+          <TextField
+            value={query}
+            onChangeText={setQuery}
+            accessibilityLabel="Search models"
+            placeholder="Search models"
+            maxLength={64}
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="py-2.5"
+          />
+          {filtered.length === 0 ? (
+            <Text className="text-[13px] text-muted-foreground">No models match your search.</Text>
+          ) : (
+            filtered.map((model) => (
+              <OptionRow
+                key={model.id}
+                selected={value === model.id}
+                accessibilityLabel={model.name}
+                onPress={() => onChange(model.id)}
+                className="py-2.5"
+              >
+                <View className="min-w-0 flex-1 gap-0.5">
+                  <Text className="text-[15px] text-foreground">{model.name}</Text>
+                  <Text className="text-[12px] text-muted-foreground">
+                    {formatContextTokens(model.contextTokens)} ·{' '}
+                    {formatModelPrices(model.inputPricePerMTok, model.outputPricePerMTok)}
+                  </Text>
+                </View>
+                {model.toolCalls ? (
+                  <View className="flex-row items-center gap-1 rounded-full border border-divider px-1.5 py-0.5">
+                    <Wrench size={11} color={ACCENT} />
+                    <Text className="text-[11px] text-muted-foreground">tools</Text>
+                  </View>
+                ) : null}
+              </OptionRow>
+            ))
+          )}
+        </View>
+      ) : suggestions.length > 0 ? (
+        <View className="gap-2">
+          <Text className="text-[13px] text-muted-foreground">Suggestions</Text>
+          {suggestions.map((model) => (
+            <OptionRow
+              key={model}
+              selected={value === model}
+              accessibilityLabel={model}
+              onPress={() => onChange(model)}
+              className="py-2.5"
+            >
+              <Text className="text-[15px] text-foreground">{model}</Text>
+            </OptionRow>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The owner's approved machines plus "The platform (no machine)". The current value always shows, even when the machine is gone, so the picker never silently switches the AI to the platform.
+ */
+function MachinePicker({
+  machines,
+  loaded,
+  value,
+  disabled,
+  onChange,
+}: {
+  machines: readonly Machine[];
+  loaded: boolean;
+  value: string | null;
+  disabled?: boolean;
+  onChange: (id: string | null) => void;
+}) {
+  const approved = machines.filter((machine) => machine.status === 'approved');
+  const knownIds = new Set(approved.map((machine) => machine.id));
+  const currentUnknown = value !== null && !knownIds.has(value);
+
+  return (
+    <View className="gap-2">
+      {loaded ? (
+        <OptionRow
+          selected={value === null}
+          disabled={disabled}
+          accessibilityLabel="The platform (no machine)"
+          onPress={() => onChange(null)}
+        >
+          <OptionGlyph label="Platform" selected={value === null} />
+          <View className="min-w-0 flex-1">
+            <Text className="text-[15px] font-medium text-foreground">
+              The platform (no machine)
+            </Text>
+            <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+              The AI runs on the shared platform
+            </Text>
+          </View>
+        </OptionRow>
+      ) : null}
+      {approved.map((machine) => {
+        const selected = machine.id === value;
+        return (
+          <OptionRow
+            key={machine.id}
+            selected={selected}
+            disabled={disabled}
+            accessibilityLabel={machine.name}
+            onPress={() => onChange(machine.id)}
+          >
+            <OptionGlyph label={machine.name} selected={selected} />
+            <View className="min-w-0 flex-1">
+              <Text className="text-[15px] font-medium text-foreground">{machine.name}</Text>
+              <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+                {machine.os} {machine.osVersion} · {machine.arch}
+              </Text>
+            </View>
+          </OptionRow>
+        );
+      })}
+      {currentUnknown ? (
+        <OptionRow
+          selected
+          disabled
+          accessibilityLabel={'Current machine (unavailable)'}
+          onPress={() => {}}
+        >
+          <OptionGlyph label="?" selected />
+          <View className="min-w-0 flex-1">
+            <Text className="text-[15px] font-medium text-foreground">
+              Current machine (unavailable)
+            </Text>
+            <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+              It was revoked or removed elsewhere
+            </Text>
+          </View>
+        </OptionRow>
+      ) : null}
+    </View>
+  );
+}
+
+/** The raw rejection is kept, not mapped, so `describeAisError` sees it. */
+function computerRawCall<A>(call: () => Promise<A>) {
+  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
+}
+
+interface ComputerModeControls {
+  mode: ComputerMode;
+  cloud: boolean;
+  error: string;
+  busy: boolean;
+  adopt: (ai: PublicAi) => void;
+  change: (mode: ComputerMode) => void;
+}
+
+function useComputerMode(api: AisApi, aiId: string | null): ComputerModeControls {
+  const [mode, setMode] = useState<ComputerMode>('off');
+  const [error, setError] = useState('');
+  // A failed options read keeps the cloud option disabled, the safe default.
+  const [cloud, setCloud] = useState(false);
+
+  useQuery(
+    () =>
+      computerRawCall(() => api.getComputerOptions()).pipe(
+        Effect.tap((options) => Effect.sync(() => setCloud(options.cloud))),
+        Effect.catch(() => Effect.sync(() => setCloud(false))),
+      ),
+    [api],
+  );
+
+  const [state, run] = useAction((change: { next: ComputerMode; previous: ComputerMode }) => {
+    if (aiId === null || change.next === change.previous) {
+      return Effect.void;
+    }
+    return Effect.sync(() => {
+      setMode(change.next);
+      setError('');
+    }).pipe(
+      Effect.andThen(computerRawCall(() => api.updateAi(aiId, { computerMode: change.next }))),
+      Effect.tap((fresh) => Effect.sync(() => setMode(fresh.computerMode ?? 'off'))),
+      Effect.asVoid,
+      Effect.catch(({ cause }) =>
+        Effect.sync(() => {
+          setMode(change.previous);
+          setError(describeAisError(cause, 'Could not update the computer.').message);
+        }),
+      ),
+    );
+  });
+  const busy = isWaiting(state);
+
+  const change = (next: ComputerMode): void => {
+    if (aiId === null || busy) {
+      return;
+    }
+    run({ next, previous: mode });
+  };
+
+  const adopt = (ai: PublicAi): void => {
+    setMode(ai.computerMode ?? 'off');
+  };
+
+  return { mode, cloud, error, busy, adopt, change };
+}
+
+/** A connection whose provider is not an LLM one (GitHub) is dropped: it cannot run an AI. */
+function ProviderPicker({
+  connections,
+  value,
+  onChange,
+}: {
+  connections: readonly Connection[];
+  value: string | null;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <View className="gap-2">
+      {connections
+        .filter((connection) => isLlmProvider(connection.provider))
+        .map((connection) => {
+          const selected = connection.id === value;
+          const label = providerLabel(connection.provider);
+          return (
+            <OptionRow
+              key={connection.id}
+              selected={selected}
+              accessibilityLabel={label}
+              onPress={() => onChange(connection.id)}
+            >
+              <OptionGlyph label={label} selected={selected} />
+              <View className="min-w-0 flex-1">
+                <Text className="text-[15px] font-medium text-foreground">{label}</Text>
+                <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+                  {connection.label ?? 'No label'}
+                </Text>
+              </View>
+            </OptionRow>
+          );
+        })}
+    </View>
+  );
+}
 
 // The raw rejection is kept, not mapped, so describeAisError and the machine helper see their own error classes.
 function rawCall<A>(call: () => Promise<A>) {

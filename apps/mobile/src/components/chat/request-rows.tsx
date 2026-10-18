@@ -3,6 +3,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { useContactRequestsPoll } from '@zilar/client-core';
+import { Effect } from 'effect';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { performRequestAction } from '@/components/contacts/requests';
@@ -12,9 +14,24 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { ToastMessage } from '@/components/ui/toast';
 import { ICON } from '@/lib/colors';
-import type { ContactRequestView } from '@/lib/contacts-api';
-import { useContactRequests } from '@/lib/use-contact-requests';
+import type { ContactRequestView, ContactsApi } from '@/lib/contacts-api';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
+import { onForeground } from '../../lib/foreground';
+
+const list = (api: ContactsApi): Promise<ContactRequestView[]> =>
+  Effect.runPromise(
+    Effect.promise(() => api.listContactRequests()).pipe(Effect.map((page) => page.incoming)),
+  );
+
+function useContactRequests(
+  api: ContactsApi,
+  enabled: boolean,
+): {
+  requests: ContactRequestView[];
+  reload: () => void;
+} {
+  return useContactRequestsPoll(() => list(api), enabled, onForeground);
+}
 
 /** At most this many rows before the list collapses into "See all N requests". */
 const MAX_ROWS = 3;

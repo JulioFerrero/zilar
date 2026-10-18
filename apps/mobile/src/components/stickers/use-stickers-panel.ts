@@ -4,14 +4,33 @@ import { useWindowDimensions } from 'react-native';
 import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
-import { fromApi } from '@zilar/client-core';
-import { interruptFiber } from '@zilar/client-core';
+import { fromApi, interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
 import type { PanelPack } from '@/lib/stickers-api';
-import { movedOrder, panelIdSet } from '@/components/stickers/order';
 import { favoriteTileSize } from '@/components/stickers/tile-size';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
+
+/**
+ * Pure helpers for the sticker screen: the reorder arithmetic and the panel
+ * membership set, covered by Vitest without a simulator.
+ */
+
+function movedOrder(ids: readonly string[], packId: string, direction: -1 | 1): string[] {
+  const index = ids.indexOf(packId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= ids.length) {
+    return [...ids];
+  }
+  const next = [...ids];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved as string);
+  return next;
+}
+
+function panelIdSet(ids: readonly string[]): Set<string> {
+  return new Set(ids);
+}
 
 export type StickerTab = 'packs' | 'discover' | 'favorites';
 

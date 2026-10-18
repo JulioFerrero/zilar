@@ -1,9 +1,11 @@
-import { Context, Layer } from 'effect';
+// effect-plain: promise-edge adapters beside the ports.
+import { Context, Layer, Effect } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
+import { ApiError } from '@zilar/api-contract';
 
 import type { OfflineCachePort } from '../offline-cache';
-import { createChatApi, type ChatApi } from '../../lib/chat-api';
+import { createChatApi, type ChatApi, type TokenProvider } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
 import { createPinsApi, type PinsApi } from '../../lib/pins-api';
@@ -15,13 +17,157 @@ import { createRolesApi, type RolesApi } from '../../lib/roles-api';
 import { createGroupsApi, type GroupsApi } from '../../lib/groups-api';
 import { DRAFT_STREAM_PATH, subscribeToDrafts, type OpenDraftStream } from '../../lib/drafts';
 import { getSessionToken } from '../../lib/session-token';
-import type { AttachmentUploader } from '../../lib/attachment-ports';
-import type { VoicePort } from '../../lib/voice';
-import { bytesFor, voiceOutFor } from './ports-media';
+import type { AttachmentUploader, PickedFile } from '../../lib/attachment-ports';
 import {
-  checkSession as checkSessionAdapter,
-  sessionGone as sessionGoneAdapter,
-} from './session-check';
+  type VoicePort,
+  createVoicePort,
+  VoiceError,
+  type ConvertedVoice,
+  type RecordedVoice,
+} from '../../lib/voice';
+import { attachmentDataFor, classifyMobileFile } from '../../lib/attachments';
+
+function voicePortFor(deps: RealStoreDeps): VoicePort {
+  if (deps.voice !== undefined) {
+    return deps.voice;
+  }
+  const uploader = deps.uploader;
+  if (uploader === undefined) {
+    return {
+      convert: () => Promise.reject(new VoiceError('network_error', 'Could not reach the server')),
+      upload: () => Promise.reject(new VoiceError('network_error', 'Could not reach the server')),
+    };
+  }
+  return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
+}
+
+function pickedImageSize(file: PickedFile): { width: number; height: number } | undefined {
+  const { width, height } = file;
+  if (
+    width === undefined ||
+    height === undefined ||
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 1 ||
+    height < 1
+  ) {
+    return undefined;
+  }
+  return { width, height };
+}
+
+// The core `bytes` port over mobile's uploader and stat seams. An unknown size is stat'd once, right before the slot request (the slot API needs an exact count).
+function bytesFor(deps: RealStoreDeps): OutgoingBytes {
+  const uploader = deps.uploader;
+  const statSize = deps.statSize;
+  return {
+    describe: (file) => {
+      const picked = file as PickedFile;
+      const kind = classifyMobileFile(picked);
+      const data = attachmentDataFor(picked, '');
+      return {
+        kind,
+        name: data.name,
+        size: data.size,
+        mime: data.mime,
+        ...(kind === 'image' ? { localUrl: picked.uri } : {}),
+      };
+    },
+    measure: (file) => Effect.succeed(pickedImageSize(file as PickedFile)),
+    upload: (core, file, onProgress, key) =>
+      Effect.tryPromise(async () => {
+        const picked = file as PickedFile;
+        if (uploader === undefined) {
+          throw new Error('no attachment uploader is available');
+        }
+        const contentType = picked.mimeType === '' ? 'application/octet-stream' : picked.mimeType;
+        const size =
+          picked.size !== undefined
+            ? picked.size
+            : statSize === undefined
+              ? undefined
+              : await statSize(picked.uri);
+        if (size === undefined) {
+          throw new Error('the file size could not be read');
+        }
+        const slot = await core.requestUploadSlot({
+          filename: attachmentDataFor(picked, '').name,
+          size,
+          contentType,
+        });
+        await uploader.upload(
+          picked,
+          { putUrl: slot.putUrl, headers: slot.headers },
+          onProgress,
+          key,
+        );
+        return slot.getUrl;
+      }),
+  };
+}
+
+function voiceOutFor(deps: RealStoreDeps): VoiceOut {
+  const port = voicePortFor(deps);
+  return {
+    convert: (recording) =>
+      Effect.tryPromise(() => port.convert(recording.bytes as RecordedVoice)).pipe(
+        Effect.map((converted) => ({ durationMs: converted.durationMs, audio: converted })),
+      ),
+    upload: (core, audio, onProgress, key) =>
+      Effect.tryPromise(() => port.upload(core, audio as ConvertedVoice, onProgress, key)),
+  };
+}
+
+/** A missing token and a 401 read as gone, anything else as `unknown`, so it never signs anyone out. */
+export const checkSession = (
+  getToken: TokenProvider = getSessionToken,
+  getMe: () => Promise<unknown>,
+): Promise<SessionCheck> =>
+  Effect.runPromise(
+    Effect.matchEffect(
+      Effect.tryPromise({
+        try: () => getToken(),
+        catch: (error) => error,
+      }),
+      {
+        onFailure: () => Effect.succeed('unknown' as SessionCheck),
+        onSuccess: (token) =>
+          token === undefined
+            ? Effect.succeed('gone' as SessionCheck)
+            : Effect.matchEffect(
+                Effect.tryPromise({
+                  try: () => getMe(),
+                  catch: (error) => error,
+                }),
+                {
+                  onFailure: (error: unknown) =>
+                    Effect.succeed(
+                      error instanceof ApiError && error.status === 401
+                        ? ('gone' as SessionCheck)
+                        : ('unknown' as SessionCheck),
+                    ),
+                  onSuccess: () => Effect.succeed('valid' as SessionCheck),
+                },
+              ),
+      },
+    ),
+  );
+
+/** The dynamic import keeps this module loadable under Vitest; never rejects, so a failed import cannot leave the revoked session stuck on "Connecting…". */
+export const sessionGone = (
+  signOut: () => Promise<unknown> | unknown = defaultSignOut,
+): Promise<void> =>
+  Effect.runPromise(
+    Effect.tryPromise({
+      try: () => signOut() as Promise<unknown>,
+      catch: (error) => error,
+    }).pipe(Effect.ignore),
+  );
+
+const defaultSignOut = async (): Promise<void> => {
+  const { useAuthStore } = await import('../../auth/session');
+  await useAuthStore.getState().signOut();
+};
 
 export interface AppStateLike {
   current(): string;
@@ -178,9 +324,8 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
           getToken: getSessionToken,
           appState,
         })),
-    checkSession:
-      deps.checkSession ?? (() => checkSessionAdapter(getSessionToken, () => api.getMe())),
-    sessionGone: deps.sessionGone ?? (() => void sessionGoneAdapter()),
+    checkSession: deps.checkSession ?? (() => checkSession(getSessionToken, () => api.getMe())),
+    sessionGone: deps.sessionGone ?? (() => void sessionGone()),
   };
 }
 

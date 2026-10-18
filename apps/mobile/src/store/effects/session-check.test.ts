@@ -1,7 +1,7 @@
 import { ApiError } from '@zilar/api-contract';
 import { describe, expect, it, vi } from 'vitest';
 
-import { checkSession, sessionGone } from './session-check';
+import { checkSession, sessionGone } from './ports';
 
 describe('checkSession (T-1223)', () => {
   it('a missing token reads as the session gone', async () => {

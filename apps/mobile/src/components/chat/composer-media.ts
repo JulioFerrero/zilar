@@ -1,18 +1,126 @@
 import type { AlbumRef } from '@zilar/chat-core';
-import { type Attachment } from '@zilar/protocol';
-import { Data, Effect, Fiber } from 'effect';
+import type { Attachment } from '@zilar/protocol';
+import { Data, Effect, Fiber, type Effect as EffectType } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import type { AttachmentChoice } from '@/components/chat/attach-sheet';
 import { createAttachmentPicker } from '@/lib/attachment-picker';
-import { createGifDownloader } from '@/lib/gif-downloader';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
-import { classifyMobileFile } from '@/lib/attachments';
+import { classifyMobileFile, cleanFilename, MAX_ATTACHMENT_BYTES } from '@/lib/attachments';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import type { GifItem } from '@/lib/gifs';
+import {
+  type GifItem,
+  gifBlobType,
+  gifFileName,
+  isGifMediaType,
+  isLoadableGifPreviewUrl,
+} from '@/lib/gifs';
 import { randomUuid } from '@/lib/polyfills';
 import type { ReplyRef } from '@/lib/types';
 import type { SendAttachmentOptions } from '@/store/types';
+import { API_URL } from '../../lib/auth';
+import { getSessionToken } from '../../lib/session-token';
+import { authHeadersFor, NativeFailure, orErrorResult } from '../../lib/attachment-common';
+
+const GIF_DOWNLOAD_FAILED_MESSAGE = 'Could not load that GIF. Try another.';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function headerMimeType(headers: Record<string, string>): string {
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() === 'content-type') {
+      return value.split(';')[0]?.trim().toLowerCase() ?? '';
+    }
+  }
+  return '';
+}
+
+type GifInput = Parameters<GifDownloader['download']>[0];
+type GifResult = Awaited<ReturnType<GifDownloader['download']>>;
+
+const downloadGifEffect = Effect.fnUntraced(function* (
+  gif: GifInput,
+  apiUrl: string,
+  getToken: (() => Promise<string | undefined>) | undefined,
+  download: typeof FileSystem.downloadAsync,
+  getInfo: typeof FileSystem.getInfoAsync,
+  cacheDir: string | null | undefined,
+): EffectType.fn.Return<GifResult, NativeFailure> {
+  if (!isLoadableGifPreviewUrl(gif.url, apiUrl)) {
+    return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+  }
+  const headers = yield* authHeadersFor(gif.url, apiUrl, getToken);
+  if (cacheDir === null || cacheDir === undefined) {
+    return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+  }
+  const provisional = cleanFilename(`${gifFileName(gif.id, 'bin')}-${Date.now()}`);
+  const result = yield* Effect.tryPromise({
+    try: () =>
+      download(
+        gif.url,
+        `${cacheDir}${provisional}`,
+        headers === undefined ? undefined : { headers },
+      ),
+    catch: () => new NativeFailure({ message: GIF_DOWNLOAD_FAILED_MESSAGE }),
+  });
+  const contentType = isRecord(result) ? headerMimeType(result.headers ?? {}) : '';
+  if (!isGifMediaType(contentType)) {
+    return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+  }
+  const { mime, extension } = gifBlobType(contentType, gif.kind);
+  const size = typeof result.uri === 'string' ? yield* fileSize(result.uri, getInfo) : 0;
+  if (size === 0) {
+    return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+  }
+  if (size > MAX_ATTACHMENT_BYTES) {
+    return { status: 'error', message: 'That GIF is larger than 50 MB.' };
+  }
+  const file: PickedFile = {
+    uri: result.uri,
+    name: gifFileName(gif.id, extension),
+    mimeType: mime,
+    size,
+  };
+  if (gif.kind === 'image') {
+    file.width = gif.width;
+    file.height = gif.height;
+  }
+  return { status: 'downloaded', file };
+});
+
+/**
+ * The URL is re-checked against the proxy gate before any fetch, the session bearer rides only to the API origin, and the mime comes from the real content type, never from the search result.
+ */
+function createGifDownloader(options?: {
+  apiUrl?: string | undefined;
+  getToken?: (() => Promise<string | undefined>) | undefined;
+  download?: typeof FileSystem.downloadAsync | undefined;
+  getInfo?: typeof FileSystem.getInfoAsync | undefined;
+  cacheDir?: string | null | undefined;
+}): GifDownloader {
+  const apiUrl = options?.apiUrl ?? API_URL;
+  const getToken = options?.getToken ?? getSessionToken;
+  const download = options?.download ?? FileSystem.downloadAsync;
+  const getInfo = options?.getInfo ?? FileSystem.getInfoAsync;
+  return {
+    download(gif: GifInput): Promise<GifResult> {
+      const cacheDir = options?.cacheDir ?? FileSystem.cacheDirectory;
+      return Effect.runPromise(
+        orErrorResult(downloadGifEffect(gif, apiUrl, getToken, download, getInfo, cacheDir)),
+      );
+    },
+  };
+}
+
+const fileSize = (uri: string, getInfo: typeof FileSystem.getInfoAsync): Effect.Effect<number> =>
+  Effect.tryPromise({ try: () => getInfo(uri), catch: () => undefined }).pipe(
+    Effect.map((info) => (info.exists === true && info.isDirectory === false ? info.size : 0)),
+    Effect.orElseSucceed((): number => 0),
+    Effect.catchDefect(() => Effect.succeed(0)),
+  );
 
 export class ComposerStepFailed extends Data.TaggedError('ComposerStepFailed')<{
   readonly reason: unknown;

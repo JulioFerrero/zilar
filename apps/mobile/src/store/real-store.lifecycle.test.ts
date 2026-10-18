@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chatListModel } from '../lib/chat-list';
 import { parseChatsList } from '../lib/chat-api-schemas';
-import { readChatListCache } from '../lib/chat-list-cache';
+import { readChatListCache } from './effects/lifecycle';
 import type { Pin, PinsApi } from '../lib/pins-api';
 
 // A writable stand-in for the cache file: the read/write go through

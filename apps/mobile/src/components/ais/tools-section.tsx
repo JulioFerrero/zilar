@@ -2,7 +2,9 @@ import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Modal } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -10,9 +12,50 @@ import { Text } from '@/components/ui/text';
 import { runMobile } from '@/lib/effect/runtime';
 import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
-import type { AiToolsApi, ToolListItem, ToolsApi } from '@/lib/tools-api';
+import type {
+  AiToolsApi,
+  ToolListItem,
+  ToolsApi,
+  ToolActionsApi,
+  ToolDetailsApi,
+} from '@/lib/tools-api';
+import { ToolDetailLoader } from './tool-detail-loader';
 
-import { ToolDetailSheet } from './tool-detail-sheet';
+function ToolDetailSheet({
+  api,
+  toolId,
+  onClose,
+  onDeleted,
+}: {
+  api: ToolDetailsApi & ToolActionsApi;
+  toolId: string | null;
+  onClose: () => void;
+  onDeleted: (toolId: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal
+      visible={toolId !== null}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, 16) }}>
+          {toolId !== null ? (
+            <ToolDetailLoader
+              key={toolId}
+              api={api}
+              toolId={toolId}
+              onClose={onClose}
+              onDeleted={onDeleted}
+            />
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
 
 export const TOOLS_LOAD_FAILED_MESSAGE = 'Could not load the tools. Try again.';
 

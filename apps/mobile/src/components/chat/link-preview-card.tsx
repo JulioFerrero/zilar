@@ -3,16 +3,52 @@ import { Image } from 'expo-image';
 import { useGlobalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
+import { Effect, Fiber } from 'effect';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { createChatApi, type ChatApi, type LinkPreview } from '@/lib/chat-api';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import { useLinkPreviewImage } from '@/lib/link-preview-image';
 import { safeLinkTarget } from '@/lib/links';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
+
+/**
+ * Only the `/api/link-preview/image/<key>` prefix ever loads, so a hostile path cannot reach another origin or receive the session token.
+ */
+
+const LINK_PREVIEW_IMAGE_PREFIX = '/api/link-preview/image/';
+
+type LinkPreviewImageSource = { uri: string; headers: Record<string, string> };
+
+function useLinkPreviewImage(path: string | undefined): LinkPreviewImageSource | undefined {
+  const allowed = path !== undefined && path.startsWith(LINK_PREVIEW_IMAGE_PREFIX);
+  const [headers, setHeaders] = useState<Record<string, string> | undefined>(undefined);
+  useEffect(() => {
+    if (!allowed) {
+      return;
+    }
+    // A cleanup interrupts the read, so a late token never reaches a stale source.
+    const fiber = Effect.runFork(
+      Effect.tryPromise(() => getSessionToken()).pipe(
+        Effect.match({
+          onSuccess: (token) => {
+            setHeaders(token === undefined ? undefined : { authorization: `Bearer ${token}` });
+          },
+          onFailure: () => {},
+        }),
+      ),
+    );
+    return () => {
+      Effect.runSync(Fiber.interrupt(fiber));
+    };
+  }, [allowed, path]);
+  if (!allowed || headers === undefined) {
+    return undefined;
+  }
+  return { uri: `${API_URL}${path}`, headers };
+}
 
 /** Builds the mock `ChatApi` behind a literal build-time condition: Metro folds
  *  it to `false`, so the mock stays out of a release bundle. */

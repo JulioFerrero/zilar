@@ -10,9 +10,9 @@ import { GeistMono_400Regular } from '@expo-google-fonts/geist-mono/400Regular';
 import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono/500Medium';
 import { PortalHost } from '@rn-primitives/portal';
 import { useFonts } from 'expo-font';
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter, router, useRootNavigationState } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
-import { ThemeProvider } from 'expo-router/react-navigation';
+import { ThemeProvider, DarkTheme, type Theme } from 'expo-router/react-navigation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme } from 'nativewind';
@@ -21,18 +21,172 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
 import { Effect } from 'effect';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useClientVersionCheck as useSharedClientVersionCheck } from '@zilar/client-core';
+import { protocolVersion } from '@zilar/protocol';
+import * as Notifications from 'expo-notifications';
 
-import { useAuthStore } from '@/auth/session';
-import { ClientVersionBanner } from '@/components/client-version-banner';
+import { useAuthStore, useSession } from '@/auth/session';
 import { UpdateDialog } from '@/components/update/update-dialog';
 import { mobileRuntime } from '@/lib/effect/runtime';
 import { startAppUpdateChecks } from '@/lib/use-app-update';
 import { setActiveChatId } from '@/lib/push/active-chat';
-import { NotificationRouter } from '@/lib/push/tap';
 import { waitForCachePaint } from '@/lib/startup-paint';
 import { markStartup } from '@/lib/startup-timing';
-import { NAV_THEME } from '@/lib/theme';
 import { ChatStoreProvider, useChatStoreApi } from '@/store/chat-store-provider';
+import { Text } from '@/components/ui/text';
+import { API_URL } from '../lib/auth';
+import { onForeground } from '../lib/foreground';
+
+// `data.chatId` is the chat JID the routes already use. A live tap navigates at once; a cold-start tap waits for the session and the mounted navigator, or the push is lost.
+
+function chatIdFrom(response: Notifications.NotificationResponse): string | undefined {
+  const chatId = response.notification.request.content.data?.['chatId'];
+  return typeof chatId === 'string' && chatId !== '' ? chatId : undefined;
+}
+
+function openChat(chatId: string): void {
+  router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+}
+
+function NotificationRouter(): null {
+  const status = useSession().status;
+  // Undefined until the root navigator mounts; pushing before that throws and would be swallowed.
+  const navigationState = useRootNavigationState();
+  const navigatorReady = navigationState?.key !== undefined;
+  // The cold-start tap is held until the session and the navigator are ready.
+  const pendingChat = useRef<string | null>(null);
+  const [pendingTick, setPendingTick] = useState(0);
+
+  // A live tap navigates directly, but only while the session is signed in.
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      return;
+    }
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const chatId = chatIdFrom(response);
+      if (chatId !== undefined) {
+        openChat(chatId);
+      }
+    });
+    return () => subscription.remove();
+  }, [status]);
+
+  // Read it once and clear it, so a later mount does not reopen the same chat.
+  useEffect(() => {
+    let mounted = true;
+    void Effect.runPromise(
+      Effect.tryPromise({
+        try: () => Notifications.getLastNotificationResponseAsync(),
+        catch: (error) => error,
+      }).pipe(
+        Effect.tap((response) =>
+          Effect.sync(() => {
+            if (!mounted || response === null) {
+              return;
+            }
+            const chatId = chatIdFrom(response);
+            if (chatId !== undefined) {
+              pendingChat.current = chatId;
+              setPendingTick((tick) => tick + 1);
+            }
+            void Notifications.clearLastNotificationResponseAsync();
+          }),
+        ),
+        Effect.ignore,
+      ),
+    );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!navigatorReady || status !== 'authenticated') {
+      return;
+    }
+    const chatId = pendingChat.current;
+    if (chatId === null) {
+      return;
+    }
+    pendingChat.current = null;
+    openChat(chatId);
+  }, [navigatorReady, status, pendingTick]);
+
+  return null;
+}
+
+const THEME = {
+  dark: {
+    background: '#0a0a0a',
+    foreground: '#ededed',
+    card: '#0a0a0a',
+    cardForeground: '#ededed',
+    popover: '#111111',
+    popoverForeground: '#ededed',
+    primary: '#ededed',
+    primaryForeground: '#0a0a0a',
+    secondary: '#111111',
+    secondaryForeground: '#ededed',
+    muted: '#111111',
+    mutedForeground: '#a1a1a1',
+    accent: '#ededed',
+    accentForeground: '#0a0a0a',
+    destructive: '#ef4444',
+    border: '#1f1f1f',
+    input: '#262626',
+    ring: '#a1a1a1',
+    radius: '0.75rem',
+  },
+};
+
+const NAV_THEME: Record<'dark', Theme> = {
+  dark: {
+    ...DarkTheme,
+    colors: {
+      background: THEME.dark.background,
+      border: THEME.dark.border,
+      card: THEME.dark.card,
+      notification: THEME.dark.destructive,
+      primary: THEME.dark.primary,
+      text: THEME.dark.foreground,
+    },
+  },
+};
+
+const healthRequest = (): Promise<Response> =>
+  Effect.runPromise(
+    Effect.promise(() => fetch(`${API_URL}/health`, { method: 'GET', credentials: 'omit' })),
+  );
+
+function useClientVersionCheck(): boolean {
+  return useSharedClientVersionCheck(healthRequest, onForeground, protocolVersion);
+}
+
+/**
+ * A thin bar when this build is older than the server's minimum client
+ * protocol. It sits in the layout flow rather than covering content, and never
+ * blocks use.
+ */
+function ClientVersionBanner() {
+  const outdated = useClientVersionCheck();
+  const insets = useSafeAreaInsets();
+
+  if (!outdated) {
+    return null;
+  }
+
+  return (
+    <View style={{ paddingTop: insets.top }} className="border-b border-divider bg-accent">
+      <Text
+        accessibilityRole="alert"
+        className="px-3 py-2 text-center text-[13px] text-accent-foreground"
+      >
+        Please update the app to keep chatting.
+      </Text>
+    </View>
+  );
+}
 
 export { ErrorBoundary } from 'expo-router';
 

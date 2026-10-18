@@ -8,13 +8,35 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { EmailCard } from '@/components/integrations/email-card';
 import { TelegramCard } from '@/components/integrations/telegram-card';
 import { VoiceCard } from '@/components/integrations/voice-card';
-import { useIntegrationsApi } from '@/components/integrations/use-integrations-api';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import type { IntegrationsStatus, VoiceIntegrationStatus } from '@/lib/integrations-api';
+import {
+  type IntegrationsStatus,
+  type VoiceIntegrationStatus,
+  createIntegrationsApi,
+  type IntegrationsApi,
+} from '@/lib/integrations-api';
 import { useAction } from '@/lib/effect/use-action';
+import { API_URL } from '@/lib/auth';
+import { getSessionToken } from '@/lib/session-token';
+import { useMockableApi } from '@/lib/use-mockable-api';
+import { mockToken } from '@/mock/gate';
+
+const realIntegrationsApi = () => createIntegrationsApi(getSessionToken);
+
+const mockIntegrationsApi = (mockFetch: typeof fetch) =>
+  createIntegrationsApi(mockToken, mockFetch, API_URL);
+
+interface IntegrationsApiHandle {
+  api: IntegrationsApi;
+  mock: boolean;
+}
+
+function useIntegrationsApi(): IntegrationsApiHandle {
+  return useMockableApi(realIntegrationsApi, mockIntegrationsApi);
+}
 
 type PageStatus = 'loading' | 'ready' | 'forbidden' | 'error';
 

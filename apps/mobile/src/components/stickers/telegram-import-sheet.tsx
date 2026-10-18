@@ -2,6 +2,7 @@ import { Effect } from 'effect';
 import { Clock, Info } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { ApiError } from '@zilar/api-contract';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -10,13 +11,68 @@ import { TextField } from '@/components/ui/text-field';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import type { StickersApi, TelegramImportResult } from '@/lib/stickers-api';
 
-import {
-  EMPTY_INPUT_ERROR,
-  importedCountLine,
-  skippedAnimatedLine,
-  skippedInvalidLine,
-  telegramImportFailure,
-} from './telegram-import';
+/**
+ * The pure parts of the Telegram import sheet: the error-to-state mapping and
+ * the count sentences, tested without rendering.
+ */
+
+const EMPTY_INPUT_ERROR = 'Paste a pack link or name first.';
+const INVALID_LINK_ERROR = 'That does not look like a Telegram sticker pack link or name.';
+const PACK_NOT_FOUND_ERROR = 'That Telegram sticker pack was not found.';
+const CUSTOM_EMOJI_ERROR = 'Custom emoji sets cannot be imported as sticker packs.';
+const TRY_LATER_ERROR = 'Telegram is busy. Try again later.';
+const RATE_LIMITED_ERROR = 'Too many imports. Try again in an hour.';
+const PACK_LIMIT_ERROR = 'You have reached the limit of 100 packs.';
+const GENERIC_IMPORT_ERROR = 'The import failed. Try again.';
+
+type TelegramImportSheetState =
+  { kind: 'form'; error: string } | { kind: 'not-set-up' } | { kind: 'token-rejected' };
+
+/** Maps an import failure to its sheet state (never server text). */
+function telegramImportFailure(error: unknown): TelegramImportSheetState {
+  if (error instanceof ApiError) {
+    if (error.status === 501 || error.code === 'import_unavailable') {
+      return { kind: 'not-set-up' };
+    }
+    if (error.code === 'token_invalid') {
+      return { kind: 'token-rejected' };
+    }
+    if (error.status === 429 || error.code === 'rate_limited') {
+      return { kind: 'form', error: RATE_LIMITED_ERROR };
+    }
+    switch (error.code) {
+      case 'invalid_request':
+        return { kind: 'form', error: INVALID_LINK_ERROR };
+      case 'pack_not_found':
+        return { kind: 'form', error: PACK_NOT_FOUND_ERROR };
+      case 'custom_emoji_unsupported':
+        return { kind: 'form', error: CUSTOM_EMOJI_ERROR };
+      case 'try_later':
+        return { kind: 'form', error: TRY_LATER_ERROR };
+      case 'pack_limit':
+        return { kind: 'form', error: PACK_LIMIT_ERROR };
+      default:
+        return { kind: 'form', error: GENERIC_IMPORT_ERROR };
+    }
+  }
+  return { kind: 'form', error: GENERIC_IMPORT_ERROR };
+}
+
+function importedCountLine(imported: number): string {
+  return imported === 1 ? '1 sticker added' : `${imported} stickers added`;
+}
+
+function skippedAnimatedLine(skippedAnimated: number): string {
+  return skippedAnimated === 1
+    ? '1 animated sticker was skipped'
+    : `${skippedAnimated} animated stickers were skipped`;
+}
+
+function skippedInvalidLine(skippedInvalid: number): string {
+  return skippedInvalid === 1
+    ? '1 file was skipped as invalid'
+    : `${skippedInvalid} files were skipped as invalid`;
+}
 
 export function TelegramImportSheet({
   visible,

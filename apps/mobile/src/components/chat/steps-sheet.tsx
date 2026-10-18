@@ -1,5 +1,5 @@
 import { formatClock, type AvatarPersonInput } from '@zilar/chat-core';
-import { defaultOpenStepId, stepsView, type DisplayStep } from '@zilar/client-core';
+import { defaultOpenStepId, stepsView, type DisplayStep, fromApi } from '@zilar/client-core';
 import type { Progress } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
@@ -8,22 +8,40 @@ import { Check, ChevronDown, ChevronRight, ShieldCheck, Square, X } from 'lucide
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
+import { runApi, type TaskSteps } from '@zilar/api-contract';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { createAgentTasksApi, type AgentTasksApi } from '@/lib/agent-tasks-api';
 import { API_URL } from '@/lib/auth';
 import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import { fromApi } from '@zilar/client-core';
 import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
+import { createApiClient } from '../../lib/effect/api-client';
+
+// Owner only: an unknown task and one the caller may not see answer the same 404.
+
+interface AgentTasksApi {
+  /** One task's card steps with their actions, oldest step first. */
+  getTaskSteps(taskId: string): Promise<TaskSteps>;
+}
+
+function createAgentTasksApi(
+  getToken: () => Promise<string | undefined>,
+  fetchImpl: typeof fetch = fetch,
+  apiUrl: string = API_URL,
+): AgentTasksApi {
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  return {
+    getTaskSteps: (taskId) => runApi(client.agentTasks.steps({ params: { taskId } })),
+  };
+}
 
 // Builds the mock-mode `AgentTasksApi` behind a literal build-time condition: Metro folds it to `false` in a release build, so the mock stays out of the bundle.
 function createMockAgentTasks(): AgentTasksApi {

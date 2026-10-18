@@ -12,28 +12,155 @@ import {
   type CoreCtx,
   type CorePorts,
   type JoinGroupsHooks,
+  type MessageLedger,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
-import { createAtomStore, type StoreApi } from '@zilar/client-core';
+import { createAtomStore, type StoreApi, type SetState } from '@zilar/client-core';
 
 import type { ChatEntry } from '../lib/chat-api';
 import { dismissChatNotifications, syncBadge } from '../lib/push/badge';
 import { markStartup, startupTimingEnabled } from '../lib/startup-timing';
-import { makeEvents } from './effects/events';
+import { makeEvents, type Events } from './effects/events';
 import { makeGroups } from './effects/groups';
 import { makeHistory } from './effects/history';
 import { makeLifecycle } from './effects/lifecycle';
 import { makePins } from './effects/pins';
-import { makePushPair } from './effects/push-pair';
 import { makeSend } from './effects/send';
 import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
-import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
-import { createStoreLocals } from './effects/locals';
+import { makeLife, makeRunners, type StoreCtx, type StoreState, lift } from './effects/runtime';
+import { createStoreLocals, type StoreLocals } from './effects/locals';
 import { makeStoreHelpers } from './effects/helpers';
-import { makeUserState, type UserState } from './effects/user-state';
 import { isUpdateStanza, summariesFor } from './effects/chat-rows';
 import { createOfflineCacheSync } from './offline-cache-sync';
 import type { ChatStoreState } from './types';
+import { CURRENT_USER_ID } from '../lib/types';
+
+interface UserStateDeps {
+  readonly locals: StoreLocals;
+  readonly s: StoreState;
+  readonly set: SetState<ChatStoreState>;
+  readonly ownedAis: { id: string; name: string }[] | undefined;
+  readonly ledger: MessageLedger;
+  readonly events: Events;
+  readonly clearPins?: () => void;
+}
+
+interface UserState {
+  initialUserState(): Pick<
+    ChatStoreState,
+    | 'currentUserId'
+    | 'me'
+    | 'chatsLoad'
+    | 'chats'
+    | 'contacts'
+    | 'messagesByChat'
+    | 'historyLoad'
+    | 'activeChatId'
+    | 'historyComplete'
+    | 'search'
+    | 'activeFolder'
+    | 'folders'
+    | 'foldersLoaded'
+    | 'typing'
+    | 'editTarget'
+    | 'actionError'
+    | 'jumpTarget'
+    | 'topicNotice'
+    | 'pinsError'
+    | 'ownedAis'
+  >;
+  teardown(): void;
+}
+
+/** `stop()` returns to this state, so the next user never sees the previous user's chats, contacts or messages. */
+function makeUserState(deps: UserStateDeps): UserState {
+  const { locals, s, set, ownedAis, ledger, events, clearPins } = deps;
+
+  const initialUserState = (): ReturnType<UserState['initialUserState']> => ({
+    currentUserId: CURRENT_USER_ID,
+    me: undefined,
+    chatsLoad: 'loading',
+    chats: [],
+    contacts: [],
+    messagesByChat: {},
+    historyLoad: {},
+    activeChatId: null,
+    historyComplete: {},
+    search: '',
+    activeFolder: 'all',
+    folders: [],
+    foldersLoaded: false,
+    typing: {},
+    editTarget: undefined,
+    actionError: undefined,
+    jumpTarget: undefined,
+    topicNotice: undefined,
+    pinsError: undefined,
+    ownedAis: ownedAis ?? [],
+  });
+
+  function teardown(): void {
+    events.clearTimers();
+    locals.pinsPollEnabled = false;
+    clearPins?.();
+    s.core = undefined;
+    for (const chatId of Object.keys(locals.cursors)) {
+      delete locals.cursors[chatId];
+    }
+    locals.lastRead = {};
+    locals.chatPrefRows = [];
+    locals.groupIds.clear();
+    locals.groupMembers.clear();
+    locals.loadingOlder.clear();
+    locals.pendingOutgoing.clear();
+    s.sendRuns.clear();
+    locals.pendingVoices.clear();
+    locals.groupDetails.clear();
+    locals.loadingGroupDetails.clear();
+    locals.groupRolesById.clear();
+    locals.loadingGroupRoles.clear();
+    locals.topicRolesById.clear();
+    locals.loadingTopicRoles.clear();
+    set({
+      ...initialUserState(),
+      status: 'offline',
+      mediaTrustedHosts: undefined,
+      drafts: {},
+      finishedDraftMessages: {},
+      edits: {},
+      reactions: {},
+    });
+    locals.loadingHistory.clear();
+    ledger.reset();
+    locals.pendingUploads.clear();
+  }
+
+  return { initialUserState, teardown };
+}
+
+type PushPairActions = Pick<ChatStoreState, 'setPushPair'>;
+
+interface PushPair {
+  readonly actions: PushPairActions;
+}
+
+function makePushPair(ctx: StoreCtx): PushPair {
+  return {
+    actions: {
+      setPushPair: (input) =>
+        ctx.run(
+          Effect.suspend(() => {
+            const core = ctx.s.core;
+            if (core === undefined || core.setPushEnabled === undefined) {
+              return Effect.fail(new Error('the chat connection cannot toggle push'));
+            }
+            const setPushEnabled = core.setPushEnabled.bind(core);
+            return lift(() => setPushEnabled(input));
+          }),
+        ),
+    },
+  };
+}
 
 export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
 export {

@@ -1,9 +1,9 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { Repeat } from 'lucide-react-native';
+import { Repeat, MessageCircle, Pause, Play, Trash2 } from 'lucide-react-native';
 import { useEffect, useState, type ReactNode } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import {
@@ -13,15 +13,118 @@ import {
 } from '@/components/ais/routines-section';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useToolsApi } from '@/components/ais/use-tools-api';
-import { RoutineRow } from '@/components/routines/routine-row';
 import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND, DANGER, ICON } from '@/lib/colors';
 import { interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { AiToolsApi, MyRoutine } from '@/lib/tools-api';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { IconButton } from '@/components/ui/icon-button';
+import { describeRoutineSchedule } from '@/lib/routines-format';
+import { cn } from '@/lib/utils';
+
+type RoutineRowProps = {
+  routine: MyRoutine;
+  busy: boolean;
+  revealed: boolean;
+  divider: boolean;
+  onToggle: () => void;
+  onAsk: () => void;
+  onTogglePause: () => void;
+  onAskDelete: () => void;
+};
+
+function RoutineRow({
+  routine,
+  busy,
+  revealed,
+  divider,
+  onToggle,
+  onAsk,
+  onTogglePause,
+  onAskDelete,
+}: RoutineRowProps) {
+  const running = routine.status === 'active';
+  const chatJid = routine.chatJid;
+  return (
+    <View
+      className={cn(
+        'flex-row items-center gap-2 px-3 py-2.5',
+        divider && 'border-b border-divider',
+      )}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${routine.title}, ${running ? 'running' : 'paused'}`}
+        accessibilityState={{ expanded: revealed }}
+        onPress={onToggle}
+        className="min-w-0 flex-1 flex-row items-center gap-3"
+      >
+        <EntityAvatar
+          person={{
+            id: routine.aiId ?? routine.id,
+            name: routine.aiName,
+            avatarUrl: routine.aiAvatarUrl,
+          }}
+          size={36}
+          ai
+        />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <View className="min-w-0 flex-row items-center gap-2">
+            <View
+              accessibilityRole="image"
+              accessibilityLabel={running ? 'Running' : 'Paused'}
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                running ? 'bg-online' : 'bg-muted-foreground',
+              )}
+            />
+            <Text numberOfLines={1} className="text-[15px] font-medium">
+              {routine.title}
+            </Text>
+          </View>
+          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+            <Text className="font-mono">{describeRoutineSchedule(routine.schedule)}</Text>
+            {' · '}
+            {routine.aiName}
+          </Text>
+        </View>
+      </Pressable>
+
+      {chatJid === null ? null : (
+        <IconButton
+          label={`Ask ${routine.aiName} about ${routine.title}`}
+          disabled={busy}
+          onPress={onAsk}
+        >
+          <MessageCircle size={18} color={ICON} />
+        </IconButton>
+      )}
+
+      <IconButton
+        label={`${running ? 'Pause' : 'Resume'} ${routine.title}`}
+        disabled={busy}
+        onPress={onTogglePause}
+      >
+        {running ? <Pause size={18} color={ICON} /> : <Play size={18} color={ICON} />}
+      </IconButton>
+
+      {revealed ? (
+        <IconButton
+          label={`Delete ${routine.title}`}
+          className="text-danger"
+          disabled={busy}
+          onPress={onAskDelete}
+        >
+          <Trash2 size={18} color={DANGER} />
+        </IconButton>
+      ) : null}
+    </View>
+  );
+}
 
 /** A fixed sentence, never server text. */
 const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';

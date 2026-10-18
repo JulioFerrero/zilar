@@ -1,6 +1,16 @@
-import { RotateCcw, Shuffle, X } from 'lucide-react-native';
+import {
+  RotateCcw,
+  Shuffle,
+  X,
+  Cloud,
+  Laptop,
+  PowerOff,
+  Sparkles,
+  Pencil,
+} from 'lucide-react-native';
 import { useRef } from 'react';
-import { View } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { type AiTemplateId, AI_TEMPLATE_OPTIONS } from '@zilar/chat-core';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -9,13 +19,143 @@ import { StepTrack, type StepTrackStep } from '@/components/ui/step-track';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import type { PublicAi } from '@/lib/ais-api';
+import { LimitsFields } from '@/components/ais/limits-fields';
+import type { ComputerMode } from '@/components/ais/computer-picker';
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
+import { SelectSheet } from '@/components/ui/select-sheet';
+import { TextField } from '@/components/ui/text-field';
+import { iconKey } from '@/lib/depth';
 
 import { KeyStep } from './key-step';
-import { ModelStep } from './model-step';
-import { OrbCapture, OrbView, type OrbCaptureHandle } from './orb-view';
+import { OrbCapture, OrbView, type OrbCaptureHandle, OrbImage } from './orb-view';
 import { ProviderStep } from './provider-step';
-import { SetupStep } from './setup-step';
-import { useNewAiFlow } from './use-new-ai-flow';
+import { useNewAiFlow, type NewAiFlow } from './use-new-ai-flow';
+
+const TEMPLATE_OPTIONS: SegmentedOption[] = AI_TEMPLATE_OPTIONS.filter(
+  (option) => option.id !== 'custom',
+).map((option) => ({ value: option.id, label: option.label }));
+
+function ModelStep({ flow }: { flow: NewAiFlow }) {
+  return (
+    <View className="gap-5">
+      <View className="items-center gap-4">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Change the orb"
+          onPress={flow.openOrb}
+          className="active:opacity-80"
+        >
+          <OrbImage params={flow.orbParams} size={72} />
+          <View
+            className="absolute -bottom-1 -right-1 h-7 w-7 items-center justify-center rounded-full"
+            style={iconKey}
+          >
+            <Pencil size={13} color={ICON} />
+          </View>
+        </Pressable>
+
+        <View className="gap-1 self-stretch">
+          <Text className="text-[13px] font-medium text-foreground">Name</Text>
+          <TextField
+            value={flow.name}
+            onChangeText={flow.setName}
+            accessibilityLabel="Name"
+            placeholder="Research helper"
+            maxLength={64}
+          />
+        </View>
+      </View>
+
+      <View className="gap-1">
+        <Text className="text-[13px] font-medium text-foreground">Model</Text>
+        {flow.modelOptions.length === 0 ? (
+          <TextField
+            value={flow.model}
+            onChangeText={flow.setModel}
+            accessibilityLabel="Model"
+            placeholder="Model id"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={256}
+          />
+        ) : (
+          <SelectSheet
+            label="Model"
+            value={flow.model === '' ? null : flow.model}
+            options={flow.modelOptions}
+            onChange={flow.setModel}
+            searchPlaceholder="Filter models"
+          />
+        )}
+      </View>
+
+      <View className="gap-1">
+        <Text className="text-[13px] font-medium text-foreground">Template</Text>
+        <SegmentedControl
+          mode="radio"
+          tone="choice"
+          accessibilityLabel="Template"
+          value={flow.template}
+          options={TEMPLATE_OPTIONS}
+          onChange={(value) => flow.setTemplate(value as AiTemplateId)}
+        />
+      </View>
+    </View>
+  );
+}
+
+const COMPUTER_OPTIONS: SegmentedOption[] = [
+  { value: 'off', label: 'Off', icon: PowerOff },
+  { value: 'cloud', label: 'Zilar', icon: Cloud },
+  { value: 'runner', label: 'Machine', icon: Laptop },
+  { value: 'auto', label: 'Auto', icon: Sparkles },
+];
+
+function SetupStep({ flow }: { flow: NewAiFlow }) {
+  const machineOptions = flow.machines.map((machine) => ({
+    value: machine.id,
+    label: machine.name,
+    ...(machine.online === true ? { dot: 'online' as const } : {}),
+  }));
+  const needsMachine = flow.computer === 'runner' || flow.computer === 'auto';
+  const computerOptions = COMPUTER_OPTIONS.map((option) =>
+    option.value === 'cloud' ? { ...option, disabled: !flow.cloud } : option,
+  );
+
+  return (
+    <View className="gap-5">
+      <View className="gap-2">
+        <Text className="text-[13px] font-medium text-foreground">Computer</Text>
+        <SegmentedControl
+          mode="radio"
+          tone="choice"
+          accessibilityLabel="Computer"
+          value={flow.computer}
+          options={computerOptions}
+          onChange={(value) => flow.setComputer(value as ComputerMode)}
+        />
+        {needsMachine ? (
+          <SelectSheet
+            label="Machine"
+            value={flow.machineId}
+            options={machineOptions}
+            onChange={flow.setMachineId}
+            placeholder="Select a machine"
+          />
+        ) : null}
+      </View>
+
+      <LimitsFields
+        day={flow.day}
+        month={flow.month}
+        dayError={flow.dayError}
+        monthError={flow.monthError}
+        onDayChange={flow.setDay}
+        onMonthChange={flow.setMonth}
+      />
+    </View>
+  );
+}
 
 /**
  * The close key, the grabber and Android back are the only ways out; closing before Create abandons a half-made key check.

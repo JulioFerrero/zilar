@@ -1,8 +1,18 @@
-import { Bot, ChevronLeft, Link2, LogOut, Megaphone, Settings, Users } from 'lucide-react-native';
+import {
+  Bot,
+  ChevronLeft,
+  Link2,
+  LogOut,
+  Megaphone,
+  Settings,
+  Users,
+  Activity,
+  Image,
+  Pin,
+  ShieldCheck,
+} from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { ChannelContentRows } from '@/components/channel-info/content-page';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { InfoKeys } from '@/components/group-info/info-keys';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
@@ -10,6 +20,35 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { channelSubscriberLabel } from '@/lib/channels';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+
+type ChannelContentRowsProps = {
+  pinsCount: number | undefined;
+  isManager: boolean;
+  onOpenMedia: () => void;
+  onOpenPins: () => void;
+  onOpenActivity: () => void;
+  onOpenAllowed: () => void;
+};
+
+function ChannelContentRows({
+  pinsCount,
+  isManager,
+  onOpenMedia,
+  onOpenPins,
+  onOpenActivity,
+  onOpenAllowed,
+}: ChannelContentRowsProps) {
+  return (
+    <InfoRowGroup>
+      <InfoRow icon={Image} label="Shared media" onPress={onOpenMedia} />
+      <InfoRow icon={Pin} label="Pinned messages" count={pinsCount} onPress={onOpenPins} />
+      {isManager ? <InfoRow icon={Activity} label="Activity" onPress={onOpenActivity} /> : null}
+      {isManager ? (
+        <InfoRow icon={ShieldCheck} label="Always allowed" onPress={onOpenAllowed} />
+      ) : null}
+    </InfoRowGroup>
+  );
+}
 
 type ChannelInfoRootProps = {
   feedId: string;

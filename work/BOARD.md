@@ -2103,3 +2103,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2105](T-2105-fold-phone-chat.md) | phone: fold 73 single-use chat files into their importer | 2026-10-18 |
 | [T-2110](T-2110-agents-md-map.md) | docs: AGENTS.md points at the architecture map, Schema not zod | 2026-10-18 |
 | [T-2100](T-2100-server-barrels.md) | server: delete 14 barrel files, import the real modules | 2026-10-18 |
+| [T-2106](T-2106-fold-phone-rest.md) | phone: fold 85 single-use files into their importer | 2026-10-18 |

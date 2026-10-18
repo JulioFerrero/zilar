@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Effect, type Effect as EffectType } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Share, View } from 'react-native';
@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
 import { ContactList } from '@/components/contacts/contact-list';
-import { contactsLoadFailure, performRemoveContact } from '@/components/contacts/contacts';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { RefreshScroll } from '@/components/settings/refresh-scroll';
 import { useFocusList } from '@/components/settings/use-focus-list';
@@ -16,12 +15,67 @@ import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { domainOfJid, type Contact } from '@/lib/contacts-api';
-import { fromApi } from '@zilar/client-core';
-import { interruptFiber } from '@zilar/client-core';
+import { domainOfJid, type Contact, type ContactsApi } from '@/lib/contacts-api';
+import { fromApi, interruptFiber } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';
+import { ApiError } from '@zilar/api-contract';
+
+/**
+ * The contacts page's remove flow, mirroring the web `ContactsPage`: every error
+ * is a fixed sentence, never the server's raw message.
+ */
+
+const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
+
+function rateLimited(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 429 || error.code === 'rate_limited');
+}
+
+function contactsLoadFailure(error: unknown): string {
+  if (rateLimited(error)) {
+    return RATE_LIMIT_MESSAGE;
+  }
+  return 'Could not load contacts. Try again.';
+}
+
+function removeContactFailure(error: unknown): string {
+  if (rateLimited(error)) {
+    return RATE_LIMIT_MESSAGE;
+  }
+  if (error instanceof ApiError && error.status === 404) {
+    return 'That person is no longer a contact.';
+  }
+  return 'Could not remove contact. Try again.';
+}
+
+const removeSteps = Effect.fnUntraced(function* (
+  api: ContactsApi,
+  userId: string,
+  onRemoved: () => void,
+): EffectType.fn.Return<void, unknown> {
+  yield* Effect.tryPromise({ try: () => api.removeContact(userId), catch: (cause) => cause });
+  yield* Effect.try({ try: onRemoved, catch: (cause) => cause });
+});
+
+const performRemoveContactEffect = (
+  api: ContactsApi,
+  userId: string,
+  onRemoved: () => void,
+): Effect.Effect<string | null> =>
+  removeSteps(api, userId, onRemoved).pipe(
+    Effect.map((): string | null => null),
+    Effect.catch((error: unknown) => Effect.succeed(removeContactFailure(error))),
+  );
+
+function performRemoveContact(
+  api: ContactsApi,
+  userId: string,
+  onRemoved: () => void,
+): Promise<string | null> {
+  return Effect.runPromise(performRemoveContactEffect(api, userId, onRemoved));
+}
 
 type PageStatus = 'loading' | 'ready' | 'error';
 

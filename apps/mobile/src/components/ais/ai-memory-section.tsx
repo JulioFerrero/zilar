@@ -9,18 +9,57 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { AiMemory, AiMemoryApi } from '@/lib/ai-memory-api';
 import { interruptFiber } from '@zilar/client-core';
+import { ApiError } from '@zilar/api-contract';
 
-import {
-  clearAiMemoryEffect,
-  MEMORY_CLEAR_FAILED_MESSAGE,
-  MEMORY_FORGET_FAILED_MESSAGE,
-  MEMORY_LOAD_FAILED_MESSAGE,
-  removeFact,
-  requestForgetFactEffect,
-  type AiMemorySectionActions,
-  type AiMemorySectionState,
-  type AiMemoryStatus,
-} from './ai-memory-logic';
+const MEMORY_LOAD_FAILED_MESSAGE = 'Could not load the memory';
+
+const MEMORY_FORGET_FAILED_MESSAGE = 'Could not forget that fact';
+
+const MEMORY_CLEAR_FAILED_MESSAGE = 'Could not clear the memory';
+
+type AiMemoryStatus = 'loading' | 'ready' | 'error';
+
+interface AiMemorySectionState {
+  open: boolean;
+  status: AiMemoryStatus;
+  memory: AiMemory | null;
+  forgetError: string;
+  forgettingId: string | null;
+  clearError: string;
+  confirmingClear: boolean;
+}
+
+interface AiMemorySectionActions {
+  onShow: () => void;
+  onHide: () => void;
+  onRetry: () => void;
+  onForget: (factId: string) => void;
+  onAskClear: () => void;
+  onCancelClear: () => void;
+  onConfirmClear: () => void;
+}
+
+function removeFact(memory: AiMemory, factId: string): AiMemory {
+  return { ...memory, facts: memory.facts.filter((fact) => fact.id !== factId) };
+}
+
+/** A 404 means the fact is already gone, which the caller treats as success. */
+const requestForgetFactEffect = (api: AiMemoryApi, chat: string, aiId: string, factId: string) =>
+  Effect.tryPromise({
+    try: () => api.forgetFact(chat, aiId, factId),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch((error) =>
+      error instanceof ApiError && error.status === 404 ? Effect.void : Effect.fail(error),
+    ),
+  );
+
+const clearAiMemoryEffect = (api: AiMemoryApi, chat: string, aiId: string) =>
+  Effect.tryPromise({ try: () => api.clear(chat, aiId), catch: (cause) => cause }).pipe(
+    Effect.flatMap(() =>
+      Effect.tryPromise({ try: () => api.getMemory(chat, aiId), catch: (cause) => cause }),
+    ),
+  );
 
 // The cover lines carry a leading block reference (`#16` or `#0-15`) that is only meaningful to the server; the section strips it.
 const LINE_PREFIX = /^#\d+(?:-\d+)? /;

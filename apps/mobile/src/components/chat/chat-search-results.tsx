@@ -1,22 +1,210 @@
 // effect-plain: no effects
 import { X } from 'lucide-react-native';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import {
+  usePeoplePrefixSearch as useSharedPeoplePrefixSearch,
+  type PeopleSearchState,
+  NO_PERSON_MESSAGE,
+  PEOPLE_RATE_LIMITED_MESSAGE,
+  peopleHandleFor,
+  usePeopleHandleSearch,
+  type PeopleSearchView,
+} from '@zilar/client-core';
 
 import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
 import { MessageSearchList } from '@/components/chat/message-search-list';
-import { PeopleListSection } from '@/components/contacts/people-list-section';
-import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import type { ChatListRow } from '@/lib/chat-list';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import type { ContactsApi } from '@/lib/contacts-api';
+import {
+  type ContactsApi,
+  type HandleProfile,
+  type ContactRelation,
+  domainOfJid,
+} from '@/lib/contacts-api';
 import { createSearchApi } from '@/lib/search-api';
 import { getSessionToken } from '@/lib/session-token';
 import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
+import { PersonRow } from '../contacts/person-row';
+import { resolveContactChat } from '../contacts/add-contact';
+
+function usePeopleSearch(options: {
+  api: ContactsApi;
+  text: string;
+  chats: { id: string; kind: string }[];
+  myJid: string | null | undefined;
+  onMessage: (chatId: string) => void;
+  submitRequest?: number | undefined;
+}): {
+  view: PeopleSearchView<HandleProfile>;
+  actionError: string | null;
+  openMessage: () => void;
+} {
+  const { api, text, chats, myJid, onMessage, submitRequest } = options;
+  const { view, target } = usePeopleHandleSearch<HandleProfile>(
+    (handle) => api.lookupByHandle(handle),
+    text,
+    submitRequest,
+  );
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  return {
+    view,
+    actionError,
+    openMessage: () => {
+      if (target === null) {
+        return;
+      }
+      const chatId = resolveContactChat(chats, target.userId, domainOfJid(myJid));
+      if (chatId === undefined) {
+        setActionError('No chat with them yet. Pull to refresh the chats list.');
+        return;
+      }
+      onMessage(chatId);
+    },
+  };
+}
+
+function PeopleSearchResult({
+  api,
+  text,
+  chats,
+  myJid,
+  onMessage,
+  submitRequest,
+}: {
+  api: ContactsApi;
+  text: string;
+  chats: { id: string; kind: string }[];
+  myJid: string | null | undefined;
+  onMessage: (chatId: string) => void;
+  submitRequest?: number | undefined;
+}) {
+  const router = useRouter();
+  const search = usePeopleSearch({ api, text, chats, myJid, onMessage, submitRequest });
+  if (peopleHandleFor(text) === null) {
+    return null;
+  }
+  const view = search.view;
+  if (view.status === 'idle') {
+    return null;
+  }
+
+  return (
+    <View className="flex-col gap-0.5 px-2">
+      <Text className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</Text>
+      {view.status === 'looking' ? (
+        <Text className="px-[10px] pb-2 text-[13px] text-muted-foreground">Looking up…</Text>
+      ) : null}
+      {view.status === 'missing' ? (
+        <Text className="px-[10px] pb-2 text-[13px] text-muted-foreground">
+          {NO_PERSON_MESSAGE}
+        </Text>
+      ) : null}
+      {view.status === 'rateLimited' ? (
+        <Text accessibilityRole="alert" className="px-[10px] pb-2 text-[13px] text-danger">
+          {PEOPLE_RATE_LIMITED_MESSAGE}
+        </Text>
+      ) : null}
+      {view.status === 'error' ? (
+        <Text accessibilityRole="alert" className="px-[10px] pb-2 text-[13px] text-danger">
+          {view.message}
+        </Text>
+      ) : null}
+      {view.status === 'found' ? (
+        <View className="pb-2">
+          <PersonRow
+            entry={view.profile}
+            hint={relationHint(view.profile.relation)}
+            onOpen={
+              view.profile.relation === 'self'
+                ? undefined
+                : view.profile.relation === 'contact'
+                  ? search.openMessage
+                  : () =>
+                      router.push({
+                        pathname: '/u/[handle]',
+                        params: { handle: view.profile.handle },
+                      })
+            }
+          />
+          {search.actionError === null ? null : (
+            <Text accessibilityRole="alert" className="px-[10px] text-[13px] text-danger">
+              {search.actionError}
+            </Text>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function relationHint(relation: ContactRelation): string | undefined {
+  switch (relation) {
+    case 'request_sent':
+      return 'Requested';
+    case 'request_received':
+      return 'Wants to connect';
+    case 'blocked':
+      return 'Blocked';
+    case 'self':
+      return 'You';
+    default:
+      return undefined;
+  }
+}
+
+type PeoplePrefixSearchState = PeopleSearchState<HandleProfile>;
+
+function usePeoplePrefixSearch(api: ContactsApi, query: string): PeoplePrefixSearchState {
+  return useSharedPeoplePrefixSearch((q) => api.searchUsers(q), query).state;
+}
+
+function PeopleListSection({ api, text }: { api: ContactsApi; text: string }) {
+  const router = useRouter();
+  const state = usePeoplePrefixSearch(api, text);
+  if (state.status === 'idle') {
+    return null;
+  }
+
+  return (
+    <View className="flex-col gap-0.5 px-2">
+      <Text className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</Text>
+      {state.status === 'loading' ? (
+        <Text className="px-[10px] pb-2 text-[13px] text-muted-foreground">Searching…</Text>
+      ) : null}
+      {state.status === 'results' && state.entries.length === 0 ? (
+        <Text className="px-[10px] pb-2 text-[13px] text-muted-foreground">No people found.</Text>
+      ) : null}
+      {state.status === 'rate_limited' ? (
+        <Text accessibilityRole="alert" className="px-[10px] pb-2 text-[13px] text-danger">
+          Too many searches, try again in a few minutes.
+        </Text>
+      ) : null}
+      {state.status === 'error' ? (
+        <Text accessibilityRole="alert" className="px-[10px] pb-2 text-[13px] text-danger">
+          Could not search people. Try again.
+        </Text>
+      ) : null}
+      {state.status === 'results'
+        ? state.entries.map((entry) => (
+            <PersonRow
+              key={entry.userId}
+              entry={entry}
+              onOpen={() =>
+                router.push({ pathname: '/u/[handle]', params: { handle: entry.handle } })
+              }
+            />
+          ))
+        : null}
+    </View>
+  );
+}
 
 export function ChatSearchResults({
   searchHeader,

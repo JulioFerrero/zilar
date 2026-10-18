@@ -30,16 +30,84 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { fromApi } from '@zilar/client-core';
-import { interruptFiber } from '@zilar/client-core';
+import { fromApi, interruptFiber } from '@zilar/client-core';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { AppVersionRow } from '@/components/settings/app-version-row';
-import { settingsHubGroups, type SettingsHubGroup } from '@/components/settings/hub';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useProfileApi } from '@/components/settings/use-profile-api';
-import type { SettingsIconId } from '@zilar/chat-core';
+import {
+  type SettingsIconId,
+  SETTINGS_GROUP_ORDER,
+  SETTINGS_ITEMS,
+  type SettingsGroup,
+} from '@zilar/chat-core';
+
+/**
+ * The hub row content: the title, the subtitle, the icon test id and the group
+ * whose card holds the row. Hook- and JSX-free so Vitest covers it.
+ */
+
+interface SettingsHubRow {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: SettingsIconId;
+  iconTestId: string;
+  href: string;
+  accessibilityLabel: string;
+  group: SettingsGroup;
+}
+
+interface SettingsHubGroup {
+  group: SettingsGroup;
+  label: string;
+  rows: SettingsHubRow[];
+}
+
+const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
+  account: 'Account',
+  ais: 'AIs and tools',
+  chats: 'Chats',
+  server: 'Server',
+};
+
+/**
+ * The phone hub hides two shared entries: the `profile` row (the header card
+ * already opens the profile) and the whole `server` group (Integrations is web
+ * only). The shared registry stays the single source; web keeps both.
+ */
+const PHONE_HIDDEN_ROWS: ReadonlySet<string> = new Set(['profile']);
+const PHONE_HIDDEN_GROUPS: ReadonlySet<SettingsGroup> = new Set(['server']);
+
+function toHubRow(item: (typeof SETTINGS_ITEMS)[number]): SettingsHubRow {
+  return {
+    id: item.id,
+    title: item.title,
+    subtitle: item.subtitle,
+    icon: item.icon,
+    iconTestId: `settings-icon-${item.icon}`,
+    href: item.href,
+    accessibilityLabel: `${item.title}: ${item.subtitle}`,
+    group: item.group,
+  };
+}
+
+function settingsHubRows(): SettingsHubRow[] {
+  return SETTINGS_GROUP_ORDER.flatMap((group) =>
+    SETTINGS_ITEMS.filter((item) => item.group === group).map(toHubRow),
+  );
+}
+
+function settingsHubGroups(): SettingsHubGroup[] {
+  const rows = settingsHubRows();
+  return SETTINGS_GROUP_ORDER.filter((group) => !PHONE_HIDDEN_GROUPS.has(group)).map((group) => ({
+    group,
+    label: SETTINGS_GROUP_LABELS[group],
+    rows: rows.filter((row) => row.group === group && !PHONE_HIDDEN_ROWS.has(row.id)),
+  }));
+}
 
 export default function SettingsScreen() {
   return (
