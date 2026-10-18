@@ -1,3 +1,4 @@
+// effect-plain: the debounced file queue over the injected expo-file-system port; the codec and its Effect schemas now live in @zilar/client-core
 /**
  * The newest messages of the recent chats, so a cold start opens an open chat
  * at once, online or offline (T-1313), the way Telegram opens on its local
@@ -7,34 +8,33 @@
  * app already uses for small per-device JSON (`lib/composer-drafts.ts`,
  * `lib/voice-transcripts.ts`); no new dependency is added.
  *
- * Only display data is kept: the `UiMessage`s of the 50 most recent chats (50
- * each) plus the chat currently open when it falls outside those, the owner's
- * user id and a version. No token and no media bytes, only the attachment URLs
- * the rows already carry. A different signed-in user ignores the file (the
- * owner must match) and the next save replaces it; sign-out removes it.
+ * The format is the shared codec in `@zilar/client-core/store` (T-2019); this
+ * file keeps the phone's file queue. Only display data is kept: the
+ * `UiMessage`s of the 50 most recent chats (50 each) plus the chat currently
+ * open when it falls outside those, the owner's user id and a version. No
+ * token and no media bytes, only the attachment URLs the rows already carry. A
+ * different signed-in user ignores the file (the owner must match) and the
+ * next save replaces it; sign-out removes it.
  */
 import type { Pin } from '@zilar/api-contract';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import { Result, Schema } from 'effect';
-import { struct } from '@zilar/protocol';
-import { decodeCachedPins, encodeCachedPins } from './offline-cache-pins';
+import {
+  decodeMessageCache,
+  encodeMessageCache,
+  selectCachedChats,
+  type MessageCacheSnapshot,
+} from '@zilar/client-core/store';
 
 /** The cache file name; one file per install (removed on sign-out). */
 export const OFFLINE_CACHE_FILE_NAME = 'zilar-offline-cache.json';
-const CACHE_VERSION = 1;
 const MAX_CACHED_CHATS = 50;
-const MAX_CACHED_MESSAGES = 50;
+const LOCAL_URL_PREFIXES = ['file://', 'data:'] as const;
 // Writes are debounced this long after the last change; the app's background
 // handler flushes the pending write at once (`effects/lifecycle.ts`).
 export const OFFLINE_CACHE_WRITE_DELAY_MS = 2_000;
 
 /** The cache's contents: one signed-in user's recent messages and their pins. */
-export interface OfflineCacheSnapshot {
-  userId: string;
-  messages: Record<string, UiMessage[]>;
-  /** T-1914: the pinned banner of a cached chat paints before the pins answer. */
-  pins?: Record<string, Pin[]>;
-}
+export type OfflineCacheSnapshot = MessageCacheSnapshot;
 
 /**
  * The file seam: the only thing the cache talks to outside itself. The app's
@@ -61,151 +61,14 @@ export interface OfflineCache {
   clear(): Promise<void>;
 }
 
-// Unknown keys are kept, like the chat-list cache's schema: a newer build may
-// add fields to a cached row and an older cache must still paint it.
-const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
-
-// A message is written with `createdAt` as an ISO string; nothing else changes.
-const cachedMessageSchema = Schema.StructWithRest(
-  struct({
-    id: Schema.String,
-    chatId: Schema.String,
-    senderId: Schema.String,
-    senderName: Schema.String,
-    text: Schema.optional(Schema.String),
-    createdAt: Schema.String,
-    status: Schema.String,
-  }),
-  passthrough,
-);
-
-const cacheSchema = struct({
-  version: Schema.Literal(CACHE_VERSION),
-  userId: Schema.String,
-  messages: Schema.Record(Schema.String, Schema.mutable(Schema.Array(cachedMessageSchema))),
-  // Decoded separately and leniently (`offline-cache-pins.ts`), so a bad pin
-  // never discards the messages.
-  pins: Schema.optional(Schema.Unknown),
-});
-
-// The mobile-only fields the cache must drop: the `file://` preview and the
-// upload progress live beside the shared `UiMessage` (`lib/types.ts`,
-// `MobileMessage`), never on the wire, so they must never reach the file.
-type LocalOnlyFields = { localUri?: string | undefined; uploadProgress?: number | undefined };
-
-function isLocalUrl(url: string): boolean {
-  return url.startsWith('file://') || url.startsWith('data:');
-}
-
-/**
- * Whether a message may be cached. A `local-*` id is a still-unacked optimistic
- * send: the ledger's `wireTargetFor` (`packages/client-core/src/store/ledger-ids.ts`)
- * reports no server id for one, so on restart the server echo would show the
- * message twice (once under each id). A `sending` or `failed` one is in flight
- * or broken: keeping it would show a clock or a Retry that can never settle.
- */
-function isCacheable(message: UiMessage): boolean {
-  return (
-    message.status !== 'sending' && message.status !== 'failed' && !message.id.startsWith('local-')
-  );
-}
-
-/** Drops the local-only upload fields and any `file://` preview url they left behind. */
-function stripLocalFields(message: UiMessage): UiMessage {
-  const {
-    localUri: _localUri,
-    uploadProgress: _uploadProgress,
-    ...rest
-  } = message as UiMessage & LocalOnlyFields;
-  const cleaned: UiMessage = { ...rest };
-  if (cleaned.attachment !== undefined && isLocalUrl(cleaned.attachment.url)) {
-    delete cleaned.attachment;
-  }
-  if (cleaned.image !== undefined && isLocalUrl(cleaned.image.url)) {
-    delete cleaned.image;
-  }
-  if (cleaned.voice?.url !== undefined && isLocalUrl(cleaned.voice.url)) {
-    delete cleaned.voice;
-  }
-  return cleaned;
-}
-
-/** Encodes one message; only `createdAt` needs the string form. */
-function encodeMessage(message: UiMessage): Record<string, unknown> {
-  const cleaned = stripLocalFields(message);
-  return { ...cleaned, createdAt: cleaned.createdAt.toISOString() };
-}
-
+/** Encodes the snapshot with the shared codec, dropping this device's media urls. */
 export function encodeOfflineCache(snapshot: OfflineCacheSnapshot): string {
-  const messages: Record<string, Record<string, unknown>[]> = {};
-  for (const [chatId, list] of Object.entries(snapshot.messages)) {
-    messages[chatId] = list.filter(isCacheable).slice(-MAX_CACHED_MESSAGES).map(encodeMessage);
-  }
-  const pins = encodeCachedPins(snapshot.pins ?? {});
-  return JSON.stringify({
-    version: CACHE_VERSION,
-    userId: snapshot.userId,
-    messages,
-    ...(Object.keys(pins).length > 0 ? { pins } : {}),
-  });
+  return encodeMessageCache(snapshot, { localUrlPrefixes: LOCAL_URL_PREFIXES });
 }
 
-function decodeMessage(message: Schema.Schema.Type<typeof cachedMessageSchema>): UiMessage {
-  const createdAt = new Date(message.createdAt);
-  return {
-    ...(message as unknown as UiMessage),
-    createdAt: Number.isNaN(createdAt.getTime()) ? new Date(0) : createdAt,
-  };
-}
-
-/**
- * Parses the file for `userId`, or null when it is unusable or another user's.
- * A corrupt, truncated or older-version file reads as "none", so it can never
- * break the start.
- */
+/** Parses the file for `userId`, or null when it is unusable or another user's. */
 export function decodeOfflineCache(raw: string, userId: string): OfflineCacheSnapshot | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  const decoded = Schema.decodeUnknownResult(cacheSchema)(parsed);
-  if (!Result.isSuccess(decoded)) {
-    return null;
-  }
-  if (decoded.success.userId !== userId) {
-    return null;
-  }
-  const messages: Record<string, UiMessage[]> = {};
-  for (const [chatId, list] of Object.entries(decoded.success.messages)) {
-    messages[chatId] = list.map(decodeMessage);
-  }
-  return {
-    userId: decoded.success.userId,
-    messages,
-    pins: decodeCachedPins(decoded.success.pins),
-  };
-}
-
-/**
- * The chats to keep: the first MAX_CACHED_CHATS in display order, plus the
- * chat currently open when it falls outside them (a topic, or a chat opened
- * from a notification), so it starts from the local copy too.
- */
-function cachedChats(
-  chats: readonly ChatSummary[],
-  activeChatId: string | null | undefined,
-): readonly ChatSummary[] {
-  const first = chats.slice(0, MAX_CACHED_CHATS);
-  if (activeChatId === null || activeChatId === undefined) {
-    return first;
-  }
-  if (first.some((chat) => chat.id === activeChatId)) {
-    return first;
-  }
-  const active = chats.find((chat) => chat.id === activeChatId);
-  return active === undefined ? first : [...first, active];
+  return decodeMessageCache(raw, userId);
 }
 
 /**
@@ -226,7 +89,7 @@ export function offlineSnapshot(
   }
   const recent: Record<string, UiMessage[]> = {};
   const pins: Record<string, Pin[]> = {};
-  for (const chat of cachedChats(chats, activeChatId)) {
+  for (const chat of selectCachedChats(chats, activeChatId, MAX_CACHED_CHATS)) {
     const list = messages[chat.id];
     if (list !== undefined) {
       recent[chat.id] = list;

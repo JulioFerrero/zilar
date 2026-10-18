@@ -59,3 +59,6 @@ export * from './chat-rows';
 export * from './sender-avatar';
 // ----------------------------------------------------------------------------
 // End of T-1996.
+
+// T-2019: the shared offline message-cache codec.
+export * from './message-cache';

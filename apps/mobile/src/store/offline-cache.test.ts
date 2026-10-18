@@ -2,36 +2,18 @@
 // task names: hydrate then server history (no duplicates, server wins), another
 // user's file is ignored, and sign-out removes the file. The file is an
 // injected in-memory port, so the real `expo-file-system` is never loaded.
-import type { Pin } from '@zilar/api-contract';
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
-import {
-  createOfflineCache,
-  decodeOfflineCache,
-  encodeOfflineCache,
-  offlineSnapshot,
-  type OfflineCachePort,
-} from './offline-cache';
+import { createOfflineCache, encodeOfflineCache, type OfflineCachePort } from './offline-cache';
 import { fakeApi, fakeAppState } from './test-support';
 import { waitFor } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
 const ME = 'u-me';
-
-const ANA_PIN: Pin = {
-  id: 'pin-1',
-  chat: ANA,
-  messageId: 'm1',
-  senderName: 'Ana',
-  text: 'pinned copy',
-  kind: 'text',
-  pinnedBy: 'u-ana',
-  pinnedAt: '2026-09-28T09:00:00Z',
-};
 
 function cachedMessage(id: string, text: string, createdAt: string): UiMessage {
   return {
@@ -102,62 +84,7 @@ function coreWithHistory(messages: ChatMessage[]): XmppCore {
   });
 }
 
-function chatRow(id: string): ChatSummary {
-  return {
-    id,
-    title: id,
-    kind: 'group',
-    isAI: false,
-    space: 'personal',
-    unread: 0,
-    muted: false,
-  };
-}
-
 describe('mobile offline chat cache (T-1313)', () => {
-  it('keeps 50 chats plus the open one when it falls outside them', () => {
-    const chats = Array.from({ length: 60 }, (_, index) => chatRow(`c-${index}`));
-    const messages = Object.fromEntries(
-      chats.map((chat) => [
-        chat.id,
-        [cachedMessage(`m-${chat.id}`, chat.id, '2026-09-28T09:00:00Z')],
-      ]),
-    );
-
-    const snapshot = offlineSnapshot(ME, chats, messages, 'c-55');
-
-    expect(Object.keys(snapshot?.messages ?? {})).toEqual([
-      ...chats.slice(0, 50).map((chat) => chat.id),
-      'c-55',
-    ]);
-  });
-
-  it("round-trips the cached chats' pins, and another user still decodes to null", () => {
-    const snapshot = offlineSnapshot(
-      ME,
-      [chatRow(ANA)],
-      { [ANA]: [cachedMessage('m1', 'hello', '2026-09-28T09:00:00Z')] },
-      undefined,
-      (chatId) => (chatId === ANA ? [ANA_PIN] : []),
-    );
-    if (snapshot === undefined) {
-      throw new Error('expected a snapshot');
-    }
-
-    const encoded = encodeOfflineCache(snapshot);
-    expect(decodeOfflineCache(encoded, ME)?.pins).toEqual({ [ANA]: [ANA_PIN] });
-    expect(decodeOfflineCache(encoded, 'u-other')).toBeNull();
-
-    // A partly corrupt pins field costs the pins, never the messages.
-    const corrupt = {
-      ...(JSON.parse(encoded) as Record<string, unknown>),
-      pins: { [ANA]: [{ id: 1 }] },
-    };
-    const lenient = decodeOfflineCache(JSON.stringify(corrupt), ME);
-    expect(lenient?.pins).toEqual({});
-    expect(lenient?.messages[ANA]?.map((message) => message.id)).toEqual(['m1']);
-  });
-
   it('hydrates, then merges the server history without duplicates (server wins)', async () => {
     const port = fakePort(
       seededFile(ME, [
@@ -188,41 +115,6 @@ describe('mobile offline chat cache (T-1313)', () => {
     expect(ids).toContain('m3');
 
     store.getState().stop();
-  });
-
-  it('never writes local-only or in-flight messages', () => {
-    const withLocal = {
-      ...cachedMessage('m2', 'kept', '2026-09-28T09:30:00Z'),
-      localUri: 'file:///tmp/preview.jpg',
-      uploadProgress: 0.5,
-      attachment: {
-        kind: 'image' as const,
-        url: 'file:///tmp/preview.jpg',
-        name: 'preview.jpg',
-        size: 12,
-        mime: 'image/jpeg',
-      },
-    } as unknown as UiMessage;
-    const encoded = encodeOfflineCache({
-      userId: ME,
-      messages: {
-        [ANA]: [
-          { ...cachedMessage('local-1', 'sending', '2026-09-28T09:00:00Z'), status: 'sending' },
-          { ...cachedMessage('local-2', 'failed', '2026-09-28T09:00:00Z'), status: 'failed' },
-          cachedMessage('local-3', 'still local', '2026-09-28T09:00:00Z'),
-          withLocal,
-        ],
-      },
-    });
-
-    const parsed = JSON.parse(encoded) as {
-      messages: Record<string, Record<string, unknown>[]>;
-    };
-    const kept = parsed.messages[ANA] ?? [];
-    expect(kept.map((message) => message['id'])).toEqual(['m2']);
-    expect(kept[0]).not.toHaveProperty('localUri');
-    expect(kept[0]).not.toHaveProperty('uploadProgress');
-    expect(kept[0]).not.toHaveProperty('attachment');
   });
 
   it("ignores another user's file", async () => {
