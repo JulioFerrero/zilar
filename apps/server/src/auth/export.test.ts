@@ -7,6 +7,7 @@ import {
   contactOf,
   createTestContext,
   expectedJid,
+  nextClientIp,
   testApp,
   testSql,
   TEST_BASE_URL,
@@ -108,6 +109,48 @@ interface ExportDocument {
 
 interface ErrorBody {
   error: { code: string; message: string };
+}
+
+// Every cookie a response sets, as one `cookie` header value, like a browser
+// would keep them. This includes the 5-minute `session_data` cache cookie.
+function cookieJar(response: Response): string {
+  const jar = new Map<string, string>();
+  for (const line of response.headers.getSetCookie()) {
+    const [pair = '', ...attributes] = line.split(';').map((part) => part.trim());
+    const separator = pair.indexOf('=');
+    const name = pair.slice(0, separator);
+    const value = pair.slice(separator + 1);
+    const expired = attributes.some((attribute) => attribute.toLowerCase() === 'max-age=0');
+    if (expired || value === '') {
+      jar.delete(name);
+    } else {
+      jar.set(name, value);
+    }
+  }
+  return [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+}
+
+// A second sign-in whose cookie jar keeps the session cache cookie.
+async function signInWithCache(
+  context: TestContext,
+  app: ReturnType<typeof testApp>,
+  email: string,
+): Promise<string> {
+  const headers = { 'content-type': 'application/json', 'x-forwarded-for': nextClientIp() };
+  await app.request(`${TEST_BASE_URL}/api/auth/email-otp/send-verification-otp`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, type: 'sign-in' }),
+  });
+  const response = await app.request(`${TEST_BASE_URL}/api/auth/sign-in/email-otp`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, otp: context.mailer.codeFor(email) }),
+  });
+  if (response.status !== 200) {
+    throw new Error(`sign-in for ${email} failed with ${response.status}`);
+  }
+  return cookieJar(response);
 }
 
 describe('GET /api/me/export', () => {
@@ -260,5 +303,25 @@ describe('GET /api/me/export', () => {
     const messages = dm?.messages ?? [];
     expect(messages.every((message) => message.kind === 'text')).toBe(true);
     expect(messages.map((message) => message.from)).toEqual(['them', 'me']);
+  });
+
+  it('ignores the session cache cookie, so a revoked session cannot export', async () => {
+    const app = testApp(context);
+    const alice = await bootstrapUser(context, app, 'revoked@example.com');
+    const cookie = await signInWithCache(context, app, 'revoked@example.com');
+    expect(cookie).toContain('better-auth.session_data=');
+
+    // Revoked elsewhere, while the cache cookie still holds the session.
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM "session" WHERE user_id = ${alice.id}`;
+      }),
+    );
+
+    const response = await exportTarget()(cookie);
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as ErrorBody;
+    expect(body.error.code).toBe('unauthorized');
   });
 });

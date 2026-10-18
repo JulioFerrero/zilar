@@ -145,3 +145,72 @@ describe('/api/me/sessions', () => {
     expect(after.map((session) => session.id)).toContain(current?.id);
   });
 });
+
+// T-1981: the app has its own `/api/me/sessions` and `PATCH /api/me`, so the
+// matching Better Auth routes must not answer.
+describe('Better Auth built-in routes', () => {
+  let context: TestContext;
+  let testCounter = 0;
+
+  beforeEach(async () => {
+    testCounter += 1;
+    clientIp = `10.1.1.${testCounter}`;
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('does not serve the built-in list-sessions route', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+    const cookie = await signIn(context, app, 'builtin-list@example.com', invite.code);
+
+    const response = await app.request(`${BASE_URL}/api/auth/list-sessions`, {
+      headers: { cookie },
+    });
+    expect([403, 404]).toContain(response.status);
+    // No session row, and above all no session token, reaches the caller.
+    expect(await response.text()).not.toContain('"token"');
+  });
+
+  it('does not let the built-in update-user route change the profile', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+    const cookie = await signIn(context, app, 'builtin-update@example.com', invite.code);
+    const before = await me(app, cookie);
+
+    const response = await app.request(`${BASE_URL}/api/auth/update-user`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ name: 'Hijacked', image: 'https://evil.example/pixel.png' }),
+    });
+    expect([403, 404]).toContain(response.status);
+
+    const after = await me(app, cookie);
+    expect(after.name).toBe(before.name);
+    expect(after.image).toBe(before.image);
+  });
+
+  it('still renames the user through PATCH /api/me', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+    const cookie = await signIn(context, app, 'builtin-rename@example.com', invite.code);
+
+    const response = await app.request(`${BASE_URL}/api/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ name: 'Ada Lovelace' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ name: 'Ada Lovelace' });
+    expect((await me(app, cookie)).name).toBe('Ada Lovelace');
+  });
+
+  async function me(app: TestApp, cookie: string): Promise<{ name: string; image: string | null }> {
+    const response = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    return (await response.json()) as { name: string; image: string | null };
+  }
+});

@@ -99,6 +99,12 @@ export function createAuth({
       },
     },
     trustedOrigins: config.WEB_ORIGINS,
+    // T-1981: the app replaces these two Better Auth routes. `/list-sessions`
+    // answers every session row, token included, and `/update-user` skips the
+    // profile rules of `PATCH /api/me` and accepts any `image` URL. The
+    // in-process `auth.api.updateUser` call in `PATCH /api/me` does not go
+    // through the router, so it keeps working.
+    disabledPaths: ['/list-sessions', '/update-user'],
     rateLimit: {
       enabled: true,
       storage: 'memory',

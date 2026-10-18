@@ -119,7 +119,7 @@ function isReadMethod(method: string): boolean {
 
 // Better Auth names the cache cookie `<prefix>session_data`, in chunks
 // (`session_data.0`) when large.
-function headersWithoutSessionCache(source: Record<string, string>): Headers {
+export function headersWithoutSessionCache(source: Headers | Record<string, string>): Headers {
   const headers = new Headers(source);
   const cookie = headers.get('cookie');
   if (cookie !== null) {

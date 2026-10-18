@@ -19,6 +19,7 @@ import type { AuditRecorder } from '../audit/service';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
+import { headersWithoutSessionCache } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { ownBareJid } from '../jid';
@@ -139,7 +140,10 @@ export async function runExport(
     throw new HttpError(501, 'export_unavailable', 'Account export is not configured');
   }
   const now = deps.now ?? Date.now;
-  const session = await currentSession(deps.auth, headers);
+  // T-1981: the whole archive is at stake, so never trust the 5-minute
+  // session cache cookie. Reading the session without it makes a session
+  // revoked elsewhere fail here instead of staying valid for five minutes.
+  const session = await currentSession(deps.auth, headersWithoutSessionCache(headers));
   assertFreshSession(session.createdAt, now(), 'Sign in again to export your messages.');
   if (!deps.limiter.allow(userId)) {
     throw new HttpError(429, 'rate_limited', 'Too many exports, try again later');
