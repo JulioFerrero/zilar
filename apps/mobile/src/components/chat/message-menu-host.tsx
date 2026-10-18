@@ -1,5 +1,13 @@
 import type { UiMessage, UiReaction } from '@zilar/chat-core';
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { BubbleActionsSheet } from '@/components/chat/message-bubble-actions';
 import type { MessageHandler, ReactHandler } from '@/components/chat/use-stable-handlers';
@@ -56,6 +64,12 @@ const ignoreReact: ReactHandler = () => {};
  * their target through `useMessageMenu`, and this host draws the only sheet.
  * The target outlives the close, so the content does not blank while the sheet
  * animates away.
+ *
+ * The first press mounts the sheet with `visible={false}` and opens it in a
+ * later commit (T-2026): a native TrueSheet that mounts already visible may
+ * never present, because its view is not attached yet when `present()` runs.
+ * A press that lands while the sheet is closing flips nothing, so the host
+ * remembers it and presents its target once the sheet reports the close.
  */
 export function MessageMenuHost({
   onReply,
@@ -71,11 +85,45 @@ export function MessageMenuHost({
   const [target, setTarget] = useState<MessageMenuTarget | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const open = useCallback((next: MessageMenuTarget) => {
-    setTarget(next);
-    setConfirmOpen(false);
-    setMenuOpen(true);
+  // The same flag outside state, so `open` stays stable and a press can read the
+  // committed value without re-rendering every bubble on each open or close.
+  const menuVisible = useRef(false);
+  // A press that lands while the sheet is closing: `visible` is still true, so
+  // flipping it is a no-op, and the in-flight dismissal then leaves the new
+  // target hidden. The next close presents that target instead.
+  const reopen = useRef(false);
+  const setMenuVisible = useCallback((next: boolean) => {
+    menuVisible.current = next;
+    setMenuOpen(next);
   }, []);
+  const open = useCallback(
+    (next: MessageMenuTarget) => {
+      setTarget(next);
+      setConfirmOpen(false);
+      if (menuVisible.current) {
+        // The dimmed backdrop blocks presses while the sheet is presented, so a
+        // press now means the sheet is already on its way out.
+        reopen.current = true;
+        return;
+      }
+      // The sheet mounts in this commit; opening it on the next frame gives
+      // TrueSheet a mounted view to present. A sheet mounted already visible
+      // may never present.
+      requestAnimationFrame(() => setMenuVisible(true));
+    },
+    [setMenuVisible],
+  );
+  const onMenuClosed = useCallback(() => {
+    if (!reopen.current) {
+      setMenuVisible(false);
+      return;
+    }
+    reopen.current = false;
+    // Leave `visible` false for a commit, then present the target the press
+    // stored, so ActionSheet sees the change it missed while closing.
+    setMenuVisible(false);
+    requestAnimationFrame(() => setMenuVisible(true));
+  }, [setMenuVisible]);
   const value = useMemo<MessageMenu>(() => ({ open }), [open]);
   return (
     <MessageMenuContext.Provider value={value}>
@@ -93,8 +141,9 @@ export function MessageMenuHost({
           onPin={onPin}
           onUnpin={onUnpin}
           react={react ?? ignoreReact}
-          setMenuOpen={setMenuOpen}
+          setMenuOpen={setMenuVisible}
           setConfirmOpen={setConfirmOpen}
+          onMenuClosed={onMenuClosed}
         />
       )}
     </MessageMenuContext.Provider>

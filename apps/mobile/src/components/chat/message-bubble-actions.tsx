@@ -38,6 +38,8 @@ type BubbleActionsSheetProps = {
   react: (message: UiMessage, emoji: string) => void;
   setMenuOpen: (open: boolean) => void;
   setConfirmOpen: (open: boolean) => void;
+  /** The sheet closed itself (drag, backdrop tap, Android back). */
+  onMenuClosed: () => void;
 };
 
 function copyMessageText(text: string): void {
@@ -77,6 +79,7 @@ export function BubbleActionsSheet({
   react,
   setMenuOpen,
   setConfirmOpen,
+  onMenuClosed,
 }: BubbleActionsSheetProps) {
   // The failed-text Retry/Delete and the T-1247 delete-for-me read straight
   // from the store (like `chat-thread.tsx` reads `retrySticker`): threading
@@ -191,7 +194,7 @@ export function BubbleActionsSheet({
         setMenuOpen(false);
         react(message, emoji);
       }}
-      onClose={() => setMenuOpen(false)}
+      onClose={onMenuClosed}
     />
   );
 }

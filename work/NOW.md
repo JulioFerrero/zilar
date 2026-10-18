@@ -940,10 +940,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - APKs are in `tmp/apks/`. Next: measure W3a (T-2018, merged), W3b (T-2022, running), then W4 (row leaves, after T-2001).
                     - **Share plan wave 1:** merged T-2019 (message cache; phone `editedAt` fix) and T-2021 (smooth text, −77 lines). T-2020 (drafts) was sent back for being +45 lines.
                     - **Julio's 4 share decisions:** memory `decisions-1018-share`.
-                    - **DEPLOY BROKEN since 16:11:** the Coolify build of `6ab3d50f0` failed at `pnpm --filter @zilar/server build`.
-                      - **Cause:** T-2016 removed `@xmpp/client` from the server's dependencies, but the bundle pulls it in through xmpp-core. The gate doesn't run the production build, so it missed this.
-                      - **Production is fine:** it still runs `330d36482`.
-                      - **Fix:** T-2025 restores the dependency and adds the server build to the gate. Push right after it merges, then check that T-1980's pin jump is live.
+                    - **Deploy fixed at 17:17:** `0486d505f` is live, with 0 server errors and room reconcile 5/0.
+                      - **What broke:** the 16:11 build of `6ab3d50f0` failed because T-2016 had removed `@xmpp/client`.
+                      - **The fix:** T-2025 restored it, and the gate now builds the server bundle.
+                      - **Now live:** T-1980's pinned-card jump. Julio to test it on web.
+                    - **Phone, main:**
+                      - long-press opens no menu since T-2018; T-2026 is fixing it;
+                      - T-2022 (one row gesture) passed swipe, double tap and flings on the emulator, but went back to limit the double tap to the bubble.
+                      - **Jank:** W3a is about 80% against main's 90% (interleaved). W3b isn't measurably better, and the measurements are noisy under load.
                     - **T-2014 is running:** the server takes room senders from `bare_peer` everywhere, including AI-card detection, the media index, names, AI context and memory, and preview cards only from AIs.
                       - W3 (one menu, one gesture) and W4 (row leaves) wait for T-2009, since they share files;
                       - measure with `dumpsys gfxinfo` before and after.
