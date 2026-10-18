@@ -1,20 +1,13 @@
-/**
- * The real native uploader seam (T-1021, split from `attachment-native.ts`):
- * a binary-content PUT of the local file through `expo-file-system`.
- */
-
 import { Effect } from 'effect';
 import { File, UploadType } from 'expo-file-system';
 
 import type { AttachmentUploader, PickedFile } from './attachment-ports';
 
-/** Fails with the server's `upload refused` text unless the status is 2xx. */
 const checkUploadStatus = (result: { readonly status: number }): Effect.Effect<void, Error> =>
   result.status < 200 || result.status >= 300
     ? Effect.fail(new Error(`upload refused: ${result.status}`))
     : Effect.void;
 
-/** One binary PUT of the local file, aborted through `current`. */
 const uploadEffect = (
   file: PickedFile,
   slot: { putUrl: string; headers: Record<string, string> },
@@ -46,10 +39,7 @@ const uploadEffect = (
   );
 
 /**
- * The real uploader: a binary-content PUT of the local file to the slot URL
- * with the slot's headers. Each upload gets its own AbortController, keyed
- * by message id, so two chats uploading at once stay independent and
- * cancelling one never touches the other.
+ * One AbortController per message id, so two chats upload independently and cancelling one never touches the other.
  */
 export function createAttachmentUploader(): AttachmentUploader {
   const controllers = new Map<string, AbortController>();

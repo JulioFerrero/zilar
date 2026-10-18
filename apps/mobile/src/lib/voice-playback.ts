@@ -1,10 +1,3 @@
-/**
- * The native voice playback seams (T-0154): one shared speaker per bubble, a
- * single-speaker registry so only one voice plays at a time, and the
- * `expo-audio` source for a voice message. Split out of `voice-native.ts`
- * (T-1030).
- */
-
 import { Effect, type Effect as EffectType } from 'effect';
 import type { VoiceMeta } from '@zilar/protocol';
 
@@ -12,11 +5,9 @@ import { API_URL } from './auth';
 import { getSessionToken } from './session-token';
 import { isTrustedMediaUrl, safeHttpUrl } from './attachments';
 
-/** Playback speeds, cycled by the bubble's speed button. */
 export const VOICE_SPEEDS = [1, 1.5, 2] as const;
 export type VoiceSpeed = (typeof VOICE_SPEEDS)[number];
 
-/** One speaker: the bubble's player controls, fed by expo-audio. */
 export interface VoiceSpeaker {
   readonly messageId: string;
   readonly playing: boolean;
@@ -31,13 +22,7 @@ export interface VoiceSpeaker {
 }
 
 /**
- * Only one voice plays at a time: starting one pauses the other. The chat
- * screen owns the registry and stops it on unmount (leaving the chat stops
- * playback). Tests drive this without any native module.
- *
- * Identity is by message, not by object: `resign` clears whoever is current
- * for that message id, so the host can resign a bubble without holding the
- * exact claimed object (finding 1).
+ * Starting one voice pauses the other; identity is by message, not object, so the host can resign a bubble without holding the claimed object.
  */
 export function createVoicePlayback(): {
   current(): VoiceSpeaker | undefined;
@@ -69,9 +54,7 @@ export function createVoicePlayback(): {
 export type VoicePlayback = ReturnType<typeof createVoicePlayback>;
 
 /**
- * Whether a voice message's bytes may be fetched: the URL must be http(s)
- * and on one of the store's trusted media hosts (the same gate as images).
- * An untrusted voice still shows its waveform and duration, but never loads.
+ * http(s) on one of the store's trusted media hosts, the same gate as images; an untrusted voice shows its waveform but never loads.
  */
 export function isPlayableVoiceUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
   if (safeHttpUrl(url) === undefined) {
@@ -81,10 +64,7 @@ export function isPlayableVoiceUrl(url: string, trustedHosts: ReadonlySet<string
 }
 
 /**
- * The `expo-audio` source for a voice message: the local file while it
- * uploads, else the served URL with the session bearer only to the API
- * origin (never to the upload host). Undefined when there is nothing to
- * play (untrusted URL, upload still running, already failed).
+ * The bearer goes only to the API origin, never to the upload host; undefined when there is nothing to play.
  */
 export function voiceAudioSource(input: {
   voice: VoiceMeta;

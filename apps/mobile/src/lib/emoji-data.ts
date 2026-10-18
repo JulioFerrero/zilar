@@ -1,24 +1,15 @@
-/**
- * Emoji helpers for the mobile emoji panel (T-0175): the pure helpers the panel
- * and the composer use (caret insertion, recents). The glyph table lives in
- * `@zilar/chat-core` and is re-exported here.
- */
-
 import { Effect } from 'effect';
 
 export { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES } from '@zilar/chat-core';
 export type { EmojiCategory, EmojiCategoryId } from '@zilar/chat-core';
 
-/** The composer's caret: the TextInput `onSelectionChange` selection. */
 export interface CaretSelection {
   start: number;
   end: number;
 }
 
 /**
- * Inserts an emoji at the caret, replacing any selected range; with no known
- * selection it appends at the end. Returns the next text and the caret just
- * after the inserted emoji. Out-of-range selections clamp to the text.
+ * Inserts at the caret, replacing a selection, or appends with no known selection; out-of-range selections clamp.
  */
 export function insertEmojiAtCaret(
   text: string,
@@ -34,24 +25,20 @@ export function insertEmojiAtCaret(
   return { text: next, caret: start + emoji.length };
 }
 
-/** How many used emoji the Recent row keeps (T-0175). */
 export const MAX_RECENT_EMOJI = 24;
 
 /**
- * Records a picked emoji first (deduplicated, most recent first); the caller
- * persists the returned list. Mirrors `rememberRecentSticker`.
+ * Most recent first, deduplicated; the caller persists the returned list.
  */
 export function rememberRecentEmoji(recents: readonly string[], emoji: string): string[] {
   return [emoji, ...recents.filter((item) => item !== emoji)].slice(0, MAX_RECENT_EMOJI);
 }
 
-/** Parses stored JSON; text that does not parse gives `undefined`, never a throw. */
 const parseStoredJson = (raw: string): Effect.Effect<unknown> =>
   Effect.try({ try: () => JSON.parse(raw) as unknown, catch: () => undefined }).pipe(
     Effect.catch(() => Effect.succeed(undefined)),
   );
 
-/** Reads stored emoji recents; hostile or missing data resolves to []. */
 export function readRecentEmoji(raw: string | null | undefined): string[] {
   if (raw === null || raw === undefined || raw === '') {
     return [];
@@ -73,7 +60,6 @@ import { createMemoryRecentsBackend, type RecentsStorageBackend } from './sticke
 
 let emojiBackend: RecentsStorageBackend = createMemoryRecentsBackend();
 
-/** The emoji recents storage the composer hands to the emoji panel. */
 export const EMOJI_RECENTS_STORAGE = {
   read: (): Promise<string | null> => emojiBackend.read(),
   write: (raw: string): Promise<void> => emojiBackend.write(raw),
@@ -87,7 +73,6 @@ const readStoredEmojiRecentsEffect = (): Effect.Effect<string[]> =>
     Effect.catch(() => Effect.succeed<string[]>([])),
   );
 
-/** Reads the emoji recents; hostile or missing data resolves to []. */
 export function readStoredEmojiRecents(): Promise<string[]> {
   return Effect.runPromise(readStoredEmojiRecentsEffect());
 }
@@ -111,8 +96,7 @@ const persistEmojiRecentEffect = (
   );
 
 /**
- * Records a picked emoji in per-device recents; a failing storage never
- * breaks typing.
+ * A failing storage never breaks typing.
  */
 export function persistEmojiRecent(
   storage: Pick<RecentsStorageBackend, 'write'>,

@@ -4,21 +4,16 @@ import { Exit, Schema } from 'effect';
 import type { PickedFile } from './attachment-ports';
 
 /**
- * The validated form of an external share (T-1892): everything another app
- * hands to the phone is untrusted, so the `/share` screen and the send path
- * only ever see this draft. The plan is `docs/plan/share-into-zilar.md`.
+ * Everything another app hands to the phone is untrusted, so the `/share` screen and the send path only ever see this draft.
  */
 export interface ShareDraft {
-  /** Trimmed text; absent when the share carried none. */
   text?: string | undefined;
-  /** The shareable files, already mapped to the upload input. */
   files: PickedFile[];
 }
 
 /** A clean draft, or one fixed sentence to show; an input is never echoed. */
 export type ShareDraftResult = { ok: true; draft: ShareDraft } | { ok: false; message: string };
 
-/** 32 KiB of text: the composer's limit for a shared message. */
 const MAX_TEXT_LENGTH = 32_768;
 const MAX_FILES = 10;
 const FALLBACK_MIME = 'application/octet-stream';
@@ -46,7 +41,6 @@ const SharePayloadSchema = Schema.Struct({
 
 type ShareFile = typeof ShareFileSchema.Type;
 
-/** Trimmed text, or undefined when the share carried only whitespace. */
 function readText(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim() ?? '';
   return trimmed.length === 0 ? undefined : trimmed;
@@ -57,12 +51,10 @@ function isShareablePath(path: string): boolean {
   return path.startsWith('file://') || path.startsWith('content://');
 }
 
-/** A known byte size, or undefined: the picker reports `null` when it has none. */
 function readSize(size: number | null | undefined): number | undefined {
   return typeof size === 'number' && Number.isFinite(size) && size >= 0 ? size : undefined;
 }
 
-/** The upload input for one file; null when its path is one we refuse to open. */
 function toPickedFile(file: ShareFile): PickedFile | null {
   if (!isShareablePath(file.path)) {
     return null;
@@ -80,8 +72,7 @@ function toPickedFile(file: ShareFile): PickedFile | null {
 }
 
 /**
- * Reads what another app shared into a draft. A malformed payload is refused
- * before any field is trusted; every refusal is one fixed sentence.
+ * A malformed payload is refused before any field is trusted; every refusal is one fixed sentence.
  */
 export function toShareDraft(intent: unknown): ShareDraftResult {
   const decoded = Schema.decodeUnknownExit(SharePayloadSchema)(intent);

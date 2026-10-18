@@ -5,11 +5,7 @@ import { useMemo } from 'react';
 import { ENV_MOCK, apiMockActive, mockParamAllowed } from '@/mock/gate';
 
 /**
- * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock factory gets the shared
- * mock backend's `fetch`. The `require` sits behind a literal build-time
- * condition, so Metro folds it to `false` in a release build and the mock
- * module stays out of the bundle.
+ * The `require` sits behind a literal build-time condition, so Metro folds it to `false` in a release build and the mock stays out of the bundle.
  */
 export function useMockableApi<A>(
   real: () => A,

@@ -11,22 +11,14 @@ import {
 import type { ChatPref, PutChatPrefInput } from './chat-prefs-api';
 
 /**
- * Chat preference helpers (T-0135). The shared rules (mute durations,
- * merging server rows into chat summaries, pinned-first ordering, the
- * group-mute-inherits-to-topics rule) live in @zilar/chat-core since
- * T-0876; this file re-exports them under the phone's names and keeps the
- * phone-only optimistic row and archived filters.
+ * The shared rules live in @zilar/chat-core; this file re-exports them and keeps the phone-only optimistic row and archived filters.
  */
 
 export { applyChatPrefs, MUTE_DURATIONS, mutedUntilFor, type MuteDurationId };
 export { isMuted as isChatMuted, sortPinnedFirst as sortChatPinnedFirst };
 
 /**
- * Builds the optimistic row for a partial pref write (T-0135): the partial
- * input merged over the chat's existing saved row, so kept fields
- * (muted/archived/pinned of the same chat) never flash off during the PUT
- * flight. A pin stamps now; clearing a pin, unmuting or unarchiving writes
- * the default back, exactly like the server merge.
+ * The partial input merged over the existing saved row, so kept fields never flash off during the PUT. A pin stamps now; clearing one writes the default back, as the server does.
  */
 export function optimisticPrefRow(
   chatJid: string,
@@ -45,19 +37,16 @@ export function optimisticPrefRow(
         : input.pinned
           ? now.toISOString()
           : null,
-    // T-1248: keep the saved mark when the patch does not touch it, so it
-    // never flashes off during an unrelated pref write.
+    // Keep the saved mark when the patch does not touch it, so it never flashes off.
     unreadMark: input.unreadMark ?? existing?.unreadMark ?? false,
     updatedAt: now.toISOString(),
   };
 }
 
-/** The chats hidden from the main list (the Archived entry shows these). */
 export function archivedChats(chats: readonly ChatSummary[]): ChatSummary[] {
   return chats.filter((chat) => chat.archived === true);
 }
 
-/** Chats of the main list: archived rows stay out until unarchived. */
 export function unarchivedChats(chats: readonly ChatSummary[]): ChatSummary[] {
   return chats.filter((chat) => chat.archived !== true);
 }

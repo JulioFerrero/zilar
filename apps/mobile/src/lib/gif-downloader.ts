@@ -1,9 +1,3 @@
-/**
- * The real GIF downloader seam (T-1021, split from `attachment-native.ts`):
- * fetches the picked result through the same-origin proxy into the cache dir
- * through `expo-file-system/legacy`.
- */
-
 import { Effect, type Effect as EffectType } from 'effect';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -83,20 +77,12 @@ const downloadGifEffect = Effect.fnUntraced(function* (
 });
 
 /**
- * The real GIF downloader (T-0148): fetches the picked result through the
- * same-origin proxy into the cache dir, then reports it as a picked file so
- * the composer sends it through the normal attachment upload path (like
- * web's `sendGif`). The URL is re-checked against the proxy gate before any
- * fetch; the session bearer rides only to the API origin. The mime and the
- * extension come from the real content type (validated against what the
- * proxy serves), never from the search result's kind.
+ * The URL is re-checked against the proxy gate before any fetch, the session bearer rides only to the API origin, and the mime comes from the real content type, never from the search result.
  */
 export function createGifDownloader(options?: {
   apiUrl?: string | undefined;
   getToken?: (() => Promise<string | undefined>) | undefined;
-  /** Tests inject a fake download; production uses the legacy file system. */
   download?: typeof FileSystem.downloadAsync | undefined;
-  /** Tests inject a fake stat; production reads the downloaded file. */
   getInfo?: typeof FileSystem.getInfoAsync | undefined;
   cacheDir?: string | null | undefined;
 }): GifDownloader {
@@ -114,7 +100,6 @@ export function createGifDownloader(options?: {
   };
 }
 
-/** The byte size of a downloaded GIF; 0 when the stat fails or is not a file. */
 const fileSize = (uri: string, getInfo: typeof FileSystem.getInfoAsync): Effect.Effect<number> =>
   Effect.tryPromise({ try: () => getInfo(uri), catch: () => undefined }).pipe(
     Effect.map((info) => (info.exists === true && info.isDirectory === false ? info.size : 0)),

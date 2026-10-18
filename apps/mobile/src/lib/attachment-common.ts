@@ -1,11 +1,3 @@
-/**
- * Shared pieces of the native attachment seams (T-1021): the fixed
- * user-facing messages, the `NativeFailure` error step and its `error`-result
- * conversion, and the same-origin bearer header helper. Split out of
- * `attachment-native.ts` so the picker, uploader, opener and GIF downloader
- * never import the barrel.
- */
-
 import { parseUrl } from '@zilar/chat-core';
 import { Data, Effect, type Effect as EffectType } from 'effect';
 
@@ -21,8 +13,7 @@ export const PICK_FAILED_MESSAGE = 'Could not pick that file. Try again.';
 export const OPEN_FAILED_MESSAGE = 'Could not open that file. Try again.';
 
 /**
- * A step that ends in a fixed user-facing message. The public methods turn it
- * back into the `error` result their callers already get (`orErrorResult`).
+ * A failure that ends in a fixed user-facing message, never server text.
  */
 export class NativeFailure extends Data.TaggedError('NativeFailure')<{
   readonly message: string;
@@ -40,8 +31,7 @@ export const orErrorResult = <A>(
   );
 
 /**
- * The bearer token for our own API origin only. Any other host gets no auth
- * headers, so a hostile URL can never receive the session token.
+ * Our API origin only: any other host gets no auth headers, so a hostile URL can never receive the session token.
  */
 export const authHeadersFor = Effect.fnUntraced(function* (
   url: string,
@@ -65,20 +55,13 @@ export const authHeadersFor = Effect.fnUntraced(function* (
   return token === undefined ? undefined : { authorization: `Bearer ${token}` };
 });
 
-/** Whether a URL is on our own API origin — the only host that gets the bearer. */
 export function isApiOriginUrl(url: string, apiUrl: string | undefined = API_URL): boolean {
   const apiOrigin = apiUrl === undefined ? undefined : parseUrl(apiUrl)?.origin;
   return apiOrigin !== undefined && parseUrl(url)?.origin === apiOrigin;
 }
 
 /**
- * The URL the app should load a file from (T-1185), the native twin of web's
- * `mediaSrc` (`apps/web/src/lib/attachments.ts`): an `/upload/` file on our own
- * API origin is routed through `GET /api/files` (T-0454), where the server
- * checks the session and the chat membership. Every other URL — another origin
- * (dev's ejabberd on `:5280`), `file://`, `blob:` or garbage — is returned
- * untouched so it keeps loading directly. The chat id is the message's chat
- * (`UiMessage.chatId`).
+ * An `/upload/` file on our own API origin goes through `GET /api/files`, where the server checks the session and the chat membership; every other URL loads directly.
  */
 export function mediaUrl(
   chatId: string,
@@ -97,10 +80,7 @@ export function mediaUrl(
 }
 
 /**
- * The URL of a card media item (T-1868), the native twin of web's card media
- * source: `GET /api/card-media/:id` (T-1853) serves an uploaded image or file
- * to a session that can see the card. The block carries an id, never a URL, so
- * a card cannot point the app at another host. Undefined without an API URL.
+ * The block carries an id, never a URL, so a card cannot point the app at another host.
  */
 export function cardMediaUrl(id: string, apiUrl: string | undefined = API_URL): string | undefined {
   const apiOrigin = apiUrl === undefined ? undefined : parseUrl(apiUrl)?.origin;

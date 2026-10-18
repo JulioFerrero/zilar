@@ -1,9 +1,4 @@
-// One hand-written request for the endpoints that stay outside the derived
-// contract client (T-0895): routes whose body the server reads by hand (the
-// contract declares no payload), and routes of modules not in the contract
-// yet. It keeps what the derived client does: a missing token fails 401
-// `unauthorized` before anything is sent, and every failure is an `ApiError`
-// (`network_error` 0, the server's envelope, `invalid_response`).
+// For routes outside the derived contract client: a missing token fails 401 `unauthorized` before sending, and every failure is an `ApiError`.
 
 import { Exit, Schema } from 'effect';
 import { ApiError, apiErrorFromBody } from '@zilar/api-contract';

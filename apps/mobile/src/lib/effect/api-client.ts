@@ -1,10 +1,4 @@
-// The mobile transport of the derived contract client (T-0864): the injected
-// `fetch`, the build-time API URL, and the bearer token on every request. A
-// missing token fails `unauthorized` before anything is sent, as the
-// hand-written clients did.
-//
-// The `fetch` adapter keeps what those clients sent: a string URL, a plain
-// header record and a string body, so injected `fetchImpl` fakes keep working.
+// The mobile transport of the derived contract client: a missing token fails `unauthorized` before anything is sent, and the `fetch` adapter sends a string URL, a plain header record and a string body.
 import { Effect } from 'effect';
 import { HttpClient, HttpClientRequest } from 'effect/http';
 import { ApiError, makeZilarClient, withFetch, type ZilarClient } from '@zilar/api-contract';

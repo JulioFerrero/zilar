@@ -1,16 +1,5 @@
 // effect-plain: runtime polyfills; nextTick must stay a Promise microtask
-// Minimal global shims that xmpp.js needs on Hermes / React Native. Task T-0004
-// proved exactly two are required: `process.nextTick` and
-// `crypto.randomUUID`. Both are installed only when the runtime lacks them, so
-// importing this is safe on any platform.
-//
-// Hermes already provides `btoa`/`atob`/`TextEncoder`, so they are not shimmed
-// here. `events` is a real transitive dependency of `@xmpp/events`.
-//
-// T-0864: Effect's HTTP client decodes every response body with
-// `new TextDecoder()`, which Hermes itself lacks. Expo's runtime installs one
-// on native before app code runs, so the UTF-8 decoder below is a fallback
-// for a runtime without either.
+// xmpp.js needs two shims on Hermes: `process.nextTick` and `crypto.randomUUID`, each installed only when missing. Effect's HTTP client needs `new TextDecoder()`, which Hermes lacks, so the UTF-8 decoder below is a fallback.
 
 type Shimmable = {
   process?: { nextTick?: (callback: () => void) => void };
@@ -32,7 +21,6 @@ function installNextTick(): void {
   };
 }
 
-/** A v4 UUID built without `crypto.randomUUID` (this is that polyfill). */
 export function randomUuid(): string {
   const bytes = new Uint8Array(16);
   const getRandomValues = g.crypto?.getRandomValues;
@@ -115,7 +103,6 @@ function codeUnitsOf(bytes: Uint8Array): number[] {
   return units;
 }
 
-/** A UTF-8-only `TextDecoder` (non-fatal, non-streaming): this is that polyfill. */
 export class Utf8TextDecoder {
   readonly encoding = 'utf-8';
   readonly fatal = false;

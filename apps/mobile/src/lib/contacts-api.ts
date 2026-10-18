@@ -5,19 +5,12 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The contacts API (`/api/users/by-handle/:handle`, `/api/contact-requests`
- * and `/api/blocks`), the mobile twin of the web client in
- * `apps/web/src/lib/api.ts`. The wire contract lives in
- * `packages/api-contract/src/contact-requests.ts` and `blocks.ts` (T-0894);
- * the client is derived from it. `ContactsApiError` is the shared `ApiError`,
- * so screens can branch on the server's `code` and `status` without parsing
- * the message again (404 = unknown handle, 429 = rate limited).
+ * `ContactsApiError` is the shared `ApiError`, so screens branch on `code` and `status` without parsing the message (404 = unknown handle, 429 = rate limited).
  */
 
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
-/** The contract's contact row (`GET /contacts`), re-exported for the screens. */
 export type { Contact };
 
 export interface HandleProfile {
@@ -60,7 +53,6 @@ export interface ContactRequestRow {
 
 export interface CreatedContactRequest {
   request: ContactRequestRow;
-  /** Present when the other side already asked: offer Accept, not a second row. */
   incoming?: boolean | undefined;
 }
 
@@ -74,7 +66,6 @@ export interface BlockedPerson {
 
 export interface ContactsApi {
   lookupByHandle(handle: string): Promise<HandleProfile>;
-  /** The people prefix search (`GET /users/search`), up to 10 matches, T-1668. */
   searchUsers(q: string): Promise<HandleProfile[]>;
   sendContactRequest(handle: string): Promise<CreatedContactRequest>;
   listContactRequests(): Promise<ContactRequestList>;
@@ -84,28 +75,22 @@ export interface ContactsApi {
   blockUser(userId: string): Promise<{ blocked: boolean }>;
   unblockUser(userId: string): Promise<{ blocked: boolean }>;
   listBlockedUsers(): Promise<BlockedPerson[]>;
-  /** The people the caller can chat with (`GET /contacts`), T-1237. */
   listContacts(): Promise<Contact[]>;
-  /** Removes `userId` from both sides (`DELETE /contacts/:userId`); 404 when not a contact. */
   removeContact(userId: string): Promise<void>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const ContactsApiError = ApiError;
 export type ContactsApiError = ApiError;
 
 /**
- * Normalizes a typed @handle for lookup: strips a leading @, trims
- * whitespace, lowercases. The server compares case-insensitively, so the
- * lookup sends the normalized form.
+ * The server compares case-insensitively, so the lookup sends the trimmed, lowercased form without a leading @.
  */
 export function normalizeHandleInput(raw: string): string {
   return raw.trim().replace(/^@/, '').toLowerCase();
 }
 
 /**
- * The domain part of a bare JID (`ana@zilar.test` -> `zilar.test`).
- * Returns undefined for anything that is not a bare user JID.
+ * The domain part of a bare user JID, or undefined for anything else.
  */
 export function domainOfJid(jid: string | null | undefined): string | undefined {
   if (typeof jid !== 'string') return undefined;
@@ -117,18 +102,12 @@ export function domainOfJid(jid: string | null | undefined): string | undefined 
 }
 
 /**
- * The DM chat id for a contact: the server builds it from the user's id
- * lowercased plus the XMPP domain (`localpartFor` + `jidFor` in
- * `apps/server/src/xmpp/provisioning.ts`). Normal ids are alphanumeric, so
- * lowercasing is the whole mapping; ids that would need the server's hash
- * fallback resolve to a chat that does not exist and the caller falls back
- * to the chats list.
+ * The server builds it from the lowercased user id plus the XMPP domain; an id that needs the server's hash fallback resolves to a chat that does not exist, and the caller falls back to the chats list.
  */
 export function contactChatId(userId: string, domain: string): string {
   return `${userId.toLowerCase()}@${domain}`;
 }
 
-/** The production `ContactsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createContactsApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,

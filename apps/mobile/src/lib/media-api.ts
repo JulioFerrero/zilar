@@ -4,17 +4,7 @@ import { ApiError, MediaItem as ContractMediaItem, runApi } from '@zilar/api-con
 import { createApiClient } from './effect/api-client';
 
 /**
- * The mobile media-gallery client (T-0436), the twin of `pins-api.ts`: it
- * pages `GET /api/media?chat&type&before&limit` (T-0431), returning
- * `{ items, next }`.
- *
- * A Promise port over the client derived from the shared contract
- * (`@zilar/api-contract`, `media.ts`, T-0910). The contract's page schema
- * drops a malformed row and keeps the rest (`lenientArray`), and reads a
- * `next` of the wrong type as `null`.
- *
- * A `MediaItem` is display metadata only: `messageId` is the jump key, `at`
- * is ISO, and the optional fields depend on `kind`.
+ * The page schema drops a malformed row, and a `next` of the wrong type reads as `null`. `at` is ISO, and the optional fields depend on `kind`.
  */
 
 export type MediaTab = 'media' | 'files' | 'links' | 'voice';
@@ -39,7 +29,6 @@ export interface MediaItem {
   linkHost?: string;
 }
 
-/** One page of the gallery, newest first; `next` is the paging cursor. */
 export interface MediaPage {
   items: MediaItem[];
   next: string | null;
@@ -56,11 +45,9 @@ export interface MediaApi {
   listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const MediaApiError = ApiError;
 export type MediaApiError = ApiError;
 
-/** One contract row as the gallery shows it; an unparseable `at` returns null. */
 function toMediaItem(row: ContractMediaItem): MediaItem | null {
   if (Number.isNaN(Date.parse(row.at))) {
     return null;
@@ -69,13 +56,11 @@ function toMediaItem(row: ContractMediaItem): MediaItem | null {
   return { ...rest, ...(waveform === undefined ? {} : { waveform: [...waveform] }) };
 }
 
-/** A gallery row the viewer may see; a malformed row returns null and is dropped. */
 export function parseMediaItem(value: unknown): MediaItem | null {
   const decoded = Schema.decodeUnknownExit(ContractMediaItem)(value);
   return Exit.isSuccess(decoded) ? toMediaItem(decoded.value) : null;
 }
 
-/** The production `MediaApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createMediaApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,

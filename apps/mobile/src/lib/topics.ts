@@ -3,34 +3,25 @@ import { sortTopics, type ChatSummary } from '@zilar/chat-core';
 import type { ChatFolder } from './types';
 
 /**
- * Plain topic helpers (T-0112), the mobile twin of the web store mapping and
- * `TopicRow` ordering: each visible topic is its own chat keyed by its room
- * JID, General keeps the group's old chat id, and an older server without
- * `topics` keeps one row per group. Components stay thin; everything here is
- * a pure function with Vitest coverage.
+ * Each visible topic is its own chat keyed by its room JID, General keeps the group's old chat id, and an older server without `topics` keeps one row per group.
  */
 
-/** True when the chat is a group topic (a group chat with a task strip). */
 export function isTopicChat(chat: ChatSummary): boolean {
   return chat.topic !== undefined;
 }
 
-/** True when the chat is a legacy group row (no `topics` from an old server). */
 export function isLegacyGroupChat(chat: ChatSummary): boolean {
   return chat.kind === 'group' && chat.topic === undefined;
 }
 
 export { sortTopics };
 
-/** The topics of one group from the full chat list (legacy rows excluded). */
 export function topicsOfGroup(chats: readonly ChatSummary[], groupId: string): ChatSummary[] {
   return sortTopics(chats.filter((chat) => chat.groupId === groupId && chat.topic !== undefined));
 }
 
 /**
- * Splits one group's topics like the web group row (T-0113): the active
- * list hides manager-archived topics (`topic.archived`) and per-user
- * archived ones (`archived`); both share one Archived section, never two.
+ * The active list hides manager-archived and per-user archived topics; both share one Archived section, never two.
  */
 export function splitGroupTopics(topics: readonly ChatSummary[]): {
   active: ChatSummary[];
@@ -48,7 +39,6 @@ export function splitGroupTopics(topics: readonly ChatSummary[]): {
   return { active, archived };
 }
 
-/** One row per group shown on the chat list, aggregated from its topics. */
 export interface GroupRow {
   groupId: string;
   title: string;
@@ -59,8 +49,7 @@ export interface GroupRow {
   muted: boolean;
   memberCount: number | undefined;
   onlineCount: number | undefined;
-  // T-0144: set when the group's rows are a channel feed — the list paints
-  // the megaphone marker and "N subscribers" instead of "N topics/members".
+  // Set when the group's rows are a channel feed: the list paints "N subscribers" instead of "N topics/members".
   chatKind?: 'group' | 'channel';
   subscriberCount?: number;
   description?: string | null;
@@ -68,9 +57,7 @@ export interface GroupRow {
 }
 
 /**
- * Groups topic chats by `groupId`; legacy group rows and DMs pass through
- * untouched (they are not groups of topics). Callers keep the legacy rows as
- * their own single-item group rows.
+ * Legacy group rows and DMs pass through untouched; callers keep them as their own single-item rows.
  */
 export function groupTopicChats(chats: readonly ChatSummary[]): Map<string, ChatSummary[]> {
   const groups = new Map<string, ChatSummary[]>();
@@ -85,7 +72,6 @@ export function groupTopicChats(chats: readonly ChatSummary[]): Map<string, Chat
   return groups;
 }
 
-/** Aggregates one group's topics into its chat-list row. */
 export function groupRowFor(groupId: string, topics: readonly ChatSummary[]): GroupRow | undefined {
   const sorted = sortTopics(topics);
   const general = sorted.find((chat) => chat.topic?.isGeneral === true);
@@ -100,9 +86,7 @@ export function groupRowFor(groupId: string, topics: readonly ChatSummary[]): Gr
     return time > bestTime ? chat : best;
   }, undefined);
   const last = newest?.lastMessage;
-  // T-0144: a channel's topics are its feed (the General row carries
-  // `chatKind: 'channel'`): the row reads "N subscribers" with the blurb,
-  // never the topic count.
+  // A channel's topics are its feed: the row reads "N subscribers" with the blurb, never the topic count.
   const channelRow = sorted.find((chat) => chat.chatKind === 'channel');
   return {
     groupId,
@@ -132,7 +116,6 @@ export function groupRowFor(groupId: string, topics: readonly ChatSummary[]): Gr
   };
 }
 
-/** Folders treat a topic like its group: topics keep the group's space. */
 export function topicInFolder(chat: ChatSummary, folder: ChatFolder): boolean {
   switch (folder) {
     case 'all':
@@ -150,20 +133,16 @@ export { httpsTopicUrl, topicLinkText } from '@zilar/chat-core';
 export { mayArchiveTopic, mayCreateTopic, mayManageTopic } from '@zilar/chat-core';
 export type { GroupMembership, GroupRole, TopicPermissionsInput } from '@zilar/chat-core';
 
-/** "8 members, 6 topics" for the topics screen header. AIs count as members (T-1552). */
 export function topicsHeaderSubtitle(options: { memberCount: number; topicCount: number }): string {
   const members = options.memberCount === 1 ? '1 member' : `${options.memberCount} members`;
   return `${members}, ${topicCountLabel(options.topicCount)}`;
 }
 
-/** "N topics" for a group row, singular for one (T-0112 should-fix). */
 export function topicCountLabel(topicCount: number): string {
   return topicCount === 1 ? '1 topic' : `${topicCount} topics`;
 }
 
 /**
- * Never show a private topic's name to someone who cannot see it: notices and
- * titles use this fixed text when the open topic disappears. The caller must
- * only call it for a chat that was a topic; the name itself is never used.
+ * Never show a private topic's name to someone who cannot see it: the caller uses this fixed text when the open topic disappears.
  */
 export const TOPIC_GONE_NOTICE = 'This topic is no longer available.';

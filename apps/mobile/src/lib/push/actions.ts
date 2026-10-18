@@ -1,10 +1,4 @@
-// Reply and Mark as read on a chat notification (T-1896, plan
-// `notification-actions` §1). Both actions run in the headless wake task when
-// the app is backgrounded or killed, so neither opens the app. Reply sends
-// `chats.reply` with a stable `clientId`; Mark as read stores the caller's read
-// mark with the notification's archive id and its origin id as `displayed`.
-// The notification is dismissed only after the server accepted the call, so a
-// failure leaves it in place for a retry or a plain tap.
+// Both actions run in the headless wake task, so neither opens the app. The notification is dismissed only after the server accepted, so a failure leaves it for a retry or a plain tap.
 
 import * as Notifications from 'expo-notifications';
 import { Effect } from 'effect';
@@ -15,14 +9,10 @@ import { createApiClient } from '../effect/api-client';
 import { getSessionToken } from '../session-token';
 import type { WakeDeps } from './background';
 
-/** The category id chat notifications attach (Android shows its actions). */
 export const MESSAGE_CATEGORY = 'message';
-/** The text action that sends an inline reply. */
 export const REPLY_ACTION = 'reply';
-/** The action that stores the read mark without opening the app. */
 export const READ_ACTION = 'read';
 
-/** The server's reply cap (`chats.reply` validates the same 4,000). */
 const MAX_REPLY_LENGTH = 4000;
 /** A reply already in flight answers 409; retry once after this pause. */
 const REPLY_RETRY_DELAY_MS = 2000;
@@ -32,10 +22,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Stores the category and its two actions. Every action sets
- * `opensAppToForeground: false` explicitly: the library defaults it to true,
- * and either action would then open the app instead of running headless.
- * Best effort: a failed registration warns and never throws.
+ * Every action sets `opensAppToForeground: false`: the library defaults it to true, which would open the app. Best effort.
  */
 export async function registerMessageCategory(): Promise<void> {
   try {
@@ -57,7 +44,6 @@ export async function registerMessageCategory(): Promise<void> {
   }
 }
 
-/** A non-empty string in the notification data, or undefined. */
 function dataString(notification: Notifications.Notification, key: string): string | undefined {
   const value = notification.request.content.data?.[key];
   return typeof value === 'string' && value !== '' ? value : undefined;
@@ -71,11 +57,9 @@ function clientFor(deps: WakeDeps): ReturnType<typeof createApiClient> {
   });
 }
 
-/** Sends a reply with a fresh `clientId`, retrying once on `reply_in_flight`. */
 async function reply(chatId: string, text: string, deps: WakeDeps): Promise<void> {
   const client = clientFor(deps);
-  // The same id goes out again on the retry: the server uses it to recognise
-  // the first, still-in-flight attempt instead of sending the text twice.
+  // The same id goes out on the retry: the server recognises the in-flight attempt instead of sending twice.
   const payload = { clientId: crypto.randomUUID(), text };
   try {
     await runApi(client.chats.reply({ params: { jid: chatId }, payload }));
@@ -88,7 +72,6 @@ async function reply(chatId: string, text: string, deps: WakeDeps): Promise<void
   }
 }
 
-/** Stores the read mark; the origin id travels as `displayed` when known. */
 async function markRead(
   chatId: string,
   archiveId: string,
@@ -106,13 +89,11 @@ async function markRead(
   );
 }
 
-/** Runs one action and dismisses its notification only once it succeeded. */
 function runAction(
   action: () => Promise<void>,
   notification: Notifications.Notification,
 ): Promise<void> {
-  // Best effort, through Effect like the wake itself: a failure warns without
-  // the text and never reaches the headless task, and the notification stays.
+  // Best effort: a failure warns without the text, never reaches the headless task, and the notification stays.
   return Effect.runPromise(
     Effect.tryPromise({
       try: async () => {
@@ -131,11 +112,7 @@ function runAction(
 }
 
 /**
- * Handles a notification action without opening the app. Reply needs a
- * non-empty `userText`; Mark as read needs the archive id. A plain tap, another
- * action or missing ids do nothing. On success the notification is dismissed;
- * on failure it stays so the user can retry or tap. Never logs the text or the
- * token, and never throws out of the headless task.
+ * Never logs the text or the token, and never throws out of the headless task.
  */
 export async function onNotificationAction(
   response: Notifications.NotificationResponse,

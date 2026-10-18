@@ -2079,3 +2079,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2087](T-2087-comments-server-rest.md) | comments: server remaining folders (-1,877) | 2026-10-18 |
 | [T-2072](T-2072-comments-phone-chat-a-l.md) | comments: phone chat components a-l (-1,264) | 2026-10-18 |
 | [T-2073](T-2073-comments-phone-chat-m-z.md) | comments: phone chat components m-z (-1,464) | 2026-10-18 |
+| [T-2074](T-2074-comments-phone-lib.md) | comments: phone lib (-1,665) | 2026-10-18 |

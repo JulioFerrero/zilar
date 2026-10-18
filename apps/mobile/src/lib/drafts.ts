@@ -1,13 +1,5 @@
 /**
- * The mobile draft-stream client (T-0056). React Native has no `EventSource`
- * and its `fetch` does not stream response bodies, so this reads the SSE stream
- * from `XMLHttpRequest.responseText` as it grows. The event contract, the
- * validation and the reconnect backoff are shared with the web in
- * `@zilar/client-core/store` (`draft-events.ts`).
- *
- * `event: draft` carries the AI's cumulative reply text, `event: end` closes a
- * turn. Frames that fail validation are dropped silently; nothing here throws
- * and the token and draft text are never logged.
+ * React Native has no `EventSource` and its `fetch` does not stream bodies, so this reads SSE from `XMLHttpRequest.responseText`. Nothing here throws, and the token and draft text are never logged.
  */
 import type { DraftHubEvent } from '@zilar/client-core/store';
 import { decodeDraftEvent, draftReconnectDelay } from '@zilar/client-core/store';
@@ -17,10 +9,8 @@ import type { AppStateLike } from '../store/real-store';
 
 export type { OpenDraftStream } from '@zilar/client-core/store';
 
-/** The stream path, joined with the API URL by the store. */
 export const DRAFT_STREAM_PATH = '/api/drafts/stream';
 
-/** The slice of `XMLHttpRequest` the client drives. Tests inject a fake. */
 export interface DraftXhr {
   readonly readyState: number;
   readonly status: number;
@@ -36,21 +26,15 @@ export interface DraftXhr {
 }
 
 export interface DraftStreamOptions {
-  /** Absolute stream URL. */
   url: string;
-  /** Reads the persisted bearer token. */
   getToken: () => Promise<string | undefined> | string | undefined;
-  /** React Native's `AppState`; the stream follows the foreground state. */
   appState: AppStateLike;
-  /** Test seam. */
   createXhr?: () => DraftXhr;
-  /** Test seam for the jittered backoff. */
   random?: () => number;
   baseDelayMs?: number;
   maxDelayMs?: number;
 }
 
-/** One SSE block (`event:` + `data:` lines, no trailing blank line). */
 function parseFrame(frame: string): DraftHubEvent | undefined {
   let eventName = 'message';
   const dataLines: string[] = [];
@@ -83,17 +67,12 @@ function parseFrame(frame: string): DraftHubEvent | undefined {
 }
 
 function defaultXhr(): DraftXhr {
-  // The DOM `XMLHttpRequest` has the same surface; the handler parameter types
-  // differ, so the boundary is narrowed here.
+  // The DOM `XMLHttpRequest` has the same surface; the handler parameter types differ.
   return new XMLHttpRequest() as unknown as DraftXhr;
 }
 
 /**
- * Subscribes to the signed-in user's own AI drafts over a bearer SSE stream.
- *
- * The stream is open while the app is `active`; it closes on background and
- * reopens on `active`. A dropped connection reconnects with a jittered backoff
- * (1 s -> 30 s). The returned function closes the stream for good.
+ * Open while the app is `active`; a dropped connection reconnects with a jittered backoff (1 s -> 30 s).
  */
 export function subscribeToDrafts(
   onEvent: (event: DraftHubEvent) => void,
@@ -174,9 +153,7 @@ export function subscribeToDrafts(
     if (xhr === null) {
       return;
     }
-    // A tail (an `end`, or the final `draft`) that only arrives with the last
-    // readyState change / onload / onerror must still be parsed before the
-    // stream goes away.
+    // A tail (an `end`, or the final `draft`) that only arrives with the last readyState change must still be parsed.
     pump();
     closeXhr();
     scheduleRetry();
@@ -201,8 +178,7 @@ export function subscribeToDrafts(
       return;
     }
     if (token === undefined || token === '') {
-      // A missing session (or a transient read failure) must not silence the
-      // stream until the next AppState cycle: retry with the normal backoff.
+      // A missing session must not silence the stream until the next AppState cycle: retry with the backoff.
       scheduleRetry();
       return;
     }
@@ -213,8 +189,7 @@ export function subscribeToDrafts(
     request.onprogress = () => pump();
     request.onreadystatechange = () => {
       if (request.readyState === 3) {
-        // A first partial response means the connection is live; retry soon
-        // after a later drop.
+        // A first partial response means the connection is live; retry soon after a later drop.
         attempt = 0;
         pump();
       } else if (request.readyState === 4) {

@@ -1,9 +1,3 @@
-/**
- * The real native picker seams (T-1021, split from `attachment-native.ts`):
- * `expo-image-picker` for photos, videos and the camera, and
- * `expo-document-picker` for generic files.
- */
-
 import { Effect, type Effect as EffectType } from 'effect';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -33,9 +27,7 @@ function tooLarge(size: number | undefined): boolean {
 }
 
 /**
- * The fixed message for an empty (real zero bytes) or over-cap file, or
- * `undefined` when the size is fine. Shared by the library pick and the
- * gallery grid (T-1320), so both refuse the same files with the same sentence.
+ * Shared by the library pick and the gallery grid, so both refuse the same files with the same sentence.
  */
 function sizeErrorMessage(size: number | undefined): string | undefined {
   if (size !== undefined && size === 0) {
@@ -51,12 +43,9 @@ function pickedFile(input: {
   size: number | undefined;
   width?: number | undefined;
   height?: number | undefined;
-  /** Real byte size read from the file when the picker reported none. */
   measuredSize?: number | undefined;
 }): PickResult {
-  // An unknown picker size is not an empty file: only a real zero refuses.
-  // The picker reads the size from the file first (see `createAttachmentPicker`
-  // below); `measuredSize` is that stat when the picker reported nothing.
+  // An unknown picker size is not empty: only a real zero refuses (the size is read from the file first).
   const size = input.size ?? input.measuredSize;
   const sizeError = sizeErrorMessage(size);
   if (sizeError !== undefined) {
@@ -64,8 +53,7 @@ function pickedFile(input: {
   }
   const mime = mimeForAsset(input.mimeType);
   const fallbackName = `photo.${extensionForMime(mime)}`;
-  // Unknown stays unknown: only a real zero says "That file is empty".
-  // Never coerce to 0 here — the send layer must see unknown as unknown.
+  // Never coerce to 0: the send layer must see unknown as unknown.
   const file: PickedFile = {
     uri: input.uri,
     name: input.name ?? fallbackName,
@@ -79,7 +67,6 @@ function pickedFile(input: {
   return { status: 'picked', file, files: [file] };
 }
 
-/** One picker asset, before the size read: the shape both pickers share. */
 interface AssetInput {
   uri: string;
   name: string | null | undefined;
@@ -89,7 +76,6 @@ interface AssetInput {
   height?: number | undefined;
 }
 
-/** The asset the image picker hands back, as the size reader and files want it. */
 function assetInputFor(asset: ImagePicker.ImagePickerAsset): AssetInput {
   const mime = asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
   const name = asset.fileName ?? `photo.${extensionForMime(mime)}`;
@@ -103,14 +89,10 @@ function assetInputFor(asset: ImagePicker.ImagePickerAsset): AssetInput {
   };
 }
 
-/** The real picker: library (photo or video), camera, and generic files. */
 export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicker {
-  // Production defaults to the real `expo-file-system` stat (like the opener
-  // defaults to `File.downloadFileAsync`); tests inject a fake reader.
   const reader = sizeReader ?? createSizeReader();
   const downscaler = createImageDownscaler({ sizeReader: reader });
-  // An unknown picker size is read from the file before the cap check: only
-  // a real zero says "That file is empty".
+  // Read the real size before the cap check: only a real zero says "That file is empty".
   const withRealSize = (input: AssetInput): Effect.Effect<PickResult> =>
     input.size !== undefined
       ? Effect.succeed(pickedFile(input))
@@ -118,9 +100,7 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
           Effect.map((measuredSize) => pickedFile({ ...input, measuredSize })),
         );
 
-  // A pick resolves every asset (size, then downscale): a file that fails the
-  // size rules fails the whole pick, and the rest go up together with the
-  // downscaled bytes and dimensions.
+  // One failing file fails the whole pick; the rest stage with their downscaled bytes and dimensions.
   const pickedFromAssets = (assets: readonly AssetInput[]): Effect.Effect<PickResult> =>
     Effect.forEach(assets, withRealSize, { concurrency: 'unbounded' }).pipe(
       Effect.flatMap((results) => {
@@ -211,8 +191,7 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
     if (assets.length === 0) {
       return { status: 'cancelled' };
     }
-    // Every selected document goes through the same size read and rules as a
-    // library pick (T-1536), so several files stage together.
+    // Documents get the same size read and rules as a library pick, so several stage together.
     return yield* pickedFromAssets(
       assets.map((asset) => ({
         uri: asset.uri,
@@ -230,14 +209,12 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
   };
 }
 
-/** One page of gallery assets as the inline grid shows them (T-1320). */
 export interface GalleryPage {
   assets: GalleryAsset[];
   endCursor: string;
   hasNextPage: boolean;
 }
 
-/** One recent asset of the phone's media library, before it is picked. */
 export interface GalleryAsset {
   id: string;
   /** Display URI: `ph://*` on iOS, `file://*` on Android. */
@@ -251,12 +228,7 @@ export interface GalleryAsset {
 }
 
 /**
- * Reads the phone's recent photos and videos for the attach sheet's Gallery tab
- * (T-1320). `toPickedFile` turns one selected asset into the same `PickedFile`
- * the library picker stages: it resolves a local `file://` URI (the `ph://`
- * display URI is not uploadable), reads the byte size, refuses an empty or
- * over-cap file with the same fixed sentence, and runs the photo downscale,
- * exactly like `pickImageOrVideo` does for `expo-image-picker`.
+ * The `ph://` display URI is not uploadable, so `toPickedFile` resolves a local `file://` URI and applies the same size and downscale rules as a library pick.
  */
 export type GalleryPickResult =
   { status: 'picked'; file: PickedFile } | { status: 'error'; message: string };
@@ -267,7 +239,6 @@ export interface GalleryReader {
   toPickedFile(asset: GalleryAsset): Promise<GalleryPickResult>;
 }
 
-/** One media-library asset as the gallery grid and the picker want it. */
 function galleryAssetFor(asset: MediaLibrary.Asset): GalleryAsset {
   return {
     id: asset.id,
@@ -281,11 +252,7 @@ function galleryAssetFor(asset: MediaLibrary.Asset): GalleryAsset {
 }
 
 /**
- * The real gallery reader: `expo-media-library` for the pages and the local
- * URI, the shared size reader and photo downscaler for the staged bytes.
- * `MediaLibrary.getAssetInfoAsync` may fail for an iCloud asset; the display
- * URI is then kept, so the grid still works and only the upload is left to
- * fail like any other.
+ * `getAssetInfoAsync` may fail for an iCloud asset; the display URI is then kept, so the grid works and only the upload fails.
  */
 export function createGalleryReader(options?: {
   sizeReader?: SizeReader | undefined;
@@ -295,10 +262,7 @@ export function createGalleryReader(options?: {
   const downscaler = options?.downscaler ?? createImageDownscaler({ sizeReader });
   return {
     requestPermission: () =>
-      // Granular read permissions: photos and videos only, so Android 13+ never
-      // asks for audio (Telegram asks for photos and videos too). The signature
-      // is `requestPermissionsAsync(writeOnly?, granularPermissions?)`
-      // (`expo-media-library` 57, `GranularPermission = 'audio' | 'photo' | 'video'`).
+      // Photos and videos only, so Android 13+ never asks for audio; the signature is `requestPermissionsAsync(writeOnly?, granularPermissions?)`.
       MediaLibrary.requestPermissionsAsync(false, ['photo', 'video'])
         .then((response) => response.granted)
         .catch(() => false),
@@ -337,12 +301,10 @@ export function createGalleryReader(options?: {
   };
 }
 
-/** Resolves the real byte size of a local file, or undefined when unknown. */
 export interface SizeReader {
   sizeOf(uri: string): Promise<number | undefined>;
 }
 
-/** The real size reader: `expo-file-system` stat of the picked file. */
 export function createSizeReader(
   getInfo: typeof FileSystem.getInfoAsync = FileSystem.getInfoAsync,
 ): SizeReader {

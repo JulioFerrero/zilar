@@ -1,10 +1,5 @@
 /**
- * The save-photo seam (T-1256): downloads the photo the viewer is showing to
- * the cache with `expo-file-system`, asks for write-only gallery permission and
- * stores it with `MediaLibrary.saveToLibraryAsync`, then deletes the cache
- * file. The URL and the bearer come from the `MediaSource` the viewer already
- * resolved, so a save fetches exactly the bytes on screen and never another
- * host.
+ * The URL and bearer come from the `MediaSource` already resolved, so a save fetches exactly the bytes on screen and never another host.
  */
 
 import { parseUrl } from '@zilar/chat-core';
@@ -19,17 +14,14 @@ export const SAVE_FAILED_MESSAGE = 'Could not save the photo.';
 
 export type SaveResult = { status: 'saved' } | { status: 'error'; message: string };
 
-/** The one failure the viewer shows: a fixed sentence, never platform text. */
 const FAILED: SaveResult = { status: 'error', message: SAVE_FAILED_MESSAGE };
 
-/** A unique cache name with a usable extension, taken from the loaded URL. */
 export function cacheFileName(uri: string): string {
   const path = parseUrl(uri)?.pathname ?? '';
   const extension = /\.[A-Za-z0-9]{1,5}$/.exec(path)?.[0] ?? '.jpg';
   return `zilar-photo-${Date.now()}${extension}`;
 }
 
-/** Deletes the temporary cache file; an already-missing file is not an error. */
 export function deleteQuietly(file: File): void {
   try {
     file.delete();
@@ -38,7 +30,6 @@ export function deleteQuietly(file: File): void {
   }
 }
 
-/** Downloads the photo to a fresh cache file; any failure is `undefined`. */
 export function downloadToCache(source: MediaSource): Effect.Effect<File | undefined> {
   return Effect.gen(function* () {
     const destination = yield* Effect.try({
@@ -84,9 +75,7 @@ const saveEffect = (source: MediaSource): Effect.Effect<SaveResult> =>
   });
 
 /**
- * Downloads the photo to the cache, saves it to the phone's gallery and deletes
- * the cache file, reporting the outcome to `onResult`. Every failure collapses
- * to the one fixed sentence, so the viewer never shows raw platform text.
+ * Every failure collapses to the one fixed sentence, so the viewer never shows raw platform text.
  */
 export function savePhoto(source: MediaSource, onResult: (result: SaveResult) => void): void {
   void Effect.runPromise(saveEffect(source)).then(onResult);

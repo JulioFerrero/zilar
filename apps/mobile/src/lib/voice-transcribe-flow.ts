@@ -1,8 +1,5 @@
 /**
- * The on-device transcription flow for a voice note (T-0179): pure logic
- * with injected seams, no React. The bubble drives this, shows the phases,
- * and persists the text through `voice-transcripts.ts`. Audio and text never
- * leave the phone; the cached download is always deleted.
+ * Audio and text never leave the phone, and the cached download is always deleted.
  */
 
 import { Effect } from 'effect';
@@ -22,14 +19,11 @@ export type TranscribePhase =
   { kind: 'downloading'; fraction: number } | { kind: 'loading' } | { kind: 'transcribing' };
 
 export interface VoiceTranscribeSource {
-  /** A local file that is already on the phone. */
   localUri?: string | undefined;
-  /** A served URL that must be downloaded first, with headers when needed. */
   url?: string | undefined;
   headers?: Record<string, string> | undefined;
 }
 
-/** The file seam: tests inject a fake, production uses `expo-file-system`. */
 export interface TranscribeFileDeps {
   downloadUrl: (
     url: string,
@@ -39,7 +33,6 @@ export interface TranscribeFileDeps {
   deleteCache: (uri: string) => Promise<void>;
 }
 
-/** The cap refusal the download maps to the too-long user message. */
 export class TranscribeTooLargeError extends Error {
   constructor() {
     super('voice too large for on-device transcription');
@@ -48,9 +41,7 @@ export class TranscribeTooLargeError extends Error {
 }
 
 /**
- * Whether a served download must stop (T-0179, round 1): the same guard as
- * the attachment opener — abort once the written or the reported total
- * bytes pass `VOICE_MAX_BYTES`. Pure so tests drive it without native code.
+ * Aborts once the written or the reported total bytes pass `VOICE_MAX_BYTES`, the same guard as the attachment opener.
  */
 export function transcribeDownloadOverCap(
   progress: { bytesWritten: number; totalBytes: number },
@@ -65,7 +56,6 @@ export interface TranscribeVoiceNoteInput {
   audioMs?: number | undefined;
   language?: string | undefined;
   onPhase?: ((phase: TranscribePhase) => void) | undefined;
-  /** Asks the user before the one-time model download; false cancels. */
   confirmDownload?: (() => Promise<boolean>) | undefined;
   files?: TranscribeFileDeps | undefined;
 }
@@ -76,12 +66,7 @@ export type TranscribeVoiceNoteResult =
   | { status: 'error'; message: string };
 
 /**
- * One-shot gate for the model download consent (T-0179, round 1): the flow
- * must never download the model without the user's yes. Returns true only
- * when the user already confirmed in the sheet for this run, consuming the
- * yes; otherwise re-opens the confirm sheet and returns false, so the run
- * stops with `cancelled`. A stale yes (confirmed, then the model still
- * missing) re-opens the sheet instead of downloading.
+ * The flow must never download the model without the user's yes: the run stops with `cancelled` unless the sheet confirmed it, and a stale yes re-opens the sheet.
  */
 export function consumeTranscribeConsent(
   consent: { confirmed: boolean },
@@ -162,7 +147,6 @@ const defaultFiles: Effect.Effect<TranscribeFileDeps> = Effect.gen(function* () 
         }),
       ),
     deleteCache: (uri) =>
-      // The cache must never block the result.
       Effect.runPromise(Effect.try(() => new File(uri).delete()).pipe(Effect.ignore)),
   };
 });
@@ -180,11 +164,7 @@ function sanitizeId(id: string): string {
 }
 
 /**
- * Transcribes one voice note on the device. When the model is missing the
- * `confirmDownload` callback runs first (no callback means proceed); a
- * `false` answer stops with `cancelled`. A served URL is downloaded to the
- * cache with its headers and the cached file is always deleted, on success
- * and on failure. An empty text resolves to the "nothing heard" error.
+ * A served URL is downloaded to the cache with its headers, and the cached file is always deleted; an empty text resolves to the "nothing heard" error.
  */
 export function transcribeVoiceNote(
   input: TranscribeVoiceNoteInput,
@@ -192,13 +172,11 @@ export function transcribeVoiceNote(
   return Effect.runPromise(transcribeVoiceNoteEffect(input));
 }
 
-/** A run that stops early: the flow fails with its final result and `catch` returns it. */
 type EarlyResult = Exclude<TranscribeVoiceNoteResult, { status: 'done' }>;
 
 const stopWith = (message: string): Effect.Effect<never, EarlyResult> =>
   Effect.fail({ status: 'error', message });
 
-/** `transcribeVoiceNote` as an Effect: it succeeds with every result, never fails. */
 export const transcribeVoiceNoteEffect = (
   input: TranscribeVoiceNoteInput,
 ): Effect.Effect<TranscribeVoiceNoteResult> =>
@@ -270,7 +248,6 @@ export const transcribeVoiceNoteEffect = (
       return { status: 'done', transcript } satisfies TranscribeVoiceNoteResult;
     });
 
-    // The cached download is always deleted; the cache must never block the result.
     const deleteCached = Effect.suspend(() => {
       const cached = cachedUri;
       return cached === undefined

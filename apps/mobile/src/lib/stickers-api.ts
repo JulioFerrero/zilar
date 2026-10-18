@@ -15,20 +15,9 @@ import { getSessionToken } from './session-token';
 import type { StickerItem, StickerPack, StickerPackDetail } from './stickers';
 
 /**
- * The sticker panel client (T-0143), the mobile twin of the web sticker list
- * in `apps/web/src/lib/api.ts`: `GET /api/sticker-packs` (my panel, ordered,
- * with stickers). T-0187 adds the panel management calls (discover, add,
- * remove, reorder) and the favorites calls, mirroring the web client
- * function names.
- *
- * A Promise port over the client derived from the shared contract
- * (`@zilar/api-contract`, `stickers.ts`, T-0910). The contract's list schemas
- * drop a malformed pack or sticker row and keep the rest (`lenientArray`);
- * the bounds a sticker must meet to be shown are checked here. Only the raw
- * byte upload stays outside the derived client.
+ * The list schemas drop a malformed pack or sticker row; only the raw byte upload stays outside the derived client.
  */
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const StickersApiError = ApiError;
 export type StickersApiError = ApiError;
 
@@ -38,7 +27,6 @@ function isStickerDimension(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= MAX_STICKER_DIMENSION;
 }
 
-/** One contract sticker as the panel shows it, or null when it is out of bounds. */
 function toStickerItem(row: ContractSticker): StickerItem | null {
   if (
     row.id === '' ||
@@ -61,14 +49,10 @@ function toStickerItem(row: ContractSticker): StickerItem | null {
 }
 
 /**
- * One panel pack as My packs, Added and Discover show it: the list, Discover
- * and detail payloads carry the owner's handle when the owner has one
- * (T-1531). The handle stays absent when the server sends none, and the rows
- * then show only the count.
+ * The handle stays absent when the server sends none, and the rows then show only the count.
  */
 export type PanelPack = StickerPack & { ownerHandle?: string | null };
 
-/** One contract pack as the panel shows it; out-of-bounds stickers are dropped. */
 function toStickerPack(
   row: ContractStickerPack & { ownerHandle?: string | null },
 ): PanelPack | null {
@@ -91,7 +75,6 @@ function toStickerPack(
   };
 }
 
-/** One contract pack detail as its link page shows it; a malformed pack is null. */
 function toStickerPackDetail(row: ContractStickerPackDetail): StickerPackDetail | null {
   const pack = toStickerPack(row);
   if (pack === null) {
@@ -100,20 +83,17 @@ function toStickerPackDetail(row: ContractStickerPackDetail): StickerPackDetail 
   return { ...pack, ownerHandle: row.ownerHandle, inPanel: row.inPanel };
 }
 
-/** One sticker row the panel may show; malformed rows return null. */
 export function parseStickerItem(value: unknown): StickerItem | null {
   const decoded = Schema.decodeUnknownExit(ContractSticker)(value);
   return Exit.isSuccess(decoded) ? toStickerItem(decoded.value) : null;
 }
 
-/** One pack row the panel may show; malformed rows return null. */
 export function parseStickerPack(value: unknown): StickerPack | null {
   const decoded = Schema.decodeUnknownExit(ContractStickerPack)(value);
   return Exit.isSuccess(decoded) ? toStickerPack(decoded.value) : null;
 }
 
-/** The Telegram import outcome (web `TelegramImportResult`): `partial`
- * is false when the server omits it. */
+/** `partial` is false when the server omits it. */
 export interface TelegramImportResult {
   pack: StickerPack;
   imported: number;
@@ -142,13 +122,10 @@ function toImportResult(body: ContractTelegramImportResult): TelegramImportResul
   };
 }
 
-/** Reads the bearer session token from secure storage. */
 export type TokenProvider = () => Promise<string | undefined>;
 
 /**
- * The raw-bytes POST a sticker upload needs. Injected so tests use a fake
- * and never touch the native modules; production defaults to the
- * `expo-file-system` binary upload (the avatar uploader pattern).
+ * Injected so tests never touch the native modules; production uses an `expo-file-system` binary upload.
  */
 export interface StickerBinaryUpload {
   upload(
@@ -179,39 +156,29 @@ async function defaultBinaryUpload(
 
 export interface StickersApi {
   listStickerPacks(): Promise<StickerPack[]>;
-  /** One pack by id, for its link page (web `getStickerPack`); a 404 rejects with an `ApiError`. */
   getStickerPack(packId: string): Promise<StickerPackDetail>;
-  /** Shared packs anyone on this server may add (web `discoverStickerPacks`). */
   discoverStickerPacks(query?: string): Promise<{ packs: PanelPack[]; next: string | null }>;
   addStickerPanelPack(packId: string): Promise<void>;
   removeStickerPanelPack(packId: string): Promise<void>;
-  /** Reorders the whole panel; `order` is the complete id list, new order. */
   reorderStickerPanelPacks(order: string[]): Promise<void>;
   listStickerFavorites(): Promise<StickerItem[]>;
   removeStickerFavorite(stickerId: string): Promise<void>;
-  /** Imports a Telegram pack as a new private pack (web `importTelegramStickers`). */
   importTelegramStickers(input: string): Promise<TelegramImportResult>;
-  /** Mints an empty pack (web `createStickerPack`). */
   createStickerPack(input: {
     title: string;
     visibility?: 'private' | 'server';
   }): Promise<StickerPack>;
-  /** Renames, re-shares or reorders a pack (web `patchStickerPack`). */
   patchStickerPack(
     packId: string,
     input: { title?: string; visibility?: 'private' | 'server'; order?: string[] },
   ): Promise<StickerPack>;
   /**
-   * Deletes a pack and its files (web `deleteStickerPack`): resolves the
-   * server's keep-message warning, shown in the delete confirm copy.
+   * Resolves the server's keep-message warning, shown in the delete confirm.
    */
   deleteStickerPack(packId: string): Promise<{ warning: string }>;
-  /** Deletes one sticker of a pack (web `deletePackSticker`). */
   deletePackSticker(packId: string, stickerId: string): Promise<void>;
   /**
-   * Uploads one prepared sticker file: raw bytes (not multipart), the
-   * `Content-Type` is the image type, and the emoji travels percent-encoded
-   * in `x-emoji` (header values are latin1; a raw emoji throws in fetch).
+   * Raw bytes, not multipart; the emoji travels percent-encoded in `x-emoji` because header values are latin1 and a raw emoji throws in fetch.
    */
   uploadStickerFile(
     packId: string,
@@ -228,7 +195,6 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** The production `StickersApi`: bearer auth, `fetch`, build-time API URL. */
 export function createStickersApi(
   getToken: TokenProvider = getSessionToken,
   fetchImpl: typeof fetch = fetch,

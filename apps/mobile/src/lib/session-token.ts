@@ -1,9 +1,7 @@
 import { Effect } from 'effect';
 
 /**
- * Reads the persisted bearer session token for the chat API calls. The
- * `expo-secure-store` import is dynamic so this module can be loaded under
- * Vitest (Node), which cannot import the native module.
+ * `expo-secure-store` is imported dynamically so this module loads under Vitest (Node), which cannot import the native module.
  */
 const sessionTokenEffect = (): Effect.Effect<string | undefined> =>
   Effect.promise(() => import('../auth/secure-session-storage')).pipe(

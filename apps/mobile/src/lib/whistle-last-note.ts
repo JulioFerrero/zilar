@@ -1,8 +1,5 @@
 /**
- * The last voice note the store sent, for the Whistle dev screen's
- * "Transcribe last voice note" button (T-0177): scans every chat's messages
- * newest-first and returns the first message with a `voice` payload and a
- * playable URI (local file while it uploads, else the served URL).
+ * Scans every chat newest-first and returns the first message with a `voice` payload and a playable URI.
  */
 import type { UiMessage } from '@zilar/chat-core';
 

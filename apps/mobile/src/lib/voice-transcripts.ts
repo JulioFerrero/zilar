@@ -1,14 +1,10 @@
 /**
- * On-device voice-note transcripts (T-0179): a single JSON file at
- * `Paths.document/voice-transcripts.json`, keyed by message id. The
- * transcripts never leave the phone and are never sent on the wire: the
- * protocol package is untouched, and the bubble keeps them as local state.
+ * The transcripts never leave the phone and are never sent on the wire; the bubble keeps them as local state.
  */
 
 import { Exit, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 
-/** One stored transcript: the text plus the detected language, if any. */
 export const StoredTranscriptSchema = struct({
   text: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   language: Schema.optional(Schema.String),
@@ -19,12 +15,9 @@ export type StoredTranscript = typeof StoredTranscriptSchema.Type;
 export type TranscriptMap = Record<string, StoredTranscript>;
 
 export const TRANSCRIPTS_FILENAME = 'voice-transcripts.json';
-/** At most this many transcripts are kept; older ones are dropped. */
 export const MAX_STORED_TRANSCRIPTS = 500;
-/** A single transcript is never stored longer than this. */
 export const MAX_TRANSCRIPT_CHARS = 20_000;
 
-/** The file seam: tests inject a fake, production uses `expo-file-system`. */
 export interface TranscriptFile {
   read: () => Promise<string | null>;
   write: (raw: string) => Promise<void>;
@@ -62,11 +55,7 @@ function defaultTranscriptFile(): TranscriptFile {
 }
 
 /**
- * Parses the raw file content entry by entry (T-0179, round 1): valid
- * entries survive, only the invalid ones are dropped. A whole-file schema
- * check would wipe the cache because of one bad entry; here a hostile
- * entry never takes the good ones with it. Missing or unparsable data
- * resolves to {}.
+ * Entry by entry, so one hostile entry never takes the good ones with it; a whole-file check would wipe the cache. Missing or unparsable data resolves to {}.
  */
 export function parseTranscripts(raw: string | null | undefined): TranscriptMap {
   if (raw === null || raw === undefined || raw === '') {
@@ -91,7 +80,6 @@ export function parseTranscripts(raw: string | null | undefined): TranscriptMap 
   return kept;
 }
 
-/** Reads every stored transcript; a missing or hostile file resolves to {}. */
 export async function readTranscripts(file?: TranscriptFile): Promise<TranscriptMap> {
   const backend = file ?? defaultTranscriptFile();
   try {
@@ -102,10 +90,7 @@ export async function readTranscripts(file?: TranscriptFile): Promise<Transcript
 }
 
 /**
- * All writes run one at a time (T-0179, round 1): `saveTranscript` and
- * `deleteTranscript` each wait for the previous write, so two saves started
- * together never lose one to a stale read. A failed write never blocks
- * later ones. Reads stay unchained.
+ * Writes run one at a time, so two saves started together never lose one to a stale read; a failed write never blocks later ones. Reads stay unchained.
  */
 let writeChain: Promise<void> = Promise.resolve();
 
@@ -116,9 +101,7 @@ function chainWrite(work: () => Promise<void>): Promise<void> {
 }
 
 /**
- * Stores one transcript, capped at `MAX_TRANSCRIPT_CHARS` and
- * `MAX_STORED_TRANSCRIPTS` entries (oldest dropped). A failing storage
- * never breaks the chat: it resolves without throwing.
+ * A failing storage never breaks the chat: it resolves without throwing.
  */
 export async function saveTranscript(
   id: string,
@@ -166,8 +149,7 @@ async function writeTranscript(
 }
 
 /**
- * Forgets every transcript (sign-out, T-0901): the file is plain text on the
- * phone and is not keyed by user. A failing storage resolves without throwing.
+ * Called on sign-out: the file is plain text on the phone and is not keyed by user. A failing storage resolves without throwing.
  */
 export async function clearTranscripts(file?: TranscriptFile): Promise<void> {
   return chainWrite(async () => {
@@ -180,7 +162,6 @@ export async function clearTranscripts(file?: TranscriptFile): Promise<void> {
   });
 }
 
-/** Forgets one transcript; a failing storage resolves without throwing. */
 export async function deleteTranscript(id: string, file?: TranscriptFile): Promise<void> {
   return chainWrite(async () => {
     const backend = file ?? defaultTranscriptFile();

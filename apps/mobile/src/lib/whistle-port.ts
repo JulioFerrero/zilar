@@ -1,7 +1,5 @@
 /**
- * The on-device transcription port the dev screen drives (T-0177): a thin,
- * injected seam over the `zilar-whistle` local Expo module, so the screen
- * and its tests never touch the native handle directly.
+ * An injected seam over the `zilar-whistle` Expo module, so the screen and its tests never touch the native handle.
  */
 import { Effect } from 'effect';
 
@@ -31,8 +29,7 @@ export class WhistlePortError extends Error {
 }
 
 /**
- * A call into an injected function. A missing one answers with `absent`; a
- * rejection of the real one is a defect that reaches the caller unchanged.
+ * A missing injected function answers `absent`; a rejection of the real one reaches the caller unchanged.
  */
 function injectedCall<A>(
   call: (() => Promise<A>) | undefined,
@@ -41,12 +38,10 @@ function injectedCall<A>(
   return call === undefined ? absent : Effect.promise(() => call());
 }
 
-/** A synchronous availability check: a throw means "not available". */
 function readAvailability(read: () => boolean): boolean {
   return Effect.runSync(Effect.try(read).pipe(Effect.orElseSucceed(() => false)));
 }
 
-/** Builds the real port from the module's functions (test seam). */
 export function createWhistlePort(deps?: {
   isAvailable?: (() => boolean) | undefined;
   modelStatus?: (() => Promise<WhistleStatus>) | undefined;
@@ -85,8 +80,7 @@ export function createWhistlePort(deps?: {
     };
   }
   return {
-    // The real native check is synchronous and safe: `getNativeModule`
-    // returns null off Android and `isAvailable` only reads the ABI list.
+    // `getNativeModule` returns null off Android and `isAvailable` only reads the ABI list.
     isAvailable: () => readAvailability(checkNativeAvailable),
     modelStatus: () => withModule((module) => module.modelStatus()),
     downloadModel: (onProgress) => withModule((module) => module.downloadModel(onProgress)),
@@ -96,9 +90,7 @@ export function createWhistlePort(deps?: {
 }
 
 /**
- * Reads the real native availability without a static import: the bare
- * `require` below is only evaluated when this function runs, so Vitest
- * (which always injects the fake through `deps`) never loads native code.
+ * The bare `require` below runs only when this function runs, so Vitest (which injects the fake through `deps`) never loads native code.
  */
 function checkNativeAvailable(): boolean {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -109,9 +101,7 @@ function checkNativeAvailable(): boolean {
 }
 
 /**
- * The native module is Android-only and must never load under Vitest or on
- * iOS: the dynamic import below runs only when a method is actually called,
- * and the static type import is erased at compile time.
+ * Android only: the dynamic import runs only when a method is called, and the static type import is erased.
  */
 type WhistleModule = {
   modelStatus: () => Promise<WhistleStatus>;
@@ -131,7 +121,6 @@ function lazyModuleAsync(): Promise<WhistleModule> {
   return cached;
 }
 
-/** Loads the native module (once) and runs one call on it. */
 function withModule<A>(use: (module: WhistleModule) => Promise<A>): Promise<A> {
   return Effect.runPromise(
     Effect.promise(lazyModuleAsync).pipe(

@@ -4,13 +4,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The AI memory API (`GET /api/ai-memory`, `DELETE /api/ai-memory/facts/:id`
- * and `POST /api/ai-memory/clear`), the mobile twin of the web client in
- * `apps/web/src/lib/api.ts`. A Promise port over the client derived from the
- * shared contract (`@zilar/api-contract`, `ai-memory.ts`, T-0893).
- * `AiMemoryApiError` is the shared `ApiError`, which keeps the server's
- * `code` and `status`, so the section can show fixed user-facing sentences
- * instead of server text.
+ * `AiMemoryApiError` is the shared `ApiError`, so the section shows fixed sentences, never server text.
  */
 
 export interface AiMemoryFact {
@@ -30,11 +24,9 @@ export interface AiMemoryApi {
   clear(chat: string, aiId: string): Promise<void>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const AiMemoryApiError = ApiError;
 export type AiMemoryApiError = ApiError;
 
-/** The production `AiMemoryApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createAiMemoryApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,

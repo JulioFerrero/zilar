@@ -8,19 +8,9 @@ import { getSessionToken } from './session-token';
 import type { GifItem } from './gifs';
 
 /**
- * The GIF search client (T-0148), the mobile twin of the web GIF calls in
- * `apps/web/src/lib/api.ts`: `GET /api/gifs/search?q=&pos=`,
- * `GET /api/gifs/trending?pos=`. Results carry opaque `mediaToken`s, never
- * provider URLs; previews and the send path load through the same-origin
- * proxy (`/api/gifs/media/:token`).
- *
- * A Promise port over the client derived from the shared contract
- * (`@zilar/api-contract`, `gifs.ts`, T-0910). The contract's page schema
- * drops a malformed row and keeps the rest (`lenientArray`); the bounds a row
- * must meet to be shown are checked here. Queries are never logged.
+ * Results carry opaque `mediaToken`s, never provider URLs, and previews load through the same-origin proxy. Queries are never logged.
  */
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const GifsApiError = ApiError;
 export type GifsApiError = ApiError;
 
@@ -30,7 +20,6 @@ function isDimension(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= MAX_DIMENSION;
 }
 
-/** One contract row as the panel shows it, or null when it is out of bounds. */
 function toGifItem(row: GifResult, apiUrl: string): GifItem | null {
   const sizeBytes = row.sizeBytes;
   if (
@@ -56,13 +45,11 @@ function toGifItem(row: GifResult, apiUrl: string): GifItem | null {
   };
 }
 
-/** One GIF row the panel may show; malformed rows return null. */
 export function parseGifItem(value: unknown, apiUrl: string): GifItem | null {
   const decoded = Schema.decodeUnknownExit(GifResult)(value);
   return Exit.isSuccess(decoded) ? toGifItem(decoded.value, apiUrl) : null;
 }
 
-/** The same-origin proxy URL for one GIF result's media. */
 export function gifMediaUrl(mediaToken: string, apiUrl: string): string {
   return `${apiOrigin(apiUrl)}/api/gifs/media/${encodeURIComponent(mediaToken)}`;
 }
@@ -80,7 +67,6 @@ export interface GifPage {
   nextPos?: string | undefined;
 }
 
-/** Reads the bearer session token from secure storage. */
 export type TokenProvider = () => Promise<string | undefined>;
 
 export interface GifsApi {
@@ -88,7 +74,6 @@ export interface GifsApi {
   trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage>;
 }
 
-/** The production `GifsApi`: bearer auth, `fetch`, build-time API URL. */
 export function createGifsApi(
   getToken: TokenProvider = getSessionToken,
   fetchImpl: typeof fetch = fetch,
@@ -102,8 +87,7 @@ export function createGifsApi(
     >,
     signal: AbortSignal | undefined,
   ): Promise<GifPage> => {
-    // An abort is not an API failure: it interrupts the request and
-    // surfaces as the `AbortError` a `fetch` abort would give.
+    // An abort is not an API failure: it surfaces as the `AbortError` a `fetch` abort would give.
     const page = await runApiAbortable(Effect.mapError(call, toApiError), signal);
     const items: GifItem[] = [];
     for (const row of page.items) {

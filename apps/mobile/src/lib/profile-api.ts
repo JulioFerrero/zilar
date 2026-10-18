@@ -5,17 +5,7 @@ import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
- * The profile API (`/api/handles/check`, `PUT /api/me/handle`,
- * `PUT/DELETE /api/avatars/user/<id>`), the mobile twin of the web client
- * in `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/handles/api.ts` and `apps/server/src/avatars/`.
- *
- * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
- * the request is an Effect pipeline, cut back to a `Promise` at the edge
- * with `Effect.runPromise`. `ProfileApiError` keeps the server's `code` and
- * `status`, so screens can branch on the error without parsing the message
- * again (taken vs. reserved vs. invalid vs. rate limited; too_soon carries
- * the next-change date in the message, like web).
+ * `ProfileApiError` is the shared `ApiError` (taken vs. reserved vs. invalid vs. rate limited), so screens branch on `status` without parsing the message.
  */
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
@@ -26,10 +16,7 @@ export interface HandleCheck {
 }
 
 /**
- * The signed-in profile with the settings fields: the `@username` (null
- * when unclaimed) and the picture url (absent when unset). Both stay
- * optional so payloads from an older server still parse — absent reads
- * like null, like web's `meSchema`.
+ * Both stay optional so payloads from an older server still parse; absent reads as null.
  */
 export interface MyProfile {
   id: string;
@@ -44,11 +31,7 @@ export interface ProfileApi {
   checkHandle(handle: string): Promise<HandleCheck>;
   claimHandle(handle: string): Promise<{ handle: string }>;
   /**
-   * PUTs the cropped avatar bytes to the owner's slot. The default
-   * implementation sends `blob` through `fetch` (used by tests). React
-   * Native's `fetch` cannot send binary bodies, so the settings screens
-   * pass `uploader` (the `expo-file-system` upload in
-   * `components/settings/avatar-uploader.tsx`) to put a local file.
+   * React Native's `fetch` cannot send binary bodies, so the settings screens pass `uploader` (an `expo-file-system` PUT) instead; tests use the default blob.
    */
   uploadAvatar(
     ownerId: string,
@@ -62,8 +45,7 @@ export class ProfileApiError extends Error {
   readonly status: number;
   readonly code: string;
   /**
-   * The server's `nextChangeAt` for `handle_change_too_soon` (validated as
-   * a date at the boundary); undefined for every other error.
+   * `nextChangeAt` for `handle_change_too_soon`, validated as a date; undefined for every other error.
    */
   readonly nextChangeAt?: string | undefined;
 
@@ -85,8 +67,7 @@ const ClaimedHandleSchema = struct({
   handle: Schema.String,
 });
 
-// An absent `handle` reads like null (older servers omit it); an absent
-// `avatarUrl` stays absent, like web's `meSchema`.
+// An absent `handle` reads as null and an absent `avatarUrl` stays absent, as web's `meSchema` does.
 const MyProfileSchema = struct({
   id: Schema.String,
   email: Schema.String,
@@ -99,9 +80,7 @@ const AvatarUrlSchema = struct({
   url: Schema.String,
 });
 
-// The handle claim carries the next-change date alongside the code (web
-// reads it the same way); anything that is not a parseable date is
-// dropped, so callers never format garbage.
+// Anything that is not a parseable date is dropped, so callers never format garbage.
 const NextChangeAtSchema = struct({
   error: struct({
     nextChangeAt: Schema.optional(Schema.String),
@@ -135,7 +114,6 @@ function parseAvatarUrl(value: unknown): { url: string } | null {
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-/** Pulls the `{ code, message }` envelope out of a failed response body. */
 export function parseApiErrorBody(body: unknown): {
   code: string;
   message: string | null;
@@ -177,9 +155,7 @@ export function avatarFileName(mimeType: string): string {
   return 'avatar.jpg';
 }
 
-// The internal failures, one per case. They carry no field beyond what the
-// old `ProfileApiError` already surfaced; the `Promise` edge maps each back
-// to that same error, status, code, message and `nextChangeAt`.
+// The `Promise` edge maps each internal failure back to the same error, status, code, message and `nextChangeAt`.
 class ProfileNetworkError extends Data.TaggedError('ProfileNetworkError') {}
 class ProfileRequestError extends Data.TaggedError('ProfileRequestError')<{
   readonly status: number;
@@ -228,7 +204,6 @@ const requestEffect = Effect.fnUntraced(function* (
   return body;
 });
 
-/** The production `ProfileApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createProfileApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
@@ -282,10 +257,7 @@ export function createProfileApi(
       ),
     );
 
-  // The native upload path (`expo-file-system` PUT of the picked file): the
-  // bearer rides on the PUT itself, like the attachment uploader. A rejected
-  // upload propagates like the old `await` did; only the response decode
-  // changes.
+  // The bearer rides on the PUT itself, like the attachment uploader.
   const uploadNativeEffect = Effect.fnUntraced(function* (
     ownerId: string,
     blob: Blob,

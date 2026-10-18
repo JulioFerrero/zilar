@@ -1,15 +1,11 @@
 /**
- * The display-only pin snapshot (T-0135), dependency-free so components can
- * import it without pulling the API client (which Vitest cannot resolve
- * for component modules — see `apps/mobile` test notes in T-0112).
+ * Dependency-free, so components import it without pulling the API client.
  */
 
 export type SnapshotPinKind = 'text' | 'image' | 'file' | 'voice' | 'card';
 
 /**
- * The pin snapshot for a loaded message (T-0114): the sender name plus up to
- * 300 chars of display-only text, or the attachment kind with empty text.
- * A retracted original reads "Message deleted" once the retraction lands.
+ * Up to 300 chars of display-only text, or the attachment kind with empty text; a retracted original reads "Message deleted".
  */
 export function pinKindFor(message: {
   text?: string;
@@ -25,7 +21,6 @@ export function pinKindFor(message: {
   return 'text';
 }
 
-/** The display-only snapshot text: plain text (max 300), empty for kinds. */
 export function pinSnapshotText(message: {
   text?: string;
   deleted?: boolean;
@@ -51,7 +46,6 @@ const PIN_KIND_LABEL: Record<SnapshotPinKind, string> = {
   card: 'Card',
 };
 
-/** The banner/list label for a pin: text, or the kind label for attachments. */
 export function pinLabel(pin: { text: string; kind: SnapshotPinKind }): string {
   const text = pin.text.trim();
   if (text !== '') {

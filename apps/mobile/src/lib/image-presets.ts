@@ -7,7 +7,6 @@ function pair(index: number): readonly [string, string] {
   return gradient === undefined ? FALLBACK : [gradient.from, gradient.to];
 }
 
-/** Gradient placeholders used instead of image files: no external assets. */
 export const IMAGE_GRADIENTS: Record<string, readonly [string, string]> = {
   sunset: pair(0),
   amber: pair(1),

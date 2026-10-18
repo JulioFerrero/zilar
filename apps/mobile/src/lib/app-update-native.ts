@@ -1,13 +1,6 @@
 // effect-plain: the Android updater's native seam is the promise API of expo-file-system, expo-network, expo-intent-launcher and expo-secure-store; the store wraps it
 /**
- * The native half of the Android in-app updater (T-1724): fetch GitHub's
- * latest release, stream the arm64 APK into the cache directory, hand it to
- * the system installer, and remember the last check, the snooze and the
- * downloaded version in SecureStore.
- *
- * `expo-secure-store` is imported dynamically, like `push/last-received.ts`,
- * because it is a native module. `fetchWithTimeout` uses an `AbortController`
- * timer rather than `AbortSignal.timeout`, which Hermes may lack.
+ * `expo-secure-store` is imported dynamically (native module), and the timeout uses an `AbortController` because Hermes may lack `AbortSignal.timeout`.
  */
 
 import { File, Paths } from 'expo-file-system';
@@ -18,7 +11,6 @@ import * as Network from 'expo-network';
 import { parseLatestRelease, RELEASES_LATEST_URL, type LatestRelease } from './app-update';
 import { fetchWithTimeout } from './effect/fetch-timeout';
 
-/** The update check waits this long before it gives up. */
 const CHECK_TIMEOUT_MS = 10_000;
 
 /** `Intent.FLAG_GRANT_READ_URI_PERMISSION`. */
@@ -30,22 +22,18 @@ const ACTION_VIEW = 'android.intent.action.VIEW';
 /** Android's package installer MIME type. */
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 
-/** The single cache file the download overwrites on each attempt. */
 const APK_FILE_NAME = 'zilar-update.apk';
 
-/** SecureStore keys for the throttle, the snooze and the downloaded version. */
 export const UPDATE_LAST_CHECK_KEY = 'zilar.update.lastCheck';
 export const UPDATE_SNOOZED_KEY = 'zilar.update.snoozed';
 export const UPDATE_DOWNLOADED_KEY = 'zilar.update.downloaded';
 
 export interface SnoozedUpdate {
-  /** The version the user asked to defer. */
   version: string;
   /** When the snooze expires, as an ISO time. */
   until: string;
 }
 
-/** A download attempt: its eventual file URI, or `null` when cancelled. */
 export interface ApkDownload {
   result: Promise<string | null>;
   cancel: () => void;
@@ -55,17 +43,14 @@ function secureStore(): Promise<typeof import('expo-secure-store')> {
   return import('expo-secure-store');
 }
 
-/** The one cache file the updater downloads into. */
 function apkFile(): File {
   return new File(Paths.cache, APK_FILE_NAME);
 }
 
-/** The cached APK's `file://` URI, whether or not it exists. */
 export function apkFileUri(): string {
   return apkFile().uri;
 }
 
-/** True when a downloaded APK is present in the cache. */
 export function apkFileExists(): boolean {
   try {
     return apkFile().exists;
@@ -74,7 +59,6 @@ export function apkFileExists(): boolean {
   }
 }
 
-/** Removes the cached APK, best effort; a missing file is fine. */
 export function deleteApk(): void {
   try {
     const file = apkFile();
@@ -87,9 +71,7 @@ export function deleteApk(): void {
 }
 
 /**
- * True on Wi-Fi or Ethernet, where streaming the 67 MB APK costs the user
- * nothing. Any other connection (or a failed probe) is treated as metered, so
- * the app asks before downloading.
+ * Only Wi-Fi or Ethernet is free; any other connection or a failed probe counts as metered, so the app asks first.
  */
 export async function isUnmeteredConnection(): Promise<boolean> {
   try {
@@ -104,8 +86,7 @@ export async function isUnmeteredConnection(): Promise<boolean> {
 }
 
 /**
- * The latest release, or `null` when GitHub has nothing we can install. A
- * network or HTTP failure rejects so the caller can surface its own message.
+ * `null` when GitHub has nothing installable; a network or HTTP failure rejects so the caller surfaces its own message.
  */
 export async function checkLatest(): Promise<LatestRelease | null> {
   const response = await fetchWithTimeout(
@@ -122,11 +103,7 @@ export async function checkLatest(): Promise<LatestRelease | null> {
 }
 
 /**
- * Streams `url` into the cache directory as `zilar-update.apk`, calling
- * `onProgress` with 0–1 as bytes arrive (unknown totals are skipped). The
- * returned `result` resolves to the file's `file://` URI, or `null` when
- * `cancel()` stopped it. Only release URLs are ever passed in
- * (`app-update.ts` rejects anything else).
+ * `onProgress` is 0–1 (unknown totals are skipped); resolves the `file://` URI, or `null` when cancelled. Only release URLs are passed in.
  */
 export function downloadApk(url: string, onProgress: (progress: number) => void): ApkDownload {
   const destination = apkFile();
@@ -146,9 +123,7 @@ export function downloadApk(url: string, onProgress: (progress: number) => void)
 }
 
 /**
- * Opens the downloaded APK with the system package installer. The installer
- * itself asks for "allow installs from this source" the first time; we only
- * hand it the `content://` URI with read permission.
+ * The installer itself asks for "allow installs from this source"; we only hand it the `content://` URI with read permission.
  */
 export async function installApk(fileUri: string): Promise<void> {
   const contentUri = await getContentUriAsync(fileUri);
@@ -159,7 +134,6 @@ export async function installApk(fileUri: string): Promise<void> {
   });
 }
 
-/** The last check time as its stored ISO string, or `null` when unreadable. */
 export async function readLastCheck(): Promise<string | null> {
   try {
     const store = await secureStore();
@@ -169,7 +143,7 @@ export async function readLastCheck(): Promise<string | null> {
   }
 }
 
-/** Records that a check just ran. Best effort: storage never breaks a check. */
+/** Best effort: storage never breaks a check. */
 export async function writeLastCheck(at: Date = new Date()): Promise<void> {
   try {
     const store = await secureStore();
@@ -179,7 +153,6 @@ export async function writeLastCheck(at: Date = new Date()): Promise<void> {
   }
 }
 
-/** The stored snooze, or `null` when absent or malformed. */
 export async function readSnoozed(): Promise<SnoozedUpdate | null> {
   let raw: string | null;
   try {
@@ -206,7 +179,7 @@ export async function readSnoozed(): Promise<SnoozedUpdate | null> {
   }
 }
 
-/** Persists a snooze; best effort, so a storage failure never blocks "later". */
+/** Best effort, so a storage failure never blocks "later". */
 export async function writeSnoozed(snoozed: SnoozedUpdate): Promise<void> {
   try {
     const store = await secureStore();
@@ -216,7 +189,6 @@ export async function writeSnoozed(snoozed: SnoozedUpdate): Promise<void> {
   }
 }
 
-/** The version whose APK is cached, or `null` when none or malformed. */
 export async function readDownloaded(): Promise<string | null> {
   let raw: string | null;
   try {
@@ -240,7 +212,6 @@ export async function readDownloaded(): Promise<string | null> {
   }
 }
 
-/** Remembers which version the cached APK is, best effort. */
 export async function writeDownloaded(version: string): Promise<void> {
   try {
     const store = await secureStore();
@@ -250,7 +221,6 @@ export async function writeDownloaded(version: string): Promise<void> {
   }
 }
 
-/** Forgets the downloaded version, best effort. */
 export async function clearDownloaded(): Promise<void> {
   try {
     const store = await secureStore();

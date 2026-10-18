@@ -9,7 +9,6 @@ const list = (api: ContactsApi): Promise<ContactRequestView[]> =>
     Effect.promise(() => api.listContactRequests()).pipe(Effect.map((page) => page.incoming)),
   );
 
-/** The incoming contact requests shown as rows; `reload` refreshes at once. */
 export function useContactRequests(
   api: ContactsApi,
   enabled: boolean,

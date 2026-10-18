@@ -1,13 +1,4 @@
-// The headless FCM wake (T-1143, plan §4.4-4.5). ejabberd wakes a native device
-// with a data-only FCM message carrying `{ chatId, messageId?, serverId }` and no
-// text, so Google never sees the content. The task makes one HTTPS call
-// (`push.preview`) to let the server build the title and body with the same mute,
-// private-topic and "Show previews" rules Web Push uses, then posts a local
-// notification. A tap on it is routed by `tap.ts`.
-//
-// The task is defined here at module scope and registered once. `index.ts`, the
-// Metro entry, imports this module before `expo-router/entry`, so the task is
-// defined even on a headless cold start, where the router never renders.
+// ejabberd wakes the device with a data-only FCM message carrying ids and no text, so Google never sees content; the task asks the server for a preview, then posts locally. The task is defined at module scope, imported before `expo-router/entry`, so a headless cold start has it.
 
 import { Effect } from 'effect';
 import * as Notifications from 'expo-notifications';
@@ -23,34 +14,26 @@ import { channelForWake, parseChatKind, type PushChatKind } from './channels';
 import { recordPushReceived } from './last-received';
 import { MESSAGE_CATEGORY, onNotificationAction, registerMessageCategory } from './actions';
 
-/** The task name ejabberd's publish is delivered to; defined and registered below. */
 export const WAKE_TASK = 'zilar-background-notification';
 
-/** The generic text shown when the server is not asked for a preview. */
 const GENERIC_TITLE = 'Zilar';
 const GENERIC_BODY = 'New message';
 
-/** A test wake (`chatId: 'zilar:test'`) draws its own fixed text, no preview. */
 const TEST_WAKE_CHAT_ID = 'zilar:test';
 const TEST_WAKE_BODY = 'Push notifications work on this device.';
 
 /**
- * The identifier the test-wake post carries. A test wake is the one post with
- * no `chatId`, so it is always shown (see `postTest` and the handler below).
+ * A test wake is the one post with no `chatId`, so it is always shown.
  */
 export const TEST_WAKE_IDENTIFIER = 'zilar-test';
 
-/** A mock build has no real server: define nothing and post nothing. */
 const MOCK_MODE = ENV_MOCK === '1';
 
-/** The ids the server put in the wake; `messageId` is absent on some wakes. */
 export interface WakePayload {
   chatId: string;
   messageId?: string;
   /**
-   * T-1302 (MUX-23): the chat kind the server would put on the wake under
-   * `chatKind`. It does not send one yet, so this is undefined in practice and
-   * `channelForWake` falls back (see the Report).
+   * The server sends no kind yet, so this is undefined and `channelForWake` falls back.
    */
   chatKind?: PushChatKind;
 }
@@ -62,9 +45,7 @@ export interface WakeDeps {
 }
 
 /**
- * Reads the wake out of the FCM data. SDK 57 hands a data-only payload to the
- * task on `data.dataString` (a JSON string); the keys may also sit on `data`
- * itself, so both shapes are accepted. A payload without a `chatId` is ignored.
+ * SDK 57 hands a data-only payload on `data.dataString` (a JSON string), but the keys may also sit on `data` itself, so both shapes are accepted.
  */
 function parseWake(data: { dataString?: string; [key: string]: unknown }): WakePayload | undefined {
   let raw: unknown = data;
@@ -96,10 +77,7 @@ function parseWake(data: { dataString?: string; [key: string]: unknown }): WakeP
 }
 
 /**
- * Schedules one local notification, best effort. A failed post is the one
- * failure that would otherwise be invisible (a headless task cannot surface
- * it), so it warns exactly once; the title, the body and the token are never
- * logged.
+ * A headless task cannot surface a failed post, so it warns exactly once; the title, the body and the token are never logged.
  */
 async function schedule(
   request: Parameters<typeof Notifications.scheduleNotificationAsync>[0],
@@ -112,15 +90,7 @@ async function schedule(
 }
 
 /**
- * Posts one local notification on its chat-kind channel, opened by `chatId`.
- * `trigger: { channelId }` is SDK 57's immediate, channel-aware trigger: the JS
- * layer turns a bare `channelId` into `{ type: 'channel' }`
- * (`scheduleNotificationAsync.js`, `parseTrigger`) and Android's
- * `NotificationScheduler.triggerFromParams` maps `channel` to
- * `ChannelAwareTrigger`, which `ExpoSchedulingDelegate.scheduleNotification`
- * presents at once. `trigger: null` cannot set the channel: SDK 57's content
- * has no `channelId`, so a null trigger falls back to a generic channel
- * (`BaseNotificationBuilder.channelId`).
+ * `trigger: { channelId }` is SDK 57's immediate, channel-aware trigger; `trigger: null` cannot set the channel, so it falls back to a generic one.
  */
 function post(
   title: string,
@@ -138,25 +108,22 @@ function post(
     }
   }
   return schedule({
-    // T-1897: one notification per chat. The stable identifier replaces that
-    // chat's previous notification in place instead of stacking a new one.
+    // One notification per chat: the stable identifier replaces the previous one instead of stacking.
     identifier: `chat:${chatId}`,
     content: {
       title,
       body,
       data,
       categoryIdentifier: MESSAGE_CATEGORY,
-      // T-1897: the chat's unread count as the badge, when the server knew it.
       ...(unread === undefined || unread < 1 ? {} : { badge: unread }),
     },
     trigger: { channelId: channelForWake(chatKind).id },
   });
 }
 
-/** Posts the test-wake notification: the fixed text, and no `chatId`, so a
- * tap opens the app without opening a chat (`tap.ts` ignores a missing one).
- * The identifier marks it as the test wake; no `chatId` also means the
- * foreground handler never hides it. */
+/**
+ * No `chatId`, so a tap opens the app without a chat and the foreground handler never hides it.
+ */
 function postTest(): Promise<void> {
   return schedule({
     identifier: TEST_WAKE_IDENTIFIER,
@@ -166,18 +133,14 @@ function postTest(): Promise<void> {
 }
 
 /**
- * Fetches the preview for one message and posts it. A 404 means the message is
- * muted, hidden or gone, so nothing is shown; any other failure (network, 5xx,
- * expired session) falls back to the generic text, because the server already
- * decided to wake this phone.
+ * A 404 means the message is muted, hidden or gone, so nothing is shown; any other failure falls back to the generic text, because the server already decided to wake this phone.
  */
 async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promise<void> {
   const token = await deps.getToken();
   if (token === undefined) {
     return;
   }
-  // A test wake proves the pipe works: it draws its own fixed text and never
-  // fetches a preview (the tap opens the app, not a chat).
+  // A test wake draws its own fixed text and never fetches a preview.
   if (payload.chatId === TEST_WAKE_CHAT_ID) {
     await postTest();
     return;
@@ -210,25 +173,19 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
   );
 }
 
-/** The chat id a notification was posted for, when it carries one. */
 function notificationChatId(notification: Notifications.Notification): string | undefined {
   const chatId = notification.request.content.data?.['chatId'];
   return typeof chatId === 'string' && chatId !== '' ? chatId : undefined;
 }
 
 /**
- * The wake handler, exported for tests. A wake is dropped only for the chat
- * the app currently shows (its message is already on screen); every other
- * wake — killed, backgrounded, or the foreground on another screen — is
- * posted, and the test wake is always posted. Never logs the title, the body
- * or the token, and never throws out of the headless task.
+ * A wake is dropped only for the chat the app currently shows; every other wake is posted. Never logs the title, the body or the token, and never throws out of the headless task.
  */
 export async function onWake(payload: WakePayload, deps: WakeDeps = {}): Promise<void> {
   if (MOCK_MODE) {
     return;
   }
-  // The OS delivered a wake: remember it for the Settings diagnostics line,
-  // even when the app is open and the post below is skipped. Best effort.
+  // Remember the wake for the Settings diagnostics line, even when the post below is skipped. Best effort.
   await recordPushReceived();
   if (payload.chatId !== TEST_WAKE_CHAT_ID && getActiveChatId() === payload.chatId) {
     return;
@@ -238,8 +195,7 @@ export async function onWake(payload: WakePayload, deps: WakeDeps = {}): Promise
     fetchImpl: deps.fetchImpl ?? fetch,
     apiUrl: deps.apiUrl ?? API_URL,
   };
-  // Best effort, through Effect: a failure is warned without its content and
-  // never reaches the headless task.
+  // Best effort: a failure is warned without its content and never reaches the headless task.
   await Effect.runPromise(
     Effect.tryPromise({
       try: () => handleWake(payload, resolved),
@@ -255,7 +211,6 @@ export async function onWake(payload: WakePayload, deps: WakeDeps = {}): Promise
 if (!MOCK_MODE) {
   TaskManager.defineTask<Notifications.NotificationTaskPayload>(WAKE_TASK, async ({ data }) => {
     if ('actionIdentifier' in data) {
-      // A plain tap is routed by `tap.ts`; an action runs here, headless.
       if (data.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
         await onNotificationAction(data);
       }
@@ -268,18 +223,13 @@ if (!MOCK_MODE) {
     return Notifications.BackgroundNotificationTaskResult.NoData;
   });
 
-  // Chat notifications carry Reply and Mark as read (T-1896).
   void registerMessageCategory();
 
-  // Best effort: a failed registration is warned, not thrown.
   void Notifications.registerTaskAsync(WAKE_TASK).catch((error) => {
     console.warn('native push: the wake task could not be registered', error);
   });
 
-  // Shows a posted wake unless it is for the chat the app currently shows:
-  // the OS asks this handler whenever the app process is foreground, so a
-  // wake that runs in a headless context while the app is open (T-1358) must
-  // still be presented. The test wake carries no `chatId`, so it always shows.
+  // The OS asks this handler whenever the app process is foreground, so a wake from a headless context while the app is open must still be presented.
   Notifications.setNotificationHandler({
     handleNotification: (notification) => {
       const openChatId = getActiveChatId();

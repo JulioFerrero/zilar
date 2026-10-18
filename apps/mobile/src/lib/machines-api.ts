@@ -8,14 +8,7 @@ import { createApiClient } from './effect/api-client';
 import { rawRequest } from './effect/raw-request';
 
 /**
- * The machines (runners) API (`/api/machines`), the mobile twin of the web
- * client in `apps/web/src/lib/api.ts`. The routes come from the client derived
- * from the shared contract (`@zilar/api-contract`, `machines.ts`, T-0895).
- * One call stays hand-written: `setAiMachine` (the AIs module is not in the
- * contract yet).
- *
- * `setAiMachine` mirrors web's `setAiMachine`: the AI's home machine is a
- * separate route on purpose, not part of the general PATCH.
+ * `setAiMachine` stays hand-written: the AI's home machine is a separate route on purpose, not part of the general PATCH.
  */
 
 export type { Machine, MachineStatus, PairingCode };
@@ -28,23 +21,16 @@ export interface MachinesApi {
   revokeMachine(id: string): Promise<Machine>;
   renameMachine(id: string, name: string): Promise<Machine>;
   deleteMachine(id: string): Promise<void>;
-  /**
-   * Assigns the AI's home machine (`null` clears it back to the platform).
-   * Answers the new `machineId` parsed from the server's fresh public AI.
-   */
   setAiMachine(aiId: string, machineId: string | null): Promise<string | null>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const MachinesApiError = ApiError;
 export type MachinesApiError = ApiError;
 
-/** The AI's home machine id, read off the server's fresh public AI. */
 const MachineIdSchema = struct({
   machineId: Schema.NullOr(Schema.String),
 });
 
-/** The production `MachinesApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createMachinesApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
@@ -58,7 +44,6 @@ export function createMachinesApi(
     approveMachine: (id) => runApi(client.machines.approve({ params: { id } })),
     denyMachine: (id) => runApi(client.machines.deny({ params: { id } })),
     revokeMachine: (id) => runApi(client.machines.revoke({ params: { id } })),
-    // The server trims the name; the contract encodes the trimmed form.
     renameMachine: (id, name) =>
       runApi(client.machines.rename({ params: { id }, payload: { name: name.trim() } })),
     deleteMachine: (id) => runApi(client.machines.remove({ params: { id } })),

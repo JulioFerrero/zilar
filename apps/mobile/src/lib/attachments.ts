@@ -1,12 +1,5 @@
 /**
- * Attachment helpers (T-0150), the mobile twin of
- * `apps/web/src/lib/attachments.ts`.
- *
- * Dependency-free so components can import them without pulling the API
- * client or native modules (Vitest cannot resolve `@/` for component
- * modules — see `apps/mobile` test notes in T-0112). Every rule mirrors the
- * web twin: the browser `File`-based helpers are adapted to the picked-asset
- * shape below, and the trusted-media set is the same three hosts.
+ * Dependency-free, so components import it without the API client or native modules.
  */
 
 import {
@@ -29,40 +22,22 @@ export {
   type MediaTokenShape,
 } from '@zilar/chat-core';
 
-/**
- * A file the user picked on the device, before it is sent. The native picker
- * hands back a local URI plus optional metadata; the store uploads the bytes
- * and sends the same wire shape as web (same kind rules, same caption rules).
- */
 export interface PendingMobileFile {
-  /** Local `file://` URI of the picked bytes. */
   uri: string;
-  /** Original file name (may be missing on some library assets). */
   name?: string | undefined;
-  /** The picker-reported MIME type, or undefined when unknown. */
   mimeType?: string | undefined;
-  /** Byte size, when the picker reported it. */
   size?: number | undefined;
-  /** Pixel width of an image/video asset, when known. */
   width?: number | undefined;
-  /** Pixel height of an image/video asset, when known. */
   height?: number | undefined;
 }
 
 /**
- * The picked asset's MIME decides whether a file is an image. An SVG (and
- * anything with an empty or unknown type) is a file: it can carry script, so
- * it is never rendered as an image. Mirrors web `classify`.
+ * An SVG (or an empty or unknown type) is a file: it can carry script, so it is never rendered as an image.
  */
 export function classifyMobileFile(file: Pick<PendingMobileFile, 'mimeType'>): 'image' | 'file' {
   return classifyMime(file.mimeType);
 }
 
-/**
- * The attachment payload the store sends, built exactly as web does: kind
- * from the MIME, sanitized name, `application/octet-stream` fallback for an
- * unknown type, and the measured image size when known.
- */
 export function attachmentDataFor(
   file: PendingMobileFile,
   url: string,
@@ -100,12 +75,7 @@ export function attachmentDataFor(
 }
 
 /**
- * Whether a file attachment renders as an inline auto-playing video: the GIF
- * send path names files `gif-<id>.<ext>` with a video mime (mp4/webm are
- * never images per `classifyMobileFile`). The URL must additionally be
- * trusted, so a hostile sender's arbitrary URL never auto-loads even if it
- * reaches the component past the store sanitizer (which renames untrusted
- * `gif-` attachments first; this is the second layer).
+ * The URL must be trusted, so a hostile sender's URL never auto-loads even past the store sanitizer that renames untrusted `gif-` attachments (this is the second layer).
  */
 export function isGifVideoAttachment(
   attachment: Attachment,
@@ -118,25 +88,13 @@ export function isGifVideoAttachment(
 }
 
 /**
- * Which body an image attachment bubble renders:
- * - `local` — the picked `file://` preview shows while the bytes upload;
- * - `image` — a trusted URL auto-loads inline;
- * - `load-failed` — a trusted URL whose inline fetch failed: a distinct
- *   "Couldn't load" row with a retry, never the untrusted label;
- * - `untrusted` — the URL is not on a trusted host: the click-to-load file row.
- *
- * A fetch failure must not read as "untrusted": after a restart a history image
- * keeps `kind: 'image'`, but an expired session or offline fetch makes the
- * load fail, and mislabeling it sends the user after the wrong cause.
+ * A fetch failure must not read as `untrusted`: after a restart an expired session or an offline fetch makes the load fail, and the wrong label sends the user after the wrong cause.
  */
 export type ImageAttachmentRender = 'local' | 'image' | 'load-failed' | 'untrusted';
 
 export function imageAttachmentRender(input: {
-  /** The URL passed the trusted-host gate (`isLoadableMediaUrl`). */
   trusted: boolean;
-  /** The inline fetch already failed once (the image's `onError`). */
   broken: boolean;
-  /** A local preview URI exists while the bytes upload. */
   hasLocalUri: boolean;
 }): ImageAttachmentRender {
   if (input.hasLocalUri) {
@@ -149,11 +107,7 @@ export function imageAttachmentRender(input: {
 }
 
 /**
- * The MIME type for a file name's extension, or `fallback` when the extension
- * is unknown or absent. The mirror of `extensionForMime`: it names the gallery
- * assets (T-1320), which carry a file name but no MIME type. HEIC stays
- * `image/heic` (never a picture for `classifyMobileFile`), exactly like a
- * picked phone photo.
+ * Gallery assets carry a file name but no MIME. HEIC stays `image/heic`, never a picture.
  */
 export function mimeForFileName(name: string, fallback: string): string {
   const extension = name.split('.').pop()?.toLowerCase() ?? '';
@@ -180,8 +134,7 @@ export function mimeForFileName(name: string, fallback: string): string {
 }
 
 /**
- * The extension for an image-picker asset from its MIME type, used when the
- * asset has no file name. Unknown types fall back to `bin`.
+ * Unknown types fall back to `bin`.
  */
 export function extensionForMime(mimeType: string | undefined): string {
   switch ((mimeType ?? '').toLowerCase()) {
@@ -204,5 +157,4 @@ export function extensionForMime(mimeType: string | undefined): string {
   }
 }
 
-/** The MIME sent for a picked asset: the reported type, or the octet-stream fallback. */
 export const mimeForAsset = mimeOrOctetStream;

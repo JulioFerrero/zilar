@@ -10,12 +10,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The AI management API (`/api/ais`), the mobile twin of the web client in
- * `apps/web/src/lib/api.ts`. A Promise port over the client derived from the
- * shared contract (`@zilar/api-contract`, `ais.ts`, T-0893).
- * `AisApiError` is the shared `ApiError`, which keeps the server's `code` and
- * `status`, so screens can branch on the error without parsing the message
- * again.
+ * `AisApiError` is the shared `ApiError`, so screens branch on `status` without parsing the message.
  */
 
 export type AiTemplate = 'dev' | 'marketing' | 'fun' | 'custom';
@@ -32,31 +27,23 @@ export interface PublicAi {
   persona: string;
   model: string;
   jid: string;
-  // `stopped` is the owner kill switch (T-0080). Mobile only renders the
-  // AI list, so accepting it in the type guard keeps the list rendering
-  // for a paused AI — the screen shows it as "stopped" rather than failing.
+  // Accepting `stopped` in the type guard keeps the list rendering for a paused AI, shown as "stopped" rather than failing.
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
   /**
-   * T-0058: the AI's spend summary, `null` when the spend read failed. Optional
-   * so an older server's payload stays valid.
+   * Optional so an older server's payload stays valid.
    */
   usage?: { todayUsd: number; windowUsd: number } | null | undefined;
   /**
-   * T-1504: the AI's latest turn failure no answer has followed, or `null` when
-   * it is healthy. Optional so an older server's payload stays valid.
+   * Optional so an older server's payload stays valid.
    */
   lastFailure?: { kind: string; at: string } | null | undefined;
-  // T-0091: the AI's home machine id, or null when it runs on the
-  // platform. Optional so older payloads stay valid; a missing or non-string
-  // value maps to null. CamelCase like the rest of the public AI fields.
+  // Optional so older payloads stay valid; a missing or non-string value maps to null.
   machineId?: string | null | undefined;
-  /** The AI's picture path (`/api/avatars/ai/<id>`); absent on older servers. */
   avatarUrl?: string | undefined;
   /**
-   * T-1409: where the AI's computer runs. `off` is the default; optional so a
-   * fixture or an older payload stays valid.
+   * `off` is the default; optional so an older payload stays valid.
    */
   computerMode?: 'off' | 'cloud' | 'runner' | 'auto' | undefined;
   createdAt: string;
@@ -66,7 +53,6 @@ export interface Connection {
   id: string;
   provider: string;
   label: string | null;
-  /** T-1396: the custom provider's base URL; `null` for every other provider. */
   baseUrl: string | null;
   status: string;
   createdAt: string;
@@ -75,19 +61,17 @@ export interface Connection {
 export interface CreateAiInput {
   name: string;
   template: AiTemplate;
-  /** Omit for a stock template the user did not edit: the server applies its default. */
+  /** A stock template the user did not edit: the server applies its default. */
   persona?: string;
   providerConnectionId: string;
   model: string;
   limits: AiLimits;
 }
 
-/** PATCH carries only the fields that actually changed. */
 export interface UpdateAiInput {
   name?: string;
   persona?: string;
   limits?: AiLimits;
-  /** T-1409/T-1423: where the AI's computer runs. */
   computerMode?: 'off' | 'cloud' | 'runner' | 'auto';
 }
 
@@ -97,23 +81,17 @@ export interface AisApi {
   updateAi(id: string, input: UpdateAiInput): Promise<PublicAi>;
   deleteAi(id: string): Promise<void>;
   listConnections(): Promise<Connection[]>;
-  /** T-1395: the models.dev catalog for the wizard's model step. */
   getAiCatalog(): Promise<AiCatalog>;
-  /** T-1425: whether Zilar cloud desks are available on this server. */
   getComputerOptions(): Promise<AiComputerOptions>;
-  // T-0080: the owner kill switch. The server answers the fresh public AI so
-  // the list can swap the row against server truth without a second GET.
+  // The server answers the fresh public AI, so the list can swap the row against server truth without a second GET.
   stopAi(id: string): Promise<PublicAi>;
   resumeAi(id: string): Promise<PublicAi>;
-  /** T-1422: stops the turn running in one chat (not the kill switch). */
   stopAiTurn(id: string, chatJid: string): Promise<{ stopped: boolean }>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const AisApiError = ApiError;
 export type AisApiError = ApiError;
 
-/** The exact POST body the server's strict create decode accepts. */
 export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   return {
     name: input.name,
@@ -125,9 +103,7 @@ export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   };
 }
 
-// Only the fields this app renders; the avatar and delegation fields of the
-// wire payload are for the web. A missing `machineId` reads as `null`, a
-// missing `usage` or `lastFailure` (an older server) reads as `null`.
+// A missing `machineId`, `usage` or `lastFailure` (an older server) reads as `null`.
 function toPublicAi(ai: ContractAi): PublicAi {
   return {
     id: ai.id,
@@ -148,7 +124,6 @@ function toPublicAi(ai: ContractAi): PublicAi {
   };
 }
 
-/** The production `AisApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createAisApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
@@ -161,7 +136,6 @@ export function createAisApi(
       return rows.map(toPublicAi);
     },
     async createAi(input) {
-      // The server trims these strings; the contract encodes the trimmed form.
       const created = await runApi(
         client.ais.create({
           payload: {

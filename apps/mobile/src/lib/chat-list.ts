@@ -5,11 +5,7 @@ import { filterChats } from './filter';
 import { groupRowFor, groupTopicChats } from './topics';
 
 /**
- * The chat list's row model (T-0135): the same composition the chat list
- * screen renders, as a pure function with Vitest coverage. Pinned
- * chats/topics float first (a group counts as pinned when any of its
- * topics is pinned), archived chats leave the main list for the Archived
- * entry, groups with topics collapse to one row per group.
+ * Pinned chats/topics float first (a group is pinned when any topic is), archived chats move to the Archived entry, and a group with topics collapses to one row.
  */
 
 export type ChatListRow = { kind: 'chat'; chat: ChatSummary } | { kind: 'group'; groupId: string };
@@ -22,7 +18,6 @@ export function chatSearchMatches(rows: readonly ChatListRow[]): ChatListRow[] {
 
 export interface ChatListModel {
   rows: ChatListRow[];
-  /** The archived chats shown under the Archived entry. */
   archived: ChatSummary[];
 }
 
@@ -69,10 +64,7 @@ export function chatListModel(
     if (leftPinned !== rightPinned) {
       return leftPinned ? -1 : 1;
     }
-    // T-1474: never subtract. Two rows with neither a message nor a creation
-    // time both sort at `-Infinity`, and `-Infinity - -Infinity` is `NaN`, which
-    // makes the comparator inconsistent (Hermes then misplaces the other rows,
-    // so a new AI chat no longer leads). Compare explicitly instead.
+    // Never subtract: two rows with neither a message nor a creation time sort at `-Infinity`, and `-Infinity - -Infinity` is `NaN`, which makes the comparator inconsistent (Hermes then misplaces the other rows).
     const leftTime = timeOf(left);
     const rightTime = timeOf(right);
     if (leftTime === rightTime) {

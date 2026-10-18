@@ -6,13 +6,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * Message search (`GET /api/search`, T-0138). The mobile twin of the web
- * client in `apps/web/src/lib/api.ts`: the client is derived from the shared
- * contract (`packages/api-contract/src/search.ts`, T-0894), which owns the
- * schemas. Snippets arrive as plain text plus `marks` character ranges; the
- * client highlights with nested text and never renders HTML, like web's
- * `SearchSnippet`. Queries are never logged: they travel only in the request
- * URL the server deliberately does not log.
+ * Snippets are plain text plus `marks` ranges, so the client highlights with nested text and never renders HTML. Queries are never logged.
  */
 
 export type SearchMark = [number, number];
@@ -43,11 +37,9 @@ export interface SearchApi {
   searchMessages(input: SearchMessagesInput): Promise<SearchPage>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const SearchApiError = ApiError;
 export type SearchApiError = ApiError;
 
-/** The production `SearchApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createSearchApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
@@ -56,8 +48,6 @@ export function createSearchApi(
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
     async searchMessages(input) {
-      // The cursor travels as a string in the app and decodes to a number in
-      // the contract; an empty `chat` or `before` is left out, like before.
       const query = {
         q: input.q,
         ...(input.chat === undefined || input.chat === '' ? {} : { chat: input.chat }),
@@ -66,8 +56,7 @@ export function createSearchApi(
           ? {}
           : { before: Number(input.before) }),
       };
-      // An abort is not a search failure: it interrupts the request and
-      // surfaces as the `AbortError` a `fetch` abort would give.
+      // An abort is not a search failure: it surfaces as the `AbortError` a `fetch` abort would give.
       const page = await runApiAbortable(
         Effect.mapError(client.search.search({ query }), toApiError),
         input.signal,

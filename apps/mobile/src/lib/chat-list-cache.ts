@@ -1,16 +1,13 @@
 // effect-plain: the async expo-file-system seam for the shared codec; failures are swallowed.
-/** The last chat list, painted at a cold start (PERF-12); this file is only the storage. */
 import type { ChatSummary } from '@zilar/chat-core';
 import { decodeChatListCache, encodeChatListCache } from '@zilar/client-core/store';
 
-/** The cache file name; one file per install (cleared on sign-out). */
 export const CHAT_LIST_CACHE_FILE_NAME = 'zilar-chat-list.json';
 
 function cacheUri(documentDirectory: string): string {
   return documentDirectory + CHAT_LIST_CACHE_FILE_NAME;
 }
 
-/** Reads the cache file; a missing file or platform resolves to null. */
 async function readCacheFile(): Promise<string | null> {
   try {
     const { documentDirectory, readAsStringAsync } = await import('expo-file-system/legacy');
@@ -23,7 +20,6 @@ async function readCacheFile(): Promise<string | null> {
   }
 }
 
-/** Writes the cache file; a read-only or full disk is ignored. */
 async function writeCacheFile(contents: string): Promise<void> {
   try {
     const { documentDirectory, writeAsStringAsync } = await import('expo-file-system/legacy');
@@ -36,7 +32,6 @@ async function writeCacheFile(contents: string): Promise<void> {
   }
 }
 
-/** Deletes the cache file; a missing file or a blocked disk is ignored. */
 async function deleteCacheFile(): Promise<void> {
   try {
     const { documentDirectory, deleteAsync } = await import('expo-file-system/legacy');
@@ -50,8 +45,7 @@ async function deleteCacheFile(): Promise<void> {
 }
 
 /**
- * The cached list, or null when there is none, it is unusable, or its user did
- * not match. `chats` keeps unknown fields, so a newer build's cache still paints.
+ * `chats` keeps unknown fields, so a newer build's cache still paints.
  */
 export async function readChatListCache(): Promise<{
   userId: string;
@@ -61,7 +55,6 @@ export async function readChatListCache(): Promise<{
   return raw === null ? null : (decodeChatListCache(raw) ?? null);
 }
 
-/** Saves the last list for the next visit; a failure costs only the cached paint. */
 export function writeChatListCache(userId: string, chats: readonly ChatSummary[]): void {
   if (userId === '') {
     return;
@@ -73,7 +66,7 @@ export function writeChatListCache(userId: string, chats: readonly ChatSummary[]
   }
 }
 
-/** Forgets the cache; called on sign-out so one user's list never paints as another's. */
+/** Called on sign-out, so one user's list never paints as another's. */
 export function clearChatListCache(): void {
   void deleteCacheFile();
 }

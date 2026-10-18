@@ -9,7 +9,6 @@ const healthRequest = (): Promise<Response> =>
     Effect.promise(() => fetch(`${API_URL}/health`, { method: 'GET', credentials: 'omit' })),
   );
 
-/** True when this build is older than the server's minimum protocol. */
 export function useClientVersionCheck(): boolean {
   return useSharedClientVersionCheck(healthRequest, onForeground, protocolVersion);
 }

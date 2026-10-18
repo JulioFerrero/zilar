@@ -9,12 +9,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The approvals API (`/api/approvals`), the mobile twin of the web client in
- * `apps/web/src/lib/api.ts`. A Promise port over the client derived from the
- * shared contract (`@zilar/api-contract`, `approvals.ts`, T-0893).
- * `ApprovalsApiError` is the shared `ApiError`, which keeps the server's
- * `code` and `status`, so the card can branch on the error without parsing
- * the message again (404 = not decidable, 409 = race / expired).
+ * `ApprovalsApiError` is the shared `ApiError`, so the card branches on `status` without parsing the message (404 = not decidable, 409 = race / expired).
  */
 
 export type ApprovalStatus =
@@ -69,11 +64,9 @@ export interface ApprovalRule {
   createdBy: string;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const ApprovalsApiError = ApiError;
 export type ApprovalsApiError = ApiError;
 
-/** The exact POST body the server's strict decision decode accepts. */
 export function buildDecisionBody(
   decision: ApprovalDecision,
   note?: string,
@@ -81,9 +74,7 @@ export function buildDecisionBody(
   return note === undefined ? { decision } : { decision, note };
 }
 
-// This app shows the fields below; the topic and approver fields of the wire
-// payload are for the web. A name or flag an older server omits reads as its
-// empty default (the contract does the same).
+// An older server may omit a name or flag; it then reads as the empty default (as the contract does).
 function toPublicApproval(row: ContractApproval): PublicApproval {
   return {
     id: row.id,
@@ -106,8 +97,7 @@ function toPublicApproval(row: ContractApproval): PublicApproval {
   };
 }
 
-// The topic fields are optional on the wire (older servers omit them); an
-// absent one reads as `null`.
+// Optional on the wire; an absent topic field reads as `null`.
 function toApprovalRule(rule: ContractApprovalRule): ApprovalRule {
   return {
     id: rule.id,
@@ -121,7 +111,6 @@ function toApprovalRule(rule: ContractApprovalRule): ApprovalRule {
   };
 }
 
-/** The production `ApprovalsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createApprovalsApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,

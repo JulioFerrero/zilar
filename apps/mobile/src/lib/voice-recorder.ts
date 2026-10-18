@@ -1,8 +1,5 @@
 /**
- * The native voice recorder (T-0154): recording with `expo-audio` and the
- * recorder messages the composer shows. Only imported by the composer/voice
- * bubble (and tests through the interfaces below), so Vitest never loads the
- * native modules uninvoked. Split out of `voice-native.ts` (T-1030).
+ * Imported only by the composer and voice bubble (tests use the interfaces), so Vitest never loads the native modules uninvoked.
  */
 
 import { Effect, type Effect as EffectType } from 'effect';
@@ -14,7 +11,6 @@ export const MIC_FAILED_MESSAGE = 'Could not start recording. Try again.';
 export const RECORD_TOO_LONG_MESSAGE = 'That recording is too long to send.';
 export const RECORD_FAILED_MESSAGE = 'Could not save the recording, try again.';
 
-/** One finished recording, ready for the store's voice pipeline. */
 export interface FinishedRecording {
   uri: string;
   mimeType: string;
@@ -22,28 +18,19 @@ export interface FinishedRecording {
   durationMs: number;
 }
 
-/** Result of one record attempt: a file, a cancel, or a user-facing error. */
 export type RecordResult =
   | { status: 'recorded'; recording: FinishedRecording }
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
-/** Records one voice message. Tests inject a fake; the app uses expo-audio. */
 export interface VoiceRecorderPort {
-  /** Starts a recording. Rejects only on misuse, never on denial. */
   start(): Promise<{ status: 'started' } | { status: 'error'; message: string }>;
-  /** Stops and returns the file, or a cancel/error (too short, too long). */
   stop(): Promise<RecordResult>;
-  /** Discards the recording without returning a file. */
   cancel(): Promise<void>;
-  /** Live duration in ms while recording, for the timer row. */
   currentDurationMs(): number;
-  /** Live input level 0..1 while recording (0 when unknown), for the waveform. */
   currentLevel(): number;
-  /** True while the recorder holds the microphone. */
   isRecording(): boolean;
 }
 
-/** The native recorder shape `createVoiceRecorder` drives (test seam). */
 export interface NativeRecorderShape {
   prepareToRecordAsync: () => Promise<void>;
   record: () => void;
@@ -51,11 +38,9 @@ export interface NativeRecorderShape {
   uri: string | null;
   isRecording: boolean;
   currentTime: number;
-  /** The recorder status; `metering` is the input level in dB (about -160..0). */
   getStatus?: () => { metering?: number | undefined };
 }
 
-/** The expo-audio pieces the recorder needs (test seam). */
 export interface RecordingAudio {
   requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
   AudioRecorder: new (options: unknown) => NativeRecorderShape;
@@ -66,14 +51,7 @@ type AudioMode = { playsInSilentMode: boolean; allowsRecording: boolean };
 type StartResult = { status: 'started' } | { status: 'error'; message: string };
 
 /**
- * The options handed to the native recorder. `RecordingPresets.HIGH_QUALITY`
- * keeps the platform codec settings under `ios` and `android`; expo-audio's
- * own `useAudioRecorder` flattens them before the native call, and
- * `AudioModule.AudioRecorder` does NOT. Passing the raw preset left Android
- * without an output format or encoder, so it recorded with the system default
- * (3GP, AMR-NB: 8 kHz telephone quality, device test 2026-10-03). Here the
- * platform block is flattened in, and the recording is mono 48 kHz at 128 kbps
- * with metering on for the live waveform.
+ * `RecordingPresets.HIGH_QUALITY` keeps the codec settings under `ios`/`android`; `AudioModule.AudioRecorder` does not flatten them, and the raw preset left Android with no output format (3GP, AMR-NB, 8 kHz), so the platform block is flattened in here.
  */
 export function buildRecordingOptions(preset: unknown, os: string): Record<string, unknown> {
   const source = (preset ?? {}) as { ios?: object; android?: object };
@@ -88,7 +66,6 @@ export function buildRecordingOptions(preset: unknown, os: string): Record<strin
   };
 }
 
-/** The expo-audio pieces, loaded only when a recording starts (lazy). */
 const loadExpoAudio: Effect.Effect<RecordingAudio, unknown> = Effect.tryPromise({
   try: () => import('expo-audio'),
   catch: (error: unknown) => error,
@@ -103,8 +80,7 @@ const loadExpoAudio: Effect.Effect<RecordingAudio, unknown> = Effect.tryPromise(
 );
 
 /**
- * Switches the audio session mode. It is a nicety: a failure here never
- * blocks recording or playback, so every error is swallowed.
+ * A failure here never blocks recording or playback, so every error is swallowed.
  */
 const setAudioModeEffect = (
   setAudioMode: ((mode: AudioMode) => Promise<void>) | undefined,
@@ -122,7 +98,6 @@ const setAudioModeEffect = (
     : Effect.tryPromise({ try: () => setAudioMode(mode), catch: () => undefined })
   ).pipe(Effect.orElseSucceed(() => undefined));
 
-/** Creates the real recorder: permission first, `expo-audio` m4a second. */
 export function createVoiceRecorder(deps?: {
   audio?: RecordingAudio;
   setAudioMode?: ((mode: AudioMode) => Promise<void>) | undefined;
@@ -130,8 +105,7 @@ export function createVoiceRecorder(deps?: {
   platform?: string | undefined;
 }): VoiceRecorderPort {
   let recorder: NativeRecorderShape | null = null;
-  // Recording leaves the audio session in record mode, which makes playback
-  // quiet and tinny on some phones: switch back once the mic is released.
+  // Recording leaves the audio session in record mode, which makes playback quiet and tinny on some phones.
   const restorePlaybackMode = setAudioModeEffect(deps?.setAudioMode, {
     playsInSilentMode: true,
     allowsRecording: false,
@@ -141,9 +115,7 @@ export function createVoiceRecorder(deps?: {
     allowsRecording: true,
   });
 
-  // Everything that can throw — the native import, the permission request,
-  // the recorder build — lands in one handled failure (finding 1, round 3):
-  // see `start` below. A denial stays the denied copy.
+  // The native import, the permission request and the recorder build land in one handled failure.
   const startEffect = Effect.fnUntraced(function* (): EffectType.fn.Return<StartResult, unknown> {
     const audio = deps?.audio ?? (yield* loadExpoAudio);
     const permission = yield* Effect.promise(() => audio.requestRecordingPermissionsAsync());
@@ -151,8 +123,7 @@ export function createVoiceRecorder(deps?: {
       return { status: 'error', message: MIC_DENIED_MESSAGE };
     }
     yield* recordMode;
-    // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
-    // doubles the file; metering feeds the live waveform.
+    // A phone microphone is mono, so a stereo preset only doubles the file; metering feeds the waveform.
     const os = deps?.platform ?? Platform.OS;
     const fresh = new audio.AudioRecorder(buildRecordingOptions(audio.HIGH_QUALITY, os));
     yield* Effect.promise(() => fresh.prepareToRecordAsync());
@@ -161,8 +132,7 @@ export function createVoiceRecorder(deps?: {
     return { status: 'started' };
   });
 
-  // A missing native module (pre-rebuild) is a mic-failed copy, never an
-  // unhandled rejection; any other failure of the start is the same copy.
+  // A missing native module is a mic-failed copy, never an unhandled rejection.
   const micFailed = (): StartResult => {
     recorder = null;
     return { status: 'error', message: MIC_FAILED_MESSAGE };
@@ -188,8 +158,7 @@ export function createVoiceRecorder(deps?: {
     if (settledUri === null || settledUri === '') {
       return { status: 'error', message: RECORD_FAILED_MESSAGE };
     }
-    // A size failure is "unknown", never "empty": only a real zero refuses
-    // as `voice_empty` downstream (finding 3).
+    // A size failure is unknown, never empty: only a real zero refuses as `voice_empty`.
     const size = yield* readFileSize(settledUri, deps?.fileReader);
     if (size === undefined) {
       return { status: 'error', message: RECORD_FAILED_MESSAGE };
@@ -243,9 +212,7 @@ export function createVoiceRecorder(deps?: {
 }
 
 /**
- * The byte size of a recorded file via the documented `expo-file-system`
- * `size` property (0 when the file does not exist or cannot be read).
- * Undefined when the read itself failed ("unknown", not "empty").
+ * Undefined when the read itself failed (unknown, not empty).
  */
 const readFileSize = (
   uri: string,

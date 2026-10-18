@@ -7,21 +7,18 @@ import { MAX_ATTACHMENT_BYTES } from './attachments';
 import type { ShareDraft } from './share-intent';
 
 /**
- * The one failure the share screen shows when a shared `content://` file
- * cannot be read: a fixed sentence, never platform text (share plan task 6).
+ * A fixed sentence, never platform text.
  */
 export const SHARE_COPY_FAILED_MESSAGE = 'Could not read that file. Try again.';
 
 /** A shared `file://` path outside the app cache is refused before anything is sent. */
 export const SHARE_UNSUPPORTED_MESSAGE = 'That file cannot be shared.';
 
-/** The store actions one share needs; the screen passes the real ones. */
 export interface ShareSendStore {
   sendText: (chatId: string, text: string) => void;
   sendAttachment: (chatId: string, file: PickedFile, options?: { caption?: string }) => void;
 }
 
-/** Copies an Android `content://` share into the app cache as a `file://` uri. */
 export type ShareFileCopy = (file: PickedFile) => Effect.Effect<PickedFile, unknown>;
 
 export interface ShareSendDeps {
@@ -37,9 +34,7 @@ const EMPTY_FILE: ShareSendResult = { ok: false, message: EMPTY_MESSAGE };
 const TOO_LARGE_FILE: ShareSendResult = { ok: false, message: TOO_LARGE_MESSAGE };
 
 /**
- * True only for a `file://` uri inside the app cache, where the share library
- * puts its copies. Another app could name a path in Zilar's private files, so
- * `..` segments are refused too and cannot climb out of the cache root.
+ * Another app could name a path in Zilar's private files, so `..` segments are refused too and cannot climb out of the cache root.
  */
 function isCacheFileUri(uri: string): boolean {
   const root = Paths.cache.uri.endsWith('/') ? Paths.cache.uri : `${Paths.cache.uri}/`;
@@ -50,12 +45,10 @@ function isCacheFileUri(uri: string): boolean {
   return relative.length > 0 && !relative.split('/').includes('..');
 }
 
-/** A `content://` uri (copied later) or a `file://` uri from the app cache. */
 function isShareSourceUri(uri: string): boolean {
   return uri.startsWith('content://') || isCacheFileUri(uri);
 }
 
-/** A cache name that keeps the shared name safe and unique, for one send. */
 export function shareCacheName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? '';
   const safe = base.replace(/[^\w.-]+/g, '_').slice(0, 80);
@@ -64,9 +57,7 @@ export function shareCacheName(name: string): string {
 }
 
 /**
- * Copies one shared file into the cache: the uploader only reads `file://`
- * (its PUT opens the path directly), so a `content://` uri must be copied
- * first. The real size replaces the sender's, which is often `null`.
+ * The uploader's PUT opens a path directly, so a `content://` uri must be copied first; the real size replaces the sender's, which is often `null`.
  */
 const copyIntoCache: ShareFileCopy = Effect.fnUntraced(function* (file: PickedFile) {
   const destination = yield* Effect.try({
@@ -85,17 +76,7 @@ const copyIntoCache: ShareFileCopy = Effect.fnUntraced(function* (file: PickedFi
 });
 
 /**
- * Sends one validated share (share plan tasks 4 + 6): text alone goes as a
- * message, files go as attachments with the text as the first caption. A
- * `content://` file is copied into the cache first; a `file://` uri is used as
- * is only when it lives in the app cache, so another app cannot point us at
- * Zilar's own private files. A copied file is checked against the store's empty
- * and 50 MB rules before anything is sent, so the screen can show the reason.
- * A copy failure or a refused path stops before any send, so a half-share never
- * arrives.
- *
- * The cache copies are left in place: the uploader reads the file later, and
- * the store keeps it for a retry (the cache directory is cleared by the OS).
+ * A `file://` uri is used only inside the app cache, so another app cannot point us at Zilar's own private files; the size rules are checked before any send, so a half-share never arrives. The copies stay in place for the uploader and a retry, since the OS clears the cache.
  */
 export const sendShare = Effect.fnUntraced(function* (
   chatId: string,
@@ -106,8 +87,7 @@ export const sendShare = Effect.fnUntraced(function* (
   const copyFile = deps.copyFile ?? copyIntoCache;
   const files: PickedFile[] = [];
 
-  // Refuse every path before any copy or send: only `content://` and files
-  // inside the app cache are ours to read.
+  // Only `content://` and files inside the app cache are ours to read.
   for (const file of draft.files) {
     if (!isShareSourceUri(file.uri)) {
       return UNSUPPORTED;
@@ -129,8 +109,7 @@ export const sendShare = Effect.fnUntraced(function* (
     files.push(copied.file);
   }
 
-  // The copy supplied the real size; refuse here so the screen shows the
-  // reason instead of the store rejecting the file inline after "success".
+  // Refuse here so the screen shows the reason, not the store after "success".
   for (const file of files) {
     if (file.size === 0) {
       return EMPTY_FILE;

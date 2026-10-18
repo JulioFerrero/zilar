@@ -1,13 +1,5 @@
-// effect-plain: setTimeout abort timer per T-1224 (Hermes lacks AbortSignal.timeout); callers are Promise transports, not Effects
-// A timeout for the mobile HTTP transports (T-1224): a request on a dead
-// socket after a network change must fail instead of hanging for ever. The
-// fetch always runs under an `AbortController` that aborts after `ms`; the
-// timer is cleared when the fetch settles. A caller signal (the Effect client
-// signal, search/GIF cancellation) is propagated: aborting it aborts the
-// fetch, and an already-aborted signal fails fast. No `AbortSignal.timeout`/
-// `any`: Hermes may lack them. Uploads and voice transcription never reach
-// these transports (Expo file APIs with their own controllers), so they stay
-// uncapped.
+// effect-plain: setTimeout abort timer (Hermes lacks AbortSignal.timeout); callers are Promise transports, not Effects
+// A request on a dead socket after a network change must fail instead of hanging: the fetch runs under an `AbortController` that aborts after `ms`, and a caller signal is propagated. No `AbortSignal.timeout`: Hermes may lack it.
 
 export const API_TIMEOUT_MS = 20_000;
 

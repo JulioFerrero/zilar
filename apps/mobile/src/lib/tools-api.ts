@@ -4,13 +4,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The tools and routines API (`/api/ais/:id/tools`, `/api/ais/:id/routines`
- * and the tool and routine actions), the mobile twin of the web client in
- * `apps/web/src/lib/tools.ts`. A Promise port over the client derived from
- * the shared contract (`@zilar/api-contract`, `tools.ts` and `routines.ts`,
- * T-0893). `ToolsApiError` is the shared `ApiError`, which keeps the
- * server's `code` and `status`, so the sections can branch on the error
- * (404 = empty list, like web).
+ * `ToolsApiError` is the shared `ApiError`, so the sections branch on `status` (404 = empty list, like web).
  */
 
 export type ToolLastRunStatus = 'ok' | 'error';
@@ -67,9 +61,7 @@ export interface ToolRun {
 }
 
 /**
- * The answer of `POST /tools/:id/run` (T-0219): either the tool's own ok
- * output or its own failure (`error.kind`/`message` plus logs). A failed
- * run is still a 200 from the server, so this is data, not an error.
+ * A failed run is still a 200 from the server, so this is data, not an error.
  */
 export type ToolRunResult =
   | {
@@ -96,7 +88,7 @@ export interface Routine {
   aiId?: string;
   groupId?: string | null;
   topicId?: string | null;
-  // T-1651: optional so old servers still decode; `prompt` routines have no tool.
+  // optional so old servers still decode; `prompt` routines have no tool.
   kind?: 'tool' | 'prompt';
   toolId?: string;
   title: string;
@@ -122,10 +114,6 @@ export interface ToolsApi {
   listTopicRoutines(topicId: string): Promise<Routine[]>;
 }
 
-/**
- * The read-only tool detail calls (T-0218): one tool with its current
- * source, its version history, one version with its source, recent runs.
- */
 export interface ToolDetailsApi {
   getTool(id: string): Promise<ToolDetail>;
   listToolVersions(id: string): Promise<ToolVersion[]>;
@@ -133,20 +121,12 @@ export interface ToolDetailsApi {
   listToolRuns(id: string): Promise<ToolRun[]>;
 }
 
-/**
- * The routine mutations (T-0212). Kept separate from `ToolsApi` so the
- * read-only sections keep depending on the two list methods only.
- */
 export interface RoutineActionsApi {
   pauseRoutine(id: string): Promise<Routine>;
   resumeRoutine(id: string): Promise<Routine>;
   deleteRoutine(id: string): Promise<void>;
 }
 
-/**
- * The tool mutations (T-0219): revert to an older version, run the current
- * version now, delete the tool. Kept separate like `RoutineActionsApi`.
- */
 export interface ToolActionsApi {
   revertTool(id: string, version: number): Promise<ToolVersion>;
   runToolNow(id: string, input?: unknown): Promise<ToolRunResult>;
@@ -154,9 +134,7 @@ export interface ToolActionsApi {
 }
 
 /**
- * The caller's own routines across every AI they own (T-1717, `GET /api/routines`):
- * the Settings › Routines list. A `MyRoutine` carries the AI's name and picture
- * and the chat JID the Ask key opens, so the screen renders without extra reads.
+ * A `MyRoutine` carries the AI's name, picture and the chat JID the Ask key opens, so the screen renders without extra reads.
  */
 export interface MyRoutinesApi {
   listMyRoutines(): Promise<MyRoutine[]>;
@@ -164,18 +142,15 @@ export interface MyRoutinesApi {
 
 export type { MyRoutine };
 
-/** The full API the AI edit screen works against: lists plus mutations. */
 export type AiToolsApi = ToolsApi &
   RoutineActionsApi &
   ToolDetailsApi &
   ToolActionsApi &
   MyRoutinesApi;
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const ToolsApiError = ApiError;
 export type ToolsApiError = ApiError;
 
-/** The production `AiToolsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createToolsApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,

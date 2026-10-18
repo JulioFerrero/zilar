@@ -8,20 +8,7 @@ import type { TokenProvider } from './chat-api';
 import { createApiClient } from './effect/api-client';
 
 /**
- * The public directory API (directory search, lookup by handle, public
- * join, the visibility PATCH on one group and the handle check), the mobile
- * `apps/web/src/lib/api.ts` (T-0164). The wire contract lives in
- * `apps/server/src/directory/api.ts` (public groups and channels only,
- * never users or private groups; 20 per page with a cursor; reads are rate
- * limited 30 per 10 minutes) and the visibility route in
- * `apps/server/src/groups/`.
- *
- * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
- * the request is an Effect pipeline, cut back to a `Promise` at the edge
- * with `Effect.runPromise`. `DirectoryApiError` keeps the server's `code`
- * and `status`, so screens can branch on the error without parsing the
- * message again (404 = unknown or private, 409 = full / handle taken,
- * 429 = rate limited).
+ * Public groups and channels only, never users or private groups; reads are rate limited 30 per 10 minutes. `DirectoryApiError` is the shared `ApiError` (404 = unknown or private, 409 = full / handle taken, 429 = rate limited).
  */
 
 export type DirectoryKind = 'group' | 'channel';
@@ -77,16 +64,13 @@ export interface DirectoryApi {
   lookupGroupByHandle(handle: string): Promise<DirectoryEntry>;
   joinPublicGroup(groupId: string): Promise<PublicJoinResult>;
   /**
-   * Reads the visibility slice of one group (`GET /api/groups/:id`, owner
-   * truth). The mobile `GroupDetail` parser drops `visibility`/`handle`, so
-   * the visibility sheet reads them here instead of changing `chat-api.ts`.
+   * The mobile `GroupDetail` parser drops `visibility`/`handle`, so the sheet reads them here.
    */
   getGroupVisibility(groupId: string): Promise<GroupVisibilityState>;
   setGroupVisibility(groupId: string, input: SetGroupVisibilityInput): Promise<void>;
   checkGroupHandle(handle: string): Promise<HandleCheck>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const DirectoryApiError = ApiError;
 export type DirectoryApiError = ApiError;
 
@@ -95,8 +79,7 @@ const PublicJoinResultSchema = struct({
   alreadyMember: Schema.Boolean,
 });
 
-// Older servers omit both keys: absent reads like private with no handle, a
-// non-string handle or any other visibility value fails the row.
+// Older servers omit both keys: absent reads as private with no handle, and a non-string handle fails the row.
 const GroupVisibilitySchema = struct({
   visibility: Schema.optional(Schema.Literals(['private', 'public'])),
   handle: Schema.optional(Schema.NullOr(Schema.String)),
@@ -120,9 +103,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-// The internal failures, one per case. They carry no field beyond what the
-// old `DirectoryApiError` already surfaced; the `Promise` edge maps each back
-// to that same error, status, code and message.
+// The `Promise` edge maps each internal failure back to the same error, status, code and message.
 class DirectoryNetworkError extends Data.TaggedError('DirectoryNetworkError') {}
 class DirectoryRequestError extends Data.TaggedError('DirectoryRequestError')<{
   readonly status: number;
@@ -173,14 +154,12 @@ const requestEffect = Effect.fnUntraced(function* (
   return body;
 });
 
-/** The exact PATCH body the server's visibility route accepts. */
 export function buildVisibilityBody(input: SetGroupVisibilityInput): Record<string, unknown> {
   return input.visibility === 'public' && input.handle !== undefined
     ? { visibility: 'public', handle: input.handle }
     : { visibility: input.visibility };
 }
 
-/** The production `DirectoryApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createDirectoryApi(
   getToken: TokenProvider,
   fetchImpl: typeof fetch = fetch,
@@ -237,7 +216,6 @@ export function createDirectoryApi(
 
   return {
     searchDirectory: (input = {}) => {
-      // An empty `q` or `cursor` is left out, like before.
       const query = {
         ...(input.q === undefined || input.q === '' ? {} : { q: input.q }),
         ...(input.kind === undefined ? {} : { kind: input.kind }),
@@ -277,9 +255,7 @@ export function createDirectoryApi(
       );
     },
     checkGroupHandle: (handle) => {
-      // The server answers a handle outside 1..64 characters with a success
-      // body (`invalid`), but the derived client encodes the query before it
-      // sends it, so the same answer is given here.
+      // A handle outside 1..64 characters is answered here, as a success body (`invalid`), before the client encodes the query.
       if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
         return Promise.resolve({ available: false, reason: 'invalid' });
       }

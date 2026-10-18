@@ -1,10 +1,5 @@
 /**
- * The share-photo seam (T-1845): downloads the photo the viewer is showing to
- * the cache with `expo-file-system`, opens the system share sheet with
- * `expo-sharing` and deletes the cache file. No gallery permission is needed.
- * The URL and the bearer come from the `MediaSource` the viewer already
- * resolved, so a share sends exactly the bytes on screen and never another
- * host.
+ * The URL and bearer come from the `MediaSource` already resolved, so a share sends exactly the bytes on screen and never another host.
  */
 
 import { Effect } from 'effect';
@@ -17,7 +12,6 @@ export const SHARE_FAILED_MESSAGE = 'Could not share the photo.';
 
 export type ShareResult = { status: 'shared' } | { status: 'error'; message: string };
 
-/** The one failure the viewer shows: a fixed sentence, never platform text. */
 const FAILED: ShareResult = { status: 'error', message: SHARE_FAILED_MESSAGE };
 
 /** The share sheet needs a MIME type; the server takes JPEG, PNG, WebP and GIF. */
@@ -58,9 +52,7 @@ const shareEffect = (source: MediaSource): Effect.Effect<ShareResult> =>
   });
 
 /**
- * Downloads the photo to the cache, opens the system share sheet and deletes
- * the cache file, reporting the outcome to `onResult`. Every failure collapses
- * to the one fixed sentence, so the viewer never shows raw platform text.
+ * Every failure collapses to the one fixed sentence, so the viewer never shows raw platform text.
  */
 export function sharePhoto(source: MediaSource, onResult: (result: ShareResult) => void): void {
   void Effect.runPromise(shareEffect(source)).then(onResult);

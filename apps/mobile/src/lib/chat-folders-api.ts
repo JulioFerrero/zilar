@@ -11,15 +11,9 @@ import { createApiClient } from './effect/api-client';
 import { API_URL } from './auth';
 
 /**
- * The mobile twin of the web chat-folders client (`apps/web/src/lib/api.ts`,
- * T-0237): list, create, edit, reorder and delete the caller's folders, as a
- * Promise port over the client derived from the shared contract
- * (`@zilar/api-contract`, `chat-folders.ts`, T-0892). The list drops a row
- * whose shape or icon is unknown rather than failing the whole list; a write
- * whose answer is malformed throws `invalid_response`.
+ * An unknown row is dropped rather than failing the whole list; a malformed write answer throws `invalid_response`.
  */
 
-/** The fields a new folder carries; the server defaults the chat lists. */
 export interface CreateChatFolderInput {
   name: string;
   icon: FolderIcon;
@@ -40,17 +34,14 @@ export interface ChatFoldersApi {
   deleteChatFolder(id: string): Promise<void>;
 }
 
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const ChatFoldersApiError = ApiError;
 export type ChatFoldersApiError = ApiError;
 
-/** A folder row the server sent; malformed rows return null and are dropped. */
 export function parseChatFolder(value: unknown): ChatFolder | null {
   const decoded = Schema.decodeUnknownExit(ChatFolderSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-/** The production `ChatFoldersApi`: bearer auth, `fetch`, the build API URL. */
 export function createChatFoldersApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
@@ -59,7 +50,6 @@ export function createChatFoldersApi(
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
     listChatFolders: () => runApi(client.chatFolders.list()).then((body) => [...body.folders]),
-    // The server trims `name`; the contract encodes the trimmed form.
     createChatFolder: (input) =>
       runApi(
         client.chatFolders.create({

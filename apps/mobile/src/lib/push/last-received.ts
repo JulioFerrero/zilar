@@ -1,10 +1,5 @@
 /**
- * When this phone last woke for a push (T-1356), so Settings → Notifications
- * can show whether messages reach the device at all. The timestamp lives in
- * SecureStore, the app's only persistent key/value store and the one the push
- * registration already uses (`lib/push/native.ts:4,27`). The
- * `expo-secure-store` import is dynamic so this module loads under Vitest
- * (Node), which cannot import the native module.
+ * `expo-secure-store` is imported dynamically so this module loads under Vitest (Node), which cannot import the native module.
  */
 
 import { Effect } from 'effect';
@@ -28,7 +23,6 @@ export function recordPushReceived(at: Date = new Date()): Promise<void> {
   );
 }
 
-/** The last receipt as an ISO string, or null when never stored or unreadable. */
 export function readLastPushReceived(): Promise<string | null> {
   return Effect.runPromise(
     Effect.tryPromise({

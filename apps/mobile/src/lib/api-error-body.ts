@@ -2,11 +2,7 @@ import { Exit, Schema, SchemaGetter } from 'effect';
 import { struct } from '@zilar/protocol';
 
 /**
- * The one shared decode of the server's error envelope
- * `{ error: { code, message } }` for every Effect mobile API client. A
- * malformed `code` must not discard a valid `message` (and vice versa), and a
- * missing or malformed envelope keeps the caller's fixed fallbacks, as the old
- * per-field guards did before the Effect conversion.
+ * Decodes `{ error: { code, message } }`: a malformed field must not discard a valid one, and a missing envelope keeps the caller's fixed fallbacks.
  */
 
 const LenientErrorStringSchema = Schema.Unknown.pipe(
@@ -29,10 +25,7 @@ export interface ErrorFields {
 }
 
 /**
- * Reads `code` and `message` out of a raw body. A non-string field becomes
- * `undefined` on its own and a missing or non-object `error` gives both
- * `undefined`, so the caller's `?? 'request_failed'` / `Request failed (N)`
- * fallbacks apply per field.
+ * A non-string field becomes `undefined` on its own, so the caller's per-field fallbacks apply.
  */
 export function errorFieldsOf(body: unknown): ErrorFields {
   const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);

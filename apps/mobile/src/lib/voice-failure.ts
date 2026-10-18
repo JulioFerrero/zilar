@@ -1,18 +1,10 @@
-/**
- * Why a voice send failed and the copy the bubble shows (T-0154). Split out
- * of `voice-native.ts` (T-1030).
- */
-
 import type { SendFailureReason } from '@zilar/chat-core';
 
 /**
- * Why a voice send failed: exactly the shared `SendFailureReason` buckets
- * (finding 4), reused from `chat-core` so the message keeps the shared
- * type. Mobile maps its voice pipeline errors onto these buckets.
+ * Exactly the shared `SendFailureReason` buckets, so the message keeps the shared type.
  */
 export type VoiceFailureReason = SendFailureReason;
 
-/** Maps a pipeline error to the fixed failure bucket the bubble shows. */
 export function voiceFailureReasonFor(error: unknown, offline: boolean): VoiceFailureReason {
   if (offline) {
     return 'network';
@@ -46,7 +38,6 @@ export function voiceFailureReasonFor(error: unknown, offline: boolean): VoiceFa
   return 'server_unavailable';
 }
 
-/** The plain copy a failed voice bubble shows for its reason. */
 export function voiceErrorCopy(reason: VoiceFailureReason): string {
   if (reason === 'network') {
     return 'Could not send. Check your connection.';

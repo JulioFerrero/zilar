@@ -5,11 +5,7 @@ import { AppState } from 'react-native';
 
 import type { ContactsApi } from './contacts-api';
 
-// The lowercased localparts I blocked, kept outside React so every chat row
-// and MessageList reads the same set without a prop chain. Loads lazily on
-// first use and on app foreground; a failed load keeps the last good set so a
-// flaky network never unhides someone's messages. The mobile twin of the web
-// `blockedJids` hook.
+// Kept outside React so every chat row and MessageList reads the same set; a failed load keeps the last good set, so a flaky network never unhides messages.
 let blocked: ReadonlySet<string> = new Set();
 // True while a load is in flight, so a second caller does not start another.
 let loading = false;
@@ -67,7 +63,6 @@ function getSnapshot(): ReadonlySet<string> {
   return blocked;
 }
 
-/** The lowercased localparts I blocked; starts loading on first use. */
 export function useBlockedJids(api: ContactsApi): ReadonlySet<string> {
   useEffect(() => {
     currentApi = api;
@@ -88,15 +83,12 @@ export function useBlockedJids(api: ContactsApi): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-/** Reload the set after a successful block or unblock. */
 export function reloadBlockedJids(api: ContactsApi): Promise<void> {
   return Effect.runPromise(loadEffect(api));
 }
 
 /**
- * The messages a chat list shows. In a group or channel the messages of
- * blocked people are dropped; my own messages always stay. DMs and AI chats
- * are never filtered.
+ * In a group or channel a blocked person's messages are dropped; my own always stay, and DMs and AI chats are never filtered.
  */
 export function filterBlockedMessages(
   chat: ChatSummary,

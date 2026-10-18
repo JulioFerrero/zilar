@@ -1,4 +1,3 @@
-/** Add or remove an id, keeping the rest in order (T-0445). */
 export function toggleSelected(ids: readonly string[], id: string): string[] {
   return ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id];
 }

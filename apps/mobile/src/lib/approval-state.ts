@@ -12,9 +12,7 @@ export type ApprovalCardState =
   | { kind: 'error' }
   | { kind: 'ready'; approval: PublicApproval };
 
-// A 404 means the viewer may not decide this request (or it does not exist):
-// the card then shows no buttons and no error. Any other failure on the first
-// load surfaces the card's unavailable sentence (T-2001) with no buttons.
+// A 404 means the viewer may not decide this request (or it does not exist): no buttons, no error. Any other first-load failure shows the unavailable sentence.
 const loadCardStateEffect = (
   api: ApprovalsApi,
   approvalId: string,
@@ -37,9 +35,7 @@ export function loadApprovalCardState(
   return Effect.runPromise(loadCardStateEffect(api, approvalId));
 }
 
-// The decide flow: success replaces the row; a 409 (race / expired) reloads the
-// row so the card shows the latest state; any other error returns the message
-// to surface inline. The caller drives `inFlight` itself.
+// Success replaces the row; a 409 (race / expired) reloads it so the card shows the latest state; any other error returns the inline message.
 export type DecisionOutcome =
   | { kind: 'ready'; approval: PublicApproval }
   | { kind: 'reloaded'; approval: PublicApproval | null }

@@ -1,19 +1,10 @@
-// The app-icon badge and the tray dismissal on mobile (T-1206, fix-plan row
-// 9). The badge mirrors the web `totalBadgeUnread` rule: the sum of `unread`
-// over chats that are not muted (the mute flag is merged into the rows by
-// `applyChatPrefs`, the same `muted` the chat list reads in
-// `components/chat/chat-list-item.tsx`). Both run on a fiber like other
-// background work, and errors are ignored.
+// The badge mirrors the web `totalBadgeUnread` rule: the sum of `unread` over chats that are not muted. Errors are ignored.
 //
-// The two natives are lazy-required (like the mock-gated requires in
-// `chat-store-provider.tsx`): `expo-notifications` pulls in `expo`, whose
-// module body reads the `__DEV__` global Metro defines but Vitest does not,
-// so a static import breaks every store test that never mocked notifications.
+// The two natives are lazy-required: `expo-notifications` pulls in `expo`, whose module body reads `__DEV__` (Metro defines it, Vitest not), so a static import breaks every store test.
 
 import { totalBadgeUnread, type ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 
-/** The three notification calls used, behind a lazy require (see above). */
 interface BadgeNatives {
   setBadgeCountAsync(count: number): Promise<boolean>;
   getPresentedNotificationsAsync(): Promise<
@@ -32,7 +23,6 @@ function natives(): BadgeNatives {
   return require('expo-notifications') as BadgeNatives;
 }
 
-/** Sets the app-icon badge to the unread sum, best effort. */
 export function syncBadge(chats: readonly ChatSummary[]): Effect.Effect<void> {
   return Effect.suspend(() =>
     Effect.tryPromise({
@@ -42,7 +32,6 @@ export function syncBadge(chats: readonly ChatSummary[]): Effect.Effect<void> {
   );
 }
 
-/** The chat id carried in a presented notification's data, when it is a string. */
 function presentedChatId(notification: {
   request: { content: { data?: Record<string, unknown> | null } };
 }): string | undefined {
@@ -51,9 +40,7 @@ function presentedChatId(notification: {
 }
 
 /**
- * Dismisses the tray notifications of one chat, best effort. Posted
- * notifications carry `data.chatId` (see `lib/push/background.ts`), so the
- * presented tray is enumerated and the ones for this chat are dismissed.
+ * Posted notifications carry `data.chatId`, so the tray is enumerated and this chat's are dismissed. Best effort.
  */
 export function dismissChatNotifications(chatId: string): Effect.Effect<void> {
   return Effect.tryPromise({

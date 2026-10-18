@@ -1,16 +1,5 @@
 /**
- * The real native opener seam (T-1021, split from `attachment-native.ts`;
- * "open with the file type's app" from T-1319): downloads the attachment to
- * the cache directory and hands it to the app registered for its type.
- *
- * Android sends an `android.intent.action.VIEW` intent for the downloaded
- * file's `content://` URI through `expo-intent-launcher`, so the system opens
- * the PDF viewer (or asks "Open with" once) instead of showing the share
- * sheet. When no app handles the type the intent fails and we fall back to
- * React Native's built-in `Share`. iOS shows the in-app QuickLook preview
- * (`QLPreviewController`) through `react-native-file-viewer-turbo` (T-1321),
- * with the same `Share` fallback when the type is unsupported or the module
- * is missing from an older build.
+ * Android opens the file with a VIEW intent and falls back to `Share` when no app handles the type; iOS shows QuickLook when `react-native-file-viewer-turbo` is in the build, else `Share`.
  */
 
 import { Effect, type Effect as EffectType } from 'effect';
@@ -36,10 +25,7 @@ const FLAG_GRANT_READ_URI_PERMISSION = 1;
 const ACTION_VIEW = 'android.intent.action.VIEW';
 
 /**
- * MIME types for the extensions a chat realistically carries. The opener only
- * receives the attachment name (`AttachmentOpener.open` is `(url, name)`), so
- * the type is derived from the extension; anything unknown is
- * `application/octet-stream`, which the system resolves like a generic file.
+ * `open` gets only `(url, name)`, so the type comes from the extension; anything unknown is `application/octet-stream`.
  */
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   pdf: 'application/pdf',
@@ -64,22 +50,18 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   tar: 'application/x-tar',
 };
 
-/** The MIME type for a file name's extension; unknown types are generic. */
 function mimeForFileName(name: string): string {
   const extension = name.toLowerCase().split('.').pop() ?? '';
   return MIME_BY_EXTENSION[extension] ?? 'application/octet-stream';
 }
 
-/** The open error a user sees: the size cap's abort, or a generic failure. */
 const openFailureOf = (error: unknown): NativeFailure =>
   error instanceof Error && error.name === 'AbortError'
     ? new NativeFailure({ message: TOO_LARGE_MESSAGE })
     : new NativeFailure({ message: OPEN_FAILED_MESSAGE });
 
 /**
- * Downloads the attachment, then launches the app registered for its type.
- * Any failure in the content URI or the VIEW intent bubbles up so the caller
- * can fall back to the share sheet.
+ * Any failure bubbles up so the caller can fall back to the share sheet.
  */
 const openOnAndroid = Effect.fnUntraced(function* (file: File, name: string) {
   const contentUri = yield* Effect.tryPromise({
@@ -98,9 +80,7 @@ const openOnAndroid = Effect.fnUntraced(function* (file: File, name: string) {
 });
 
 /**
- * Shows the downloaded file in the in-app QuickLook preview (iOS, T-1321).
- * The module is imported lazily so an older build without the native module
- * throws here (and falls back to the share sheet) instead of at startup.
+ * Lazily imported: an older build without the module throws here and falls back, instead of at startup.
  */
 const openInQuickLook = Effect.fnUntraced(function* (file: File, name: string) {
   const { open } = yield* Effect.tryPromise({
@@ -168,18 +148,11 @@ const openEffect = Effect.fnUntraced(function* (
 });
 
 /**
- * The real opener: downloads the attachment to the cache directory (with the
- * session bearer when it is our own API origin) and opens it with the type's
- * app. Nothing is fetched without a tap: the screen only calls this from a
- * press handler. The destination name is sanitized, so a peer-controlled
- * `../../x` name cannot escape the cache directory. The download is capped at
- * the attachment size limit (T-0157): the reported content length refuses up
- * front, and the progress callback aborts once the bytes pass the cap.
+ * Nothing is fetched without a tap; the destination name is sanitized, so a peer-controlled `../../x` cannot escape the cache directory, and the download aborts once the bytes pass the size cap.
  */
 export function createAttachmentOpener(options?: {
   apiUrl?: string | undefined;
   getToken?: (() => Promise<string | undefined>) | undefined;
-  /** Tests inject a fake download; production uses the new file system. */
   download?: typeof File.downloadFileAsync | undefined;
 }): AttachmentOpener {
   const download = options?.download ?? File.downloadFileAsync;
@@ -199,7 +172,6 @@ export function createAttachmentOpener(options?: {
   };
 }
 
-/** The sanitized cache destination for an attachment name (test seam). */
 export function cacheDestinationFor(name: string): string {
   return cleanFilename(name);
 }

@@ -1,8 +1,4 @@
-// Routes a tap on a local message notification into its chat (T-1143, plan
-// §4.5). The notification's `data.chatId` is the chat JID the routes already
-// use. Mounted by the root layout. A tap while the app runs navigates at once;
-// a cold-start tap waits until both the session is authenticated and the root
-// navigator is mounted, or the push would be lost.
+// `data.chatId` is the chat JID the routes already use. A live tap navigates at once; a cold-start tap waits for the session and the mounted navigator, or the push is lost.
 
 import { Effect } from 'effect';
 import * as Notifications from 'expo-notifications';
@@ -11,31 +7,25 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useSession } from '@/auth/session';
 
-/** The chat id carried in the notification data, when it is a string. */
 function chatIdFrom(response: Notifications.NotificationResponse): string | undefined {
   const chatId = response.notification.request.content.data?.['chatId'];
   return typeof chatId === 'string' && chatId !== '' ? chatId : undefined;
 }
 
-/** Opens the chat a tapped notification points at. */
 function openChat(chatId: string): void {
   router.push({ pathname: '/chat/[id]', params: { id: chatId } });
 }
 
-/** Opens the chat a tapped notification points at, once the user is signed in. */
 export function NotificationRouter(): null {
   const status = useSession().status;
-  // Undefined until the root navigator has mounted; pushing before that throws
-  // and would be swallowed.
+  // Undefined until the root navigator mounts; pushing before that throws and would be swallowed.
   const navigationState = useRootNavigationState();
   const navigatorReady = navigationState?.key !== undefined;
-  // The cold-start tap is held here until the session and the navigator are
-  // both ready; the tick re-runs the push effect when the tap arrives late.
+  // The cold-start tap is held until the session and the navigator are ready.
   const pendingChat = useRef<string | null>(null);
   const [pendingTick, setPendingTick] = useState(0);
 
-  // A live tap: the app is already mounted, so it navigates directly, but only
-  // while the session is signed in (spec §4).
+  // A live tap navigates directly, but only while the session is signed in.
   useEffect(() => {
     if (status !== 'authenticated') {
       return;
@@ -49,8 +39,7 @@ export function NotificationRouter(): null {
     return () => subscription.remove();
   }, [status]);
 
-  // A cold-start tap: read it once, best effort, hold the chat and clear it so a
-  // later mount does not reopen the same chat.
+  // Read it once and clear it, so a later mount does not reopen the same chat.
   useEffect(() => {
     let mounted = true;
     void Effect.runPromise(
@@ -79,7 +68,6 @@ export function NotificationRouter(): null {
     };
   }, []);
 
-  // Push the held tap once the navigator is mounted and the session is signed in.
   useEffect(() => {
     if (!navigatorReady || status !== 'authenticated') {
       return;

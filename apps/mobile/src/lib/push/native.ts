@@ -11,19 +11,11 @@ import { getSessionToken } from '../session-token';
 import { CHAT_CHANNELS, LEGACY_CHANNEL_ID } from './channels';
 
 /**
- * The native (FCM) push registration of the phone (T-1139, plan §4.3). Unlike
- * web, the app talks to FCM directly: `getDevicePushTokenAsync` gives the
- * device token, and the Expo push *token* service is never used. The server
- * stores `{ kind: 'fcm', token }` and answers the node and JID the session
- * enables over XEP-0357. Every call is best effort: a failure leaves the app
- * running and is retried on the next cold start (the server dedupes on
- * `(user_id, token)`).
+ * Unlike web, the app talks to FCM directly (`getDevicePushTokenAsync`), never the Expo push service. Every call is best effort; the next cold start retries and the server dedupes on `(user_id, token)`.
  */
 
-/** The device label the server stores, like the web client's user agent. */
 export const NATIVE_PUSH_USER_AGENT = 'Zilar Android';
 
-/** SecureStore key holding the last successful registration (T-1139). */
 export const PUSH_REGISTRATION_KEY = 'zilar.push.registration';
 
 /** The sign-out DELETE is best effort: never block the sign-out longer. */
@@ -35,7 +27,6 @@ export interface PushPairInput {
   enable: boolean;
 }
 
-/** The store action that toggles the XEP-0357 pair (`effects/push-pair.ts`). */
 export type SetPushPair = (input: PushPairInput) => Promise<void>;
 
 export interface NativePushDeps {
@@ -49,10 +40,8 @@ export type UnregisterNativePushDeps = Omit<NativePushDeps, 'setPushPair'>;
 
 type Registration = typeof RegisteredDevice.Type;
 
-/** The stored registration shape, as the settings diagnostics screen reads it. */
 export type StoredPushRegistration = Registration;
 
-/** The stored registration, or undefined when the key is missing or malformed. */
 function parseRegistration(raw: string | null): Registration | undefined {
   if (raw === null || raw === '') {
     return undefined;
@@ -80,9 +69,7 @@ async function clearRegistration(): Promise<void> {
 }
 
 /**
- * The registration this phone stored, or undefined when the key is missing or
- * malformed. Best effort: a SecureStore failure answers undefined. The
- * settings diagnostics screen matches its own row by this `id`.
+ * Best effort: a SecureStore failure answers undefined.
  */
 export async function readStoredRegistration(): Promise<StoredPushRegistration | undefined> {
   try {
@@ -92,19 +79,12 @@ export async function readStoredRegistration(): Promise<StoredPushRegistration |
   }
 }
 
-// One registration per device token per session (T-1150): the push-token
-// listener fires while `getDevicePushTokenAsync` runs, so `registerNativePush`
-// and `watchPushTokenRolls` can both call `registerToken` with the same token.
-// An in-flight promise and the last token collapse that pair into one POST and
-// one enable; a real roll (a new token) registers normally.
+// The push-token listener fires while `getDevicePushTokenAsync` runs, so two callers can register the same token; an in-flight promise and the last token collapse them into one POST and one enable.
 let inFlight: { token: string; done: Promise<void> } | null = null;
 let lastRegisteredToken: string | null = null;
 
 /**
- * Stores one device token: POST it, enable the XEP-0357 pair over the chat
- * session, then remember `{ id, node, jid }` so sign-out can delete the row.
- * A failed enable is not fatal: the registration is still saved, and the next
- * launch retries the enable.
+ * A failed enable is not fatal: the registration is still saved and the next launch retries the enable.
  */
 async function registerTokenOnce(deviceToken: string, deps: NativePushDeps): Promise<void> {
   const { setPushPair, getToken = getSessionToken, fetchImpl = fetch, apiUrl = API_URL } = deps;
@@ -123,9 +103,7 @@ async function registerTokenOnce(deviceToken: string, deps: NativePushDeps): Pro
 }
 
 /**
- * Dedupes `registerTokenOnce` within one session: a second call for the token
- * already in flight awaits the running one, and a call for the token that
- * already succeeded here does nothing.
+ * A second call for the in-flight token awaits it; a call for the token that already succeeded does nothing.
  */
 async function registerToken(deviceToken: string, deps: NativePushDeps): Promise<void> {
   if (inFlight !== null && inFlight.token === deviceToken) {
@@ -147,12 +125,7 @@ async function registerToken(deviceToken: string, deps: NativePushDeps): Promise
 }
 
 /**
- * Re-sends the XEP-0357 `<enable/>` for the saved registration, without a new
- * POST (T-1152). ejabberd binds the pair to the session that sent it, so a
- * reconnect or a wake runs a new session whose pair is missing (MP-2); the
- * saved registration still holds the server's node and JID for exactly this.
- * Best effort like the first enable: a failure only reaches `console.warn`
- * (never the node) and the next online retries (MP-13).
+ * ejabberd binds the XEP-0357 pair to the session that sent it, so a reconnect or a wake needs a fresh `<enable/>`; the saved registration holds the node and JID. Best effort, and a failure never reaches the node.
  */
 export async function ensurePushPair(deps: Pick<NativePushDeps, 'setPushPair'>): Promise<void> {
   try {
@@ -172,17 +145,11 @@ export async function ensurePushPair(deps: Pick<NativePushDeps, 'setPushPair'>):
 }
 
 /**
- * Registers this device for native push, best effort. On Android it creates the
- * notification channel before asking for the permission, as the OS needs a
- * channel for the prompt to appear (plan §4.2). It stops quietly when the
- * permission is denied and never throws.
+ * Android needs the notification channel before the permission prompt appears. It stops quietly when the permission is denied and never throws.
  */
 export async function registerNativePush(deps: NativePushDeps): Promise<void> {
   try {
-    // The provider calls this once per signed-in session, so a new call starts
-    // a new session: drop the previous dedup so the token is registered — and
-    // its enable re-sent — again. The server answers the same node for the same
-    // token now, so this does not churn the enable-pair (T-1150).
+    // A new signed-in session drops the previous dedup, so the token is registered and its enable re-sent; the server answers the same node and the pair does not churn.
     lastRegisteredToken = null;
     if (Platform.OS === 'android') {
       for (const channel of CHAT_CHANNELS) {
@@ -191,13 +158,11 @@ export async function registerNativePush(deps: NativePushDeps): Promise<void> {
           importance: Notifications.AndroidImportance.HIGH,
         });
       }
-      // T-1302 (MUX-23): the single "Messages" channel became the three above.
-      // Deleting the old id leaves Settings with exactly the three; it is a
-      // no-op after the first launch and never fatal to the registration.
+      // Deleting the legacy channel leaves Settings with exactly the three; it is a no-op after the first launch.
       try {
         await Notifications.deleteNotificationChannelAsync(LEGACY_CHANNEL_ID);
       } catch {
-        // Best effort, like the enable: the stale channel only shows in Settings.
+        // A stale channel only shows in Settings.
       }
     }
     let permission = await Notifications.getPermissionsAsync();
@@ -219,9 +184,7 @@ export async function registerNativePush(deps: NativePushDeps): Promise<void> {
 }
 
 /**
- * Re-registers the device when FCM rolls its token. The listener receives the
- * new token, so `getDevicePushTokenAsync` is not called again from inside it
- * (the Expo docs warn that triggers the listener itself).
+ * The listener already receives the new token; calling `getDevicePushTokenAsync` inside it would trigger the listener again.
  */
 export function watchPushTokenRolls(deps: NativePushDeps): EventSubscription {
   return Notifications.addPushTokenListener(({ data }) => {
@@ -235,10 +198,7 @@ export function watchPushTokenRolls(deps: NativePushDeps): EventSubscription {
 }
 
 /**
- * Deletes this device's row on sign-out, before the bearer token is cleared. A
- * missing key or a failed request is ignored, and the key is always cleared.
- * Sending `<disable/>` is not needed: the server drops publishes for an unknown
- * node.
+ * Runs before the bearer token is cleared; a missing key or a failed request is ignored, and the key is always cleared. No `<disable/>` is needed: the server drops publishes for an unknown node.
  */
 export async function unregisterNativePush(deps: UnregisterNativePushDeps = {}): Promise<void> {
   const { getToken = getSessionToken, fetchImpl = fetch, apiUrl = API_URL } = deps;

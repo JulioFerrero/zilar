@@ -1,9 +1,5 @@
 /**
- * The `useMediaSource` hook (T-1185): resolves an attachment's load URL through
- * `mediaUrl` and attaches the session bearer only when the result is our own
- * API origin, the only host `GET /api/files` needs it on. The token read is
- * async (secure storage), so the source is undefined until it resolves and the
- * component renders its placeholder; a non-API source resolves immediately.
+ * The bearer rides only when the result is our own API origin, the only host `GET /api/files` needs it on; a non-API source resolves immediately.
  */
 
 import { Effect, Fiber } from 'effect';
@@ -12,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { isApiOriginUrl, mediaUrl } from './attachment-common';
 import { getSessionToken } from './session-token';
 
-/** An `expo-image` / `expo-video` / `expo-audio` source with an optional bearer. */
 export type MediaSource = { uri: string; headers?: Record<string, string> };
 
 export function useMediaSource(

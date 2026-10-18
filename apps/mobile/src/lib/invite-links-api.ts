@@ -13,14 +13,7 @@ import type { TokenProvider } from './chat-api';
 import { createApiClient } from './effect/api-client';
 
 /**
- * Group invite links (T-0136), the mobile port over the shared calls
- * (`@zilar/client-core`, `groups-api.ts`, T-2056): create, list and revoke
- * shareable group links for owners/admins, plus the join-by-link preview and
- * join, as a Promise port over the client derived from the shared contract
- * (`@zilar/api-contract`, `invite-links.ts`, T-0892). Malformed rows fail the
- * decode and throw `invalid_response`. The token is shown once at creation in
- * `url` and never stored: the list carries hints, labels, uses and state,
- * never tokens.
+ * The token is shown once at creation in `url` and never stored, so the list carries hints, labels, uses and state, never tokens.
  */
 
 export type {
@@ -29,8 +22,7 @@ export type {
   JoinPreview,
   JoinResult,
 } from '@zilar/api-contract';
-// T-0144: `JoinPreview.kind` lets the join screen read "Join channel" for a
-// channel; absent on older servers (a group). T-0124 counts subscribers.
+// Absent on older servers, where every link is a group.
 export type { CreateGroupInviteLinkInput };
 
 export interface InviteLinksApi {
@@ -43,11 +35,9 @@ export interface InviteLinksApi {
   previewJoinLink(token: string): Promise<JoinPreview>;
   joinByLink(token: string): Promise<JoinResult>;
 }
-/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const InviteLinksApiError = ApiError;
 export type InviteLinksApiError = ApiError;
 
-/** The production `InviteLinksApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createInviteLinksApi(
   getToken: TokenProvider,
   fetchImpl: typeof fetch = fetch,
@@ -66,10 +56,7 @@ export function createInviteLinksApi(
 }
 
 /**
- * Extracts the join token from a link the user pastes or opens. Accepts the
- * custom scheme (`zilar://join/<token>`), the web URL shape
- * (`https://host/j/<token>`), and a bare 64-hex token. Returns undefined for
- * anything else, so random clipboard text never reaches the server.
+ * Accepts `zilar://join/<token>`, `https://host/j/<token>` and a bare 64-hex token; anything else gives undefined, so random clipboard text never reaches the server.
  */
 export function extractJoinToken(raw: string): string | undefined {
   const text = raw.trim();
@@ -89,8 +76,7 @@ export function extractJoinToken(raw: string): string | undefined {
   }
   if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
     const segments = parsed.pathname.split('/').filter((segment) => segment !== '');
-    // The web URL shape (`/j/<token>`, T-0115) and the mobile deep-link path
-    // (`/join/<token>`): both carry a bare 64-hex token.
+    // The web `/j/<token>` and the mobile `/join/<token>` both carry a bare 64-hex token.
     if (
       segments.length === 2 &&
       (segments[0]?.toLowerCase() === 'j' || segments[0]?.toLowerCase() === 'join')
@@ -105,10 +91,7 @@ export function extractJoinToken(raw: string): string | undefined {
 const INVITE_LINK_FAILURE_MESSAGE = 'This link does not work';
 const INVITE_LINK_RETRY_MESSAGE = 'Too many attempts. Try again later.';
 /**
- * The neutral join failure text (T-0115): invalid, expired, revoked and full
- * links all read the same, so failures never reveal why; rate-limit answers
- * get a friendly retry text. The token must never appear in error text, so
- * callers must pass only the error code/status, never the token.
+ * Invalid, expired, revoked and full links all read the same, so failures never reveal why; the token must never appear in error text, so callers pass only code/status.
  */
 export function joinFailureMessage(error: { status: number; code: string }): string {
   if (error.status === 429 || error.code === 'rate_limited') {
@@ -121,11 +104,7 @@ export type GroupChatTarget =
   { kind: 'chat'; chatId: string } | { kind: 'group'; groupId: string } | { kind: 'list' };
 
 /**
- * Resolves where a joined group opens: its General topic chat, else any of
- * its rows' group screen, else the chats list. Pure and UI-free (lives here
- * rather than the join view so store tests can import it without pulling in
- * `react-native`), so the route — which reads the chats fresh at call time —
- * and tests share it.
+ * Pure and UI-free, so the route (which reads the chats fresh at call time) and tests share it.
  */
 export function resolveGroupChat(
   chats: { id: string; groupId?: string; topic?: { isGeneral?: boolean } }[],

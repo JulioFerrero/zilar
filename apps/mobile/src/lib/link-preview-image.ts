@@ -1,11 +1,5 @@
 /**
- * The `useLinkPreviewImage` hook (T-1253): resolves a link preview's image
- * server path (`/api/link-preview/image/<key>`, T-1252) through `API_URL` and
- * attaches the session bearer, the way `useMediaSource` does for attachments.
- * Only that one prefix is ever loaded — any other `image` value gives no source,
- * so a hostile path cannot reach another origin or receive the session token.
- * The token read is async (secure storage), so the source is undefined until it
- * resolves; a broken image simply stays hidden.
+ * Only the `/api/link-preview/image/<key>` prefix ever loads, so a hostile path cannot reach another origin or receive the session token.
  */
 
 import { Effect, Fiber } from 'effect';
@@ -14,10 +8,8 @@ import { useEffect, useState } from 'react';
 import { API_URL } from './auth';
 import { getSessionToken } from './session-token';
 
-/** The only image the card may load: our own link-preview image route. */
 const LINK_PREVIEW_IMAGE_PREFIX = '/api/link-preview/image/';
 
-/** An `expo-image` source with the session bearer for that one route. */
 export type LinkPreviewImageSource = { uri: string; headers: Record<string, string> };
 
 export function useLinkPreviewImage(path: string | undefined): LinkPreviewImageSource | undefined {
