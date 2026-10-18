@@ -106,9 +106,8 @@ exactly one public host.
   `PUSH_COMPONENT_HOST`), with **Connect to predefined network** on.
 - **stop_grace_period:** 20s, so the old container drains its in-flight
   requests (zero-downtime plan, spike fix) instead of cutting them.
-- **Deploys:** CI calls Coolify's `POST /deploy` for this App after it publishes
-  a new `zilar-server` image tag (plan, target layout item 5); the App has no
-  watch paths — nothing builds on the server.
+- **Deploys:** How a deploy is triggered is not decided yet (no Coolify key in
+  GitHub). The App has no watch paths — nothing builds on the server.
 
 ### zilar-web
 
@@ -125,8 +124,8 @@ exactly one public host.
 - **Reaches:** nobody once Traefik routes `/api`, `/xmpp-ws/ws` and `/upload/`
   itself (see "The web app and its Caddy").
 - **stop_grace_period:** about 20s, for the same drain reason.
-- **Deploys:** CI calls `POST /deploy` for this App after it publishes a new
-  `zilar-web` image tag; like `zilar-server` it has no watch paths.
+- **Deploys:** How a deploy is triggered is not decided yet (no Coolify key in
+  GitHub); like `zilar-server` it has no watch paths.
 
 ## Order of creation
 
@@ -158,28 +157,6 @@ The paths `/api`, `/xmpp-ws/ws` and `/upload/` are exact enough for the apps
 behind them because they existed the same way in `apps/web/Caddyfile`. The
 WebSocket router is an exact `Path`, so every other `/xmpp-ws/*` request has no
 route (404), as the Caddy file did.
-
-## Deploys from CI
-
-`images.yml`'s `deploy` job asks Coolify to pull the new images after a green
-CI run on main publishes `:latest`: a `GET /api/v1/deploy?uuid=<app uuid>`
-against `COOLIFY_URL`, for `zilar-server` first, then for `zilar-web`. The App
-then does a rolling update, so the old container drains while the new one
-starts.
-
-The job reads four repository secrets, which Julio sets at the cutover:
-
-| Secret                    | Holds                                                    |
-| ------------------------- | -------------------------------------------------------- |
-| `COOLIFY_URL`             | the Coolify base URL, e.g. `https://coolify.example.com` |
-| `COOLIFY_DEPLOY_TOKEN`    | an API token with Coolify's **deploy** permission only   |
-| `COOLIFY_SERVER_APP_UUID` | the `zilar-server` App's UUID                            |
-| `COOLIFY_WEB_APP_UUID`    | the `zilar-web` App's UUID                               |
-
-The token needs no other permission: the deploy endpoint is all it calls.
-Until all four secrets are set the job prints
-`Coolify deploy secrets not set; skipping (see deploy/coolify/LAYOUT.md)` and
-succeeds, so green main runs stay green before the cutover.
 
 ## Variables
 
