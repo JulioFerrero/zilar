@@ -29,16 +29,10 @@ import { toStickerView } from './views';
 
 export { toAuditEntry, toPackView, toStickerView } from './views';
 
-/**
- * Resolves the storage dir once (absolute, normalized), so path comparisons
- * below hold for relative configs like the default `./data/stickers`.
- *
- * Relative values resolve against the server package root (`apps/server`),
- * not the process cwd: the Dockerfile starts from `/app` while a developer
- * may start from the repo root, and both must land on the same directory.
- * Absolute values pass through unchanged. Documented in
- * `docs/SERVER_CONFIG.md` (Stickers).
- */
+/** Resolves the storage dir once (absolute, normalized), so path
+ * comparisons hold. Relative values resolve against the server package
+ * root, not the process cwd: Docker starts from `/app` and a developer from
+ * the repo root, and both must land on the same directory. */
 export function resolveStorageDir(dir: string, baseDir: string = SERVER_PACKAGE_ROOT): string {
   if (isAbsolute(dir)) {
     return resolve(dir);
@@ -46,15 +40,12 @@ export function resolveStorageDir(dir: string, baseDir: string = SERVER_PACKAGE_
   return resolve(baseDir, dir);
 }
 
-/** The server package root (`apps/server`), the base for relative storage dirs. */
+/** The server package root, the base for relative storage dirs. */
 export function serverPackageRoot(from: string = fileURLToPath(import.meta.url)): string {
-  // Walk up from the caller's file until the directory holding the
-  // `package.json` named `@zilar/server`: relative storage dirs resolve
-  // against the package root whatever the file's depth below it, and a
-  // build step that changes the output shape (e.g. `src/` → `dist/`)
-  // resolves to the same root instead of moving a directory up or down.
-  // The walk stops at the filesystem root: without the package marker it
-  // returns the root itself, so a misplaced file resolves against `/`.
+  // Walk up from the caller's file to the directory holding the
+  // `package.json` named `@zilar/server`, so relative dirs resolve the same
+  // whatever the file's depth or build output shape. The walk stops at the
+  // filesystem root.
   let directory = dirname(from);
   for (;;) {
     const candidate = join(directory, 'package.json');
@@ -69,7 +60,7 @@ export function serverPackageRoot(from: string = fileURLToPath(import.meta.url))
           return directory;
         }
       } catch {
-        // Not JSON (or unreadable): keep walking up, it is not our marker.
+        // Not JSON: keep walking up.
       }
     }
     const parent = dirname(directory);
@@ -82,11 +73,9 @@ export function serverPackageRoot(from: string = fileURLToPath(import.meta.url))
 
 export const SERVER_PACKAGE_ROOT: string = serverPackageRoot();
 
-// A pack link makes the id the capability: any signed-in caller may read any
-// pack by id, private or shared, because pack ids are random UUIDs and a link
-// cannot be guessed. An imported pack stays personal to the user who imported
-// it, so for anyone else it is the same 404 as a missing id and ids cannot be
-// probed.
+// A pack link makes the id the capability: any signed-in caller may read
+// any pack by id, private or shared, because pack ids are random UUIDs. An
+// imported pack stays personal, so for anyone else it is the same 404.
 export async function requireVisiblePack(
   deps: StickersServiceDeps,
   packId: string,
@@ -137,9 +126,8 @@ export async function requireOwnedPack(
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
     }),
   );
-  // Non-owners get the same 404 as a missing id (never 403), so private
-  // pack ids cannot be probed — and a missing pack never leaks whether the
-  // visibility would have allowed it.
+  // Non-owners get the same 404 as a missing id, never 403, so private pack
+  // ids cannot be probed.
   if (!pack || pack.ownerId !== userId) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
@@ -155,7 +143,7 @@ export function escapeLike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
-// T-2062: the pack lock, cap and next position shared by an upload and an import.
+// The pack lock, cap and next position shared by an upload and an import.
 export function reservePackSlot(sql: SqlClient.SqlClient, packId: string) {
   return Effect.gen(function* () {
     yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
@@ -273,8 +261,8 @@ export async function deleteSticker(
         WHERE id = ${stickerId} AND pack_id = ${packId} LIMIT 1`;
     }),
   );
-  // A sticker id outside this pack (or a missing one) is the same 404, so
-  // ids cannot be probed across packs.
+  // A sticker id outside this pack is the same 404, so ids cannot be probed
+  // across packs.
   if (!row) {
     throw new HttpError(404, 'not_found', 'Sticker not found');
   }

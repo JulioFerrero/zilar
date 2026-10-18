@@ -12,12 +12,10 @@ export interface SyncTopicRoomResult {
   removed: string[];
 }
 
-// Applies `desiredMembers` to the room: sets the missing affiliations, sends
-// a direct invitation to newly added users, and sets `none` for anyone who
-// should no longer be there (in a members-only room this removes them).
-// Idempotent. Affiliation read/apply failures are logged by class name only
-// and rethrown as a 502/503 `HttpError` so a route answers instead of
-// leaving the database and the room disagreeing silently.
+// Applies `desiredMembers` to the room: sets missing affiliations, invites
+// newly added users, and sets `none` for anyone who should leave. Idempotent.
+// Failures are logged by class name and rethrown as 502/503, so the database
+// and room never disagree silently.
 export async function syncTopicRoom(
   deps: TopicRoomDeps,
   topic: TopicRow,

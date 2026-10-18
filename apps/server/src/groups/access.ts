@@ -3,9 +3,8 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-// The actor's membership row in one group, or `undefined` when they are not a
-// member. A missing group and a non-member look the same here; each caller
-// turns that into its own answer.
+// A missing group and a non-member look the same here; callers turn that
+// into their own answer.
 export async function findGroupMembership(
   db: ServerDatabase,
   groupId: string,
@@ -27,8 +26,6 @@ export function isGroupManagerRole(role: string): boolean {
   return role === 'owner' || role === 'admin';
 }
 
-// Whether the user is an owner/admin of `groupId`. False for a non-member and
-// for a plain member, and for a group that has no such row.
 export async function isGroupManager(
   db: ServerDatabase,
   groupId: string,

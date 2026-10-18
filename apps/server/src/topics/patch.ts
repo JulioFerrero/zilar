@@ -1,6 +1,5 @@
-// Patch one topic's fields (T-1521: split out of `service.ts`, which kept both
-// the create path and this 180-line update). Editing the task strip (status,
-// owner, link, kind, done) is open to anyone who can see the topic;
+// Patch one topic's fields. Editing the task strip (status, owner, link,
+// kind, done) is open to anyone who can see the topic;
 // name/glyph/visibility/archive/memberIds need a manager.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -24,8 +23,8 @@ export interface PatchTopicInput extends PatchTopicBody {
   actorId: string;
 }
 
-// effect/sql writes column names as given (the client has no query-name
-// transform), so the camelCase patch becomes snake_case columns first.
+// effect/sql writes column names as given, so the camelCase patch becomes
+// snake_case first.
 function snakeCaseKeys(patch: Partial<TopicRow>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(patch).map(([key, value]) => [
@@ -41,9 +40,6 @@ export async function patchTopic(
 ): Promise<TopicRow> {
   const topic = await requireVisibleTopic(deps.db, input.topicId, input.actorId);
   const isManager = await canManageTopic(deps.db, topic, input.actorId);
-  // Editing the task strip (status, owner, link, kind, done) is open to anyone
-  // who can see the topic; name/glyph/visibility/archive/memberIds need a
-  // manager.
   const stripOnly =
     input.name === undefined &&
     input.glyph === undefined &&
@@ -119,24 +115,23 @@ export async function patchTopic(
   if (input.glyph !== undefined) patch.glyph = input.glyph;
   if (input.kind !== undefined) patch.kind = input.kind;
   if (input.status !== undefined) patch.status = input.status;
-  // T-1521: `true` stamps the flag, `false` clears it. Anyone who can see the
-  // topic may do either; an AI starting work again does not clear it (the
-  // client applies "done only when nobody works or waits").
+  // `true` stamps the flag, `false` clears it; anyone who can see the topic
+  // may do either. An AI starting work again does not clear it.
   if (input.done !== undefined) patch.doneAt = input.done ? new Date() : null;
   if (input.owner !== undefined) {
     patch.ownerUserId = ownerUserId ?? null;
     patch.ownerAiId = ownerAiId ?? null;
-    // T-1529: assigning an AI owner also makes it the follower, so the owner
-    // chip keeps following until the owner is dropped (T8). General is never
-    // followed; clearing the owner leaves the follower as is.
+    // Assigning an AI owner also makes it the follower, so the owner chip
+    // follows until the owner is dropped; General is never followed, and
+    // clearing the owner leaves the follower.
     if (ownerAiId !== undefined && ownerAiId !== null && !topic.isGeneral) {
       patch.followerAiId = ownerAiId;
     }
-    // T-1493: a new owner never inherits the old owner's Stop pause.
+    // a new owner never inherits the old owner's Stop pause.
     patch.followPausedAt = null;
   }
-  // T-1529: marking the topic done pauses its follower, like a Stop, even when
-  // a new owner is set in the same request.
+  // Marking the topic done pauses its follower, like a Stop, even when a new
+  // owner is set in the same request.
   if (input.done === true) {
     patch.followPausedAt = new Date();
   }
@@ -144,8 +139,8 @@ export async function patchTopic(
   if (input.linkLabel !== undefined) patch.linkLabel = input.linkLabel ?? null;
   if (input.visibility !== undefined) patch.visibility = input.visibility;
   if (input.archived === true) patch.archivedAt = new Date();
-  // T-1529: who follows the topic once this update lands — the AI owner set in
-  // this request, otherwise the row's current follower. `done` pauses it.
+  // Who follows once this update lands: the AI owner set here, otherwise the
+  // current follower. `done` pauses it.
   const nextFollowerAiId = patch.followerAiId ?? topic.followerAiId;
 
   const visibilityChanged = topic.visibility !== nextVisibility;
@@ -159,19 +154,15 @@ export async function patchTopic(
       yield* sql`UPDATE topics SET ${sql.update(snakeCaseKeys(patch))} WHERE id = ${topic.id}`;
     }),
   );
-  // T-1448/T-1529: a new owner, the archive flag or done decides who follows
-  // this topic, so drop the cached lookup. Assigning an AI owner again also
-  // clears its Stop pause, so following restarts without waiting for a mention
-  // — unless this same request marks the topic done, whose pause must stand.
+  // A new owner, the archive flag or done decides who follows, so drop the
+  // cached lookup. Re-assigning an AI owner clears its Stop pause.
   if (input.owner !== undefined || input.archived !== undefined || input.done !== undefined) {
     invalidateTopicFollow(topic.roomLocalpart);
     if (ownerAiId !== undefined && ownerAiId !== null && input.done !== true) {
       resumeFollow(ownerAiId, topic.roomLocalpart);
     }
   }
-  // T-1529: marking the topic done pauses its current follower, like a Stop.
-  // A new AI owner in the same request becomes the follower, so pause the
-  // post-update one, not the pre-update row (whose row no longer matches).
+  // Marking done pauses the post-update follower, not the pre-update row.
   if (input.done === true && nextFollowerAiId !== null) {
     pauseFollow(nextFollowerAiId, topic.roomLocalpart);
   }
@@ -195,9 +186,8 @@ export async function patchTopic(
     );
   }
   // Going public ends what private access rested on: attached roles and the
-  // approver role. Direct members stay and become the public topic's members.
-  // Clearing the roles now keeps them from silently coming back if the topic
-  // is made private again.
+  // approver role; direct members stay. Clearing them now keeps them from
+  // coming back if the topic goes private again.
   let clearedRoleIds: string[] = [];
   if (goingPublic) {
     clearedRoleIds = await runSql(
@@ -223,8 +213,7 @@ export async function patchTopic(
     throw error instanceof HttpError ? error : xmppUnavailable();
   }
   // A public-to-private change may leave AIs whose owner is not in
-  // `memberIds`: they drop out of the room here (rows stay). Live sessions
-  // leave on the event, like after a member removal.
+  // `memberIds`; they drop out of the room (rows stay).
   if (goingPrivate) {
     await emitDroppedTopicAis(deps, updated);
   }

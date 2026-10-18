@@ -1,9 +1,3 @@
-// The push test-notification handler, split out of `./api-handlers` by T-1565
-// (size split). Moved unchanged: requirePush, then the body decode, then the
-// test limiter, then the per-device send; the native (FCM) and Web Push paths
-// keep their statuses, texts and step order. Ids only ever reach the logs,
-// never the token or the sealed keys.
-
 import { Effect, Option, Schema } from 'effect';
 import type { Logger } from 'pino';
 import { PushTestPayload } from '@zilar/api-contract';
@@ -51,8 +45,6 @@ export function createTestHandler(
         throw new HttpError(404, 'not_found', 'Push device not found');
       }
       const cipher = createPushCipher(storageKey);
-      // A native row speaks FCM, not Web Push: it carries the plaintext
-      // device token instead of the sealed endpoint and keys.
       if (target.token !== null) {
         if (nativeSender === undefined) {
           throw new HttpError(
@@ -62,16 +54,12 @@ export function createTestHandler(
           );
         }
         const native = openNativeDevice(target);
-        // A send rejection surfaces as a defect, which `yield*` does
-        // not throw into a surrounding `try`; map it to a value instead.
-        // `gone` is a value, not a throw: keep it, and stamp `failed_at`
-        // only for a real failure, like the Web Push path below.
+        // A send rejection surfaces as a defect, which `yield*` does not throw
+        // into a surrounding `try`; map it to a value. `gone` is a value, and
+        // `failed_at` is stamped only for a real failure.
         const nativeOutcome = yield* Effect.promise(() =>
           nativeSender.send(native.token, {
             chatId: TEST_WAKE_CHAT_ID,
-            // The synthetic test wake is not a real chat: `group` is the
-            // kind the phone's test post used before it carried one, and
-            // the phone ignores the kind for a test wake anyway.
             chatKind: 'group',
             serverId: deps.config.xmpp.domain,
           }),
@@ -86,8 +74,7 @@ export function createTestHandler(
           ),
         );
         if (!nativeOutcome.sent) {
-          // Like the Web Push failure path: a failed send stamps
-          // `failed_at` and its reason, and the route answers
+          // A failed send stamps `failed_at` and its reason, and the route answers
           // `push_failed`.
           yield* Effect.promise(() =>
             markDeviceFailed(deps.db, target.id, new Date(now()), nativeOutcome.reason),
@@ -95,13 +82,9 @@ export function createTestHandler(
           throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
         }
         if (nativeOutcome.gone) {
-          // The token is dead: remove the row (scoped by id AND userId,
-          // like the Web Push expired path) before answering 410.
           yield* Effect.promise(() => removeDevice(deps.db, user.id, target.id));
           throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
         }
-        // A successful test proves receipt, so it counts for the 90-day
-        // inactivity rule like a real notification (N1).
         yield* Effect.promise(() => markDeviceUsed(deps.db, target.id, new Date(now())));
         return { sent: true };
       }
@@ -114,9 +97,6 @@ export function createTestHandler(
         });
       let subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
       try {
-        // A native row has no Web Push endpoint or keys: it cannot take a
-        // Web Push test, and answers the same 410 as a row that no longer
-        // decrypts.
         if (target.endpoint === null || target.p256dh === null || target.auth === null) {
           throw new Error('The push device is not a Web Push device');
         }
@@ -127,8 +107,6 @@ export function createTestHandler(
       } catch {
         throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
       }
-      // A send rejection surfaces as a defect, which `yield*` does not
-      // throw into a surrounding `try`; map it to a value instead.
       const sendOutcome = yield* Effect.promise(() =>
         sender.send(
           subscription,
@@ -144,22 +122,16 @@ export function createTestHandler(
       if (!sendOutcome.sent) {
         const error = sendOutcome.defect;
         if (isExpiredSubscription(error)) {
-          // Spec part 6: expired subscriptions are deleted. Scoped by id
-          // AND userId like every other device delete, before answering
-          // 410.
+          // Expired subscriptions are deleted, scoped by id AND userId before
+          // answering 410.
           yield* Effect.promise(() => removeDevice(deps.db, user.id, target.id));
           throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
         }
-        // Like the component path: a failed send stamps `failed_at` and
-        // its short reason, so the device list and the 90-day rule see
-        // the failure.
         yield* Effect.promise(() =>
           markDeviceFailed(deps.db, target.id, new Date(now()), pushFailureReason(error)),
         );
         throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
       }
-      // A successful test proves receipt, so it counts for the 90-day
-      // inactivity rule like a real notification (N1).
       yield* Effect.promise(() => markDeviceUsed(deps.db, target.id, new Date(now())));
       return { sent: true };
     }),

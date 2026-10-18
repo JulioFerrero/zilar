@@ -1,11 +1,3 @@
-// Topics module on the Effect `HttpApi` adapter (T-0539): the same methods,
-// paths, statuses (201 on create), bodies, limiter order and audit calls as the
-// deleted router (`routes.ts`), mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
-//
-// The schemas, the group and its middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0892); this file keeps the handlers and layers.
-
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -74,9 +66,9 @@ export interface TopicsApiDependencies {
   adminClient: EjabberdAdminClient;
   logger: Logger;
   audit?: AuditRecorder;
-  /** T-1774: the MUC archive read for the topic preview; absent → 501. */
+  /** the MUC archive read for the topic preview; absent → 501. */
   archive?: ArchivePool;
-  /** T-1514: the live gateway's turn read model for each topic's AI activity. */
+  /** the live gateway's turn read model for each topic's AI activity. */
   getGateway?: () => TurnWatcher | null;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
@@ -113,9 +105,8 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(TopicsApi, 'topics', (handlers) =>
     handlers
-      // A stranger (or a missing group) sees an empty list, never a 403/404
-      // that would reveal the group exists. The group route itself already
-      // answers 404 for non-members; this list only narrows to visible topics.
+      // A stranger or a missing group sees an empty list, never a 403/404 that
+      // would reveal the group exists; the list only narrows to visible topics.
       .handle(
         'list',
         handler(logger, (request, user) =>
@@ -131,8 +122,8 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      // Creates a topic; the limiter middleware already charged the budget,
-      // before the payload decode.
+      // The limiter middleware already charged the budget before the payload
+      // decode.
       .handle(
         'create',
         handler(logger, (request, user) =>
@@ -240,10 +231,9 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      // T-1774: a group member reads a public topic they have not joined,
-      // read-only, from the archive — not over XMPP. Private and General
-      // topics (members read those over XMPP) answer the same 404 as a missing
-      // id, and so does a topic the caller may not see.
+      // A group member reads a public topic they have not joined, read-only, from
+      // the archive, not over XMPP. Private and General topics answer the same 404
+      // as a missing id, as does an invisible topic.
       .handle(
         'preview',
         handler(logger, (request, user) =>
@@ -284,8 +274,8 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             const topic = yield* Effect.promise(() =>
               removeTopicMember(serviceDeps(), request.params.id, user.id, request.params.userId),
             );
-            // Removing the last private member archives the topic: it is no
-            // longer visible, so answer like a deletion. The row survives.
+            // Removing the last private member archives the topic; answer like a
+            // deletion, though the row survives.
             if (topic.archivedAt !== null) {
               throw toMissingTopic();
             }
@@ -293,9 +283,8 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      // T-0116: attach roles to a private topic and pick its approver role.
-      // The actor must be a topic manager who can see the topic; a stranger
-      // gets the same 404 as a missing id.
+      // Attach roles to a private topic and pick its approver role: the actor
+      // must be a topic manager who can see it; a stranger gets the same 404.
       .handle(
         'setRoles',
         handler(logger, (request, user) =>
@@ -312,8 +301,8 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      // T-0109: AIs in non-General topics.
-      // T-1834: General lists the group's AIs, since it has no `topic_ais` rows.
+      // AIs in non-General topics; General lists the group's AIs, since it has no
+      // `topic_ais` rows.
       .handle(
         'listAis',
         handler(logger, (request, user) =>
@@ -361,18 +350,16 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(TopicsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    // T-0108: topic creation hits ejabberd, so it is capped per user. The
-    // budget runs before the payload is decoded, exactly like the old route's
-    // `createLimiter.allow` -> decode order.
+    // Topic creation hits ejabberd, so it is capped per user; the budget runs
+    // before the payload is decoded.
     Layer.provide(
       rateLimitLayer(TopicsCreateRateLimit, createLimiter, 'Too many topics, try again later'),
     ),
-    // T-1760: joining a topic syncs the room on ejabberd, so it is capped per
-    // user too.
+    // Joining a topic syncs the room on ejabberd, so it is capped per user too.
     Layer.provide(
       rateLimitLayer(TopicsJoinRateLimit, joinLimiter, 'Too many joins, try again later'),
     ),
-    // T-1774: reading a topic's archive for a non-member is capped per user.
+    // reading a topic's archive for a non-member is capped per user.
     Layer.provide(
       rateLimitLayer(TopicsPreviewRateLimit, previewLimiter, 'Too many previews, try again later'),
     ),

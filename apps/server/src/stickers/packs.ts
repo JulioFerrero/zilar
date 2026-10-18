@@ -25,10 +25,6 @@ import {
   toPackView,
 } from './storage';
 
-/**
- * The owner handles for a page's packs in one read, keyed by user id; a user
- * with no handle is absent (the caller turns that into `null`).
- */
 async function loadOwnerHandles(
   deps: StickersServiceDeps,
   ownerIds: readonly string[],
@@ -164,15 +160,14 @@ export async function patchPack(
   body: PatchPackBody,
 ): Promise<StickerPackView> {
   const owned = await requireOwnedPack(deps, packId, userId);
-  // Imported packs (T-0123) are personal-use only: they can never be
-  // switched to `server` visibility, so the art stays with its importer.
+  // Imported packs are personal-use only and can never be `server`
+  // visibility, so the art stays with its importer.
   if (body.visibility === 'server' && owned.importedFrom !== null && owned.importedFrom !== '') {
     throw new HttpError(400, 'imported_private', 'Imported packs stay private for personal use');
   }
-  // The read, the order validation and all writes run inside one transaction
-  // holding the pack's advisory lock: two concurrent reorders serialize
-  // instead of interleaving positions, and a concurrent deleteSticker fails
-  // the exact-once validation instead of silently dropping rows.
+  // The read, order validation and writes run in one transaction under the
+  // pack's advisory lock, so concurrent reorders serialize and a concurrent
+  // deleteSticker fails the exact-once validation.
   await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -185,8 +180,8 @@ export async function patchPack(
               id: string;
             }>`SELECT id FROM stickers WHERE pack_id = ${packId}`;
             const ids = new Set(rows.map((row) => row.id));
-            // Completeness alone is not enough: a doubled id with a dropped one
-            // passes it while corrupting the pack, so duplicates fail distinctly.
+            // Completeness alone is not enough: a doubled id with a dropped one passes
+            // it, so duplicates fail distinctly.
             if (new Set(body.order).size !== body.order.length) {
               return yield* Effect.fail(
                 new HttpError(400, 'duplicate_order', 'order must not list a sticker twice'),
@@ -251,8 +246,8 @@ export async function deletePack(
     }),
   );
   const { rm } = await import('node:fs/promises');
-  // Files are removed after the row: a crash in between orphans files on
-  // disk (harmless — they are never served without the row), never metadata.
+  // Files are removed after the row, so a crash orphans files on disk
+  // (harmless, never served) rather than metadata.
   const storageDir = resolveStorageDir(deps.storageDir);
   for (const row of rows) {
     await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
@@ -277,10 +272,9 @@ export async function discoverPacks(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // `%`, `_` and the escape char are wildcards in LIKE: escape them so
-      // `q=%` matches a literal percent instead of every pack. The pattern
-      // runs as raw SQL with an explicit backslash escape (still a bound
-      // parameter, no injection).
+      // `%`, `_` and the escape char are LIKE wildcards: escape them so `q=%`
+      // matches a literal percent. The pattern runs as a bound raw-SQL parameter,
+      // no injection.
       const titleCondition =
         trimmed === ''
           ? sql``
@@ -295,9 +289,8 @@ export async function discoverPacks(
   );
   const page = packs.slice(0, limit);
   const next = packs.length > limit && page.length > 0 ? (page[page.length - 1]!.id ?? null) : null;
-  // One query for the whole page. Rows keep their position order, and each
-  // pack keeps at most its first STICKERS_MAX_PER_PACK rows (the old per-pack
-  // LIMIT).
+  // One query for the page; rows keep position order and each pack keeps at
+  // most its first `STICKERS_MAX_PER_PACK` rows.
   const stickersByPack = new Map<string, StickerRow[]>();
   if (page.length > 0) {
     const packIds = page.map((pack) => pack.id);

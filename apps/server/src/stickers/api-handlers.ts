@@ -1,9 +1,3 @@
-// The stickers HTTP handlers and their group layer, split out of `./api` by
-// T-0992. The 14 routes keep their methods, paths, order, statuses, texts,
-// bodies and headers; only the file they live in changed. The upload body
-// lives in `./api-upload`, and the hand-decodes and fixed error texts in
-// `./api-decode`.
-
 import { Effect, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
@@ -51,8 +45,8 @@ import { runUploadSticker, type UploadStickerRequest } from './api-upload';
 import { getPackDetail } from './pack-link';
 import type { StickersApiDependencies } from './api';
 
-// The Telegram import payload is a short pack link; the body is read under
-// this cap so an oversized or endless chunked body is refused before parsing.
+// The Telegram import payload is a short pack link; read the body under this
+// cap so an oversized or endless chunked body is refused before parsing.
 const TELEGRAM_IMPORT_MAX_BODY_BYTES = 64 * 1024;
 
 export function createStickersGroupLayer(
@@ -61,8 +55,8 @@ export function createStickersGroupLayer(
 ) {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  // The default resolver keeps the legacy env-only read for callers that do
-  // not wire the integrations module (unit tests of these routes).
+  // The default resolver keeps the env-only read for callers that do not wire
+  // the integrations module (unit tests).
   const getBotToken =
     deps.getBotToken ??
     (async (): Promise<string | null> => {
@@ -107,9 +101,8 @@ export function createStickersGroupLayer(
           createPack(serviceDeps(), user.id, { ...request.payload }),
         ),
       )
-      // The query is decoded manually inside the handler (the contract's
-      // `RawQueryValue` keys never fail in the router) so an invalid query
-      // answers the fixed 400 message, like the media gallery's hand decode.
+      // The query is decoded manually because the contract's `RawQueryValue` keys
+      // never fail in the router, so an invalid query answers the fixed 400.
       .handle(
         'discover',
         handler(logger, (request) => {
@@ -126,20 +119,17 @@ export function createStickersGroupLayer(
           return discoverPacks(serviceDeps(), decoded.value.q, decoded.value.cursor);
         }),
       )
-      // The pack link (T-1495): the id is decoded like every other path id,
-      // so a malformed escape is the same 404 as an unknown pack.
+      // The pack link: the id is decoded like every path id, so a malformed
+      // escape is the same 404 as an unknown pack.
       .handle(
         'getPack',
         handler(logger, (request, user) =>
           getPackDetail(serviceDeps(), decodePathId(request.params.id), user.id),
         ),
       )
-      // The body is decoded manually inside the handler, after the 501
-      // token check: the framework-level payload decode used to run before
-      // any handler code, so a malformed body answered 400 instead of the
-      // specified 501 `import_unavailable` (the old order is session ->
-      // token -> body -> pack-input parse -> limiter -> import). For the same
-      // reason the endpoint is served with `handleRaw`.
+      // The body is decoded manually after the 501 token check: the framework
+      // decode used to run first and answered 400 instead of `import_unavailable`.
+      // Same reason the endpoint uses `handleRaw`.
       .handleRaw(
         'importTelegram',
         handler(logger, (request, user) =>
@@ -164,8 +154,8 @@ export function createStickersGroupLayer(
                 'input must be a string of 1 to 512 characters, with no other keys',
               );
             }
-            // The budget is consumed only by a well-formed request for a real
-            // pack name: garbage input fails here, before the limiter runs.
+            // The budget is consumed only by a well-formed request for a real pack
+            // name; garbage fails before the limiter.
             try {
               parseTelegramPackInput(decoded.value.input);
             } catch (error) {
@@ -245,7 +235,6 @@ export function createStickersGroupLayer(
           addFavorite(serviceDeps(), user.id, request.payload.sticker_id),
         ),
       )
-      // The id comes from the query string; the endpoint declares no body.
       .handle(
         'removeFavorite',
         handler(logger, async (request, user) => {
@@ -264,8 +253,6 @@ export function createStickersGroupLayer(
           return { ok: true as const };
         }),
       )
-      // The multipart/raw upload (part B, T-0602): the body lives in
-      // `./api-upload`.
       .handle(
         'uploadSticker',
         handler(logger, (request: UploadStickerRequest, user) =>
@@ -273,9 +260,8 @@ export function createStickersGroupLayer(
         ),
       )
       // Streams the stored file. The id is a random unguessable uuid and a
-      // signed-in session is required, but the URL is a capability for
-      // signed-in users. An unknown id and a malformed escape answer the same
-      // 404; the strict headers match the old route byte for byte.
+      // signed-in session is required, but the URL is a capability: an unknown id
+      // and a malformed escape answer the same 404.
       .handle(
         'serveFile',
         handler(logger, async (request) => {

@@ -1,18 +1,9 @@
 // effect-plain: a small in-memory TTL cache; the Effect read it wraps stays in search/service.
-// PERF-5 (T-1437): a short in-memory cache for `allowedArchives` on the push
-// path. Every publish IQ used to recompute the caller's allowed archives
-// (about three base queries plus a batched visibility pass), once per device
-// per message. The answer changes only when a contact, block, AI, group
-// membership or topic visibility changes, so a 15 s TTL removes the repeat
-// work without delaying a change for long. Search keeps calling the uncached
-// `allowedArchives`; only push reads through here.
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { allowedArchives, type SearchOwner } from '../search/service';
 
-/** How long one user's allowed archives stay fresh. */
 export const ARCHIVES_CACHE_TTL_MS = 15_000;
-/** The most users one process caches; the oldest entry is evicted first. */
 export const ARCHIVES_CACHE_MAX_ENTRIES = 5_000;
 
 type ArchiveLoader = (
@@ -49,9 +40,9 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-// A factory rather than a bare module map so tests own their clock and loader.
-// Production uses the one shared instance below. The map is keyed by database
-// first, so two databases in one process (tests) never share rows.
+// A factory rather than a bare module map so tests own their clock and
+// loader; the map is keyed by database first, so two databases in one
+// process never share rows.
 export function createArchivesCache(options: ArchivesCacheOptions = {}): ArchivesCache {
   const ttlMs = options.ttlMs ?? ARCHIVES_CACHE_TTL_MS;
   const maxEntries = options.maxEntries ?? ARCHIVES_CACHE_MAX_ENTRIES;
@@ -77,8 +68,8 @@ export function createArchivesCache(options: ArchivesCacheOptions = {}): Archive
         return cached.value;
       }
       const value = await load(db, config, userId);
-      // Re-insert at the end so the insertion order is the eviction order:
-      // once the cap is reached the oldest entry goes first.
+      // Re-insert at the end so insertion order is eviction order: once the cap
+      // is reached the oldest entry goes first.
       entries.delete(userId);
       if (entries.size >= maxEntries) {
         const oldest = entries.keys().next().value;
@@ -100,8 +91,6 @@ export function createArchivesCache(options: ArchivesCacheOptions = {}): Archive
 
 const shared = createArchivesCache();
 
-// The push path's cached read: the same answer as `allowedArchives` within the
-// TTL, refetched after it.
 export function cachedAllowedArchives(
   db: ServerDatabase,
   config: ServerConfig,

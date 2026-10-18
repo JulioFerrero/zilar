@@ -21,12 +21,10 @@ export interface AddTopicAiInput {
   aiId: string;
 }
 
-// Adds an AI to a non-General topic. The actor must own the AI and see the
-// topic (`canSeeTopic`); the AI must be an active member of the group.
-// General membership is `group_ais`, so adding there answers 400
-// `already_in_general`. Anyone else — a plain member who is not the owner,
-// an owner who cannot see a private topic — gets the same 404 as a missing
-// id. Adding an AI that is already there answers 200 with the topic.
+// Adds an AI to a non-General topic: the actor must own the AI and see the
+// topic, and the AI must be an active group member. General membership is
+// `group_ais`, so adding there answers 400 `already_in_general`. Anyone else
+// gets the same 404 as a missing id; a duplicate add answers 200.
 export async function addTopicAi(
   deps: TopicServiceDeps,
   input: AddTopicAiInput,
@@ -66,9 +64,9 @@ export async function addTopicAi(
     }),
   );
   if (!groupRow) {
-    // T-1769: the one-step add. A missing group membership is created first by
-    // `addGroupAi`, which applies the group rule (owner or admin) and its own
-    // refusals. A plain member who may add to the topic cannot add to the group.
+    // The one-step add: a missing group membership is created first by
+    // `addGroupAi`, with its own rules and refusals, so a plain member who may
+    // add to the topic still cannot add to the group.
     await addGroupAi(deps.db, deps.adminClient, {
       groupId: topic.groupId,
       actorId: input.actorId,
@@ -98,8 +96,8 @@ export async function addTopicAi(
   return updated;
 }
 
-// Removes an AI from a topic: the AI's owner, or a topic manager. A stranger
-// — or anyone who cannot see the topic — gets the same 404 as a missing id.
+// Removes an AI: its owner or a topic manager; a stranger or anyone who
+// cannot see the topic gets the same 404.
 export async function removeTopicAi(
   deps: TopicServiceDeps,
   topicId: string,
@@ -149,10 +147,8 @@ export async function removeTopicAi(
       const sql = yield* SqlClient.SqlClient;
       yield* sql`
         DELETE FROM topic_ais WHERE topic_id = ${topic.id} AND ai_id = ${aiId}`;
-      // T-1455: a removed AI stops owning the topic, so the owner chip never
-      // names an AI that is no longer there. T-1529: it also stops following if
-      // it was the follower. `NULLIF` clears each only when it is this AI, so a
-      // different AI's owner or follower survives.
+      // A removed AI stops owning or following the topic (`NULLIF` clears only
+      // this AI), so the owner chip never names an absent AI.
       yield* sql`
         UPDATE topics SET
           owner_ai_id = NULLIF(owner_ai_id, ${aiId}),
@@ -162,19 +158,19 @@ export async function removeTopicAi(
           AND (owner_ai_id = ${aiId} OR follower_ai_id = ${aiId})`;
     }),
   );
-  // T-1448/T-1455: the owner changed, so drop the room's cached follow lookup
-  // instead of letting a plain message wake the ex-owner for up to 15 s.
+  // Drop the room's cached follow lookup, so a plain message cannot wake the
+  // ex-owner for up to 15 s.
   invalidateTopicFollow(topic.roomLocalpart);
-  // T-0110: removing the AI from the topic revokes its rules and deletes
-  // its tools in that topic. Personal-chat rows are unaffected.
+  // Removing the AI revokes its rules and deletes its tools in that topic;
+  // personal-chat rows are unaffected.
   const now = new Date();
   await revokeActiveRulesForAiInTopic(deps.db, { aiId, topicId: topic.id, actorId, now });
   await runSql(deps.db, deleteToolsForAiInTopicEffect({ aiId, topicId: topic.id, now }));
   await deleteRoutinesForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
-  // T-0442: the AI's memory of this topic room dies with the membership
-  // (plan §3.5). Its DM memory and other rooms are unaffected.
+  // The AI's memory of this topic room dies with the membership; its DM
+  // memory and other rooms are unaffected.
   await runSql(deps.db, deleteRoomMemoryEffect(aiId, [topic.roomLocalpart]));
-  // T-1991: the AI's waiting actions in this topic die with the membership.
+  // The AI's waiting actions in this topic die with the membership.
   await cancelPendingActionsForAi(
     { db: deps.db, logger: deps.logger },
     { aiId, groupId: topic.groupId, topicId: topic.id },

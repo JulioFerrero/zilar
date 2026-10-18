@@ -19,12 +19,12 @@ import type { PushServiceDeps } from './service';
 type CandidateVerdict =
   { status: 'ok'; message: ResolvedPushMessage } | { status: 'muted' | 'hidden' | 'skip' };
 
-// Resolution only reads the database, the config and the clock, so the preview
-// route can call it without the push component's cipher, sender or logger.
+// Resolution only reads the database, config and clock, so the preview route
+// can call it without the component's cipher, sender or logger.
 type CandidateDeps = Pick<PushServiceDeps, 'db' | 'config' | 'now'>;
 
-// A reader that is not walking a batch passes no live-UI ids: a correction or
-// retraction then skips only when the row is not an edit of a known card.
+// A reader not walking a batch passes no live-UI ids, so a correction skips
+// only when the row is not an edit of a known card.
 const NO_LIVE_IDS: ReadonlySet<string> = new Set<string>();
 
 export async function resolveCandidate(
@@ -37,22 +37,18 @@ export async function resolveCandidate(
   if (row.originId === '') {
     return { status: 'skip' };
   }
-  // The live AI UI (a progress card) is not a message, and neither is a
-  // correction or retraction that edits one (T-1400): never notify for them.
-  // The card itself carries the payload; a card edit only names its target, so
-  // `liveIds` is the batch's live-UI origin ids the caller already read.
+  // The live AI UI is not a message, and neither is a correction or retraction
+  // of one: never notify for them.
   if (isLiveAiUiRow(row.xml, row.barePeer) || isLiveAiUiEdit(row.xml, liveIds)) {
     return { status: 'skip' };
   }
-  // A retraction archives with the stock fallback sentence as its text:
-  // never notify for one.
+  // A retraction archives the stock fallback sentence: never notify.
   if (row.xml.includes('urn:xmpp:message-retract:1')) {
     return { status: 'skip' };
   }
   const rawText = row.text === null || row.text === '' ? undefined : row.text;
-  // A reply archives with its XEP-0461 fallback quote as the head of the
-  // text (`> quote\n…`); the push preview shows the reply text, not the
-  // quote, so the marked range leaves the text.
+  // A reply archives with its XEP-0461 fallback quote as the head of the text;
+  // the preview shows the reply, not the quote, so the marked range leaves it.
   const text = rawText === undefined ? undefined : textWithoutReplyFallback(rawText, row.xml);
   if (text === undefined && row.xml.includes('urn:xmpp:reactions:0')) {
     return { status: 'skip' };
@@ -62,8 +58,8 @@ export async function resolveCandidate(
     row.kind === 'groupchat'
       ? await resolveRoomCandidate(deps, userId, row, text)
       : await resolveDmCandidate(deps, userId, allowed, row, text);
-  // One row of an album carries the marker: the payload shows its count and
-  // the scan marks the album's sibling rows with it (T-1269).
+  // One row of an album carries the marker; the scan marks its siblings with
+  // it.
   if (verdict.status === 'ok' && album !== undefined) {
     verdict.message.albumId = album.id;
     verdict.message.albumCount = album.count;
@@ -90,9 +86,8 @@ async function resolveRoomCandidate(
   if (topic === undefined) {
     return { status: 'skip' };
   }
-  // Send-time visibility re-check: a private topic's name only ever goes to
-  // a user who can see that topic right now. Past that, only General reaches
-  // the whole group: every other topic notifies its own members (T-1830).
+  // Send-time visibility re-check: a private topic's name only goes to a user
+  // who can see it right now. Only General reaches the whole group.
   if (!(await canSeeTopic(deps.db, topic, userId))) {
     return { status: 'hidden' };
   }
@@ -110,12 +105,10 @@ async function resolveRoomCandidate(
   if (group === undefined) {
     return { status: 'skip' };
   }
-  // The user's own room messages share the same archive scope (sent from
-  // another session while this device is offline); only other members'
-  // messages notify. Ejabberd stores the real sender's bare JID in
-  // `bare_peer` (the nick is display text a member picks), so that column
-  // decides this. Only a row with no `bare_peer` at all (a legacy or malformed
-  // row) falls back to the nick, case-insensitively.
+  // The user's own room messages share the archive scope (sent from another
+  // session); only other members' messages notify. `bare_peer` holds the real
+  // sender's bare JID, since the nick is display text; only a legacy row with
+  // none falls back to the nick, case-insensitively.
   const ownLocalpart = localpartFor(userId);
   const senderJid = row.barePeer === '' ? null : bareJid(row.barePeer);
   if (senderJid !== null) {
@@ -133,8 +126,7 @@ async function resolveRoomCandidate(
   if (await isMuted(deps, userId, roomJid, topicRoomGeneralJid(deps, group.roomLocalpart), now)) {
     return { status: 'muted' };
   }
-  // The name is the real sender's display name from the database; the nick is
-  // only a fallback when our tables have no name for that JID.
+  // The real sender's display name; the nick only when our tables have none.
   let senderName = row.nick === '' ? 'Someone' : row.nick;
   if (senderJid !== null) {
     senderName = (await senderNamesByJid(deps.db, [senderJid])).get(senderJid) ?? senderName;
@@ -161,8 +153,6 @@ async function resolveDmCandidate(
   text: string | undefined,
 ): Promise<CandidateVerdict> {
   const peer = row.barePeer.toLowerCase();
-  // The caller's own outgoing messages share the same archive scope; only
-  // incoming ones notify.
   const from = stanzaFrom(row.xml);
   if (from !== null && bareJid(from) === ownBareJid(allowed, deps.config.xmpp.domain)) {
     return { status: 'skip' };
@@ -186,9 +176,8 @@ async function resolveDmCandidate(
   };
 }
 
-// Muted while `muted_until` is in the future. Mirrors the clients'
-// `effectivePrefFor`: a chat with its own row uses that row; a topic without
-// one inherits its group General room's mute.
+// Muted while `muted_until` is in the future; a chat's own pref wins, and a
+// topic without one inherits its group General room's mute.
 async function isMuted(
   deps: CandidateDeps,
   userId: string,
@@ -196,9 +185,8 @@ async function isMuted(
   generalJid: string | undefined,
   now: Date,
 ): Promise<boolean> {
-  // One read covers both candidate rows (T-1184, PERF-5). The chat's own row
-  // wins when present; a topic without one falls back to its group's General
-  // row.
+  // One read covers both rows: the chat's own row wins, else its group's
+  // General row.
   const jids =
     generalJid !== undefined && generalJid !== chatJid ? [chatJid, generalJid] : [chatJid];
   const rows = await runSql(
@@ -224,10 +212,9 @@ async function isMuted(
 const REPLY_FALLBACK_FOR = /\bfor\s*=\s*(["'])urn:xmpp:reply:0\1/;
 
 // A reply's XEP-0461 fallback quote is the head of the archived text, marked
-// by `<fallback for="urn:xmpp:reply:0"><body start end/></fallback>` in the
-// row's XML (start and end are code points into the text). The archive XML is
-// read defensively, the way `search/snippet.ts` reads it (`stanzaFrom`,
-// `correctionTarget`): a row whose XML does not parse keeps today's text.
+// by `<fallback for="urn:xmpp:reply:0"><body start end/></fallback>` (code
+// points). The XML is read defensively: an unparseable row keeps today's
+// text.
 export function textWithoutReplyFallback(text: string, xml: string): string {
   if (!xml.includes('urn:xmpp:reply:0')) {
     return text;

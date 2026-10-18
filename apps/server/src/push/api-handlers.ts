@@ -1,9 +1,3 @@
-// The push API handlers and their group layer, split out of `./api` by T-1017
-// (size split). Moved unchanged: config, list, remove, settings and
-// updateSettings keep their order, statuses and texts; the subscribe route is
-// built in `./api-subscribe`, the test route in `./api-test`, and the shared
-// helpers live in `./api-util`.
-
 import { Effect, Option, Schema } from 'effect';
 import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
 import { PushGroup, PushSettingsPayload } from '@zilar/api-contract';
@@ -49,8 +43,8 @@ export function createPushGroupLayer(
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const requirePush = createRequirePush(deps);
-  // The native sender for the test route: injected in tests, otherwise built
-  // once here from the push config (undefined without the FCM config).
+  // The native sender for the test route, built once from the push config.
+  // Injected in tests.
   const nativeSender: FcmSender | undefined =
     deps.nativeSender ?? createNativeSender(deps.push, logger);
 
@@ -76,8 +70,7 @@ export function createPushGroupLayer(
             requirePush();
             const current = new Date(now());
             const devices = yield* Effect.promise(() => devicesForUser(deps.db, user.id));
-            // The list carries labels and dates only — never the endpoint URL
-            // or the sealed keys.
+            // The list carries labels and dates only, never the endpoint URL or keys.
             return { devices: devices.map((row) => toPushDeviceView(row, current)) };
           }),
         ),
@@ -87,9 +80,9 @@ export function createPushGroupLayer(
         handler(logger, (request, user) =>
           Effect.gen(function* () {
             requirePush();
-            // Device add and remove share the registration window: both are
-            // cheap writes, and an uncapped remove would let a client churn
-            // the room subscriptions below.
+            // Device add and remove share the registration window: both are cheap
+            // writes, and an uncapped remove would let a client churn the room
+            // subscriptions.
             if (!limiters.subscribe.allow(user.id)) {
               throw new HttpError(
                 429,
@@ -97,18 +90,16 @@ export function createPushGroupLayer(
                 'Too many push registrations, try again later',
               );
             }
-            // Scoped delete: an unknown id and another user's device answer
-            // the same 404, so device ids cannot be probed.
+            // Scoped delete: an unknown id and another user's device answer the same
+            // 404, so device ids cannot be probed.
             const removed = yield* Effect.promise(() =>
               removeDevice(deps.db, user.id, request.params.id),
             );
             if (!removed) {
               throw new HttpError(404, 'not_found', 'Push device not found');
             }
-            // No devices left: drop the MUC/Sub room subscriptions too, so
-            // ejabberd stops publishing for a user who cannot receive
-            // anything. Best effort after the committed delete: a sync
-            // failure logs and still answers success (S2).
+            // No devices left: drop the MUC/Sub room subscriptions too, so ejabberd
+            // stops publishing. Best effort after the committed delete.
             const remaining = yield* Effect.promise(() => devicesForUser(deps.db, user.id));
             if (remaining.length === 0) {
               yield* Effect.promise(() =>
@@ -159,8 +150,8 @@ export function createPushGroupLayer(
               throw xmppUnavailable();
             }
             const userId = user.id;
-            // A failed archive read is a defect (`orDie`) so the shared error
-            // envelope renders it, exactly like the search route.
+            // A failed archive read is a defect (`orDie`) so the error envelope renders
+            // it.
             const allowed = yield* Effect.tryPromise({
               try: () => cachedAllowedArchives(deps.db, deps.config, userId),
               catch: () => xmppUnavailable(),
@@ -169,15 +160,13 @@ export function createPushGroupLayer(
               try: () => readCandidateByOriginId(archive, allowed, request.query.messageId),
               catch: () => xmppUnavailable(),
             }).pipe(Effect.orDie);
-            // An unknown id and a message in a chat the caller may not see both
-            // match no row; muted, hidden and skipped rows also answer the same
-            // 404, so the route never reveals whether a message exists.
+            // An unknown id and an invisible message both match no row; muted and hidden
+            // rows answer the same 404, so the route reveals nothing.
             if (row === undefined) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
-            // A message retracted by its own sender is deleted for everyone:
-            // the preview answers 404. A correction by that sender replaces
-            // the preview text with the newest body.
+            // A retracted message answers 404; a correction replaces the text with the
+            // newest body.
             const editTarget = cardEditTarget(row.xml);
             const overlay = yield* Effect.tryPromise({
               try: () =>
@@ -192,13 +181,12 @@ export function createPushGroupLayer(
             if (ownEdit?.retracted === true) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
-            // The live AI UI is not a message (T-1400): skip the card and an
-            // edit of one, so an AI progress card's text is never previewed.
+            // The live AI UI is not a message: skip the card and edits of one.
             const liveIds = new Set<string>();
             if (editTarget !== null) {
               const targetEdit = overlay.get(editTarget);
-              // A retracted target hides its edits too, and an edit from
-              // another sender has no accepted entry here.
+              // A retracted target hides its edits too; another sender's edit has no
+              // accepted entry.
               if (targetEdit === undefined || targetEdit.retracted) {
                 throw new HttpError(404, 'not_found', 'Notification not found');
               }
@@ -230,12 +218,9 @@ export function createPushGroupLayer(
             if (verdict.status !== 'ok') {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
-            // The preview proves this device received the message, so mark it
-            // delivered. Off the HTTP path and error-swallowed, so the answer
-            // never waits on the mark and never fails with it. Only an `ok`
-            // verdict marks: an unknown id, a message in a chat the caller may
-            // not see, and a muted or hidden chat all answer 404 above and mark
-            // nothing; the test wake marks nothing either.
+            // The preview proves this device received the message, so mark it delivered;
+            // off the HTTP path and error-swallowed. Only an `ok` verdict marks: unknown,
+            // invisible, muted and test wakes mark nothing.
             if (verdict.message.chatJid !== TEST_WAKE_CHAT_ID) {
               forkPreviewDelivered(deps, {
                 chatJid: verdict.message.chatJid,
@@ -252,9 +237,7 @@ export function createPushGroupLayer(
             if (payload === undefined) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
-            // T-1897: the chat's unread count, which the phone shows as the
-            // badge of that chat's one notification. A failed read only omits
-            // the field: the preview itself must still answer.
+            // The chat's unread count for the badge; a failed read only omits the field.
             const scope: UnreadScope =
               verdict.message.chatKind === 'dm'
                 ? { kind: 'dm', peer: verdict.message.chatJid.toLowerCase() }
@@ -275,10 +258,9 @@ export function createPushGroupLayer(
               title: payload.title,
               body: payload.body,
               chatId: verdict.message.chatJid,
-              // T-1893: the archive id, so a notification's Mark as read can
-              // store this row's mark.
+              // The archive id, so Mark as read can store this row's mark.
               archiveId: String(row.timestamp),
-              // T-1897: absent when the count is 0 or the read failed.
+              // Absent when the count is 0 or the read failed.
               ...(unread !== undefined && unread >= 1 ? { unread } : {}),
             };
           }),

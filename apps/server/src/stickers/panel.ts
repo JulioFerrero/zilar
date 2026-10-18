@@ -6,9 +6,8 @@ import { HttpError } from '../errors';
 import { mapStickerError, type StickersServiceDeps } from './schemas';
 import { requireVisiblePack } from './storage';
 
-// At most `STICKER_PANEL_MAX` (200) packs per panel: the reorder endpoint
-// validates an exact permutation capped at the same number, so adds must never
-// push past it.
+// At most 200 packs per panel; the reorder endpoint validates an exact
+// permutation capped at the same number, so adds cannot push past it.
 
 export async function addPanelPack(
   deps: StickersServiceDeps,
@@ -91,11 +90,9 @@ const reorderPanelBodySchema = Schema.Struct({
 export type ReorderPanelBody = typeof reorderPanelBodySchema.Type;
 export { reorderPanelBodySchema };
 
-/**
- * Reorders the caller's panel in one transaction: the id list must be
- * exactly the caller's current panel (a permutation), so a concurrent
- * add/remove fails loudly instead of being silently overwritten.
- */
+/** Reorders the caller's panel in one transaction: the id list must be
+ * exactly the current panel, so a concurrent add/remove fails loudly
+ * instead of being overwritten. */
 export async function reorderPanelPacks(
   deps: StickersServiceDeps,
   userId: string,

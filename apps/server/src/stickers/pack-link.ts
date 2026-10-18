@@ -1,9 +1,7 @@
-// The sticker pack link (T-1495): `GET /sticker-packs/:id`. Any signed-in user
-// with the id may open a pack, private or shared, so its link can be shared and
-// the pack added to a panel by id. Imported packs stay personal to their
-// importer: for anyone else the route answers the same 404 as an unknown id.
-// The detail adds the owner's handle and whether the pack is in the caller's
-// panel.
+// The sticker pack link: any signed-in user with the id may open a pack,
+// private or shared, so its link can be shared and the pack added by id.
+// Imported packs stay personal: for anyone else the route answers the same
+// 404 as an unknown id.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';

@@ -7,8 +7,8 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { InviteLogger } from './schemas';
 
-// Every member must already be a contact of the owner. The error is
-// deliberately vague: it never says who is not a contact.
+// Every member must already be a contact of the owner; the error
+// deliberately never says who is not.
 export async function assertContacts(
   db: ServerDatabase,
   ownerId: string,
@@ -31,8 +31,8 @@ export async function assertContacts(
   }
 }
 
-// A XEP-0249 direct invitation is sent after the member can already join, so
-// it is best effort: a failure is logged and never fails the request.
+// A XEP-0249 direct invitation is sent after the member can join, so it is
+// best effort: a failure is logged, never thrown.
 export async function inviteNewMembers(
   adminClient: EjabberdAdminClient,
   roomLocalpart: string,

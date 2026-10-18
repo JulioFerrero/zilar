@@ -1,10 +1,6 @@
-// T-1257 (MP-F8 step 4): the push preview proves the message reached the
-// device, so the preview handler forks the delivered mark off the HTTP path.
-// The chat id is the same `bare` PUT /chats/:jid/delivered stores: the DM
-// author's bare JID (`candidates.ts:133`, the peer in the recipient's terms)
-// or the room JID (`candidates.ts:101` for a group). `deliveryScopeForChat`
-// (`../chats/deliveries.ts:258-274`) reads that value the same way the route
-// does — a DM author's localpart with the caller as bare peer, or the room.
+// The push preview proves the message reached the device, so the handler
+// forks the delivered mark off the HTTP path. The chat id is the same `bare`
+// PUT /chats/:jid/delivered stores: the DM author's bare JID or the room JID.
 
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
@@ -24,12 +20,9 @@ export interface PreviewDeliveredDeps {
   logger: Logger;
 }
 
-/**
- * Stores the caller's delivered mark for the previewed message, off the HTTP
- * path: `Effect.runFork` so the preview answer never waits on the mark, and
- * every failure is swallowed with a warn of ids only, so it never fails the
- * preview either. The message id is the archive origin id.
- */
+/** Stores the caller's delivered mark off the HTTP path with
+ * `Effect.runFork`, so the preview never waits; every failure is swallowed
+ * with a warn of ids only. The message id is the archive origin id. */
 export function forkPreviewDelivered(
   deps: PreviewDeliveredDeps,
   input: { chatJid: string; userId: string; messageId: string },

@@ -39,7 +39,6 @@ export async function uniqueRoomLocalpart(
   throw xmppUnavailable();
 }
 
-// Removes a half-created topic: its member rows first, then the topic row.
 export async function deleteTopicRows(db: ServerDatabase, topicId: string): Promise<void> {
   await runSql(
     db,
@@ -57,11 +56,11 @@ export async function listTopicMembers(
   userId: string,
 ): Promise<Array<{ userId: string; name: string }>> {
   const topic = await requireVisibleTopic(deps.db, topicId, userId);
-  // T-1757: only General lists the whole group; every other topic lists its
-  // `topic_members` plus the holders of its roles.
+  // Only General lists the whole group; every other topic lists its
+  // `topic_members` plus role holders.
   if (topic.isGeneral) {
-    // T-1992: a channel shows its audience to owners and admins only, the same
-    // rule as the group routes (`groups/queries.ts`, `listMembersForViewer`).
+    // A channel shows its audience to owners and admins only, like the group
+    // routes.
     const [group, membership] = await Promise.all([
       runSql(
         deps.db,
@@ -91,8 +90,7 @@ export async function listTopicMembers(
       (a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId),
     );
   }
-  // T-0116: direct members plus the holders of the topic's roles (still
-  // group members). Everyone holding the topic can see the full list: role
+  // Direct members plus the topic's role holders (still group members); role
   // membership is not secret.
   const [direct, holders] = await Promise.all([
     runSql(
@@ -120,8 +118,8 @@ export async function listTopicMembers(
         SELECT id AS user_id, name FROM "user" WHERE id IN ${sql.in([...ids])}`;
     }),
   );
-  // `topic_members` rows for users who left the group no longer count (the
-  // room sync drops them too); the join above only returns live users.
+  // `topic_members` rows for users who left no longer count; the join only
+  // returns live users.
   const memberRows = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -137,12 +135,10 @@ export async function listTopicMembers(
 }
 
 export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Promise<number> {
-  // T-1757: only General is "the whole group — its people and its AIs" (Julio's
-  // rule, 2026-10-16). Every other topic counts its `topic_members` plus role
-  // holders and its `topic_ais` rows.
+  // Only General is the whole group, its people and AIs; every other topic
+  // counts `topic_members` plus role holders and `topic_ais`.
   if (topic.isGeneral) {
-    // T-1992: a channel's audience (everyone but owners and admins) stays
-    // hidden, like the group members route.
+    // A channel's audience stays hidden, like the group members route.
     const [row] = await runSql(
       db,
       Effect.gen(function* () {
@@ -158,9 +154,8 @@ export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Pr
     );
     return row?.total ?? 0;
   }
-  // T-0116: `topic_members` plus the holders of its roles (still group
-  // members). A holder who is also a direct member counts once.
-  // T-1757: every non-General topic adds the AIs it lists in `topic_ais`.
+  // `topic_members` plus role holders (still group members); a direct member
+  // counts once, and every non-General topic adds its `topic_ais`.
   const [direct, holders, ais] = await Promise.all([
     runSql(
       db,

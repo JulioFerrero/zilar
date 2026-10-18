@@ -7,10 +7,8 @@ import {
   type PushNotification,
 } from './protocol';
 
-// Parses the IQ ejabberd's mod_push routes to the component. Shape from the
-// XEP-0357 example 12/13 and mod_push.erl `notify/7` (from = bare server
-// JID, `<pubsub><publish node=...><item><notification/></item></publish>`
-// plus optional `<publish-options>` carrying the enable-time secret).
+// Parses the IQ mod_push routes to the component; shape from XEP-0357
+// example 12/13 and mod_push.erl `notify/7`.
 export function parsePushIq(stanza: PushXmppElement): PushNotification | undefined {
   if (!stanza.is('iq') || stanza.attrs['type'] !== 'set') {
     return undefined;
@@ -41,11 +39,10 @@ export function parsePushIq(stanza: PushXmppElement): PushNotification | undefin
     return undefined;
   }
 
-  // Note: `<publish-options>` (the enable-time secret echo) is deliberately
-  // not parsed. The publish arrives over our own authenticated component
-  // connection, so the sender is already trusted; nothing downstream reads
-  // the secret, and logging it would put a credential-adjacent value in
-  // the log path.
+  // `<publish-options>` (the enable-time secret echo) is deliberately not
+  // parsed: the publish arrives over our own authenticated component
+  // connection, so the sender is trusted, and logging it would put a
+  // credential-adjacent value in the log path.
   const result: PushNotification = {
     node,
     from,

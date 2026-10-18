@@ -30,14 +30,9 @@ export {
   syncGroupTopicRooms,
 } from './topic-rooms';
 
-// Adds an AI to a group: the actor must own or administer the group and own
-// the AI (a foreign AI answers the same 404 as a missing one, so AI ids
-// cannot be probed). Adding an AI that is already there is a no-op returning
-// the detail. People and AIs share MAX_GROUP_MEMBERS.
-// T-0124: in a channel the AI joins with the admin-owned-AI voice rule
-// (`applyChannelAiVoice` outcome: affiliation `admin` while its owner is a
-// channel owner/admin, else `member`), so an admin-owned AI can post from
-// the moment it is added instead of waiting for an unrelated re-sync.
+// A foreign AI answers the same 404 as a missing one, so AI ids cannot be
+// probed; people and AIs share MAX_GROUP_MEMBERS. In a channel an
+// admin-owned AI joins with voice (`admin`), anything else as `member`.
 export async function addGroupAi(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -71,9 +66,8 @@ export async function addGroupAi(
     }
     return detail;
   }
-  // A stopped (kill switch) or still-provisioning AI cannot join a room: it
-  // would not answer, and a stale membership would surprise the room. An AI
-  // that is already a member is left alone by the branch above.
+  // A stopped (kill switch) or still-provisioning AI cannot join a room; an
+  // AI already in it is left alone by the branch above.
   if (ai.status !== 'active') {
     throw new HttpError(409, 'ai_not_active', 'Resume the AI before adding it to a group');
   }
@@ -100,14 +94,13 @@ export async function addGroupAi(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
-            // T-1769: take the per-group join lock before counting, so two
-            // concurrent adds cannot each pass the pre-check above and exceed
-            // the cap. The locked count below is the authority.
+            // Take the per-group join lock before counting, so two concurrent adds
+            // cannot each pass the pre-check and exceed the cap; the locked count is
+            // the authority.
             yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-join:' + input.groupId}))`;
-            // T-1769: recheck inside the lock, mirroring `addGroupMembers`. A
-            // racing add of the same AI has already written the row, so this
-            // call is a logical no-op: it must answer 200 instead of counting
-            // the AI twice and failing 400 at a full group.
+            // Recheck inside the lock: a racing add of the same AI already wrote the
+            // row, so answer 200 instead of counting it twice and failing 400 at a
+            // full group.
             const [lockedExisting] = yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
               WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
             if (lockedExisting) {
@@ -133,10 +126,8 @@ export async function addGroupAi(
               try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member'),
               catch: (error) => error,
             });
-            // The lock above serializes concurrent adds, so the loser sees the
-            // winner's row in the recheck and returns before this insert; the
-            // `ON CONFLICT` keeps the add idempotent if that recheck ever races
-            // the insert inside the same lock.
+            // The lock serializes adds, so the loser sees the winner's row in the
+            // recheck; `ON CONFLICT` keeps the insert idempotent.
             yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
               VALUES (${input.groupId}, ${input.aiId}, ${input.actorId})
               ON CONFLICT (group_id, ai_id) DO NOTHING`;
@@ -147,12 +138,8 @@ export async function addGroupAi(
   } catch (error) {
     throw mapXmppError(error);
   }
-  // T-0124: a fresh AI row in a channel feed must carry the voice rule at
-  // once (the transaction above always writes `member`, which is voiceless
-  // for everyone in a channel). `syncChannelVoice` covers people only, so
-  // the feed room re-syncs here: an admin-owned AI is lifted to `admin`,
-  // anything else stays `member`. Best effort after the commit, like the
-  // member flows — a failure is logged, never thrown, and the next sync
+  // A fresh AI row is written as `member`, which is voiceless in a channel,
+  // so the feed room re-syncs after the commit; best effort, the next sync
   // heals it.
   if (group.kind === 'channel') {
     try {
@@ -180,16 +167,16 @@ export async function addGroupAi(
   return detail;
 }
 
-// Removes an AI from a group: allowed for the AI's owner, or a group owner or
-// admin. The AI owner need not still be a group member.
+// Removes an AI: its owner or a group owner/admin; the AI owner need not
+// still be a group member.
 export async function removeGroupAi(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
   input: RemoveGroupAiInput,
 ): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
-  // Authorize before looking at the group's AIs, so someone who may not
-  // remove the AI can't learn whether it is in the group (404 vs 403).
+  // Authorize before reading the group's AIs, so a caller who may not remove
+  // the AI cannot learn whether it is in the group (404 vs 403).
   const [ai] = await runSql(
     db,
     Effect.gen(function* () {
@@ -221,8 +208,8 @@ export async function removeGroupAi(
     throw new HttpError(404, 'not_found', 'That AI is not in this group');
   }
 
-  // T-1455: the topic rooms read inside the transaction, kept after the commit
-  // so each room's own follow cache can be dropped once the AI is gone.
+  // Topic rooms read inside the transaction, so each room's follow cache can
+  // be dropped after the commit.
   let topicRows: ReadonlyArray<{ id: string; roomLocalpart: string }> = [];
   try {
     await runSql(
@@ -237,10 +224,8 @@ export async function removeGroupAi(
             });
             yield* sql`DELETE FROM group_ais
               WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId}`;
-            // T-0109: removing the AI from the group removes it from every topic
-            // of that group. The rows are deleted in the same transaction as the
-            // rules/tools cleanup below; every non-General topic room is re-synced
-            // after the commit (the gateway leaves through the same event).
+            // Removing the AI deletes its rows from every topic of the group in the
+            // same transaction; each non-General topic room re-syncs after the commit.
             topicRows = yield* sql<{ id: string; roomLocalpart: string }>`SELECT id,
               room_localpart FROM topics WHERE group_id = ${input.groupId}`;
             const topicIds = topicRows.map((row) => row.id);
@@ -248,38 +233,28 @@ export async function removeGroupAi(
               yield* sql`DELETE FROM topic_ais
                 WHERE topic_id IN ${sql.in(topicIds)} AND ai_id = ${input.aiId}`;
             }
-            // T-1455/T-1529: the removed AI stops owning or following any topic
-            // of the group (General included); `NULLIF` clears each matching one.
+            // The removed AI stops owning or following any topic of the group, General included.
             yield* sql`UPDATE topics SET owner_ai_id = NULLIF(owner_ai_id, ${input.aiId}), follower_ai_id = NULLIF(follower_ai_id, ${input.aiId}), updated_at = now()
               WHERE group_id = ${input.groupId} AND (owner_ai_id = ${input.aiId} OR follower_ai_id = ${input.aiId})`;
-            // T-0099: an "always" rule tied to this (AI, group) pair must
-            // die with the membership. Personal rules and other-group rules
-            // are unaffected. `now` is the same timestamp the admin client
-            // saw for the affiliation change so audit rows line up.
+            // An `always` rule tied to this (AI, group) pair dies with the membership;
+            // personal and other-group rules are unaffected. `now` matches the
+            // timestamp the admin client saw so audit rows line up.
             yield* revokeActiveRulesForAiInGroupEffect({
               aiId: input.aiId,
               groupId: input.groupId,
               actorId: input.actorId,
               now: new Date(),
             });
-            // T-0103: the AI's tools made in this group die with the
-            // membership, like the rules above. Personal-chat tools and
-            // other-group tools are unaffected.
             yield* deleteToolsForAiInGroupEffect({
               aiId: input.aiId,
               groupId: input.groupId,
               now: new Date(),
             });
-            // T-0104: the AI's routines in this group die with the membership
-            // too, next to the tools above.
             yield* deleteRoutinesForAiInGroupEffect({
               aiId: input.aiId,
               groupId: input.groupId,
               now: new Date(),
             });
-            // T-0442: the AI's memory of the group room and every topic room dies
-            // with the membership, in the same transaction (plan §3.5). Its DM
-            // memory and rows of other AIs are unaffected.
             yield* deleteRoomMemoryEffect(input.aiId, [
               ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
             ]);
@@ -291,23 +266,16 @@ export async function removeGroupAi(
     throw mapXmppError(error);
   }
 
-  // T-1991: the AI's waiting actions in the group die with the membership,
-  // so a later approval cannot run them in a room it has left.
   await cancelPendingActionsForAi(
     { db, logger: input.logger },
     { aiId: input.aiId, groupId: input.groupId },
     new Date(),
   );
 
-  // T-1455: every room whose owner AI was just removed drops its cached owner,
-  // so a plain message cannot still wake the ex-owner within the cache window.
   for (const topic of topicRows) {
     invalidateTopicFollow(topic.roomLocalpart);
   }
 
-  // Every topic room of the group where the AI had a row loses it. Best
-  // effort after the commit, like the member flows: a failure is logged with
-  // the group id (never a topic name), never thrown.
   await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   emitGroupAi({ type: 'ai-removed', groupId: input.groupId, aiId: input.aiId });
   const detail = await getGroupDetail(db, input.groupId);

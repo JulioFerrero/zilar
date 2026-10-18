@@ -1,15 +1,11 @@
 import { Exit, Schema } from 'effect';
 import type { FcmFetch, FcmTokenProvider } from './fcm-token';
 
-// The FCM HTTP v1 sender (native-push-plan.md §2.4): a data-only,
-// high-priority message carrying ids only, so a headless background task can
-// run and FCM never draws a notification the app cannot enrich.
-
 const FCM_HOST = 'https://fcm.googleapis.com';
 
-// The chat kind a wake carries, so the phone posts each notification on the
-// matching Android notification channel (T-1302): "Direct messages", "Groups"
-// or "Channels". Mirrors the mobile `PushChatKind`.
+// The chat kind a wake carries, so the phone picks the matching Android
+// channel: Direct messages, Groups or Channels. Mirrors the mobile
+// `PushChatKind`.
 export type PushChatKind = 'dm' | 'group' | 'channel';
 
 export interface FcmWakeData {
@@ -30,8 +26,8 @@ export interface FcmSenderInput {
   fetch?: FcmFetch;
 }
 
-// Carries the HTTP status and the FCM error code only. The registration token,
-// the access token and the request body are never put on the error.
+// Carries the HTTP status and the FCM error code only; the registration
+// token, access token and request body are never on the error.
 export class FcmSendError extends Error {
   readonly status: number;
   readonly code: string | null;
@@ -45,8 +41,8 @@ export class FcmSendError extends Error {
 }
 
 // Exported so the test can assert the exact wire body: data only, ids only,
-// `priority: "high"`, `ttl: "3600s"`, and no `notification` block. A wake with
-// no message id (the archive row carried none) leaves `messageId` out entirely.
+// `priority: "high"`, `ttl: "3600s"`, no `notification` block; `messageId`
+// is omitted when absent.
 export function fcmMessageBody(token: string, data: FcmWakeData) {
   const messageData: {
     chatId: string;
@@ -83,8 +79,8 @@ const errorResponseSchema = Schema.Struct({
   }),
 });
 
-// The FCM error code lives in `error.details[].errorCode`; fall back to
-// `error.status`. Only these code strings are read — never the message text.
+// The FCM error code lives in `error.details[].errorCode`, falling back to
+// `error.status`; only these code strings are read, never the message text.
 async function readErrorCode(response: Response): Promise<string | null> {
   const raw: unknown = await response.json().catch(() => null);
   const exit = Schema.decodeUnknownExit(errorResponseSchema)(raw);
@@ -102,8 +98,8 @@ async function readErrorCode(response: Response): Promise<string | null> {
   return status ?? null;
 }
 
-// `UNREGISTERED` (HTTP 404) means the token is dead: the caller drops the
-// device. Every other non-2xx is a send failure that keeps the device.
+// `UNREGISTERED` (HTTP 404) means the token is dead and the caller drops
+// the device; every other non-2xx is a send failure that keeps it.
 export function createFcmSender(input: FcmSenderInput): FcmSender {
   const fetchImpl: FcmFetch = input.fetch ?? ((url, init) => fetch(url, init));
   return {

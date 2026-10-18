@@ -59,10 +59,9 @@ export async function assertOwner(
     }
     return { ownerUserId: owner.id, ownerAiId: null };
   }
-  // T-1448: an AI owner must be one of the topic's AIs, so the owner follows
-  // the topic it owns. For a normal topic that is `topic_ais`; the General
-  // topic has no `topic_ais` rows, so its AIs are the group's `group_ais`. At
-  // create there is no topic yet, so an AI owner is refused the same way.
+  // An AI owner must be one of the topic's AIs, so the owner follows the
+  // topic it owns. For General that is the group's `group_ais`; at create
+  // there is no topic, so an AI owner is refused.
   if (topicId === undefined) {
     throw new HttpError(400, 'invalid_request', 'Add the AI to the topic first');
   }
@@ -123,9 +122,8 @@ export async function assertMembersAreGroupMembers(
   }
 }
 
-// The tail shared by the topic adds: reload the row, sync the room (a non-
-// HTTP failure becomes the fixed 503), then audit with the caller's action and
-// detail. Returns the reloaded row for the caller's event and response.
+// The tail shared by the topic adds: reload, sync the room (a non-HTTP
+// failure becomes 503), then audit. Returns the reloaded row.
 export async function finishTopicAdd(
   deps: TopicServiceDeps,
   topicId: string,
@@ -161,9 +159,9 @@ export async function addTopicMember(
   }
   const membership = await getGroupMembership(deps.db, topic.groupId, targetUserId);
   if (!membership) {
-    // T-1769: the one-step add. A target outside the group joins it first;
-    // `addGroupMembers` applies the group rule (owner or admin) and the contact
-    // check. A plain member who may manage the topic cannot add to the group.
+    // The one-step add: a target outside the group joins it first, with
+    // `addGroupMembers` applying the group rule and contact check; a plain
+    // member who may manage the topic cannot add to the group.
     await addGroupMembers(deps.db, deps.adminClient, {
       groupId: topic.groupId,
       actorId,
@@ -187,9 +185,9 @@ export async function addTopicMember(
   });
 }
 
-// T-1760: a group member joins a public topic themselves. A private topic
-// already contains anyone who can see it and General holds everyone, so both
-// are no-ops; only a real public insert syncs the room and audits.
+// A group member joins a public topic themselves; a private topic already
+// contains anyone who can see it and General holds everyone, so both are
+// no-ops.
 export async function joinTopic(
   deps: TopicServiceDeps,
   topicId: string,
@@ -243,8 +241,8 @@ export async function removeTopicMember(
     throw new HttpError(400, 'is_general', 'Leaving General is leaving the group');
   }
   const isSelf = actorId === targetUserId;
-  // T-1760: on a public topic only the person themselves can leave; a manager
-  // cannot remove anyone. This replaces the old `not_private` guard.
+  // On a public topic only the person themselves can leave; a manager cannot
+  // remove anyone.
   if (topic.visibility !== 'private' && !isSelf) {
     throw new HttpError(403, 'forbidden', 'People leave a public topic themselves');
   }
@@ -289,15 +287,14 @@ export async function removeTopicMember(
         SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
     }),
   );
-  // T-0116: the topic drains only when the direct rows AND the role holders
-  // are gone — a holder the role still grants access to keeps it alive.
+  // The topic drains only when direct rows and role holders are gone.
   const holders =
     topic.visibility === 'private' && remaining.length === 0
       ? await topicRoleHolderIds(deps.db, topic.id, topic.groupId)
       : new Set<string>();
   let updated = (await getTopic(deps.db, topic.id)) ?? topic;
-  // T-1760: only a private topic archives when it drains; a public topic with
-  // no members stays live and joinable.
+  // Only a private topic archives when it drains; a public one stays live and
+  // joinable.
   if (topic.visibility === 'private' && remaining.length === 0 && holders.size === 0) {
     await runSql(
       deps.db,
@@ -309,12 +306,12 @@ export async function removeTopicMember(
           WHERE id = ${topic.id}`;
       }),
     );
-    // T-1448: archiving drops the room's follow, so a plain message within the
-    // 15 s cache window cannot still wake the ex-owner AI.
+    // Archiving drops the room's follow, so a plain message within the 15 s
+    // cache window cannot wake the ex-owner.
     invalidateTopicFollow(topic.roomLocalpart);
     updated = (await getTopic(deps.db, topic.id)) ?? topic;
-    // The room still holds the just-removed members: desired members is now
-    // empty, so the sync below removes everyone from the room.
+    // The room still holds the just-removed members; an empty desired set means
+    // the sync removes everyone.
     try {
       await syncTopicRoom(deps, updated);
     } catch (error) {
@@ -331,9 +328,8 @@ export async function removeTopicMember(
   } catch (error) {
     throw error instanceof HttpError ? error : xmppUnavailable();
   }
-  // The removed user may own AIs in this topic: any AI whose owner can no
-  // longer see it drops out of the room (rows stay, so re-adding the owner
-  // brings them back). Live gateway sessions leave on the event below.
+  // An AI whose owner can no longer see the topic drops out of the room (rows
+  // stay); live sessions leave on the event.
   await emitDroppedTopicAis(deps, updated);
   if (deps.audit) {
     await deps.audit.record(

@@ -3,18 +3,15 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-// T-1762/T-1802: Julio's rule (2026-10-16, docs/design/mockups/topic-people/README.md
-// "Round 2") is that a public topic includes nobody until people join, while
-// General stays everyone. The reads follow that rule (T-1757) and the Join UI
-// has shipped (web W9 in T-1797, phone W10 in T-1798), so the writes follow it
-// too: a new public topic starts with only its creator, and a new group member
-// joins no public topic until they join one. Existing topics keep their
-// members, since their rows were backfilled.
+// A public topic includes nobody until people join, while General stays
+// everyone; the reads follow that rule and the writes do too. A new public
+// topic starts with only its creator, and a group member joins no public
+// topic until they join one. Existing topics keep their backfilled
+// members.
 export const PUBLIC_TOPICS_START_EMPTY = true;
 
-// The members a new public topic starts with: only its creator once the Join UI
-// ships, otherwise every current group member of the group (the creator is one
-// of them) so a fresh topic still holds the whole group.
+// The members a new public topic starts with: only its creator, otherwise
+// every current group member (the creator included).
 export async function initialPublicMemberIds(
   db: ServerDatabase,
   groupId: string,
@@ -36,11 +33,9 @@ export async function initialPublicMemberIds(
   return ids.includes(creatorId) ? ids : [creatorId, ...ids];
 }
 
-// Adds the newcomers to every existing public non-General topic of the group.
-// A no-op while `PUBLIC_TOPICS_START_EMPTY` is set: the Join UI is what lets a
-// person join a topic, so until it ships nobody should land in one by joining
-// the group. Must run after the `group_members` insert commits and before the
-// topic room sync, so the sync reads the new `topic_members` rows.
+// Adds newcomers to every existing public non-General topic of the group.
+// A no-op while `PUBLIC_TOPICS_START_EMPTY` is set. Must run after the
+// membership insert commits and before the room sync reads the rows.
 export async function addToPublicTopics(
   db: ServerDatabase,
   groupId: string,

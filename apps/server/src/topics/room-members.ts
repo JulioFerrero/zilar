@@ -26,38 +26,30 @@ function readGroupMembers(
   );
 }
 
-// T-2002: people never hold the MUC `owner` or `admin` affiliation, because a
-// raw XMPP client could use it to change the room config or grant membership.
-// The server does every membership change through the admin API, so people are
-// plain `member`s. The one exception is a channel's General room (its feed):
-// the room is moderated, and ejabberd persists voice only through an `admin`
-// or `owner` affiliation, so the channel's owner and admins hold `admin` there
-// and nowhere else. The reconcile re-asserts the room's membership rules.
+// People never hold the MUC `owner` or `admin` affiliation, because a raw
+// XMPP client could use it to change room config or grant membership; the
+// server changes membership through the admin API, so people are plain
+// `member`s. The one exception is a channel's General feed, which is
+// moderated and where ejabberd persists voice only through `admin`/`owner`;
+// the channel owner and admins hold `admin` there and nowhere else.
 export function roomAffiliationFor(role: string, isChannelFeed: boolean): RoomAffiliation {
   return isChannelFeed && (role === 'owner' || role === 'admin') ? 'admin' : 'member';
 }
 
 // Who belongs in the topic's room: every group member for General,
-// `topic_members` plus the holders of its roles for every other topic, plus
-// the AI memberships — every `group_ais` AI for General, the topic's
-// `topic_ais` rows otherwise.
-// The return maps each JID to the affiliation it should hold (see
-// `roomAffiliationFor`): people are `member`s, with the channel feed's owner
-// and admins as the voice exception. AIs are plain members. An AI that is not
-// a member of a non-General topic is never included, even when it is in the
-// group: the room itself enforces it.
-// T-0124: a channel's General topic (its feed) keeps the voice mapping —
-// owner and admins keep voice, subscribers stay `member` (visitors,
-// voiceless) — so a later join/leave re-sync never demotes an admin back to a
-// subscriber.
+// `topic_members` plus role holders otherwise, plus AIs (`group_ais` for
+// General, `topic_ais` otherwise). The return maps each JID to the
+// affiliation it should hold: people are `member`s except the channel
+// feed's owner/admins, AIs plain members. An AI not in a non-General topic
+// is never included even when it is in the group; the room enforces it.
 export async function desiredMembers(
   db: ServerDatabase,
   topic: TopicRow,
   domain: string,
 ): Promise<Map<string, RoomAffiliation>> {
   const wanted = new Map<string, RoomAffiliation>();
-  // T-1757: only General is the whole group; every other topic follows the
-  // `topic_members` plus role holders branch below.
+  // Only General is the whole group; every other topic follows the
+  // `topic_members` plus role holders branch.
   if (topic.isGeneral) {
     const [group] = await runSql(
       db,
@@ -76,12 +68,10 @@ export async function desiredMembers(
       );
     }
     await addTopicAiMembers(db, topic, wanted);
-    // T-0124: an AI posts in the feed only while its owner is a channel
-    // admin (the add flow already requires the actor to own the AI and
-    // administer the channel). Admin-owned AIs hold affiliation `admin`
-    // (voice); any other AI stays a voiceless `member`. Evaluated live, so
-    // demoting the owner drops the AI's voice at the next sync without
-    // deleting the row.
+    // An AI posts in the feed only while its owner is a channel admin;
+    // admin-owned AIs hold `admin` (voice), any other AI stays a voiceless
+    // `member`. Evaluated live, so demoting the owner drops the voice at the
+    // next sync without deleting the row.
     if (isChannelFeed) {
       await applyChannelAiVoice(db, topic, wanted);
     }
@@ -97,12 +87,12 @@ export async function desiredMembers(
         WHERE topic_id = ${topic.id}`;
     }),
   );
-  // T-0116: holders of the topic's roles join too (still group members).
-  // A holder who is also a direct member keeps their single affiliation.
+  // Holders of the topic's roles join too (still group members); a holder
+  // who is also a direct member keeps one affiliation.
   const holderIds = await topicRoleHolderIds(db, topic.id, topic.groupId);
   for (const row of memberRows) {
     // A stale `topic_members` row for a user who left the group no longer
-    // counts: public sync would drop them, private sync must too.
+    // counts.
     if (!byId.has(row.userId)) {
       continue;
     }
@@ -119,16 +109,11 @@ export async function desiredMembers(
   return wanted;
 }
 
-// AI affiliations for one topic room: every group AI for General, the
-// topic's allowed `topic_ais` rows otherwise (see `allowedTopicAiIds`: for a
-// non-General topic an AI counts only while its owner is a topic member, so the
-// sync removes the AI from the room once its owner is not a member —
-// without deleting the row, so adding the owner back brings it back). For
-// General the same owner rule applies: the AI counts only while its owner is
-// still a group member (T-1990), so a removed member's AI leaves the room even
-// if a cleanup write failed. Only active AIs join a room; a stale row for a
-// stopped or disabled AI no longer counts. AIs invited into an archived topic
-// are dropped too: archiving keeps the rows but the gateway leaves the room.
+// AI affiliations for one room: `group_ais` for General, allowed
+// `topic_ais` otherwise. An AI counts only while its owner is a topic member
+// and still in the group, so a removed member's AI leaves even if a cleanup
+// write failed. Only active AIs join; an AI in an archived topic is
+// dropped.
 async function addTopicAiMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -177,12 +162,9 @@ async function addTopicAiMembers(
   }
 }
 
-// T-0124: voice for AIs in a channel feed. Every active group AI whose
-// owner is currently a channel owner/admin holds affiliation `admin`
-// (voice, so the gateway's post lands); any other AI keeps `member`
-// (a visitor: reads, cannot post). The `group_ais` rows never change —
-// demoting the owner drops the voice at the next sync, re-promoting
-// brings it back.
+// Voice for AIs in a channel feed: an active AI whose owner is currently a
+// channel owner/admin holds `admin`, any other `member` (a visitor). The
+// rows never change; demoting the owner drops voice at the next sync.
 async function applyChannelAiVoice(
   db: ServerDatabase,
   topic: TopicRow,

@@ -1,6 +1,5 @@
-// T-1834: General's AIs. A General topic has no `topic_ais` rows: its AI
-// membership is the group's `group_ais`, so the topic list reads them here.
-// The shape, order and pictures match `listTopicAis` in `./views`.
+// General has no `topic_ais` rows: its AIs are the group's `group_ais`, so
+// the list reads them here; shape and order match `listTopicAis`.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';

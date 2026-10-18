@@ -1,9 +1,8 @@
 import { Effect } from 'effect';
 
 // In-process notifier so the agent gateway learns about group AI membership
-// changes without polling. The gateway also reconciles periodically as a
-// safety net, so a missed event only delays a room join, never loses it.
-// Mirrors the AI lifecycle notifier in ais/service.ts.
+// changes without polling; it also reconciles periodically, so a missed
+// event only delays a room join.
 export type GroupAiEvent =
   | { type: 'ai-added'; groupId: string; aiId: string }
   | { type: 'ai-removed'; groupId: string; aiId: string };
@@ -17,10 +16,9 @@ export function onGroupAi(listener: (event: GroupAiEvent) => void): () => void {
   };
 }
 
-// Calls each listener in turn, synchronously. A listener that throws is
-// dropped for this emit and the next one still runs. The Set is walked live
-// (sequential forEach), so a listener that unsubscribes mid-emit is simply
-// not visited again.
+// Calls each listener synchronously; a throw is dropped for this emit and
+// the next still runs. The Set is walked live, so a listener that
+// unsubscribes mid-emit is not visited again.
 function notifyListeners<T>(listeners: Set<(event: T) => void>, event: T): void {
   Effect.runSync(
     Effect.forEach(listeners, (listener) => Effect.try(() => listener(event)).pipe(Effect.ignore), {
@@ -35,10 +33,8 @@ export function emitGroupAi(event: GroupAiEvent): void {
   notifyListeners(groupAiListeners, event);
 }
 
-// Sibling notifier for per-topic AI membership (T-0109). The gateway treats
-// it exactly like a group event: a live session re-syncs its rooms right
-// away, so a newly added or removed membership shows up without waiting for
-// the next full reconcile. Only topic ids travel on the event.
+// Sibling notifier for per-topic AI membership; the gateway treats it like a
+// group event, so a live session re-syncs its rooms. Only topic ids travel.
 export type TopicAiEvent =
   | { type: 'ai-added'; topicId: string; aiId: string }
   | { type: 'ai-removed'; topicId: string; aiId: string };

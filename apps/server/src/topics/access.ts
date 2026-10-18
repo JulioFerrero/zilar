@@ -1,13 +1,3 @@
-// Topic visibility and access. Every query runs on the `effect/sql` client
-// registered for this database (see `../effect/sql`). The exported functions
-// stay `async` so routes and tests keep their shape during the transition.
-//
-// Rows keep their camelCase shapes: `transformResultNames` camelCases the
-// `topics` and `group_members` columns into `TopicRow` and the row types here.
-//
-// T-1546: the schemas and view types live in `./types`, and the AI-in-topic
-// checks in `./ai-access`; this file re-exports them all, so importers stay.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -17,8 +7,8 @@ import { HttpError } from '../errors';
 import { holdsTopicRole } from '../roles/service';
 
 const MISSING_TOPIC_MESSAGE = 'Topic not found';
-// Byte-identical for a missing topic id and for a topic the caller may not
-// see, so ids cannot be probed.
+// A missing topic id and one the caller may not see answer
+// byte-identically, so ids cannot be probed.
 export const TOPIC_NOT_FOUND = {
   status: 404 as const,
   code: 'not_found',
@@ -74,10 +64,9 @@ async function isPrivateMember(
   return row !== undefined;
 }
 
-// Whether the user may see the topic: group member, topic not archived, and
-// (for private topics) a row in `topic_members` or a role in
-// `topic_role_access` (T-0116). Never throws for a missing topic: callers
-// answer the same 404 either way.
+// Whether the user may see the topic: group member, not archived, and for
+// private topics a member row or a role. Never throws for a missing topic;
+// callers answer the same 404 either way.
 export async function canSeeTopic(
   db: ServerDatabase,
   topic: TopicRow,
@@ -99,10 +88,9 @@ export async function canSeeTopic(
   return holdsTopicRole(db, topic.id, userId);
 }
 
-// T-1757: whether the user belongs to the topic itself. Only General is the
-// whole group; every other topic owns its member list, so membership is a
-// `topic_members` row or a holder of one of its roles. Group membership is
-// checked by the caller where it matters.
+// Whether the user belongs to the topic itself: only General is the whole
+// group; every other topic owns its member list (a `topic_members` row or a
+// role holder).
 export async function isTopicMember(
   db: ServerDatabase,
   topicId: string,
@@ -129,7 +117,7 @@ export async function requireVisibleTopic(
   return topic;
 }
 
-// The ids among `privateIds` the user may see: a direct row or a role (T-0116).
+// The ids among `privateIds` the user may see: a direct row or a role.
 export async function visiblePrivateTopicIds(
   db: ServerDatabase,
   privateIds: string[],
@@ -147,7 +135,7 @@ export async function visiblePrivateTopicIds(
     }),
   );
   const visible = new Set(memberRows.map((row) => row.topicId));
-  // T-0116: topics reached through a role, not a direct row.
+  // Topics reached through a role, not a direct row.
   const roleRows = await runSql(
     db,
     Effect.gen(function* () {
@@ -163,7 +151,6 @@ export async function visiblePrivateTopicIds(
   return visible;
 }
 
-// Every non-archived topic of the group the user may see.
 export async function visibleTopics(
   db: ServerDatabase,
   groupId: string,
@@ -189,11 +176,10 @@ export async function visibleTopics(
   return active.filter((row) => row.visibility !== 'private' || privateSeen.has(row.id));
 }
 
-// Managing a topic (rename, kind, visibility, archive, members): the topic
-// creator, or a group owner/admin who can also see it. T-1990: General is the
-// group itself, so its manager rights follow the current owner/admins and
-// never the (possibly demoted) creator. Returns false for a missing topic or a
-// caller who may not see it — the routes answer 404.
+// Managing a topic: the creator, or a group owner/admin who can see it.
+// General is the group itself, so its rights follow the current
+// owner/admins, never the creator. False for a missing topic or a caller
+// who may not see it.
 export async function canManageTopic(
   db: ServerDatabase,
   topic: TopicRow,

@@ -1,11 +1,8 @@
-// T-1505 (docs/audit/ai-work-plan.md §7 step 1): the per-topic AI activity read
-// model. For a batch of topics it answers, per topic, each AI that is not idle:
-// `working` when the gateway has a turn in flight in the topic's room,
-// `waiting` when the AI has a live pending approval there or an open question,
-// `done` when its last task card there finished `done`. Working wins over
-// waiting, waiting over done. The whole batch costs three reads plus the
-// gateway call — never one read per topic. Every read is best-effort: a failure
-// reads as empty and never throws, so a chat list can always render.
+// The per-topic AI activity read model: for a batch of topics, each
+// non-idle AI as `working` (a turn in flight), `waiting` (a pending approval
+// or open question) or `done` (last card done), in that precedence. The
+// whole batch costs three reads plus the gateway call. Every read is
+// best-effort: a failure reads as empty.
 
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
@@ -21,7 +18,7 @@ export type AiActivityState = 'working' | 'waiting' | 'done';
 export interface TopicAiActivity {
   aiId: string;
   state: AiActivityState;
-  /** T-1577: the newest open question card's message id, if the AI has one. */
+  /** The newest open question card's message id, if any. */
   questionId?: string;
 }
 
@@ -30,9 +27,6 @@ export interface AiActivityDeps {
   getGateway: () => TurnWatcher | null;
 }
 
-// One topic the caller asks about: its id and group, the room JID its turns
-// carry, and whether it is the group's General topic (a room approval with a
-// NULL `topic_id` counts for it).
 export interface AiActivityTopic {
   topicId: string;
   groupId: string;
@@ -54,9 +48,6 @@ export async function topicAiActivity(
 
   const topicIds = topics.map((topic) => topic.topicId);
   const roomJids = [...new Set(topics.map((topic) => topic.roomJid))];
-  // The gateway gives a group without a General topic row `topicId: ''`, so a
-  // room approval can have `topic_id` NULL; it counts for the batch's General
-  // topic of the same group.
   const generalTopics = new Map<string, string>();
   for (const topic of topics) {
     if (topic.isGeneral) {
@@ -79,9 +70,6 @@ export async function topicAiActivity(
     }
   }
 
-  // An open question makes its AI waiting in its topic too (T-1577). The rows
-  // are newest first, so the first one seen for an AI in a topic is the card
-  // the "AIs here" row opens.
   const questionByTopic = new Map<string, Map<string, string>>();
   for (const row of questionRows) {
     const topicId =
@@ -113,9 +101,9 @@ export async function topicAiActivity(
     }
   }
 
-  // Best-effort like the reads above: a throwing gateway (or getter) must not
-  // reject the whole answer and lose the waiting/done states already gathered.
-  // A failed scan reads as nobody working.
+  // Best-effort like the reads above: a throwing gateway must not reject the
+  // answer and lose the waiting/done states; a failed scan reads as nobody
+  // working.
   const working = new Map<string, Set<string>>();
   try {
     const gateway = deps.getGateway();
@@ -153,18 +141,13 @@ export async function topicAiActivity(
   return activity;
 }
 
-// T-1514: the app's `getGateway` is typed as a `TurnStopper` (its stop-turn
-// user); the live gateway also carries the `TurnWatcher` read model. Hand the
-// gateway over as a watcher only when it has one, so a stop-only double reads
-// as nobody working instead of throwing.
 export function turnWatcherOf(gateway: TurnStopper | TurnWatcher | null): TurnWatcher | null {
   return gateway !== null && 'runningAiIds' in gateway ? gateway : null;
 }
 
-// T-1514: the topic list's AI activity. One `topicAiActivity` call covers the
-// whole batch; one read then loads the names and one the pictures of every AI
-// that appears. Best-effort like the read model: any failure leaves every
-// view's `activity` empty rather than failing the list.
+// The topic list's AI activity: one call covers the batch, then one read for
+// names and one for pictures. Any failure leaves every view's `activity`
+// empty rather than failing the list.
 export interface TopicActivityDeps {
   db: ServerDatabase;
   /** Absent when the gateway is off; read as "no AI is working". */
@@ -203,13 +186,10 @@ export async function withTopicActivity(
 
 const STATE_ORDER: Record<AiActivityState, number> = { working: 0, waiting: 1, done: 2 };
 
-// The entry the response carries: the view entry plus the open question card's
-// message id (T-1577), which an "AIs here" row opens. The shared view type in
-// `./types` keeps its shape; the richer entry travels as JSON.
 type ActivityEntry = TopicActivityEntry & { questionId?: string };
 
-// The entries of one view, named by the AI rows and ordered working, then
-// waiting, then done, then by name. An AI with no name row is left out.
+// The entries of one view, ordered working, waiting, done, then by name; an
+// AI with no name row is left out.
 function activityEntries(
   entries: TopicAiActivity[],
   names: Map<string, { name: string; jid: string }>,
@@ -237,7 +217,6 @@ function activityEntries(
   );
 }
 
-// One read for the whole batch: the name and JID of the AIs that appear in it.
 async function aiNamesById(
   db: ServerDatabase,
   aiIds: string[],
@@ -268,8 +247,6 @@ interface PendingApprovalRow {
   aiId: string;
 }
 
-// One read for the whole batch: the still-pending, unexpired approvals in the
-// batch's topics, plus the NULL-topic ones of the batch's General-topic groups.
 async function loadPendingApprovals(
   db: ServerDatabase,
   topicIds: string[],
@@ -280,10 +257,9 @@ async function loadPendingApprovals(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        // `sql.in([])` compiles to `IN ()`, which Postgres rejects, and the
-        // `catch` below would swallow that as "no approvals": a batch without a
-        // General topic would silently lose every `waiting` state. Only add the
-        // NULL-topic branch when there is a General group to attribute it to.
+        // `sql.in([])` compiles to `IN ()`, which Postgres rejects, and the catch
+        // would read it as no approvals; add the NULL-topic branch only when there
+        // is a General group to attribute it to.
         const scope: Array<Statement.Fragment> = [sql`topic_id IN ${sql.in(topicIds)}`];
         if (generalGroupIds.length > 0) {
           scope.push(sql`(topic_id IS NULL AND group_id IN ${sql.in(generalGroupIds)})`);
@@ -298,9 +274,6 @@ async function loadPendingApprovals(
   }
 }
 
-// One read for the whole batch: the open, posted, unexpired questions of the
-// batch's topics (T-1577). Best-effort like the read above: a failure reads as
-// no open questions, never failing the whole activity answer.
 async function loadOpenQuestions(
   db: ServerDatabase,
   topicIds: string[],
@@ -319,10 +292,6 @@ interface LastCardRow {
   stage: string | null;
 }
 
-// One read for the whole batch: the latest `card_*` status row per
-// (chat_jid, ai_id) in the batch's rooms. `DISTINCT ON (chat_jid, ai_id)
-// … ORDER BY chat_jid, ai_id, at DESC` is served by
-// `agent_task_events_status_idx`.
 async function loadLastCardStates(
   db: ServerDatabase,
   roomJids: string[],

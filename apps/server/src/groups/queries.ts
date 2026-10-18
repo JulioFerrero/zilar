@@ -36,9 +36,6 @@ export async function getGroupDetail(
   const members = await listGroupMembers(db, groupId);
   const aiViews = await listGroupAis(db, groupId);
   const handle = await handleForGroup(db, groupId);
-  // T-0165: the group's own picture plus every group AI's picture, each in
-  // one query — every group response that already carries a name gets
-  // `avatarUrl` when a picture exists (omitted when none, like today).
   const [groupAvatar, aiAvatars] = await Promise.all([
     avatarIdsByOwner(db, 'group', [groupId]),
     avatarIdsByOwner(
@@ -94,9 +91,8 @@ export async function getMembership(
   return row ?? null;
 }
 
-// The group's owner id (the single `group_members` row with role `owner`),
-// or null when the group has none. The join flows read it (T-1286, SG-8) to
-// refuse a person the owner blocked.
+// The owner id, or null; join flows read it to refuse someone the owner
+// blocked.
 export async function groupOwnerId(db: ServerDatabase, groupId: string): Promise<string | null> {
   const [row] = await runSql(
     db,
@@ -109,16 +105,10 @@ export async function groupOwnerId(db: ServerDatabase, groupId: string): Promise
   return row?.userId ?? null;
 }
 
-// A channel refuses to lose its last admin voice: after the change, at
-// least one admin besides the target must remain (the owner always counts,
-// so demoting the only admin while the owner stays is refused — the feed
-// must keep someone with voice besides the owner). Answers 409
-// `channel_needs_admin`. The check and the write are not atomic (same known
-// race as the group cap): two concurrent demotions/removals can both pass,
-// and — unlike the claim of an earlier revision — no later write heals it:
-// with no admin left there is nothing left to demote, so the channel stays
-// owner-only-voiced until someone is promoted again (promotions are never
-// refused). Permanent until manual fix, not self-healing.
+// A channel must keep at least one admin besides the target (the owner
+// always counts) or answer 409 `channel_needs_admin`, so the feed keeps a
+// voice. The check and write are not atomic: two concurrent demotions can
+// both pass and leave the channel owner-only until someone is promoted.
 export async function assertChannelKeepsAnAdmin(
   db: ServerDatabase,
   groupId: string,
@@ -142,13 +132,9 @@ export async function assertChannelKeepsAnAdmin(
   }
 }
 
-// The member list a viewer may see. Admins see everyone, like in a group.
-// A channel subscriber sees only the owner/admins (names + roles): who
-// posts in the feed is public anyway — every admin post carries its name —
-// while the subscriber audience stays hidden. The rows are sorted like
-// `listGroupMembers`. Never 404s for a member: the route answers the
-// (possibly partial) list, so subscribers can tell "hidden" from "gone" by
-// the group detail they already hold.
+// Admins see everyone; a channel subscriber sees only owner/admins, whose
+// names are public on posts, never the audience. Never 404s for a member, so
+// subscribers can tell `hidden` from `gone` by the detail they hold.
 export async function listMembersForViewer(
   db: ServerDatabase,
   groupId: string,
@@ -176,7 +162,6 @@ export async function listMembersForViewer(
   return { members: all, isAdmin };
 }
 
-// Groups the user belongs to, with the data the chat list needs.
 export async function listGroupsForUser(db: ServerDatabase, userId: string): Promise<ChatGroup[]> {
   const memberships = await runSql(
     db,
@@ -214,8 +199,8 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         FROM groups WHERE id IN ${sql.in(groupIds)}`;
     }),
   );
-  // T-1492: a group's members are its people and its AIs, so the count sums
-  // `group_members` and `group_ais` in one grouped query.
+  // A group's members are its people and AIs, so the count sums
+  // `group_members` and `group_ais` in one query.
   const counts = await runSql(
     db,
     Effect.gen(function* () {
@@ -229,8 +214,6 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         GROUP BY group_id`;
     }),
   );
-  // T-0164: the `@handle` of every public group on the list, in the same
-  // query shape as the member handles elsewhere.
   const handleRows = await runSql(
     db,
     Effect.gen(function* () {
@@ -294,9 +277,8 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
     }),
   );
 
-  // T-0116: fold each member's custom roles into the same row. Role
-  // membership is not secret: every group member sees the same list.
-  // T-0165: fold each member's picture in too, in one query.
+  // Fold each member's custom roles and picture into the same row, one query.
+  // Role membership is not secret: every member sees the same list.
   const byUser = await roleHoldersByGroup(db, groupId);
   const memberAvatars = await avatarIdsByOwner(
     db,

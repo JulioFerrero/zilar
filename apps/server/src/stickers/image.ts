@@ -1,23 +1,16 @@
-// Magic-byte detection and header parsing for sticker uploads (T-0120).
-//
-// Only `image/webp` (static or animated) and `image/png` are ever stored.
-// The type is detected from magic bytes — never from the client's
-// `Content-Type` or file name — and the width/height are parsed from the
-// headers by small pure functions, with no new dependency.
+// Magic-byte detection and header parsing for sticker uploads. Only
+// `image/webp` (static or animated) and `image/png` are stored; the type
+// comes from magic bytes, never the client's `Content-Type` or file name,
+// and width/height are parsed from headers without a dependency.
 import { readU16LE, readU24LE, readU32BE, readU32LE } from '../media-bytes';
 
 export const STICKER_MAX_BYTES = 512 * 1024;
-/** Cap on the raw upload, before an animated sticker is converted to WebP
- *  (T-1496): a short video or GIF is bigger than the 512 KiB stored limit. */
 export const STICKER_MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const STICKER_MAX_DIMENSION = 512;
 /** Decoded pixels (width × height × RGBA) stay under this: a PNG header
- *  claiming 60 000 × 60 000 is a decompression bomb, not a sticker. */
+ *  claiming 60 000 × 60 000 is a decompression bomb. */
 export const STICKER_MAX_DECODED_BYTES = 4 * 1024 * 1024;
 
-/** Overrides the module defaults for one probe. Callers that accept larger
- *  images than a sticker (wallpapers) pass their own caps; unset fields keep
- *  the sticker defaults, so existing callers behave byte for byte as before. */
 export interface StickerProbeLimits {
   maxBytes?: number;
   maxDimension?: number;
@@ -30,9 +23,8 @@ export interface StickerImageInfo {
   mime: StickerMime;
   width: number;
   height: number;
-  /** True for an animated WebP (VP8X with the animation flag) or an APNG
-   *  (an `acTL` chunk before any `IDAT`). Set by the parser, never a
-   *  failure: stickers accept animated images, avatars reject them. */
+  /** True for an animated WebP (VP8X animation flag) or an APNG (`acTL`
+   *  before any `IDAT`); set by the parser, never a failure. */
   animated: boolean;
 }
 
@@ -45,13 +37,10 @@ export type StickerProbeError =
   | 'decode_too_large'
   | 'unsupported_layout';
 
-/** True when the bytes carry an animated image: an animated WebP (VP8X with
- *  the animation flag) or an APNG (an `acTL` chunk before any `IDAT`). */
 export function isAnimatedImage(bytes: Uint8Array): boolean {
   return isAnimatedWebp(bytes) || isAnimatedPng(bytes);
 }
 
-/** A VP8X WebP whose animation flag (bit 1 of the flags byte) is set. */
 export function isAnimatedWebp(bytes: Uint8Array): boolean {
   if (!isWebp(bytes) || bytes.length < 21) {
     return false;
@@ -60,18 +49,12 @@ export function isAnimatedWebp(bytes: Uint8Array): boolean {
   if (chunk !== 'VP8X') {
     return false;
   }
-  // VP8X chunk: 4-byte chunk size at 16..19, then flags at 20, reserved at
-  // 21..23, then canvas (width-1, height-1). Bit 1 of the flags is the
-  // animation bit. parseWebp already read the canvas at 24/27.
   if (bytes.length < 21) {
     return false;
   }
   return (bytes[20]! & 0x02) !== 0;
 }
 
-/** A PNG with an `acTL` chunk before the first `IDAT`: an APNG. Chunks are
- *  walked by length (never by trusting a claimed size past the buffer end),
- *  so a truncated file simply answers false. */
 export function isAnimatedPng(bytes: Uint8Array): boolean {
   if (!isPng(bytes)) {
     return false;
@@ -123,8 +106,8 @@ export function isWebp(bytes: Uint8Array): boolean {
   );
 }
 
-/** Validates sticker dimensions: integers in [1, 512] × [1, 512], and the
- *  decoded RGBA frame must fit in 4 MiB. */
+/** Validates dimensions: integers in [1, 512] × [1, 512], and the decoded
+ *  RGBA frame must fit in 4 MiB. */
 function checkDimensions(
   width: number,
   height: number,
@@ -144,8 +127,6 @@ function checkDimensions(
   return { ok: true };
 }
 
-/** Parses the IHDR of a PNG: 8-byte magic + 4-byte length + `IHDR` + 8
- *  bytes of width/height. Truncated headers fail closed. */
 function parsePng(
   bytes: Uint8Array,
   limits: StickerProbeLimits = {},
@@ -172,12 +153,9 @@ function parsePng(
   return { ok: true, info: { mime: 'image/png', width, height, animated: isAnimatedPng(bytes) } };
 }
 
-/**
- * Parses a WebP RIFF container: `RIFF <len> WEBP <VP8 |VP8L |VP8X …>`.
- * VP8 (lossy, static or animated frames share the first frame's size) and
- * VP8L (lossless) carry the canvas directly; VP8X (extended, incl. animated)
- * carries the canvas size minus one. Anything else is rejected.
- */
+/** Parses a WebP RIFF container: VP8 (lossy) and VP8L (lossless) carry the
+ *  canvas directly, VP8X (extended, incl. animated) carries it minus one;
+ *  anything else is rejected. */
 function parseWebp(
   bytes: Uint8Array,
   limits: StickerProbeLimits = {},
@@ -187,8 +165,6 @@ function parseWebp(
   }
   const chunk = String.fromCharCode(bytes[12]!, bytes[13]!, bytes[14]!, bytes[15]!);
   if (chunk === 'VP8 ') {
-    // Lossy bitstream: 3-byte frame tag + 3-byte start code 9D 01 2A, then
-    // 14-bit width and 14-bit height.
     if (bytes.length < 30) {
       return { ok: false, error: 'truncated' };
     }
@@ -206,13 +182,9 @@ function parseWebp(
     if (!checked.ok) {
       return checked;
     }
-    // Lossy VP8 has no animation flag of its own: animated frames share the
-    // first frame's size, so report static here.
     return { ok: true, info: { mime: 'image/webp', width, height, animated: false } };
   }
   if (chunk === 'VP8L') {
-    // Lossless: 1-byte signature 0x2F, then 14-bit (width-1) and 14-bit
-    // (height-1) packed across 4 bytes.
     if (bytes.length < 25) {
       return { ok: false, error: 'truncated' };
     }
@@ -229,12 +201,9 @@ function parseWebp(
     if (!checked.ok) {
       return checked;
     }
-    // Lossless VP8L is always a still.
     return { ok: true, info: { mime: 'image/webp', width, height, animated: false } };
   }
   if (chunk === 'VP8X') {
-    // Extended: 1 flag byte + 3 reserved/FIXED bytes, then 24-bit
-    // (width-1) and 24-bit (height-1).
     if (bytes.length < 30) {
       return { ok: false, error: 'truncated' };
     }
@@ -260,14 +229,9 @@ function parseWebp(
 export type StickerProbeResult =
   { ok: true; info: StickerImageInfo } | { ok: false; error: StickerProbeError };
 
-/**
- * Detects and validates a sticker upload from its bytes. Accepts only PNG
- * and WebP (static or animated) within the size and dimension limits; SVG,
- * GIF and anything else fail as `unknown_type` (magic bytes never match) or
- * as an explicit layout error. The result carries an `animated` flag (an
- * animated WebP or an APNG) for callers that only accept stills. Never
- * trusts the caller's content type or file name.
- */
+/** Detects and validates a sticker upload from its bytes: only PNG and WebP
+ *  within the size and dimension limits, with an `animated` flag for callers
+ *  that accept only stills. Never trusts the content type or file name. */
 export function probeStickerBytes(
   bytes: Uint8Array,
   limits: StickerProbeLimits = {},
@@ -290,7 +254,6 @@ export function probeStickerBytes(
   return { ok: false, error: 'unknown_type' };
 }
 
-/** Maps a probe failure to the public error code of the upload route. */
 export function probeErrorCode(
   error: StickerProbeError,
 ): 'sticker_not_image' | 'sticker_too_large' {

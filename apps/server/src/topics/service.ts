@@ -49,7 +49,7 @@ export async function createTopic(
   if (!group || !membership) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  // T-0124: a channel has no topics beyond its General feed.
+  // a channel has no topics beyond its General feed.
   if (group.kind === 'channel') {
     throw new HttpError(400, 'channel_has_no_topics', 'Channels have no topics');
   }
@@ -102,9 +102,8 @@ export async function createTopic(
         })}`;
       }),
     );
-    // Private topics carry the invited members. A public topic starts with
-    // every group member until the Join UI ships (T-1762), then with only its
-    // creator, and others join it from "Other topics".
+    // Private topics carry the invited members; a public topic starts with only
+    // its creator, and others join from "Other topics".
     const initialMemberIds =
       visibility === 'private'
         ? memberIds
@@ -126,8 +125,8 @@ export async function createTopic(
     if (roomCreated || roomLocalpart !== '') {
       await destroyQuietly(deps.adminClient, roomLocalpart);
     }
-    // Roll the row back when the insert raced another writer (name or
-    // localpart clashed after the check): the room is gone either way.
+    // Roll the row back when the insert raced another writer: the room is gone
+    // either way.
     await deleteTopicRows(deps.db, topicId);
     throw mapXmppError(error);
   }
@@ -164,9 +163,8 @@ function mapXmppError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
-  // A name/localpart race against a concurrent create lands here (the
-  // pre-check passed, the unique index refused): answer 409 like the
-  // pre-check does, not 503.
+  // A name/localpart race lands here (the pre-check passed, the unique index
+  // refused): answer 409, not 503.
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'topic_exists', 'A topic with that name already exists');
   }

@@ -64,13 +64,10 @@ async function reconcileRoom(deps: RoomReconcileDeps, topic: TopicRow): Promise<
   }
 }
 
-// T-2002: rooms created before the hardening still carry person-held owner or
-// admin affiliations and ejabberd's listable defaults. Once per leader start,
-// re-sync every live group and topic room (each group's room is its General
-// topic's room): `syncTopicRoom` applies the plain `member` affiliations, then
-// the room options are set again. Idempotent, throttled, and one summary line;
-// a room that fails is logged by localpart and never stops the pass. Archived
-// topics are not swept here: a removal re-syncs them (`syncGroupTopicRooms`).
+// Once per leader start, re-sync every live group and topic room:
+// `syncTopicRoom` re-applies the plain `member` affiliations, then the room
+// options. Idempotent, throttled, one summary line; a failure is logged by
+// localpart and never stops the pass. Archived topics re-sync on removal.
 export async function reconcileRoomRights(deps: RoomReconcileDeps): Promise<void> {
   const pauseMs = deps.pauseMs ?? DEFAULT_PAUSE_MS;
   const topics = await liveTopics(deps.db);

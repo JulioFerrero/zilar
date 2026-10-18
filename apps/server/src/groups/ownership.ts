@@ -1,9 +1,6 @@
-// SG-4 / T-1187: hand a group or channel over to another member. The owner
-// swaps their role with the target in one transaction (the target becomes
-// `owner`, the actor becomes `admin`), then the General room affiliation
-// follows outside the transaction and the channel voice and topic rooms
-// re-sync. The old owner can then leave like any admin. Deleting a group is a
-// later task.
+// Hand a group or channel to another member: the roles swap in one
+// transaction (target `owner`, actor `admin`), then the rooms re-sync. The
+// old owner can then leave like any admin.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -28,11 +25,9 @@ export interface TransferGroupOwnerInput {
   audit?: AuditRecorder;
 }
 
-// The owner hands the group to another member. Only the owner may transfer
-// (403); the target must be a member (404); the owner transferring to
-// themselves is a 400. Both role rows are written in one transaction under a
-// per-group advisory lock, so two concurrent transfers cannot leave the group
-// with two owners.
+// Only the owner may transfer (403); the target must be a member (404);
+// transferring to themselves is 400. Both rows are written under a per-group
+// advisory lock, so two transfers cannot leave two owners.
 export async function transferGroupOwner(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -76,15 +71,9 @@ export async function transferGroupOwner(
     }),
   );
 
-  // The rows are committed: the rooms follow best-effort, like every other
-  // membership change. `members.ts` sets the General room affiliation through
-  // `adminClient.setAffiliation(group.roomLocalpart, jidFor(localpartFor(userId), domain), role)`;
-  // a failure is logged with the group id, never thrown, so the committed rows
-  // stay. `syncChannelVoice` re-applies the channel mapping (a group room is
-  // left untouched) and `syncGroupTopicRooms` re-syncs every topic room
-  // (T-1180 retries a failed sync).
-  // T-2002: the General room follows `roomAffiliationFor` too, so a plain
-  // group writes `member` for both people and a channel writes `admin`.
+  // The rows are committed; the rooms follow best effort, logged with the
+  // group id. `syncChannelVoice` re-applies the channel mapping and
+  // `syncGroupTopicRooms` re-syncs every topic, so a failure heals.
   const isChannelFeed = group.kind === 'channel';
   const affiliations: Array<{ userId: string; affiliation: RoomAffiliation }> = [
     {
@@ -110,10 +99,8 @@ export async function transferGroupOwner(
   await syncChannelVoice(db, adminClient, input.groupId, input.domain, input.logger);
   await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
 
-  // T-0124: every role change is audited as `group.role_changed` (ids and roles
-  // only, never names). The transfer changes two rows, so both are recorded.
-  // A recorder is injected by the route; a write failure is logged and never
-  // fails the request.
+  // Audited as `group.role_changed` (ids and roles only, never names); a failed
+  // audit write never fails the request.
   if (input.audit) {
     const changes: Array<{ userId: string; from: GroupRole; to: 'owner' | 'admin' }> = [
       { userId: input.targetUserId, from: targetRole, to: 'owner' },

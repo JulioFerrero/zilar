@@ -1,6 +1,5 @@
-// T-1496: turns a moving upload (GIF, WebM, MP4/MOV) into an animated WebP
-// sticker that loops, so stickers keep their motion. The conversion runs
-// ffmpeg/ffprobe with no shell and a hard timeout (via `media/run-command`).
+// Turns a moving upload (GIF, WebM, MP4/MOV) into an animated WebP
+// sticker; ffmpeg/ffprobe run with no shell and a hard timeout.
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,11 +24,9 @@ const MAX_CONCURRENT_CONVERSIONS = 2;
 
 export type ConvertibleKind = 'gif' | 'webm' | 'mp4';
 
-/**
- * The moving kinds the converter accepts, decided by magic bytes only:
- * `GIF87a`/`GIF89a` is a GIF, EBML (`1A 45 DF A3`) is WebM/Matroska, and
- * `ftyp` at offset 4 is MP4/MOV. Anything else is static (or unsupported).
- */
+/** The accepted moving kinds, by magic bytes only: GIF87a/GIF89a, EBML
+ *  (`1A 45 DF A3`) for WebM/Matroska, and `ftyp` at offset 4 for MP4/MOV;
+ *  anything else is static. */
 export function convertibleKind(bytes: Uint8Array): ConvertibleKind | null {
   if (bytes.length >= 6) {
     const header = String.fromCharCode(
@@ -66,17 +63,14 @@ export function convertibleKind(bytes: Uint8Array): ConvertibleKind | null {
 }
 
 export interface StickerConverter {
-  /** Converts a moving upload to an animated WebP, or throws an `HttpError`. */
   toAnimatedWebp(bytes: Uint8Array, kind: ConvertibleKind): Promise<Uint8Array>;
 }
 
-/** Reports a conversion failure with a short summary and the stderr tail. */
 export type StickerConvertWarn = (summary: string, stderrTail: string) => void;
 
 export interface StickerConverterPaths {
   ffmpeg?: string;
   ffprobe?: string;
-  /** Called on a conversion failure; defaults to a console log line. */
   warn?: StickerConvertWarn;
 }
 
@@ -288,8 +282,6 @@ async function convertWithFfmpeg(
   throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
 }
 
-/** The real converter: probe, convert at falling quality, keep the first
- *  output that fits. The temp folder always goes away. */
 export function createStickerConverter(paths: StickerConverterPaths = {}): StickerConverter {
   const ffmpeg = paths.ffmpeg ?? 'ffmpeg';
   const ffprobe = paths.ffprobe ?? 'ffprobe';
@@ -313,5 +305,4 @@ export function createStickerConverter(paths: StickerConverterPaths = {}): Stick
   };
 }
 
-/** The shared converter the sticker service falls back to. */
 export const defaultConverter: StickerConverter = createStickerConverter();

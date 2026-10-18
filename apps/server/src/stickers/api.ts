@@ -1,35 +1,9 @@
-// Stickers module on the Effect `HttpApi` adapter (T-0582 part A, T-0602 part
-// B): the same methods, paths, order, statuses, texts, bodies and headers as
-// the deleted routers. Its service runs on effect/sql.
-//
-// All 14 routes are mounted here. The 12 JSON routes came first (part A); part
-// B adds the multipart/raw upload (`POST /sticker-packs/:id/stickers`) and the
-// file GET (`GET /stickers/:stickerId/file`).
-//
-// Step order per route (unchanged):
-// - Telegram import: session -> token (501) -> body decode -> pack-input
-//   parse (400 link text) -> limiter (429) -> import. The answer carries
-//   `partial` only when true.
-// - Upload: session -> upload limiter (429) -> content-type branch. Multipart
-//   checks the declared length (413), parses the form, requires one `file`
-//   (400) and validates the `emoji` (400). Raw bytes checks the declared
-//   length, streams through `readCapped` (413), then decodes `x-emoji` (400).
-// - File GET: session -> decode id -> read file. A bad escape, an unknown id
-//   and a missing file all answer 404 `not_found`.
-// - DELETE /sticker-favorites decodes the body from the query string.
-// - Every other JSON route: session -> body/query decode -> service call.
-// Decode failures answer 400 `invalid_request` with a fixed per-route message.
-// `decodePathId` keeps the old final id (404 on a bad escape).
-//
-// The binary routes declare no payload schema, so nothing is buffered before
-// the handler. The upload reads multipart via the web `Request`'s `formData()`
-// and raw bytes via the request stream; the file GET answers a raw
-// `HttpServerResponse.uint8Array`, which `HttpApiBuilder` returns untouched.
-//
-// T-0992 size split: the handlers live in `./api-handlers`, the hand-decodes
-// and fixed error texts in `./api-decode`, and the upload body and its capped
-// read in `./api-upload`. This path keeps the interface, the group, the layer
-// and the mount.
+// The stickers module on the Effect `HttpApi` adapter. Step order per route:
+// session, decode, limiter and service; a decode failure answers 400
+// `invalid_request` with a fixed per-route message, and `decodePathId` keeps
+// the old final id (404 on a bad escape). The binary routes declare no
+// payload schema, so nothing is buffered before the handler: upload reads
+// multipart or the raw stream, and the file GET answers a raw response.
 
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -60,8 +34,7 @@ const StickersApi = HttpApi.make('stickers').add(StickersGroup);
 export function createStickersApi(deps: StickersApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  // One limiter per api instance, built once (never per request), like the
-  // old factory and the avatars api.
+  // One limiter per api instance, built once, never per request.
   const injectedUploadLimiter = deps.uploadLimiter;
   // An injected limiter only has to say `allow`; `makeRateLimit` wants the full shape.
   const uploadLimiter: RateLimiter =
@@ -79,9 +52,9 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayerFor(StickersSchemaErrors, logger, renderSchemaError)),
-    // The upload budget is the first step after the session, so it is a plain
-    // endpoint middleware (the Telegram import budget is not: it runs after
-    // the 501 token check and the input parse, so it stays in its handler).
+    // The upload budget runs first after the session, so it is endpoint
+    // middleware; the Telegram import budget runs after the 501 token check and
+    // the input parse, so it stays in its handler.
     Layer.provide(
       rateLimitLayer(
         StickersUploadRateLimit,

@@ -6,13 +6,6 @@ import type { PushCipher } from './crypto';
 import type { FcmSender } from './fcm';
 import type { WebPushDelivery } from './sender';
 
-// The push service used to live here. It is split into `delivery.ts`
-// (`handleIncomingPush` and the resolve/send pipeline), `archive-scan.ts`
-// (the newest-message scan) and `candidates.ts` (per-row mute/visibility
-// resolution). This path keeps the deps and outcome types, the pipeline's
-// TaggedErrors, and stays a barrel so every importer keeps working with the
-// same names and kinds.
-
 export interface PushLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -21,21 +14,18 @@ export interface PushLogger {
 export interface PushServiceDeps {
   db: ServerDatabase;
   config: ServerConfig;
-  /** Read-only pool on the ejabberd MAM archive. The component only starts
-   * when it is configured: without the archive who/where cannot be
+  /** Read-only pool on the MAM archive; without it who and where cannot be
    * resolved, so notifications are dropped instead of guessed. */
   archive: ArchivePool;
   cipher: PushCipher;
   sender: WebPushDelivery;
-  /** The FCM sender for native (`fcm`) devices. Optional because the server
-   * may run without Firebase configured: a native wake is then dropped as
-   * `send-failed` instead of guessed. Task 4 fills it from the config. */
+  /** The FCM sender for native devices; optional because the server may run
+   * without Firebase, in which case a wake is dropped as `send-failed`. */
   nativeSender?: FcmSender;
   logger: PushLogger;
-  /** Per-process record of notified message origin ids per device node, so
-   * a retried publish IQ or a re-scan never buzzes twice. Capped per node.
-   * Keyed by node (not user): ejabberd sends one publish IQ per node and
-   * each device must buzz independently (S1). */
+  /** Per-process record of notified origin ids per node, so a retried IQ or
+   * re-scan never buzzes twice. Keyed by node: one IQ per node and each device
+   * must buzz independently (S1). */
   recentlyNotified: Map<string, Set<string>>;
   now?: () => Date;
 }
@@ -57,8 +47,8 @@ export type PushOutcome =
     }
   | { kind: 'unknown-device'; node: string };
 
-// Internal failure modes of the delivery pipeline. Exported so the moved
-// delivery and archive-scan modules can raise and catch the same classes.
+// Internal failure modes, exported so delivery and archive-scan raise and
+// catch the same classes.
 export class Undecryptable extends Data.TaggedError('Undecryptable') {}
 
 export class ArchiveUnavailable extends Data.TaggedError('ArchiveUnavailable') {}

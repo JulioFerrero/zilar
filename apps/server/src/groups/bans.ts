@@ -1,14 +1,14 @@
-// T-1846 (SG-8): a member removed by an owner or admin is banned, so they
-// cannot walk back in through a public join or a still-valid invite link.
-// Adding them back lifts the ban; leaving by yourself never bans.
+// A member removed by an owner/admin is banned, so they cannot walk back in
+// through a public join or a still-valid invite; adding them back lifts it,
+// leaving never bans.
 
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-// Whether the group banned this user. Unknown groups answer false; the
-// callers treat an unknown group as not found before this runs.
+// Whether the group banned this user; unknown groups answer false, and
+// callers treat unknown as not found first.
 export async function isBanned(
   db: ServerDatabase,
   groupId: string,
@@ -23,8 +23,8 @@ export async function isBanned(
   );
 }
 
-// The same check on a caller's connection, so a join re-checks the ban
-// inside its transaction and a removal cannot slip between check and insert.
+// The same check on a caller's connection, so a join re-checks inside its
+// transaction and a removal cannot slip between check and insert.
 export function isBannedIn(
   sql: SqlClient.SqlClient,
   groupId: string,

@@ -1,7 +1,3 @@
-// Topic view builders: turn `TopicRow`s into the shapes routes return. Split
-// out of `./access` (T-1121) so both files stay under the 400-line limit. The
-// access checks live in `./access`.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -91,12 +87,9 @@ export async function toTopicView(
   topic: TopicRow,
   mucDomain: string,
 ): Promise<TopicView> {
-  // T-1764: both paths share the one membership and avatar rule.
   return (await toTopicViews(db, [topic], mucDomain))[0]!;
 }
 
-// T-1764: the avatar urls of a set of AIs, in one query for the whole set, so
-// a read attaches each picture without a query per AI.
 export async function aiAvatarUrls(
   db: ServerDatabase,
   aiIds: readonly string[],
@@ -105,7 +98,6 @@ export async function aiAvatarUrls(
   return new Map([...ids].map(([aiId, avatarId]) => [aiId, avatarUrlFor(avatarId)]));
 }
 
-// Attaches `avatarUrl` to each AI that has a picture, from the map above.
 export function withAiAvatars(ais: TopicAiView[], urls: Map<string, string>): TopicAiView[] {
   return ais.map((ai) => {
     const url = urls.get(ai.id);
@@ -113,8 +105,6 @@ export function withAiAvatars(ais: TopicAiView[], urls: Map<string, string>): To
   });
 }
 
-// The AIs added to one topic, sorted by name and carrying their pictures.
-// Rows exist only for non-General topics; General membership is `group_ais`.
 export async function listTopicAis(db: ServerDatabase, topicId: string): Promise<TopicAiView[]> {
   const rows = await runSql(
     db,
@@ -141,7 +131,6 @@ interface TopicViewParts {
   owners: Map<string, TopicOwnerView | null>;
   ais: Map<string, TopicAiView[]>;
   roles: Map<string, Awaited<ReturnType<typeof rolesOfTopic>>>;
-  /** T-1764: the group's AI count, so General's `memberCount` can add it. */
   groupAiCounts: Map<string, number>;
 }
 
@@ -155,8 +144,6 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
   return grouped;
 }
 
-// The same four lookups as `toTopicView`, run once for all `rows` with `IN`
-// queries and joined in memory by topic id.
 async function loadTopicViewParts(
   db: ServerDatabase,
   rows: TopicRow[],
@@ -164,8 +151,6 @@ async function loadTopicViewParts(
 ): Promise<TopicViewParts> {
   const topicIds = rows.map((row) => row.id);
   const groupIds = [...new Set(rows.map((row) => row.groupId))];
-  // The direct `topic_members` rows are needed for every non-General topic
-  // (T-1757); General's members are the group.
   const directMemberTopicIds = rows.filter((row) => !row.isGeneral).map((row) => row.id);
   const ownerUserIds = [
     ...new Set(rows.flatMap((row) => (row.ownerUserId ? [row.ownerUserId] : []))),
@@ -217,7 +202,7 @@ async function loadTopicViewParts(
             FROM topic_ais ta
             INNER JOIN ais a ON a.id = ta.ai_id
             WHERE ta.topic_id IN ${sql.in(topicIds)}`,
-        // T-1757: only General's count adds the group's AIs.
+        // only General's count adds the group's AIs.
         sql<{
           groupId: string;
           total: number;
@@ -236,10 +221,6 @@ async function loadTopicViewParts(
       ([groupId, list]) => [groupId, new Set(list.map((row) => row.userId))] as const,
     ),
   );
-  // T-1992: a channel keeps its audience off topic views, the same rule as the
-  // group members route. T-2036: a viewer who owns or administers the channel
-  // sees the full list, as on the members route; anyone else, or no viewer,
-  // keeps the narrowed managers-only list.
   const channelGroupIds = new Set(
     groupKindRows.filter((row) => row.kind === 'channel').map((row) => row.id),
   );
@@ -279,8 +260,6 @@ async function loadTopicViewParts(
   const holdersByRole = groupBy(holderRows, (row) => row.roleId);
   const directByTopic = groupBy(directRows, (row) => row.topicId);
   const aisByTopic = groupBy(aiRows, (row) => row.topicId);
-  // T-1764: every AI of every topic in one picture lookup, so each `ais` row
-  // can carry its `avatarUrl`.
   const aiPictures = await aiAvatarUrls(
     db,
     aiRows.map((row) => row.id),
@@ -363,7 +342,6 @@ export async function toTopicViews(
   const parts = await loadTopicViewParts(db, rows, viewerId);
   const views = rows.map((topic) => {
     const memberIds = parts.memberIds.get(topic.id) ?? [];
-    // T-1764: `memberCount` is the people plus the AIs (General: the group's).
     const aiCount = topic.isGeneral
       ? (parts.groupAiCounts.get(topic.groupId) ?? 0)
       : (parts.ais.get(topic.id)?.length ?? 0);

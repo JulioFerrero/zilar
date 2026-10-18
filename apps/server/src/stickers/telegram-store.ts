@@ -10,15 +10,10 @@ import { probeStickerBytes, STICKER_MAX_BYTES, type StickerImageInfo } from './i
 import { emojiSchema, type StickerRow, type StickersServiceDeps } from './schemas';
 import { resolveStorageDir, reservePackSlot } from './storage';
 
-// Validates (the same magic-byte probe as uploads) and stores one imported
-// sticker. A moving file (a video `.webm`) is converted to an animated WebP
-// first, exactly like an upload (T-1496); a conversion failure counts as
-// invalid. A file that fails validation is skipped, never stored; a
-// concurrent duplicate insert wins nothing (`onConflictDoNothing` on the
-// per-pack `source_id` index) writes no file and is not counted, like a
-// sticker already in the pack; a full pack reports
-// `pack_full` so the caller ends the import with a summary instead of a 400
-// (a double-submitted import races safely through the same path).
+// Validates (same probe as uploads) and stores one imported sticker; a
+// moving file is converted first. A failed validation is skipped; a
+// concurrent duplicate insert writes no file and is not counted; a full
+// pack reports `pack_full` so the import ends with a summary.
 export async function storeImportedSticker(
   deps: StickersServiceDeps,
   packId: string,
@@ -28,9 +23,8 @@ export async function storeImportedSticker(
   if (bytes.byteLength === 0) {
     return 'skipped';
   }
-  // Convert a moving sticker before the size check and the probe, so a
-  // converted video goes through the still path. Any failure is a skip, never
-  // a failed import.
+  // Convert a moving sticker before the size check and probe, so it goes
+  // through the still path; any failure is a skip.
   const kind = convertibleKind(bytes);
   if (kind !== null) {
     try {
@@ -74,8 +68,8 @@ export async function storeImportedSticker(
       }),
     );
   } catch (error) {
-    // `pack_full` is a graceful outcome, not a request failure: the batch
-    // loop stops queuing and the import answers with its summary.
+    // `pack_full` is a graceful outcome: the batch loop stops queuing and the
+    // import answers with its summary.
     if (error instanceof HttpError && error.code === 'pack_full') {
       return 'pack_full';
     }

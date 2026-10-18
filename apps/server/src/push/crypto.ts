@@ -2,18 +2,15 @@
 import { makeEnvelope } from '../effect/crypto-envelope';
 import { PUSH_STORAGE_KDF_LABEL } from '../kdf-labels';
 
-// Envelope encryption for the Web Push subscription keys at rest, using only
-// Node's built-in `crypto`. Same versioned-envelope shape as the provider-key
-// cipher (`connections/crypto.ts`), but a separate HKDF info string so a blob
-// sealed for one purpose can never be opened as the other.
-//
-// A stored blob is `v1:<salt>:<iv>:<ciphertext>:<tag>`, each part base64url.
-// AES-256-GCM authenticates everything together: tampering, or decrypting
-// with the wrong `PUSH_STORAGE_KEY`, fails loudly instead of returning
-// garbage.
+// Envelope encryption for the Web Push subscription keys at rest, using
+// Node's `crypto`. Same versioned envelope as the provider-key cipher, but a
+// separate HKDF info string, so a blob sealed for one purpose can never be
+// opened as the other. A blob is `v1:<salt>:<iv>:<ciphertext>:<tag>` in
+// base64url; AES-256-GCM authenticates it all, so tampering or the wrong
+// `PUSH_STORAGE_KEY` fails loudly instead of returning garbage.
 
-// Every failure to open a stored push key is this type. Its message is fixed:
-// it never carries the storage key, the blob or the plaintext.
+// Every failure to open a stored push key is this type; its message is
+// fixed and never carries the storage key, the blob or the plaintext.
 export class PushDecryptionError extends Error {
   constructor() {
     super('The stored push subscription could not be decrypted');
@@ -28,8 +25,6 @@ export interface PushCipher {
 
 const envelope = makeEnvelope(PUSH_STORAGE_KDF_LABEL, () => new PushDecryptionError());
 
-// Builds the cipher from `PUSH_STORAGE_KEY`. The key is validated by the
-// config schema (at least 32 characters) before it reaches here.
 export function createPushCipher(masterKey: string): PushCipher {
   return {
     encrypt: (plaintext) => envelope.encrypt(masterKey, plaintext),

@@ -12,9 +12,8 @@ import { HttpError, xmppUnavailable } from '../errors';
 import type { StickerConverter } from './convert';
 
 export const STICKER_PACKS_MAX_PER_USER = 100;
-// The pack, title and panel limits are part of the wire contract
-// (`@zilar/api-contract`, `stickers.ts`, T-0895), so the schemas there and this
-// service share one value.
+// The pack, title and panel limits live in the wire contract, so the
+// schemas there and this service share one value.
 export { STICKER_PACK_TITLE_MAX, STICKER_PACK_TITLE_MIN, STICKER_PANEL_MAX, STICKERS_MAX_PER_PACK };
 export const STICKER_EMOJI_MAX = 8;
 export const DISCOVER_PAGE_SIZE = 30;
@@ -40,9 +39,7 @@ export interface StickerPackView {
   ownerId: string;
   title: string;
   visibility: StickerVisibility;
-  /** Set by the Telegram importer (`telegram:<name>`); absent otherwise. */
   importedFrom?: string;
-  /** The owner's handle where a list carries it (panel, discover); null if none. */
   ownerHandle?: string | null;
   stickers: StickerView[];
   createdAt: string;
@@ -51,26 +48,22 @@ export interface StickerPackView {
 
 export interface StickersServiceDeps {
   db: ServerDatabase;
-  /** Directory sticker files are stored under; resolved once, absolutely. */
   storageDir: string;
-  /** Base path of the file route, e.g. `/api/stickers`. */
   fileBasePath?: string;
   audit?: AuditRecorder;
-  /** Overrides the ffmpeg sticker converter; tests may inject a fake. */
   converter?: StickerConverter;
 }
 
-// A pack or panel write answers 503 for any failure that is not the module's
-// own `HttpError`. A failure raised inside the effect/sql transaction keeps
-// its `HttpError` instance (the pins pattern), so a 400 never becomes a 503.
-// Exported for the packs and panel modules; not part of the barrel's surface.
+// A pack or panel write answers 503 for any failure that is not the
+// module's own `HttpError`; a failure inside the effect/sql transaction
+// keeps its `HttpError`, so a 400 never becomes a 503.
 export function mapStickerError(error: unknown): HttpError {
   return error instanceof HttpError ? error : xmppUnavailable();
 }
 
-// The pack title, trimmed before the length checks, exactly like the old
-// `.trim().min()/.max()`. The messages cannot use `{ message }` on the
-// length checks (Effect 4.0.2 drops it), so the filters return the texts.
+// The pack title is trimmed before the length checks; the messages cannot
+// use `{ message }` on length checks (Effect 4.0.2 drops it), so the
+// filters return the texts.
 const packTitleSchema = Schema.Trim.pipe(
   Schema.check(
     Schema.makeFilter((value: string) =>
@@ -128,7 +121,6 @@ const patchPackBodySchema = Schema.Struct({
 export type PatchPackBody = typeof patchPackBodySchema.Type;
 export { patchPackBodySchema };
 
-// Exported for the storage and telegram modules; not part of the barrel's surface.
 export const emojiSchema = Schema.optional(
   Schema.String.pipe(
     Schema.check(

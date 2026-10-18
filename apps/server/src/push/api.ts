@@ -1,23 +1,8 @@
-// Push module on the Effect `HttpApi` adapter (T-0543): the same methods,
-// paths, statuses, bodies, texts and per-route step order as the retired
-// router, mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Its store runs on effect/sql.
-//
-// The three bodies are decoded manually inside their handlers (Effect Schema,
-// same rules as the old zod schemas) and served with `handleRaw`, so each
-// route keeps its exact order: `requirePush()` runs before the decode, and
-// the decode runs before that route's limiter check — exactly like the old
-// `requireSession` -> `requirePush` -> decode -> limiter sequence. The DELETE
-// limiter is also checked inside its handler (after `requirePush`), for the
-// same reason. No decode text changes: every failure answers byte-identical
-// codes and messages.
-//
-// The subscribe body reuses the Effect schemas in `./subscriptions`, so the
-// route and the stored subscription share one set of rules.
-//
-// T-1017 size split: the handlers live in `./api-handlers`, the subscribe
-// handler in `./api-subscribe`, and the shared helpers in `./api-util`. This
-// path keeps the dependencies, the group, the layer and the mount.
+// The push module on the Effect `HttpApi` adapter. The bodies are decoded
+// manually with Effect Schema and served with `handleRaw`, so each route
+// keeps its order: `requirePush()` before the decode, the decode before the
+// route's limiter, and the DELETE limiter inside its handler. The subscribe
+// body reuses the schemas in `./subscriptions`.
 
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -52,9 +37,6 @@ export interface PushRoutesDependencies {
   push: PushConfig;
   adminClient: EjabberdAdminClient;
   logger: Logger;
-  /** Read-only MAM archive, used to resolve one message by origin id for the
-   * native preview route. Absent = the route answers 503 `xmpp_unavailable`,
-   * like search does. */
   archive?: ArchivePool;
   /** Injected in tests so the rate-limit windows can advance without waiting. */
   now?: () => number;

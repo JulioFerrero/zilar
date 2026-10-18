@@ -22,13 +22,11 @@ import {
   type PatchGroupInput,
 } from './schemas';
 
-// T-0108: group owner/admin toggles whether plain members may create topics.
-// T-0463: an owner/admin also sets or clears the group background.
-// T-0474: an owner/admin also sets the listener switch and eagerness.
+// Owner/admin toggles member topic creation, the group background and the
+// listener settings.
 export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
   const actor = await getMembership(db, input.groupId, input.actorId);
-  // A non-member sees the same 404 as a missing group.
   if (!group || !actor) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -85,8 +83,6 @@ export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Pr
   return detail;
 }
 
-// `g` followed by 16 random lowercase base32 characters. Never derived from the
-// title, so a rename (later) can never collide or leak anything.
 export function randomRoomLocalpart(): string {
   const bytes = randomBytes(ROOM_LOCALPART_LENGTH);
   let localpart = 'g';
@@ -111,9 +107,8 @@ export async function createGroup(
   const roomLocalpart = randomRoomLocalpart();
   let roomCreated = false;
 
-  // T-0164: a public create validates the handle up front (shape + reserved
-  // words), so the transaction below never has to roll back for a bad
-  // value; the uniqueness race still maps to 409 `handle_taken` inside.
+  // A public create validates the handle up front; the uniqueness race still
+  // maps to 409 `handle_taken` inside.
   const wantPublic = input.visibility === 'public';
   const trimmedHandle = (input.handle ?? '').trim();
   if (wantPublic) {
@@ -155,9 +150,8 @@ export async function createGroup(
                 role: 'member',
               })),
             ])}`;
-            // T-0108: the group's room becomes its General topic (same room, same
-            // history). The row is created in the same transaction as the group.
-            // T-0124: a channel's General topic is its only topic — the feed.
+            // The group's room becomes its General topic (same room, same history); a
+            // channel's General topic is its only topic, the feed.
             yield* sql`INSERT INTO topics ${sql.insert({
               id: randomUUID(),
               group_id: groupId,
@@ -171,11 +165,10 @@ export async function createGroup(
               created_by: input.creatorId,
             })}`;
 
-            // T-0164: a public create claims the handle in the same transaction
-            // (the creator's first claim is always allowed — no interval — and a
-            // retired reservation of this group reads as free, reclaimed by
-            // deleting it here). Concurrent creates race on the primary key:
-            // exactly one wins and the loser maps to 409 `handle_taken`.
+            // A public create claims the handle in the same transaction: the creator's
+            // first claim is always allowed, and a retired reservation of this group
+            // reads as free. Concurrent creates race on the primary key, so exactly one
+            // wins and the loser maps to 409 `handle_taken`.
             if (wantPublic) {
               const lower = normalizeHandle(trimmedHandle);
               const [taken] = yield* sql<{ handleLower: string }>`SELECT handle_lower
@@ -214,11 +207,8 @@ export async function createGroup(
               );
             }
 
-            // T-0124: a channel's room is moderated with `members_by_default:
-            // false`, so subscribers (affiliation `member`) join as visitors:
-            // they read but cannot post. Affiliations `admin`/`owner` carry voice,
-            // so admins and the owner post. Group rooms stay unmoderated with the
-            // ejabberd default, so every member keeps voice.
+            // A channel room is moderated, so subscribers join as visitors and cannot
+            // post; affiliations admin/owner carry voice. Group rooms stay unmoderated.
             yield* Effect.tryPromise({
               try: () =>
                 adminClient.createRoom(roomLocalpart, {
@@ -242,9 +232,8 @@ export async function createGroup(
               catch: (error) => error,
             });
             for (const userId of memberIds) {
-              // T-0124: in a moderated channel room only affiliations admin/owner
-              // carry voice, so every initial member joins as a voice-less member
-              // (a visitor once they enter). Group rooms keep `member` for all.
+              // Initial members of a moderated channel room join voice-less; group rooms
+              // keep `member` for all.
               yield* Effect.tryPromise({
                 try: () =>
                   adminClient.setAffiliation(

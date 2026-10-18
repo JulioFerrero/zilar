@@ -21,13 +21,11 @@ async function groupTopicRows(db: ServerDatabase, groupId: string): Promise<Topi
   return [...rows];
 }
 
-// T-0108: re-apply the desired members to every topic room of the group,
-// archived ones included (T-2002: a removed person must not keep an
-// affiliation on an archived topic room). Public topics gain/lose the person;
-// private topics drop anyone whose `topic_members` row is gone. Best effort:
-// the database is the source of truth, and a failed room call is logged with
-// the group id (never a topic name), never thrown, so the group flow that just
-// committed is not rolled back by a room hiccup.
+// Re-apply the desired members to every topic room, archived ones included
+// (a removed person must not keep an affiliation). Public topics gain/lose
+// the person; private ones drop anyone whose `topic_members` row is gone.
+// Best effort: the database is the source of truth, and a failed room call
+// is logged with the group id, never thrown.
 export async function syncGroupTopicRooms(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -45,23 +43,19 @@ export async function syncGroupTopicRooms(
       logger.warn({ groupId }, 'could not sync a topic room after a group membership change');
     }
   }
-  // T-1180: remember the group so the failed sync is retried until every topic
-  // room matches the database again, instead of waiting for the next
-  // membership change of the group.
   if (failed) {
     notePendingGroupSync(groupId, { db, adminClient, domain, logger });
   }
 }
 
-// T-0109: after a group membership change, every AI that the derived rule
-// (`aiMayBeInTopic`) no longer allows in a topic gets an `ai-removed` event
-// so a live gateway session leaves the room without waiting for reconcile.
-// The `topic_ais` rows stay: re-adding the owner brings the AI back.
+// After a membership change, an AI the derived rule (`aiMayBeInTopic`) no
+// longer allows gets an `ai-removed` event, so a live session leaves at
+// once. The `topic_ais` rows stay: re-adding the owner brings the AI back.
 export async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
   const topicRows = await groupTopicRows(db, groupId);
   for (const topic of topicRows) {
-    // T-1757: every non-General topic now follows the derived rule, so a
-    // dropped AI is announced for public topics too.
+    // Every non-General topic follows the derived rule, so a dropped AI is
+    // announced for public topics too.
     if (topic.isGeneral || topic.archivedAt !== null) {
       continue;
     }
@@ -88,9 +82,8 @@ export async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: stri
   }
 }
 
-// T-0108: a private topic with no members left is archived. T-0116: role
-// holders count as members — a topic a role still grants access to stays
-// alive even with zero direct rows.
+// A private topic with no members left is archived; role holders count as
+// members, so a topic a role still grants stays alive.
 export async function archiveDrainedPrivateTopics(
   db: ServerDatabase,
   groupId: string,

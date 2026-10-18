@@ -14,11 +14,8 @@ import {
 import { syncTopicRoom } from './rooms';
 import { toAuditEntry, type TopicServiceDeps } from './schemas';
 
-// Compares the topic's `topic_ais` rows against the live rule
-// (`aiMayBeInTopic`) and emits `ai-removed` for every AI that just dropped
-// out of the room. The sync above already removed their affiliations; this
-// tells live gateway sessions to leave right away instead of waiting for
-// the next reconcile.
+// Compares `topic_ais` against the live rule and emits `ai-removed` for
+// every AI that just dropped, so live sessions leave at once.
 export async function emitDroppedTopicAis(deps: TopicServiceDeps, topic: TopicRow): Promise<void> {
   if (topic.isGeneral || topic.archivedAt !== null) {
     return;
@@ -50,13 +47,10 @@ export interface AddTopicAiBody {
   aiId: string;
 }
 
-// T-0116: attach roles to a topic and pick its approver role. The actor
-// must be a topic manager (creator or group owner/admin) who can see the
-// topic — the same rule as every other `PUT` here. Only roles of the
-// topic's group count, and only for private topics: roles are meaningless
-// on a public one, like `memberIds`. The approver role may be null
-// ("Owner and admins only"). The room re-syncs so new holders join and
-// removed holders leave.
+// Attach roles to a topic and pick its approver role. The actor must be a
+// manager who can see it. Only the topic group's roles count, and only for
+// private topics; the approver may be null (Owner and admins), and the room
+// re-syncs so holders join and leave.
 export interface SetTopicRolesBody {
   roleIds: string[];
   approverRoleId: string | null;
@@ -99,15 +93,12 @@ export async function setTopicRoles(
     );
   }
   const wantedIds = new Set(wanted);
-  // One transaction under the group's advisory lock, reading the current
-  // set INSIDE it: two concurrent PUTs serialize and the second diffs
-  // against the first's commit (last-writer-wins, like `setRoleMembers`).
-  // The approver update rides the same transaction so access and approver
-  // can never disagree.
+  // One transaction under the group's advisory lock, reading the current set
+  // INSIDE it, so concurrent PUTs serialize and the approver cannot disagree
+  // with access.
   const approverChanged = (topic.approverRoleId ?? null) !== input.approverRoleId;
-  // T-1991: the approver role decides tier-2 requests, so only a current
-  // group owner or admin may pick it. A plain member who created the topic
-  // keeps changing the role access below.
+  // The approver role decides tier-2 requests, so only a current group
+  // owner/admin may pick it.
   if (approverChanged) {
     const membership = await getGroupMembership(deps.db, topic.groupId, input.actorId);
     if (membership === null || membership.role === 'member') {
@@ -154,9 +145,8 @@ export async function setTopicRoles(
   if (!updated) {
     throw toMissingTopic();
   }
-  // The audit block runs even when the room sync below fails: the database
-  // already committed, so the change is real and the log must say so. The
-  // caller still sees the 502 and the room heals on the next write.
+  // The audit block runs even when the room sync fails: the database
+  // committed, so the log must say so, and the caller sees the 502.
   if (deps.audit) {
     for (const roleId of added) {
       await deps.audit.record(toAuditEntry(updated, 'topic.role_added', input.actorId, { roleId }));

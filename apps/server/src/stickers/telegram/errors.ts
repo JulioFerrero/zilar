@@ -3,10 +3,8 @@ import { Data } from 'effect';
 export const TELEGRAM_API_HOST = 'api.telegram.org';
 export const TELEGRAM_IMPORT_TIMEOUT_MS = 10_000;
 export const TELEGRAM_IMPORT_MAX_BYTES = 1024 * 1024;
-// Cap on the JSON read from a Telegram Bot API method response
-// (`getStickerSet`, `getFile`, `getMe`): a sticker set with 200 entries is
-// tens of KiB, so anything past this is pathological and is dropped instead
-// of buffered without bound — like the 1 MiB file download cap.
+// Cap on the JSON read from a Bot API method: a 200-entry set is tens of
+// KiB, so anything past this is dropped instead of buffered.
 export const TELEGRAM_JSON_MAX_BYTES = 256 * 1024;
 
 export type TelegramImportErrorCode =

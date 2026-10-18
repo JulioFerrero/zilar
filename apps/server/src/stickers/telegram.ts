@@ -19,14 +19,12 @@ import {
 import { toPackView } from './storage';
 import { storeImportedSticker } from './telegram-store';
 
-// Telegram import (T-0123): fetch a public pack's stickers into a private
-// Zilar pack. At most 200 stickers are considered and 120 imported (the pack
-// limit); video (`.webm`) stickers are converted to an animated WebP, Lottie
-// (`.tgs`) stickers and invalid files are skipped and counted; custom emoji
-// sets are refused. The import runs inside the request budget (`deadlineMs`):
-// when the time is up it stops and reports `partial: true`, and a re-run adds
-// only the missing stickers (matched by `source_id`, Telegram's
-// `file_unique_id`).
+// Telegram import: fetch a public pack's stickers into a private Zilar
+// pack. At most 200 are considered and 120 imported (the pack limit); video
+// stickers become animated WebP, Lottie and invalid files are skipped and
+// counted, and custom emoji sets are refused. Inside the request budget it
+// stops and reports `partial: true`; a re-run adds only missing stickers
+// (matched by `source_id`).
 
 export const TELEGRAM_IMPORT_CONSIDER_MAX = 200;
 export const TELEGRAM_IMPORT_STICKERS_MAX = 120;
@@ -79,10 +77,9 @@ export async function importTelegramPack(
   const title = set.title.trim().slice(0, STICKER_PACK_TITLE_MAX) || name;
   const importedFrom = `telegram:${set.name}`;
 
-  // Find-or-create the pack under the user's lock: a re-run of the same
-  // Telegram pack reuses its row (matched by `imported_from`), so it fills
-  // gaps instead of duplicating. The 100-packs cap is enforced in the same
-  // transaction, so two racing imports cannot both win.
+  // Find-or-create the pack under the user's lock: a re-run reuses its row
+  // (by `imported_from`), so it fills gaps instead of duplicating. The
+  // 100-pack cap is enforced in the same transaction.
   let packId: string | undefined;
   try {
     await runSql(
@@ -135,10 +132,9 @@ export async function importTelegramPack(
   }
   const resolvedPackId = packId;
 
-  // Stickers already imported (by `source_id`), read before the downloads
-  // start. A concurrent import may add a row we also store: the insert
-  // below uses `ON CONFLICT DO NOTHING` on the per-pack unique index, so one
-  // of them wins and the loser counts as skipped.
+  // Stickers already imported (by `source_id`), read before the downloads;
+  // `ON CONFLICT DO NOTHING` on the per-pack unique index makes the loser
+  // count as skipped.
   const known = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -150,8 +146,8 @@ export async function importTelegramPack(
   const knownIds = new Set(
     known.map((row) => row.sourceId).filter((id): id is string => id !== null),
   );
-  // The whole pack size — local uploads included, not just Telegram rows —
-  // so a full pack queues nothing instead of 400ing on the first store.
+  // The whole pack size, local uploads included, so a full pack queues
+  // nothing instead of 400ing on the first store.
   const [packCounter] = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -166,8 +162,8 @@ export async function importTelegramPack(
   let skippedAnimated = 0;
   const pending: Array<{ sourceId: string; fileId: string; emoji: string | null }> = [];
   for (const entry of candidates) {
-    // Only Lottie (`.tgs`) is skipped here; video (`.webm`) entries are
-    // downloaded and converted to an animated WebP below.
+    // Only Lottie is skipped here; video entries are downloaded and converted
+    // to animated WebP below.
     if (entry.animated) {
       skippedAnimated += 1;
       continue;
@@ -184,12 +180,9 @@ export async function importTelegramPack(
   const budgetLeft = (): number => deadlineMs - (now() - startedAt);
 
   // Sequential batches of limited concurrency (4): Telegram downloads one
-  // pack at a time without hammering either side, and the request budget is
-  // checked between batches so the import stops on time. At most 120 new
-  // stickers land (the pack limit); the rest wait for a later run. A pack
-  // that fills mid-batch (a concurrent writer, or local stickers landed
-  // after the count above) ends the import with the summary — earlier
-  // batches' inserts stay and are reported, never a 400.
+  // pack at a time, and the budget is checked between batches. At most 120 new
+  // stickers land; a pack that fills mid-batch ends the import with the
+  // summary, keeping earlier inserts.
   const remaining = Math.max(0, TELEGRAM_IMPORT_STICKERS_MAX - packSize);
   const queue = pending.slice(0, remaining);
   let packFull = false;
@@ -208,8 +201,8 @@ export async function importTelegramPack(
         try {
           bytes = await client.downloadFile(item.fileId);
         } catch (error) {
-          // An oversized Telegram file is skipped and counted like any
-          // file that fails validation — it never fails the whole import.
+          // An oversized Telegram file is skipped and counted like any invalid file;
+          // it never fails the whole import.
           if (error instanceof TelegramImportError && error.code === 'file_too_large') {
             return 'skipped' as const;
           }
@@ -284,9 +277,9 @@ function toImportHttpError(error: unknown): HttpError {
       case 'invalid_request':
         return new HttpError(400, 'invalid_request', error.message);
       case 'invalid_token':
-        // The stored (or env) token was revoked or replaced at Telegram's
-        // side after it was saved. 409, not 501: the feature IS configured,
-        // the credential is just dead — and the message names who fixes it.
+        // The stored token was revoked or replaced at Telegram's side after it was
+        // saved. 409, not 501: the feature is configured, the credential is dead,
+        // and the message names who fixes it.
         return new HttpError(
           409,
           'token_invalid',

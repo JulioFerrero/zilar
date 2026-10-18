@@ -15,17 +15,15 @@ import { resolveCandidate } from './candidates';
 import type { PushServiceDeps } from './service';
 import { devicesForUser, markDeviceUsed } from './store';
 
-// Server-side group push (F5/MP-3). ejabberd's MAM push trigger handles only
-// `chat`: a user with no session is not a room occupant, so group and topic
-// messages never publish to them. This fiber polls the archive for new
-// `groupchat` rows and notifies each member who has no XMPP resource online,
-// applying the same mute, visibility and preview rules plus the same
-// per-node dedupe as the DM path. It runs whenever push is on.
+// Server-side group push: ejabberd's MAM trigger handles only `chat`, and a
+// user with no session is not a room occupant, so group and topic messages
+// never publish. This fiber polls for new `groupchat` rows and notifies each
+// offline member with the DM path's mute, visibility, preview and dedupe
+// rules.
 
 export const GROUP_NOTIFIER_INTERVAL_MS = 3000;
 const GROUP_NOTIFIER_PAGE_SIZE = 200;
-// The connectivity answer is cached per user while a tick runs: one member
-// posting in many rooms (or many member rows for one room) asks ejabberd once.
+// The connectivity answer is cached per user while a tick runs.
 const RESOURCE_CACHE_TTL_MS = 2000;
 
 export interface GroupNotifierDeps {
@@ -49,7 +47,7 @@ export interface GroupNotifierHandle {
 
 export function initialGroupNotifierState(now: Date): GroupNotifierState {
   return {
-    // Begin from "now": rows archived before the deploy are never pushed.
+    // Begin from now: rows archived before the deploy are never pushed.
     cursor: { timestampMicros: BigInt(now.getTime()) * 1000n, rowId: 0n },
     resourceCache: new Map(),
   };
@@ -63,9 +61,8 @@ function toRowId(value: number | string | bigint): bigint {
   return typeof value === 'bigint' ? value : BigInt(value);
 }
 
-// The room's topic (the group's General room plus every topic room archives
-// under its own localpart), the same lookup `resolveCandidate` starts from.
-// An archive row for a room we no longer know answers nothing.
+// The room's topic (General plus every topic room archives under its own
+// localpart); a row for an unknown room answers nothing.
 async function topicForRoom(
   deps: GroupNotifierDeps,
   roomLocalpart: string,
@@ -81,9 +78,7 @@ async function topicForRoom(
   return topic;
 }
 
-// The room's group members, joining the group the topic belongs to — the
-// groups code's own member read (`groups/queries.ts:265`, `group_members` by
-// `group_id`, like `groups/ais.ts:78`) through the row's topic.
+// The room's group members via its topic, using the groups code's read.
 async function memberIdsForTopic(deps: GroupNotifierDeps, topic: TopicRow): Promise<string[]> {
   const rows = await runSql(
     deps.service.db,
@@ -106,18 +101,15 @@ async function isConnected(
   if (cached !== undefined && at - cached.at < RESOURCE_CACHE_TTL_MS) {
     return cached.connected;
   }
-  // An ejabberd failure only skips the member for this tick: it throws into
-  // the per-row handler, which logs and moves on.
+  // An ejabberd failure only skips the member for this tick.
   const connected = (await deps.admin.userResources(localpart)).length > 0;
   state.resourceCache.set(localpart, { connected, at });
   return connected;
 }
 
 // One member and one row: skip the sender and members with a session,
-// resolve the row with the same verdict the DM path uses (mute, hidden,
-// previews), and deliver to each of the member's devices exactly once per
-// node. A row ejabberd's own publish already notified (a pending session the
-// notifier still sees as resourced) stays silent through `recentlyNotified`.
+// resolve with the DM path's verdict, deliver once per node. A row ejabberd
+// already notified stays silent through `recentlyNotified`.
 async function notifyMemberForRow(
   deps: GroupNotifierDeps,
   memberId: string,
@@ -134,17 +126,16 @@ async function notifyMemberForRow(
   if (await isConnected(deps, state, localpart, at)) {
     return;
   }
-  // `resolveCandidate` ignores the scope for `groupchat` rows (it resolves
-  // the room from our own topics), so the member only needs a stub owner.
+  // `resolveCandidate` ignores the scope for `groupchat`, so the member only
+  // needs a stub owner.
   const owner: SearchOwner = {
     ownLocalpart: localpart,
     dmPeers: [],
     rooms: [],
     peerNames: new Map(),
   };
-  // Groupchat page rows carry the archive-only ordering `id`, which
-  // `resolveCandidate` never reads. `liveIds` are the page's live-UI origin
-  // ids, so a card edit is skipped too (T-1400).
+  // Groupchat rows carry an archive-only `id` that `resolveCandidate` never
+  // reads; `liveIds` are the page's live-UI ids, so a card edit is skipped.
   const verdict = await resolveCandidate(deps.service, memberId, owner, row, liveIds);
   if (verdict.status !== 'ok') {
     return;
@@ -155,9 +146,8 @@ async function notifyMemberForRow(
     notify: [row.originId],
     saw: 'duplicate' as const,
   };
-  // One album is one push per device (T-1270): a sibling row whose album
-  // sender key is already remembered stays silent, exactly like a repeated
-  // origin id.
+  // One album is one push per device: a remembered sender key keeps siblings
+  // silent.
   const key = albumKey(verdict.message);
   for (const device of devices) {
     const seen = deps.service.recentlyNotified.get(device.node);
@@ -203,10 +193,8 @@ async function notifyRow(
   if (topic === undefined) {
     return;
   }
-  // The nick is display text: the sender's own account localpart comes from
-  // the archived real sender JID in `bare_peer` (T-2004). Only a legacy row
-  // with no `bare_peer` at all falls back to the nick, which then held the
-  // sender's localpart.
+  // The nick is display text; the sender's localpart comes from `bare_peer`.
+  // Only a legacy row with none falls back to the nick.
   const senderLocalpart =
     row.barePeer === '' ? row.nick.toLowerCase() : (bareJid(row.barePeer).split('@')[0] ?? '');
   for (const memberId of await memberIdsForTopic(deps, topic)) {
@@ -222,9 +210,8 @@ async function notifyRow(
   }
 }
 
-// One poll: read the rows newer than the cursor, notify, and advance the
-// cursor to the newest row read. A failed tick logs at `warn` (never message
-// text) and the loop goes on; the cursor only moves past rows that were read.
+// One poll: read rows newer than the cursor, notify, advance to the newest;
+// a failed tick logs at `warn` and the loop goes on.
 export async function runGroupNotifierTick(
   deps: GroupNotifierDeps,
   state: GroupNotifierState,
@@ -236,8 +223,7 @@ export async function runGroupNotifierTick(
       afterId: state.cursor.rowId,
       limit: GROUP_NOTIFIER_PAGE_SIZE,
     });
-    // The page's live-UI origin ids, so a progress card and its edits never
-    // notify the room's offline members (T-1400).
+    // The page's live-UI ids, so a progress card and its edits never notify.
     const liveIds = liveAiUiIds(rows);
     for (const row of rows) {
       await notifyRow(deps, state, row, at, liveIds);
@@ -251,9 +237,8 @@ export async function runGroupNotifierTick(
       }
     }
   } catch {
-    // A failed tick logs at `warn` and the loop goes on: the error shape may
-    // echo a request, and rows may carry message text, so nothing from it is
-    // logged — only the fact that the tick failed.
+    // The error may echo a request and rows carry message text, so a failed tick
+    // logs only that it failed.
     deps.logger.warn({}, 'group push tick failed; continuing with the next tick');
   }
 }

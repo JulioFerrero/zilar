@@ -10,15 +10,11 @@ import { userIdsWithDevices } from '../push/store';
 import { visibleTopics, type TopicRow } from './access';
 import type { PushUserSyncDeps, TopicRoomDeps } from './rooms';
 
-// Push (T-0119): every desired member holding a push device is subscribed to
-// the room (MUC/Sub, XEP-0369), so the room's messages reach them as push
-// notifications while they have no session. Anyone who should no longer be
-// there — a removed member, or someone a freshly private topic excludes — is
-// unsubscribed again, and an archived topic unsubscribes everyone still
-// affiliated. AIs never hold push devices and are skipped. Delivery sync is
-// best effort next to the affiliation sync above: a failure is logged with
-// the room localpart (never a topic name) and never thrown, so push can
-// never break membership changes.
+// Every desired member holding a push device is subscribed to the room
+// (MUC/Sub), so its messages reach them while they have no session; anyone
+// who should no longer be there is unsubscribed, and an archived topic
+// unsubscribes everyone. AIs never hold devices. Best effort: a failure is
+// logged with the room localpart, never a topic name.
 export async function syncPushSubscriptions(
   deps: TopicRoomDeps,
   topic: TopicRow,
@@ -31,9 +27,8 @@ export async function syncPushSubscriptions(
   }
   const { subscribe, unsubscribe } = holders;
   if (topic.archivedAt !== null) {
-    // Archived topics are invisible to everyone: drop every push
-    // subscription the room still holds, whether or not the JID is still
-    // affiliated.
+    // Archived topics are invisible: drop every push subscription the room
+    // still holds.
     for (const jid of holders.affiliated) {
       await unsubscribeOne(deps, topic, jid);
     }
@@ -79,9 +74,9 @@ interface PushDeviceHolders {
   affiliated: Set<string>;
 }
 
-// Intersects the room's wanted and current JIDs with the users holding push
-// devices. `undefined` when the device table cannot be read — push sync is
-// skipped, affiliations already applied above still stand.
+// Intersects the wanted and current JIDs with users holding push devices;
+// `undefined` when the device table cannot be read, so affiliations already
+// applied still stand.
 async function pushDeviceHolders(
   deps: TopicRoomDeps,
   wanted: Map<string, RoomAffiliation>,
@@ -124,18 +119,14 @@ async function pushDeviceHolders(
   return { subscribe, unsubscribe, affiliated };
 }
 
-// The MUC/Sub subscription nick: the stable account localpart, never a
-// display name.
+// The MUC/Sub nick: the stable account localpart, never a display name.
 function nickFor(userJid: string): string {
   return userJid.split('@')[0] ?? userJid;
 }
 
 // Re-applies one user's room subscriptions after their device set changed:
-// with at least one device they are subscribed to every room they may see
-// (their groups' General rooms plus visible topics); with none left they
-// are unsubscribed from all of them, so ejabberd stops publishing for a
-// user who cannot receive anything. Best effort: failures are logged per
-// room (localpart only, never a topic name) and never thrown.
+// with a device they follow every room they may see; with none they are
+// unsubscribed, so ejabberd stops publishing. Best effort, logged per room.
 export async function syncPushSubscriptionsForUser(
   deps: PushUserSyncDeps,
   userId: string,
@@ -184,11 +175,9 @@ export interface RoomOptionsReconcileDeps {
   logger: InviteLogger;
 }
 
-// One-time reconcile for rooms created before push: enables MUC/Sub
-// subscriptions (`allow_subscription`) on every topic room through
-// `change_room_option`. New rooms are created with the option set. Runs at
-// push-component startup; per-room failures are logged (localpart only)
-// and never thrown, so one bad room cannot keep push from starting.
+// One-time reconcile for rooms created before push: enable
+// `allow_subscription` on every topic room; new rooms set it at creation.
+// Per-room failures are logged and never thrown.
 export async function reconcileRoomSubscriptionOptions(
   deps: RoomOptionsReconcileDeps,
 ): Promise<void> {

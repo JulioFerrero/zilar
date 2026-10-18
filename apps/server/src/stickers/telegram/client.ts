@@ -15,19 +15,13 @@ import {
 import { toStickerSet, type TelegramClient, type TelegramStickerSet } from './set';
 import { botFileUrl, callMethodEffect, fetchCappedEffect, type FetchFn } from './transport';
 
-/**
- * The real Telegram client: `fetch` only to the two hard-coded Telegram
- * URLs, no redirects, 10 s timeout, 1 MiB cap per file, 256 KiB cap per
- * method JSON envelope. Telegram's 429 (`retry_after`, capped at 5 s) is
- * retried once, then reported as `try_later`; an unknown bot token (401 on
- * any method) is `invalid_token` so the integrations page can verify a
- * pasted key; a missing pack is `pack_not_found`; no other Telegram text is
- * passed through.
- */
+/** The real Telegram client: `fetch` only to the two hard-coded HTTPS URLs,
+ * no redirects, 10 s timeout, 1 MiB per file and 256 KiB per method
+ * envelope. A 429 retries once, then `try_later`; 401 is `invalid_token`; a
+ * missing pack is `pack_not_found`; no other Telegram text passes through. */
 export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): TelegramClient {
-  // The `Promise` edge: map each internal failure to its fixed
-  // `TelegramImportError`. The message is scrubbed defensively: the mapping
-  // is fixed strings, but a future edit must not be able to leak the token.
+  // The `Promise` edge maps each internal failure to its fixed
+  // `TelegramImportError`; the message is scrubbed defensively.
   const toImportError = (failure: TelegramFailure): TelegramImportError => {
     const info = failureToImportError(failure);
     return new TelegramImportError(info.code, scrubTokenText(token, info.message));
@@ -44,12 +38,9 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
           TelegramFileTooLarge: (error: TelegramFileTooLarge) => Effect.fail(toImportError(error)),
           TelegramInvalidPath: (error: TelegramInvalidPath) => Effect.fail(toImportError(error)),
         }),
-        // The old `scrubbed()` catch-all: a defect must never escape as a
-        // `FiberFailure` (which would carry the token-bearing URL). After
-        // `catchTags` the only typed failures are the mapped
-        // `TelegramImportError`s, so those pass through unchanged; every
-        // other cause becomes the fixed `try_later`. Interruption belongs to
-        // the caller and is rethrown unchanged.
+        // A defect must never escape as a `FiberFailure` (which would carry the
+        // token-bearing URL); after `catchTags` every other cause becomes the fixed
+        // `try_later`, while interruption is rethrown unchanged.
         Effect.catchCause((cause) => {
           if (Cause.hasInterruptsOnly(cause)) {
             return Effect.failCause(cause);
@@ -65,9 +56,8 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
     );
 
   return {
-    // `getMe` verifies a bot token: a 401 is `invalid_token`, anything
-    // else failing is `try_later`. Only the owner-gated integrations route
-    // calls this; the import flow never needs it.
+    // `getMe` verifies a bot token: 401 is `invalid_token`, anything else
+    // `try_later`. Only the owner-gated integrations route calls it.
     getMe(): Promise<{ ok: boolean }> {
       return runClient(callMethodEffect(token, fetchFn, 'getMe', {}).pipe(Effect.as({ ok: true })));
     },

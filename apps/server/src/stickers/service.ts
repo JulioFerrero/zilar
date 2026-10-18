@@ -1,6 +1,3 @@
-// T-0958: the stickers service was split into `schemas`, `storage`, `packs`,
-// `panel`, `favorites` and `telegram`. This file stays the barrel so
-// importers (routes, api, avatars, backgrounds, main) do not change.
 export {
   STICKER_PACKS_MAX_PER_USER,
   STICKER_PACK_TITLE_MAX,

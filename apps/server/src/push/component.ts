@@ -7,9 +7,8 @@ import { markPushOffline, markPushOnline } from '../health-status';
 
 const DISCO_INFO_NAMESPACE = 'http://jabber.org/protocol/disco#info';
 
-// How many publishes may wait (or run) for one node. A publish for a node over
-// the cap is dropped: a slow or broken device must not grow the process's
-// memory without bound.
+// How many publishes may wait or run for one node; over the cap a publish is
+// dropped, so a slow device cannot grow memory.
 const MAX_PENDING_PER_NODE = 50;
 
 export type PushComponentOptions = {
@@ -30,15 +29,10 @@ export type PushComponentHandle = {
   stop: () => Promise<void>;
 };
 
-// Runs the server as an XEP-0114 component and routes incoming XEP-0357
-// publish IQs to Web Push. The reply is the IQ callee's, not ours: a publish
-// route returns truthy, so `@xmpp/component` answers exactly one `result`.
-// The old shape listened on `stanza` and answered by hand, which produced the
-// callee's `service-unavailable` error first and our `result` second;
-// ejabberd disables a push pair after an error IQ, so the device went silent.
-// Every valid publish is answered `result`, even when the notification is
-// dropped. IQs for one node are handled one at a time (a per-node promise
-// chain), so two near-simultaneous messages resolve in arrival order.
+// Runs the server as an XEP-0114 component and routes XEP-0357 publish IQs
+// to Web Push. The reply is the callee's: a publish route returns truthy so
+// exactly one `result` is sent, even when the notification is dropped. IQs
+// for one node are handled one at a time so they resolve in arrival order.
 export function startPushComponent(options: PushComponentOptions): PushComponentHandle {
   const createComponent: PushComponentFactory =
     options.createComponent ?? ((init) => component(init));
@@ -48,23 +42,13 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
     password: options.secret,
   });
   const { service, logger } = options;
-  // The publish IQ must come from ejabberd's own XMPP domain; a user JID (or
-  // any other server) is dropped. `service.config.xmpp.domain` is the host
-  // ejabberd runs as, which is also what mod_push puts in `from`.
+  // The publish IQ must come from ejabberd's own XMPP domain; a user JID or
+  // any other server is dropped.
   const serverDomain = service.config.xmpp.domain;
-  // The latest job per node, as a fiber. The next job for that node joins it.
   const chains = new Map<string, Fiber.Fiber<void>>();
-  // Jobs queued or running per node, capped below. `saturated` keeps the
-  // warning to one line per saturation instead of one per dropped publish.
   const pending = new Map<string, number>();
   const saturated = new Set<string>();
 
-  // `@xmpp/component`'s `error` event is not fatal — the connection can stay
-  // up — so track liveness from the `status` event instead. `status` also
-  // carries `online`/`offline`, so separate listeners for those are not needed.
-  // The package ships no types (see `push/xmpp-component.d.ts`); that stub only
-  // lists the events this module used before, so narrow `status` here rather
-  // than widen a file outside this task's scope.
   const statusEmitter = xmpp as unknown as {
     on(event: 'status', listener: (status: string) => void): unknown;
   };
@@ -79,26 +63,19 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   });
 
   xmpp.on('error', (error: Error) => {
-    // @xmpp/component reconnects on its own after an error; losing this
-    // listener would crash the process on an unhandled 'error' event.
     logger.warn({ error: error.message }, 'push component error');
   });
 
-  // ejabberd's mod_push sends each notification as a `set` IQ with one
-  // `<pubsub>` child. Registering the route hands the reply to the callee,
-  // which sends one `result`; delivery is forked onto the per-node chain so
-  // the answer is not held back by the send.
-  //
-  // A publish whose `from` is not exactly the server's XMPP domain is dropped
-  // like any other malformed IQ: a normal user must not be able to make the
-  // component push to a device.
+  // ejabberd's mod_push sends a `set` IQ with one `<pubsub>` child; the route
+  // hands the reply to the callee, which sends one `result`, and delivery is
+  // forked so the answer is not held back. A publish whose `from` is not
+  // exactly the server's domain is dropped: a user must not be able to make
+  // the component push to a device.
   xmpp.iqCallee.set(PUBSUB_NAMESPACE, 'pubsub', (ctx) => {
     const notification = parsePushIq(ctx.stanza);
     if (notification !== undefined && notification.from === serverDomain) {
       scheduleNotification(notification);
     }
-    // A malformed or foreign publish is answered `result` too (as the old code
-    // did) and never delivered; an error IQ would disable the push pair.
     return true;
   });
 
@@ -113,9 +90,6 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
       return;
     }
     pending.set(node, queued + 1);
-    // One node belongs to one device of one user. The chain always advances,
-    // even when a handler throws, so one bad IQ can never wedge later ones; a
-    // finished chain is dropped so the map does not grow forever.
     const job = Effect.runFork(
       afterPrevious(chains.get(node), handleNotification(service, logger, notification)),
     );
@@ -134,8 +108,6 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
     });
   }
 
-  // ejabberd probes the component on connect. The callee wraps the returned
-  // query content in the `result` envelope for us.
   xmpp.iqCallee.get(DISCO_INFO_NAMESPACE, 'query', () => discoInfoQuery());
 
   Effect.runFork(
@@ -157,8 +129,6 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   };
 }
 
-// Runs `job` once the previous job for the same node has finished. The
-// previous job's outcome is ignored, so a failed one never skips this one.
 function afterPrevious(
   previous: Fiber.Fiber<void> | undefined,
   job: Effect.Effect<void>,
@@ -166,7 +136,6 @@ function afterPrevious(
   const settled = previous === undefined ? Effect.void : Effect.exit(Fiber.join(previous));
   return settled.pipe(
     Effect.andThen(job),
-    // As before, a job that still fails is dropped quietly so the next one runs.
     Effect.catchCause(() => Effect.void),
   );
 }
@@ -190,15 +159,11 @@ function handleNotification(
             );
             break;
           case 'unknown-device':
-            // The node is a delivery target, not a secret, and logging it is how
-            // an operator matches a stray publish to a removed device.
             logger.info({ node: outcome.node }, 'push publish for an unknown node; dropped');
             break;
         }
       }),
     ),
-    // `handleIncomingPush` is not supposed to throw; the callee still answers
-    // `result` on its own, so a failure here is logged and carries on.
     Effect.catchDefect((error) =>
       Effect.sync(() =>
         logger.warn(
@@ -210,8 +175,6 @@ function handleNotification(
   );
 }
 
-// The disco#info content ejabberd reads when it probes the component. The
-// callee appends this query to the `result` it builds.
 function discoInfoQuery(): PushXmppElement {
   return xml(
     'query',

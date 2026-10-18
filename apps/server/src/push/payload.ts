@@ -1,10 +1,8 @@
 import type { FcmWakeData, PushChatKind } from './fcm';
 
-// The encrypted Web Push payload the service worker decrypts and shows.
-// The payload JSON is encrypted end to end by `web-push` (RFC 8291) between
-// our server and the browser, so Google/Mozilla/Apple relays only see
-// ciphertext. Encrypted payload budget is ≈ 4 KiB shared with headers; the
-// payload below is capped at 3000 bytes.
+// The encrypted Web Push payload the service worker decrypts. `web-push`
+// encrypts end to end (RFC 8291), so relays see only ciphertext. The budget
+// is ≈ 4 KiB shared with headers; this payload is capped at 3000 bytes.
 export const PushPayloadSchema = {
   MAX_BYTES: 3000,
   /** Message preview length: the first 120 characters of the text. */
@@ -18,13 +16,12 @@ export type PushPayload = {
   messageId?: string;
 };
 
-// A message the component resolved from the chat archive for one publish IQ:
-// who wrote it, where, and the raw text (if any). `undefined` text means the
-// message carries no readable text (an attachment with no caption, a card).
+// A message resolved from the archive: who wrote it, where, and the raw text.
+// `undefined` means no readable text (an attachment with no caption, a card).
 export type ResolvedPushMessage = {
   /** Room bare JID for groups/topics, DM peer bare JID for DMs. */
   chatJid: string;
-  /** Which kind of chat it is, so the phone picks the right channel (T-1303). */
+  /** Which kind of chat it is, so the phone picks the right channel. */
   chatKind: PushChatKind;
   /** Display name of the sender, never an e-mail. */
   senderName: string;
@@ -32,7 +29,7 @@ export type ResolvedPushMessage = {
   place: string;
   text: string | undefined;
   messageId?: string;
-  /** The album a photo of a multi-photo message belongs to (T-1269). */
+  /** The album a photo of a multi-photo message belongs to. */
   albumId?: string;
   /** How many photos the album holds, when `albumId` is set. */
   albumCount?: number;
@@ -48,13 +45,12 @@ export type PushFilterInput = {
 };
 
 // Mute and visibility win over everything: a muted chat or a private topic
-// the user lost access to never produces a push, even for a mention. Shared by
-// both transports so a change to the rule can never drift between them.
+// the user lost access to never pushes, even for a mention. Shared by both
+// transports so the rule cannot drift.
 function passesFilters(input: PushFilterInput): boolean {
   return !input.muted && input.visible;
 }
 
-// Builds the payload, or undefined when the notification must be dropped.
 export function buildPushPayload(
   message: ResolvedPushMessage,
   input: PushFilterInput,
@@ -79,12 +75,10 @@ export function buildPushPayload(
   return payload;
 }
 
-// Builds the FCM data-only wake, or undefined when the notification must be
-// dropped. It carries ids only — the chat JID, the message id and the server
-// id — never the text or the sender name: the app fetches and enriches the
-// message itself. The mute/visibility guard is the same one the Web Push
-// payload uses, so both kinds drop together. `messageId` is left out when the
-// archive row carried none.
+// Builds the FCM data-only wake, or undefined when it must be dropped. It
+// carries ids only, never the text or sender name: the app fetches and
+// enriches the message. The same guard drops both kinds. `messageId` is
+// omitted when the row carried none.
 export function buildNativeWakePayload(
   message: ResolvedPushMessage,
   input: PushFilterInput,
@@ -104,8 +98,7 @@ export function buildNativeWakePayload(
   };
 }
 
-// DMs read as just the name ("Ana"); groups read as who plus where
-// ("Ana in Acme Web › Bug: checkout…").
+// DMs read as just the name ("Ana"); groups as who plus where.
 function titleFor(message: ResolvedPushMessage): string {
   if (message.place === '' || message.place === message.senderName) {
     return message.senderName;
@@ -113,8 +106,8 @@ function titleFor(message: ResolvedPushMessage): string {
   return `${message.senderName} in ${message.place}`;
 }
 
-// The preview body: the message text, or "{n} photos" for an album whose
-// photos carry no caption. `undefined` means the generic body is used.
+// The preview body: the text, or "{n} photos" for an album with no caption.
+// `undefined` uses the generic body.
 function previewFor(message: ResolvedPushMessage): string | undefined {
   if (message.text !== undefined) {
     const collapsed = message.text.replace(/\s+/g, ' ').trim();

@@ -1,11 +1,9 @@
 import { createSign } from 'node:crypto';
 import { Exit, Schema } from 'effect';
 
-// The FCM HTTP v1 access token, minted from a service account without
-// `firebase-admin` (native-push-plan.md §2.2). The flow is one RS256 JWT and
-// one OAuth2 token exchange: the claim set is fixed and small, so 30 lines of
-// `node:crypto` beat a large transitive client library. The service account's
-// `private_key` never reaches a log, an error or a thrown value.
+// The FCM HTTP v1 access token minted from a service account without
+// `firebase-admin`: one RS256 JWT and one OAuth2 exchange. The private key
+// never reaches a log, an error or a thrown value.
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const TOKEN_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -39,8 +37,8 @@ export interface FcmTokenProviderInput {
   now?: () => number;
 }
 
-// Carries a fixed sentence and the HTTP status only. The request assertion,
-// the access token and the private key are never put on the error.
+// Carries a fixed sentence and the HTTP status only; the assertion, the
+// access token and the private key are never on the error.
 export class FcmTokenError extends Error {
   readonly status: number | null;
 
@@ -56,8 +54,8 @@ const tokenResponseSchema = Schema.Struct({
   expires_in: Schema.Number,
 });
 
-// One RS256 JWT: `header.claims` signed with the service account's private
-// key. `exp - iat` is exactly one hour, the value Google's flow expects.
+// One RS256 JWT signed with the service account's private key; `exp - iat`
+// is exactly one hour, as Google's flow expects.
 function signAssertion(serviceAccount: FcmServiceAccount, issuedAt: number): string {
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claims = base64url(
@@ -88,8 +86,7 @@ function base64url(value: string | Buffer): string {
 }
 
 // The provider caches one token and collapses concurrent refreshes into one
-// exchange. `token()` never rejects with the service account: a failed
-// exchange is an `FcmTokenError` carrying only the status.
+// exchange; a failure is an `FcmTokenError` carrying only the status.
 export function createFcmTokenProvider(input: FcmTokenProviderInput): FcmTokenProvider {
   const fetchImpl: FcmFetch = input.fetch ?? ((url, init) => fetch(url, init));
   const now = input.now ?? (() => Math.floor(Date.now() / 1000));

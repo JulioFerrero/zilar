@@ -1,10 +1,7 @@
-// T-1243 (SG-4 part 2): the owner deletes a group. Every room of the group
-// (each topic, and General, which shares the group's `room_localpart`) is
-// destroyed outside the transaction, then the group row goes (its children
-// cascade), and the per-chat rows keyed by the room JIDs follow. Only the
-// owner may do this; a member or admin answers 403 and an unknown or
-// invisible group answers the same 404, like `transferGroupOwner`
-// (`apps/server/src/groups/ownership.ts`).
+// The owner deletes a group: every room is destroyed outside the
+// transaction, then the group row (children cascade) and the per-chat rows
+// keyed by the room JIDs. Only the owner; anyone else answers 403, an
+// unknown or invisible group the same 404.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -25,26 +22,23 @@ export interface DeleteGroupInput {
   audit?: AuditRecorder;
 }
 
-// The chat JID of a room, the same form the topic views hand out
-// (`apps/server/src/topics/views.ts`: `${localpart}@${mucDomain}`, lowercased,
-// and `apps/server/src/push/candidates.ts` `topicRoomGeneralJid`).
+// The chat JID of a room: `<localpart>@<mucDomain>`, lowercased.
 function roomJidFor(roomLocalpart: string, mucDomain: string): string {
   return `${roomLocalpart}@${mucDomain}`.toLowerCase();
 }
 
-// The owner destroys the group: the rows first (one transaction, the owner
-// check under a per-group advisory lock), then best-effort room destruction,
-// then the chat rows that carry no foreign key.
+// The owner destroys the group: rows first (one transaction, owner check
+// under a per-group advisory lock), then best-effort room destruction, then
+// the chat rows that carry no foreign key.
 export async function deleteGroup(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
   input: DeleteGroupInput,
 ): Promise<void> {
-  // An unknown group is the same 404 a non-member sees below.
   await requireGroup(db, input.groupId);
 
-  // Read every room before the cascade removes the topic rows. General is a
-  // topic row too (`apps/server/src/groups/service.ts`), so this is all rooms.
+  // Read every room before the cascade removes the topic rows; General is a
+  // topic row too, so this is all rooms.
   const rooms = await runSql(
     db,
     Effect.gen(function* () {
@@ -56,7 +50,8 @@ export async function deleteGroup(
 
   // One transaction: the owner check and the delete. The cascade removes
   // `group_members`, `topics`, `group_ais`, `group_invite_links`, `handles`,
-  // roles, routines, approvals and every other table that references the group.
+  // roles, routines, approvals and every other table that references the
+  // group.
   await runSql(
     db,
     Effect.gen(function* () {
@@ -67,7 +62,6 @@ export async function deleteGroup(
           const [actor] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
             WHERE group_id = ${input.groupId} AND user_id = ${input.actorId} LIMIT 1`;
           if (actor === undefined) {
-            // Nothing to see: an unknown group and an invisible one answer alike.
             return yield* Effect.fail(new HttpError(404, 'not_found', 'Group not found'));
           }
           if (actor.role !== 'owner') {
@@ -81,8 +75,6 @@ export async function deleteGroup(
     }),
   );
 
-  // The rows are committed: the rooms follow best-effort, like every other
-  // membership change (`queries.ts` `destroyQuietly` logs and continues).
   const roomJids: string[] = [];
   for (const room of rooms) {
     if (room.roomLocalpart === '') continue;
@@ -104,9 +96,8 @@ export async function deleteGroup(
     );
   }
 
-  // T-0124: the group write is audited with ids only: the group id and the
-  // number of rooms that went away. A recorder is injected by the route; a
-  // write failure is logged and never fails the request.
+  // Audited with ids only: the group id and the number of rooms that went
+  // away; a failed audit write never fails the request.
   if (input.audit) {
     try {
       await recordAudit(

@@ -1,12 +1,7 @@
-// The stickers upload body (part B, T-0602) and its capped body read, split
-// out of `./api` by T-0992. The multipart/raw handler and its size cap and
-// type checks are byte for byte the same as before; only the file moved.
-//
-// The limiter middleware already charged the budget (session -> limiter ->
-// content-type branch -> upload). The multipart branch checks the declared
-// length before parsing the form, so an over-cap body is rejected without
-// buffering it; the raw branch streams through `readCapped`, which stops as
-// soon as the cap is passed. The 201 body carries every `StickerView` field.
+// The stickers upload body and its capped read. The limiter already charged
+// the budget; multipart checks the declared length before parsing so an
+// over-cap body is never buffered, and raw streams through `readCapped`,
+// which stops at the cap.
 
 import { Effect } from 'effect';
 import { HttpServerRequest, HttpServerResponse } from 'effect/http';
@@ -17,9 +12,8 @@ import { STICKER_MAX_UPLOAD_BYTES } from './image';
 import { uploadSticker, type StickersServiceDeps } from './service';
 import { decodePathId } from './api-decode';
 
-// The upload route's request: the raw request plus the `:id` path param (the
-// route declares no payload schema). `serviceDeps` is the same factory the
-// other handlers use.
+// The upload request: the raw request plus the `:id` path param, since the
+// route declares no payload schema.
 export interface UploadStickerRequest {
   readonly request: HttpServerRequest.HttpServerRequest;
   readonly params: { readonly id: string };
@@ -35,14 +29,13 @@ export function runUploadSticker(
     let bytes: Uint8Array;
     let emoji: string | undefined;
     if (contentType.includes('multipart/form-data')) {
-      // A multipart body is buffered by `formData()` before its size can be
-      // checked, so a declared length is required: a chunked body with none
-      // would otherwise be read whole.
+      // `formData()` buffers before size can be checked, so a declared length is
+      // required; a chunked body with none would otherwise be read whole.
       const declaredHeader = request.request.headers['content-length'];
       const declared = declaredHeader === undefined ? Number.NaN : Number(declaredHeader);
       if (!Number.isFinite(declared) || declared < 0) {
-        // `HttpError` only carries the statuses the API answers with; 411 is
-        // not one of them, so this fixed envelope is returned directly.
+        // `HttpError` only carries statuses the API answers with and 411 is not
+        // one, so this fixed envelope is returned directly.
         return HttpServerResponse.jsonUnsafe(
           {
             error: {
@@ -77,7 +70,6 @@ export function runUploadSticker(
       if (typeof rawEmoji === 'string' && rawEmoji !== '') {
         emoji = rawEmoji;
       }
-      // Byte-identical to the old zod `z.string().max(8)` message.
       if (emoji !== undefined && emoji.length > 8) {
         throw new HttpError(
           400,
@@ -86,8 +78,7 @@ export function runUploadSticker(
         );
       }
     } else {
-      // Raw bytes: the client POSTs the file with an optional
-      // `x-emoji` header.
+      // Raw bytes: the client POSTs the file with an optional `x-emoji` header.
       const declared = Number(request.request.headers['content-length'] ?? '');
       if (Number.isFinite(declared) && declared > STICKER_MAX_UPLOAD_BYTES) {
         throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
@@ -101,9 +92,8 @@ export function runUploadSticker(
       bytes = capped;
       const rawEmoji = request.request.headers['x-emoji'];
       if (rawEmoji !== undefined && rawEmoji !== '') {
-        // Header values are latin1 ByteStrings, so the client
-        // percent-encodes the emoji; decode at most the first 64
-        // characters, then let the service validate the length.
+        // Header values are latin1, so the client percent-encodes the emoji; decode
+        // at most 64 characters and let the service validate the length.
         let decodedEmoji = rawEmoji;
         if (decodedEmoji.includes('%')) {
           try {

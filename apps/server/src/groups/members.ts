@@ -71,8 +71,6 @@ export async function addGroupMembers(
         `A group has at most ${MAX_GROUP_MEMBERS} members`,
       );
     }
-    // The rows actually written: two adds that race serialize on the lock
-    // below, so the loser sees the winner's rows and writes only the rest.
     let added: string[] = toAdd;
     try {
       await runSql(
@@ -81,9 +79,6 @@ export async function addGroupMembers(
           const sql = yield* SqlClient.SqlClient;
           yield* sql.withTransaction(
             Effect.gen(function* () {
-              // T-1769: take the per-group join lock before counting, so two
-              // concurrent adds cannot each pass the pre-check above and exceed
-              // the cap. The locked count below is the authority.
               yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-join:' + input.groupId}))`;
               const current = yield* sql<{ userId: string }>`SELECT user_id FROM group_members
                 WHERE group_id = ${input.groupId}`;
@@ -117,8 +112,7 @@ export async function addGroupMembers(
                   catch: (error) => error,
                 });
               }
-              // T-1846 (SG-8): adding someone back lifts the ban a removal
-              // set, in the same transaction as the membership row.
+              // Adding someone back lifts the ban a removal set, in the same transaction.
               yield* unbanMembers(sql, input.groupId, added);
               yield* sql`INSERT INTO group_members ${sql.insert(
                 added.map((userId) => ({
@@ -134,12 +128,6 @@ export async function addGroupMembers(
     } catch (error) {
       throw mapXmppError(error);
     }
-    // T-0108/T-1762: public topics gain the new members before the sync, so
-    // the rooms see them. The membership is already committed, so this write
-    // and the sync below are best effort: a failure is logged (ids only, never
-    // a topic name) and never thrown. Throwing here would fail the request
-    // while the members are already in the group, and every retry stops at the
-    // `toAdd` filter above, so the topic rows would never be written.
     try {
       await addToPublicTopics(db, input.groupId, added);
     } catch (error) {
@@ -181,11 +169,6 @@ export async function removeGroupMember(
   if (target.role === 'owner') {
     throw new HttpError(403, 'forbidden', 'The owner cannot be removed');
   }
-  // T-0124: a channel always keeps its admins' voice (the room is moderated,
-  // so only affiliation admin/owner may post). Removing the last admin is
-  // refused here (demoting one is refused in `changeMemberRole`). The guard
-  // fires only when the target is an admin: kicking a subscriber never takes
-  // voice away, even in a channel that has no admins yet.
   if (group.kind === 'channel' && !isSelf && target.role === 'admin') {
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
@@ -197,11 +180,8 @@ export async function removeGroupMember(
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
-            // T-1990: take the same per-group lock the ownership hand-over
-            // uses, and re-read both roles under it. The pre-checks above are
-            // only fast answers: these reads are the authority, so a removal
-            // can never race a transfer or a role change into an ownerless
-            // group.
+            // Take the same per-group lock as hand-over and re-read both roles under it;
+            // the pre-checks are fast answers, these reads are the authority.
             yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'group-owner:' + input.groupId}))`;
             const [lockedActor] = yield* sql<{ role: GroupRole }>`SELECT role FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.actorId} LIMIT 1`;
@@ -236,20 +216,16 @@ export async function removeGroupMember(
                 ),
               catch: (error) => error,
             });
-            // `role <> 'owner'` is the same refusal at the write itself: even
-            // if a hand-over slipped in, it can never delete the owner's row.
+            // `role <> 'owner'` refuses at the write: even a slipped-in hand-over cannot
+            // delete the owner's row.
             yield* sql`DELETE FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}
                 AND role <> 'owner'`;
-            // T-1846 (SG-8): a removal by an owner or admin bans the person,
-            // so the public join and the invite links refuse them. A self-leave
-            // never bans. Same transaction as the delete: no half state.
+            // A removal by an owner/admin bans the person, so public joins and invites
+            // refuse them; a self-leave never bans. Same transaction, no half state.
             if (!isSelf) {
               yield* banMember(sql, input.groupId, input.targetUserId, input.actorId);
             }
-            // T-0108: a removed person loses their `topic_members` rows for
-            // every topic of the group. The topic room sync below then drops
-            // them from every topic room.
             const topicRows = yield* sql<{ id: string }>`SELECT id FROM topics
               WHERE group_id = ${input.groupId}`;
             const topicIds = topicRows.map((row) => row.id);
@@ -264,10 +240,8 @@ export async function removeGroupMember(
   } catch (error) {
     throw mapXmppError(error);
   }
-  // T-1990: a removed (or departed) member takes their AIs out of the group.
-  // `removeGroupAi` accepts the AI's owner as actor even after they left, and
-  // clears the AI's topic rows, rules, tools, routines and memory. Best effort
-  // per AI: a failure is logged with ids only and never fails the removal.
+  // A removed member takes their AIs with them: `removeGroupAi` accepts the
+  // owner as actor after they left. Best effort per AI, logged with ids only.
   const ownedAis = await runSql(
     db,
     Effect.gen(function* () {
@@ -293,12 +267,6 @@ export async function removeGroupMember(
       );
     }
   }
-  // T-0116: leaving the group drops the member's role rows, and the topics
-  // they reached only through a role re-sync. Best effort after the commit,
-  // like the room syncs above. The dropped rows are audited as
-  // `group.role_unassigned` (ids only) so the log keeps who-held-what;
-  // a failed audit write is logged and never thrown. The audit rows for a
-  // private topic never carry its name either.
   const droppedRoleIds = await dropMemberRoles(
     {
       db,
@@ -331,12 +299,9 @@ export async function removeGroupMember(
       input.logger.warn({ groupId: input.groupId }, 'could not audit a role loss on leave');
     }
   }
-  // T-0108: public topics lose the person; private topics drop them when
-  // their row is gone. Best effort after the database commit: a failure is
-  // logged with the group id (never a topic name), never thrown. The sync
-  // also drops AIs whose owner just lost visibility of a private topic
-  // (derived rule in `topics/rooms.ts`); the event loop below tells live
-  // gateway sessions to leave those rooms right away.
+  // Public topics lose the person; private ones drop them when their row is
+  // gone. Best effort, logged with the group id. Also drops AIs whose owner
+  // lost visibility, and tells live sessions to leave those rooms.
   await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   await emitDroppedGroupTopicAis(db, input.groupId);
   await archiveDrainedPrivateTopics(db, input.groupId);

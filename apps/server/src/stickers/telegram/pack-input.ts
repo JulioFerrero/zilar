@@ -3,13 +3,10 @@ import { TelegramImportError } from './errors';
 
 const PACK_NAME_PATTERN = /^[A-Za-z0-9_]{1,64}$/;
 
-/**
- * Parses the import input: a bare pack name, a
- * `https://t.me/addstickers/<name>` link (query strings ignored), or a
- * `tg://addstickers?set=<name>` link. Anything else — including a name
- * that fails `^[A-Za-z0-9_]{1,64}$` — throws `invalid_request` before any
- * network request is made.
- */
+/** Parses the import input: a bare pack name, a
+ *  `https://t.me/addstickers/<name>` link (query strings ignored) or a
+ *  `tg://addstickers?set=<name>` link; anything else fails `invalid_request`
+ *  before any network request. */
 export function parseTelegramPackInput(input: string): string {
   const trimmed = input.trim();
   if (trimmed === '' || /[\s]/.test(trimmed)) {

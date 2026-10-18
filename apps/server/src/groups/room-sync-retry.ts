@@ -4,19 +4,17 @@ import { runSql } from '../effect/sql';
 import type { TopicRow } from '../topics/access';
 import { syncTopicRoom, type TopicRoomDeps } from '../topics/rooms';
 
-// T-1180 (SG-3): a group whose topic-room sync failed after a membership
-// change is remembered here and retried every minute until every topic room
-// matches the database again. T-2002: archived rooms are retried too, so a
-// failed removal does not leave a stale affiliation behind. The sync is
-// idempotent, so a retry is always safe. The map is in-memory: a restart drops
-// the retry, and the next membership change of the group notes it again.
+// A group whose topic-room sync failed is retried every minute until the
+// rooms match the database again, archived rooms included, so a failed
+// removal leaves nothing stale. Idempotent, in-memory: a restart drops the
+// retry and the next membership change notes the group again.
 const RETRY_INTERVAL_MS = 60_000;
 
 const pending = new Map<string, TopicRoomDeps>();
 let retryTimer: NodeJS.Timeout | undefined;
 
-// Remembers the group and starts the retry interval lazily on the first entry.
-// `unref` keeps the timer from holding the process open on its own.
+// Remembers the group and starts the retry lazily; `unref` keeps the timer
+// from holding the process open.
 export function notePendingGroupSync(groupId: string, deps: TopicRoomDeps): void {
   pending.set(groupId, deps);
   if (retryTimer === undefined) {
@@ -27,9 +25,8 @@ export function notePendingGroupSync(groupId: string, deps: TopicRoomDeps): void
   }
 }
 
-// One pass over every pending group. A group is dropped only when every one of
-// its topic rooms synced without error; until then it stays pending for the
-// next pass. Exported for the test, and called by the interval above.
+// One pass over pending groups; a group is dropped only when every room
+// synced, else it stays for the next pass. Exported for the test.
 export async function drainPendingGroupSyncs(): Promise<void> {
   for (const [groupId, deps] of pending) {
     const synced = await syncPendingGroup(groupId, deps);
@@ -39,8 +36,6 @@ export async function drainPendingGroupSyncs(): Promise<void> {
   }
 }
 
-// Clears the retry interval on shutdown. `unref` already keeps the process
-// from waiting on it, so wiring this into `main.ts` is optional.
 export function stopRoomSyncRetry(): void {
   if (retryTimer !== undefined) {
     clearInterval(retryTimer);

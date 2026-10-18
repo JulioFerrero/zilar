@@ -34,21 +34,19 @@ export function botFileUrl(token: string, filePath: string): URL {
   return url;
 }
 
-// The request allowlist: HTTPS to `api.telegram.org` only. With plain
-// `fetch` the default is to follow redirects, so the client follows none —
-// a redirect (even to the same host) is refused instead of chased.
+// The request allowlist: HTTPS to `api.telegram.org` only. `fetch` follows
+// redirects by default, so none are followed — a redirect, even to the same
+// host, is refused.
 function assertTelegramUrl(url: URL): void {
   if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== TELEGRAM_API_HOST) {
     throw new TelegramUnreachable();
   }
 }
 
-// One `fetch` under the 10 s timeout. The timer aborts the request through
-// the `AbortSignal` handed to `fetch` — combined with the signal
-// `Effect.tryPromise` hands in, which fires if the effect itself is
-// interrupted. A fetch that refuses the abort still runs to completion,
-// exactly like the old `AbortController`, so the timeout never preempts a
-// response that already arrived.
+// One `fetch` under the 10 s timeout: the timer aborts through the
+// `AbortSignal`, combined with the one `Effect.tryPromise` hands in for
+// interruption. A fetch that refuses the abort runs to completion, so the
+// timeout never preempts an answer that already arrived.
 const requestEffect = Effect.fnUntraced(function* (
   url: URL,
   fetchFn: FetchFn,
@@ -66,8 +64,6 @@ const requestEffect = Effect.fnUntraced(function* (
   }).pipe(Effect.ensuring(Effect.sync(() => clearTimeout(timer))));
 });
 
-// Drains a refused response so the connection is not left half-read. The
-// body is not needed; a drain failure is swallowed like the old `.catch`.
 const discardBody = (response: Response): EffectType.Effect<void> =>
   Effect.promise(() =>
     response.arrayBuffer().then(
@@ -76,8 +72,8 @@ const discardBody = (response: Response): EffectType.Effect<void> =>
     ),
   );
 
-// The file-download read: no body means empty, and passing the cap cancels
-// the reader and signals `file_too_large` (the importer skips and counts it).
+// The file download: no body means empty, and passing the cap cancels the
+// reader and signals `file_too_large`.
 async function readDownloadBody(response: Response, maxBytes: number): Promise<Uint8Array> {
   const body = response.body;
   if (body === null) {
@@ -112,13 +108,11 @@ async function readDownloadBody(response: Response, maxBytes: number): Promise<U
   return merged;
 }
 
-// Reads one Telegram Bot API method envelope (`getStickerSet`, `getFile`,
-// `getMe`) with the 256 KiB cap: past it the head alone is pathological, so
-// the response is dropped as `try_later` instead of buffered without bound.
+// Reads one Bot API method envelope with the 256 KiB cap: past it the
+// response is pathological and dropped as `try_later` instead of buffered.
 async function readEnvelopeBody(response: Response): Promise<TelegramApiEnvelope> {
   const body = response.body;
   if (body === null) {
-    // No stream (undici already buffered it): cap the buffered text itself.
     const text = await response.text().catch(() => {
       throw new TelegramUnreachable();
     });
@@ -156,8 +150,8 @@ async function readEnvelopeBody(response: Response): Promise<TelegramApiEnvelope
   return parseTelegramEnvelope(new TextDecoder().decode(merged));
 }
 
-// Parses one already-bounded envelope body. Telegram's error text never
-// passes through: a non-JSON answer is a transport failure, not content.
+// Parses one bounded envelope; a non-JSON answer is a transport failure, and
+// Telegram's error text never passes through.
 function parseTelegramEnvelope(text: string): TelegramApiEnvelope {
   try {
     return JSON.parse(text) as TelegramApiEnvelope;
@@ -175,7 +169,7 @@ const readEnvelopeEffect = Effect.fnUntraced(function* (
   });
 });
 
-// `fetch` with a timeout that reads at most `maxBytes`: aborts as soon as
+// `fetch` with a timeout that reads at most `maxBytes`, aborting as soon as
 // the cap is passed, so a large file never has to fit in memory twice.
 export const fetchCappedEffect = Effect.fnUntraced(function* (
   url: URL,
@@ -199,9 +193,8 @@ export const fetchCappedEffect = Effect.fnUntraced(function* (
   });
 });
 
-// One method call with the redirect refusal and the status mapping. A 429
-// with a positive `retry_after` is returned as a retry signal when
-// `allowRetry` is set; every other refusal fails typed.
+// One method call with the redirect refusal and the status mapping; a 429
+// with a positive `retry_after` is a retry signal when `allowRetry` is set.
 type CallOutcome =
   | { readonly kind: 'result'; readonly value: unknown }
   | { readonly kind: 'retry'; readonly retryAfterMs: number };
@@ -241,8 +234,8 @@ const invokeEffect = Effect.fnUntraced(function* (
   return yield* new TelegramUnreachable();
 });
 
-// The single retry after a 429: exactly one more attempt after `retry_after`
-// (capped at 5 s), no further retry even if Telegram answers 429 again.
+// Exactly one more attempt after `retry_after` (capped at 5 s), no further
+// retry even on another 429.
 export const callMethodEffect = Effect.fnUntraced(function* (
   token: string,
   fetchFn: FetchFn,

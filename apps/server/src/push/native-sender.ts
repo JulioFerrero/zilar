@@ -1,9 +1,7 @@
-// The native (FCM) sender setup (native-push-plan.md §2.2-2.4, Task 4 of the
-// split). `FCM_SERVICE_ACCOUNT_JSON` is the only input: without it the server
-// runs exactly as before and a native device drops as `send-failed` (see
-// `service.ts`), because the sender is left undefined. The service account's
-// private key goes straight into the token provider and is never logged, named
-// or returned; the one log line says on or off and carries no value.
+// The native (FCM) sender setup; `FCM_SERVICE_ACCOUNT_JSON` is the only
+// input, and without it the sender stays undefined so a native device drops
+// as `send-failed`. The private key goes straight into the token provider and
+// is never logged, named or returned; the one log line says on or off.
 
 import { readFcmConfig, type PushConfig } from './config';
 import { createFcmSender, type FcmSender } from './fcm';

@@ -1,9 +1,6 @@
-// The batched topic-visibility pass for the chat list (T-1175). It answers the
-// same question as `visibleTopics` in `./access` for many groups at once: the
-// non-archived topics of each group the caller is a member of, with private
-// topics kept only through a `topic_members` row or a role (T-0116). Every read
-// runs once with `sql.in(...)` over all ids, so a user in N groups costs a fixed
-// handful of queries instead of a handful per group.
+// The batched visibility pass for the chat list: the same question as
+// `visibleTopics` for many groups at once, with every read done once over
+// all ids, so N groups cost a fixed handful of queries.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -11,9 +8,8 @@ import type { ServerDatabase } from '../db/client';
 import type { TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 
-// The visible topics of each requested group, keyed by group id. A group the
-// caller is not a member of maps to an empty list, like `visibleTopics` would
-// answer for it, so the caller never sees a group it may not.
+// The visible topics of each requested group; a group the caller is not a
+// member of maps to an empty list.
 export async function visibleTopicsForGroups(
   db: ServerDatabase,
   groupIds: string[],
@@ -39,8 +35,7 @@ export async function visibleTopicsForGroups(
     return visible;
   }
 
-  // One membership read for all ids, matching the existence check in
-  // `getGroupMembership` (access.ts) — a row for (group, user) means a member.
+  // One membership read for all ids; a `(group, user)` row means a member.
   const memberRows = await runSql(
     db,
     Effect.gen(function* () {
@@ -68,7 +63,7 @@ export async function visibleTopicsForGroups(
     for (const row of directRows) {
       privateSeen.add(row.topicId);
     }
-    // T-0116: topics reached through a role, not a direct row.
+    // topics reached through a role, not a direct row.
     const roleRows = await runSql(
       db,
       Effect.gen(function* () {

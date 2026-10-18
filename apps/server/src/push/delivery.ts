@@ -23,8 +23,6 @@ import {
   type PushDeviceRow,
 } from './store';
 
-// Internal failure modes of the delivery pipeline. They never leave this
-// module: `handleIncomingPush` maps each to today's dropped outcome and log.
 type DeliveryError = Undecryptable | ArchiveUnavailable | SendFailed;
 
 type DroppedReason = Extract<PushOutcome, { kind: 'dropped' }>['reason'];
@@ -35,22 +33,12 @@ function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
   return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
 }
 
-// Lifts a promise-returning DB call the way `await` did: a DB failure rejects the
-// boundary promise with the original error, identical and unwrapped. Only the
-// calls whose old contract was "any throw becomes archive-unavailable" use a
-// typed catch instead (see `newestMessageForUserEffect`).
 const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
   Effect.promise(promise);
 
-// Handles one publish IQ for one device: resolves the newest message from
-// the archive, applies the send-time mute and visibility checks, and sends.
-// Never throws: every failure answers `result` at the component (ejabberd
-// disables a push pair after an error IQ) and is logged with ids only —
-// never message text or endpoint URLs.
-//
-// The pipeline runs as Effect inside (see `docs/EFFECT_GUIDE.md`); this
-// `Promise` boundary runs it and maps each typed error to today's dropped
-// outcome and log. DB failures that used to reject still reject unchanged.
+// Handles one publish IQ for one device: resolves the newest message,
+// applies mute/visibility, sends. Never throws: every failure answers
+// `result` and logs ids only, never message text or endpoint URLs.
 export async function handleIncomingPush(
   deps: PushServiceDeps,
   notification: PushNotification,
@@ -58,9 +46,6 @@ export async function handleIncomingPush(
   const now = (deps.now ?? (() => new Date()))();
   const device = await deviceByNode(deps.db, notification.node);
   if (device === undefined) {
-    // The row is gone: the API unsubscribed it (`DELETE /push/subscriptions`)
-    // or T-1255's session-revoke cascade deleted it. Forget the node's dedupe
-    // set so a removed device's ids do not accumulate for the process's life.
     deps.recentlyNotified.delete(notification.node);
     return { kind: 'unknown-device', node: notification.node };
   }
@@ -113,10 +98,8 @@ const openDeviceEffect = Effect.fnUntraced(function* (
   });
 });
 
-// Opens a native device: the token is stored in the clear, so there is
-// nothing to decrypt. A row whose kind and token disagree (impossible under
-// migration 0047's `shape_check`, but a programming error if seen) is
-// unusable and dropped like an undecryptable Web Push row.
+// Opens a native device: the token is in the clear, so nothing to decrypt.
+// A row whose kind and token disagree is unusable and dropped.
 const openNativeDeviceEffect = Effect.fnUntraced(function* (
   device: PushDeviceRow,
 ): EffectType.fn.Return<ReturnType<typeof openNativeDevice>, Undecryptable> {
@@ -126,9 +109,6 @@ const openNativeDeviceEffect = Effect.fnUntraced(function* (
   });
 });
 
-// The part of `NewestScan` (`archive-scan.ts`) the delivery half reads: the
-// newest acceptable message (or none) and what made the scan stay silent.
-// Declared structurally so this module stays independent of the scan.
 export interface ScanResult {
   newest: { message: ResolvedPushMessage } | undefined;
   notify: string[];
@@ -141,21 +121,11 @@ const resolveAndSendEffect = Effect.fnUntraced(function* (
   node: string,
 ): EffectType.fn.Return<PushOutcome, DeliveryError> {
   const scan = yield* newestMessageForUserEffect(deps, device.userId, node).pipe(
-    // The old Promise version wrapped this whole call in a try/catch: any
-    // throw from the scan — including a synchronous one in its own loop
-    // bookkeeping when the archive answers something unexpected — became
-    // `archive-unavailable`. A rejected promise is mapped inside the scan; a
-    // defect is caught here so `handleIncomingPush` still never rejects.
     Effect.catchDefect(() => Effect.fail(new ArchiveUnavailable())),
   );
   return yield* deliverToDevice(deps, device, scan);
 });
 
-// The post-scan half of the pipeline, split out (and exported) so both
-// delivery branches can be tested without the MAM archive. The scan already
-// decided *whether* to notify — mute, visibility and the already-notified
-// dedupe all ran there — so this only decides *how*: open the device for its
-// kind, build that kind's payload, send, then remember the origin ids.
 export const deliverToDevice = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
@@ -163,10 +133,6 @@ export const deliverToDevice = Effect.fnUntraced(function* (
 ): EffectType.fn.Return<PushOutcome, DeliveryError> {
   const newest = scan.newest;
   if (newest === undefined) {
-    // Nothing acceptable to show: persistent emptiness (the trigger may be
-    // a muted or hidden message whose MAM row never landed), mute,
-    // invisibility, or an already-notified message all stay silent. A muted
-    // or hidden message never produces even a generic notification.
     const reason =
       scan.saw === 'muted' || scan.saw === 'hidden' || scan.saw === 'no-message'
         ? scan.saw
@@ -175,9 +141,8 @@ export const deliverToDevice = Effect.fnUntraced(function* (
   }
 
   const showPreviews = yield* awaitDb(() => showPreviewsForUser(deps.db, device.userId));
-  // Mute and visibility were already resolved by the scan, so both kinds pass
-  // the same always-visible filter; only the preview setting differs, and only
-  // the Web Push payload reads it.
+  // Mute and visibility were resolved by the scan, so both kinds pass the same
+  // filter; only the preview setting differs, and only Web Push reads it.
   const filter = { muted: false, visible: true, showPreviews };
   let gone = false;
   if (device.kind === 'webpush') {
@@ -191,8 +156,6 @@ export const deliverToDevice = Effect.fnUntraced(function* (
     );
   } else {
     const nativeSender = deps.nativeSender;
-    // No APNs sender exists yet, and FCM may be unconfigured: drop the wake
-    // rather than guess. Ids only in the log.
     if (device.kind === 'apns' || nativeSender === undefined) {
       deps.logger.warn(
         { userId: device.userId, deviceId: device.id },
@@ -208,35 +171,24 @@ export const deliverToDevice = Effect.fnUntraced(function* (
     gone = yield* sendWithCleanupEffect(deps, device, () => nativeSender.send(native.token, data));
   }
   if (gone) {
-    // The transport reported the subscription gone and its row was removed
-    // (PERF-17): forget the node's dedupe set with it, and never mark ids for
-    // a device that can no longer receive them.
     deps.recentlyNotified.delete(device.node);
   } else {
-    // Marked only after a successful send. Per-node serialization keeps
-    // concurrent IQs for one node ordered, so a retry cannot double-buzz:
-    // the retry finds the origin id already seen and drops as `duplicate`.
+    // Marked only after a successful send; per-node serialization makes a retry
+    // find the origin id already seen and drop as `duplicate`.
     markNotified(deps, device.node, scan.notify, newest.message);
   }
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 });
 
-// Sends through one transport and runs the shared post-send bookkeeping: a
-// `gone` result removes the device, and any throw stamps `failed_at` and
-// answers the IQ with `SendFailed`. Both kinds share this one block, so Web
-// Push and native cleanup cannot drift apart. Returns `true` when the
-// subscription was gone, so the caller forgets the node instead of marking it
-// notified (PERF-17).
+// Sends through one transport and runs the shared post-send bookkeeping:
+// `gone` removes the device, a throw stamps `failed_at` and answers
+// `SendFailed`. Returns `true` when gone, so the caller forgets the node.
 const sendWithCleanupEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
   send: () => Promise<{ gone: boolean }>,
 ): EffectType.fn.Return<boolean, SendFailed> {
   const now = (deps.now ?? (() => new Date()))();
-  // The send and the `gone` cleanup share one `try`, exactly like the old
-  // `try` block: any throw stamps `failed_at` and answers the IQ with a
-  // result. A failure here is not marked notified (F3), so a retried publish
-  // IQ for the same message still notifies.
   return yield* Effect.tryPromise({
     try: async () => {
       const result = await send();
@@ -249,29 +201,23 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
       }
       return result.gone;
     },
-    // The thrown error never leaves this module: only a fixed reason is kept,
-    // to store with `failed_at`. The raw HTTP status and transport codes are
-    // deliberately dropped: a hostile or broken endpoint must not be able to
-    // reflect a status back to the user, and the reason is all the device list
-    // needs to say.
+    // The thrown error never leaves this module, and the raw HTTP status and
+    // transport codes are dropped: a hostile endpoint must not reflect a status
+    // back to the user, and the reason is all the device list needs.
     catch: (error) => new SendFailed({ reason: fixedFailureReason(error) }),
   }).pipe(
     Effect.catchTag('SendFailed', (failed) =>
       Effect.gen(function* () {
         yield* awaitDb(() => markDeviceFailed(deps.db, device.id, now, failed.reason));
-        // Ids only: the error may echo the request, which carries the token
-        // or the endpoint. The boundary logs the failure and returns the
-        // dropped outcome.
         return yield* new SendFailed({ reason: failed.reason });
       }),
     ),
   );
 });
 
-// The fixed reasons stored with `failed_at`. A push service that answered is
-// a `rejected`; a socket that ran out of time is `timeout`; everything else
-// (DNS, TLS, connection refused, an unknown transport error) is `unreachable`.
-// The raw status, the endpoint and the token never reach the column or a log.
+// The fixed reasons stored with `failed_at`: an answering service is
+// `rejected`, an exhausted socket `timeout`, everything else `unreachable`.
+// Raw status, endpoint and token never reach the column or a log.
 type FailureReason = 'rejected' | 'timeout' | 'unreachable';
 
 function fixedFailureReason(error: unknown): FailureReason {
@@ -296,8 +242,6 @@ function isTimeout(error: unknown): boolean {
     name?: unknown;
     message?: unknown;
   };
-  // web-push destroys the request with `new Error('Socket timeout')`; other
-  // transports use the platform timeout code or a named error.
   return code === 'ETIMEDOUT' || name === 'TimeoutError' || message === 'Socket timeout';
 }
 
@@ -308,15 +252,11 @@ function hasStatusCode(error: unknown): boolean {
   return typeof (error as { statusCode?: unknown }).statusCode === 'number';
 }
 
-// How many notified origin ids to remember per device node before
-// forgetting the oldest (a retried publish IQ or a re-scan then stays
-// silent for those).
 const NOTIFIED_REMEMBERED = 500;
 
-// Remembers origin ids as notified per device node, so a retried publish
-// IQ or a later re-scan for the same node stays silent. A delivered album
-// also remembers its sender key, so a sibling row landing in a later page is
-// deduped too (T-1270). Capped per node.
+// Remembers origin ids as notified per node, so a retried IQ or re-scan
+// stays silent. An album also remembers its sender key, so a later-page
+// sibling is deduped. Capped per node.
 function markNotified(
   deps: PushServiceDeps,
   node: string,

@@ -1,22 +1,17 @@
 import { Effect, Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
 
-// Push (web push through ejabberd's mod_push) configuration. Everything is
-// optional so the server boots without push; the routes answer 404 and the
-// component stays off unless `PUSH_ENABLED=true`. When enabled, the VAPID
-// keys, the component credentials and the storage key must all be present —
-// the wiring in `app.ts`/`index.ts` refuses to start half-configured.
+// Push configuration. Everything is optional so the server boots without
+// push: routes answer 404 and the component stays off unless
+// `PUSH_ENABLED=true`; when enabled the VAPID keys, component credentials
+// and storage key must all be present.
 
 const toInt = SchemaGetter.transform((value: string) => Number.parseInt(value, 10));
 const toText = SchemaGetter.transform((value: number) => String(value));
 
-// A key that is absent (or `undefined`) falls back to `fallback`, matching
-// zod's `.default()` / preprocess `?? default` behaviour, and the decoded type
-// has the key required.
 function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
   return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
 }
 
-// `'true'`/`'false'` string flag decoded to a boolean; anything else is invalid.
 function booleanFlagSchema() {
   return Schema.Literals(['true', 'false']).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed('false')),
@@ -29,10 +24,8 @@ function booleanFlagSchema() {
 
 const nonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
 
-// The documented placeholder both compose stacks used to default to. It is
-// public, so the two sides agreeing on it would authenticate the component
-// with a known secret (SEC-5): it counts as missing, and push stays off
-// with the usual `push stays off` log line naming PUSH_COMPONENT_SECRET.
+// The documented public placeholder: agreeing on it would authenticate with
+// a known secret, so it counts as missing and push stays off (SEC-5).
 const PLACEHOLDER_PUSH_COMPONENT_SECRET = 'CHANGE_ME_PUSH_COMPONENT_SECRET';
 
 const pushEnvSchema = Schema.Struct({
@@ -51,11 +44,9 @@ const pushEnvSchema = Schema.Struct({
     ),
     '5347',
   ),
-  // Host of ejabberd's XEP-0114 component listener (T-0172). Compose sets
-  // `ejabberd` (the service name); dev keeps the 127.0.0.1 default. A
-  // scheme, port or path would build a broken service URL, so anything but
-  // letters, digits, dots and hyphens fails startup with the fixed message
-  // below (the value is never echoed).
+  // Host of ejabberd's XEP-0114 listener: compose sets `ejabberd`, dev keeps
+  // 127.0.0.1. A scheme, port or path would build a broken URL, so only
+  // letters, digits, dots and hyphens pass; the value is never echoed.
   PUSH_COMPONENT_HOST: withDefault(
     Schema.String.pipe(
       Schema.check(
@@ -66,24 +57,19 @@ const pushEnvSchema = Schema.Struct({
     ),
     '127.0.0.1',
   ),
-  // Seals the Web Push subscription keys at rest (AES-256-GCM). At least 32
-  // characters, like the provider-key master key. Rotating it orphans
-  // existing rows: the component drops (never sends from) undecryptable
-  // devices, and the device list invites re-enabling.
+  // Seals Web Push keys at rest (AES-256-GCM), at least 32 characters.
+  // Rotating it orphans rows: the component drops undecryptable devices and
+  // the list invites re-enabling.
   PUSH_STORAGE_KEY: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMinLength(32)))),
-  // FCM HTTP v1 (native-push-plan.md §2.3). The service account is a secret
-  // (the whole downloaded JSON as a one-line string); `FCM_PROJECT_ID` may be
-  // omitted and read from the JSON's `project_id`. Both are optional: with
-  // neither set the server boots exactly as before.
+  // FCM HTTP v1 service account (the JSON as a one-line secret);
+  // `FCM_PROJECT_ID` may come from its `project_id`. Optional: without either
+  // the server boots as before.
   FCM_SERVICE_ACCOUNT_JSON: Schema.optional(nonEmptyStringSchema),
   FCM_PROJECT_ID: Schema.optional(nonEmptyStringSchema),
 });
 
 export type PushConfig = Schema.Schema.Type<typeof pushEnvSchema>;
 
-// Names the variables an invalid push env failed on. Only the key names are
-// kept, never a value, so a secret pasted into the wrong variable can never
-// reach a log or an error.
 class PushConfigError extends Error {
   readonly failedKeys: ReadonlyArray<string>;
 
@@ -94,8 +80,6 @@ class PushConfigError extends Error {
   }
 }
 
-// Collects the struct-key paths of every failed field: the field name
-// (dotted for nested structs) for each failure.
 function failedKeysOf(
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],
@@ -113,9 +97,6 @@ function failedKeysOf(
   }
 }
 
-// Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
-// which the schema would reject: an empty `PUSH_*`/`FCM_*` value means "not
-// set".
 function emptyPushSettingsAsUnset(
   env: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
@@ -148,10 +129,6 @@ export function loadPushConfig(env: Record<string, string | undefined>): PushCon
   throw new PushConfigError(failedKeys);
 }
 
-// Like the server's `loadServerConfigOrExit`: an invalid push host refuses
-// to boot with one fixed message that names the variable, never its value
-// (a secret could be pasted there by mistake). Called before `createApp` so
-// no route or component starts on a broken config.
 export function loadPushConfigOrExit(env: Record<string, string | undefined>): PushConfig {
   try {
     return loadPushConfig(env);
@@ -184,8 +161,6 @@ export type FcmConfig = {
   projectId: string;
 };
 
-// Decodes `FCM_SERVICE_ACCOUNT_JSON`. Returns null for anything that is not
-// JSON or lacks `client_email`/`private_key`; the raw value is never echoed.
 function parseFcmServiceAccount(
   raw: string,
 ): { serviceAccount: FcmServiceAccount; projectId: string | null } | null {
@@ -205,9 +180,6 @@ function parseFcmServiceAccount(
   };
 }
 
-// The FCM service account and its resolved project id, or null when FCM is not
-// configured. `FCM_PROJECT_ID` wins over the JSON's `project_id`. The wiring
-// (Task 4) builds the token provider and sender from this and nothing else.
 export function readFcmConfig(config: PushConfig): FcmConfig | null {
   const raw = config.FCM_SERVICE_ACCOUNT_JSON;
   if (raw === undefined) {
@@ -224,11 +196,6 @@ export function readFcmConfig(config: PushConfig): FcmConfig | null {
   return { serviceAccount: parsed.serviceAccount, projectId };
 }
 
-// The enabled config, or null with the reason named when `PUSH_ENABLED=true`
-// but a required value is missing. Values are never echoed: the reason names
-// the variable, not its content. FCM is checked first and independently of
-// `PUSH_ENABLED`, because an invalid service account must be caught whenever
-// it is present, not only when web push is on.
 export function pushConfigError(config: PushConfig): string | null {
   if (config.FCM_SERVICE_ACCOUNT_JSON !== undefined) {
     const parsed = parseFcmServiceAccount(config.FCM_SERVICE_ACCOUNT_JSON);
@@ -255,8 +222,6 @@ export function pushConfigError(config: PushConfig): string | null {
   if (config.PUSH_COMPONENT_JID === undefined) {
     missing.push('PUSH_COMPONENT_JID');
   }
-  // The public placeholder is not a secret: agreeing on it would let anyone
-  // authenticate the component, so it counts as missing (SEC-5).
   if (
     config.PUSH_COMPONENT_SECRET === undefined ||
     config.PUSH_COMPONENT_SECRET === PLACEHOLDER_PUSH_COMPONENT_SECRET

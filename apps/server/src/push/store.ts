@@ -7,8 +7,6 @@ import type { PushCipher } from './crypto';
 
 export type PushDeviceRow = PushSubscriptionRow;
 
-// `saveDevice`, its input types and the device cap live in `./store-save`
-// (T-1255 size split); callers keep importing them from `./store`.
 export {
   PUSH_MAX_DEVICES_PER_USER,
   saveDevice,
@@ -58,9 +56,8 @@ export async function devicesForUser(db: ServerDatabase, userId: string): Promis
   return [...rows];
 }
 
-// Every user id holding at least one push device. The room sync intersects
-// this with the desired members, so only members with a device are
-// subscribed to a room for push.
+// Every user id holding a push device; the room sync intersects this so
+// only members with a device are subscribed.
 export async function userIdsWithDevices(db: ServerDatabase): Promise<Set<string>> {
   const rows = await runSql(
     db,
@@ -72,8 +69,8 @@ export async function userIdsWithDevices(db: ServerDatabase): Promise<Set<string
   return new Set(rows.map((row) => row.userId));
 }
 
-// Scoped delete: a device id that is unknown or belongs to someone else
-// answers false, and the route 404s both the same way.
+// A device id that is unknown or belongs to someone else answers false,
+// and the route 404s both the same way.
 export async function removeDevice(
   db: ServerDatabase,
   userId: string,
@@ -135,9 +132,6 @@ export async function markDeviceUsed(
   );
 }
 
-// Stamps the failure time and its short reason together. The reason is the FCM
-// error code or `http-<status>`; `pushFailureReason` caps it at 64 chars, the
-// column's limit (migration 0054's check).
 export async function markDeviceFailed(
   db: ServerDatabase,
   deviceId: string,
@@ -155,8 +149,6 @@ export async function markDeviceFailed(
   );
 }
 
-// The user's "Show message previews" setting. Absent = on (previews are the
-// chat-app default; turning them off is the explicit privacy choice).
 export async function showPreviewsForUser(db: ServerDatabase, userId: string): Promise<boolean> {
   const [row] = await runSql(
     db,
@@ -191,10 +183,6 @@ export async function setShowPreviewsForUser(
   return row?.showPreviews ?? showPreviews;
 }
 
-// Opens one stored Web Push device for sending: decrypts the sealed keys. A
-// row that is not a Web Push row (its endpoint or keys are NULL — a native
-// device) or that no longer decrypts (rotated storage key) is unusable — the
-// caller drops it and answers the IQ with `result` like any other send failure.
 export function openDevice(
   cipher: PushCipher,
   row: PushDeviceRow,
@@ -208,10 +196,6 @@ export function openDevice(
   };
 }
 
-// Opens one stored native device for sending: the FCM/APNs token is stored in
-// the clear (`token` is a delivery address, not a credential), so there is
-// nothing to decrypt. A row that is not native is a programming error — the
-// caller branches on `kind` first.
 export function openNativeDevice(row: PushDeviceRow): { kind: 'fcm' | 'apns'; token: string } {
   if (row.kind === 'webpush' || row.token === null) {
     throw new Error('The push device is not a native device');

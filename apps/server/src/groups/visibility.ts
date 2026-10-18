@@ -1,12 +1,3 @@
-// T-0164: public visibility for groups and channels. A public group holds
-// exactly one `handles` row (`group_id`, same namespace as T-0163
-// `@username`s) and appears in the directory; a private group holds none
-// and stays invisible and invite-only.
-//
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`); the exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -47,26 +38,17 @@ interface RetiredHandleRow {
   reservedUntil: Date;
 }
 
-// Makes a group public (with a handle) or private again, in one
-// transaction under a per-group advisory lock, so concurrent writers
-// serialize and the handle rows the decision depends on are read INSIDE
-// the transaction (never check-then-insert):
-// - Only the owner may change visibility: a non-owner — and a stranger —
-//   sees the same 404 as a missing group (like `changeMemberRole`).
-// - Public needs a valid handle (T-0163 shape, reserved words and
-//   case-insensitive uniqueness through the primary key): `handle_invalid` /
-//   `handle_reserved` / `handle_taken`. Same handle (case-insensitively) is
-//   a no-op for the rows, but a casing-only change still obeys the 14-day
-//   interval and updates the stored casing — like the user claim path.
-// - Going public again within 30 days of going private may reuse the
-//   reserved handle (it is reserved for this group); anyone else's
-//   reservation reads as `handle_taken`. A handle change obeys the same
-//   14-day interval as users (409 `handle_change_too_soon` + `nextChangeAt`
-//   in the error detail).
-// - Public to private moves the handle row to `retired_handles` (reserved
-//   30 days for this group); members stay members; the group vanishes from
-//   the directory at once (directory reads `visibility = 'public'`).
-// Audit entries are written by the route, after the commit (ids only).
+// Makes a group public (with a handle) or private, in one transaction under
+// a per-group advisory lock, so the handle rows the decision depends on are
+// read INSIDE the transaction (never check-then-insert). Only the owner may
+// change visibility; a non-owner and a stranger see the same 404 as a
+// missing group. A public group needs a valid, unique handle
+// (`handle_invalid`, `handle_reserved`, `handle_taken`): the first claim is
+// always allowed and a retired reservation belongs to its group. A
+// casing-only change obeys the 14-day interval and updates the casing;
+// public to private retires the handle for 30 days, so the directory drops
+// the group at once. Audit entries are written by the route after the
+// commit, ids only.
 export async function setGroupVisibility(
   db: ServerDatabase,
   input: SetGroupVisibilityInput,
@@ -90,8 +72,8 @@ export async function setGroupVisibility(
             [membership] = yield* sql<{ role: string }>`SELECT role FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.actorId} LIMIT 1`;
           }
-          // A non-member sees the same 404 as a missing group; only the owner
-          // may touch visibility.
+          // A non-member sees the same 404 as a missing group; only the owner may
+          // touch visibility.
           if (!group || !membership || membership.role !== 'owner') {
             return yield* Effect.fail(new HttpError(404, 'not_found', 'Group not found'));
           }
@@ -126,7 +108,6 @@ export async function setGroupVisibility(
             return { visibility: 'private' as const, handle: null };
           }
 
-          // Going public (or staying public with a new handle).
           const trimmed = (input.handle ?? '').trim();
           if (trimmed === '') {
             return yield* Effect.fail(
@@ -146,9 +127,6 @@ export async function setGroupVisibility(
           }
           const lower = normalizeHandle(trimmed);
 
-          // Same handle (case-insensitively): a no-op for the rows, but a
-          // casing-only change still obeys the 14-day interval and updates the
-          // stored casing — like the user claim path.
           if (live && live.handleLower === lower) {
             if (live.handle !== trimmed) {
               const nextChangeAt = new Date(
@@ -170,9 +148,6 @@ export async function setGroupVisibility(
             return { visibility: 'public' as const, handle: trimmed };
           }
 
-          // A different handle: the 14-day interval counts from the current
-          // handle's last change (a brand-new public group has no handle yet, so
-          // the first claim is always allowed).
           if (live) {
             const nextChangeAt = new Date(
               live.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
@@ -186,11 +161,10 @@ export async function setGroupVisibility(
             }
           }
 
-          // Claim the wanted handle: a live row owned by someone else (a user or
-          // another group) is taken; a retired reservation belongs to its former
-          // owner only — this group may reclaim its own, an expired one reads as
-          // free. The insert races on the primary key (exactly one wins), and a
-          // violation maps to 409 `handle_taken`.
+          // A live row owned by someone else is taken; a retired reservation belongs
+          // to its former owner only, and an expired one reads as free. The insert
+          // races on the primary key, so exactly one wins and a violation maps to 409
+          // `handle_taken`.
           const [taken] = yield* sql<{ handleLower: string }>`SELECT handle_lower FROM handles
             WHERE handle_lower = ${lower} LIMIT 1`;
           if (taken) {
@@ -236,8 +210,6 @@ export async function setGroupVisibility(
           if (currentVisibility !== 'public') {
             yield* sql`UPDATE groups SET visibility = 'public' WHERE id = ${input.groupId}`;
           }
-          // Best effort: an expired retired row is reaped here, inside the
-          // transaction, and its error is ignored exactly as before.
           yield* sql`DELETE FROM retired_handles WHERE reserved_until <= ${now}`.pipe(
             Effect.catchCause(() => Effect.void),
           );
@@ -248,7 +220,6 @@ export async function setGroupVisibility(
   );
 }
 
-// The handle of a group (null while private), for the member detail views.
 export async function handleForGroup(db: ServerDatabase, groupId: string): Promise<string | null> {
   const [row] = await runSql(
     db,

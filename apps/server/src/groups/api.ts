@@ -1,11 +1,3 @@
-// Groups module on the Effect `HttpApi` adapter (T-0536): the same methods,
-// paths, statuses, bodies, limiter order and audit calls as the deleted
-// router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Its service runs on effect/sql.
-//
-// The schemas, the group and its middleware tags live in the shared contract
-// (`@zilar/api-contract`, T-0892); this file keeps the handlers and layers.
-
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -50,20 +42,16 @@ import { deleteGroup } from './delete-group';
 
 export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
 export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-// T-0164: open joins of public groups: 30 per hour per user (like the
-// invite-link join budget's per-user half), so handles cannot be farmed at
-// speed. Directory + by-handle reads below share the same clock.
+// Open joins of public groups: 30 per hour per user, so handles cannot be
+// farmed; directory and by-handle reads share the same clock.
 export const PUBLIC_JOIN_RATE_LIMIT_MAX = 30;
 export const PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-// T-1174 (SEC-7): creating a group or channel creates a MUC room, so it is
-// capped per user.
 export const GROUP_CREATE_RATE_LIMIT_MAX = 20;
 export const GROUP_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-// T-0124: role changes hit ejabberd (one affiliation write per call), so they
-// are capped per owner like topic creation is capped per user. T-0164: open
-// joins of public groups share the same shape. Both budgets run before the
-// payload is decoded, exactly like the old routes' `allow` -> service order.
+// Role changes hit ejabberd (one affiliation write per call), so they are
+// capped per owner; open joins share the shape. Both budgets run before the
+// payload is decoded.
 const GroupsApi = HttpApi.make('groups').add(GroupsGroup);
 
 export interface GroupsApiDependencies {
@@ -83,9 +71,6 @@ export interface GroupsApiDependencies {
 export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const domain = deps.config.xmpp.domain;
-  // T-0474: every group response carries the listener `available` flag from
-  // the server config. Service callers that do not know the config keep the
-  // default false and the routes stamp the real value here.
   const listenerAvailable = deps.config.LISTENER_ENABLED;
   const withListenerAvailability = (group: GroupDetail): GroupDetail => ({
     ...group,
@@ -139,7 +124,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(GroupsApi, 'groups', (handlers) =>
     handlers
-      // Creates a group or channel, 201 with the stamped detail.
       .handle(
         'create',
         handler(logger, async (request, user) =>
@@ -162,9 +146,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // The group detail. A non-member sees the same 404 as a missing group,
-      // so group ids cannot be probed. A channel subscriber sees the detail
-      // without the audience list.
       .handle(
         'detail',
         handler(logger, async (request, user) => {
@@ -180,8 +161,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           return group;
         }),
       )
-      // The channel audience list (admins only); a stranger sees the same 404
-      // as a missing group.
       .handle(
         'members',
         handler(logger, async (request, user) => {
@@ -194,9 +173,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           return { members };
         }),
       )
-      // Promotes or demotes a member (owner only; groups and channels since
-      // T-1741). The limiter middleware already charged the budget, before the
-      // payload decode.
       .handle(
         'changeRole',
         handler(logger, async (request, user) =>
@@ -213,9 +189,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // SG-4 (T-1187): the owner hands the group to another member; the two
-      // roles swap in one transaction and the old owner becomes an admin (and
-      // can then leave). The limiter middleware already charged the budget.
       .handle(
         'transferOwner',
         handler(logger, async (request, user) =>
@@ -231,9 +204,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // T-1243: the owner deletes the group; every topic room is destroyed and
-      // the group's rows cascade. The limiter middleware already charged the
-      // budget.
       .handle(
         'deleteGroup',
         handler(logger, async (request, user) => {
@@ -306,9 +276,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // Toggles member topic creation and the other group settings. The
-      // visibility + handle branch runs first, one transaction, audited as
-      // `group.visibility_changed` (ids only) once it commits.
       .handle(
         'patch',
         handler(logger, async (request, user) => {
@@ -344,8 +311,6 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           return withListenerAvailability(group);
         }),
       )
-      // Open join for public groups and channels. The join budget was already
-      // charged, before the path decode.
       .handle(
         'join',
         handler(logger, (request, user) =>

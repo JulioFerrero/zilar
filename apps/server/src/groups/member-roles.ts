@@ -17,18 +17,12 @@ import {
   type InviteLogger,
 } from './schemas';
 
-// Promotes a member to admin (or demotes an admin back to member). Only the
-// owner may change roles. Plain groups and channels both use this route
-// (T-1741): a group admin gets the same approval powers as a channel admin.
-// The database row commits first; the room affiliation follows outside the
-// transaction (best effort + log, like `addGroupMembers`): a room failure
-// never rolls back the committed row, and the caller reconciles with
-// `syncChannelVoice` so the affiliation heals on the next write. In a channel's
-// moderated room an admin gains voice (affiliation `admin`) and a demoted admin
-// loses it (`member` again), so the posting rule is enforced by the room, not
-// by the UI. In a plain group the person is a `member` either way (T-2002:
-// people never hold a MUC owner/admin affiliation outside a channel feed). Demoting the channel's last admin is refused
-// (`channel_needs_admin`), so the feed can never fall silent.
+// Owner only. Groups and channels share this route, and a group admin gets
+// the same approval powers as a channel admin. The row commits first and the
+// room affiliation follows best effort. In a channel's moderated room an
+// admin gains voice and a demoted admin loses it; in a plain group the person
+// is `member` either way. Demoting the last channel admin is refused
+// (`channel_needs_admin`), so the feed cannot fall silent.
 export async function changeMemberRole(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -36,9 +30,6 @@ export async function changeMemberRole(
 ): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
   const actor = await getMembership(db, input.groupId, input.actorId);
-  // A non-member sees the same 404 as a missing group (like every other
-  // group route). A plain member sees it too: 403 here would tell them the
-  // group exists and they are in it, an oracle strangers don't get.
   if (!group || !actor || actor.role !== 'owner') {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -62,9 +53,9 @@ export async function changeMemberRole(
   if (input.role === 'member' && group.kind === 'channel') {
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
-  // T-1990: the update runs under the same per-group lock as the hand-over and
-  // re-reads both roles inside it, so a role change cannot race a transfer into
-  // an ownerless group. `role <> 'owner'` is the same refusal at the write.
+  // The update runs under the same per-group lock as hand-over and re-reads
+  // both roles inside it, so a change cannot race a transfer into an ownerless
+  // group.
   let previousRole: GroupRole = target.role;
   try {
     await runSql(
@@ -105,9 +96,6 @@ export async function changeMemberRole(
   } catch (error) {
     throw mapXmppError(error);
   }
-  // The row is committed: the room follows best-effort. A failure is logged
-  // and the full voice mapping reconciles, so a half-applied change (row
-  // committed, affiliation stale) heals instead of diverging permanently.
   try {
     await adminClient.setAffiliation(
       group.roomLocalpart,
@@ -118,9 +106,8 @@ export async function changeMemberRole(
     input.logger.warn({ groupId: input.groupId }, 'could not set the member role affiliation');
     await syncChannelVoice(db, adminClient, input.groupId, input.domain, input.logger);
   }
-  // T-0124: every promote/demote is audited as `group.role_changed` (ids and
-  // roles only — never names). The recorder is injected by the route; a write
-  // failure is logged and never fails the request.
+  // Audited as `group.role_changed` (ids and roles only, never names); a failed
+  // audit write never fails the request.
   if (input.audit) {
     try {
       await recordAudit(
@@ -155,12 +142,9 @@ export async function changeMemberRole(
   return detail;
 }
 
-// After a role change or a drifted room, this re-applies the voice mapping
-// of a channel room: every owner/admin holds affiliation `admin` (voice, never
-// `owner`: T-2002), every subscriber `member`. A group room is left untouched. Best effort: failures
-// are logged with the group id (never member names) and never thrown. The
-// role-change path calls this when its own affiliation write fails, so a
-// committed row with a stale affiliation heals instead of diverging.
+// Re-applies a channel room's voice mapping: owners/admins `admin`,
+// subscribers `member`; a group room is untouched. Best effort, logged with
+// the group id.
 export async function syncChannelVoice(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,

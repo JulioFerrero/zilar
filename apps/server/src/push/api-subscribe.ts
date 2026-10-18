@@ -1,9 +1,7 @@
-// The push subscribe handler, split out of `./api` by T-1017 (size split).
-// T-1138 adds the native body: a `{ kind: 'fcm', token }` row stores the token
-// in the clear (a delivery address, not a credential) beside the Web Push body,
-// whose keys are still sealed. The route keeps its exact step order
-// (requirePush, then decode, then limiter) and its retry-on-node-collision
-// loop; ids only ever reach the logs, never the token.
+// The push subscribe handler: a native `{ kind: 'fcm', token }` body stores
+// the token in the clear (a delivery address, not a credential), while Web
+// Push keys stay sealed. Step order is requirePush, decode, limiter; ids
+// only reach the logs.
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Option, Schema } from 'effect';
@@ -33,8 +31,8 @@ export function createSubscribeHandler(
       );
       const decoded = Schema.decodeUnknownOption(SubscribePushDevicePayload)(raw);
       if (Option.isNone(decoded)) {
-        // A Web Push endpoint outside the allowlist is a distinct 400: the
-        // client sent a well-formed subscription to a host we refuse to call.
+        // A Web Push endpoint outside the allowlist is a distinct 400: a
+        // well-formed subscription to a host we refuse to call.
         const endpoint = endpointOf(raw);
         if (endpoint !== undefined && !isAllowedPushEndpoint(endpoint)) {
           throw new HttpError(400, 'invalid_request', 'The push endpoint is not allowed');
@@ -45,22 +43,16 @@ export function createSubscribeHandler(
         throw new HttpError(429, 'rate_limited', 'Too many push registrations, try again later');
       }
       const body = decoded.value;
-      // T-1255: stamp the registering session onto the row, so revoking that
-      // session (T-1235 Devices) cascades its devices away. The middleware
-      // already proved the session; this reads its id only, never a token.
       const sessionId = yield* Effect.promise(() =>
         currentSessionId(deps.auth, new Headers(request.request.headers)),
       );
       const cipher = createPushCipher(storageKey);
       const pushJid = deps.push.PUSH_COMPONENT_JID as string;
-      // A replaced node leaves a stale enable-pair behind in ejabberd
-      // (XEP-0357 session state). No admin command targets a push pair
-      // by node, so this only re-syncs the user's room subscriptions.
-      // What actually stops delivery to the old pair is that its device
-      // row is gone: the push component drops publishes for an unknown
-      // node. The browser's own session normally sends `<disable/>` for
-      // the old pair itself. Best effort: a failure never fails the
-      // registration (no endpoint or key in the logs — user id only).
+      // A replaced node leaves a stale enable-pair in ejabberd, but no admin
+      // command targets a pair by node, so this only re-syncs the room
+      // subscriptions; the old pair stops receiving because its device row is
+      // gone. The browser normally sends `<disable/>` itself. Best effort: a
+      // failure never fails the registration, logged with the user id only.
       const dropStalePushPairs = (staleNodes: string[]): Effect.Effect<void> =>
         Effect.promise(async () => {
           if (staleNodes.length === 0) {
@@ -86,9 +78,6 @@ export function createSubscribeHandler(
       let node = randomNode();
       parseNode(node);
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        // A rejection surfaces as a defect, which `yield*` does not
-        // throw into the surrounding `try`; map it to a value so the
-        // unique-violation retry below can inspect it.
         const outcome = yield* Effect.promise(() =>
           saveDevice(
             deps.db,
@@ -136,13 +125,10 @@ export function createSubscribeHandler(
           return yield* Effect.die(outcome.defect);
         }
         const row = outcome.row;
-        // The device is stored: subscribe the user to every room they
-        // may see so MUC/Sub events reach them while offline. Best
-        // effort — a room failure never fails the registration
-        // (membership changes re-sync later). The sync's own DB reads
-        // can throw after the row committed, so a failure here must
-        // not 500 an operation that already succeeded: log ids only
-        // and answer success (S2).
+        // The device is stored: subscribe the user to every room they may see so
+        // MUC/Sub events reach them offline. Best effort: the sync's own reads can
+        // throw after the row committed, so a failure logs ids only and answers
+        // success (S2).
         yield* Effect.promise(() =>
           syncPushSubscriptionsForUser(
             {
@@ -170,9 +156,6 @@ export function createSubscribeHandler(
   );
 }
 
-// The endpoint of a well-formed-enough Web Push body, so the route can tell a
-// refused host from a body that is invalid for another reason. Anything else
-// (a native body, a non-string) returns undefined.
 function endpointOf(raw: unknown): string | undefined {
   if (typeof raw !== 'object' || raw === null || !('endpoint' in raw)) {
     return undefined;

@@ -8,15 +8,14 @@ import { resolveCandidate } from './candidates';
 import type { ResolvedPushMessage } from './payload';
 import { ArchiveUnavailable, type PushServiceDeps } from './service';
 
-// How many of the newest archived rows to scan for an acceptable message,
-// and how often to re-read before giving up (the publish IQ can win the race
-// against the MAM write).
+// How many of the newest archived rows to scan per attempt, and how often to
+// re-read before giving up (the publish IQ can win the race with the MAM
+// write).
 const ARCHIVE_CANDIDATES = 25;
 const ARCHIVE_LOOKUP_ATTEMPTS = 3;
 const ARCHIVE_LOOKUP_RETRY_MS = 300;
-// Only rows this fresh are ever notified: a message that arrived more than ten
-// minutes ago must not be re-pushed when a later stanza (a typing state,
-// presence, the keepalive wake) triggers the scan for it.
+// Only rows this fresh are notified: an older message must not be re-pushed
+// by a later typing state, presence or keepalive wake.
 const ARCHIVE_FRESH_WINDOW_MS = 10 * 60 * 1000;
 
 export interface ArchiveCandidate {
@@ -32,28 +31,16 @@ export interface ArchiveCandidate {
 
 interface NewestScan {
   newest: { message: ResolvedPushMessage } | undefined;
-  /** Origin ids to mark as notified when a message is sent: the sent
-   * message plus the older rows the winning read evaluated past
-   * (`superseded` below). A row that resolved to muted or hidden stops
-   * the walk and is never marked — a later change in the chat can still
-   * notify it; rows already seen stay as they are. */
   notify: string[];
-  /** What the scan ran into when nothing was acceptable. */
   saw: 'muted' | 'hidden' | 'duplicate' | 'no-message';
 }
 
-// The oldest notifiable message across every chat the user may see (DMs with
-// contacts/AIs plus visible group and topic rooms), oldest first. One publish
-// IQ produces at most one notification — the oldest unseen acceptable row in
-// the last ten minutes wins, so a burst of IQs buzzes in arrival order, each
-// IQ taking the next message and never repeating one. Rows older than
-// ARCHIVE_FRESH_WINDOW_MS never notify: a typing state or presence can arrive
-// long after the message and must not re-push it. Rows in muted chats and
-// private topics the user cannot see never notify — not even generically: when
-// the trigger's MAM row has not landed yet the scan cannot tell a muted
-// message from a race, so an empty scope stays silent. Retraction rows (their
-// text is the stock fallback), body-less reaction rows, the user's own
-// outgoing DM rows, and rows already notified do not notify either.
+// The oldest notifiable message across every chat the user may see, oldest
+// first, one notification per publish IQ. Muted chats and invisible private
+// topics never notify, not even generically: when the trigger's MAM row has
+// not landed, a muted message is indistinguishable from a race, so an empty
+// scope stays silent. Retractions, body-less reactions, the user's own DMs
+// and already-notified rows do not notify either.
 export const newestMessageForUserEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   userId: string,
@@ -63,15 +50,9 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
     try: () => cachedAllowedArchives(deps.db, deps.config, userId),
     catch: () => new ArchiveUnavailable(),
   });
-  // Per node (device): one publish IQ per node means each device buzzes
-  // independently, while a retried IQ for the same node still dedups (S1).
   const seen = deps.recentlyNotified.get(node) ?? new Set<string>();
-  // Only rows this fresh may notify; the clock is read once per scan so the
-  // MAM-race retries do not widen the window.
   const oldestAllowedMicros =
     BigInt((deps.now ?? (() => new Date()))().getTime() - ARCHIVE_FRESH_WINDOW_MS) * 1000n;
-  // A muted or hidden row sticks across the MAM-race retries: the trigger
-  // itself must stay silent, and later rows behind it are not evaluated.
   let sticky: 'muted' | 'hidden' | undefined;
   let everSawRows = false;
   for (let attempt = 0; attempt < ARCHIVE_LOOKUP_ATTEMPTS; attempt += 1) {
@@ -82,13 +63,8 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
     if (rows.length > 0) {
       everSawRows = true;
     }
-    // The live AI UI's origin ids in this read, so a correction or retraction
-    // of a card is skipped as well as the card itself (T-1400).
     const liveIds = liveAiUiIds(rows);
     const superseded: string[] = [];
-    // Oldest first: the oldest unseen fresh row notifies now, so a burst of
-    // IQs arrives in order — each IQ takes the next message — and the older
-    // rows it walked past are marked notified with it.
     for (const row of [...rows].reverse()) {
       if (row.originId === '' || seen.has(row.originId)) {
         continue;
@@ -101,20 +77,15 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
         catch: () => new ArchiveUnavailable(),
       });
       if (verdict.status === 'ok') {
-        // A sibling of an album this node already pushed adds nothing: the
-        // delivery remembered the album's sender key and a later MAM row
-        // (F2) must stay silent. The row is remembered so a later trigger
-        // does not reconsider it either.
         const key = albumKey(verdict.message);
         if (key !== undefined && seen.has(key)) {
           seen.add(row.originId);
           continue;
         }
-        // The sent message plus every older row this read superseded. Rows
-        // skipped as muted/hidden stop the walk instead (see the interface
-        // comment): they are never marked. An album's photos archive as one
-        // row each, so every scanned row of the same album id and sender is
-        // marked with the winner: the next sibling's IQ then sends nothing.
+        // The sent message plus every older row this read superseded; muted/hidden
+        // rows stop the walk and are never marked. An album's photos archive as one
+        // row each, so every row of the same album and sender is marked with the
+        // winner.
         const albumId = verdict.message.albumId;
         const albums =
           albumId === undefined
@@ -140,9 +111,6 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
       }
       superseded.push(row.originId);
     }
-    // Something new resolved to silence: the verdict already covers the
-    // trigger, so stop. Anything else (only skipped rows, or nothing unseen
-    // at all) retries: the trigger's MAM row may still be landing.
     if (sticky !== undefined) {
       break;
     }
@@ -154,37 +122,29 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
   if (sticky !== undefined) {
     return { newest: undefined, notify: [], saw: sticky };
   }
-  // No acceptable row and nothing known muted: the trigger's MAM row may
-  // still have been landing (or the message is one we never show, like a
-  // retraction). Either way there is nothing to show, and — decision from
-  // finding 2 — the scan stays silent rather than risking a generic buzz
-  // for a muted or hidden message whose row never landed. Reads that held
-  // only already-notified rows report `duplicate`; persistent emptiness
-  // reports `no-message`.
+  // No acceptable row and nothing known muted: the MAM row may still land, or
+  // the message is one we never show. Stay silent rather than risk a generic
+  // buzz; reads with only notified rows report `duplicate`, persistent
+  // emptiness `no-message`.
   return { newest: undefined, notify: [], saw: everSawRows ? 'duplicate' : 'no-message' };
 });
 
-// The archive timestamp is microseconds since the epoch (Postgres hands a
-// bigint back as a string). A row at or after the window start is fresh
-// enough to notify; an older row never is.
+// Timestamps are microseconds since the epoch; at or after the window start
+// is fresh.
 function isFresh(timestamp: ArchiveCandidate['timestamp'], oldestMicros: bigint): boolean {
   return BigInt(timestamp) >= oldestMicros;
 }
 
-// Two rows came from the same sender: the same room and nick in a group, the
-// same peer in a DM. Used to keep an album's sibling rows together (T-1269).
 function sameSender(a: ArchiveCandidate, b: ArchiveCandidate): boolean {
   return a.owner === b.owner && a.barePeer === b.barePeer && a.nick === b.nick;
 }
 
-// The columns every candidate read returns, in the shape `ArchiveCandidate`
-// names them.
 const CANDIDATE_COLUMNS =
   'username AS owner, peer, bare_peer AS "barePeer", kind, nick, origin_id AS "originId", timestamp, txt AS text, xml';
 
-// The scope predicate shared by every candidate read: the user's visible rooms
-// plus their own DM archive. Values are bound in order (`next`), so callers
-// keep appending their own placeholders after the three it consumes.
+// The scope predicate shared by every candidate read: the user's visible
+// rooms plus their own DM archive. Values bind in order, so callers append
+// after the three it consumes.
 function scopePredicate(allowed: SearchOwner, next: (value: unknown) => string): string {
   const rooms = next(allowed.rooms);
   const ownLocalpart = next(allowed.ownLocalpart);
@@ -213,9 +173,8 @@ function buildNewestQuery(allowed: SearchOwner): { text: string; values: unknown
   };
 }
 
-// One archived message by its origin id, restricted to the caller's scope. A
-// row outside the scope matches nothing, so the caller cannot tell an unknown
-// id from a message in a chat they may not see.
+// One archived message by origin id, restricted to the caller's scope; an
+// unknown id and an invisible message look the same.
 function buildOriginIdQuery(
   allowed: SearchOwner,
   originId: string,
@@ -229,24 +188,12 @@ function buildOriginIdQuery(
   };
 }
 
-// One page of groupchat rows for the group push notifier (F5/MP-3): room
-// messages never trigger ejabberd's MAM push, so the notifier polls for them.
-// Rows strictly after the caller's `(timestamp, id)` cursor, oldest first, so
-// the cursor can advance to the newest row read and a tick never repeats a
-// row (the same `id` disambiguates rows that share a timestamp).
-// A page of groupchat rows for the group notifier (F5/MP-3): room messages
-// never trigger ejabberd's MAM push, so the notifier polls for rows strictly
-// after its `(timestamp, id)` cursor, oldest first — the cursor advances to
-// the newest row read and a tick never repeats a row (the `id`
-// disambiguates rows sharing a timestamp).
 export interface GroupchatPage {
   afterTimestamp: bigint;
   afterId: bigint;
   limit: number;
 }
 
-// A candidate row plus the ordering `id` the cursor needs, so the read below
-// selects `CANDIDATE_COLUMNS` plus `id`.
 export interface GroupchatRow extends ArchiveCandidate {
   id: number | string | bigint;
 }

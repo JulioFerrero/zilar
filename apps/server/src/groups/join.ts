@@ -1,8 +1,3 @@
-// Open join for public groups and channels (T-0164): any signed-in user
-// may join with one request, no invite. The membership write reuses the
-// invite-link join pieces (the XMPP room affiliation, the topic sync and
-// the audit entry all happen) without duplicating the XMPP logic.
-
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
@@ -35,19 +30,12 @@ export interface JoinPublicGroupResult {
   alreadyMember: boolean;
 }
 
-// Unknown and private groups answer the same 404, so group ids cannot be
-// probed from here. A block between the joiner and the owner (either
-// direction) answers that same 404 (T-1286, SG-8). A user already in the
-// group gets the same answer as a
-// success (idempotent). Beyond the cap (people and AIs share it — one
-// rule, counted by `countOccupants` in the pre-check and in the
-// transaction alike) the join answers 409 `group_full`. The transaction
-// takes a per-group advisory lock BEFORE counting, so concurrent joins
-// serialize on the group and never exceed the cap (the unique index is
-// still the backstop for the same-user race, which answers `alreadyMember`).
-// A room failure after the commit is best effort (logged, never thrown),
-// like the other member flows; a room failure inside the transaction
-// answers 503 with nothing committed.
+// Unknown and private groups answer the same 404, as does a block in either
+// direction between joiner and owner (SG-8), so neither is an oracle. A join
+// beyond the cap answers 409 `group_full`; the transaction takes a per-group
+// advisory lock before counting so concurrent joins cannot exceed it, with
+// the unique index as backstop. A room failure after the commit is best
+// effort; inside the transaction it answers 503 with nothing committed.
 export async function joinPublicGroup(
   deps: JoinPublicGroupDeps,
   groupId: string,
@@ -61,19 +49,15 @@ export async function joinPublicGroup(
       return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
     }),
   );
-  // Private and unknown read the same: no oracle for strangers.
   if (!group || group.visibility !== 'public') {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  // SG-8: a block in either direction between the joiner and the owner
-  // refuses the join, with the same 404 a private or unknown group answers
-  // so a block is never an oracle. The owner is the `owner` member row.
   const ownerId = await groupOwnerId(deps.db, groupId);
   if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  // T-1846 (SG-8): a member removed by an owner or admin is banned, and a ban
-  // answers the same 404 a private or unknown group answers.
+  // A member removed by an owner/admin is banned, and a ban answers the same
+  // 404.
   if (await isBanned(deps.db, groupId, userId)) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -88,9 +72,6 @@ export async function joinPublicGroup(
   if (existing) {
     return { groupId, alreadyMember: true };
   }
-  // The pre-transaction refusal, so a full group answers 409 before any
-  // write, like the link flow; the locked count inside the transaction is
-  // the authority.
   if ((await runSql(deps.db, countOccupants(groupId))) + 1 > maxMembers) {
     throw new HttpError(409, 'group_full', 'This group is full');
   }
@@ -114,14 +95,11 @@ export async function joinPublicGroup(
           if (inside) {
             return false;
           }
-          // T-1846 (SG-8): re-check under the lock, so a removal committed
-          // since the pre-check still refuses the join.
           if (yield* isBannedIn(sql, groupId, userId)) {
             return yield* Effect.fail(new HttpError(404, 'not_found', 'Group not found'));
           }
-          // Locked above: the count and the insert are atomic against concurrent
-          // joins of this group, so the cap is never exceeded (people and AIs
-          // share it, same as the pre-check).
+          // Locked above: count and insert are atomic against concurrent joins, so the
+          // cap is never exceeded.
           if ((yield* countOccupants(groupId)) + 1 > maxMembers) {
             return yield* Effect.fail(new HttpError(409, 'group_full', 'This group is full'));
           }
@@ -159,10 +137,6 @@ export async function joinPublicGroup(
   return { groupId, alreadyMember: false };
 }
 
-// The post-commit half of a join, shared by the public and link flows: public
-// topics, the topic rooms, the group invitation, then the audit entry. Each
-// step is best effort after the membership commit, so a failure is logged with
-// ids only and never thrown (a retry would stop at the membership re-check).
 export async function finishJoin(
   deps: InviteLinkServiceDeps,
   input: {
@@ -207,12 +181,8 @@ export async function finishJoin(
   });
 }
 
-// The one cap rule, used by the pre-check and the transaction alike:
-// people plus AIs share the seats. The transaction reads it under the
-// per-group advisory lock, so it is the atomic authority; the pre-check
-// outside only refuses early. Yielding `SqlClient` inside resolves it to
-// the transaction connection when called in a transaction and to the plain
-// runtime outside one.
+// One cap rule for pre-check and transaction: people plus AIs share seats;
+// the transaction reads it under the lock and is the authority.
 function countOccupants(
   groupId: string,
 ): Effect.Effect<number, SqlError.SqlError, SqlClient.SqlClient> {

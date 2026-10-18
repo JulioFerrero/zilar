@@ -1,6 +1,3 @@
-// Topic schemas and view types. Split out of `./access` (T-1546) so both files
-// stay under the 400-line limit; `./access` re-exports all of them.
-
 import { Schema } from 'effect';
 import type { TopicRow } from '../db/rows';
 import type { AiActivityState } from './ai-activity';
@@ -34,14 +31,14 @@ export interface TopicRoleView {
   memberCount: number;
 }
 
-/** T-1514: one AI at work in a topic, with its state and its picture. */
+/** One AI at work in a topic, with its state and picture. */
 export interface TopicActivityEntry {
   aiId: string;
   name: string;
-  /** T-1537: the AI's bare JID, so the client can match its live card. */
+  /** The AI's bare JID, so the client can match its live card. */
   jid?: string;
   avatarUrl?: string;
-  /** T-1577: an open question makes the AI wait; this is the card's message id. */
+  /** An open question makes the AI wait; this is the card's message id. */
   questionId?: string;
   state: AiActivityState;
 }
@@ -60,32 +57,30 @@ export interface TopicView {
   linkLabel: string | null;
   isGeneral: boolean;
   archived: boolean;
-  /** T-1521: when a person marked the topic done, an ISO time, null when open.
-   * Set on every route by `buildTopicView`; optional only so older fixtures
-   * that predate the field still typecheck. */
+  /** When a person marked the topic done, an ISO time, null when open;
+   * optional only so older fixtures typecheck. */
   doneAt?: string | null;
   memberCount: number;
-  /** T-1764: the people in this topic (General: the whole group; any other
-   * topic: its `topic_members` plus role holders), sorted. Always set by
-   * `buildTopicView`; optional only so older hand-built fixtures still
-   * typecheck, the same pattern `doneAt?` uses. */
+  /** The people in this topic (General: the whole group; otherwise its
+   * `topic_members` plus role holders), sorted; optional only so older
+   * fixtures typecheck. */
   memberIds?: string[];
   /** AIs added to this topic (never private names). */
   ais: TopicAiView[];
-  /** T-0116: roles with access to this topic (empty for public topics). */
+  /** roles with access to this topic (empty for public topics). */
   roles: TopicRoleView[];
-  /** T-0116: the role whose holders may decide approvals here, if any. */
+  /** the role whose holders may decide approvals here, if any. */
   approverRole: { id: string; name: string } | null;
-  /** T-1514: the AIs at work in this topic (idle ones left out), filled on the
-   * list routes only; absent on the single-topic routes. */
+  /** The AIs at work in this topic, idle ones left out; filled on the list
+   * routes only. */
   activity?: TopicActivityEntry[];
 }
 
 export interface TopicAiView {
   id: string;
   name: string;
-  /** T-1764: the AI's picture; omitted when it has none. */
+  /** the AI's picture; omitted when it has none. */
   avatarUrl?: string;
-  /** T-1885: the AI's JID, so its row can open the AI's chat. */
+  /** the AI's JID, so its row can open the AI's chat. */
   jid?: string;
 }
