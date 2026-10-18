@@ -1,5 +1,5 @@
 import { Bot, MessagesSquare, Settings } from 'lucide-react-native';
-import { Keyboard, View } from 'react-native';
+import { Keyboard, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { TabTrigger, useTabTrigger } from 'expo-router/ui';
@@ -7,6 +7,7 @@ import { TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { Text } from '@/components/ui/text';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, segment } from '@/lib/depth';
+import { emitTabReselect } from '@/lib/tab-reselect';
 
 export const TAB_BAR_HEIGHT = 64;
 export const TAB_BAR_BOTTOM_GAP = 12;
@@ -51,6 +52,15 @@ function TabIcon({ name }: { name: string }) {
 function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | undefined }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
   const selected = trigger?.isFocused ?? false;
+  // T-1969: tapping the tab you are already on scrolls its list to the top
+  // instead of navigating, like Telegram and WhatsApp.
+  const onPress = (event: GestureResponderEvent): void => {
+    if (selected) {
+      emitTabReselect(tab.name);
+      return;
+    }
+    triggerProps.onPress?.(event);
+  };
   return (
     <TabTrigger
       name={tab.name}
@@ -63,6 +73,7 @@ function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | 
       key={selected ? 'active' : 'idle'}
       style={[{ flex: 1 }, tab.name === 'index' ? { position: 'relative' } : {}]}
       {...triggerProps}
+      onPress={onPress}
     >
       <View
         className="h-full flex-1 items-center justify-center gap-0.5 rounded-2xl"

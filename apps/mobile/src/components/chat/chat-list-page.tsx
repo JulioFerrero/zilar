@@ -1,6 +1,6 @@
 import type { ChatFolder, ChatSummary } from '@zilar/chat-core';
 import { Archive, MessageSquarePlus } from 'lucide-react-native';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
@@ -10,8 +10,9 @@ import { ChatListSkeleton } from '@/components/chat/skeleton';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { ToastMessage } from '@/components/ui/toast';
-import { chatListModel } from '@/lib/chat-list';
+import { chatListModel, type ChatListRow } from '@/lib/chat-list';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { useScrollToTopOnReselect } from '@/lib/tab-reselect';
 import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText, type LoadState } from '@/store/types';
 
@@ -63,6 +64,12 @@ export function ChatListPage({
   onRequestsToast,
 }: ChatListPageProps) {
   const myUserId = useChatStore((state) => state.currentUserId);
+  const listRef = useRef<FlatList<ChatListRow>>(null);
+  // T-1969: every folder page listens; the bar only shows on the Chats tab, so
+  // a re-tap scrolls whichever page is on screen (the others are harmless).
+  useScrollToTopOnReselect('index', () => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  });
   const { rows, archived } = useMemo(
     () => chatListModel(chats, { folder, search, myUserId }),
     [chats, folder, search, myUserId],
@@ -73,6 +80,7 @@ export function ChatListPage({
   const showRequests = folder === undefined || folder.includeTypes.includes('dm');
   return (
     <FlatList
+      ref={listRef}
       className="flex-1"
       data={rows}
       keyExtractor={chatRowKey}

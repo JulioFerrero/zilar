@@ -235,7 +235,7 @@ function SettingsHub() {
   }, [router, signOut]);
 
   return (
-    <SettingsScreenShell title="Settings">
+    <SettingsScreenShell title="Settings" tabName="settings">
       <View className="gap-6">
         <ProfileHeaderCard profile={profile} onPress={() => router.push('/me')} />
         {groups.map((group) => (

@@ -244,6 +244,7 @@ function AisList() {
       <AisScreenShell
         title="My AIs"
         scroll
+        tabName="ais"
         right={
           <IconButton label="New AI" onPress={openNewAi}>
             <Plus size={22} color={ICON} />

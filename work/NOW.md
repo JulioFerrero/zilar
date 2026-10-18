@@ -825,18 +825,32 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                     - the phone floating-composer twin: on the emulator the phone already has no band; the pill sits on the dot background.
                     - Item 7 (contact-request rows from the cache) is deferred: it only jumps when requests exist.
                   - **His new ask:** Telegram/WhatsApp/Discord parity; one style and flow everywhere; the emoji panel reworked (continuous scroll, the category bar follows it, spacing); tested on web and phone.
-                    - **Running:**
-                      - T-1945: web emoji panel;
-                      - T-1946: phone emoji panel;
-                      - T-1947: UI consistency audit → `docs/audit/ui-consistency.md`, with fix batches.
-                    - **Seen on the emulator:**
+                    - **Done, merged and held (13:05 UTC):**
+                      - **Emoji panel.**
+                        - T-1945 (web) and T-1946 (phone): one continuous scroll; the category bar follows the scroll and jumps on a tap; Recent comes first; 8 per row; search.
+                        - Checked with Playwright and on the emulator.
+                      - **Audit.** T-1947: `docs/audit/ui-consistency.md`.
+                      - **Phone fix batches (each checked by phone smoke or emulator taps):**
+                        - one `ScreenHeader` (T-1948, T-1959, T-1960, T-1963, T-1964, T-1966);
+                        - one section label (T-1958, T-1964);
+                        - one `ActionTiles` row (T-1961);
+                        - a D24 folder track that still follows the swipe pager, the Explore segmented control, and 52 dp request rows (T-1965).
+                      - **Web fix batches (each checked with Playwright):** one `ScreenHeader` with `backLabel` (T-1949, T-1962, T-1967), the folder track (T-1962), and `SectionLabel` everywhere (T-1949, T-1962, T-1967).
+                      - **Combined gate on main vs origin/main:** 123 files, GATE PASS.
+                    - **Waits for Julio:**
+                      - the 6 Telegram/WhatsApp flow gaps in the audit's §6: pull to refresh, re-tap a tab to scroll to the top, Android edge swipe, Explore as a web page, swiping between tabs, and a row ⋯ key;
+                      - a push of the held merges.
+                    - **Seen on the emulator before the fixes:**
                       - three root title sizes;
                       - five sub-screen header patterns;
                       - two chip styles;
                       - two section-label styles;
                       - request rows with 44 px avatars;
                       - web panel tabs in a different order than the phone's.
-                  - **T-1942 fix round 3:** Go free models count as free; a pre-review counts its own worker; real models recorded for pre-review and doctor; the doctor follows the free pause.
+                  - **T-1942 merged and held after 5 rounds:** free models pause for 6 h on a refusal, at most 1 free session runs at a time, and an unknown free listing falls to paid. The autopilot was restarted on the new code at 12:40 UTC.
+                  - **Claude $100 API credits (expire 11-08). Julio picked "Claude finds, DeepSeek fixes".**
+                    - T-1968 (audit 1/4: auth and keys, `anthropic/claude-opus-5-5`) is specced. Its findings go to the private `~/.zilar-lead/audits/`, never the public repo.
+                    - **Waits for Julio** to add an API key to OpenCode himself (`opencode2 auth login anthropic`).
                 - **Models (10-18):**
                   - OpenCode's free gateway refuses every free model ("Detect Abuse Traffic"), and the Go key has expired (Go was already paused until 10-27).
                   - So workers run on the DeepSeek API and reviews on paid Muse. The autopilot was restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor`.

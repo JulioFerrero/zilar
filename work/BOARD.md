@@ -1969,3 +1969,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1964](T-1964-phone-channel-info-labels.md) | phone channel info headers, info labels SectionLabel | 2026-10-18 |
 | [T-1965](T-1965-phone-folders-explore-requests.md) | phone folder track, Explore segmented, 52 dp requests | 2026-10-18 |
 | [T-1966](T-1966-phone-last-headers.md) | phone last headers use ScreenHeader; drop largeTitle | 2026-10-18 |
+| [T-1969](T-1969-phone-tab-reselect-top.md) | phone re-tap active tab scrolls to top | 2026-10-18 |
