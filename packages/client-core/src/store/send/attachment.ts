@@ -141,10 +141,10 @@ export function sendAttachment(
   chatId: string,
   file: unknown,
   options?: SendAttachmentOptions,
-): void {
+): string | undefined {
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   if (chat === undefined) {
-    return;
+    return undefined;
   }
   const localId = nextLocalId(ctx);
   const replyTo = options?.replyTo;
@@ -188,6 +188,7 @@ export function sendAttachment(
     ctx.k.rememberBaseText(localId, caption);
   }
   runAttachmentUpload(ctx, chat, localId, file, info, caption, replyTo, album);
+  return localId;
 }
 
 export function retryAttachment(ctx: SendCtx, chatId: string, messageId: string): void {

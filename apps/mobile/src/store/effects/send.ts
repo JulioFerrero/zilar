@@ -92,13 +92,12 @@ export function makeSend(ctx: StoreCtx): Send {
   };
 
   // The local `file://` preview a mobile bubble shows while the bytes upload.
-  // The core inserts the optimistic message, so the binding keys it by the id
-  // the core just minted; `before` is the sequence captured before the call.
-  const markLocalUri = (chatId: string, uri: string, before: number): void => {
-    if (s.sequence === before) {
+  // The core inserts the optimistic message and returns its id; no id means
+  // the send was refused, so there is no bubble to key.
+  const markLocalUri = (chatId: string, messageId: string | undefined, uri: string): void => {
+    if (messageId === undefined) {
       return;
     }
-    const messageId = `local-${s.sequence}`;
     set((state) => ({
       messagesByChat: {
         ...state.messagesByChat,
@@ -116,6 +115,20 @@ export function makeSend(ctx: StoreCtx): Send {
         [chatId]: h.listFor(state, chatId).filter((item) => !h.sameMessage(item.id, messageId)),
       },
     }));
+  };
+
+  // Cancelling aborts this message's in-flight PUT, removes the optimistic
+  // bubble, and disarms the core run and its 60 s deadline so a pipeline
+  // still awaiting its slot request or PUT sends nothing. The bytes are
+  // dropped, so a later Retry is a no-op. The uploader keys controllers per
+  // message id.
+  const cancelSend = (chatId: string, messageId: string, pending: Map<string, unknown>): void => {
+    ports.uploader?.cancel(h.aliasRoot(messageId));
+    ports.uploader?.cancel(messageId);
+    pending.delete(h.aliasRoot(messageId));
+    pending.delete(messageId);
+    disarmSend(sendCtx, messageId);
+    removeBubble(chatId, messageId);
   };
 
   return {
@@ -140,23 +153,11 @@ export function makeSend(ctx: StoreCtx): Send {
         set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
         return;
       }
-      const before = s.sequence;
-      sendAttachmentCore(sendCtx, chatId, file, options);
-      markLocalUri(chatId, file.uri, before);
+      const messageId = sendAttachmentCore(sendCtx, chatId, file, options);
+      markLocalUri(chatId, messageId, file.uri);
     },
     retryAttachment: (chatId, messageId) => retryAttachmentCore(sendCtx, chatId, messageId),
-    cancelAttachment: (chatId, messageId) => {
-      // Cancelling aborts this message's in-flight PUT, removes the optimistic
-      // bubble, and disarms the core run and its 60 s deadline so a pipeline
-      // still awaiting its slot request or PUT sends nothing. The bytes are
-      // dropped, so a later Retry is a no-op.
-      ports.uploader?.cancel(h.aliasRoot(messageId));
-      ports.uploader?.cancel(messageId);
-      s.pendingUploads.delete(h.aliasRoot(messageId));
-      s.pendingUploads.delete(messageId);
-      disarmSend(sendCtx, messageId);
-      removeBubble(chatId, messageId);
-    },
+    cancelAttachment: (chatId, messageId) => cancelSend(chatId, messageId, s.pendingUploads),
     sendVoice: (chatId, recording, options) => {
       // R19 (finding 1, review round 2): refuse an over-limit recording here,
       // before any optimistic bubble, slot request or PUT — the composer is
@@ -179,28 +180,15 @@ export function makeSend(ctx: StoreCtx): Send {
         size: recording.size,
         durationMs,
       };
-      const before = s.sequence;
-      sendVoiceCore(
+      const messageId = sendVoiceCore(
         sendCtx,
         chatId,
         { bytes: kept, durationMs, waveform, localUrl: recording.uri },
         options,
       );
-      markLocalUri(chatId, recording.uri, before);
+      markLocalUri(chatId, messageId, recording.uri);
     },
     retryVoice: (chatId, messageId) => retryVoiceCore(sendCtx, chatId, messageId),
-    cancelVoice: (chatId, messageId) => {
-      // Cancelling aborts this message's in-flight PUT, removes the optimistic
-      // bubble, and disarms the core run and its 60 s deadline so a pipeline
-      // still converting or uploading sends nothing. The recording is dropped,
-      // so a later Retry is a no-op. The uploader keys controllers per message
-      // id.
-      ports.uploader?.cancel(h.aliasRoot(messageId));
-      ports.uploader?.cancel(messageId);
-      s.pendingVoices.delete(h.aliasRoot(messageId));
-      s.pendingVoices.delete(messageId);
-      disarmSend(sendCtx, messageId);
-      removeBubble(chatId, messageId);
-    },
+    cancelVoice: (chatId, messageId) => cancelSend(chatId, messageId, s.pendingVoices),
   };
 }

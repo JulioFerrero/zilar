@@ -760,6 +760,17 @@ describe('sendSticker (core)', () => {
 });
 
 describe('sendAttachment (core)', () => {
+  it('returns the id of the optimistic message it inserted, undefined for an unknown chat', async () => {
+    const { ctx, state } = harness();
+    const file = { name: 'x', size: 1, type: '' };
+    const id = sendAttachment(ctx, ANA, file);
+
+    expect(id).toBeDefined();
+    expect(id).toBe(state().messagesByChat[ANA]?.at(-1)?.id);
+    expect(sendAttachment(ctx, 'nobody@zilar.test', file)).toBeUndefined();
+    await flush();
+  });
+
   it('uploads the bytes and swaps the optimistic attachment for the served url', async () => {
     const { ctx, bytes, state, core } = harness();
     const file = { name: 'report.pdf', size: 3, type: 'application/pdf' };
@@ -843,6 +854,27 @@ describe('sendAttachment (core)', () => {
 });
 
 describe('sendVoice (core)', () => {
+  it('returns the id of the optimistic message it inserted, undefined for an unknown chat', async () => {
+    const { ctx, state } = harness();
+    const id = sendVoice(ctx, ANA, {
+      bytes: 'BLOB',
+      durationMs: 1500,
+      waveform: [1],
+      localUrl: 'blob:audio',
+    });
+
+    expect(id).toBeDefined();
+    expect(id).toBe(state().messagesByChat[ANA]?.at(-1)?.id);
+    expect(
+      sendVoice(ctx, 'nobody@zilar.test', {
+        bytes: 'BLOB',
+        durationMs: 1500,
+        waveform: [1],
+      }),
+    ).toBeUndefined();
+    await flush();
+  });
+
   it('converts, uploads and sends the voice payload', async () => {
     const { ctx, voice, state } = harness();
     sendVoice(ctx, ANA, {

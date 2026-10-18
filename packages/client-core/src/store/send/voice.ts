@@ -117,10 +117,10 @@ export function sendVoice(
   chatId: string,
   recording: VoiceInput,
   options?: SendTextOptions,
-): void {
+): string | undefined {
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   if (chat === undefined) {
-    return;
+    return undefined;
   }
   const localId = nextLocalId(ctx);
   const replyTo = options?.replyTo;
@@ -158,6 +158,7 @@ export function sendVoice(
   rememberMyAuthor(ctx, localId);
 
   runVoiceSend(ctx, chat, localId, { ...recording, durationMs, waveform }, replyTo);
+  return localId;
 }
 
 export function retryVoice(ctx: SendCtx, chatId: string, messageId: string): void {
