@@ -1,3 +1,4 @@
+import { peopleHandleFor } from '@zilar/client-core';
 import { Archive, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatStoreState } from '@/store/store';
@@ -56,9 +57,12 @@ export function ChatListBody({
   onOpenNewTopic,
 }: ChatListBodyProps) {
   const { chats, groups, archived } = rows;
-  // People and public-group hits show for any query of 3+ characters once one
-  // leading `@` is stripped, not only for `@`-queries.
-  const showPeopleSearch = normalizePeopleQuery(search).length >= PEOPLE_SEARCH_MIN_LENGTH;
+  // An `@handle` query looks the person up exactly (like the phone); any
+  // other query of 3+ characters once one leading `@` is stripped shows the
+  // prefix hits.
+  const showPeopleSearch =
+    peopleHandleFor(search) !== null ||
+    normalizePeopleQuery(search).length >= PEOPLE_SEARCH_MIN_LENGTH;
   return (
     <nav
       aria-label="Chats"

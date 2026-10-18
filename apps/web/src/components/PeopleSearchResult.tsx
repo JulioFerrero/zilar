@@ -1,59 +1,30 @@
+import {
+  NO_PERSON_MESSAGE,
+  PEOPLE_LOOKUP_ERROR_MESSAGE,
+  PEOPLE_RATE_LIMITED_MESSAGE,
+  peopleHandleFor,
+  usePeopleHandleSearch,
+} from '@zilar/client-core';
 import { Link, useNavigate } from 'react-router';
 import { StateMessage } from '@/components/ui/state-message';
-import type { DirectoryEntry, HandleProfile } from '@/lib/api';
+import { lookupByHandle, type DirectoryEntry, type HandleProfile } from '@/lib/api';
 import { useGroupSearch, usePeopleSearch } from '@/lib/usePeopleSearch';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from './EntityAvatar';
 
 // The People and Public-groups sections above the chat-name and message
-// results (3+ characters, after one leading `@`).
+// results. An `@handle` query runs the exact lookup (T-2050); any other query
+// of 3+ characters, after one leading `@`, runs the prefix search.
 export function PeopleSearchResult({ query }: { query: string }) {
-  const { state } = usePeopleSearch(query);
   const groups = useGroupSearch(query);
-
   const groupEntries = groups.status === 'results' ? groups.entries : [];
-  // The section is only mounted for a 3+ character query, so an empty result
-  // always shows the "No people found" line, with or without `@`.
-  const showPeople =
-    state.status === 'loading' ||
-    state.status === 'rate_limited' ||
-    state.status === 'error' ||
-    state.status === 'results';
-
-  if (!showPeople && groupEntries.length === 0) {
-    return null;
-  }
 
   return (
     <div className="flex flex-col gap-0.5 px-2">
-      {showPeople && (
-        <div className="flex flex-col gap-0.5">
-          <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
-          {state.status === 'loading' && (
-            <div className="px-[10px] pb-2">
-              <StateMessage kind="loading" size="inline" title="Searching…" />
-            </div>
-          )}
-          {state.status === 'results' && state.entries.length === 0 && (
-            <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">No people found</p>
-          )}
-          {state.status === 'rate_limited' && (
-            <div className="px-[10px] pb-2">
-              <StateMessage
-                kind="error"
-                size="inline"
-                title="Too many searches, try again in a few minutes."
-              />
-            </div>
-          )}
-          {state.status === 'error' && (
-            <div className="px-[10px] pb-2">
-              <StateMessage kind="error" size="inline" title="Could not search. Try again." />
-            </div>
-          )}
-          {state.status === 'results' &&
-            state.entries.map((entry) => <PersonRow key={entry.userId} entry={entry} />)}
-        </div>
+      {peopleHandleFor(query) === null ? (
+        <PrefixPeople query={query} />
+      ) : (
+        <HandlePeople query={query} />
       )}
       {groupEntries.length > 0 && (
         <div className="flex flex-col gap-0.5">
@@ -63,6 +34,86 @@ export function PeopleSearchResult({ query }: { query: string }) {
           {groupEntries.map((entry) => (
             <GroupRow key={entry.id} entry={entry} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The section is only mounted for a 3+ character query, so an empty result
+// always shows the "No people found" line.
+function PrefixPeople({ query }: { query: string }) {
+  const { state } = usePeopleSearch(query);
+
+  const show =
+    state.status === 'loading' ||
+    state.status === 'rate_limited' ||
+    state.status === 'error' ||
+    state.status === 'results';
+  if (!show) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
+      {state.status === 'loading' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="loading" size="inline" title="Searching…" />
+        </div>
+      )}
+      {state.status === 'results' && state.entries.length === 0 && (
+        <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">No people found</p>
+      )}
+      {state.status === 'rate_limited' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage
+            kind="error"
+            size="inline"
+            title="Too many searches, try again in a few minutes."
+          />
+        </div>
+      )}
+      {state.status === 'error' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="error" size="inline" title="Could not search. Try again." />
+        </div>
+      )}
+      {state.status === 'results' &&
+        state.entries.map((entry) => <PersonRow key={entry.userId} entry={entry} />)}
+    </div>
+  );
+}
+
+// An `@handle` query is an exact lookup, like the phone: one person, or one
+// fixed line when nobody has that username.
+function HandlePeople({ query }: { query: string }) {
+  const { view } = usePeopleHandleSearch(lookupByHandle, query);
+
+  if (view.status === 'idle') {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
+      {view.status === 'looking' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="loading" size="inline" title="Looking up…" />
+        </div>
+      )}
+      {view.status === 'found' && <PersonRow entry={view.profile} />}
+      {view.status === 'missing' && (
+        <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">{NO_PERSON_MESSAGE}</p>
+      )}
+      {view.status === 'rateLimited' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="error" size="inline" title={PEOPLE_RATE_LIMITED_MESSAGE} />
+        </div>
+      )}
+      {view.status === 'error' && (
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="error" size="inline" title={PEOPLE_LOOKUP_ERROR_MESSAGE} />
         </div>
       )}
     </div>

@@ -1,5 +1,17 @@
 export { makeFromApi, runApiAbortable } from './api-effect';
 export {
+  NO_PERSON_MESSAGE,
+  PEOPLE_LOOKUP_ERROR_MESSAGE,
+  PEOPLE_RATE_LIMITED_MESSAGE,
+  PEOPLE_SEARCH_DEBOUNCE_MS,
+  peopleHandleFor,
+  PeopleSearchController,
+  usePeopleHandleSearch,
+  type PeopleSearchControllerOptions,
+  type PeopleSearchScheduler,
+  type PeopleSearchView,
+} from './people-handle-search';
+export {
   createAtomStore,
   createBoundStore,
   useStoreSelector,

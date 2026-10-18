@@ -997,18 +997,33 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         | T-2049 | `useDelayed` | −27 |
 
                         Live: `a56052b9a`, 18:43, 0 server errors.
-                      - **Running at 18:55:**
-                        - T-2048: topics API;
-                        - T-2050: web `@handle` exact lookup (Julio's Q4);
-                        - T-2051: format shims and the badge sum;
-                        - T-2052: person-link resolver, best of both;
-                        - T-2053: search helpers;
-                        - T-2054: send minted id and one cancel path;
-                        - T-2055: plain-text search snippets (server).
+                      - **Merged 18:55–19:10:**
+
+                        | Task | What | Lines |
+                        | --- | --- | ---: |
+                        | T-2048 | topics API | −116 |
+                        | T-2051 | format shims and badge | −13 |
+                        | T-2053 | search helpers | −35 |
+                        | T-2054 | send id and one cancel | −12 |
+                        | T-2055 | plain search snippets (server) | — |
+                        | T-2052 | person links, best of both, with tests | +50 |
+
+                        Live: `c4c8d733e`, 19:04, 0 server errors. Live search snippets are plain text with correct marks.
+                      - **jscpd at 18:50:** 3,786 duplicated lines (1.38%), down from 4,558 (1.66%) in the T-2013 scan.
+                        - Same-app clones: phone about 1,050, server about 880, web about 540.
+                        - Results are in `$CLAUDE_JOB_DIR/tmp/jscpd/`.
+                      - **Running at 19:10:**
+                        - T-2050: web `@handle` lookup. The StrictMode fix is in, and re-review is running.
+                        - T-2056: groups API;
+                        - T-2057: phone settings list hook (emulator smoke running);
+                        - T-2058: four server helpers;
+                        - T-2059: web small dedupes (`shownFailure` ×13);
+                        - T-2060: server in-file copies.
                       - **Next:**
-                        - W3-b: the groups API, after T-2048;
                         - W3-f: locals and `finishDraftTurn`;
-                        - the phone member-handle fallback for person links.
+                        - the phone member-handle fallback for person links;
+                        - the phone clones: `chat/[id].tsx` (30), the auth flow (28), the chat-list rows (23), save/share photo (22);
+                        - the web clones: `ChatHeader` (21), `text-input` (21), `http.ts` (22).
                       - **Also merged:**
                         - T-2036: channel owners and admins see full topic members;
                         - T-2001: AI-only cards;
