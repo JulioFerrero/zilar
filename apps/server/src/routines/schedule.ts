@@ -12,6 +12,7 @@
 //   1 <= everyMinutes <= 10 080.
 import { Exit, Schema, SchemaIssue } from 'effect';
 import { struct } from '@zilar/protocol';
+import { firstIssueMessage } from '../effect/schema-issues';
 
 export const MIN_INTERVAL_MINUTES = 1;
 export const MAX_INTERVAL_MINUTES = 10_080;
@@ -80,42 +81,11 @@ export type RoutineSchedule = Schema.Schema.Type<typeof routineScheduleSchema>;
 
 export type ParsedSchedule = { ok: true; value: RoutineSchedule } | { ok: false; message: string };
 
-// Walks the issue tree depth-first for the first custom `makeFilter` text.
-function firstValidationMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf':
-      for (const child of issue.issues) {
-        const message = firstValidationMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    case 'Pointer':
-    case 'Encoding':
-      return firstValidationMessage(issue.issue);
-    case 'Filter': {
-      const message = issue.filter.annotations?.message;
-      if (typeof message === 'string' && message.length > 0) {
-        return message;
-      }
-      return firstValidationMessage(issue.issue);
-    }
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
-}
-
 // A union whose `kind` matches no member decodes to an empty `AnyOf` with no
 // child issues, so no filter text is available: name the discriminator the
 // way the old zod error did.
 function scheduleMessage(issue: SchemaIssue.Issue, fullMessage: string): string {
-  const custom = firstValidationMessage(issue);
+  const custom = firstIssueMessage(issue, { filterAnnotations: true });
   if (custom !== undefined) {
     return custom;
   }

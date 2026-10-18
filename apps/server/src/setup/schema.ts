@@ -2,6 +2,7 @@
 // in T-1120 with no behaviour change.
 
 import { Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { firstIssueMessage } from '../effect/schema-issues';
 
 // zod v4's practical email check (`z.email()`), kept so an address the setup
 // page accepted before is still accepted.
@@ -75,24 +76,8 @@ export const SetupResult = Schema.Struct({
 });
 
 // The first failure's message, like zod's `issues[0].message`: a `makeFilter`
-// text when the failing check set one, else the generic fallback. A returned
-// string from a `makeFilter` predicate becomes the `message` annotation of its
-// inner `InvalidValue` issue.
+// text when the failing check set one, else the generic fallback. Setup only
+// looks at the first child and has no `AnyOf` case.
 export function firstMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite': {
-      const first = issue.issues[0];
-      return first === undefined ? undefined : firstMessage(first);
-    }
-    case 'Pointer':
-    case 'Encoding':
-    case 'Filter':
-      return firstMessage(issue.issue);
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
+  return firstIssueMessage(issue, { firstChildOnly: true });
 }

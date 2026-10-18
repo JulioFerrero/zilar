@@ -1,5 +1,6 @@
-import { Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { Exit, Schema, SchemaGetter } from 'effect';
 import { struct } from '@zilar/protocol';
+import { firstIssueMessage } from '../effect/schema-issues';
 
 // T-0103: one shared schema for tool names, descriptions, sources and host
 // allowlists. Routes and the service both validate through it, so the rules
@@ -143,39 +144,6 @@ export interface ToolVersionInput {
   message: string;
 }
 
-// Walks the issue tree depth-first for the first custom filter text. Effect
-// 4.0.2 puts a `makeFilter` message on the inner `InvalidValue` annotation and
-// an `isMinLength`/`isMaxLength` message on the filter's own annotation.
-function firstValidationMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf':
-      for (const child of issue.issues) {
-        const message = firstValidationMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    case 'Pointer':
-    case 'Encoding':
-      return firstValidationMessage(issue.issue);
-    case 'Filter': {
-      const message = issue.filter.annotations?.message;
-      if (typeof message === 'string' && message.length > 0) {
-        return message;
-      }
-      return firstValidationMessage(issue.issue);
-    }
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
-}
-
 // Validates and normalises (hosts are lowercased and de-duplicated). Unknown
 // keys are stripped, exactly like the old non-strict zod object.
 export function parseToolVersionInput(input: unknown):
@@ -189,7 +157,7 @@ export function parseToolVersionInput(input: unknown):
     for (const reason of exit.cause.reasons) {
       if (reason._tag === 'Fail') {
         const message =
-          firstValidationMessage(reason.error.issue) ??
+          firstIssueMessage(reason.error.issue, { filterAnnotations: true }) ??
           reason.error.message.split('\n')[0] ??
           'Invalid tool input';
         return { ok: false, message };

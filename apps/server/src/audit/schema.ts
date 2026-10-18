@@ -1,5 +1,6 @@
-import { Exit, Schema, SchemaIssue } from 'effect';
+import { Exit, Schema } from 'effect';
 import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
+import { firstIssueMessage } from '../effect/schema-issues';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -66,40 +67,6 @@ const entrySchema = struct({
 
 export type AuditEntry = typeof entrySchema.Type;
 
-// The first decode message, like the old `parsed.error.issues[0]?.message`.
-// Walks the issue tree depth-first: a filter that returned a string carries
-// it on the `InvalidValue` message annotation. In Effect v4 the `{ message }`
-// option on length/pattern checks does NOT reach those annotations, but the
-// `SchemaError.message` already carries the filter text — so the size message
-// is matched there first (a test asserts its exact text).
-function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf':
-      for (const child of issue.issues) {
-        const message = firstIssueMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    case 'Pointer':
-    case 'Filter':
-    case 'Encoding':
-      return firstIssueMessage(issue.issue);
-    case 'InvalidType':
-      return SchemaIssue.defaultLeafHook(issue);
-    case 'MissingKey':
-      return 'Missing key';
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
-}
-
 export function decodeEntry(entry: AuditEntry): AuditEntry {
   const exit = Schema.decodeUnknownExit(entrySchema, {
     errors: 'all',
@@ -118,7 +85,7 @@ export function decodeEntry(entry: AuditEntry): AuditEntry {
       // `AnyOf` with no child issues, so the tree walk finds nothing: fall
       // back to the schema message's first line (`Expected string | null`).
       throw new Error(
-        `Invalid audit entry: ${firstIssueMessage(reason.error.issue) ?? reason.error.message.split('\n')[0] ?? 'unknown'}`,
+        `Invalid audit entry: ${firstIssueMessage(reason.error.issue, { leafTypes: true }) ?? reason.error.message.split('\n')[0] ?? 'unknown'}`,
       );
     }
   }
