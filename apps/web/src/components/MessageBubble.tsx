@@ -1,28 +1,41 @@
 import {
+  replyQuoteContent,
+  senderColor,
+  splitLinks,
   type ChatSummary,
   type UiMessage,
   type UiReaction,
-  replyQuoteContent,
-  senderColor,
 } from '@zilar/chat-core';
 import { isCardAllowedFrom, fromApi } from '@zilar/client-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
+import type { RoutinePost } from '@zilar/protocol';
 import { Effect } from 'effect';
-import { memo, useRef, useState } from 'react';
+import { MoreHorizontal, Repeat } from 'lucide-react';
+import {
+  lazy,
+  memo,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from 'react';
+import { Link } from 'react-router';
 import { EntityAvatar } from './EntityAvatar';
+import { LinkText } from './LinkText';
 import { AttachmentBody } from './message/AttachmentBody';
-import { BigEmoji } from './message/BigEmoji';
-import { doubleClickReply } from './message/doubleClickReply';
-import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
-import { MessageSender } from './message/MessageMeta';
-import { MessageTextBody } from './message/MessageTextBody';
-import { RoutineHeader } from './message/RoutineHeader';
-import { hidesBodyText } from './message/QuestionCard';
-import { MessageTombstone } from './message/MessageTombstone';
+import { BigEmoji, DraftCaret, GeneratingLabel } from './message/BigEmoji';
 import { bubbleFlags, draftAnimates } from './message/bubbleFlags';
+import { MessageMenuBody, type MessageMenuProps } from './message/MessageMenuBody';
+import { MessageMeta, MessageSender } from './message/MessageMeta';
+import { hidesBodyText } from './message/QuestionCard';
+import { useMessageMenu } from './message/use-message-menu';
 import { PersonLink } from './personLink';
 import { StickerMessage } from './StickerMessage';
+import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
+import { linkPreview, type LinkPreview } from '@/lib/api/media';
 import { useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useSmoothText } from '@/lib/useSmoothText';
@@ -161,6 +174,275 @@ export interface MessageBubbleProps {
   draft?: boolean;
   revealTurnId?: string | undefined;
   pinId?: string | undefined;
+}
+
+const INTERACTIVE_SELECTOR = [
+  'a',
+  'button',
+  'input',
+  'textarea',
+  'select',
+  '[role="button"]',
+  '[role="switch"]',
+  'img',
+  'video',
+  'audio',
+  '[contenteditable="true"]',
+].join(', ');
+
+function doubleClickReply(onReply: () => void): (event: MouseEvent) => void {
+  return (event) => {
+    if ((event.target as HTMLElement).closest(INTERACTIVE_SELECTOR) !== null) {
+      return;
+    }
+    window.getSelection()?.removeAllRanges();
+    onReply();
+  };
+}
+
+export function RoutineHeader({ routine }: { routine: RoutinePost }) {
+  return (
+    <Link
+      to="/settings/routines"
+      className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <Repeat className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{routine.title}</span>
+      <span className="shrink-0 font-mono text-[12px]">{routine.schedule}</span>
+    </Link>
+  );
+}
+
+export function MessageTombstone({
+  message,
+  own,
+  showAvatarSlot,
+  firstInGroup,
+  lastInGroup,
+}: {
+  message: UiMessage;
+  own: boolean;
+  showAvatarSlot: boolean;
+  firstInGroup: boolean;
+  lastInGroup: boolean;
+}) {
+  return (
+    <div
+      data-message-id={message.id}
+      className={cn(
+        'group relative flex items-end gap-1.5',
+        own ? 'flex-row-reverse' : 'flex-row',
+        firstInGroup ? 'mt-2' : 'mt-0.5',
+      )}
+    >
+      {showAvatarSlot &&
+        (lastInGroup ? (
+          <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
+        ) : (
+          <span className="w-[34px] shrink-0" aria-hidden="true" />
+        ))}
+      <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
+        <div
+          className={cn(
+            'tombstone rounded-[14px] px-3 py-1.5 text-[13px] italic',
+            own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
+          )}
+        >
+          {own ? 'You deleted this message' : 'This message was deleted'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MessageActionsButton({
+  buttonRef,
+  open,
+  onOpen,
+  beside,
+}: {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  open: boolean;
+  onOpen: () => void;
+  beside?: 'left' | 'right' | undefined;
+}) {
+  return (
+    <Button
+      ref={buttonRef}
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Message actions"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      onClick={onOpen}
+      className={cn(
+        'absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100',
+        beside === 'left' && 'top-1/2 right-auto -left-7 -translate-y-1/2',
+        beside === 'right' && 'top-1/2 -right-7 -translate-y-1/2',
+      )}
+    >
+      <MoreHorizontal className="size-4" aria-hidden="true" />
+    </Button>
+  );
+}
+
+export function MessageMenu(props: MessageMenuProps) {
+  const menu = useMessageMenu();
+  if (!props.open && !menu.confirmOpen && !menu.pickerOpen) {
+    return null;
+  }
+  return <MessageMenuBody {...props} menu={menu} />;
+}
+
+type PreviewState =
+  { kind: 'loading' } | { kind: 'none' } | { kind: 'ready'; preview: LinkPreview };
+
+// effect-plain: presentational card; the api module owns the fetch and cache
+export function LinkPreviewCard({ url }: { url: string }) {
+  const [state, setState] = useState<PreviewState>({ kind: 'loading' });
+  const [brokenImage, setBrokenImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    linkPreview(url).then((preview) => {
+      if (!active) {
+        return;
+      }
+      setState(preview === null ? { kind: 'none' } : { kind: 'ready', preview });
+    });
+    return () => {
+      active = false;
+    };
+  }, [url]);
+
+  if (state.kind !== 'ready') {
+    return null;
+  }
+
+  const { title, description, siteName, image } = state.preview;
+  const showImage = image !== undefined && image !== brokenImage;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mx-3 mb-2 ${showImage ? 'flex items-start gap-3' : 'block'} overflow-hidden rounded-[10px] border border-border bg-well px-3 py-2 no-underline`}
+    >
+      {showImage && (
+        <img
+          src={image}
+          alt=""
+          loading="lazy"
+          onError={() => setBrokenImage(image ?? null)}
+          className="h-16 w-16 shrink-0 rounded-md object-cover"
+        />
+      )}
+      <span className={showImage ? 'block min-w-0 flex-1' : 'block'}>
+        {siteName !== undefined && (
+          <span className="block truncate text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            {siteName}
+          </span>
+        )}
+        {title !== undefined && (
+          <span className="mt-0.5 block text-[13px] leading-snug font-semibold text-foreground">
+            {title}
+          </span>
+        )}
+        {description !== undefined && (
+          <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug text-muted-foreground">
+            {description}
+          </span>
+        )}
+      </span>
+    </a>
+  );
+}
+
+/** The markdown stack loads on the first AI reply; the plain text shows meanwhile. */
+const MarkdownText = lazy(() =>
+  import('./MarkdownText').then((m) => ({ default: m.MarkdownText })),
+);
+
+// Only https is unfurled (the server refuses anything else); a message that
+// already carries an image or attachment has no link card.
+function previewUrl(message: UiMessage, text: string): string | undefined {
+  if (message.image !== undefined || message.attachment !== undefined) {
+    return undefined;
+  }
+  for (const segment of splitLinks(text)) {
+    if (segment.kind === 'link' && segment.href.startsWith('https://')) {
+      return segment.href;
+    }
+  }
+  return undefined;
+}
+
+// effect-plain: presentational text body.
+export function MessageTextBody({
+  message,
+  text,
+  own,
+  generating,
+  markdown,
+  meJid,
+  hasText,
+}: {
+  message: UiMessage;
+  text: string;
+  own: boolean;
+  generating: boolean;
+  markdown: boolean;
+  meJid: string | undefined;
+  hasText: boolean;
+}) {
+  const url = hasText ? previewUrl(message, text) : undefined;
+
+  return (
+    <>
+      {hasText && markdown && (
+        <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
+          <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+            <MarkdownText text={text} />
+          </Suspense>
+          <span className="md-tail">
+            {generating && <DraftCaret />}
+            <MessageMeta
+              message={message}
+              showTicks={own && !generating}
+              edited={message.edited === true}
+              className={cn(
+                'float-right ml-1.5 translate-y-[4px]',
+                own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+                generating && 'invisible',
+              )}
+            />
+          </span>
+        </div>
+      )}
+
+      {hasText && !markdown && (
+        <p className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
+          <LinkText text={text} mentions={message.mentions} meJid={meJid} formatted />
+          {generating && <DraftCaret />}
+          <MessageMeta
+            message={message}
+            showTicks={own && !generating}
+            edited={message.edited === true}
+            className={cn(
+              'float-right ml-1.5 translate-y-[4px]',
+              own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+              generating && 'invisible',
+            )}
+          />
+        </p>
+      )}
+
+      {generating && hasText && <GeneratingLabel />}
+
+      {url !== undefined && <LinkPreviewCard url={url} />}
+    </>
+  );
 }
 
 export const MessageBubble = memo(function MessageBubble({

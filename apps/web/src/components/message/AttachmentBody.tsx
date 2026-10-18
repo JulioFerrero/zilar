@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { mediaSrc } from '@/lib/attachments';
 import { AlbumGrid } from './AlbumGrid';
 import { BlockCard } from './blocks/BlockCard';
-import { MediaMetaPill } from './MediaMetaPill';
 import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
 import { SendFailure } from './SendFailure';
@@ -33,6 +32,27 @@ export function isTrustedInlineVideoUrl(url: string, trustedHosts: ReadonlySet<s
 
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
+
+export function MediaMetaPill({
+  message,
+  showTicks,
+  className,
+}: {
+  message: UiMessage;
+  showTicks: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'absolute right-2 bottom-2 inline-flex items-center rounded-full bg-black/45 px-1.5 py-0.5 text-white',
+        className,
+      )}
+    >
+      <MessageMeta message={message} showTicks={showTicks} edited={message.edited === true} />
+    </span>
+  );
+}
 
 export function AttachmentBody({
   message,

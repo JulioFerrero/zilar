@@ -9,12 +9,11 @@ import type {
 } from '@zilar/protocol';
 import { type ReactNode } from 'react';
 import { AlertBlock } from './AlertBlock';
+import { ChecklistBlock } from './BlockCard';
 import { ButtonsBlock } from './ButtonsBlock';
-import { ChecklistBlock } from './ChecklistBlock';
-import { ChoiceBlock } from './ChoiceBlock';
+import { ChoiceBlock, RatingBlock } from './ChoiceBlocks';
 import { FormBlock } from './FormBlock';
 import { PollBlock } from './PollBlock';
-import { RatingBlock } from './RatingBlock';
 
 function Example({ label, children }: { label: string; children: ReactNode }) {
   return (
