@@ -7,6 +7,11 @@ import { markPushOffline, markPushOnline } from '../health-status';
 
 const DISCO_INFO_NAMESPACE = 'http://jabber.org/protocol/disco#info';
 
+// How many publishes may wait (or run) for one node. A publish for a node over
+// the cap is dropped: a slow or broken device must not grow the process's
+// memory without bound.
+const MAX_PENDING_PER_NODE = 50;
+
 export type PushComponentOptions = {
   /** XEP-0114 component domain, e.g. `push.zilar.localhost`. */
   domain: string;
@@ -43,8 +48,16 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
     password: options.secret,
   });
   const { service, logger } = options;
+  // The publish IQ must come from ejabberd's own XMPP domain; a user JID (or
+  // any other server) is dropped. `service.config.xmpp.domain` is the host
+  // ejabberd runs as, which is also what mod_push puts in `from`.
+  const serverDomain = service.config.xmpp.domain;
   // The latest job per node, as a fiber. The next job for that node joins it.
   const chains = new Map<string, Fiber.Fiber<void>>();
+  // Jobs queued or running per node, capped below. `saturated` keeps the
+  // warning to one line per saturation instead of one per dropped publish.
+  const pending = new Map<string, number>();
+  const saturated = new Set<string>();
 
   // `@xmpp/component`'s `error` event is not fatal — the connection can stay
   // up — so track liveness from the `status` event instead. `status` also
@@ -75,29 +88,51 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   // `<pubsub>` child. Registering the route hands the reply to the callee,
   // which sends one `result`; delivery is forked onto the per-node chain so
   // the answer is not held back by the send.
+  //
+  // A publish whose `from` is not exactly the server's XMPP domain is dropped
+  // like any other malformed IQ: a normal user must not be able to make the
+  // component push to a device.
   xmpp.iqCallee.set(PUBSUB_NAMESPACE, 'pubsub', (ctx) => {
     const notification = parsePushIq(ctx.stanza);
-    if (notification !== undefined) {
-      // One node belongs to one device of one user. The chain always advances,
-      // even when a handler throws, so one bad IQ can never wedge later ones;
-      // a finished chain is dropped so the map does not grow forever.
-      const job = Effect.runFork(
-        afterPrevious(
-          chains.get(notification.node),
-          handleNotification(service, logger, notification),
-        ),
-      );
-      chains.set(notification.node, job);
-      job.addObserver(() => {
-        if (chains.get(notification.node) === job) {
-          chains.delete(notification.node);
-        }
-      });
+    if (notification !== undefined && notification.from === serverDomain) {
+      scheduleNotification(notification);
     }
-    // A malformed publish is answered `result` too (as the old code did) and
-    // never delivered; an error IQ would disable the push pair.
+    // A malformed or foreign publish is answered `result` too (as the old code
+    // did) and never delivered; an error IQ would disable the push pair.
     return true;
   });
+
+  function scheduleNotification(notification: PushNotification): void {
+    const { node } = notification;
+    const queued = pending.get(node) ?? 0;
+    if (queued >= MAX_PENDING_PER_NODE) {
+      if (!saturated.has(node)) {
+        saturated.add(node);
+        logger.warn({ node }, 'push node queue is full; dropping new publishes');
+      }
+      return;
+    }
+    pending.set(node, queued + 1);
+    // One node belongs to one device of one user. The chain always advances,
+    // even when a handler throws, so one bad IQ can never wedge later ones; a
+    // finished chain is dropped so the map does not grow forever.
+    const job = Effect.runFork(
+      afterPrevious(chains.get(node), handleNotification(service, logger, notification)),
+    );
+    chains.set(node, job);
+    job.addObserver(() => {
+      if (chains.get(node) === job) {
+        chains.delete(node);
+      }
+      const left = (pending.get(node) ?? 1) - 1;
+      if (left <= 0) {
+        pending.delete(node);
+        saturated.delete(node);
+      } else {
+        pending.set(node, left);
+      }
+    });
+  }
 
   // ejabberd probes the component on connect. The callee wraps the returned
   // query content in the `result` envelope for us.

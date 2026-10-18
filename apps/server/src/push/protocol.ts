@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 
@@ -38,14 +39,26 @@ export function parseNode(value: unknown): string {
 }
 
 // One random node per device registration (`p` + 32 base62 characters:
-// URL-safe under the schema above). Randomness is not load-bearing — the
-// node is not a secret — but it must be unique (the column is unique) and
-// unguessable enough that a node cannot be probed for another user's device.
-export function randomNode(random: () => number = Math.random): string {
+// URL-safe under the schema above). The node is not a secret, but it must be
+// unique (the column is unique) and unguessable enough that a node cannot be
+// probed for another user's device, so the characters come from the CSPRNG.
+export function randomNode(): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let node = 'p';
-  for (let index = 0; index < 32; index += 1) {
-    node += alphabet[Math.floor(random() * alphabet.length)] ?? 'A';
+  // 256 is not a multiple of 62, so mapping raw bytes straight to the
+  // alphabet would bias it. 248 is the largest multiple of 62 that fits in a
+  // byte; bytes above it are rejected and redrawn.
+  const limit = 248;
+  const chars: string[] = ['p'];
+  while (chars.length <= 32) {
+    for (const byte of randomBytes(32)) {
+      if (byte >= limit) {
+        continue;
+      }
+      chars.push(alphabet.charAt(byte % alphabet.length));
+      if (chars.length > 32) {
+        break;
+      }
+    }
   }
-  return node;
+  return chars.join('');
 }

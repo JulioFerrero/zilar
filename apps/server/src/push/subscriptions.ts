@@ -1,5 +1,6 @@
 import { Schema } from 'effect';
-import { isUrl, struct } from '@zilar/protocol';
+import { isAllowedPushEndpoint } from '@zilar/api-contract';
+import { struct } from '@zilar/protocol';
 
 // The browser's PushSubscription JSON (Web Push API), validated at the route
 // boundary before anything is stored.
@@ -8,12 +9,15 @@ export const WebPushKeysSchema = struct({
   auth: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
 });
 
-// zod's `z.url()` accepted any scheme, so the filter accepts any parseable URL.
+// The endpoint must be a real Web Push service address: the shared allowlist
+// in `@zilar/api-contract` rejects internal hosts, other ports and plain http.
 export const WebPushSubscriptionSchema = struct({
   endpoint: Schema.String.pipe(
     Schema.check(
       Schema.isMaxLength(2048),
-      Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL')),
+      Schema.makeFilter((value) =>
+        isAllowedPushEndpoint(value) ? undefined : 'must be a Web Push service endpoint',
+      ),
     ),
   ),
   expirationTime: Schema.optional(Schema.NullOr(Schema.Number)),

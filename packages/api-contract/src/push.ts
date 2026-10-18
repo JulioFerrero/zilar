@@ -78,13 +78,41 @@ export const PushPreviewQuery = Schema.Struct({
   messageId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
 
-function isUrl(value: string): boolean {
+// The Web Push services a browser or phone may deliver through. A leading dot
+// matches the host itself and any subdomain (`notify.windows.com` and
+// `wns2-*.notify.windows.com`); every other entry must match exactly.
+const PUSH_ENDPOINT_HOSTS = [
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'push.services.mozilla.com',
+  '.notify.windows.com',
+  'web.push.apple.com',
+  '.push.apple.com',
+] as const;
+
+/**
+ * Whether an endpoint is a real Web Push service address: https on port 443
+ * and a host the allowlist above knows. Anything else (an internal address, a
+ * plain-http URL, a lookalike host) is refused, so a registered endpoint can
+ * never turn the sender into a port scanner.
+ */
+export function isAllowedPushEndpoint(value: string): boolean {
+  let url: URL;
   try {
-    new URL(value);
-    return true;
+    url = new URL(value);
   } catch {
     return false;
   }
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+  if (url.port !== '' && url.port !== '443') {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  return PUSH_ENDPOINT_HOSTS.some((entry) =>
+    entry.startsWith('.') ? host === entry.slice(1) || host.endsWith(entry) : host === entry,
+  );
 }
 
 const PushKeys = Schema.Struct({
@@ -99,7 +127,9 @@ const PushKeys = Schema.Struct({
 export const RegisterPushDevicePayload = Schema.Struct({
   endpoint: Schema.String.check(
     Schema.isMaxLength(2048),
-    Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL')),
+    Schema.makeFilter((value) =>
+      isAllowedPushEndpoint(value) ? undefined : 'must be a Web Push service endpoint',
+    ),
   ),
   expirationTime: Schema.optional(Schema.NullOr(Schema.Number)),
   keys: PushKeys,

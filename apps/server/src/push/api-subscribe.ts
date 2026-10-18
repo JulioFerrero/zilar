@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Option, Schema } from 'effect';
-import { SubscribePushDevicePayload } from '@zilar/api-contract';
+import { SubscribePushDevicePayload, isAllowedPushEndpoint } from '@zilar/api-contract';
 import { currentSessionId } from '../auth/sessions';
 import { errorClassName, isUniqueViolation } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
@@ -33,6 +33,12 @@ export function createSubscribeHandler(
       );
       const decoded = Schema.decodeUnknownOption(SubscribePushDevicePayload)(raw);
       if (Option.isNone(decoded)) {
+        // A Web Push endpoint outside the allowlist is a distinct 400: the
+        // client sent a well-formed subscription to a host we refuse to call.
+        const endpoint = endpointOf(raw);
+        if (endpoint !== undefined && !isAllowedPushEndpoint(endpoint)) {
+          throw new HttpError(400, 'invalid_request', 'The push endpoint is not allowed');
+        }
         throw new HttpError(400, 'invalid_subscription', 'The push subscription is invalid');
       }
       if (!subscribeLimiter.allow(user.id)) {
@@ -162,4 +168,15 @@ export function createSubscribeHandler(
       throw new HttpError(503, 'push_unavailable', 'Could not register the push device');
     }),
   );
+}
+
+// The endpoint of a well-formed-enough Web Push body, so the route can tell a
+// refused host from a body that is invalid for another reason. Anything else
+// (a native body, a non-string) returns undefined.
+function endpointOf(raw: unknown): string | undefined {
+  if (typeof raw !== 'object' || raw === null || !('endpoint' in raw)) {
+    return undefined;
+  }
+  const endpoint = (raw as { endpoint?: unknown }).endpoint;
+  return typeof endpoint === 'string' ? endpoint : undefined;
 }

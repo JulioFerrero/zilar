@@ -2,7 +2,7 @@ import { Effect, type Effect as EffectType } from 'effect';
 import { markPushFailed, markPushSent } from '../health-status';
 import { albumKey } from './album-key';
 import { newestMessageForUserEffect } from './archive-scan';
-import { pushFailureReason } from './failure-reason';
+import { FcmSendError } from './fcm';
 import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
 import {
@@ -249,9 +249,12 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
       }
       return result.gone;
     },
-    // The thrown error never leaves this module: only its short reason (the
-    // FCM code or the HTTP status) is kept, to store with `failed_at`.
-    catch: (error) => new SendFailed({ reason: pushFailureReason(error) }),
+    // The thrown error never leaves this module: only a fixed reason is kept,
+    // to store with `failed_at`. The raw HTTP status and transport codes are
+    // deliberately dropped: a hostile or broken endpoint must not be able to
+    // reflect a status back to the user, and the reason is all the device list
+    // needs to say.
+    catch: (error) => new SendFailed({ reason: fixedFailureReason(error) }),
   }).pipe(
     Effect.catchTag('SendFailed', (failed) =>
       Effect.gen(function* () {
@@ -264,6 +267,46 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
     ),
   );
 });
+
+// The fixed reasons stored with `failed_at`. A push service that answered is
+// a `rejected`; a socket that ran out of time is `timeout`; everything else
+// (DNS, TLS, connection refused, an unknown transport error) is `unreachable`.
+// The raw status, the endpoint and the token never reach the column or a log.
+type FailureReason = 'rejected' | 'timeout' | 'unreachable';
+
+function fixedFailureReason(error: unknown): FailureReason {
+  if (error instanceof FcmSendError) {
+    return 'rejected';
+  }
+  if (isTimeout(error)) {
+    return 'timeout';
+  }
+  if (hasStatusCode(error)) {
+    return 'rejected';
+  }
+  return 'unreachable';
+}
+
+function isTimeout(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const { code, name, message } = error as {
+    code?: unknown;
+    name?: unknown;
+    message?: unknown;
+  };
+  // web-push destroys the request with `new Error('Socket timeout')`; other
+  // transports use the platform timeout code or a named error.
+  return code === 'ETIMEDOUT' || name === 'TimeoutError' || message === 'Socket timeout';
+}
+
+function hasStatusCode(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  return typeof (error as { statusCode?: unknown }).statusCode === 'number';
+}
 
 // How many notified origin ids to remember per device node before
 // forgetting the oldest (a retried publish IQ or a re-scan then stays

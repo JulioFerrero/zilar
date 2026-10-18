@@ -125,11 +125,11 @@ describe('POST /api/push/subscriptions', () => {
     expect(await rowsForUser(user.id)).toEqual([]);
   });
 
-  it('still stores a webpush row', async () => {
+  it('still stores a webpush row on an allowed push service', async () => {
     const user = await bootstrapUser(context, app, 'alice@example.com');
 
     const { status } = await subscribe(user.cookie, {
-      endpoint: 'https://push.example.com/1',
+      endpoint: 'https://fcm.googleapis.com/wp/1',
       keys: { p256dh: 'p256dh-1', auth: 'auth-1' },
       userAgent: 'Firefox',
     });
@@ -140,9 +140,22 @@ describe('POST /api/push/subscriptions', () => {
     expect(rows[0]).toMatchObject({
       kind: 'webpush',
       token: null,
-      endpoint: 'https://push.example.com/1',
+      endpoint: 'https://fcm.googleapis.com/wp/1',
       userAgent: 'Firefox',
     });
+  });
+
+  it('answers 400 invalid_request for an internal endpoint and stores nothing', async () => {
+    const user = await bootstrapUser(context, app, 'alice@example.com');
+
+    const { status, json } = await subscribe(user.cookie, {
+      endpoint: 'https://10.0.0.7/push',
+      keys: { p256dh: 'p256dh-1', auth: 'auth-1' },
+    });
+
+    expect(status).toBe(400);
+    expect(errorCode(json)).toBe('invalid_request');
+    expect(await rowsForUser(user.id)).toEqual([]);
   });
 
   it('answers 401 without a session', async () => {

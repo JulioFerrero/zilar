@@ -49,15 +49,20 @@ function factory(sent: PushXmppElement[]): {
   };
 }
 
-function start(sent: PushXmppElement[]): { fake: FakeComponent; handle: PushComponentHandle } {
+function start(
+  sent: PushXmppElement[],
+  logger: PushServiceDeps['logger'] = { info: () => {}, warn: () => {} },
+): { fake: FakeComponent; handle: PushComponentHandle } {
   const { make, fake } = factory(sent);
   const handle = startPushComponent({
     domain: 'push.zilar.localhost',
     secret: 'shared-secret',
     host: '127.0.0.1',
     port: 5347,
-    service: {} as unknown as PushServiceDeps,
-    logger: { info: () => {}, warn: () => {} },
+    service: {
+      config: { xmpp: { domain: 'chat.zilar.app' } },
+    } as unknown as PushServiceDeps,
+    logger,
     createComponent: make,
   });
   return { fake: fake(), handle };
@@ -67,9 +72,13 @@ function iq(attrs: Record<string, string>, ...children: PushXmppElement[]): Push
   return xml('iq', attrs, ...children);
 }
 
-function publishIq(node: string | undefined, id = 'iq-1'): PushXmppElement {
+function publishIq(
+  node: string | undefined,
+  id = 'iq-1',
+  from = 'chat.zilar.app',
+): PushXmppElement {
   return iq(
-    { type: 'set', id, from: 'chat.zilar.app', to: 'push.zilar.localhost' },
+    { type: 'set', id, from, to: 'push.zilar.localhost' },
     xml(
       'pubsub',
       { xmlns: PUBSUB_NAMESPACE },
@@ -122,6 +131,42 @@ describe('startPushComponent', () => {
     expect(sent[0]?.attrs['type']).toBe('result');
     expect(sent[0]?.attrs['id']).toBe('bad-1');
     expect(handleIncomingPush).not.toHaveBeenCalled();
+  });
+
+  it('drops a publish from a user JID', async () => {
+    const sent: PushXmppElement[] = [];
+    const { fake } = start(sent);
+
+    fake.emit('element', publishIq('p-node-1', 'user-1', 'ana@chat.zilar.app/laptop'));
+
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(sent[0]?.attrs['type']).toBe('result');
+    expect(handleIncomingPush).not.toHaveBeenCalled();
+  });
+
+  it('caps a node at 50 pending publishes and warns once', async () => {
+    const sent: PushXmppElement[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    handleIncomingPush.mockImplementation(() =>
+      gate.then(() => ({ kind: 'sent', userId: 'user-1', deviceId: 'device-1' })),
+    );
+    const warn = vi.fn();
+    const { fake } = start(sent, { info: () => undefined, warn });
+
+    for (let index = 0; index < 60; index += 1) {
+      fake.emit('element', publishIq('p-capped', `iq-${index}`));
+    }
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ node: 'p-capped' }, expect.any(String));
+
+    release();
+    await vi.waitFor(() => expect(handleIncomingPush).toHaveBeenCalledTimes(50));
   });
 
   it('answers a disco#info get with our identity and features', async () => {

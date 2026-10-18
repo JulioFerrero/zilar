@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import webpush from 'web-push';
+import { isAllowedPushEndpoint } from '@zilar/api-contract';
 
 export type WebPushDelivery = {
   send: (
@@ -45,6 +46,11 @@ function sendEffect(
   subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
   payload: string,
 ): Effect.Effect<{ gone: boolean }> {
+  // Never dial a row stored before the endpoint allowlist: report it as an
+  // expired subscription so the caller drops it, and make no request at all.
+  if (!isAllowedPushEndpoint(subscription.endpoint)) {
+    return Effect.succeed({ gone: true });
+  }
   return Effect.promise(() =>
     webpush.sendNotification(
       {
@@ -52,7 +58,7 @@ function sendEffect(
         keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
       },
       payload,
-      { TTL: 24 * 3600, urgency: 'normal' },
+      { TTL: 24 * 3600, urgency: 'normal', timeout: 10_000 },
     ),
   ).pipe(
     Effect.as({ gone: false }),

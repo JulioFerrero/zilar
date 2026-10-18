@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
+import webpush from 'web-push';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '../test-support';
 import { seedUser } from '../test-support/seed';
@@ -8,6 +9,7 @@ import type { ArchiveCandidate } from './archive-scan';
 import { deliverToDevice, handleIncomingPush, type ScanResult } from './delivery';
 import { FcmSendError, type FcmSender, type FcmWakeData } from './fcm';
 import type { ResolvedPushMessage } from './payload';
+import { createWebPushSender } from './sender';
 import type { PushServiceDeps } from './service';
 import {
   deviceByNode,
@@ -106,6 +108,10 @@ function buildDeps(
   };
 }
 
+// The allowlist only accepts real Web Push services, so the fixtures use FCM
+// like a live browser subscription would.
+const WEB_PUSH_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/1';
+
 function webPushInput(userId: string): SaveDeviceInput {
   return {
     id: randomUUID(),
@@ -113,7 +119,7 @@ function webPushInput(userId: string): SaveDeviceInput {
     node: randomUUID(),
     kind: 'webpush',
     subscription: {
-      endpoint: 'https://push.example.com/1',
+      endpoint: WEB_PUSH_ENDPOINT,
       keys: { p256dh: 'p256dh-1', auth: 'auth-1' },
     },
     userAgent: null,
@@ -178,7 +184,7 @@ describe('deliverToDevice', () => {
     expect(outcome).toEqual({ kind: 'sent', userId, deviceId: device.id });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.subscription).toEqual({
-      endpoint: 'https://push.example.com/1',
+      endpoint: WEB_PUSH_ENDPOINT,
       keys: { p256dh: 'p256dh-1', auth: 'auth-1' },
     });
     expect(JSON.parse(calls[0]?.payload ?? '')).toEqual({
@@ -187,6 +193,29 @@ describe('deliverToDevice', () => {
       chatId: 'ana@zilar.localhost',
       messageId: 'origin-1',
     });
+  });
+
+  it('stores a fixed timeout reason when the Web Push send times out', async () => {
+    const userId = await seedUser(context);
+    const device = await saveDevice(context.db, cipher, webPushInput(userId));
+    const rows = [archiveRow('origin-timeout', microsAgo(60_000))];
+    const sender: PushServiceDeps['sender'] = {
+      send: () => Promise.reject(new Error('Socket timeout')),
+    };
+
+    const outcome = await handleIncomingPush(
+      buildDeps(context, { sender, archive: stubArchive(rows) }),
+      { node: device.node, from: 'ana@zilar.localhost' },
+    );
+
+    expect(outcome).toEqual({
+      kind: 'dropped',
+      userId,
+      deviceId: device.id,
+      reason: 'send-failed',
+    });
+    const after = await deviceByNode(context.db, device.node);
+    expect(after?.lastFailure).toBe('timeout');
   });
 
   it('drops a muted scan result before either sender is called', async () => {
@@ -317,7 +346,7 @@ describe('handleIncomingPush archive scan', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('stores the FCM failure reason and clears it on a later success', async () => {
+  it('stores the fixed failure reason and clears it on a later success', async () => {
     const userId = await seedUser(context);
     const device = await saveDevice(context.db, cipher, fcmInput(userId));
     const rows = [archiveRow('origin-fail', microsAgo(60_000))];
@@ -332,7 +361,7 @@ describe('handleIncomingPush archive scan', () => {
 
     expect(failed).toEqual({ kind: 'dropped', userId, deviceId: device.id, reason: 'send-failed' });
     const afterFailure = await deviceByNode(context.db, device.node);
-    expect(afterFailure?.lastFailure).toBe('UNAVAILABLE');
+    expect(afterFailure?.lastFailure).toBe('rejected');
     expect(afterFailure?.failedAt?.toISOString()).toBe(NOW.toISOString());
 
     const { sender } = fakeNativeSender();
@@ -346,6 +375,27 @@ describe('handleIncomingPush archive scan', () => {
     expect(afterSuccess?.lastFailure).toBeNull();
     expect(afterSuccess?.failedAt).toBeNull();
     expect(afterSuccess?.lastUsedAt?.toISOString()).toBe(NOW.toISOString());
+  });
+});
+
+describe('createWebPushSender endpoint guard', () => {
+  it('reports a non-allowlisted endpoint as gone without dialing it', async () => {
+    const keys = webpush.generateVAPIDKeys();
+    const sender = createWebPushSender({
+      PUSH_VAPID_PUBLIC_KEY: keys.publicKey,
+      PUSH_VAPID_PRIVATE_KEY: keys.privateKey,
+      PUSH_VAPID_SUBJECT: 'mailto:test@example.com',
+    });
+
+    const result = await sender.send(
+      {
+        endpoint: 'https://169.254.169.254/latest/meta-data',
+        keys: { p256dh: 'p256dh-1', auth: 'auth-1' },
+      },
+      '{}',
+    );
+
+    expect(result).toEqual({ gone: true });
   });
 });
 
