@@ -7,7 +7,7 @@ import { replyRef } from '@/lib/format';
 import { describeRolesError } from '@/lib/roles';
 import { selectedInOrder, toggleSelected } from '@/lib/selection';
 import { mayArchiveTopic } from '@/lib/topics';
-import { useChatStore } from '@/store/chat-store-provider';
+import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { ReplyRef, UiMessage } from '@/lib/types';
@@ -36,11 +36,9 @@ export function useChatScreen() {
   // re-render on every 60 s tick or unrelated pins change.
   const pinnedIds = useMemo(() => pins.map((pin) => pin.messageId), [pins]);
   const dismissPinsError = useChatStore((state) => state.dismissPinsError);
-  const loadedMessages = useChatStore((state) => state.messagesByChat[chatId]);
-  const loadedMessageIds = useMemo(
-    () => loadedMessages?.map((message) => message.id),
-    [loadedMessages],
-  );
+  // The messages are read at call time (T-2009, C5): subscribing the screen to
+  // `messagesByChat` re-rendered it, and every mounted row, on every message.
+  const store = useChatStoreApi();
   const cancelEdit = useChatStore((state) => state.cancelEdit);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const patchTopic = useChatStore((state) => state.patchTopic);
@@ -137,14 +135,22 @@ export function useChatScreen() {
     setSelectedIds([]);
   }
 
-  const selection = {
-    ids: selectedIds,
-    onToggle: (message: UiMessage) => setSelectedIds((ids) => toggleSelected(ids, message.id)),
-    onStart: (message: UiMessage) => setSelectedIds([message.id]),
-  };
+  const toggleSelectedMessage = useCallback((message: UiMessage) => {
+    setSelectedIds((ids) => toggleSelected(ids, message.id));
+  }, []);
+  const startSelection = useCallback((message: UiMessage) => {
+    setSelectedIds([message.id]);
+  }, []);
+  // Memoised on the ids, with stable handlers: a message change must not hand
+  // the list a new selection object and re-render every mounted row (T-2009,
+  // C5).
+  const selection = useMemo(
+    () => ({ ids: selectedIds, onToggle: toggleSelectedMessage, onStart: startSelection }),
+    [selectedIds, toggleSelectedMessage, startSelection],
+  );
 
   const forwardSelected = () => {
-    const list = selectedInOrder(loadedMessages ?? [], selectedIds);
+    const list = selectedInOrder(store.getState().messages(chatId), selectedIds);
     setSelectedIds([]);
     if (list.length === 0) return;
     setForwarding(list);
@@ -180,7 +186,11 @@ export function useChatScreen() {
   const cancelReply = () => setReplyTo(undefined);
 
   const jumpTo = (messageId: string) => {
-    if ((loadedMessageIds ?? []).includes(messageId)) {
+    const loaded = store
+      .getState()
+      .messages(chatId)
+      .some((message) => message.id === messageId);
+    if (loaded) {
       setJumpError('');
       setJumpToMessageId(messageId);
       return;

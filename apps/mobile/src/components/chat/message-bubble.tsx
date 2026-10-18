@@ -4,10 +4,10 @@ import { memo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { useChatRowFacts } from '@/components/chat/chat-row-facts';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BubbleGesture } from '@/components/chat/bubble-gesture';
 import { HandoffLine } from '@/components/chat/handoff-line';
-import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { BubbleActionsSheet, openMessageMenu } from '@/components/chat/message-bubble-actions';
 import { isMediaFirstMessage } from '@/components/chat/media-bubble';
 import {
@@ -30,8 +30,6 @@ import { useBubbleReveal } from '@/components/chat/use-bubble-reveal';
 import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-
-const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 
 function MessageBubbleImpl({
   message,
@@ -70,14 +68,11 @@ function MessageBubbleImpl({
   // T-1575: the handoff line replaces the bubble; a press toggles the full one.
   const [handoffOpen, setHandoffOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
-  const mediaHosts = useChatStore((state) => state.mediaTrustedHosts) ?? EMPTY_HOSTS;
+  // The per-chat facts come from the list's one context (T-2009) instead of a
+  // store subscription per row.
+  const { mediaHosts, showMarkdown: rendersMessageMarkdown, meJid, chat } = useChatRowFacts();
   const mediaFirst = isMediaFirstMessage(message, mediaHosts);
-  // `MessageBubble` has no chat prop, so the shared Markdown rule is evaluated
-  // against the store's chat for this message (AI DMs and AI group replies).
-  const showMarkdown = useChatStore((state) =>
-    rendersMarkdown(state.chats, message, currentUserId),
-  );
-  const meJid = useChatStore((state) => state.me?.jid ?? undefined);
+  const showMarkdown = rendersMessageMarkdown(message);
   // Edit/Delete are user-side limits: my own text message under 48 h, or my
   // own message of any kind. Tombstones and live drafts offer neither. An
   // attachment message keeps delete (and copy of the caption); a long-press
@@ -93,8 +88,7 @@ function MessageBubbleImpl({
   // T-1247: in a DM (and not an AI chat) every message that is not deleted or
   // still sending can be deleted from my own copy; my own message can also be
   // deleted for everyone (`canDelete` above).
-  const chat = useChatStore((state) => state.chats.find((entry) => entry.id === message.chatId));
-  const isDm = chat?.kind === 'dm' && chat.isAI !== true;
+  const isDm = chat.kind === 'dm' && chat.isAI !== true;
   // T-1996: a group sender's real picture — an AI's from the topic row, a
   // member's from the group detail — so the ball seeded from the name stays
   // only the fallback. The selector returns a string, so it stays stable.
@@ -102,9 +96,9 @@ function MessageBubbleImpl({
     if (outgoing || !isGroup) {
       return undefined;
     }
-    const groupId = chat?.groupId ?? state.groupIdForChat(message.chatId);
+    const groupId = chat.groupId ?? state.groupIdForChat(message.chatId);
     const members = groupId === undefined ? undefined : state.groupDetail(groupId)?.members;
-    return senderAvatarUrl(message.senderId, chat?.topic?.ais, members);
+    return senderAvatarUrl(message.senderId, chat.topic?.ais, members);
   });
   const canDeleteForMe = !draft && isDm && message.deleted !== true && message.status !== 'sending';
   // A forward copies what is already on screen: tombstones, still-sending

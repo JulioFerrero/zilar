@@ -4,12 +4,18 @@ import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-na
 
 import { startJumpScroll } from '@/components/chat/jump-scroll';
 import type { ListEntry } from '@/components/chat/message-list-row';
-import { runLater } from '@/lib/effect/timers';
+import { interruptFiber, runLater } from '@/lib/effect/timers';
 
 type JumpTarget = { chatId: string; messageId: string };
 
 /** How close to the inverted list's bottom (offset 0) still counts as "at the bottom". */
 const AT_BOTTOM_THRESHOLD = 40;
+
+/** How many viewports from the list's end the next page is requested. */
+const PREFETCH_VIEWPORTS = 3;
+
+/** How long a prefetch waits for its page before retrying once. */
+const PREFETCH_RETRY_MS = 1000;
 
 /** Backstop on how many content-size changes a restore may wait for. */
 const MAX_RESTORE_CHANGES = 10;
@@ -28,6 +34,10 @@ type MessageListScrollOptions = {
   entries: readonly ListEntry[];
   newestEntryKey: string | undefined;
   newestEntryOutgoing: boolean;
+  /** Whether an older page may still be loaded. */
+  hasMore: boolean;
+  /** Requests one older page. */
+  loadOlder: () => void;
   clearJumpTarget: () => void;
   onJumped: (() => void) | undefined;
 };
@@ -47,6 +57,8 @@ export function useMessageListScroll({
   entries,
   newestEntryKey,
   newestEntryOutgoing,
+  hasMore,
+  loadOlder,
   clearJumpTarget,
   onJumped,
 }: MessageListScrollOptions) {
@@ -86,6 +98,19 @@ export function useMessageListScroll({
   // New newest-entry keys that arrived while the user was scrolled up; the jump
   // button shows the count and it clears once the user is back at the bottom.
   const [unseenCount, setUnseenCount] = useState(0);
+  // The content height at the last content-size change: with the last offset
+  // and the viewport it tells whether the reader is near the list's end, where
+  // the next page is prefetched.
+  const contentHeight = useRef(0);
+  // The prefetch in flight: the content height it started at (a taller content
+  // means the page landed), whether one is pending, and its retry timer.
+  const prefetchHeight = useRef(0);
+  const prefetchPending = useRef(false);
+  const prefetchTimer = useRef<Fiber.Fiber<void> | undefined>(undefined);
+  // The latest props, so the retry timer reads the live values without
+  // re-creating itself on every list render.
+  const hasMoreRef = useRef(hasMore);
+  const loadOlderRef = useRef(loadOlder);
   // Whether the mount should land on this chat's saved spot. Computed once at
   // mount: a saved spot wins only for a read chat (no divider) with no pending
   // jump and no newer message than the one saved with it.
@@ -141,6 +166,61 @@ export function useMessageListScroll({
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, []);
 
+  // The retry timer reads the current props, and a chat switch or an unmount
+  // drops a prefetch that is still waiting.
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+    loadOlderRef.current = loadOlder;
+  }, [hasMore, loadOlder]);
+  useEffect(() => {
+    return () => {
+      interruptFiber(prefetchTimer.current);
+      prefetchTimer.current = undefined;
+      prefetchPending.current = false;
+    };
+  }, [chatId]);
+
+  // Requests the next older page one page ahead (audit 2.4): once the reader is
+  // within `PREFETCH_VIEWPORTS` viewports of the list's end, and again when a
+  // landing page leaves them within that distance. A page that never grows the
+  // content is retried once after a second, because `VirtualizedList` re-arms
+  // its own `onEndReached` only on a scroll.
+  const maybePrefetch = useCallback(() => {
+    if (!hasMoreRef.current || prefetchPending.current) {
+      return;
+    }
+    const viewport = viewportHeight.current;
+    const height = contentHeight.current;
+    if (viewport <= 0 || height <= 0) {
+      return;
+    }
+    // The inverted list's end is `height - viewport`.
+    if (height - viewport - lastOffset.current > PREFETCH_VIEWPORTS * viewport) {
+      return;
+    }
+    prefetchPending.current = true;
+    prefetchHeight.current = height;
+    const check = (retry: boolean): void => {
+      interruptFiber(prefetchTimer.current);
+      prefetchTimer.current = runLater(PREFETCH_RETRY_MS, () => {
+        prefetchTimer.current = undefined;
+        if (!prefetchPending.current || !hasMoreRef.current) return;
+        // The content grew, so the page landed and its handler prefetched on.
+        if (contentHeight.current > prefetchHeight.current) return;
+        if (!retry) {
+          // The request and its retry both failed; the next scroll asks again.
+          prefetchPending.current = false;
+          return;
+        }
+        prefetchHeight.current = contentHeight.current;
+        loadOlderRef.current();
+        check(false);
+      });
+    };
+    check(true);
+    loadOlderRef.current();
+  }, []);
+
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offset = event.nativeEvent.contentOffset.y;
@@ -163,8 +243,9 @@ export function useMessageListScroll({
       }
       lastOffset.current = offset;
       setAtBottom(offset < AT_BOTTOM_THRESHOLD);
+      maybePrefetch();
     },
-    [setAtBottom],
+    [maybePrefetch, setAtBottom],
   );
 
   // Runs once content has settled. It lands on the chat's saved spot (WUX-28)
@@ -181,10 +262,19 @@ export function useMessageListScroll({
   // user scrolls away or a newer entry arrives.
   const handleContentSizeChange = useCallback(
     (_width: number, height: number) => {
+      // Taller than when the prefetch started: its page landed, so the next
+      // page can be requested at once (audit 2.4, no scroll event needed).
+      if (prefetchPending.current && height > prefetchHeight.current) {
+        prefetchPending.current = false;
+        interruptFiber(prefetchTimer.current);
+        prefetchTimer.current = undefined;
+      }
+      contentHeight.current = height;
       if (restorePending.current) {
         const saved = savedScroll.get(chatId);
         if (saved === undefined) {
           restorePending.current = false;
+          maybePrefetch();
           return;
         }
         requestedOffset.current = saved.offset;
@@ -209,14 +299,15 @@ export function useMessageListScroll({
         } else {
           lastRestoreHeight.current = height;
         }
+        maybePrefetch();
         return;
       }
-      if (!followNewest.current) {
-        return;
+      if (followNewest.current) {
+        scrollToBottom();
       }
-      scrollToBottom();
+      maybePrefetch();
     },
-    [chatId, scrollToBottom, setAtBottom],
+    [chatId, maybePrefetch, scrollToBottom, setAtBottom],
   );
 
   // A chat with no unread divider opens at the bottom (offset 0) with no scroll

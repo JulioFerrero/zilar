@@ -7,6 +7,7 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
+import { ChatRowFactsProvider } from '@/components/chat/chat-row-facts';
 import { EmptyChat } from '@/components/chat/empty-chat';
 import { JumpToBottom } from '@/components/chat/jump-to-bottom';
 import { LoadError } from '@/components/chat/load-error';
@@ -207,6 +208,10 @@ export function MessageList({
   // mount scroll below does not re-run and yank the view back to the divider.
   const reversedDividerIndex = dividerIndex === null ? null : entries.length - 1 - dividerIndex;
 
+  const isGroup = chat.kind === 'group';
+  // Stable so the prefetch's retry timer always asks for this chat's page.
+  const loadOlderPage = useCallback(() => loadOlder(chat.id), [loadOlder, chat.id]);
+
   const { listRef, atBottom, unseenCount, handleScroll, handleContentSizeChange } =
     useMessageListScroll({
       chatId: chat.id,
@@ -216,6 +221,8 @@ export function MessageList({
       entries: reversedEntries,
       newestEntryKey: reversedEntries[0]?.key,
       newestEntryOutgoing: isOutgoingMessage(reversedEntries[0], currentUserId),
+      hasMore,
+      loadOlder: loadOlderPage,
       clearJumpTarget,
       onJumped,
     });
@@ -232,7 +239,7 @@ export function MessageList({
     ({ item }: { item: ListEntry }) => (
       <MessageListRow
         item={item}
-        chat={chat}
+        isGroup={isGroup}
         currentUserId={currentUserId}
         canPinChat={canPinChat}
         pinnedIds={pinnedIds}
@@ -257,7 +264,7 @@ export function MessageList({
       />
     ),
     [
-      chat,
+      isGroup,
       currentUserId,
       canPinChat,
       pinnedIds,
@@ -304,58 +311,63 @@ export function MessageList({
 
   // T-1905: a topic keeps a fixed gap under its newest message for the AI pill.
   return (
-    <View className="flex-1">
-      <FlatList
-        ref={listRef}
-        className="flex-1"
-        data={reversedEntries}
-        inverted
-        keyExtractor={(entry) => entry.key}
-        initialNumToRender={20}
-        windowSize={11}
-        maxToRenderPerBatch={10}
-        // `minIndexForVisible: 1` anchors on the previous newest row, so a new
-        // message arriving at index 0 does not move someone reading older
-        // messages. `autoscrollToTopThreshold` makes the native adjustment scroll
-        // back to offset 0 (the inverted list's bottom) when the user was already
-        // there, so a new message follows without fighting the anchor.
-        maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: 40 }}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        onScrollToIndexFailed={(info) => {
-          listRef.current?.scrollToOffset({
-            offset: info.averageItemLength * info.index,
-            animated: false,
-          });
-          runLater(50, () =>
-            listRef.current?.scrollToIndex({
-              index: info.index,
-              viewPosition: 0.5,
+    <ChatRowFactsProvider chat={chat} currentUserId={currentUserId}>
+      <View className="flex-1">
+        <FlatList
+          ref={listRef}
+          className="flex-1"
+          data={reversedEntries}
+          inverted
+          keyExtractor={(entry) => entry.key}
+          initialNumToRender={15}
+          windowSize={9}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={32}
+          // `minIndexForVisible: 1` anchors on the previous newest row, so a new
+          // message arriving at index 0 does not move someone reading older
+          // messages. `autoscrollToTopThreshold` makes the native adjustment scroll
+          // back to offset 0 (the inverted list's bottom) when the user was already
+          // there, so a new message follows without fighting the anchor.
+          maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: 40 }}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          onScrollToIndexFailed={(info) => {
+            listRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
               animated: false,
-            }),
-          );
-        }}
-        contentContainerStyle={{
-          paddingTop: chat.topic !== undefined ? 44 : 8,
-          paddingBottom: 8,
-        }}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        // Older pages sit at the inverted list's end, so reaching it asks for the
-        // previous page of history (replacing the top-offset check).
-        onEndReachedThreshold={0.5}
-        onEndReached={() => {
-          if (hasMore) {
-            loadOlder(chat.id);
-          }
-        }}
-        // Re-pins after a followed message's row has rendered, in case the
-        // maintain-visible adjustment moved the offset off the bottom.
-        onContentSizeChange={handleContentSizeChange}
-        onScroll={handleScroll}
-        renderItem={renderItem}
-      />
-      <JumpToBottom atBottom={atBottom} count={unseenCount} onPress={jumpToBottom} />
-    </View>
+            });
+            runLater(50, () =>
+              listRef.current?.scrollToIndex({
+                index: info.index,
+                viewPosition: 0.5,
+                animated: false,
+              }),
+            );
+          }}
+          contentContainerStyle={{
+            paddingTop: chat.topic !== undefined ? 44 : 8,
+            paddingBottom: 8,
+          }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          // Older pages sit at the inverted list's end, so reaching it asks for the
+          // previous page of history (replacing the top-offset check). Three
+          // viewports of warning keep a fling from hitting the end before the page
+          // arrives; the scroll hook then prefetches one page ahead.
+          onEndReachedThreshold={3}
+          onEndReached={() => {
+            if (hasMore) {
+              loadOlderPage();
+            }
+          }}
+          // Re-pins after a followed message's row has rendered, in case the
+          // maintain-visible adjustment moved the offset off the bottom.
+          onContentSizeChange={handleContentSizeChange}
+          onScroll={handleScroll}
+          renderItem={renderItem}
+        />
+        <JumpToBottom atBottom={atBottom} count={unseenCount} onPress={jumpToBottom} />
+      </View>
+    </ChatRowFactsProvider>
   );
 }

@@ -2010,3 +2010,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2011](T-2011-web-chat-row-diet.md) | web chat rows: menu reads only while open, lean avatars | 2026-10-18 |
 | [T-2013](T-2013-reduce-code-scan.md) | code reduction scan: clones, dead code, twins | 2026-10-18 |
 | [T-2006](T-2006-push-hardening.md) | push: endpoint allowlist, server-only publishes, crypto nodes | 2026-10-18 |
+| [T-2009](T-2009-chat-list-prefetch.md) | phone chat: prefetch older history, no row re-render fan-out | 2026-10-18 |

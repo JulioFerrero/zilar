@@ -1,4 +1,4 @@
-import type { AlbumItem, ChatSummary, MessageItem, UiMessage } from '@zilar/chat-core';
+import type { AlbumItem, MessageItem, UiMessage } from '@zilar/chat-core';
 import { memo } from 'react';
 
 import { AlbumMembersProvider } from '@/components/chat/album-members';
@@ -27,7 +27,8 @@ type MessageListSelection = {
 
 type MessageListRowProps = {
   item: ListEntry;
-  chat: ChatSummary;
+  /** Whether the chat is a group; the only chat field a row reads. */
+  isGroup: boolean;
   currentUserId: string;
   canPinChat: boolean;
   pinnedIds: readonly string[];
@@ -53,7 +54,7 @@ type MessageListRowProps = {
 
 function MessageListRowImpl({
   item,
-  chat,
+  isGroup,
   currentUserId,
   canPinChat,
   pinnedIds,
@@ -90,7 +91,7 @@ function MessageListRowImpl({
     <AlbumMembersProvider messages={albumMembers}>
       <MessageBubble
         message={item.item.message}
-        isGroup={chat.kind === 'group'}
+        isGroup={isGroup}
         isFirstInGroup={item.item.firstInGroup}
         isLastInGroup={item.item.lastInGroup}
         currentUserId={currentUserId}
@@ -169,7 +170,7 @@ function sameAlbumMembers(a: MessageItem | AlbumItem, b: MessageItem | AlbumItem
 function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps): boolean {
   return (
     isSameEntry(prev.item, next.item) &&
-    prev.chat === next.chat &&
+    prev.isGroup === next.isGroup &&
     prev.currentUserId === next.currentUserId &&
     prev.canPinChat === next.canPinChat &&
     prev.pinnedIds === next.pinnedIds &&
