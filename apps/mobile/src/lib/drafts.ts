@@ -1,45 +1,24 @@
 /**
- * The mobile draft-stream client (T-0056). The web uses `EventSource`
- * (`apps/web/src/lib/drafts.ts`); React Native has no `EventSource` and its
- * `fetch` does not stream response bodies, so this reads the SSE stream from
- * `XMLHttpRequest.responseText` as it grows.
+ * The mobile draft-stream client (T-0056). React Native has no `EventSource`
+ * and its `fetch` does not stream response bodies, so this reads the SSE stream
+ * from `XMLHttpRequest.responseText` as it grows. The event contract, the
+ * validation and the reconnect backoff are shared with the web in
+ * `@zilar/client-core/store` (`draft-events.ts`).
  *
- * The contract is mirrored from `apps/server/src/drafts/events.ts`: `event:
- * draft` carries the AI's cumulative reply text, `event: end` closes a turn.
- * Frames that fail validation are dropped silently; nothing here throws and the
- * token and draft text are never logged.
+ * `event: draft` carries the AI's cumulative reply text, `event: end` closes a
+ * turn. Frames that fail validation are dropped silently; nothing here throws
+ * and the token and draft text are never logged.
  */
-import { Effect, Fiber, Option, Schema } from 'effect';
+import type { DraftHubEvent } from '@zilar/client-core/store';
+import { decodeDraftEvent, draftReconnectDelay } from '@zilar/client-core/store';
+import { Effect, Fiber } from 'effect';
 
 import type { AppStateLike } from '../store/real-store';
 
+export type { OpenDraftStream } from '@zilar/client-core/store';
+
 /** The stream path, joined with the API URL by the store. */
 export const DRAFT_STREAM_PATH = '/api/drafts/stream';
-
-/** Reconnect waits (1 s -> 30 s cap, jittered) while signed in and active. */
-export const DRAFT_RECONNECT_BASE_MS = 1_000;
-export const DRAFT_RECONNECT_MAX_MS = 30_000;
-
-export interface DraftEvent {
-  type: 'draft';
-  chatJid: string;
-  turnId: string;
-  text: string;
-}
-
-export interface DraftEndEvent {
-  type: 'end';
-  chatJid: string;
-  turnId: string;
-  outcome: 'sent' | 'failed';
-}
-
-export type DraftHubEvent = DraftEvent | DraftEndEvent;
-
-export type DraftEventListener = (event: DraftHubEvent) => void;
-
-/** Opens the draft stream and returns a function that closes it. */
-export type OpenDraftStream = (onEvent: DraftEventListener) => () => void;
 
 /** The slice of `XMLHttpRequest` the client drives. Tests inject a fake. */
 export interface DraftXhr {
@@ -71,46 +50,6 @@ export interface DraftStreamOptions {
   maxDelayMs?: number;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Text that is not JSON decodes to `None`, never throws. */
-const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/**
- * Parses one `data:` payload into a validated draft event, or `undefined`. The
- * mobile app has no zod (see `chat-api.ts`), so this is a hand-written validator
- * over the same shapes as the web's schemas.
- */
-function parseEventData(data: string): DraftHubEvent | undefined {
-  const json = Option.getOrUndefined(decodeJson(data));
-  if (!isRecord(json)) {
-    return undefined;
-  }
-  const chatJid = json['chatJid'];
-  const turnId = json['turnId'];
-  if (typeof chatJid !== 'string' || chatJid.length === 0) {
-    return undefined;
-  }
-  if (typeof turnId !== 'string' || !UUID.test(turnId)) {
-    return undefined;
-  }
-  if (json['type'] === 'draft') {
-    const text = json['text'];
-    return typeof text === 'string' ? { type: 'draft', chatJid, turnId, text } : undefined;
-  }
-  if (json['type'] === 'end') {
-    const outcome = json['outcome'];
-    return outcome === 'sent' || outcome === 'failed'
-      ? { type: 'end', chatJid, turnId, outcome }
-      : undefined;
-  }
-  return undefined;
-}
-
 /** One SSE block (`event:` + `data:` lines, no trailing blank line). */
 function parseFrame(frame: string): DraftHubEvent | undefined {
   let eventName = 'message';
@@ -138,7 +77,7 @@ function parseFrame(frame: string): DraftHubEvent | undefined {
   }
   const data = dataLines.join('\n');
   if (eventName === 'draft' || eventName === 'end') {
-    return parseEventData(data);
+    return decodeDraftEvent(eventName, data);
   }
   return undefined;
 }
@@ -157,13 +96,11 @@ function defaultXhr(): DraftXhr {
  * (1 s -> 30 s). The returned function closes the stream for good.
  */
 export function subscribeToDrafts(
-  onEvent: DraftEventListener,
+  onEvent: (event: DraftHubEvent) => void,
   options: DraftStreamOptions,
 ): () => void {
   const createXhr = options.createXhr ?? defaultXhr;
   const random = options.random ?? Math.random;
-  const baseDelayMs = options.baseDelayMs ?? DRAFT_RECONNECT_BASE_MS;
-  const maxDelayMs = options.maxDelayMs ?? DRAFT_RECONNECT_MAX_MS;
 
   let closed = false;
   let active = options.appState.current() === 'active';
@@ -219,10 +156,8 @@ export function subscribeToDrafts(
     if (closed || !active || retryTimer !== null) {
       return;
     }
-    const base = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
+    const delay = draftReconnectDelay(attempt, random, options.baseDelayMs, options.maxDelayMs);
     attempt += 1;
-    // Full jitter: half the base plus up to half again.
-    const delay = Math.round(base / 2 + (base / 2) * random());
     retryTimer = Effect.runFork(
       Effect.sleep(delay).pipe(
         Effect.andThen(
