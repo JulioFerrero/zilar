@@ -2034,3 +2034,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2033](T-2033-markdown-ast-chat-core.md) | one safe Markdown AST in chat-core (mdast GFM) | 2026-10-18 |
 | [T-2027](T-2027-shared-chat-list-cache.md) | one chat-list cache codec shared by web and phone | 2026-10-18 |
 | [T-2001](T-2001-ai-only-cards.md) | AI-only cards render only from AIs; approvals use server data | 2026-10-18 |
+| [T-2036](T-2036-channel-topic-viewer.md) | channel owners and admins see full topic members again | 2026-10-18 |

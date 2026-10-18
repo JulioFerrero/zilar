@@ -157,7 +157,11 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
 
 // The same four lookups as `toTopicView`, run once for all `rows` with `IN`
 // queries and joined in memory by topic id.
-async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise<TopicViewParts> {
+async function loadTopicViewParts(
+  db: ServerDatabase,
+  rows: TopicRow[],
+  viewerId?: string,
+): Promise<TopicViewParts> {
   const topicIds = rows.map((row) => row.id);
   const groupIds = [...new Set(rows.map((row) => row.groupId))];
   // The direct `topic_members` rows are needed for every non-General topic
@@ -233,8 +237,9 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     ),
   );
   // T-1992: a channel keeps its audience off topic views, the same rule as the
-  // group members route. Topic views carry no viewer, so owners and admins get
-  // the same narrowed list here; the group route still returns everyone to them.
+  // group members route. T-2036: a viewer who owns or administers the channel
+  // sees the full list, as on the members route; anyone else, or no viewer,
+  // keeps the narrowed managers-only list.
   const channelGroupIds = new Set(
     groupKindRows.filter((row) => row.kind === 'channel').map((row) => row.id),
   );
@@ -250,9 +255,9 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
   const generalAudienceByGroup = new Map(
     [...membersByGroup].map(([groupId, ids]) => {
       const managers = managerIdsByGroup.get(groupId) ?? new Set<string>();
-      const audience = channelGroupIds.has(groupId)
-        ? [...ids].filter((id) => managers.has(id))
-        : [...ids];
+      const narrowed =
+        channelGroupIds.has(groupId) && (viewerId === undefined || !managers.has(viewerId));
+      const audience = narrowed ? [...ids].filter((id) => managers.has(id)) : [...ids];
       return [groupId, audience] as const;
     }),
   );
@@ -350,11 +355,12 @@ export async function toTopicViews(
   db: ServerDatabase,
   rows: TopicRow[],
   mucDomain: string,
+  viewerId?: string,
 ): Promise<TopicView[]> {
   if (rows.length === 0) {
     return [];
   }
-  const parts = await loadTopicViewParts(db, rows);
+  const parts = await loadTopicViewParts(db, rows, viewerId);
   const views = rows.map((topic) => {
     const memberIds = parts.memberIds.get(topic.id) ?? [];
     // T-1764: `memberCount` is the people plus the AIs (General: the group's).

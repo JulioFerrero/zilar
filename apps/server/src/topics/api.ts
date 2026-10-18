@@ -125,7 +125,7 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             );
             return {
               topics: yield* Effect.promise(async () =>
-                withTopicActivity(deps, await toTopicViews(deps.db, rows, mucDomain)),
+                withTopicActivity(deps, await toTopicViews(deps.db, rows, mucDomain, user.id)),
               ),
             };
           }),

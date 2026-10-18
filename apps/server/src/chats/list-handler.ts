@@ -166,6 +166,7 @@ export function listChatsFor(
           deps.db,
           groupEntries.flatMap((entry) => topicsByGroup.get(entry.groupId) ?? []),
           deps.config.xmpp.mucDomain,
+          user.id,
         ),
       ),
     );

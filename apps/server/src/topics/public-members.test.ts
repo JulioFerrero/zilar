@@ -245,11 +245,57 @@ describe('public topic members (T-1754)', () => {
     const asOwner = await listTopicMembers({ db: context.db }, generalTopicId, owner);
     expect(asOwner.map((entry) => entry.userId).sort()).toEqual([owner, admin, subscriber].sort());
 
-    // The topic views carry no audience either (they have no viewer to narrow by).
+    // The topic views default to the narrowed audience when there is no viewer.
     const topic = await getTopic(context.db, generalTopicId);
     expect(topic).not.toBeNull();
     const [view] = await toTopicViews(context.db, [topic!], context.config.xmpp.domain);
     expect([...(view?.memberIds ?? [])].sort()).toEqual([owner, admin].sort());
     expect(view?.memberCount).toBe(2);
+  });
+
+  it('shows a channel owner or admin the full General audience (T-2036)', async () => {
+    const owner = await seedUser(context, { name: 'Owner' });
+    const admin = await seedUser(context, { name: 'Admin' });
+    const subscriber = await seedUser(context, { name: 'Subscriber' });
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      owner,
+      [
+        { userId: owner, role: 'owner' },
+        { userId: admin, role: 'admin' },
+        { userId: subscriber, role: 'member' },
+      ],
+      [],
+    );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE groups SET kind = 'channel' WHERE id = ${groupId}`;
+      }),
+    );
+
+    const topic = await getTopic(context.db, generalTopicId);
+    expect(topic).not.toBeNull();
+    const everyone = [owner, admin, subscriber].sort();
+
+    const [asSubscriber] = await toTopicViews(
+      context.db,
+      [topic!],
+      context.config.xmpp.domain,
+      subscriber,
+    );
+    expect([...(asSubscriber?.memberIds ?? [])].sort()).toEqual([owner, admin].sort());
+    expect(asSubscriber?.memberCount).toBe(2);
+
+    for (const manager of [owner, admin]) {
+      const [asManager] = await toTopicViews(
+        context.db,
+        [topic!],
+        context.config.xmpp.domain,
+        manager,
+      );
+      expect([...(asManager?.memberIds ?? [])].sort()).toEqual(everyone);
+      expect(asManager?.memberCount).toBe(3);
+    }
   });
 });
