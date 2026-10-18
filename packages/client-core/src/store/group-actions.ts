@@ -31,19 +31,23 @@ export function topicIdFor(
   });
 }
 
-export function changeTopic<T extends TopicRow>(
+export function changeTopic<T extends TopicRow, R = never>(
   ctx: CoreCtx,
   store: GroupActionStore,
   chatId: string,
   call: (topicId: string) => Promise<T>,
   before?: (topic: T) => void,
-): Effect.Effect<void, unknown> {
-  return Effect.gen(function* () {
+  onFailure?: Effect.Effect<void, never, R>,
+): Effect.Effect<void, unknown, R> {
+  const change = Effect.gen(function* () {
     const { topicId } = yield* topicIdFor(ctx, store, chatId);
     const topic = yield* fromPromise(() => call(topicId));
     before?.(topic);
     yield* applyTopicRow(ctx, store.rows, topic);
   });
+  return onFailure === undefined
+    ? change
+    : change.pipe(Effect.catchCause((cause) => Effect.andThen(onFailure, Effect.failCause(cause))));
 }
 
 export interface CreateTopicStore<T extends TopicRow> {
@@ -159,6 +163,31 @@ export interface ChangeGroupStore<D, R = never> {
   refreshList(): Effect.Effect<void, unknown, R>;
 }
 
+/** The write-then-repaint sequence: call the route, apply its answer (or re-read the
+ * detail when the route answers nothing), then optionally refresh the list. */
+function groupWrite<D, R = never>(
+  groupId: string | undefined,
+  notAvailable: string,
+  call: (groupId: string) => Promise<D>,
+  apply: (detail: D) => void,
+  reloadDetail: ((groupId: string) => Effect.Effect<void, unknown, R>) | undefined,
+  refreshList: (() => Effect.Effect<void, unknown, R>) | undefined,
+): Effect.Effect<void, unknown, R> {
+  return Effect.gen(function* () {
+    if (groupId === undefined || groupId === '') {
+      return yield* Effect.fail(new Error(notAvailable));
+    }
+    const detail = yield* fromPromise(() => call(groupId));
+    apply(detail);
+    if (reloadDetail !== undefined) {
+      yield* reloadDetail(groupId);
+    }
+    if (refreshList !== undefined) {
+      yield* refreshList();
+    }
+  });
+}
+
 /** Runs a group route that repaints the detail: resolve the group, call the route, apply
  * the answer (or re-read it), then optionally refresh the list. */
 export function changeGroup<D, R = never>(
@@ -173,15 +202,39 @@ export function changeGroup<D, R = never>(
     if (target === undefined) {
       return yield* Effect.fail(new Error(notAvailable));
     }
-    const detail = yield* fromPromise(() => call(target.groupId));
-    store.applyDetail(chatId, detail, target.domain);
-    if (store.reloadDetail !== undefined) {
-      yield* store.reloadDetail(target.groupId);
-    }
-    if (refresh) {
-      yield* store.refreshList();
-    }
+    yield* groupWrite(
+      target.groupId,
+      notAvailable,
+      call,
+      (detail) => store.applyDetail(chatId, detail, target.domain),
+      store.reloadDetail,
+      refresh ? store.refreshList : undefined,
+    );
   });
+}
+
+export interface GroupIdChangeStore<D, R = never> {
+  applyDetail(detail: D): void;
+  reloadDetail?(groupId: string): Effect.Effect<void, unknown, R>;
+  refreshList(): Effect.Effect<void, unknown, R>;
+}
+
+/** `changeGroup` for screens keyed by the group id, which have no chat row to resolve. */
+export function changeGroupForGroup<D, R = never>(
+  store: GroupIdChangeStore<D, R>,
+  groupId: string,
+  notAvailable: string,
+  call: (groupId: string) => Promise<D>,
+  refresh: boolean,
+): Effect.Effect<void, unknown, R> {
+  return groupWrite(
+    groupId,
+    notAvailable,
+    call,
+    (detail) => store.applyDetail(detail),
+    store.reloadDetail,
+    refresh ? store.refreshList : undefined,
+  );
 }
 
 export interface CreateGroupChannelStore<D, R = never> {

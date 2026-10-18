@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import {
   applyTopicRow as applyTopicRowCore,
+  changeGroupForGroup as changeGroupForGroupCore,
   changeTopic as changeTopicCore,
   ensureGroupDetail as ensureGroupDetailCore,
   type GroupActionStore,
@@ -16,77 +17,33 @@ import type { ChatStoreState } from '../types';
 import { makeGroupActions } from './group-actions';
 import { makeGroupRolesActions } from './group-roles-actions';
 import { Ports } from './ports';
-import { failAfter, lift, orElse, type StoreCtx } from './runtime';
+import { lift, orElse, type StoreCtx } from './runtime';
 
-interface GroupMembershipHelpers {
-  readonly ensureGroupDetail: (
-    groupId: string,
-    force?: boolean,
-  ) => Effect.Effect<void, never, Ports>;
-  readonly refreshQuietly: Effect.Effect<void, never, Ports>;
-}
+export type GroupWrite = (
+  groupId: string,
+  call: (groupId: string) => Promise<void>,
+  notAvailable?: string,
+) => Promise<void>;
 
 /** Permissions are enforced by the server; these actions never decide them. */
-type GroupMembershipActions = Pick<
+type GroupWriteActions = Pick<
   ChatStoreState,
-  'addGroupMembers' | 'removeGroupMember' | 'addGroupAi' | 'removeGroupAi'
+  'addGroupMembers' | 'removeGroupMember' | 'addGroupAi' | 'removeGroupAi' | 'patchGroupSettings'
 >;
 
-function makeGroupMembershipActions(
-  ctx: StoreCtx,
-  helpers: GroupMembershipHelpers,
-): GroupMembershipActions {
-  const { groups: groupsApi } = ctx.ports;
-  const { ensureGroupDetail, refreshQuietly } = helpers;
-
-  const writeAndReload = (write: () => Promise<void>, groupId: string): Promise<void> =>
-    ctx.run(
-      Effect.gen(function* () {
-        yield* lift(write);
-        yield* ensureGroupDetail(groupId, true);
-        yield* refreshQuietly;
-      }),
-    );
-
+function makeGroupWriteActions(
+  groupsApi: StoreCtx['ports']['groups'],
+  write: GroupWrite,
+): GroupWriteActions {
   return {
     addGroupMembers: (groupId, userIds) =>
-      writeAndReload(() => groupsApi.addGroupMembers(groupId, userIds), groupId),
+      write(groupId, (id) => groupsApi.addGroupMembers(id, userIds)),
     removeGroupMember: (groupId, userId) =>
-      writeAndReload(() => groupsApi.removeGroupMember(groupId, userId), groupId),
-    addGroupAi: (groupId, aiId) =>
-      writeAndReload(() => groupsApi.addGroupAi(groupId, aiId), groupId),
-    removeGroupAi: (groupId, aiId) =>
-      writeAndReload(() => groupsApi.removeGroupAi(groupId, aiId), groupId),
-  };
-}
-
-interface GroupSettingsHelpers {
-  readonly ensureGroupDetail: (
-    groupId: string,
-    force?: boolean,
-  ) => Effect.Effect<void, never, Ports>;
-  readonly refreshQuietly: Effect.Effect<void, never, Ports>;
-}
-
-/** Permissions are enforced by the server; this action never decides them. */
-type GroupSettingsActions = Pick<ChatStoreState, 'patchGroupSettings'>;
-
-function makeGroupSettingsActions(
-  ctx: StoreCtx,
-  helpers: GroupSettingsHelpers,
-): GroupSettingsActions {
-  const { groups: groupsApi } = ctx.ports;
-  const { ensureGroupDetail, refreshQuietly } = helpers;
-
-  return {
+      write(groupId, (id) => groupsApi.removeGroupMember(id, userId)),
+    addGroupAi: (groupId, aiId) => write(groupId, (id) => groupsApi.addGroupAi(id, aiId)),
+    removeGroupAi: (groupId, aiId) => write(groupId, (id) => groupsApi.removeGroupAi(id, aiId)),
     patchGroupSettings: (groupId, patch) =>
-      ctx.run(
-        Effect.gen(function* () {
-          yield* lift(() => groupsApi.patchGroupSettings(groupId, patch));
-          yield* ensureGroupDetail(groupId, true);
-          yield* refreshQuietly;
-        }),
-      ),
+      write(groupId, (id) => groupsApi.patchGroupSettings(id, patch)),
   };
 }
 
@@ -132,7 +89,7 @@ export type GroupActions = Pick<
 >;
 
 export interface Groups {
-  readonly actions: GroupActions & GroupMembershipActions & GroupSettingsActions;
+  readonly actions: GroupActions & GroupWriteActions;
   /** A load in flight serves every caller. */
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   ensureGroupMembers(chatId: string): Effect.Effect<void, never, Ports>;
@@ -152,7 +109,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
     loadingTopicRoles,
     groupMembers,
   } = s;
-  const { topics, roles: rolesApi } = ports;
+  const { topics, roles: rolesApi, groups: groupsApi } = ports;
 
   const bumpRevision = (): void =>
     set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
@@ -308,22 +265,45 @@ export function makeGroups(ctx: StoreCtx): Groups {
     orElse(fx.refreshChats, undefined),
   );
 
+  // Group routes answer no detail, so the write re-reads it; the group-info screen has no chat row.
+  const writeGroup: GroupWrite = (
+    groupId,
+    call,
+    notAvailable = 'This group is not available yet.',
+  ) =>
+    ctx.run(
+      changeGroupForGroupCore<void, Ports>(
+        {
+          applyDetail: () => {},
+          reloadDetail: (id) =>
+            Effect.andThen(ensureGroupDetail(id, true), Effect.sync(bumpRevision)),
+          refreshList: () => refreshQuietly,
+        },
+        groupId,
+        notAvailable,
+        call,
+        true,
+      ),
+    );
+
   // The last seat archives the topic, so the row disappears either way.
   const removeTopicMemberEffect = (
     chatId: string,
     userId: string,
   ): Effect.Effect<void, unknown, Ports> =>
-    failAfter(
-      changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
-        topics.removeTopicMember(topicId, userId),
-      ),
-      () => refreshQuietly,
+    changeTopicCore(
+      ctx.coreCtx,
+      actionStore(),
+      chatId,
+      (topicId) => topics.removeTopicMember(topicId, userId),
+      undefined,
+      refreshQuietly,
     );
 
-  const actions: GroupActions & GroupMembershipActions & GroupSettingsActions = {
+  const actions: GroupActions & GroupWriteActions = {
     ...makeGroupActions(ctx, {
       groupDetails,
-      bumpRevision,
+      writeGroup,
       ensureGroupDetail,
       actionStore,
       applyTopicRow,
@@ -339,8 +319,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
       ensureTopicRoles,
       actionStore,
     }),
-    ...makeGroupMembershipActions(ctx, { ensureGroupDetail, refreshQuietly }),
-    ...makeGroupSettingsActions(ctx, { ensureGroupDetail, refreshQuietly }),
+    ...makeGroupWriteActions(groupsApi, writeGroup),
   };
 
   return { actions, ensureGroupDetail, ensureGroupMembers, joinGroups };

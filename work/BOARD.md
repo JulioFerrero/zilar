@@ -2116,3 +2116,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2118](T-2118-fold-web-c.md) | web: fold 56 more single-use files into their importer | 2026-10-18 |
 | [T-2114](T-2114-merge-phone-b.md) | phone: merge 8 more split hooks and children back | 2026-10-18 |
 | [T-2119](T-2119-rate-limit-table.md) | server: one rate-limit table for every budget | 2026-10-18 |
+| [T-2115](T-2115-store-group-writes.md) | share: one group write-then-reload path | 2026-10-18 |

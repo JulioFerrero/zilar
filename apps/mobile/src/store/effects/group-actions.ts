@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { ApiError } from '@zilar/api-contract';
 import {
-  changeGroup as changeGroupCore,
   changeTopic as changeTopicCore,
   createGroupChannel as createGroupChannelCore,
   createTopic as createTopicCore,
@@ -15,13 +14,13 @@ import type { GroupDetail } from '../../lib/chat-api';
 import type { CreateTopicInput, PatchTopicInput, Topic } from '../../lib/topics-api';
 import type { ChannelMemberRole } from '../../lib/groups-api';
 import type { GroupRolesActions } from './group-roles-actions';
-import type { GroupActions } from './groups';
+import type { GroupActions, GroupWrite } from './groups';
 import { Ports } from './ports';
 import { lift, orElse, type StoreCtx } from './runtime';
 
 export interface GroupActionHelpers {
   readonly groupDetails: Map<string, GroupDetail>;
-  bumpRevision(): void;
+  readonly writeGroup: GroupWrite;
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   actionStore(): GroupActionStore;
   applyTopicRow(topic: Topic): Effect.Effect<void, unknown>;
@@ -38,7 +37,7 @@ export function makeGroupActions(
   const { topics, inviteLinks, groups: groupsApi } = ctx.ports;
   const {
     groupDetails,
-    bumpRevision,
+    writeGroup,
     ensureGroupDetail,
     actionStore,
     applyTopicRow,
@@ -249,22 +248,10 @@ export function makeGroupActions(
         ),
       ),
     transferGroupOwner: (groupId, userId) =>
-      ctx.run(
-        Effect.gen(function* () {
-          yield* lift(() => groupsApi.transferGroupOwner(groupId, userId));
-          yield* ensureGroupDetail(groupId, true);
-          yield* refreshQuietly;
-        }),
-      ),
+      writeGroup(groupId, (id) => groupsApi.transferGroupOwner(id, userId)),
     // Keyed by GROUP id (the group-info screen has no chat row); a channel's last-admin demotion rejects with 409 `channel_needs_admin`.
     changeGroupMemberRole: (groupId, userId, role) =>
-      ctx.run(
-        Effect.gen(function* () {
-          yield* lift(() => groupsApi.changeGroupMemberRole(groupId, userId, role));
-          yield* ensureGroupDetail(groupId, true);
-          yield* refreshQuietly;
-        }),
-      ),
+      writeGroup(groupId, (id) => groupsApi.changeGroupMemberRole(id, userId, role)),
     deleteGroup: (groupId) =>
       ctx.run(
         Effect.gen(function* () {
@@ -276,26 +263,10 @@ export function makeGroupActions(
     listChannelMembers: (groupId) => ctx.run(lift(() => groupsApi.listGroupMembers(groupId))),
     // Owner only; the last-admin demotion rejects with 409 `channel_needs_admin`.
     changeChannelRole: (chatId, userId, role: ChannelMemberRole) =>
-      ctx.run(
-        changeGroupCore<void, Ports>(
-          {
-            resolve: (chatId) => {
-              const groupId = h.groupIdForChat(chatId);
-              return groupId === undefined ? undefined : { groupId, domain: '' };
-            },
-            applyDetail: () => {},
-            reloadDetail: (groupId) =>
-              Effect.gen(function* () {
-                yield* ensureGroupDetail(groupId, true);
-                bumpRevision();
-              }),
-            refreshList: () => refreshQuietly,
-          },
-          chatId,
-          'This channel is not available yet.',
-          (groupId) => groupsApi.changeGroupMemberRole(groupId, userId, role),
-          true,
-        ),
+      writeGroup(
+        h.groupIdForChat(chatId) ?? '',
+        (groupId) => groupsApi.changeGroupMemberRole(groupId, userId, role),
+        'This channel is not available yet.',
       ),
   };
 }
