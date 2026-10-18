@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { useShareIntentContext } from 'expo-share-intent';
-import { ChevronLeft } from 'lucide-react-native';
 import { type ReactNode, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,9 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoadingScreen, RequireAuth } from '@/auth/RequireAuth';
 import { ChatPickerList } from '@/components/chat/chat-picker-list';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
 import { sendShare } from '@/lib/share-send';
 import { type ShareDraft, toShareDraft } from '@/lib/share-intent';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -23,16 +21,7 @@ const SEND_FAILED_MESSAGE = 'Could not send. Try again.';
 function ShareFrame({ onBack, children }: { onBack: () => void; children: ReactNode }) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center gap-1 border-b border-divider bg-surface px-1 py-1">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        <View className="ml-2.5 min-w-0 flex-1">
-          <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
-            Send to
-          </Text>
-        </View>
-      </View>
+      <ScreenHeader variant="sub" title="Send to" onBack={onBack} />
       {children}
     </SafeAreaView>
   );

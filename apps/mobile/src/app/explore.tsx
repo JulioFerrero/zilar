@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronLeft, Compass } from 'lucide-react-native';
+import { Compass } from 'lucide-react-native';
 
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
@@ -16,11 +16,10 @@ import {
 } from '@/components/directory/explore-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
 import type { DirectoryEntry, DirectoryKind, SearchDirectoryInput } from '@/lib/directory-api';
 import { useAction } from '@/lib/effect/use-action';
 import { postJoinTarget } from '@/components/directory/handle-helpers';
@@ -207,19 +206,12 @@ function ExploreList() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center gap-1 border-b border-divider bg-surface px-1 py-1">
-        <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        <View className="ml-2.5 min-w-0 flex-1">
-          <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
-            Explore
-          </Text>
-          <Text numberOfLines={1} className="shrink text-[12px] text-muted-foreground">
-            Public groups and channels anyone can join
-          </Text>
-        </View>
-      </View>
+      <ScreenHeader
+        variant="sub"
+        title="Explore"
+        subtitle="Public groups and channels anyone can join"
+        onBack={() => router.back()}
+      />
 
       <View className="px-4 pt-3">
         <SearchField

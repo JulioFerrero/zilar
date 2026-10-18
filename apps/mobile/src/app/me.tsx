@@ -1,6 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
-import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,10 +9,9 @@ import { ProfileView } from '@/components/profile/profile-view';
 import { createPicturePicker, createAvatarFileUploader } from '@/components/settings/avatar-native';
 import type { PickedPicture } from '@/components/settings/avatar-native';
 import { friendlyAvatarError } from '@/components/settings/profile-logic';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
-import { ICON } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
@@ -221,14 +219,7 @@ function OwnProfile() {
       className="flex-1 bg-background"
       style={{ paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom }}
     >
-      <View className="flex-row items-center gap-1 px-2 py-2">
-        <IconButton label="Back" onPress={() => goBackOrHome(router)}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground">
-          Profile
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" bare title="Profile" onBack={() => goBackOrHome(router)} />
       <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
         <View className="px-4">
           {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
