@@ -11,6 +11,7 @@ export {
   type PeopleSearchScheduler,
   type PeopleSearchView,
 } from './people-handle-search';
+export * from './ais-api';
 export {
   createAtomStore,
   createBoundStore,
