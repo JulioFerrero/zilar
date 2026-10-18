@@ -33,6 +33,7 @@ export {
   useContactRequestsPoll,
   type OnForeground,
 } from './foreground-hooks';
+export * from './chat-extras-api';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
   makeTopicsApi,

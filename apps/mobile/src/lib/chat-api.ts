@@ -10,7 +10,7 @@ import {
   type LinkPreview as ContractLinkPreview,
   type XmppTokenResult,
 } from '@zilar/api-contract';
-import { makeChatsApi } from '@zilar/client-core';
+import { makeChatsApi, makeChatExtrasApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -97,8 +97,7 @@ export function createChatApi(
       runApi(client.groups.detail({ params: { id: groupId } })).then(toGroupDetail),
     getXmppToken: api.getXmppToken,
     // The server answers 204 when the page has nothing; the derived client then yields `null`. A transport failure rejects, and the card treats it as `null` too.
-    linkPreview: (url) =>
-      runApi(client.linkPreview.get({ query: { url } })).then((value) => value ?? null),
+    linkPreview: makeChatExtrasApi((call) => runApi(call(client))).linkPreview,
     markChatRead: api.markChatRead,
     markChatDelivered: api.markChatDelivered,
     deleteMessageForMe: api.deleteMessageForMe,

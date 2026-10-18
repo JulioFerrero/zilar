@@ -1,25 +1,14 @@
-import { runApi } from '@zilar/api-contract';
+import { runApi, type AiMemoryView } from '@zilar/api-contract';
+import { makeChatExtrasApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
-/**
- * Errors are the shared `ApiError`, so the section shows fixed sentences, never server text.
- */
+export type { AiMemoryView as AiMemory, AiMemoryFact } from '@zilar/api-contract';
 
-export interface AiMemoryFact {
-  id: string;
-  text: string;
-}
-
-export interface AiMemory {
-  facts: AiMemoryFact[];
-  lines: string[];
-  canChange: boolean;
-}
-
+/** Errors are the shared `ApiError`, so the section shows fixed sentences, never server text. */
 export interface AiMemoryApi {
-  getMemory(chat: string, aiId: string): Promise<AiMemory>;
+  getMemory(chat: string, aiId: string): Promise<AiMemoryView>;
   forgetFact(chat: string, aiId: string, factId: string): Promise<void>;
   clear(chat: string, aiId: string): Promise<void>;
 }
@@ -30,20 +19,10 @@ export function createAiMemoryApi(
   apiUrl: string = API_URL,
 ): AiMemoryApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  const api = makeChatExtrasApi((call) => runApi(call(client)));
   return {
-    async getMemory(chat, aiId) {
-      const memory = await runApi(client.aiMemory.view({ query: { chat, ai: aiId } }));
-      return { facts: [...memory.facts], lines: [...memory.lines], canChange: memory.canChange };
-    },
-
-    async forgetFact(chat, aiId, factId) {
-      await runApi(
-        client.aiMemory.deleteFact({ params: { id: factId }, query: { chat, ai: aiId } }),
-      );
-    },
-
-    async clear(chat, aiId) {
-      await runApi(client.aiMemory.clear({ payload: { chat, ai: aiId } }));
-    },
+    getMemory: api.getAiMemory,
+    forgetFact: api.forgetAiMemoryFact,
+    clear: api.clearAiMemory,
   };
 }

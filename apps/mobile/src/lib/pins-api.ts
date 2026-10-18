@@ -1,48 +1,15 @@
-import { Exit, Schema } from 'effect';
-import {
-  Pin as PinSchema,
-  lenientLiterals,
-  PIN_KINDS,
-  runApi,
-  type Pin as ContractPin,
-} from '@zilar/api-contract';
+import { runApi } from '@zilar/api-contract';
+import { makeChatExtrasApi } from '@zilar/client-core';
 
 import { createApiClient } from './effect/api-client';
-import type { SnapshotPinKind } from './pin-snapshot';
 
-export type PinKind = SnapshotPinKind;
+export type { Pin } from '@zilar/api-contract';
+export type { PinMessageInput } from '@zilar/client-core';
 
-/**
- * A pin `kind` this build does not know decodes to `text`.
- */
+/** A pin `kind` this build does not know decodes to `text`. */
+export type { SnapshotPinKind, SnapshotPinKind as PinKind } from './pin-snapshot';
 
-export type Pin = ContractPin;
-
-export interface PinMessageInput {
-  chat: string;
-  messageId: string;
-  senderName: string;
-  text: string;
-  kind: PinKind;
-}
-
-export interface PinsApi {
-  listPins(chat: string): Promise<Pin[]>;
-  pinMessage(input: PinMessageInput): Promise<Pin>;
-  unpinMessage(id: string): Promise<Pin>;
-}
-
-const LenientPinKind = lenientLiterals(PIN_KINDS, 'text');
-
-/** Unknown kinds fall back to `text`, so a newer server never breaks pins. */
-export function parsePinKind(value: unknown): PinKind {
-  return Schema.decodeUnknownSync(LenientPinKind)(value);
-}
-
-export function parsePin(value: unknown): Pin | null {
-  const decoded = Schema.decodeUnknownExit(PinSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
+export type PinsApi = ReturnType<typeof makeChatExtrasApi>;
 
 export function createPinsApi(
   getToken: () => Promise<string | undefined>,
@@ -50,15 +17,7 @@ export function createPinsApi(
   apiUrl: string,
 ): PinsApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  return {
-    listPins: (chat) =>
-      runApi(client.pins.list({ query: { chat } })).then((body) => [...body.pins]),
-    pinMessage: (input) =>
-      runApi(client.pins.create({ payload: { ...input, senderName: input.senderName.trim() } })),
-    // The server echoes the deleted row, so the store removes it without a refetch.
-    unpinMessage: (id) => runApi(client.pins.remove({ params: { id } })),
-  };
+  return makeChatExtrasApi((call) => runApi(call(client)));
 }
 
 export { pinKindFor, pinLabel, pinSnapshotText } from './pin-snapshot';
-export type { SnapshotPinKind } from './pin-snapshot';
