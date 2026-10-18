@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
-import { Effect } from 'effect';
-import { useCallback, useRef, useState } from 'react';
+import { Deferred, Effect } from 'effect';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   describeConnectionsError,
@@ -44,6 +44,12 @@ export function useConnections({
 
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
+  // `reload` keeps its identity, so a load reads the current status from here:
+  // only a screen with nothing shown yet gets the loading message (T-1971).
+  const statusRef = useRef<PageStatus>('loading');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
   const [errorInfo, setErrorInfo] = useState<ConnectionsErrorInfo>({ message: '' });
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, boolean>>({});
@@ -59,12 +65,21 @@ export function useConnections({
 
   // Latest reload wins: a focus reload replaces a load still in flight.
   const [, load] = useAction(
-    () =>
-      Effect.tryPromise({
-        try: () => api.listConnections(),
-        catch: (cause): ConnectionsErrorInfo =>
-          describeConnectionsError(cause, 'Could not load your connections.'),
+    (settled: Deferred.Deferred<void>) =>
+      Effect.sync(() => {
+        // A reload over a ready list keeps the rows on screen (T-1971).
+        if (statusRef.current !== 'ready') {
+          setStatus('loading');
+        }
+        setErrorInfo({ message: '' });
       }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listConnections(),
+            catch: (cause): ConnectionsErrorInfo =>
+              describeConnectionsError(cause, 'Could not load your connections.'),
+          }),
+        ),
         Effect.tap((list) =>
           Effect.sync(() => {
             setConnections(list);
@@ -74,16 +89,22 @@ export function useConnections({
         Effect.catch((info) =>
           Effect.sync(() => {
             setErrorInfo(info);
-            setStatus('error');
+            // A failed background reload keeps the list; the banner shows why.
+            if (statusRef.current !== 'ready') {
+              setStatus('error');
+            }
           }),
         ),
+        Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(settled, Effect.void))),
       ),
     { mode: 'replace' },
   );
 
+  // Returns a promise that settles when this load ends, so a pull stops on time.
   const reload = useCallback(() => {
-    setStatus('loading');
-    load(undefined);
+    const settled = Deferred.makeUnsafe<void>();
+    load(settled);
+    return Effect.runPromise(Deferred.await(settled));
   }, [load]);
 
   // A second tap on any Test is ignored while one test runs (one lock for

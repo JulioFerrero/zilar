@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { KeyRound } from 'lucide-react-native';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -11,9 +11,12 @@ import { ConnectionRow } from '@/components/connections/connection-card';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';
 import { ConnectionsHeader } from '@/components/connections/connections-header';
 import { useConnections } from '@/components/connections/use-connections';
+import { usePullToRefresh } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 /**
@@ -70,6 +73,8 @@ function ConnectionsList() {
     },
   });
 
+  const { refreshing, pullToRefresh } = usePullToRefresh(reload);
+
   const openAdd = (): void => {
     setAddSession((session) => session + 1);
     setAddOpen(true);
@@ -113,8 +118,21 @@ function ConnectionsList() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={pullToRefresh}
+          />
+        }
       >
         <View className="gap-4 py-4">
+          {status === 'ready' && errorInfo.message !== '' ? (
+            <Text role="alert" className="px-4 text-[13px] text-danger">
+              {errorInfo.message}
+            </Text>
+          ) : null}
+
           {status === 'loading' ? (
             <StateMessage kind="loading" title="Loading connections…" />
           ) : null}

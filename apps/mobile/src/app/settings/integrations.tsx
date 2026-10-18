@@ -104,6 +104,7 @@ function IntegrationsBody() {
       title="Integrations"
       subtitle="Telegram, email and transcription for this server."
       onBack={() => router.back()}
+      onRefresh={reload}
     >
       <View className="gap-4">
         {status === 'loading' ? (

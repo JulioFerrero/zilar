@@ -1978,3 +1978,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1976](T-1976-mock-my-routines.md) | mock GET /routines for Settings › Routines | 2026-10-18 |
 | [T-1977](T-1977-phone-requests-header.md) | phone requests header and Always allowed label | 2026-10-18 |
 | [T-1978](T-1978-phone-keep-content-on-focus.md) | phone screens keep content on focus reload | 2026-10-18 |
+| [T-1971](T-1971-phone-pull-refresh-tools.md) | phone pull to refresh on tools settings lists | 2026-10-18 |

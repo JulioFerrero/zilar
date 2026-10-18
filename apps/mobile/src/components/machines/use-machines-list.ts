@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
-import { Effect } from 'effect';
-import { useCallback, useRef, useState } from 'react';
+import { Deferred, Effect } from 'effect';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAction } from '@/lib/effect/use-action';
 import type { Machine, PairingCode } from '@/lib/machines-api';
@@ -16,6 +16,12 @@ export function useMachinesList() {
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
+  // `reload` keeps its identity, so a load reads the current status from here:
+  // only a screen with nothing shown yet gets the loading message (T-1971).
+  const statusRef = useRef<PageStatus>('loading');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
   const [errorInfo, setErrorInfo] = useState<MachinesErrorInfo>({ message: '' });
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -51,12 +57,16 @@ export function useMachinesList() {
     });
   };
 
-  // Loads the list. A reload (focus, Retry) replaces one still running.
+  // Loads the list. A reload (focus, Retry, pull) replaces one still running.
   const [, loadList] = useAction(
-    (_input: void) =>
+    (settled: Deferred.Deferred<void>) =>
       Effect.sync(() => {
-        setStatus('loading');
+        // A reload over a ready list keeps it on screen (T-1971).
+        if (statusRef.current !== 'ready') {
+          setStatus('loading');
+        }
         setActionErrors({});
+        setErrorInfo({ message: '' });
       }).pipe(
         Effect.andThen(call(() => api.listMachines(), 'Could not load your machines.')),
         Effect.tap((list) =>
@@ -68,15 +78,22 @@ export function useMachinesList() {
         Effect.catch((failure) =>
           Effect.sync(() => {
             setErrorInfo({ message: failure.message });
-            setStatus('error');
+            // A failed background reload keeps the list; the banner shows why.
+            if (statusRef.current !== 'ready') {
+              setStatus('error');
+            }
           }),
         ),
+        Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(settled, Effect.void))),
       ),
     { mode: 'replace' },
   );
 
+  // Returns a promise that settles when this load ends, so a pull stops on time.
   const reload = useCallback(() => {
-    loadList();
+    const settled = Deferred.makeUnsafe<void>();
+    loadList(settled);
+    return Effect.runPromise(Deferred.await(settled));
   }, [loadList]);
 
   useFocusEffect(

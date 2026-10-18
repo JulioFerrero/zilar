@@ -3,7 +3,7 @@ import { AsyncResult } from 'effect/reactivity';
 import { useRouter } from 'expo-router';
 import { Server } from 'lucide-react-native';
 import { useMemo } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -15,8 +15,11 @@ import { MachinesHeader } from '@/components/machines/machines-header';
 import { PendingMachines } from '@/components/machines/pending-machines';
 import { RevokedMachines } from '@/components/machines/revoked-machines';
 import { useMachinesList } from '@/components/machines/use-machines-list';
+import { usePullToRefresh } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
 
 /**
@@ -76,6 +79,7 @@ function MachinesList() {
   const [aiResult] = useQuery(() => Effect.promise(() => aisApi.listAis()), [aisApi]);
   const ais = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
   const aisByMachine = useMemo(() => groupAisByMachine(ais), [ais]);
+  const { refreshing, pullToRefresh } = usePullToRefresh(reload);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -85,8 +89,21 @@ function MachinesList() {
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 32 }}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={pullToRefresh}
+          />
+        }
       >
         <View className="gap-4 p-4">
+          {status === 'ready' && errorInfo.message !== '' ? (
+            <Text role="alert" className="text-[13px] text-danger">
+              {errorInfo.message}
+            </Text>
+          ) : null}
+
           {status === 'loading' ? <StateMessage kind="loading" title="Loading machines…" /> : null}
 
           {status === 'error' ? (

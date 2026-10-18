@@ -279,6 +279,9 @@ function NotificationsSettings() {
       title="Notifications"
       subtitle="Push this phone when a message arrives."
       onBack={() => router.back()}
+      onRefresh={() => {
+        load();
+      }}
     >
       {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
 
