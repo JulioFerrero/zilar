@@ -2121,3 +2121,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2117](T-2117-store-pins.md) | share: one pin rule; owners can pin in channels on phone | 2026-10-18 |
 | [T-2122](T-2122-merge-web-c.md) | web: merge 3 split pieces back into their only user | 2026-10-18 |
 | [T-2121](T-2121-api-tools.md) | share: one tools, routines and approvals API | 2026-10-18 |
+| [T-2124](T-2124-agent-turns-plan.md) | plan: one AI turn path for DM and group | 2026-10-18 |
