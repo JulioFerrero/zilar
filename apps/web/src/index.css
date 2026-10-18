@@ -254,7 +254,8 @@
   border: 1px solid var(--border);
   box-shadow: var(--well-shadow);
 
-  &:focus-within {
+  &:focus-visible,
+  &:has(:focus-visible) {
     outline: 2px solid var(--muted-foreground);
     outline-offset: 2px;
   }

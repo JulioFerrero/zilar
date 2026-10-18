@@ -870,7 +870,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **T-1942 merged and held after 5 rounds:** free models pause for 6 h on a refusal, at most 1 free session runs at a time, and an unknown free listing falls to paid. The autopilot was restarted on the new code at 12:40 UTC.
                   - **Claude $100 API credits (expire 11-08). Julio picked "Claude finds, DeepSeek fixes".**
                     - T-1968 (audit 1/4: auth and keys, `anthropic/claude-opus-5-5`) is specced. Its findings go to the private `~/.zilar-lead/audits/`, never the public repo.
-                    - **Julio added the key (about 13:50 UTC).** T-1968 is running on `anthropic/claude-opus-5-5`; its first step cost $0.10. Measure its total cost before launching audits 2 to 4.
+                    - **Julio added the key (about 13:50 UTC).**
+                      - **T-1968 is done:** $2.84 for 8 findings (5 medium, 3 low), kept in `~/.zilar-lead/audits/T-1968-auth-keys.md`.
+                      - **Confirmed live:** every session IP stored in the last 7 days is private.
+                      - **Fixes running on DeepSeek:**
+                        - T-1981: two Better Auth routes off, and the export skips the cookie cache;
+                        - T-1982: revoke kicks the user's XMPP sessions;
+                        - T-1983: real client IP through the proxy chain;
+                        - T-1984: limits on connection writes.
+                      - **Audits running on Opus:** T-1985 (2/4, permissions and spend) and T-1986 (3/4, AI computers and tools).
+                      - **Next:** audit 4/4, the message pipeline, when a slot frees.
+                    - **Julio's pinned-bar report:**
+                      - T-1979 (web): one focus ring, plus a calm not-found note with Unpin;
+                      - T-1980 (`anthropic/claude-sonnet-5`): why the card pin's archive id doesn't match its row, plus a fix and a test.
                 - **Models (10-18):**
                   - OpenCode's free gateway refuses every free model ("Detect Abuse Traffic"), and the Go key has expired (Go was already paused until 10-27).
                   - So workers run on the DeepSeek API and reviews on paid Muse. The autopilot was restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor`.
