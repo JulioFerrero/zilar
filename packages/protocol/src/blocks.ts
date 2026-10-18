@@ -39,14 +39,12 @@ import {
   TimelineBlockSchema,
 } from './blocks-progress';
 
-// The shared helpers and caps live in `blocks-numbers.ts`, the first group; this
-// file aggregates the four groups so nothing has to import back into it.
+// The shared helpers and caps live in `blocks-numbers.ts`, the first group; this file aggregates the four groups so nothing has to import back into it.
 export * from './blocks-numbers';
 export * from './blocks-progress';
 export * from './blocks-choices';
 export * from './blocks-content';
 
-// The union of every kind, in board order 01-25.
 export const BlockSchema = Schema.Union([
   FigureBlockSchema,
   NumberBlockSchema,
@@ -81,8 +79,7 @@ export const BlocksDataSchema = struct({
   title: Schema.optional(Text),
   icon: Schema.optional(BlockIconSchema),
   meta: Schema.optional(ShortText),
-  // Required and plain: push, previews, the chat list, search, the memory
-  // indexer and old clients all read the message body, never the blocks.
+  // Push, previews, the chat list, search, the memory indexer and old clients all read the message body, never the blocks.
   fallback: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(1000))),
   blocks: Schema.mutable(Schema.Array(BlockSchema)).pipe(
     Schema.check(

@@ -1,7 +1,4 @@
-// Owner integrations (T-0544, T-0895): the Telegram bot token and the sign-in
-// mail sender plus Resend key. The token and the key are write-only; the
-// status only says whether one is set. Anyone but the server owner gets the
-// same 404 as an unknown route.
+// The token and key are write-only; the status only says whether one is set. Anyone but the server owner gets the same 404 as an unknown route.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -12,7 +9,6 @@ import {
   Session,
 } from './middleware';
 
-/** A bare address or a display name plus angle-addr. */
 export function isMailbox(value: string): boolean {
   const trimmed = value.trim();
   const angle = trimmed.match(/^(.*)<([^<>]+)>$/);
@@ -20,7 +16,6 @@ export function isMailbox(value: string): boolean {
   return /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(address);
 }
 
-/** Trimmed before the length and no-spaces checks; a client sends it trimmed. */
 export const SaveTelegramTokenPayload = Schema.Struct({
   botToken: Schema.Trim.pipe(
     Schema.check(
@@ -33,7 +28,6 @@ export const SaveTelegramTokenPayload = Schema.Struct({
   ),
 });
 
-/** `resendApiKey` changes the key only when given. */
 export const SaveEmailPayload = Schema.Struct({
   from: Schema.Trim.pipe(
     Schema.check(
@@ -75,7 +69,6 @@ export type TelegramIntegrationStatus = typeof TelegramIntegrationStatus.Type;
 export type EmailIntegrationStatus = typeof EmailIntegrationStatus.Type;
 export type VoiceIntegrationStatus = typeof VoiceIntegrationStatus.Type;
 
-/** `voiceTranscription` is optional so an older server still decodes. */
 export const IntegrationsStatus = Schema.Struct({
   telegram: TelegramIntegrationStatus,
   email: EmailIntegrationStatus,

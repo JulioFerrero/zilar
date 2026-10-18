@@ -2,7 +2,6 @@ import { Schema } from 'effect';
 import { IdSchema, IsoDateTimeSchema, struct } from './common';
 import { MAX_ROWS, RatioSchema, ShortText, Text } from './blocks-numbers';
 
-// 08 · CHECKLIST: the ticks everyone sees. `id` keys the per-item state.
 export const ChecklistBlockSchema = struct({
   kind: Schema.Literal('checklist'),
   id: IdSchema,
@@ -31,7 +30,6 @@ export const ChecklistBlockSchema = struct({
 
 export type ChecklistBlock = typeof ChecklistBlockSchema.Type;
 
-// 09 · PROGRESS: one bar with an optional detail and note.
 export const ProgressBlockSchema = struct({
   kind: Schema.Literal('progress'),
   label: Text,
@@ -42,7 +40,6 @@ export const ProgressBlockSchema = struct({
 
 export type ProgressBlock = typeof ProgressBlockSchema.Type;
 
-// 10 · TIMELINE: ordered steps, each done, current or todo.
 export const TimelineBlockSchema = struct({
   kind: Schema.Literal('timeline'),
   title: Text,
@@ -60,8 +57,7 @@ export const TimelineBlockSchema = struct({
 
 export type TimelineBlock = typeof TimelineBlockSchema.Type;
 
-// `IsoDateTimeSchema` already pins the shape; the filter additionally drops a
-// target the client's `Date.parse` could not read.
+// `IsoDateTimeSchema` already pins the shape; the filter additionally drops a target the client's `Date.parse` could not read.
 const TargetAtSchema = IsoDateTimeSchema.pipe(
   Schema.check(
     Schema.makeFilter((value) =>
@@ -70,7 +66,6 @@ const TargetAtSchema = IsoDateTimeSchema.pipe(
   ),
 );
 
-// 11 · COUNTDOWN: a label and the instant it counts to.
 export const CountdownBlockSchema = struct({
   kind: Schema.Literal('countdown'),
   label: Text,
@@ -80,7 +75,6 @@ export const CountdownBlockSchema = struct({
 
 export type CountdownBlock = typeof CountdownBlockSchema.Type;
 
-// 12 · STATUS LIST: a dot plus a short value per row, never a word.
 export const StatusBlockSchema = struct({
   kind: Schema.Literal('status'),
   title: Text,

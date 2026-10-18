@@ -1,4 +1,3 @@
-/** The parts of an audit entry the activity sentence depends on. */
 export interface AuditEntryLike {
   action: string;
   detail: Readonly<Record<string, unknown>> | null;

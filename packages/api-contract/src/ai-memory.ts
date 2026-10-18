@@ -1,14 +1,10 @@
-// The AI-memory routes (T-0443): the pinned facts and cover lines of one
-// chat. `chat` is the DM peer's bare JID (the AI's JID in a DM) or a room
-// JID; `ai` is the AI's id. `canChange` is false for a room member who may
-// only view.
+// `chat` is the DM peer's bare JID (the AI's JID in a DM) or a room JID; `canChange` is false for a member who may only view.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { AiMemoryWriteRateLimit, SchemaErrors, Session } from './middleware';
 
-// 1..256 characters; the query and payload decodes are strict, so an excess
-// key is a 400.
+// 1..256 characters; the query and payload decodes are strict, so an excess key is a 400.
 const ChatField = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
 export const AiMemoryQuery = Schema.Struct({ chat: ChatField, ai: ChatField });

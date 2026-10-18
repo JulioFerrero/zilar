@@ -1,31 +1,16 @@
-/**
- * The rows the settings hub shows, shared by the mobile app and the web app.
- * Each task in the mobile parity roadmap adds exactly one row to this list when
- * it adds a settings page, and one entry to the icon map the rendering app
- * keeps next to its screen (Vitest cannot load `lucide-react-native`, so the
- * icon itself stays out of this module).
- *
- * The icon id and the route types come FROM the rows, so a new row never
- * edits a union type. `.gitattributes` merges this file with `merge=union`:
- * two tasks that each append a row merge without a conflict. Keep one row per
- * block, and append at the end.
- */
+// Each task adds exactly one row at the end of this list; `.gitattributes` merges the file with `merge=union`.
+// The icon stays out of this module because Vitest cannot load `lucide-react-native`; the rendering app keeps the icon map.
 
-/** The hub card a row belongs to; the hub renders one card per group. */
 export type SettingsGroup = 'account' | 'ais' | 'chats' | 'server';
 
-/** The order the hub renders the group cards in. */
 export const SETTINGS_GROUP_ORDER = ['account', 'ais', 'chats', 'server'] as const;
 
 export interface SettingsItemShape {
   id: string;
   title: string;
   subtitle: string;
-  /** Names an entry of the rendering app's icon map; the screen maps it to a lucide icon. */
   icon: string;
-  /** The route pushed when the row is tapped (both apps use the same `/settings/<page>` paths). */
   href: string;
-  /** Which card of the hub renders this row. */
   group: SettingsGroup;
 }
 

@@ -1,10 +1,4 @@
-// Tools (T-0103 to T-0107): the small programs an AI owns, their versions and
-// their runs. Dates travel as ISO strings and stay strings in the clients.
-//
-// `revert` and `run` declare their payloads so the derived client is typed and
-// encodes them, but the server serves both with `handleRaw` and decodes the
-// bodies by hand, so the order stays: session, then decode (400), then access
-// (404), then the run limiter (429), then the runner check (501).
+// `revert` and `run` are served with `handleRaw` so the order stays: session, decode (400), access (404), run limiter (429), runner check (501).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -19,7 +13,6 @@ export const ToolListItem = Schema.Struct({
   description: Schema.String,
   currentVersion: Schema.Number,
   hosts: Schema.mutable(Schema.Array(Schema.String)),
-  // T-0132: the human-approved host set. Older payloads omit it (none approved).
   approvedHosts: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   lastRunStatus: Schema.NullOr(Schema.Literals(['ok', 'error'])),
   updatedAt: Schema.String,
@@ -28,7 +21,6 @@ export const ToolListItem = Schema.Struct({
 
 export type ToolListItem = typeof ToolListItem.Type;
 
-/** The list shape plus the current source. */
 export const ToolDetail = Schema.Struct({
   ...ToolListItem.fields,
   source: Schema.String,
@@ -36,7 +28,6 @@ export const ToolDetail = Schema.Struct({
 
 export type ToolDetail = typeof ToolDetail.Type;
 
-/** One version, without source. `toolName` is set on a revert's answer. */
 export const ToolVersion = Schema.Struct({
   id: Schema.String,
   toolId: Schema.String,
@@ -57,7 +48,6 @@ export const ToolVersionDetail = Schema.Struct({
 
 export type ToolVersionDetail = typeof ToolVersionDetail.Type;
 
-/** The output text is the stored (truncated) column, never the live run output. */
 export const ToolRun = Schema.Struct({
   id: Schema.String,
   toolId: Schema.String,
@@ -73,10 +63,7 @@ export const ToolRun = Schema.Struct({
 
 export type ToolRun = typeof ToolRun.Type;
 
-/**
- * The answer of a manual run (T-0219): the tool's own ok output or its own
- * failure. A failed run is still a 200, so this is data, not an error.
- */
+// A failed run is still a 200, so this is data, not an error.
 export const ToolRunResult = Schema.Union([
   Schema.Struct({
     ok: Schema.Literal(true),
@@ -96,7 +83,6 @@ export const ToolRunResult = Schema.Union([
 
 export type ToolRunResult = typeof ToolRunResult.Type;
 
-/** Strict: an excess key is a 400 (checked by the server's hand decode). */
 export const RevertToolPayload = Schema.Struct({
   version: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
   message: Schema.optional(
@@ -104,10 +90,7 @@ export const RevertToolPayload = Schema.Struct({
   ),
 });
 
-/**
- * Strict. `input` must serialise to at most 16 KiB; the server checks that
- * after the decode and answers 400 `invalid_request`.
- */
+// `input` must serialise to at most 16 KiB; the server checks that after the decode.
 export const RunToolPayload = Schema.Struct({
   input: Schema.optional(Schema.Unknown),
   version: Schema.optional(

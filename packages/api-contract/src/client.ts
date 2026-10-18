@@ -1,8 +1,3 @@
-// The client half of the contract: one derived `HttpApiClient` over
-// `ZilarApi`, one error mapping, and the Promise edge the apps' ports use.
-// Each app supplies the transport: an `HttpClient` plus its `fetch` (web:
-// same-origin cookies and mock mode; mobile: the bearer token).
-
 import { Effect, Schema } from 'effect';
 import {
   FetchHttpClient,
@@ -21,11 +16,7 @@ const NETWORK_ERROR_MESSAGE = 'Could not reach the server';
 const INVALID_RESPONSE_MESSAGE = 'The server sent an unexpected response';
 const UNSENT_REQUEST_MESSAGE = 'The request could not be sent';
 
-/**
- * Runs every request of `client` through `fetch`. The function is read per
- * request, so a test that stubs `globalThis.fetch` later still reaches its
- * stub when the adapter reads the global lazily.
- */
+// The function is read per request, so a test that stubs `globalThis.fetch` later still reaches its stub.
 export function withFetch(fetch: typeof globalThis.fetch) {
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
     client.pipe(
@@ -33,8 +24,7 @@ export function withFetch(fetch: typeof globalThis.fetch) {
     );
 }
 
-// A JSON payload reaches `fetch` as the string it was built from (the text
-// body keeps it), exactly what the hand-written clients sent.
+// A JSON payload reaches `fetch` as the string it was built from.
 function withTextBody(request: HttpClientRequest.HttpClientRequest) {
   const body = request.body;
   if (body._tag !== 'Uint8Array' || body.text === undefined) {
@@ -46,7 +36,6 @@ function withTextBody(request: HttpClientRequest.HttpClientRequest) {
   );
 }
 
-/** Any status of 400 or more fails with the envelope's `ApiError`. */
 export function withApiErrors<E, R>(client: HttpClient.HttpClient.With<E, R>) {
   return client.pipe(
     HttpClient.transformResponse(
@@ -62,11 +51,7 @@ export function withApiErrors<E, R>(client: HttpClient.HttpClient.With<E, R>) {
   );
 }
 
-/**
- * The derived client. A success body the contract cannot decode fails with
- * `invalid_response`; any status of 400 or more fails with the envelope's
- * `ApiError`.
- */
+// A success body the contract cannot decode fails with `invalid_response`; any status of 400 or more fails with the envelope's `ApiError`.
 export function makeZilarClient<E, R>(
   httpClient: HttpClient.HttpClient.With<E, R>,
   options: { readonly baseUrl?: string } = {},
@@ -87,11 +72,7 @@ export function makeZilarClient<E, R>(
   });
 }
 
-/**
- * Maps what a client call can fail with to one `ApiError`. A schema error
- * left here comes from encoding the request: the input the server would have
- * answered with 400 `invalid_request` is rejected before it is sent.
- */
+// A schema error here comes from encoding the request: the input the server would answer with 400 `invalid_request` is rejected before it is sent.
 export function toApiError(cause: unknown): ApiError {
   if (cause instanceof ApiError) {
     return cause;
@@ -114,7 +95,6 @@ export function toApiError(cause: unknown): ApiError {
   return new ApiError(0, 'request_failed', UNSENT_REQUEST_MESSAGE);
 }
 
-/** The Promise edge of a client call: it rejects with an `ApiError` only. */
 export function runApi<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
   return Effect.runPromise(Effect.mapError(effect, toApiError));
 }

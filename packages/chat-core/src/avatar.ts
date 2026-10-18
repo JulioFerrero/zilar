@@ -9,7 +9,6 @@ export interface AvatarGradient {
   to: string;
 }
 
-/** The seven messenger-style avatar gradients from `docs/design/ui-style.md` §2. */
 export const AVATAR_GRADIENTS: readonly AvatarGradient[] = [
   { index: 0, from: '#ff885e', to: '#ff516a' },
   { index: 1, from: '#ffcd6a', to: '#ffa85c' },
@@ -29,7 +28,6 @@ function hashId(id: string): number {
   return hash >>> 0;
 }
 
-/** Picks one of the seven gradients deterministically from an id. */
 export function avatarGradient(id: string): AvatarGradient {
   const index = hashId(id) % AVATAR_GRADIENTS.length;
   return AVATAR_GRADIENTS[index] ?? AVATAR_GRADIENTS[0]!;
@@ -46,11 +44,6 @@ function firstLetterOrDigit(word: string): string {
   return '';
 }
 
-/**
- * Up to two initials from a name: the first letter or digit of the first two
- * words that contain one. Emoji and other symbols never count, so a name with
- * no letters or digits returns an empty string.
- */
 export function initials(name: string): string {
   const characters = name
     .trim()
@@ -60,27 +53,22 @@ export function initials(name: string): string {
   return ((characters[0] ?? '') + (characters[1] ?? '')).toUpperCase();
 }
 
-/** The glossy 3D ball avatar SVG for a seed, scalable to any box. */
 export function avatarSvg(seed: string): string {
   return ballAvatarSvg(normalizeJid(seed));
 }
 
-/** The ball avatar as an SVG `data:` URI, ready for an image source. */
 export function avatarDataUri(seed: string): string {
   return 'data:image/svg+xml,' + encodeURIComponent(avatarSvg(seed));
 }
 
-/** The orb look for a seed, normalized like `avatarSvg`. */
 export function orbParamsFor(seed: string): BallParams {
   return ballParams(normalizeJid(seed));
 }
 
-/** The orb SVG for explicit params, with the gradient id hashed from `idSeed`. */
 export function orbSvg(params: BallParams, idSeed: string): string {
   return ballSvg(params, normalizeJid(idSeed));
 }
 
-/** The orb as an SVG `data:` URI, ready for an image source. */
 export function orbDataUri(params: BallParams, idSeed: string): string {
   return 'data:image/svg+xml,' + encodeURIComponent(orbSvg(params, idSeed));
 }

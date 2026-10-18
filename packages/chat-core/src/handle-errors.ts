@@ -1,7 +1,4 @@
-/**
- * The words for a failed handle save, shared by web and phone. `undefined`
- * means the code is not a handle code, so the caller keeps its own fallback.
- */
+// `undefined` means the code is not a handle code, so the caller keeps its own fallback.
 export function handleSaveMessage(
   error: { code: string; message: string; nextChangeAt?: string | undefined },
   noun: 'username' | 'handle',

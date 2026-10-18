@@ -2,7 +2,6 @@ import { Schema } from 'effect';
 import { IdSchema, IsoDateTimeSchema, struct } from './common';
 import { HttpsUrlSchema, NumberText, ShortText, Text } from './blocks-numbers';
 
-// 19 · LINK CARD: one https link, no images and no HTML.
 export const LinkBlockSchema = struct({
   kind: Schema.Literal('link'),
   url: HttpsUrlSchema,
@@ -13,7 +12,7 @@ export const LinkBlockSchema = struct({
 
 export type LinkBlock = typeof LinkBlockSchema.Type;
 
-// 20 · IMAGES: uploaded media ids, never URLs, so a card cannot be a tracker.
+// Uploaded media ids, never URLs, so a card cannot be a tracker.
 export const ImagesBlockSchema = struct({
   kind: Schema.Literal('images'),
   items: Schema.mutable(Schema.Array(IdSchema)).pipe(
@@ -24,7 +23,6 @@ export const ImagesBlockSchema = struct({
 
 export type ImagesBlock = typeof ImagesBlockSchema.Type;
 
-// 21 · PLACE: a title and an optional map image and directions link.
 export const PlaceBlockSchema = struct({
   kind: Schema.Literal('place'),
   title: Text,
@@ -35,7 +33,6 @@ export const PlaceBlockSchema = struct({
 
 export type PlaceBlock = typeof PlaceBlockSchema.Type;
 
-// 22 · WEATHER: now, plus up to six hourly entries.
 export const WeatherBlockSchema = struct({
   kind: Schema.Literal('weather'),
   place: Text,
@@ -58,7 +55,6 @@ export const WeatherBlockSchema = struct({
 
 export type WeatherBlock = typeof WeatherBlockSchema.Type;
 
-// 23 · EVENT: a time range with optional calendar and map keys.
 export const EventBlockSchema = struct({
   kind: Schema.Literal('event'),
   title: Text,
@@ -71,8 +67,7 @@ export const EventBlockSchema = struct({
 
 export type EventBlock = typeof EventBlockSchema.Type;
 
-// 24 · FILE: an uploaded media id and its display metadata. The file's format
-// is `format`, not `kind`, because `kind` is the block discriminator.
+// The file's format is `format`, not `kind`, because `kind` is the block discriminator.
 export const FileBlockSchema = struct({
   kind: Schema.Literal('file'),
   media: IdSchema,
@@ -84,7 +79,6 @@ export const FileBlockSchema = struct({
 
 export type FileBlock = typeof FileBlockSchema.Type;
 
-// 25 · CALLOUT: one tone, one line, an optional time.
 export const CalloutBlockSchema = struct({
   kind: Schema.Literal('callout'),
   tone: Schema.Literals(['success', 'warning', 'error', 'info']),

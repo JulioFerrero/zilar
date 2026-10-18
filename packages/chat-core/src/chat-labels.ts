@@ -1,7 +1,6 @@
 import { firstName, previewBody } from './messages';
 import type { ChatSummary, ReplyRef, UiMessage } from './types';
 
-/** Relative "last seen" text for the chat header. */
 export function formatLastSeen(date: Date, now: Date): string {
   const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
   if (minutes < 1) {
@@ -21,7 +20,6 @@ export function formatLastSeen(date: Date, now: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'long', day: 'numeric' }).format(date);
 }
 
-/** Header subtitle, see `ui-style.md` §4. */
 export function chatSubtitle(chat: ChatSummary, now: Date): string {
   if (chat.isAI) {
     return `AI · ${chat.aiStatus === 'working' ? 'working' : 'idle'}`;
@@ -33,7 +31,7 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
   }
   if (chat.kind === 'group') {
     const online = chat.onlineCount ?? 0;
-    // Everyone online is a member, and the room's occupants include AIs (the same rule as `handleOccupants`).
+    // Everyone online is a member, and the room's occupants include AIs.
     const members = Math.max(chat.memberCount ?? 0, online);
     return online > 0 ? `${members} members, ${online} online` : `${members} members`;
   }
@@ -46,10 +44,6 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
   return 'last seen recently';
 }
 
-/**
- * Typing label for the list preview and the header subtitle (see `ui-style.md`
- * §4). Direct messages read `typing`; groups name the first person.
- */
 export function typingLabel(chat: ChatSummary, names: readonly string[]): string | undefined {
   const first = names[0];
   if (first === undefined) {
@@ -68,11 +62,6 @@ export function typingLabel(chat: ChatSummary, names: readonly string[]): string
   return 'typing';
 }
 
-/**
- * T-1777: the header's "… writing" line while people or AIs write, from the
- * `PhoneHeader.dc.html` board. One writer is named; two are named; three or
- * more read as a count. First names, like `typingLabel`.
- */
 export function writingLabel(names: readonly string[]): string | undefined {
   const first = names[0];
   if (first === undefined) {
@@ -89,14 +78,12 @@ export function writingLabel(names: readonly string[]): string | undefined {
   return `${names.length} writing…`;
 }
 
-/** The app badge count: the sum of `unread` over chats that are not muted. */
 export function totalBadgeUnread(
   chats: ReadonlyArray<{ muted?: boolean; unread: number }>,
 ): number {
   return chats.reduce((sum, chat) => (chat.muted === true ? sum : sum + chat.unread), 0);
 }
 
-/** Reply reference built from a message, used by the composer's reply bar. */
 export function replyRef(message: UiMessage, currentUserId: string): ReplyRef {
   const text = previewBody(message);
   return {

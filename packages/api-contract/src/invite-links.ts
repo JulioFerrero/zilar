@@ -1,11 +1,5 @@
-// Group invite links (T-0115): shareable links that join a group as `member`.
-// The token is shown once at creation and never stored, so the list carries
-// hints, labels, uses and state, never tokens. Joining by link has a preview
-// (group title and member count only) and a join.
-//
-// The `:token` param stays a plain string: the server checks its shape inside
-// the handler and answers the same 404 `invalid_link` for every bad link, so
-// declaring a pattern here would change the answer and the order of checks.
+// The token is shown once at creation and never stored, so the list carries hints, labels, uses and state, never tokens.
+// Every bad link answers the same 404 `invalid_link`, so the `:token` param stays a plain string.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -18,7 +12,6 @@ export const INVITE_LINK_CREATE_MAX_EXPIRY_HOURS = 8760;
 export const INVITE_LINK_MIN_EXPIRY_HOURS = 1;
 export const INVITE_LINK_MIN_MAX_USES = 1;
 
-/** Trimmed before the length checks. */
 const InviteLinkLabel = Schema.Trim.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(INVITE_LINK_LABEL_MAX),
@@ -70,11 +63,7 @@ export const InviteLinkList = Schema.Struct({ links: Schema.mutable(Schema.Array
 
 const JOIN_KINDS = ['group', 'channel'] as const;
 
-/**
- * `groupId` is present only for an already-member, so previews leak no group
- * ids. `kind` is absent on older servers (a group) and an unknown value from a
- * newer server reads as a group.
- */
+// `groupId` is present only for an already-member, so previews leak no group ids.
 export const JoinPreview = Schema.Struct({
   groupTitle: Schema.String,
   memberCount: Schema.Number,
@@ -111,8 +100,7 @@ export const InviteLinksGroup = HttpApiGroup.make('invite-links')
       params: InviteLinkParams,
       success: HttpApiSchema.NoContent,
     }),
-    // The preview limiter runs before the token is checked, like the old
-    // route's `previewLimiter.allow` -> token check order.
+    // The preview limiter runs before the token is checked.
     HttpApiEndpoint.get('preview', '/join/:token', {
       params: JoinTokenParams,
       success: JoinPreview,

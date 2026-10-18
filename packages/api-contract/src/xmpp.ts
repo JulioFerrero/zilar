@@ -1,7 +1,3 @@
-// The XMPP credential (T-0533, moved to the contract by T-1111): one POST
-// mints a short-lived websocket token for the caller's XMPP account,
-// provisioning it first if needed.
-
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { Session, XmppTokenRateLimit } from './middleware';

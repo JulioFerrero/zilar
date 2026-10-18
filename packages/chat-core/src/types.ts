@@ -6,12 +6,7 @@ export type Space = 'personal' | 'work';
 
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
-/**
- * Why an outgoing voice or attachment send failed (T-0168). Fixed, user-safe
- * buckets chosen from the error class: raw error text, URLs and tokens never
- * reach the UI or the logs. A failed message keeps its local blob/file so it
- * can be retried; only an explicit retry moves it back to `sending`.
- */
+// Fixed, user-safe buckets: raw error text, URLs and tokens never reach the UI or the logs. A failed message keeps its local blob so it can be retried.
 export type SendFailureReason =
   | 'too_large'
   | 'unsupported_file'
@@ -28,7 +23,6 @@ export interface UiImage {
   height: number;
 }
 
-/** One photo's place in an album: the shared `id`, its `index`, and the total `count`. */
 export interface AlbumRef {
   id: string;
   index: number;
@@ -38,36 +32,27 @@ export interface AlbumRef {
 export interface ReplyRef {
   id: string;
   senderName: string;
-  /**
-   * The replied-to sender's bare JID off the wire (XEP-0461 `to`), when the
-   * stanza carries one. Lets a quote colour by the sender even before the
-   * replied-to message is loaded (T-1333).
-   */
+  // Lets a quote colour by the sender even before the replied-to message is loaded.
   senderId?: string;
   text?: string;
 }
 
-/** A member who can be mentioned in a group: a bare JID, a display name, and
- * the member's `@handle` when they have one (T-0163/T-0169). AIs have none. */
 export interface MentionMember {
   jid: string;
   name: string;
   handle?: string | undefined;
 }
 
-/** One rendered mention on a message, with offsets into its text. */
 export interface UiMention {
   jid: string;
   name: string;
-  /** Start offset in UTF-16 code units. */
   begin: number;
-  /** End offset (exclusive) in UTF-16 code units. */
   end: number;
 }
 
 export interface UiMessage {
   id: string;
-  /** The XEP-0359 origin id when the stanza had one; a DM card is recorded under it. */
+  // The XEP-0359 origin id; a DM card is recorded under it.
   originId?: string | undefined;
   chatId: string;
   senderId: string;
@@ -76,104 +61,63 @@ export interface UiMessage {
   createdAt: Date;
   status: MessageStatus;
   replyTo?: ReplyRef;
-  /** Where the message was forwarded from, when it is a forward (T-0409). */
   forward?: ForwardOrigin;
   mentions?: UiMention[];
   voice?: VoiceMeta;
   image?: UiImage;
-  /** A file or image sent with the `attachment` payload (T-0065). */
   attachment?: Attachment;
-  /** Album membership (`urn:zilar:album:0`), present on every photo of an album. */
   album?: AlbumRef;
   card?: Payload;
-  /**
-   * True when an outgoing attachment could not be uploaded. The message keeps
-   * its local data and shows a Retry action instead of a "sending" state.
-   * Mirrors `status: 'failed'` for readers that only check the flag.
-   */
+  // Instead of a sending state, the message keeps its local data and shows a Retry action.
   failed?: boolean;
-  /**
-   * Why an outgoing voice or attachment send failed (T-0168). Always a fixed
-   * `SendFailureReason`, never raw error text.
-   */
+  // Always a fixed `SendFailureReason`, never raw error text.
   failureReason?: SendFailureReason;
-  /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
   reactions?: UiReaction[];
-  /** The archive id (decimal microsecond timestamp) of a server chat-list preview, the read mark for it. */
   archiveId?: string;
-  /** True when the message was corrected (XEP-0308) after it was sent. */
   edited?: boolean;
-  /**
-   * When the message was last corrected (XEP-0308). Present only together with
-   * `edited`; readers show this time instead of the original send time.
-   */
   editedAt?: Date;
-  /**
-   * True when the message was retracted for everyone (XEP-0424). A deleted
-   * message carries no text, payload or reactions.
-   */
   deleted?: boolean;
 }
 
-/** One reaction chip shown under a bubble: an emoji, its count and my state. */
 export interface UiReaction {
   emoji: string;
   count: number;
-  /** True when my own reaction is one of them. */
   mine: boolean;
-  /** Display names of the reactors, in first-reacted order. */
   reactors: string[];
 }
 
 export type TopicVisibility = 'public' | 'private';
 
-/** T-1514: the three AI activity states a topic row may carry. */
 export type TopicAiState = 'working' | 'waiting' | 'done';
 
-/** T-1514: one AI at work in a topic, as the list shows it. */
 export interface TopicAiActivity {
   aiId: string;
   name: string;
-  /** T-1537: the AI's bare JID, to match the live card in the chat. */
   jid?: string;
   avatarUrl?: string;
-  /** T-1577: the open question card's message id, so the row can open it. */
   questionId?: string;
   state: TopicAiState;
 }
 
-/** T-1777: one AI of a topic, as the people line shows it, with its picture. */
 export interface TopicInfoAi {
   id: string;
   name: string;
   avatarUrl?: string;
-  /** T-1885: the AI's bare JID, so a row can open it; absent from older servers. */
   jid?: string;
 }
 
-/**
- * The task strip of a group topic (T-0111). Present only on chats that are
- * topics; absent on DMs and AI chats. The General topic carries `isGeneral`
- * and its chat id is the group's old chat id, so old `/c/<jid>` links open it.
- */
+// The General topic carries `isGeneral` and its chat id is the group's old chat id, so old `/c/<jid>` links open it.
 export interface TopicInfo {
   id: string;
   glyph: string;
   visibility: TopicVisibility;
   isGeneral: boolean;
   archived: boolean;
-  /** T-1521: when a person marked the topic done, an ISO time; null when open. */
   doneAt: string | null;
   linkUrl: string | null;
   linkLabel: string | null;
-  /** T-1514: the AIs at work in this topic, idle ones left out. */
   activity: TopicAiActivity[];
-  /**
-   * T-1777: the people in this topic; General is the whole group. Absent on
-   * older servers and fixtures, which read as "nobody listed".
-   */
   memberIds?: string[];
-  /** T-1777: the topic's AIs, with their pictures when they have one. */
   ais?: TopicInfoAi[];
 }
 
@@ -185,76 +129,33 @@ export interface ChatSummary {
   space: Space;
   avatarUrl?: string;
   unread: number;
-  /**
-   * T-1244: the caller marked this chat unread by hand ("Mark as unread"), so
-   * the row shows an unread dot until the chat is opened. Absent = not marked.
-   */
   unreadMark?: boolean;
   muted: boolean;
-  /**
-   * T-0113: per-user archive. Hidden from the main list until unarchived. A
-   * new message never auto-unarchives: archived chats stay archived until
-   * the user unarchives them.
-   */
+  // A new message never auto-unarchives: archived chats stay archived until the user unarchives them.
   archived?: boolean;
-  /** T-0113: server pin stamp; newer pins sort first. Absent means unpinned. */
   pinnedAt?: Date;
   lastMessage?: UiMessage;
-  /**
-   * T-1318: when the chat was created, or the caller joined it. A chat with no
-   * `lastMessage` yet (a just-made group nobody posted in) sorts by this, so it
-   * leads the list like Telegram instead of sinking to the bottom. Absent on an
-   * older server/cache; the shared comparator then keeps the old order.
-   */
+  // A chat with no `lastMessage` sorts by this, so it leads the list like Telegram instead of sinking to the bottom.
   createdAt?: Date;
-  /**
-   * T-1238: the delivered mark the server reported for this chat, an archive id
-   * in the caller's own-message terms. Absent when nobody confirmed yet.
-   */
+  // The delivered mark the server reported, an archive id in the caller's own-message terms; absent when nobody confirmed yet.
   deliveredUntil?: string;
-  /**
-   * T-1311: the peer's read mark the server reported for this DM, an archive id
-   * in the caller's own-message terms. Absent until the peer has read.
-   */
+  // The peer's read mark the server reported, an archive id in the caller's own-message terms; absent until the peer has read.
   readUntil?: string;
   online?: boolean;
   onlineCount?: number;
   memberCount?: number;
-  /**
-   * T-0124: `group` behaves as before; `channel` is the broadcast feed
-   * (its General topic is the feed; only admins post). Absent = group.
-   */
+  // `channel` is the broadcast feed (its General topic), where only admins post. Absent = group.
   chatKind?: 'group' | 'channel';
-  /** T-0124: the same count under the usual channel name, for channels only. */
   subscriberCount?: number;
-  /** T-0124: the channel's short blurb, or null. Absent on groups. */
   description?: string | null;
-  /**
-   * T-0164: `public` groups and channels are in the directory and joinable
-   * by anyone signed in; `private` stay invite-only. Absent = private.
-   */
   visibility?: 'private' | 'public';
-  /** T-0164: the group's `@handle` while public, null while private. */
   handle?: string | null;
-  /** The caller's membership role, for channels (admins post, members read). */
   myRole?: 'owner' | 'admin' | 'member';
   aiStatus?: AiStatus;
   lastSeenAt?: Date;
-  /** The group this topic belongs to; set on every topic chat. */
   groupId?: string;
-  /**
-   * The group's title, for the `Group › Topic` breadcrumb until the group
-   * detail loads. Never a private topic's name: this row is only ever
-   * created for topics the server returned as visible to the viewer.
-   */
   groupTitle?: string;
-  /** Present when the chat is a group topic (T-0111). */
   topic?: TopicInfo;
-  /**
-   * T-0466: the group's shared background (owners/admins set it, every
-   * member sees it). Optional so mobile, which does not read it yet, is
-   * untouched.
-   */
   groupBackground?: {
     backgroundPreset: string | null;
     backgroundImageId: string | null;
@@ -275,11 +176,7 @@ export interface MessageItem {
   lastInGroup: boolean;
 }
 
-/**
- * One album in the message list: its loaded photos, in `index` order. `message`
- * is the album's first photo, so a list that only knows how to draw a message
- * bubble keeps working until the grid lands (T-1267; the grid comes later).
- */
+// The album's first photo, so a list that only knows how to draw a message bubble keeps working.
 export interface AlbumItem {
   kind: 'album';
   message: UiMessage;

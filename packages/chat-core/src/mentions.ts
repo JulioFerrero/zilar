@@ -2,24 +2,16 @@ import { bareJid } from '@zilar/protocol';
 import { commonPrefixLength } from './smooth-text';
 import type { MentionMember, UiMention } from './types';
 
-// Offsets in this module are UTF-16 code units (JS string indices): the
-// textarea caret, `String.slice` and React all use them. `@zilar/xmpp-core`
-// converts them to and from the XEP-0372 code-point offsets on the wire.
+// Offsets here are UTF-16 code units; `@zilar/xmpp-core` converts them to and from the XEP-0372 code-point offsets on the wire.
 
 export interface MentionQuery {
-  /** Index of the `@` that starts the query. */
   start: number;
-  /** Text between the `@` and the caret; never contains a space. */
   query: string;
 }
 
 const WHITESPACE = /\s/;
 
-/**
- * The `@query` being typed at the caret, or `undefined` when the caret is not
- * inside one. The `@` must start the text or follow whitespace, and the query
- * runs from the `@` to the caret with no spaces in between.
- */
+// The `@` must start the text or follow whitespace, and the query runs from the `@` to the caret with no spaces in between.
 export function findMentionQuery(text: string, caret: number): MentionQuery | undefined {
   const position = Math.max(0, Math.min(caret, text.length));
   if (position === 0) {
@@ -38,17 +30,11 @@ export function findMentionQuery(text: string, caret: number): MentionQuery | un
 
 export interface InsertMentionResult {
   text: string;
-  /** Where the caret goes, just past the inserted token's trailing space. */
   caret: number;
   mention: UiMention;
 }
 
-/**
- * Replaces the `@query` at the caret with `@handle ` when the member has one
- * (T-0169), else `@Name ` as before, and reports the mention to record. The
- * range always covers the inserted token, without the trailing space.
- * Returns `undefined` when the caret is not in a mention query.
- */
+// Replaces the `@query` with `@handle ` when the member has one, else `@Name `; the recorded range excludes the trailing space.
 export function insertMention(
   text: string,
   caret: number,
@@ -82,11 +68,7 @@ function commonSuffixLength(left: string, right: string, prefix: number): number
   return index;
 }
 
-/**
- * Keeps the mention ranges valid after `prevText` becomes `nextText`: a range
- * entirely before the edit stays, a range entirely after it shifts, and a
- * range the edit touches is dropped (an edited mention is no longer one).
- */
+// A range entirely before the edit stays, one entirely after shifts, and one the edit touches is dropped.
 export function rebaseMentions(
   prevText: string,
   nextText: string,
@@ -114,10 +96,7 @@ export function rebaseMentions(
 export type MentionSegment =
   { kind: 'text'; text: string } | { kind: 'mention'; text: string; jid: string; name: string };
 
-/**
- * Splits text into plain-text and mention segments, oldest range first. Ranges
- * that are out of bounds or overlap an earlier one are ignored.
- */
+// Ranges that are out of bounds or overlap an earlier one are ignored.
 export function splitMentions(
   text: string,
   mentions: readonly UiMention[] | undefined,
@@ -158,12 +137,7 @@ function fold(value: string): string {
     .toLowerCase();
 }
 
-/**
- * Members matching the query, case- and accent-insensitively: a handle prefix
- * match (T-0169, the `@` itself is not part of the query), or a word-prefix
- * match on the display name as before. Handle matches rank first, then name
- * matches; ties keep the existing order.
- */
+// Handle prefix matches rank first, then name matches; ties keep the existing order. Matching is case- and accent-insensitive.
 export function filterMentionMembers(
   members: readonly MentionMember[],
   query: string,
@@ -192,11 +166,7 @@ export function filterMentionMembers(
   return [...byHandle, ...byName];
 }
 
-/**
- * True when a mention JID is the current user: the bare JID must equal `meJid`
- * exactly. A localpart that happens to match is not enough, so a mention of the
- * same name on another domain is not confused with me.
- */
+// The bare JID must equal `meJid` exactly; a matching localpart on another domain is not me.
 export function isMentionOfMe(jid: string, meJid: string | undefined): boolean {
   if (meJid === undefined) {
     return false;
@@ -204,10 +174,6 @@ export function isMentionOfMe(jid: string, meJid: string | undefined): boolean {
   return bareJid(jid).split('?')[0] === meJid;
 }
 
-/**
- * Drops or offsets mentions once `text` has been trimmed to `trimmed`, so the
- * ranges still point at the sent body.
- */
 export function mentionsForTrimmedText(
   text: string,
   trimmed: string,

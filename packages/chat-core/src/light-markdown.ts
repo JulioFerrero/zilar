@@ -1,7 +1,7 @@
 export interface LightBlock {
   kind: 'text' | 'code';
   text: string;
-  /** Offset of the block in the original text, for shifting mention ranges. */
+  // Offset of the block in the original text, for shifting mention ranges.
   start: number;
 }
 
@@ -10,21 +10,12 @@ export interface LightInline {
   text: string;
 }
 
-/**
- * A fence is a line starting with three backticks. An optional language tag on
- * the opening fence is dropped with the fence line itself.
- */
+// A fence opens a `code` block only when a closing fence follows; an unclosed fence stays plain text.
 function isFence(line: string): boolean {
   return line.replace(/\r$/, '').startsWith('```');
 }
 
-/**
- * Splits text into plain-text and fenced-code blocks. A fence opens a `code`
- * block only when a closing fence follows; an unclosed fence stays plain text.
- * A `code` block's `text` is the inner lines, a `text` block's `text` is an
- * exact slice of the original, and `start` is the block's offset in it. Pure
- * and total; it never throws.
- */
+// A `text` block's `text` is an exact slice of the original and `start` its offset; pure and total.
 export function splitCodeBlocks(text: string): LightBlock[] {
   const lines = text.split('\n');
   const starts: number[] = [];
@@ -47,7 +38,6 @@ export function splitCodeBlocks(text: string): LightBlock[] {
       close += 1;
     }
     if (close >= lines.length) {
-      // Unclosed fence: plain text, keep scanning after it.
       index += 1;
       continue;
     }
@@ -85,13 +75,7 @@ const LIGHT_INLINE_PATTERN = new RegExp(
   'g',
 );
 
-/**
- * Splits text into `**bold**`, `*italic*` / `_italic_` and `` `code` ``
- * segments. Markers need a non-space character right inside them, `_` italics
- * only apply at word edges (so `snake_case_name` stays literal), and unmatched
- * markers stay literal (`2 * 3`). Nesting is not parsed: inside `code` nothing
- * else applies. Pure and total; it never throws.
- */
+// `_` italics only apply at word edges (so `snake_case_name` stays literal), and unmatched markers stay literal. Nesting is not parsed.
 export function parseLightInline(text: string): LightInline[] {
   const segments: LightInline[] = [];
   let cursor = 0;
@@ -121,10 +105,6 @@ export function parseLightInline(text: string): LightInline[] {
   return segments;
 }
 
-/**
- * The same text with the light markers removed and fences dropped (keeping the
- * code), collapsed to one line for list previews. Pure and total.
- */
 export function lightToPlain(text: string): string {
   const parts = splitCodeBlocks(text).map((block) =>
     block.kind === 'code'

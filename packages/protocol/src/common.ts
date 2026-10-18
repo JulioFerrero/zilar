@@ -1,13 +1,9 @@
 import { Exit, Schema } from 'effect';
 
-// Strict objects reject unknown keys only when decoded with this option; the
-// helpers below apply it so `isValid` / `decodeOrThrow` keep the old zod
-// `strictObject` behaviour everywhere in this package.
+// Strict objects reject unknown keys only when decoded with this option; the helpers apply it so `isValid`/`decodeOrThrow` keep the old behaviour.
 const STRICT_PARSE_OPTIONS = { onExcessProperty: 'error' } as const;
 
-// zod object fields are mutable; Effect `Struct` fields are readonly by
-// default. Consumers strip keys with `delete`, so every struct field is
-// wrapped with `mutableKey` to keep the exported types the same shape.
+// Consumers strip keys with `delete`, so every struct field is wrapped with `mutableKey` to keep the exported types mutable.
 type MutableFields<F extends Schema.Struct.Fields> = {
   readonly [K in keyof F]: Schema.mutableKey<F[K]>;
 };
@@ -73,7 +69,6 @@ export const IdSchema = Schema.String.pipe(
 
 export type Id = typeof IdSchema.Type;
 
-// ISO 8601 datetime with a timezone, mirroring zod's `z.iso.datetime({ offset: true })`.
 const ISO_DATE_SOURCE =
   '(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))';
 const ISO_DATETIME_PATTERN = new RegExp(
@@ -84,7 +79,6 @@ export const IsoDateTimeSchema = Schema.String.pipe(
   Schema.check(Schema.isPattern(ISO_DATETIME_PATTERN)),
 );
 
-// Same shape but no numeric offset, mirroring zod's default `z.iso.datetime()`.
 const ISO_DATETIME_ZULU_PATTERN = new RegExp(
   `^${ISO_DATE_SOURCE}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?Z$`,
 );
@@ -118,8 +112,7 @@ export const ArtifactKindSchema = Schema.Literals([
   'report',
 ]);
 
-// The protocol package's lib is ES2023 only, so the DOM `URL` type is absent;
-// reach the runtime constructor through `globalThis` without widening the lib.
+// The protocol package's lib is ES2023 only, so the DOM `URL` type is absent; reach the runtime constructor through `globalThis`.
 type UrlLike = { readonly protocol: string };
 const UrlConstructor = (globalThis as unknown as { URL: new (value: string) => UrlLike }).URL;
 

@@ -1,11 +1,6 @@
 import { Schema, SchemaGetter } from 'effect';
 
-/**
- * A response-side enum that tolerates version skew: any value outside
- * `literals` decodes to `fallback` instead of failing the whole response, so
- * a newer server never breaks an older app. Encoding (the server side) only
- * accepts the listed literals.
- */
+// Any value outside `literals` decodes to `fallback` instead of failing the response, so a newer server never breaks an older app.
 export function lenientLiterals<const L extends ReadonlyArray<string>>(
   literals: L,
   fallback: L[number],
@@ -20,18 +15,12 @@ export function lenientLiterals<const L extends ReadonlyArray<string>>(
   );
 }
 
-/**
- * A response-side array that keeps the good rows: an element that fails
- * `item`'s decode is dropped instead of failing the whole response, so one
- * bad row never costs the page. A value that is not an array still fails.
- * Encoding (the server side) is strict: every row must match `item`.
- */
+// Keeps the good rows: an element that fails `item` is dropped instead of failing the page; a value that is not an array still fails.
 export function lenientArray<S extends Schema.Top & { readonly DecodingServices: never }>(item: S) {
   const isRow = (value: unknown): boolean =>
     Schema.decodeUnknownExit(item as unknown as Schema.Decoder<unknown>)(value)._tag === 'Success';
   return Schema.Unknown.pipe(
     Schema.decodeTo(Schema.Array(item), {
-      // A non-array passes through unchanged, so `Schema.Array` rejects it.
       decode: SchemaGetter.transform(
         (value) => (Array.isArray(value) ? value.filter(isRow) : value) as readonly S['Encoded'][],
       ),
@@ -40,11 +29,7 @@ export function lenientArray<S extends Schema.Top & { readonly DecodingServices:
   );
 }
 
-/**
- * An optional response string that tolerates a value of the wrong type: it
- * decodes to `undefined` instead of failing the response. Encoding passes the
- * value through.
- */
+// An optional string of the wrong type decodes to `undefined` instead of failing the response.
 export const LenientOptionalString = Schema.optional(
   Schema.Unknown.pipe(
     Schema.decodeTo(Schema.UndefinedOr(Schema.String), {

@@ -8,7 +8,6 @@ const IndexSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0
 
 const CountSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)));
 
-// 13 · BUTTONS: a row of keys; the tap sends the action id back.
 export const ButtonsBlockSchema = struct({
   kind: Schema.Literal('buttons'),
   id: IdSchema,
@@ -53,8 +52,6 @@ export const ButtonsBlockSchema = struct({
 
 export type ButtonsBlock = typeof ButtonsBlockSchema.Type;
 
-// 14 · POLL BLOCK: a live poll inside the card (its own schema; the existing
-// `poll.ts` payload is untouched).
 export const PollBlockSchema = struct({
   kind: Schema.Literal('poll'),
   id: IdSchema,
@@ -84,7 +81,6 @@ export const PollBlockSchema = struct({
 
 export type PollBlock = typeof PollBlockSchema.Type;
 
-// 15 · PICK ONE: a segmented control; `selected` is the chosen index.
 export const ChoiceBlockSchema = struct({
   kind: Schema.Literal('choice'),
   id: IdSchema,
@@ -97,7 +93,6 @@ export const ChoiceBlockSchema = struct({
 
 export type ChoiceBlock = typeof ChoiceBlockSchema.Type;
 
-// 16 · QUICK FORM: up to four fields and a submit label.
 export const FormBlockSchema = struct({
   kind: Schema.Literal('form'),
   id: IdSchema,
@@ -131,7 +126,6 @@ export const FormBlockSchema = struct({
 
 export type FormBlock = typeof FormBlockSchema.Type;
 
-// 17 · RATING: a star row; `max` is the number of stars, `selected` the tap.
 export const RatingBlockSchema = struct({
   kind: Schema.Literal('rating'),
   id: IdSchema,
@@ -144,7 +138,6 @@ export const RatingBlockSchema = struct({
 
 export type RatingBlock = typeof RatingBlockSchema.Type;
 
-// 18 · ALERT RULE: a field, a switch and a note; it only matters on submit.
 export const AlertBlockSchema = struct({
   kind: Schema.Literal('alert'),
   id: IdSchema,

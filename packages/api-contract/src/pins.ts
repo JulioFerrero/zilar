@@ -1,8 +1,5 @@
-// Pinned messages (T-0114): list, pin and unpin. `chat` is a room bare JID for
-// groups/topics, or a DM peer's bare JID (the server keeps the canonical pair
-// key, so both sides share one list). Pins arrive newest first. The snapshot
-// (`senderName`/`text`/`kind`) is display only: the server trusts it for
-// rendering, never for authorization.
+// `chat` is a room JID for groups/topics, or a DM peer's bare JID (the server keeps the canonical pair key, so both sides share one list).
+// The snapshot is display only: the server trusts it for rendering, never for authorization.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -21,8 +18,7 @@ export type PinKind = typeof PinKind.Type;
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
-// Message bodies may carry tab and newline (Shift+Enter); the snapshot keeps
-// the same rule and rejects every other control character.
+// Message bodies may carry tab and newline; the snapshot rejects every other control character.
 const SNAPSHOT_WHITESPACE = new Set(['\t', '\n']);
 
 function hasControlCharacters(value: string, allowWhitespace = false): boolean {
@@ -38,15 +34,10 @@ function hasControlCharacters(value: string, allowWhitespace = false): boolean {
   return false;
 }
 
-/** One required `chat` string; strict, so an excess key is a 400. */
 export const ListPinsQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
 });
 
-/**
- * `senderName` is trimmed before the length and control-character checks.
- * A client encodes the trimmed form, so it sends `senderName` trimmed.
- */
 export const CreatePinPayload = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
   messageId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(PIN_MESSAGE_ID_MAX)),
@@ -70,7 +61,6 @@ export const CreatePinPayload = Schema.Struct({
 
 export type CreatePinPayload = typeof CreatePinPayload.Type;
 
-/** A pin row. An unknown `kind` from a newer server decodes to `text`. */
 export const Pin = Schema.Struct({
   id: Schema.String,
   chat: Schema.String,
@@ -98,7 +88,6 @@ export const PinsGroup = HttpApiGroup.make('pins')
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
       .middleware(PinsWriteRateLimit),
-    // Unpinning echoes the deleted row, so a client removes it without a refetch.
     HttpApiEndpoint.delete('remove', '/pins/:id', {
       params: { id: Schema.String },
       success: Pin,

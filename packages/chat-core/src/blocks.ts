@@ -1,10 +1,7 @@
 import type { CalloutBlock, Change, ChecklistBlock, StatusBlock } from '@zilar/protocol';
 
-// The tone vocabulary shared by every block renderer, so web and phone paint the
-// same meaning with the same colour.
 export type BlockTone = 'positive' | 'negative' | 'neutral' | 'warning' | 'info';
 
-// Decides a number change's tone; web and phone both colour the value with it.
 export function changeTone(change: Change): BlockTone {
   switch (change.direction) {
     case 'up':
@@ -16,7 +13,6 @@ export function changeTone(change: Change): BlockTone {
   }
 }
 
-// Decides a status row's tone; web and phone both colour its dot with it.
 export function statusTone(status: StatusBlock['rows'][number]['status']): BlockTone {
   switch (status) {
     case 'ok':
@@ -28,7 +24,6 @@ export function statusTone(status: StatusBlock['rows'][number]['status']): Block
   }
 }
 
-// Decides a callout's tone; web and phone both colour the callout with it.
 export function calloutTone(tone: CalloutBlock['tone']): BlockTone {
   switch (tone) {
     case 'success':
@@ -42,9 +37,7 @@ export function calloutTone(tone: CalloutBlock['tone']): BlockTone {
   }
 }
 
-// Builds the SVG `d` of a sparkline scaled into a `width`×`height` box with `pad`
-// on every side; web and phone both draw the polyline from it. Flat series sit on
-// the mid-line, and fewer than two points have nothing to draw.
+// Builds the SVG `d` of a sparkline; flat series sit on the mid-line, and fewer than two points have nothing to draw.
 export function sparklinePath(
   points: readonly number[],
   width: number,
@@ -65,7 +58,6 @@ export function sparklinePath(
     .join(' ');
 }
 
-// Counts a checklist's done and total items; web and phone both show the fraction.
 export function checklistCount(block: ChecklistBlock): { done: number; total: number } {
   return {
     done: block.items.filter((item) => item.done).length,
@@ -73,9 +65,7 @@ export function checklistCount(block: ChecklistBlock): { done: number; total: nu
   };
 }
 
-// Reads a link's display host without a leading `www.`; web and phone both label
-// the link with it, and a URL with no https host has none. Parsed with a regex so
-// the ES2023-only lib never needs the DOM `URL` type.
+// Parsed with a regex so the ES2023-only lib never needs the DOM `URL` type.
 export function linkHost(url: string): string {
   const host = /^https:\/\/(?:[^@/?#]*@)?([^:/?#]+)/.exec(url)?.[1];
   return host === undefined ? '' : host.replace(/^www\./, '');

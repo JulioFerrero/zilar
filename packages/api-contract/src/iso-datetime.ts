@@ -1,6 +1,4 @@
-// ISO 8601 datetime with a timezone, mirroring `IsoDateTimeSchema` in
-// `@zilar/protocol` (the contract depends on `effect` only, so it keeps a
-// copy of the pattern). Used by the chain A groups (T-0892).
+// Mirrors `IsoDateTimeSchema` in `@zilar/protocol`; the contract depends on `effect` only, so it keeps a copy of the pattern.
 
 import { Schema } from 'effect';
 

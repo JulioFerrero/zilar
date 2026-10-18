@@ -1,11 +1,4 @@
-// Web push (T-0119, T-0543, T-0895): the VAPID config, the registered devices,
-// the preview setting and the test notification.
-//
-// `subscribe`, `updateSettings` and `test` declare their payloads so the derived
-// client is typed and encodes them, but the server serves the three with
-// `handleRaw` and decodes the bodies by hand, so each route keeps its exact
-// step order (push enabled, then decode, then limiter) and its own error codes
-// (`invalid_subscription`, `invalid_request`).
+// The three payload-writing routes are served with `handleRaw` so each keeps its step order (push enabled, decode, limiter) and its own error codes.
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -26,7 +19,6 @@ export const RegisteredDevice = Schema.Struct({
 
 export type RegisteredDevice = typeof RegisteredDevice.Type;
 
-/** The transport a push device speaks: a browser, an Android app or an iPhone app. */
 export const PushDeviceKind = Schema.Literals(['webpush', 'fcm', 'apns']);
 
 export type PushDeviceKind = typeof PushDeviceKind.Type;
@@ -54,33 +46,22 @@ export type PushSettings = typeof PushSettings.Type;
 
 export const PushTestResult = Schema.Struct({ sent: Schema.Boolean });
 
-/**
- * The notification text for one archived message, built by the server with the
- * same resolver and preview rules Web Push uses. Native clients fetch this from
- * the background task instead of opening an XMPP connection.
- */
+// Built by the server with the same resolver and preview rules Web Push uses; native clients fetch it instead of opening an XMPP connection.
 export const PushPreview = Schema.Struct({
   title: Schema.String,
   body: Schema.String,
   chatId: Schema.String,
-  // T-1893: the row's archive id, for a notification's Mark as read. Optional,
-  // so new phones still read older servers.
   archiveId: Schema.optional(Schema.String),
-  // T-1897: the chat's unread count, so a phone shows one notification per
-  // chat with its badge. Optional, so new phones still read older servers.
   unread: Schema.optional(Schema.Number),
 });
 
 export type PushPreview = typeof PushPreview.Type;
 
-/** The preview query: the archive origin id of one message. */
 export const PushPreviewQuery = Schema.Struct({
   messageId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
 
-// The Web Push services a browser or phone may deliver through. A leading dot
-// matches the host itself and any subdomain (`notify.windows.com` and
-// `wns2-*.notify.windows.com`); every other entry must match exactly.
+// A leading dot matches the host itself and any subdomain; every other entry must match exactly.
 const PUSH_ENDPOINT_HOSTS = [
   'fcm.googleapis.com',
   'updates.push.services.mozilla.com',
@@ -90,12 +71,7 @@ const PUSH_ENDPOINT_HOSTS = [
   '.push.apple.com',
 ] as const;
 
-/**
- * Whether an endpoint is a real Web Push service address: https on port 443
- * and a host the allowlist above knows. Anything else (an internal address, a
- * plain-http URL, a lookalike host) is refused, so a registered endpoint can
- * never turn the sender into a port scanner.
- */
+// An internal address, a plain-http URL or a lookalike host is refused, so a registered endpoint can never turn the sender into a port scanner.
 export function isAllowedPushEndpoint(value: string): boolean {
   let url: URL;
   try {
@@ -120,10 +96,6 @@ const PushKeys = Schema.Struct({
   auth: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
 
-/**
- * The browser's `PushSubscription` JSON plus an optional device label. The
- * server decodes it by hand (strict is not applied: extra keys are ignored).
- */
 export const RegisterPushDevicePayload = Schema.Struct({
   endpoint: Schema.String.check(
     Schema.isMaxLength(2048),
@@ -140,11 +112,7 @@ export const RegisterPushDevicePayload = Schema.Struct({
 
 export type RegisterPushDevicePayload = typeof RegisterPushDevicePayload.Type;
 
-/**
- * A native (FCM) registration: an app install's device token plus an optional
- * label. Only `fcm` is accepted for now; `apns` comes later. The server decodes
- * it by hand (extra keys are ignored) and never logs the token.
- */
+// Only `fcm` is accepted for now; the server never logs the token.
 export const RegisterNativePushDevicePayload = Schema.Struct({
   kind: Schema.Literal('fcm'),
   token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
@@ -155,11 +123,6 @@ export const RegisterNativePushDevicePayload = Schema.Struct({
 
 export type RegisterNativePushDevicePayload = typeof RegisterNativePushDevicePayload.Type;
 
-/**
- * The subscribe body: the Web Push `PushSubscription` JSON (no `kind`, so the
- * web client is unchanged) or a native `{ kind: 'fcm', token }`. An unknown
- * `kind` or an empty token matches neither member and is a 400.
- */
 export const SubscribePushDevicePayload = Schema.Union([
   RegisterPushDevicePayload,
   RegisterNativePushDevicePayload,
@@ -167,10 +130,8 @@ export const SubscribePushDevicePayload = Schema.Union([
 
 export type SubscribePushDevicePayload = typeof SubscribePushDevicePayload.Type;
 
-/** Strict when decoded by the server: an excess key is a 400. */
 export const PushSettingsPayload = Schema.Struct({ showPreviews: Schema.Boolean });
 
-/** Strict when decoded by the server: an excess key is a 400. */
 export const PushTestPayload = Schema.Struct({
   subscriptionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });

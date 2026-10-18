@@ -1,7 +1,4 @@
-// T-0107: plain-words schedule descriptions for routines. Mirrors the
-// server's `describeSchedule` in apps/server/src/tools/adapters.ts
-// (same wording, unit-tested here so the two stay in sync). Schedules
-// arrive as unknown JSON, so every shape validates first.
+// Mirrors the server's `describeSchedule`; schedules arrive as unknown JSON, so every shape validates first.
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -17,11 +14,7 @@ interface DailySchedule {
   weekdays?: number[];
 }
 
-/**
- * A routine's schedule in plain words, e.g. `every 6 hours` or
- * `daily at 09:00 Europe/Madrid on Mon, Wed, Fri`. Unknown shapes read
- * `on a schedule` rather than crashing the list.
- */
+// Unknown shapes read `on a schedule` rather than crashing the list.
 export function describeRoutineSchedule(schedule: unknown): string {
   const parsed = parseSchedule(schedule);
   if (parsed === null) {
@@ -100,11 +93,6 @@ function parseSchedule(schedule: unknown): IntervalSchedule | DailySchedule | nu
   return null;
 }
 
-/**
- * A paused reason with its explanation line, for the routines list. A
- * `hosts_changed` or `failures` pause tells the viewer what to do next
- * (ask the AI to re-approve), per the spec.
- */
 export function pausedReasonText(
   reason: 'user' | 'failures' | 'hosts_changed' | null,
   status: 'active' | 'paused' | 'needs_approval',
@@ -121,10 +109,7 @@ export function pausedReasonText(
   return null;
 }
 
-/**
- * Long tool output truncated with a "Show all" toggle. The cut keeps plain
- * text (never HTML), capped at 2 000 characters.
- */
+// Truncated with a "Show all" toggle, capped at 2 000 characters; the cut keeps plain text, never HTML.
 export const MAX_OUTPUT_PREVIEW_CHARS = 2000;
 
 export function truncateOutput(output: string): { preview: string; truncated: boolean } {

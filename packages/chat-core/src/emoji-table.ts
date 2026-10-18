@@ -1,10 +1,4 @@
-/**
- * Shared emoji data (T-1673, moved from the phone's `lib/emoji-table.ts`):
- * a dependency-free list of common emoji grouped by category (plain Unicode
- * strings, no images), used by both the web and phone emoji pickers. The
- * glyph table itself is generated from unicode-emoji-json (T-1926); the
- * generator lives in `scripts/gen-emoji.mjs`.
- */
+// The glyph table itself is generated from unicode-emoji-json by `scripts/gen-emoji.mjs`.
 
 export type EmojiCategoryId =
   | 'smileys'

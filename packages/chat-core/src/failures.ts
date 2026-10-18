@@ -1,10 +1,6 @@
 import type { SendFailureReason } from './types';
 
-/**
- * The user-safe sentence shown under a failed send (T-0168): one fixed string
- * per reason, never raw error text. Exhaustive by construction: every union
- * member maps to a label.
- */
+// One fixed string per reason, never raw error text; exhaustive by construction.
 export function sendFailureLabel(reason: SendFailureReason): string {
   switch (reason) {
     case 'too_large':

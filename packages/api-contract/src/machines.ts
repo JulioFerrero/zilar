@@ -1,12 +1,4 @@
-// Machines and runner pairing (T-0070, T-0572, T-0895): the owner pairs a
-// runner with a one-time code, approves it, and can rename, revoke or delete
-// it. Every field of the public machine is a wire value; the dates are ISO
-// strings.
-//
-// `rename` and `pair` declare their payloads so the derived client is typed and
-// encodes them, but the server serves both with `handleRaw` and reads the
-// bodies by hand, so each keeps its own 400 texts (and `pair` answers every
-// failure with the same `invalid_code`).
+// `rename` and `pair` are served with `handleRaw` so each keeps its own 400 texts (and `pair` answers every failure with the same `invalid_code`).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -17,10 +9,7 @@ export const MACHINE_STATUSES = ['pending', 'approved', 'revoked'] as const;
 
 export type MachineStatus = (typeof MACHINE_STATUSES)[number];
 
-/**
- * A machine row as the owner sees it. An unknown `status` from a newer server
- * decodes to `pending`; `online` is optional so an older server still decodes.
- */
+// An unknown `status` from a newer server decodes to `pending`.
 export const Machine = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -42,7 +31,6 @@ export const Machine = Schema.Struct({
 
 export type Machine = typeof Machine.Type;
 
-/** The list is a bare array, not an envelope. */
 export const MachineList = Schema.Array(Machine);
 
 export const PairingCode = Schema.Struct({ code: Schema.String, expiresAt: Schema.String });
@@ -54,17 +42,12 @@ export const PairResult = Schema.Struct({
   status: Schema.Literals(['pending']),
 });
 
-// The two bodies below are decoded by hand in the server handlers (strict:
-// an excess key fails), so each route keeps its own 400 texts.
-
 const MachineName = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64));
 
-/** The rename body: a trimmed name, 1..64 characters. */
 export const RenameMachinePayload = Schema.Struct({ name: MachineName });
 
 export type RenameMachinePayload = typeof RenameMachinePayload.Type;
 
-// A capability report value: a string, a number, a boolean or a string list.
 const ToolsValue = Schema.Union([
   Schema.String.check(Schema.isMaxLength(1024)),
   Schema.Number,
@@ -72,8 +55,7 @@ const ToolsValue = Schema.Union([
   Schema.Array(Schema.String.check(Schema.isMaxLength(128))).check(Schema.isMaxLength(64)),
 ]);
 
-// `Schema.Record` does not run checks on the key schema, so the key length and
-// the 64-entry cap are enforced on the whole record.
+// `Schema.Record` does not run checks on the key schema, so the key length and the 64-entry cap are enforced on the whole record.
 const Tools = Schema.Record(Schema.String, ToolsValue).check(
   Schema.makeFilter((tools) => {
     const keys = Object.keys(tools);
@@ -87,8 +69,7 @@ const Tools = Schema.Record(Schema.String, ToolsValue).check(
   }),
 );
 
-// The capability report (§11.3), snake_case as the runner sends it. Strict so a
-// report with an unexpected field is rejected rather than silently stored.
+// The capability report (§11.3), snake_case as the runner sends it; strict so an unexpected field is rejected rather than silently stored.
 const Capabilities = Schema.Struct({
   os: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   os_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
@@ -118,7 +99,6 @@ const Capabilities = Schema.Struct({
   runner_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
-/** What the runner sends to pair: the code, its key and signature, and its report. */
 export const PairMachinePayload = Schema.Struct({
   code: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   publicKey: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),

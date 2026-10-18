@@ -1,5 +1,4 @@
 // effect-plain: total recents and URL parsing; a failed parse is a value, not an error
-/** Sticker recents and the sticker file-URL rule shared by web and mobile (T-2023). */
 
 import { safeDecode } from './url';
 
@@ -9,13 +8,10 @@ declare const URL: new (
   base?: string,
 ) => { readonly protocol: string; readonly origin: string; readonly pathname: string };
 
-/** The storage key both apps keep the recents under. */
 export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
 
-/** The most recent stickers both apps keep. */
 export const MAX_RECENT_STICKERS = 30;
 
-/** One recent sticker; dimensions and mime are kept by mobile only. */
 export interface RecentStickerEntry {
   stickerId: string;
   packId: string;
@@ -48,7 +44,7 @@ function entryFrom(value: unknown): RecentStickerEntry | null {
   };
 }
 
-/** Reads the recents; hostile or missing data resolves to an empty list. */
+// Hostile or missing data resolves to an empty list.
 export function parseRecentStickers(raw: string | null | undefined): RecentStickerEntry[] {
   if (raw === null || raw === undefined || raw === '') return [];
   let parsed: unknown;
@@ -64,7 +60,6 @@ export function parseRecentStickers(raw: string | null | undefined): RecentStick
     .filter((entry): entry is RecentStickerEntry => entry !== null);
 }
 
-/** Records a sent sticker first, moving a repeat to the top. */
 export function addRecentSticker<T extends RecentStickerEntry>(
   recents: readonly T[],
   entry: T,
@@ -77,8 +72,7 @@ export function addRecentSticker<T extends RecentStickerEntry>(
 
 const STICKER_FILE_PATH = /^\/api\/stickers\/(?:[^/]+\/)+file$/;
 
-// React Native's URL concatenates a relative path without normalising it, so
-// decode repeatedly until stable and reject any remaining dot segment.
+// React Native's URL concatenates a relative path without normalising it, so decode repeatedly until stable and reject any remaining dot segment.
 function decodedPath(path: string): string {
   let current = path;
   for (let i = 0; i < 3; i += 1) {
@@ -89,7 +83,7 @@ function decodedPath(path: string): string {
   return current;
 }
 
-/** Whether `url` may carry the API bearer token: same origin, sticker file path. */
+// Whether `url` may carry the API bearer token: same origin, sticker file path.
 export function isStickerFileUrl(url: string, apiOrigin: string): boolean {
   const trimmed = url.trim();
   if (trimmed === '') return false;

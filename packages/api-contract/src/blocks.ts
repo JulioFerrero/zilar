@@ -1,12 +1,9 @@
-// Blocked people (T-0235, moved to the contract by T-0894): silent blocking.
-// The blocked person is not told, and their contact requests never reach the
-// blocker. Writes answer `{ blocked: true/false }`, the list newest first.
+// Silent blocking: the blocked person is not told, and their contact requests never reach the blocker.
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { BlocksReadRateLimit, BlocksWriteRateLimit, SchemaErrors, Session } from './middleware';
 
-// `{ blocked: true }` on PUT, `{ blocked: false }` on DELETE.
 export const BlockResult = Schema.Struct({ blocked: Schema.Boolean });
 
 export type BlockResult = typeof BlockResult.Type;

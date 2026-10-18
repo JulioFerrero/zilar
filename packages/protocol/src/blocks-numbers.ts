@@ -1,11 +1,8 @@
 import { Schema } from 'effect';
 import { struct } from './common';
 
-// T-1749: the shared pieces for the `blocks` payload (docs/plan/message-blocks.md
-// §1) and the numbers group (01-07). The shared helpers live in this file, the
-// first group, because the four group files depend on them; declaring them in
-// `blocks.ts` would make `blocks.ts` and the groups import each other, and an ESM
-// cycle throws when a group reads a helper before `blocks.ts` has run.
+// The shared helpers live in this file, the first group, because the four group files depend on them;
+// declaring them in `blocks.ts` would make `blocks.ts` and the groups import each other, and an ESM cycle throws.
 export const MAX_BLOCKS = 12;
 export const MAX_BLOCK_BYTES = 16 * 1024;
 export const MAX_TEXT = 120;
@@ -23,8 +20,7 @@ export const ShortText = Schema.String.pipe(
 
 export const NumberText = Schema.String.pipe(Schema.check(Schema.isMaxLength(MAX_SHORT)));
 
-// A pre-formatted value and its direction. The client never formats money or
-// dates: the AI or the tool sends the exact string ("$82,302", "Fri 17 Oct").
+// A pre-formatted value and its direction: the client never formats money or dates; the AI sends the exact string.
 export const ChangeSchema = struct({
   direction: Schema.Literals(['up', 'down', 'flat']),
   text: ShortText,
@@ -32,8 +28,7 @@ export const ChangeSchema = struct({
 
 export type Change = typeof ChangeSchema.Type;
 
-// The fixed icon names, backed by lucide (never emoji in app chrome); an unknown
-// name fails the decode so a renderer never has to guess.
+// The fixed lucide icon names, never emoji in app chrome; an unknown name fails the decode so a renderer never has to guess.
 export const BlockIconSchema = Schema.Literals([
   'activity',
   'bell',
@@ -69,8 +64,7 @@ export const RatioSchema = Schema.Number.pipe(
 
 export const FiniteNumberSchema = Schema.Number.pipe(Schema.check(Schema.isFinite()));
 
-// The protocol package's lib is ES2023 only, so the DOM `URL` type is absent;
-// reach the runtime constructor through `globalThis` without widening the lib.
+// The protocol package's lib is ES2023 only, so the DOM `URL` type is absent; reach the runtime constructor through `globalThis`.
 type UrlLike = { readonly protocol: string };
 const UrlConstructor = (globalThis as unknown as { URL: new (value: string) => UrlLike }).URL;
 
@@ -88,7 +82,6 @@ export const HttpsUrlSchema = Schema.String.pipe(
   ),
 );
 
-// 01 · FIGURES: label / value rows, an optional change per row.
 export const FigureBlockSchema = struct({
   kind: Schema.Literal('figure'),
   rows: Schema.mutable(
@@ -104,7 +97,6 @@ export const FigureBlockSchema = struct({
 
 export type FigureBlock = typeof FigureBlockSchema.Type;
 
-// 02 · BIG NUMBER: one large value, an optional change and sparkline.
 export const NumberBlockSchema = struct({
   kind: Schema.Literal('number'),
   label: Text,
@@ -120,7 +112,6 @@ export const NumberBlockSchema = struct({
 
 export type NumberBlock = typeof NumberBlockSchema.Type;
 
-// 03 · STAT TILES: label / value tiles with an optional ratio bar.
 export const StatsBlockSchema = struct({
   kind: Schema.Literal('stats'),
   title: Schema.optional(Text),
@@ -137,7 +128,6 @@ export const StatsBlockSchema = struct({
 
 export type StatsBlock = typeof StatsBlockSchema.Type;
 
-// 04 · TABLE: up to five columns and 24 rows of pre-formatted values.
 export const TableBlockSchema = struct({
   kind: Schema.Literal('table'),
   title: Schema.optional(Text),
@@ -161,7 +151,6 @@ export const TableBlockSchema = struct({
 
 export type TableBlock = typeof TableBlockSchema.Type;
 
-// 05 · BARS: a column per series entry; `current` marks the highlighted today.
 export const BarsBlockSchema = struct({
   kind: Schema.Literal('bars'),
   title: Schema.optional(Text),
@@ -179,7 +168,6 @@ export const BarsBlockSchema = struct({
 
 export type BarsBlock = typeof BarsBlockSchema.Type;
 
-// 06 · LINE: a sparkline of finite points with optional bounds and labels.
 export const LineBlockSchema = struct({
   kind: Schema.Literal('line'),
   title: Schema.optional(Text),
@@ -196,7 +184,6 @@ export const LineBlockSchema = struct({
 
 export type LineBlock = typeof LineBlockSchema.Type;
 
-// 07 · GAUGE: one ratio ring with a pre-formatted value.
 export const GaugeBlockSchema = struct({
   kind: Schema.Literal('gauge'),
   label: Text,

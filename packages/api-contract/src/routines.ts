@@ -1,6 +1,4 @@
-// Routines (T-0212): a tool run on a schedule. The list answers the full
-// routine; pause and resume answer the same shape without the id fields, so
-// those are optional. Dates travel as ISO strings and stay strings.
+// Pause and resume answer the same shape without the id fields, so those are optional.
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -27,18 +25,12 @@ export const Routine = Schema.Struct({
 
 export type Routine = typeof Routine.Type;
 
-// T-1717: one routine in the caller's own list (Settings › Routines), across
-// every AI they own. `aiName` and `aiAvatarUrl` describe the AI; `chatName` is
-// the topic name, the group name for a General topic, or null for a personal
-// chat with the AI.
 export const MyRoutine = Schema.Struct({
   ...Routine.fields,
   aiName: Schema.String,
   aiAvatarUrl: Schema.optional(Schema.String),
   chatName: Schema.NullOr(Schema.String),
-  // T-1719: the room JID of the chat a routine runs in, so the page can open
-  // it. A group routine carries its topic's room JID, a personal one the AI's
-  // own DM JID; null only when the server was not given a MUC domain.
+  // A group routine carries its topic's room JID, a personal one the AI's own DM JID; null only when the server has no MUC domain.
   chatJid: Schema.NullOr(Schema.String),
 });
 

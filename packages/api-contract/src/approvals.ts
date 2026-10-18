@@ -1,5 +1,3 @@
-// Approvals (T-0076) and approval rules (T-0100): the requests an AI raises
-// before it acts, the decisions on them, and the standing "always" rules.
 // Dates travel as ISO strings and stay strings in the clients.
 
 import { Effect, Schema } from 'effect';
@@ -23,7 +21,7 @@ export const APPROVAL_DECISIONS = ['approve_once', 'approve_always', 'deny'] as 
 
 export type ApprovalDecision = (typeof APPROVAL_DECISIONS)[number];
 
-/** Strict: an excess key is a 400. `note` is bounded like the protocol schema. */
+// Strict: an excess key is a 400; `note` is bounded like the protocol schema.
 export const ApprovalDecisionPayload = Schema.Struct({
   decision: Schema.Literals(APPROVAL_DECISIONS),
   note: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
@@ -34,13 +32,6 @@ const WorstCase = Schema.Struct({
   amount: Schema.Number,
 });
 
-/**
- * One approval as the caller sees it. `topicId`/`topicName` are optional so
- * older payloads parse (a missing topic reads like a group approval);
- * `alwaysEligible`, `approverNames`, `aiName` and `groupName` default when an
- * older server omits them, and the card then hides the third button, the
- * approver line and the AI/group names.
- */
 export const PublicApproval = Schema.Struct({
   id: Schema.String,
   aiId: Schema.String,
@@ -70,7 +61,6 @@ export const PublicApproval = Schema.Struct({
 
 export type PublicApproval = typeof PublicApproval.Type;
 
-/** One standing rule. `topicId`/`topicName` are optional so older payloads parse. */
 export const ApprovalRule = Schema.Struct({
   id: Schema.String,
   action: Schema.String,

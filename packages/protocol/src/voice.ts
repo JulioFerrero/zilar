@@ -35,7 +35,7 @@ export const VoiceMetaSchema = struct({
       ),
     ),
   ).pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
-  /** Where the receiving client fetches the audio (an XEP-0363 download URL). */
+  // Where the receiving client fetches the audio (an XEP-0363 download URL).
   url: Schema.optional(UrlSchema),
   transcript: Schema.optional(VoiceTranscriptSchema),
 });

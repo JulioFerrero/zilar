@@ -1,12 +1,8 @@
 import { jidLocal, normalizeJid } from '@zilar/protocol';
 
-/** A person to open, named by whatever the calling row already has. */
 export type PersonLinkTarget = {
-  /** The bare JID from a message (`senderId`) or a contact. */
   jid?: string | undefined;
-  /** The user id from a member row or a contact. */
   userId?: string | undefined;
-  /** The `@handle` of a member row, for someone who is not a contact. */
   handle?: string | null | undefined;
 };
 
@@ -24,7 +20,6 @@ export type PersonLinkContext = {
   contacts: readonly PersonLinkContact[];
   chats: readonly PersonLinkChat[];
   currentUserId: string;
-  /** The handle of a known group member, looked up by the JID localpart. */
   memberHandle?: (localpart: string) => string | undefined;
 };
 
@@ -33,16 +28,7 @@ export type PersonDestination =
   | { kind: 'chat'; chatId: string }
   | { kind: 'profile'; handle: string };
 
-/**
- * Where a tap on a person opens, shared by the web and phone apps: their DM
- * when they are a contact or have a chat row (the viewer's own AI included),
- * the profile of anyone else with a handle or a known group membership, and
- * nothing for yourself or an unknown sender.
- *
- * A full JID is an occupant (`room@conference/nick`) from a sender the app has
- * not resolved yet; it names a room, never a person, so it is dropped while the
- * user id and handle it arrived with still count.
- */
+// A full JID is an occupant (`room@conference/nick`) and names a room, never a person, so it is dropped while the user id and handle it arrived with still count.
 export function resolvePerson(
   target: PersonLinkTarget,
   ctx: PersonLinkContext,

@@ -1,11 +1,6 @@
 import { Exit, Schema } from 'effect';
 
-/**
- * The one error envelope every failed API response carries:
- * `{ error: { ...detail, code, message, requestId } }`. The server renders it
- * in `apps/server/src/effect/http-core.ts`; extra keys are the `detail` an
- * `HttpError` merged in (for example `nextChangeAt`).
- */
+// The one error envelope every failed response carries: `{ error: { ...detail, code, message, requestId } }`.
 export const ApiErrorBody = Schema.Struct({
   error: Schema.StructWithRest(
     Schema.Struct({
@@ -19,15 +14,10 @@ export const ApiErrorBody = Schema.Struct({
 
 export type ApiErrorBody = typeof ApiErrorBody.Type;
 
-/**
- * The error every client call rejects with: the HTTP status (0 when the
- * server was never reached), the envelope `code` and `message`, and the
- * envelope's extra fields on `detail`.
- */
+// The error every client call rejects with; status 0 means the server was never reached.
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  /** Extra fields the server merged into the `error` body (e.g. `nextChangeAt`). */
   readonly detail: Record<string, unknown>;
 
   constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
@@ -39,11 +29,8 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Builds the `ApiError` for a failed response body: `code`/`message` plus any
- * extra fields on `detail`, minus the `requestId` the server adds for
- * tracing. A body that is not the envelope becomes `request_failed`.
- */
+// Builds the `ApiError` from `code`/`message` plus extra fields on `detail`, minus the `requestId`;
+// a body that is not the envelope becomes `request_failed`.
 export function apiErrorFromBody(status: number, raw: unknown): ApiError {
   const decoded = Schema.decodeUnknownExit(ApiErrorBody)(raw);
   if (!Exit.isSuccess(decoded)) {
@@ -54,11 +41,7 @@ export function apiErrorFromBody(status: number, raw: unknown): ApiError {
   return new ApiError(status, code, message, detail);
 }
 
-/**
- * A malformed `code` must not discard a valid `message`, nor the reverse: each
- * field falls back on its own (`request_failed`, `Request failed (N)`), as the
- * mobile clients' per-field guards did before the contract (T-0892).
- */
+// A malformed `code` must not discard a valid `message`, nor the reverse: each field falls back on its own.
 function partialApiError(status: number, raw: unknown): ApiError {
   const error =
     typeof raw === 'object' && raw !== null && 'error' in raw

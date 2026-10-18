@@ -33,16 +33,11 @@ function startsNewGroup(previous: UiMessage | undefined, message: UiMessage): bo
   );
 }
 
-/**
- * Whether `message` continues the album run that `previous` is in: the same
- * non-empty `album.id`, the same sender, the same day and inside the group
- * window (the run itself already guarantees the last three).
- */
+// The same non-empty `album.id`, sender, day and group window.
 function continuesAlbum(previous: UiMessage, message: UiMessage, id: string): boolean {
   return message.album?.id === id && !startsNewGroup(previous, message);
 }
 
-/** The album's loaded photos, in `index` order; missing siblings are just absent. */
 function albumMembers(sorted: readonly UiMessage[], from: number, to: number): UiMessage[] {
   const members: UiMessage[] = [];
   for (let cursor = from; cursor <= to; cursor += 1) {
@@ -54,12 +49,7 @@ function albumMembers(sorted: readonly UiMessage[], from: number, to: number): U
   return members.sort((a, b) => (a.album?.index ?? 0) - (b.album?.index ?? 0));
 }
 
-/**
- * Serialises messages into render items: consecutive messages from the same
- * sender within five minutes become one group, and a date separator is inserted
- * whenever the calendar day changes. A consecutive run of same-album messages
- * (same `album.id`, sender, day and window) becomes one `album` item instead.
- */
+// Consecutive messages from the same sender within five minutes become one group; a date separator is inserted when the calendar day changes. A same-album run becomes one album item.
 export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
   const sorted = [...messages].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const items: RenderItem[] = [];
@@ -91,9 +81,7 @@ export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
         continue;
       }
 
-      // A message carrying an album marker and the consecutive same-album rows
-      // after it become one album item; a lone marker (siblings not loaded) is
-      // an album of one, so the item does not flip as older pages arrive.
+      // A lone marker (siblings not loaded) is an album of one, so the item does not flip as older pages arrive.
       const albumId = message.album?.id;
       let last = cursor;
       if (albumId !== undefined) {
@@ -136,13 +124,11 @@ export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
   return items;
 }
 
-/** First word of a display name, used as the sender prefix in group previews. */
 export function firstName(name: string): string {
   const [first] = name.trim().split(/\s+/);
   return first ?? name;
 }
 
-/** Sender prefix for a list preview (`You: `, `Ana: `) or an empty string. */
 export function previewPrefix(lastMessage: UiMessage | undefined, options: PreviewOptions): string {
   if (lastMessage === undefined || !options.isGroup) {
     return '';
@@ -152,15 +138,9 @@ export function previewPrefix(lastMessage: UiMessage | undefined, options: Previ
   return `${name}: `;
 }
 
-/** The small icon a chat row shows before a non-text preview. */
 export type PreviewKind = 'photo' | 'album' | 'voice' | 'file' | 'card';
 
-/**
- * Icon kind for the list preview, in the same priority `previewBody` reads the
- * payload (`photo`, `album`, `voice`, `file`, `card`), or `undefined` for a
- * plain text preview. The web and mobile rows map it to a lucide icon; the
- * emoji stay out of the app chrome.
- */
+// Icon kind for the list preview, in the same priority `previewBody` reads the payload; `undefined` for a plain text preview.
 export function previewKind(lastMessage: UiMessage | undefined): PreviewKind | undefined {
   if (lastMessage === undefined) {
     return undefined;
@@ -186,7 +166,6 @@ export function previewKind(lastMessage: UiMessage | undefined): PreviewKind | u
   return undefined;
 }
 
-/** Body of a list preview: voice, photo, attachment, text or a generic card. */
 export function previewBody(lastMessage: UiMessage | undefined): string {
   if (lastMessage === undefined) {
     return '';
@@ -214,17 +193,11 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
   return '';
 }
 
-/** Full one-line preview shown in the chat list (see `ui-style.md` §4). */
 export function previewText(lastMessage: UiMessage | undefined, options: PreviewOptions): string {
   return previewPrefix(lastMessage, options) + previewBody(lastMessage);
 }
 
-/**
- * Prefix, body and icon kind for the chat-list preview, kept apart so the
- * sender can be colored and the row can draw the right lucide icon before the
- * text. `previewPrefix` already includes its trailing space, so joining the
- * prefix and body yields the exact preview text (`Dani: ok!`).
- */
+// `previewPrefix` already includes its trailing space, so joining prefix and body yields the exact preview text.
 export function previewParts(
   lastMessage: UiMessage | undefined,
   options: PreviewOptions,
@@ -236,12 +209,7 @@ export function previewParts(
   };
 }
 
-/**
- * The label a reply quote shows when the replied-to message carries no text:
- * a media kind ("Photo", "Video", "Voice message", "Sticker", "GIF") or the
- * file name, in the same priority `previewBody` reads the payload. `undefined`
- * for a plain text message or an unknown card.
- */
+// A media kind or the file name, in the same priority `previewBody` reads the payload; `undefined` for plain text or an unknown card.
 export function replyQuoteLabel(message: UiMessage | undefined): string | undefined {
   if (message === undefined) {
     return undefined;
@@ -257,7 +225,7 @@ export function replyQuoteLabel(message: UiMessage | undefined): string | undefi
     if (kind === 'image') {
       return 'Photo';
     }
-    // The GIF send path names files `gif-<id>.<ext>` with a video mime (T-0122).
+    // The GIF send path names files `gif-<id>.<ext>` with a video mime.
     if (name.startsWith('gif-') && (mime === 'video/mp4' || mime === 'video/webm')) {
       return 'GIF';
     }
@@ -270,41 +238,26 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value !== undefined && value.length > 0 ? value : undefined;
 }
 
-/** What a reply quote renders, resolved against the loaded replied-to message. */
 export interface ReplyQuoteContent {
-  /** Display name: the replied-to sender's, "You" for our own, never empty. */
   senderName: string;
-  /** The replied-to sender's id, for the quote colour; the reply id when unknown. */
   senderId: string;
-  /** True when the reply is to one of our own messages (renders in the accent). */
   own: boolean;
-  /** The excerpt line: the replied-to text, or a media label, or absent. */
   text?: string;
 }
 
-/**
- * Resolves a reply quote against the replied-to message from the loaded
- * history: the wire reply (`{ id, to?, text? }`) carries no name, so the name
- * and the excerpt come from the target when it is loaded. Without a loaded
- * target the wire fallback is used, and the name falls back to "Message" so the
- * line is never empty. `undefined` when there is nothing at all to show: no
- * loaded target, no wire text and no name (T-1739).
- */
+// The wire reply carries no name, so the name and excerpt come from the loaded target; the name falls back to "Message" so the line is never empty.
 export function replyQuoteContent(
   quote: ReplyRef,
   referenced: UiMessage | undefined,
   currentUserId: string,
 ): ReplyQuoteContent | undefined {
-  // The wire reply carries no sender id, so a reply to one of our own messages
-  // keeps the composer's "You" name (`replyRef`); trust it as own when the
-  // replied-to message is not in the loaded history.
+  // The wire reply carries no sender id, so a reply to one of our own keeps "You"; trust it as own when the target is not loaded.
   const own =
     referenced?.senderId === currentUserId ||
     (referenced === undefined && quote.senderName === 'You');
   const name = own ? 'You' : (referenced?.senderName ?? quote.senderName);
   const text = nonEmpty(referenced?.text) ?? nonEmpty(quote.text) ?? replyQuoteLabel(referenced);
-  // An unknown sender that the wire did not name either has no quote to draw:
-  // hide it instead of showing an empty "Message" line.
+  // An unknown sender the wire did not name has no quote to draw: hide it instead of showing an empty "Message" line.
   if (referenced === undefined && text === undefined && name === '') {
     return undefined;
   }
@@ -316,20 +269,13 @@ export function replyQuoteContent(
   };
 }
 
-/**
- * Index in `items` at which to render the "Unread messages" divider, i.e. just
- * above the first unread message. The anchor is either the id of the last read
- * message or the unread count. `currentUserId` is the reader: their own
- * messages are never unread, so the divider never lands directly above one.
- * Returns `null` when there is no divider to show.
- */
+// The divider sits above the first unread message; the reader's own messages are never unread.
 export function unreadDividerIndex(
   items: readonly RenderItem[],
   anchor: string | number,
   currentUserId: string,
 ): number | null {
-  // One position per photo at that item: an album of three counts as three, so
-  // the count math below matches what the same three single photos would do.
+  // An album of three counts as three positions, so the count math matches three single photos.
   const positions: number[] = [];
   const ids: string[] = [];
   const senders: string[] = [];
@@ -382,8 +328,7 @@ export function unreadDividerIndex(
       return positions[i] ?? null;
     }
   }
-  // Fewer than `unread` messages from someone else: the divider goes above the
-  // first one of theirs, or nowhere when the whole list is the reader's own.
+  // Fewer than `unread` messages from someone else: the divider goes above the first of theirs, or nowhere when the list is all the reader's own.
   if (earliestOther === null) {
     return null;
   }

@@ -1,17 +1,12 @@
 // effect-plain: total Markdown parse; a failed parse is a value, not an error
-/**
- * A small, safe Markdown AST shared by web and mobile (T-2033). The parser is
- * the mdast/micromark GFM stack the web app already runs, so both platforms
- * read the same AI reply the same way. Links only pass for `http:`, `https:`
- * and `mailto:`; raw HTML is dropped, images become their alt text and unknown
- * nodes become their text content. Pure and total: any input returns blocks.
- */
+// Links only pass for `http:`, `https:` and `mailto:`; raw HTML is dropped, images become their alt text and unknown nodes become their text.
+// Pure and total: any input returns blocks.
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 import { parseUrl } from './url';
 
-/** The most characters of a message the parser reads. */
+// The most characters of a message the parser reads.
 export const MARKDOWN_INPUT_LIMIT = 20000;
 
 export type MdTableAlign = 'left' | 'center' | 'right' | null;
@@ -41,11 +36,7 @@ export type MdBlock =
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
-/**
- * The URL only when its scheme is safe (`http:`, `https:`, `mailto:`). A
- * relative link or another scheme (`javascript:`, `data:`, `vbscript:`)
- * returns `undefined`, so the label stays plain text.
- */
+// A relative link or another scheme (`javascript:`, `data:`, `vbscript:`) returns `undefined`, so the label stays plain text.
 export function safeMarkdownUrl(url: string): string | undefined {
   const parsed = parseUrl(url);
   if (parsed === undefined) {
@@ -54,7 +45,6 @@ export function safeMarkdownUrl(url: string): string | undefined {
   return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;
 }
 
-/** The subset of an mdast node this mapper reads, without depending on `mdast`. */
 interface MdastNode {
   type: string;
   value?: string;
@@ -186,11 +176,7 @@ function mapBlock(node: MdastNode): MdBlock[] {
   }
 }
 
-/**
- * Parses up to `MARKDOWN_INPUT_LIMIT` characters of a message into the safe
- * AST. A half-written AI draft, an empty string or malformed Markdown never
- * throws: a failed parse returns no blocks.
- */
+// A half-written AI draft, an empty string or malformed Markdown never throws: a failed parse returns no blocks.
 export function parseMessageMarkdown(text: string): MdBlock[] {
   try {
     const root = fromMarkdown(text.slice(0, MARKDOWN_INPUT_LIMIT), {

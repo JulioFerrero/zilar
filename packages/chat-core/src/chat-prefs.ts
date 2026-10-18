@@ -1,16 +1,13 @@
 import type { ChatSummary } from './types';
 
-/** The saved per-chat preference row both apps read from the server. */
 export interface ChatPrefRow {
   chatJid: string;
   mutedUntil: string | null;
   archived: boolean;
   pinnedAt: string | null;
-  /** T-1244: the caller marked this chat unread by hand. */
   unreadMark?: boolean | undefined;
 }
 
-// T-0113: mute durations offered by the chat menu.
 export const MUTE_DURATIONS = [
   { id: 'hour', label: '1 hour', ms: 60 * 60 * 1000 },
   { id: 'eight-hours', label: '8 hours', ms: 8 * 60 * 60 * 1000 },
@@ -21,8 +18,7 @@ export const MUTE_DURATIONS = [
 
 export type MuteDurationId = (typeof MUTE_DURATIONS)[number]['id'];
 
-// A far-future stamp means "forever" (the server keeps it authoritative;
-// 100 years out never expires in practice).
+// A far-future stamp means "forever" (the server keeps it authoritative; 100 years out never expires in practice).
 const FOREVER_MUTED_UNTIL = '2126-01-01T00:00:00.000Z';
 
 export function mutedUntilFor(duration: MuteDurationId, now: Date): string {
@@ -52,14 +48,8 @@ function prefDate(value: string | null): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-/**
- * Merges server pref rows into chat summaries. `muted` is true only while
- * `mutedUntil` is in the future; expired mutes read as unmuted (the row
- * itself is cleaned up on the next write). Muting a group mutes all its
- * topics: the pref sits on the General room JID and applies to every topic
- * of the group unless the topic has its own row. `unreadMark` maps from the
- * chat's own row only, never from an inherited group General row (T-1248).
- */
+// `muted` is true only while `mutedUntil` is in the future; expired mutes read as unmuted.
+// Muting a group mutes all its topics via the General room row; `unreadMark` maps from the chat's own row only.
 export function applyChatPrefs(
   chats: ChatSummary[],
   prefs: readonly ChatPrefRow[],
@@ -85,7 +75,7 @@ export function applyChatPrefs(
     if (pref === undefined) {
       return stripPref(chat);
     }
-    // An inherited group mute only mutes: archive/pin stay per-row.
+    // An inherited group mute only mutes: archive and pin stay per-row.
     const muted = isMuted(pref, now);
     if (inherited !== undefined) {
       return muted === chat.muted ? chat : { ...chat, muted };
@@ -129,7 +119,6 @@ function stripPref(chat: ChatSummary): ChatSummary {
   return next;
 }
 
-/** Pinned chats/topics first (newer pins first), then the rest unchanged. */
 export function sortPinnedFirst(chats: ChatSummary[]): ChatSummary[] {
   const pinned = chats
     .filter((chat) => chat.pinnedAt !== undefined)
@@ -144,7 +133,6 @@ export function sortPinnedFirst(chats: ChatSummary[]): ChatSummary[] {
   return [...pinned, ...chats.filter((chat) => !pinnedIds.has(chat.id))];
 }
 
-/** Effective mute for a chat: its own row, else the group General row. */
 export function effectivePrefFor<T extends ChatPrefRow>(
   prefs: ReadonlyMap<string, T>,
   chatId: string,

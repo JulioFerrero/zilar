@@ -1,8 +1,6 @@
 import type { AiTemplateId } from './ai-form';
 
-// Display copy for the Create an AI wizard. The four default personas mirror
-// apps/server/src/ais/templates.ts, which is the source of truth: if the server
-// persona changes, update these strings too.
+// The four default personas mirror `apps/server/src/ais/templates.ts`, the source of truth: update these strings when the server persona changes.
 export interface AiTemplateOption {
   id: AiTemplateId;
   label: string;

@@ -1,22 +1,17 @@
-/** The six emoji offered by the message actions quick bar. */
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
-/** XEP-0444: a reactor may hold at most this many distinct reactions. */
+// XEP-0444: a reactor may hold at most this many distinct reactions.
 export const MAX_REACTIONS_PER_MESSAGE = 6;
 
-/** One reactor's complete current set for a target message, and its order. */
 export interface ReactionEntry {
   emojis: string[];
-  /** Stanzan order of the update: a larger value is newer and wins. */
   order: number;
 }
 
-/** All reactions known so far: target message id -> reactor JID -> entry. */
 export interface ReactionsState {
   targets: Record<string, Record<string, ReactionEntry>>;
 }
 
-/** One applied update: a reactor's complete set for one target, in stanza order. */
 export interface ReactionUpdate {
   targetId: string;
   reactorJid: string;
@@ -24,7 +19,6 @@ export interface ReactionUpdate {
   order: number;
 }
 
-/** One emoji's aggregated state on a target. `reactors` holds the reactor JIDs. */
 export interface ReactionSummary {
   emoji: string;
   count: number;
@@ -36,7 +30,6 @@ export function emptyReactions(): ReactionsState {
   return { targets: {} };
 }
 
-/** Deduplicates and caps a set; the parse side has already dropped non-emoji. */
 function cleanedSet(emojis: readonly string[]): string[] {
   const result: string[] = [];
   for (const emoji of emojis) {
@@ -47,12 +40,7 @@ function cleanedSet(emojis: readonly string[]): string[] {
   return result;
 }
 
-/**
- * Applies one reaction update. The latest order per (target, reactor) wins, so
- * an out-of-order item from an older MAM page or a late echo is ignored; an
- * update with an equal order replaces the previous one (last applied wins).
- * An empty set clears the reactor's reactions.
- */
+// The latest order per (target, reactor) wins; an equal order replaces the previous one (last applied wins). An empty set clears the reactor's reactions.
 export function applyReaction(state: ReactionsState, update: ReactionUpdate): ReactionsState {
   const existing = state.targets[update.targetId]?.[update.reactorJid];
   if (existing !== undefined && update.order < existing.order) {
@@ -69,11 +57,7 @@ export function applyReaction(state: ReactionsState, update: ReactionUpdate): Re
   };
 }
 
-/**
- * Aggregates the reactions of one target into one entry per emoji, in
- * first-used order: each emoji is ranked by the earliest (order, position in
- * the set) at which a reactor used it. `mine` marks a reaction of `meJid`.
- */
+// Each emoji is ranked by the earliest (order, position in the set) at which a reactor used it; `mine` marks a reaction of `meJid`.
 export function summarize(
   state: ReactionsState,
   targetId: string,
@@ -112,11 +96,7 @@ export function summarize(
     }));
 }
 
-/**
- * Moves every entry stored under `from` onto `to`, keeping the newer entry per
- * reactor. Used when two message ids turn out to be the same message (the
- * optimistic local id and the server id).
- */
+// Used when two message ids turn out to be the same message (the optimistic local id and the server id).
 export function mergeTargets(state: ReactionsState, from: string, to: string): ReactionsState {
   if (from === to) return state;
   const source = state.targets[from];

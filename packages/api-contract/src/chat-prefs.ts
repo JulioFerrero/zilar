@@ -1,15 +1,11 @@
-// Chat preferences (T-0113, T-0458): the caller's per-chat mute, archive, pin
-// and background rows, plus the per-user default background. A write that
-// lands back on the all-defaults row answers `{ prefs: null }`; otherwise the
-// bare pref view.
+// A write that lands back on the all-defaults row answers `{ prefs: null }`; otherwise the bare pref view.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { IsoDateTime } from './iso-datetime';
 import { SchemaErrors, Session } from './middleware';
 
-// Mirrors `CHAT_BACKGROUND_PRESET_IDS` in `packages/ui-tokens` (T-0457). The
-// contract keeps its own copy so it does not depend on the UI package.
+// Mirrors `CHAT_BACKGROUND_PRESET_IDS` in `packages/ui-tokens`; the contract keeps its own copy so it does not depend on the UI package.
 export const CHAT_BACKGROUND_PRESET_IDS = [
   'slate',
   'gold',
@@ -24,9 +20,7 @@ export const BackgroundPreset = Schema.Literals(CHAT_BACKGROUND_PRESET_IDS);
 
 export type BackgroundPreset = typeof BackgroundPreset.Type;
 
-// The three nullable background columns, returned for both the per-chat pref
-// and the per-user default. The response keeps `string` for the preset so it
-// accepts every persisted value.
+// The response keeps `string` for the preset so it accepts every persisted value.
 export const ChatBackgroundChoice = Schema.Struct({
   backgroundPreset: Schema.NullOr(Schema.String),
   backgroundImageId: Schema.NullOr(Schema.String),
@@ -35,7 +29,6 @@ export const ChatBackgroundChoice = Schema.Struct({
 
 export type ChatBackgroundChoice = typeof ChatBackgroundChoice.Type;
 
-/** The background fields are optional so an older server's rows still decode. */
 export const ChatPref = Schema.Struct({
   chatJid: Schema.String,
   mutedUntil: Schema.NullOr(Schema.String),
@@ -44,14 +37,12 @@ export const ChatPref = Schema.Struct({
   backgroundPreset: Schema.optional(Schema.NullOr(Schema.String)),
   backgroundImageId: Schema.optional(Schema.NullOr(Schema.String)),
   backgroundDim: Schema.optional(Schema.NullOr(Schema.Number)),
-  /** T-1244: the caller marked this chat unread; optional so older rows decode. */
   unreadMark: Schema.optional(Schema.Boolean),
   updatedAt: Schema.String,
 });
 
 export type ChatPref = typeof ChatPref.Type;
 
-/** The server always sends `defaultBackground`; the clients that read only `prefs` need not. */
 export const ChatPrefList = Schema.Struct({
   prefs: Schema.Array(ChatPref),
   defaultBackground: Schema.optional(ChatBackgroundChoice),
@@ -79,10 +70,8 @@ const backgroundFieldsShape = {
   ),
 };
 
-/**
- * `mutedUntil`: an ISO datetime string (a far-future value means "forever"),
- * or null to unmute. `pinned`: true stamps now, false clears the pin.
- */
+// `mutedUntil` is an ISO datetime (a far-future value means "forever"), or null to unmute.
+// `pinned`: true stamps now, false clears the pin.
 export const PutChatPrefPayload = Schema.Struct({
   mutedUntil: Schema.optional(Schema.NullOr(IsoDateTime)),
   archived: Schema.optional(Schema.Boolean),

@@ -1,12 +1,7 @@
 import type { ChatSummary, TopicInfo } from './types';
 import { parseUrl } from './url';
 
-/**
- * A date field as a sort stamp, tolerating a raw string a cache left behind:
- * a `Date` gives its time; a string is parsed; anything unparsable or of
- * another type is the oldest possible time. A defence, so a cache gap never
- * throws here (T-1479).
- */
+// Tolerates a raw string a cache left behind; anything unparsable or of another type is the oldest possible time, so a cache gap never throws here.
 function sortStamp(value: unknown): number {
   if (value instanceof Date) {
     return value.getTime();
@@ -18,19 +13,14 @@ function sortStamp(value: unknown): number {
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }
 
-/**
- * The time a chat sorts by (T-1318): its newest message, else when it was
- * created or joined, else the oldest. A chat with messages is never moved by
- * its creation time, so a just-created group with no messages still leads the
- * list like Telegram.
- */
+// A chat with messages is never moved by its creation time, so a just-created group with no messages still leads the list like Telegram.
 export function chatSortTime(chat: ChatSummary): number {
   return chat.lastMessage === undefined
     ? sortStamp(chat.createdAt)
     : sortStamp(chat.lastMessage.createdAt);
 }
 
-/** Topics of one group: pinned first (newer pins first), then General, then newest message. */
+// Pinned first (newer pins first), then General, then newest message.
 export function sortTopics(topics: readonly ChatSummary[]): ChatSummary[] {
   return [...topics].sort((left, right) => {
     const leftPinned = left.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
@@ -50,11 +40,7 @@ export function sortTopics(topics: readonly ChatSummary[]): ChatSummary[] {
   });
 }
 
-/**
- * T-1764: whether the user is in a topic. General is everyone's topic; any
- * other topic lists its people in `memberIds`. Older servers omit that list,
- * which reads as "not joined" — hiding is safer than leaking.
- */
+// General is everyone's topic; older servers omit `memberIds`, which reads as "not joined" — hiding is safer than leaking.
 export function isTopicJoined(
   topic: { isGeneral: boolean; memberIds?: readonly string[] },
   userId: string,
@@ -62,11 +48,7 @@ export function isTopicJoined(
   return topic.isGeneral || (topic.memberIds ?? []).includes(userId);
 }
 
-/**
- * T-1829: whether a known topic is one the user has not joined. The chat list
- * hides those (they live under "Other topics" with Join), so it needs the
- * opposite default from `isTopicJoined`: an unknown member list shows.
- */
+// The chat list hides unjoined topics, so it needs the opposite default from `isTopicJoined`: an unknown member list shows.
 export function isUnjoinedTopic(
   topic: { isGeneral: boolean; memberIds?: readonly string[] } | undefined,
   userId: string,
@@ -77,11 +59,7 @@ export function isUnjoinedTopic(
   return !topic.memberIds.includes(userId);
 }
 
-/**
- * T-1777: whether a person or an AI is in a topic. General is everyone's;
- * otherwise a person is in when listed in `memberIds` and an AI when listed in
- * `ais`. Older servers omit both lists, which reads as "not in".
- */
+// General is everyone's; a person is in when listed in `memberIds`, an AI when in `ais`; older servers omit both, which reads as not in.
 export function inTopic(
   topic: {
     isGeneral: boolean;
@@ -98,14 +76,7 @@ export function inTopic(
     : (topic.ais ?? []).some((ai) => ai.id === entity.id);
 }
 
-/**
- * T-1783: whether the sender may mention this jid in this topic. General is
- * everyone's, and a topic an older server built without `memberIds` is not
- * filtered (hiding is not an option for a mention that already happened). An
- * AI is looked up by its id from `aiIdByJid` (a jid-to-`aiId` map the caller
- * builds from the group detail); any other jid is a person, matched by the
- * jid's localpart against `memberIds`.
- */
+// General is everyone's, and a topic without `memberIds` is not filtered (hiding is not an option for a mention that already happened).
 export function mentionInTopic(
   topic: { isGeneral: boolean; memberIds?: readonly string[]; ais?: readonly { id: string }[] },
   jid: string,
@@ -123,8 +94,7 @@ export function mentionInTopic(
   return topic.memberIds.some((id) => id.toLowerCase() === localpart);
 }
 
-// A WHATWG host refuses these code points; `parseUrl` is a regex and accepts
-// them (`https://foo bar/`), which web's `new URL(href).hostname` cannot read.
+// A WHATWG host refuses these code points; `parseUrl` is a regex and accepts them, which web's `new URL(href).hostname` cannot read.
 const FORBIDDEN_HOST_CODEPOINTS = /[\s#/:<>?@[\\\]^|]/;
 const INVALID_PERCENT = /%(?![0-9a-fA-F]{2})/;
 const IPV6_LITERAL = /^\[[0-9a-f:.]*:[0-9a-f:.]*\]$/;
@@ -136,11 +106,7 @@ function isBrowserHost(hostname: string): boolean {
   return !FORBIDDEN_HOST_CODEPOINTS.test(hostname) && !INVALID_PERCENT.test(hostname);
 }
 
-/**
- * T-2044: only `https:` URLs render as links; anything else is plain text or
- * hidden. The host must also be one a browser's `URL` accepts, so a stored
- * value cannot crash the web panel that reads it with `new URL`.
- */
+// Only `https:` URLs render as links; the host must be one a browser's `URL` accepts, so a stored value cannot crash the web panel.
 export function httpsTopicUrl(url: string | null | undefined): string | undefined {
   if (url === null || url === undefined) {
     return undefined;
@@ -156,7 +122,6 @@ export function httpsTopicUrl(url: string | null | undefined): string | undefine
   return isBrowserHost(parsed.hostname) ? parsed.toString() : undefined;
 }
 
-/** T-2044: the link chip text: the label, else the hostname, else "Add link". */
 export function topicLinkText(topic: TopicInfo | undefined): string {
   if (topic?.linkLabel !== null && topic?.linkLabel !== undefined && topic.linkLabel !== '') {
     return topic.linkLabel;
@@ -190,7 +155,7 @@ function isManager(role: GroupRole | undefined): boolean {
   return role === 'owner' || role === 'admin';
 }
 
-/** T-2044: the viewer may create: owner/admin always, members when the switch is on. */
+// Owner/admin always, members when the switch is on.
 export function mayCreateTopic(input: TopicPermissionsInput): boolean {
   const role = myRole(input);
   if (role === undefined) {
@@ -202,12 +167,11 @@ export function mayCreateTopic(input: TopicPermissionsInput): boolean {
   return input.membersCanCreateTopics;
 }
 
-/** T-2044: the viewer may manage (rename, members, visibility, archive): a manager. */
 export function mayManageTopic(input: TopicPermissionsInput): boolean {
   return isManager(myRole(input));
 }
 
-/** T-2044: the viewer may archive: a manager, and never the General topic. */
+// A manager, and never the General topic.
 export function mayArchiveTopic(
   input: TopicPermissionsInput,
   topic: TopicInfo | undefined,

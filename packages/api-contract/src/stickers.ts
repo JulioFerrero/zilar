@@ -1,21 +1,5 @@
-// User-made sticker packs, the panel, favorites and the Telegram importer
-// (T-0120 to T-0123, T-0582, T-0602, T-0895). The panel lists mine in order
-// (with stickers), discover lists `server`-visible packs, and files are served
-// same-origin so the renderer can auto-load them without leaking the viewer's
-// IP.
-//
-// Three routes are decoded by hand in the server handlers and declare only
-// what the derived client needs to type and encode the call:
-//
-// - `discover` and `removeFavorite` read their query by hand, with a fixed 400
-//   text per route, so their query keys are `RawQueryValue` (the router never
-//   rejects them).
-// - `importTelegram` declares its payload but is served with `handleRaw`: it
-//   decodes its body after the 501 token check, so a missing token never
-//   spends the import budget.
-//
-// `uploadSticker` and `serveFile` carry raw bytes (multipart or the image
-// itself), so they stay outside the derived client.
+// Files are served same-origin so the renderer can auto-load them without leaking the viewer's IP.
+// `discover` and `removeFavorite` read their query by hand with a fixed 400; `importTelegram` decodes after the 501 token check so a missing token never spends the import budget.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -32,7 +16,7 @@ export const StickerVisibility = Schema.Literals(['private', 'server']);
 
 export type StickerVisibility = typeof StickerVisibility.Type;
 
-/** Trimmed title 1..60, optional visibility; strict (an excess key is a 400). */
+// Trimmed title 1..60, optional visibility; strict, so an excess key is a 400.
 export const CreateStickerPackPayload = Schema.Struct({
   title: Schema.Trim.pipe(
     Schema.check(
@@ -43,7 +27,6 @@ export const CreateStickerPackPayload = Schema.Struct({
   visibility: Schema.optional(StickerVisibility),
 });
 
-/** All optional and strict, plus the "Nothing to update" refine. */
 export const PatchStickerPackPayload = Schema.Struct({
   title: Schema.optional(
     Schema.Trim.pipe(
@@ -65,19 +48,18 @@ export const PatchStickerPackPayload = Schema.Struct({
   ),
 );
 
-/** Strict, ids 1..128, at most 200. */
+// Strict, ids 1..128, at most 200.
 export const ReorderStickerPanelPayload = Schema.Struct({
   order: Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))).check(
     Schema.isMaxLength(STICKER_PANEL_MAX),
   ),
 });
 
-/** Strict, `sticker_id` is a UUID. */
 export const AddStickerFavoritePayload = Schema.Struct({
   sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
 });
 
-/** A Telegram pack name or link, 1..512 characters; strict when decoded by the server. */
+// A Telegram pack name or link, 1..512 characters.
 export const ImportTelegramPayload = Schema.Struct({
   input: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
 });
@@ -100,11 +82,7 @@ export const StickerPack = Schema.Struct({
   ownerId: Schema.String,
   title: Schema.String,
   visibility: StickerVisibility,
-  // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
   importedFrom: Schema.optional(Schema.String),
-  // The owner's handle, where a list carries it (panel, discover); a missing
-  // handle is null. Optional so an older server's reply still decodes; the pack
-  // link below makes it required.
   ownerHandle: Schema.optional(Schema.NullOr(Schema.String)),
   stickers: lenientArray(Sticker),
   createdAt: Schema.String,
@@ -113,9 +91,6 @@ export const StickerPack = Schema.Struct({
 
 export type StickerPack = typeof StickerPack.Type;
 
-// `GET /sticker-packs/:id` (T-1495): a pack link any signed-in user can open
-// by id. The owner's handle is null when they have none; `inPanel` says whether
-// the caller's own panel holds the pack.
 export const StickerPackDetail = Schema.Struct({
   ...StickerPack.fields,
   ownerHandle: Schema.NullOr(Schema.String),
@@ -124,8 +99,7 @@ export const StickerPackDetail = Schema.Struct({
 
 export type StickerPackDetail = typeof StickerPackDetail.Type;
 
-// The list responses drop a malformed row and keep the rest (a client shows
-// the good packs and stickers), see `lenientArray`.
+// The list responses drop a malformed row and keep the rest.
 export const StickerPackList = Schema.Struct({ packs: lenientArray(StickerPack) });
 
 export const StickerDiscoverPage = Schema.Struct({
@@ -139,7 +113,6 @@ export const StickerDeletePackResult = Schema.Struct({ warning: Schema.String })
 
 export const StickerOk = Schema.Struct({ ok: Schema.Boolean });
 
-/** The Telegram import answer: `partial` is present only when true. */
 export const TelegramImportResult = Schema.Struct({
   pack: StickerPack,
   imported: Schema.Number,
@@ -163,8 +136,7 @@ export const StickersGroup = HttpApiGroup.make('stickers')
       query: { q: RawQueryValue, cursor: RawQueryValue },
       success: StickerDiscoverPage,
     }),
-    // The pack link (T-1495). Declared after `discover` so the fixed
-    // `/sticker-packs/discover` segment keeps its own route.
+    // Declared after `discover` so the fixed `/sticker-packs/discover` segment keeps its own route.
     HttpApiEndpoint.get('getPack', '/sticker-packs/:id', {
       params: { id: Schema.String },
       success: StickerPackDetail,
@@ -209,8 +181,7 @@ export const StickersGroup = HttpApiGroup.make('stickers')
       query: { sticker_id: RawQueryValue },
       success: StickerOk,
     }),
-    // Binary routes: the upload reads its multipart/raw body in the handler,
-    // and the file GET answers raw bytes with custom headers.
+    // The upload reads its multipart/raw body in the handler; the file GET answers raw bytes with custom headers.
     HttpApiEndpoint.post('uploadSticker', '/sticker-packs/:id/stickers', {
       params: { id: Schema.String },
       success: Sticker.pipe(HttpApiSchema.status(201)),

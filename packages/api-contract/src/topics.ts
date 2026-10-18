@@ -1,7 +1,4 @@
-// Topics (T-0108 to T-0111, T-0116): the strip of a group's sub-chats. List,
-// create, patch, archive, members, AIs and roles. A topic the viewer may not
-// see is a 404 everywhere, byte-identical to a missing id. Response-side
-// enums read an unknown value from a newer server as a safe default.
+// A topic the viewer may not see is a 404 everywhere, byte-identical to a missing id.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -46,7 +43,6 @@ export type TopicVisibility = (typeof TOPIC_VISIBILITIES)[number];
 export type TopicKind = (typeof TOPIC_KINDS)[number];
 export type TopicStatus = (typeof TOPIC_STATUSES)[number];
 
-/** Trimmed, 1..80 characters, no control characters. */
 const TopicName = Schema.Trim.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(TOPIC_NAME_MAX),
@@ -55,7 +51,6 @@ const TopicName = Schema.Trim.check(
   ),
 );
 
-/** 1..2 code points, no control characters. */
 const TopicGlyph = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(8),
@@ -68,7 +63,6 @@ const TopicGlyph = Schema.String.check(
   ),
 );
 
-/** A trimmed https URL, 1..300 characters. */
 const TopicLinkUrl = Schema.Trim.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(TOPIC_LINK_URL_MAX),
@@ -85,13 +79,11 @@ const TopicLinkUrl = Schema.Trim.check(
   }),
 );
 
-/** Trimmed, 1..40 characters. */
 const TopicLinkLabel = Schema.Trim.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(TOPIC_LINK_LABEL_MAX),
 );
 
-/** `user` or `ai` with a non-empty id. */
 const TopicOwnerRef = Schema.Struct({
   kind: Schema.Literals(['user', 'ai']),
   id: Schema.String.check(Schema.isMinLength(1)),
@@ -101,7 +93,6 @@ const MemberIds = Schema.Array(Schema.String.check(Schema.isMinLength(1))).check
   Schema.isMaxLength(TOPIC_MEMBERS_MAX),
 );
 
-/** `kind`, `visibility`, `memberIds` and `glyph` are optional; `owner`, `linkUrl` and `linkLabel` accept null. */
 export const CreateTopicPayload = Schema.Struct({
   name: TopicName,
   kind: Schema.optional(TopicKindSchema),
@@ -128,7 +119,6 @@ export const PatchTopicPayload = Schema.Struct({
   done: Schema.optional(Schema.Boolean),
 });
 
-/** One non-empty user id. */
 export const AddTopicMemberPayload = Schema.Struct({
   userId: Schema.String.check(Schema.isMinLength(1)),
 });
@@ -137,7 +127,6 @@ export const AddTopicAiPayload = Schema.Struct({
   aiId: Schema.String.check(Schema.isMinLength(1)),
 });
 
-/** 0..20 non-empty role ids and a nullable non-empty approver role id. */
 export const SetTopicRolesPayload = Schema.Struct({
   roleIds: Schema.Array(Schema.String.check(Schema.isMinLength(1))).check(
     Schema.isMaxLength(TOPIC_ROLES_MAX),
@@ -145,10 +134,7 @@ export const SetTopicRolesPayload = Schema.Struct({
   approverRoleId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
 });
 
-/**
- * The server trims `name`, `linkUrl` and `linkLabel`; the contract encodes the
- * trimmed form, so a client trims them before it calls.
- */
+// The server trims `name`, `linkUrl` and `linkLabel`; the contract encodes the trimmed form, so a client trims before it calls.
 export function trimTopicText<
   T extends { name?: string; linkUrl?: string | null; linkLabel?: string | null },
 >(input: T): T {
@@ -171,16 +157,12 @@ export type TopicOwner = typeof TopicOwner.Type;
 export const TopicAi = mutableStruct({
   id: Schema.String,
   name: Schema.String,
-  /** T-1764: the AI's picture; omitted when it has none. */
   avatarUrl: Schema.optional(Schema.String),
-  /** T-1885: the AI's JID, so its row can open the AI's chat; omitted by old
-   * servers. */
   jid: Schema.optional(Schema.String),
 });
 
 export type TopicAi = typeof TopicAi.Type;
 
-/** A custom group role attached to a topic, with its current holder count (T-0116). */
 export const TopicRole = mutableStruct({
   id: Schema.String,
   name: Schema.String,
@@ -189,34 +171,22 @@ export const TopicRole = mutableStruct({
 
 export type TopicRole = typeof TopicRole.Type;
 
-/** The role whose holders may decide approval cards in a topic (T-0116). */
 export const ApproverRole = mutableStruct({ id: Schema.String, name: Schema.String });
 
 export type ApproverRole = typeof ApproverRole.Type;
 
-/**
- * T-1514: one AI at work in a topic. `state` stays a plain string so a newer
- * server's state still decodes; the client keeps the three it knows.
- */
 export const TopicActivity = mutableStruct({
   aiId: Schema.String,
   name: Schema.String,
-  /** T-1537: the AI's bare JID, so the client can match its live card. */
   jid: Schema.optional(Schema.String),
   avatarUrl: Schema.optional(Schema.String),
-  /** T-1577: the open question card's message id, so the row can open it. */
   questionId: Schema.optional(Schema.String),
   state: Schema.String,
 });
 
 export type TopicActivity = typeof TopicActivity.Type;
 
-/**
- * A topic row. An unknown `visibility` from a newer server reads as `private`
- * (hiding is safer than leaking). T-1831: `kind`, `status` and `owner` are
- * optional so a client keeps decoding a server that no longer sends them.
- * `roles` and `approverRole` are absent on older servers.
- */
+// An unknown `visibility` from a newer server reads as `private` (hiding is safer than leaking).
 export const Topic = mutableStruct({
   id: Schema.String,
   groupId: Schema.String,
@@ -231,18 +201,12 @@ export const Topic = mutableStruct({
   linkLabel: Schema.NullOr(Schema.String),
   isGeneral: Schema.Boolean,
   archived: Schema.Boolean,
-  /** T-1521: when a person marked the topic done, an ISO time; absent on older
-   * servers. */
   doneAt: Schema.optional(Schema.NullOr(Schema.String)),
   memberCount: Schema.Number,
-  /** T-1764: the people in this topic (General: the whole group; any other
-   * topic: its `topic_members` plus role holders). Absent on older servers. */
   memberIds: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
   ais: Schema.mutable(Schema.Array(TopicAi)),
   roles: Schema.optional(Schema.mutable(Schema.Array(TopicRole))),
   approverRole: Schema.optional(Schema.NullOr(ApproverRole)),
-  /** T-1514: the AIs at work in this topic (idle ones left out). Absent on
-   * older servers and on the single-topic routes. */
   activity: Schema.optional(Schema.mutable(Schema.Array(TopicActivity))),
 });
 
@@ -260,11 +224,6 @@ export const TopicMemberList = Schema.Struct({
 
 export const TopicAiList = Schema.Struct({ ais: Schema.mutable(Schema.Array(TopicAi)) });
 
-/**
- * T-1774: one message in a topic preview. `payload` is the decoded `<agent>`
- * payload object, absent for a plain message; the client keeps it opaque and
- * decodes it again with its own `decodePayload`.
- */
 export const TopicPreviewMessage = mutableStruct({
   id: Schema.String,
   at: Schema.String,
@@ -275,7 +234,6 @@ export const TopicPreviewMessage = mutableStruct({
 
 export type TopicPreviewMessage = typeof TopicPreviewMessage.Type;
 
-/** T-1774: the recent messages of a public topic, oldest first. */
 export const TopicPreview = Schema.Struct({
   messages: Schema.mutable(Schema.Array(TopicPreviewMessage)),
 });
@@ -296,7 +254,6 @@ export const TopicsGroup = HttpApiGroup.make('topics')
     HttpApiEndpoint.post('create', '/groups/:id/topics', {
       params: GroupIdParams,
       payload: CreateTopicPayload,
-      // 201, as the route always answered.
       success: Topic.pipe(HttpApiSchema.status(201)),
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })

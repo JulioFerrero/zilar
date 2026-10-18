@@ -1,6 +1,4 @@
-// A `Schema.Struct` whose keys are mutable in the type. Effect structs are
-// readonly by default; the web mock backend and some stores edit the objects
-// they got from a client, so a response shape they edit uses this (T-0892).
+// Effect structs are readonly by default; the web mock backend and some stores edit response objects, so their shapes use this.
 // It is a type-level difference only: encoding and decoding are unchanged.
 
 import { Schema } from 'effect';

@@ -1,17 +1,10 @@
-// Chat background images (T-0464, T-0577, T-0895): a user's personal
-// wallpapers. The image bytes travel outside the derived client:
-//
-// - `upload` declares no payload. The handler reads the raw body stream under
-//   a size cap, so a client posts the bytes itself and the contract only
-//   types the 201 reply.
-// - `getFile` answers the raw bytes with the stored mime type, so its success
-//   is declared empty.
+// The image bytes travel outside the derived client: `upload` reads the raw body under a size cap,
+// and `getFile` answers the raw bytes, so neither declares a payload or a JSON success.
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { BackgroundsUploadRateLimit, SchemaErrors, Session } from './middleware';
 
-/** The upload result. */
 export const BackgroundImage = Schema.Struct({
   id: Schema.String,
   url: Schema.String,
@@ -21,7 +14,6 @@ export const BackgroundImage = Schema.Struct({
 
 export type BackgroundImage = typeof BackgroundImage.Type;
 
-/** One listed image; the size is null for a row stored before sizes were kept. */
 export const BackgroundListItem = Schema.Struct({
   id: Schema.String,
   url: Schema.String,

@@ -1,14 +1,11 @@
-// Chat folders (T-0232, T-0237): the caller's own folders, listed in order.
-// A write answers with the authoritative row; the list drops a row this build
-// cannot read (for example an icon from a newer server) instead of failing
-// the whole list.
+// A write answers the authoritative row; the list drops a row this build cannot read
+// (for example an icon from a newer server) instead of failing the whole list.
 
 import { Exit, Schema, SchemaGetter } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { SchemaErrors, Session } from './middleware';
 
-// Mirrors `packages/chat-core/src/folders.ts` (FOLDER_ICONS, FOLDER_NAME_MAX,
-// FOLDER_CHATS_MAX). The contract does not depend on `@zilar/chat-core`.
+// Mirrors `FOLDER_ICONS`, `FOLDER_NAME_MAX` and `FOLDER_CHATS_MAX` in `packages/chat-core/src/folders.ts`.
 export const FOLDER_ICONS = [
   'folder',
   'message-circle',
@@ -62,13 +59,8 @@ const JidList = Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.i
     ),
   );
 
-// `name` is trimmed before the length check, like zod's `.trim().min(1).max()`.
 const FolderName = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(FOLDER_NAME_MAX));
 
-/**
- * The chat lists and flags are optional: the server treats an omitted list as
- * empty and an omitted flag as false.
- */
 export const CreateChatFolderPayload = Schema.Struct({
   name: FolderName,
   icon: FolderIconSchema,
@@ -95,7 +87,6 @@ export const OrderChatFoldersPayload = Schema.Struct({
   ids: Schema.Array(Schema.String.check(Schema.isMinLength(1))),
 });
 
-/** A folder row. The arrays are mutable in the type so a client can hand them on. */
 export const ChatFolder = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -112,8 +103,6 @@ export type ChatFolder = typeof ChatFolder.Type;
 
 const decodeChatFolder = Schema.decodeUnknownExit(ChatFolder);
 
-// A row this build cannot read is dropped; encoding (the server side) passes
-// the rows through.
 const ReadableChatFolders = Schema.Array(Schema.Unknown).pipe(
   Schema.decodeTo(Schema.mutable(Schema.Array(ChatFolder)), {
     decode: SchemaGetter.transform((rows) =>
@@ -123,10 +112,9 @@ const ReadableChatFolders = Schema.Array(Schema.Unknown).pipe(
   }),
 );
 
-/** The list drops unreadable rows. */
 export const ChatFolderList = Schema.Struct({ folders: ReadableChatFolders });
 
-/** The order answer carries every row, so one unreadable row is a broken server. */
+// The order answer carries every row, so one unreadable row is a broken server.
 export const ChatFolderOrder = Schema.Struct({ folders: Schema.mutable(Schema.Array(ChatFolder)) });
 
 export const ChatFolderResult = Schema.Struct({ folder: ChatFolder });

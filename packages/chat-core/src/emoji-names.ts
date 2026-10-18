@@ -1,7 +1,4 @@
-// T-1660: hand-picked search keywords for the glyphs in the shared emoji table.
-// T-1926 derives `EMOJI_NAMES` from the generated Unicode names plus these
-// keywords, so every glyph (flags included) is searchable by name. Keep the
-// keywords lowercase: searchEmoji lowercases the query first.
+// Keep the keywords lowercase: `searchEmoji` lowercases the query first.
 
 import { EMOJI_BASE_NAMES } from './emoji-table.generated';
 
@@ -336,10 +333,6 @@ const EMOJI_KEYWORDS: Readonly<Record<string, string>> = {
   '💥': 'collision boom explosion',
 };
 
-/**
- * The searchable, lowercase name of every glyph in `EMOJI_BY_CATEGORY`: its
- * Unicode name plus the hand-picked keywords when they exist.
- */
 export const EMOJI_NAMES: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(EMOJI_BASE_NAMES).map(([glyph, name]) => {
     const keywords = EMOJI_KEYWORDS[glyph];
@@ -347,11 +340,6 @@ export const EMOJI_NAMES: Readonly<Record<string, string>> = Object.fromEntries(
   }),
 );
 
-/**
- * The glyphs in `glyphs` whose name contains the trimmed, lowercased `query`,
- * or that equal it, in order and without duplicates. An empty query matches
- * nothing.
- */
 export function searchEmoji(query: string, glyphs: readonly string[]): string[] {
   const needle = query.trim().toLowerCase();
   if (needle === '') {

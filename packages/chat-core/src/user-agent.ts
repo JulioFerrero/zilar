@@ -1,9 +1,4 @@
-/**
- * A friendly device line for one stored `User-Agent` header, e.g.
- * "Chrome on macOS" or "Zilar on Android" (T-1235, shared with mobile T-1250).
- * The mobile app is the only non-browser client, so an agent that names no
- * browser is the app. An agent we cannot place at all shows "Unknown device".
- */
+// The mobile app is the only non-browser client, so an agent that names no browser is the app; an unknown agent shows "Unknown device".
 export function describeUserAgent(userAgent: string | null | undefined): string {
   const agent = userAgent?.trim() ?? '';
   if (agent === '') {
@@ -43,7 +38,7 @@ function detectClient(agent: string): string {
   if (/Firefox\//i.test(agent) || /FxiOS\//i.test(agent)) {
     return 'Firefox';
   }
-  // Opera carries `OPR/`; it also contains `Chrome/`, so it is checked first.
+  // Opera carries `OPR/` and also contains `Chrome/`, so it is checked first.
   if (/OPR\//i.test(agent)) {
     return 'Opera';
   }

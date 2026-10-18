@@ -1,11 +1,5 @@
-/**
- * T-1723: a routine approval card's summary arrives as `<title> · <schedule>`
- * (the server's `routine.schedule` adapter joins them with " · ", e.g.
- * `Prices · every 5 minutes`). The card draws the title and the schedule
- * apart, so split the summary at the LAST " · " -- a title may itself contain
- * one. Every other action, and a routine summary without the separator,
- * returns null so the card keeps drawing the summary as one line.
- */
+// A routine summary arrives as `<title> · <schedule>`; split at the LAST " · " because a title may itself contain one.
+// A routine summary without the separator returns null, so the card keeps drawing it as one line.
 export function routineCardTitle(
   action: string,
   summary: string,

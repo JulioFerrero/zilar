@@ -34,11 +34,6 @@ import { TopicsGroup } from './topics';
 import { VoiceTranscriptionGroup } from './voice-transcription';
 import { XmppGroup } from './xmpp';
 
-/**
- * The whole HTTP API as one contract. Clients derive from it
- * (`makeZilarClient`); each server module still builds its own `HttpApi`
- * from its group until the modules are mounted as one API.
- */
 export const ZilarApi = HttpApi.make('zilar').add(
   AgentTasksGroup,
   AiMemoryGroup,

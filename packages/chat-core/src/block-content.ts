@@ -1,10 +1,7 @@
-// The fixed glyph set web and phone draw for a weather condition, keyed by the
-// lucide name both platforms share. The AI sends the condition as free text, so
-// `weatherIcon` is the one place that decides which picture it maps to.
+// The AI sends the condition as free text, so `weatherIcon` is the one place that decides which glyph it maps to.
 export type WeatherIconKey = 'sun' | 'cloud' | 'rain' | 'storm' | 'snow' | 'fog' | 'wind';
 
-// Condition keywords, longest first so "thunderstorm" reads as a storm rather
-// than as rain, and "shower" before the bare "rain".
+// Longest first so "thunderstorm" reads as a storm rather than rain, and "shower" before the bare "rain".
 const WEATHER_ICONS: readonly (readonly [string, WeatherIconKey])[] = [
   ['thunder', 'storm'],
   ['storm', 'storm'],
@@ -23,11 +20,6 @@ const WEATHER_ICONS: readonly (readonly [string, WeatherIconKey])[] = [
   ['overcast', 'cloud'],
 ];
 
-/**
- * Maps a free-text weather condition to one fixed glyph key. Matching is
- * case-insensitive and substring-based, so "Partly cloudy" reads as cloud and
- * "Heavy rain" as rain; anything unrecognised reads as the neutral cloud.
- */
 export function weatherIcon(condition: string): WeatherIconKey {
   const text = condition.toLowerCase();
   for (const [keyword, key] of WEATHER_ICONS) {
@@ -36,23 +28,13 @@ export function weatherIcon(condition: string): WeatherIconKey {
   return 'cloud';
 }
 
-// The event date tile and its when line, already rendered in the viewer's zone.
 export type EventWhen = {
-  /** The tile's month, e.g. `OCT`. */
   month: string;
-  /** The tile's day, e.g. `17`. */
   day: string;
-  /** The when line, e.g. `Fri 21:00 – 23:00` or a dated range across days. */
   line: string;
 };
 
-/**
- * Formats an event for the board's date tile and when line
- * (`WebContent.dc.html:166-172`) in `timeZone`, the viewer's own zone. A
- * same-day event shows the weekday and the time range; an event that ends on
- * another day shows both dates so the range stays unambiguous. Built from
- * `Intl.DateTimeFormat`, which browsers and Hermes both ship.
- */
+// A same-day event shows the weekday and time range; one that ends another day shows both dates. Built from `Intl.DateTimeFormat`, which browsers and Hermes both ship.
 export function eventWhen(startAt: string, endAt: string, timeZone: string): EventWhen {
   const start = new Date(startAt);
   const end = new Date(endAt);

@@ -5,18 +5,11 @@ export const STICKER_MIME_VALUES = ['image/webp', 'image/png'] as const;
 
 export type StickerMime = (typeof STICKER_MIME_VALUES)[number];
 
-/**
- * One sticker inside a chat message. The bytes live at `url`: either the
- * absolute server file URL at send time, or the relative
- * `/api/stickers/:id/file` path the server API returns (clients resolve it
- * against the Zilar API origin). Clients that do not know this payload show
- * `emoji` (or nothing) as the body instead. Rendering still fetches only
- * same-origin sticker URLs (see `isSameOriginStickerUrl` on web).
- */
+// The bytes live at `url`: the absolute server file URL at send time, or the relative `/api/stickers/:id/file` path
+// that clients resolve against the Zilar API origin. Clients that do not know this payload show `emoji` instead.
 export const StickerSchema = struct({
   pack_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
   sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
-  /** The server file URL at send time, used as a fallback. */
   url: Schema.String.pipe(
     Schema.check(
       Schema.isMinLength(1),
@@ -30,7 +23,6 @@ export const StickerSchema = struct({
       ),
     ),
   ),
-  /** Shown when the client cannot render the sticker. */
   emoji: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(8)))),
   width: Schema.Int.pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(512)),

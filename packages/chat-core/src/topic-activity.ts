@@ -1,19 +1,14 @@
 import type { TopicAiActivity, TopicAiState, UiMessage } from './types';
 
-/** What a topic's AI activity reads as, for the list row and the "AIs here" key. */
 export interface TopicActivityView {
-  /** The AIs still at work: working first, then waiting. Empty when none. */
   active: TopicAiActivity[];
-  /** True when nothing is active and the topic reads as finished. */
   done: boolean;
-  /** One sentence for the group's accessible name, e.g. "Dev-1 is working, QA-1 is waiting for you", "Done", or "". */
   label: string;
 }
 
-/** Working before waiting before done, so `active` keeps that order. */
+// Working before waiting before done, so `active` keeps that order.
 const STATE_ORDER: Record<TopicAiState, number> = { working: 0, waiting: 1, done: 2 };
 
-/** The one line an AI's state reads as in the "AIs here" key. */
 export function topicActivityLine(state: TopicAiState): string {
   switch (state) {
     case 'working':
@@ -25,14 +20,7 @@ export function topicActivityLine(state: TopicAiState): string {
   }
 }
 
-/**
- * Sorts a topic's AI activity and labels it (T-1532). `active` holds the AIs
- * still at work, working first, then waiting; `done` is true only when nothing
- * is active and either a person marked the topic done (`doneAt`) or an AI
- * finished. An idle topic reads as `{ active: [], done: false, label: '' }`.
- * General is the group's room and never finishes (T-1843), so there `done` stays
- * false and the label is empty even after an AI replies.
- */
+// `done` is true only when nothing is active and either a person marked the topic done or an AI finished; General never finishes.
 export function topicActivityView(
   activity: readonly TopicAiActivity[],
   doneAt: string | null,
@@ -54,12 +42,7 @@ export function topicActivityView(
   return { active, done, label };
 }
 
-/**
- * T-1551 (moved from web's `AiStatusLine`, T-1537): the newest progress card of
- * one AI in the chat. Its `stage` shows only while that card is live (`working`
- * or no state yet); a newer finished card means the AI has no current stage, so
- * the status line falls back to "is working".
- */
+// `stage` shows only while that card is live (working or no state yet); a newer finished card means there is no current stage.
 export function liveStageFor(
   messages: readonly UiMessage[] | undefined,
   jid: string | undefined,

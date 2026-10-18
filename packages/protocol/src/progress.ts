@@ -1,8 +1,7 @@
 import { Schema } from 'effect';
 import { IdSchema, IsoDateTimeSchema, JidSchema, MoneySchema, isHttpUrl, struct } from './common';
 
-// T-1414: one step of the task card. Fixed stage labels only; never model text
-// or tool output. The server appends these as the turn runs.
+// One step of the task card: fixed stage labels only, never model text or tool output.
 export const ProgressStepSchema = struct({
   id: Schema.String.pipe(Schema.check(Schema.isMaxLength(64))),
   label: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
@@ -11,9 +10,7 @@ export const ProgressStepSchema = struct({
 
 export type ProgressStep = typeof ProgressStepSchema.Type;
 
-// T-1414: the task card. `stage` stays required and unchanged; every task-card
-// field is optional, so an old client still renders the stage text and an old
-// server simply omits them (the payload struct is open).
+// Every task-card field is optional, so an old client still renders the stage text and an old server simply omits them.
 export const ProgressSchema = struct({
   ai: JidSchema,
   task_id: Schema.optional(IdSchema),

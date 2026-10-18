@@ -4,10 +4,7 @@ import { parseUrl } from './url';
 const FALLBACK_NAME = 'file';
 const MAX_NAME_LENGTH = 255;
 
-/**
- * Strips directory parts, control characters and surrounding whitespace from a
- * file name and caps it at 255 characters. An empty result becomes `file`.
- */
+// Strips directory parts, control characters and surrounding whitespace, and caps the name at 255 characters; an empty result becomes `file`.
 export function cleanFilename(name: string): string {
   const withoutPath = name.split(/[/\\]/).pop() ?? '';
   const withoutControl = Array.from(withoutPath)
@@ -23,7 +20,6 @@ export function cleanFilename(name: string): string {
   return trimmed.slice(0, MAX_NAME_LENGTH);
 }
 
-/** Human size for preview bars and file cards, e.g. `2.4 MB`. */
 export function formatFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return '';
@@ -42,7 +38,7 @@ export function formatFileSize(bytes: number): string {
   return `${rounded} ${units[unit]}`;
 }
 
-/** Appends a cache-busting counter so a retried source is not served from cache. */
+// Appends a cache-busting counter so a retried source is not served from cache.
 export function withMediaRetry(url: string, retry: number): string {
   if (retry <= 0 || url === '') {
     return url;
@@ -50,25 +46,15 @@ export function withMediaRetry(url: string, retry: number): string {
   return `${url}${url.includes('?') ? '&' : '?'}retry=${retry}`;
 }
 
-/**
- * Just enough of the XMPP token to build the trusted media set: the WebSocket
- * service URL and the XMPP domain the server issued for this session. Both are
- * where the upload service answers in dev and production.
- */
 export interface MediaTokenShape {
   service: string;
   domain: string;
 }
 
-/**
- * The hostnames the renderer auto-loads images from. Anything else becomes a
- * file card that only loads on click, so a chat peer cannot make every viewer
- * fetch a tracking pixel from a third-party host.
- */
+// Anything outside these hosts becomes a click-to-load file card, so a chat peer cannot make every viewer fetch a tracking pixel from a third-party host.
 export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
   const hosts = new Set<string>();
-  // A malformed service URL just means we trust nothing from it; the domain
-  // below still covers the production case.
+  // A malformed service URL means we trust nothing from it; the domain still covers production.
   const serviceHost = parseUrl(token.service)?.hostname.toLowerCase();
   if (serviceHost !== undefined && serviceHost !== '') {
     hosts.add(serviceHost);
@@ -81,12 +67,7 @@ export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
   return hosts;
 }
 
-/**
- * Whether `url` is http(s) and its hostname matches one of `trustedHosts`
- * (case-insensitive, scheme- and port-agnostic). Anything that does not parse
- * as an http(s) URL (`javascript:`, `data:`, relative paths, garbage) is
- * untrusted.
- */
+// Case-insensitive, scheme- and port-agnostic; anything that does not parse as an http(s) URL is untrusted.
 export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
   const parsed = parseUrl(url);
   if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
@@ -95,12 +76,7 @@ export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>
   return trustedHosts.has(parsed.hostname.toLowerCase());
 }
 
-/**
- * The mime and file extension for GIF-tab bytes, taken from the proxied blob's
- * real content type and validated against the four types the media proxy
- * serves. An unexpected type (e.g. mock-mode art) falls back to the search
- * result's kind so mock sends keep working.
- */
+// Validated against the four types the media proxy serves; an unexpected type falls back to the search result's kind so mock sends keep working.
 export function gifBlobType(
   blobType: string,
   kind: 'image' | 'video',
@@ -121,7 +97,6 @@ export function gifBlobType(
   }
 }
 
-/** A file attachment the GIF send path would render as an inline video. */
 export function isGifVideoName(attachment: Attachment): boolean {
   if (attachment.kind !== 'file') {
     return false;
@@ -132,25 +107,13 @@ export function isGifVideoName(attachment: Attachment): boolean {
   return attachment.name.startsWith('gif-');
 }
 
-/**
- * Strips the `gif-` prefix the inline-video match looks for, so an untrusted
- * GIF-video attachment renders as a click-to-load file card. Never empty: a
- * bare `gif-` name becomes `file`.
- */
+// Strips the `gif-` prefix so an untrusted GIF-video attachment renders as a click-to-load file card.
 function unprefixedGifName(name: string): string {
   const stripped = name.slice('gif-'.length);
   return stripped === '' ? FALLBACK_NAME : stripped;
 }
 
-/**
- * An incoming image attachment on an untrusted host would auto-fetch from
- * whatever URL a chat peer put in the payload, leaking the viewer's IP to that
- * host. Downgrade it to a file card so the bytes are only loaded on click.
- * The same holds for a GIF-video file attachment (`gif-` name, video mime): on
- * an untrusted host the `gif-` prefix is stripped (breaking the inline-video
- * match) and the dimensions dropped. Other file attachments stay files: they
- * never auto-load.
- */
+// An untrusted host would auto-fetch from a URL a chat peer put in the payload, leaking the viewer's IP; downgrade it to a file card so bytes load only on click.
 export function sanitizeIncomingAttachment(
   attachment: Attachment,
   token: MediaTokenShape | undefined,
@@ -163,9 +126,7 @@ export function sanitizeIncomingAttachment(
     return attachment;
   }
   if (attachment.kind === 'image') {
-    // A downgraded GIF-video (`gif-` name, video mime; the GIF send path
-    // sometimes emits kind `image` with the real blob mime) must not keep the
-    // prefix. Other image names keep theirs (a bare `gif-` becomes `file`).
+    // A downgraded GIF-video must not keep the `gif-` prefix, or the inline-video match would still load it.
     const downgraded: Attachment = {
       ...attachment,
       kind: 'file',

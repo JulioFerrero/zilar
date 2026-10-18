@@ -1,12 +1,7 @@
 import type { ChatSummary, UiMessage } from './types';
 import { isAiJid } from './ai';
 
-/**
- * Whether a message's text is rendered as Markdown. Incoming messages in AI
- * chats qualify, as do incoming AI replies in a group (T-0055). A human DM, a
- * human group message, or your own message always stays plain text, even when
- * it contains `**`, `` ` `` or `#`.
- */
+// Incoming messages in AI chats qualify, as do incoming AI replies in a group; a human DM, a human group message or your own message stays plain text.
 export function shouldRenderMarkdown(
   chat: ChatSummary,
   message: UiMessage,
@@ -27,11 +22,6 @@ const BLOCKQUOTE = /^\s*>\s?/;
 const LIST_MARKER = /^\s*(?:[-*+]|\d{1,9}[.)])\s+/;
 const HORIZONTAL_RULE = /^\s*(?:[-*_]\s*){3,}$/;
 
-/**
- * Drops the inline markers (links, images, code, emphasis, strike) while
- * keeping the words. An unmatched marker stays, so a lone `*` in `2 * 3` and a
- * partial `**bold` both survive.
- */
 function stripInline(text: string): string {
   let out = text;
   out = out.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1');
@@ -47,12 +37,7 @@ function stripInline(text: string): string {
   return out;
 }
 
-/**
- * Flattens a Markdown reply to one line of plain text, for the chat list
- * preview (and, later, mobile). It drops the heading `#`s, the quote and list
- * markers, the emphasis markers and the inline-code backticks, keeps link text
- * and code content, and drops link URLs. Pure, with no dependencies.
- */
+// Drops heading, quote, list and emphasis markers and link URLs, but keeps link text and code content, for the chat list preview.
 export function markdownToPlain(text: string): string {
   const lines: string[] = [];
   let fence: string | undefined;
@@ -60,12 +45,10 @@ export function markdownToPlain(text: string): string {
   for (const raw of text.split(/\r?\n/)) {
     const fenceMatch = CODE_FENCE.exec(raw);
     if (fenceMatch !== null) {
-      // A fence opens or closes a code block; its own line is dropped.
       fence = fence === undefined ? (fenceMatch[1] ?? '```') : undefined;
       continue;
     }
     if (fence !== undefined) {
-      // Code content is literal: keep it as it is.
       lines.push(raw);
       continue;
     }

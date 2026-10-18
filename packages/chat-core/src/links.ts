@@ -16,11 +16,7 @@ function countCharacter(value: string, character: string): number {
   return total;
 }
 
-/**
- * Removes trailing punctuation that belongs to the sentence rather than the
- * URL (`https://x.com/a).` becomes `https://x.com/a`). A closing bracket is
- * kept when the URL itself opened it.
- */
+// A closing bracket is kept when the URL itself opened it.
 export function trimTrailingPunctuation(raw: string): string {
   let url = raw;
   while (url.length > 0) {
@@ -42,7 +38,7 @@ export function trimTrailingPunctuation(raw: string): string {
   return url;
 }
 
-/** Only `http` and `https` URLs with a non-empty authority become links. */
+// Only `http` and `https` URLs with a non-empty authority become links.
 function toHref(url: string): string | undefined {
   const match = /^https?:\/\//i.exec(url);
   if (match === null) {
@@ -52,11 +48,7 @@ function toHref(url: string): string | undefined {
   return /[a-z0-9]/i.test(authority) ? url : undefined;
 }
 
-/**
- * Splits text into plain-text and link segments. Only `http://` and `https://`
- * URLs are linked; every other scheme (`javascript:`, `data:`, `vbscript:`,
- * `file:`) stays plain text, as does a bare `www.x.com`.
- */
+// Only `http://` and `https://` URLs are linked; every other scheme (`javascript:`, `data:`, `vbscript:`, `file:`) stays plain text.
 export function splitLinks(text: string): LinkSegment[] {
   const segments: LinkSegment[] = [];
   let cursor = 0;

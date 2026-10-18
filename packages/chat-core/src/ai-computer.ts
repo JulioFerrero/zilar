@@ -7,12 +7,7 @@ export interface ComputerChoice {
   disabled: boolean;
 }
 
-/**
- * T-1425: the four computer choices, each with its one-line description. Off
- * is always offered; Zilar cloud needs the cloud desk client wired; My machine
- * and Auto need a home machine. A disabled choice shows why in place of its
- * description.
- */
+// `Off` is always offered; `cloud` needs the cloud desk client; `machine` and `auto` need a home machine. A disabled choice shows why in place of its description.
 export function computerChoices(cloud: boolean, hasMachine: boolean): ComputerChoice[] {
   return [
     {

@@ -1,7 +1,4 @@
-// Contact requests and the by-handle lookup (T-0515, moved to the contract by
-// T-0894). The create answers 200 `{ request, incoming: true }` when the other
-// side already asked, so a client can offer "Accept", and 201 `{ request }`
-// for a new request.
+// 200 `{ request, incoming: true }` when the other side already asked, 201 for a new request.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -23,7 +20,6 @@ export const ContactRequestStatus = Schema.Literals([
 
 export type ContactRequestStatus = typeof ContactRequestStatus.Type;
 
-// A contact request row. `decidedAt` is absent until the request is decided.
 export const ContactRequestRow = Schema.Struct({
   id: Schema.String,
   fromUserId: Schema.String,
@@ -39,15 +35,12 @@ export const ContactRequestResult = Schema.Struct({ request: ContactRequestRow }
 
 export type ContactRequestResult = typeof ContactRequestResult.Type;
 
-// The create body: 1..64 characters. The payload decode is strict
-// (`PayloadParseOptions` below) so an excess key is rejected.
+// The create body is 1..64 characters; strict, so an excess key is a 400.
 export const CreateContactRequestPayload = Schema.Struct({
   handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
-// Two success statuses: 200 when the other side already asked
-// (`incoming: true`), 201 for a new request. The 200 member comes first so an
-// `incoming` value never falls through to the 201 member, which would strip it.
+// The 200 member comes first so an `incoming` value never falls through to the 201 member, which would strip it.
 export const ReverseContactRequestResult = Schema.Struct({
   request: ContactRequestRow,
   incoming: Schema.Literal(true),
@@ -100,9 +93,7 @@ export const HandleProfile = Schema.Struct({
 
 export type HandleProfile = typeof HandleProfile.Type;
 
-// The people prefix search: `q` is 1..64 characters (a leading `@` is
-// stripped server-side). The answer is up to 10 matches, each a
-// `HandleProfile` with its `relation`.
+// `q` is 1..64 characters (a leading `@` is stripped server-side); the answer is up to 10 matches.
 export const UserSearchQuery = Schema.Struct({
   q: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });

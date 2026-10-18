@@ -1,17 +1,8 @@
-/**
- * T-1821: a question card keeps its answer across a reload. The answer is not
- * stored on the card: a chip tap sends a normal reply that quotes the question,
- * and the server closes the question on that first reply. A reply is always
- * newer than the question, so loaded history holds both together.
- * T-1826: the reply may quote the origin id its tapper had live, while the
- * reloaded question carries its archive id, so both ids count.
- */
+// The answer is not stored on the card: a chip tap sends a normal reply that quotes the question, and the server closes the question on that first reply.
+// The reply may quote the origin id while the reloaded question carries its archive id, so both ids count.
 import type { UiMessage } from './types';
 
-/**
- * Whether `message` is an answer to `question`: a reply that quotes it, by its
- * id or its origin id, from someone else.
- */
+// A reply that quotes it, by its id or its origin id, from someone else.
 export function isQuestionAnswer(message: UiMessage, question: UiMessage): boolean {
   const quotedId = message.replyTo?.id;
   const quotesQuestion =
@@ -19,10 +10,7 @@ export function isQuestionAnswer(message: UiMessage, question: UiMessage): boole
   return quotesQuestion && message.senderId !== question.senderId;
 }
 
-/**
- * The option an answer picked, when the reply has the chip's shape
- * `@{aiName} {option}`. Any other text returns `undefined`.
- */
+// The reply has the chip's shape `@{aiName} {option}`; any other text returns `undefined`.
 export function answeredOption(
   text: string | undefined,
   aiName: string,

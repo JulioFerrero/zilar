@@ -1,9 +1,5 @@
-// A payload field that is `undefined` means "leave it untouched", and the
-// hand-written clients never sent it (`JSON.stringify` drops it). The JSON
-// codec of a nullable optional field would encode an explicit `undefined` as
-// `null`, which clears the field on the server. A client passes its input
-// through this helper so only the keys it really set reach the encoder.
-// Used by the chain A groups (T-0892).
+// `undefined` means "leave it untouched", but the JSON codec would encode it as `null` and clear the field,
+// so a client passes its input through this helper and only the keys it really set reach the encoder.
 
 export type DefinedFields<T> = {
   [K in keyof T as undefined extends T[K] ? never : K]: T[K];

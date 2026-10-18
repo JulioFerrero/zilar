@@ -1,18 +1,15 @@
 export type AiTemplateId = 'dev' | 'marketing' | 'fun' | 'custom';
 
-// T-1408: a `null` bound means the owner set no limit. New AIs start with both
-// empty, so the create body carries nulls and the server stores NULL.
+// A `null` bound means the owner set no limit; new AIs start with both empty, so the server stores NULL.
 export interface AiLimitsUsd {
   perDayUsd: number | null;
   perMonthUsd: number | null;
 }
 
-/** The form fields both apps send in a create request. */
 export interface AiCreateFields {
   name: string;
   template: AiTemplateId;
   persona: string;
-  /** Whether the persona differs from the template default. */
   personaTouched: boolean;
   providerConnectionId: string | null;
   model: string;
@@ -34,8 +31,7 @@ export interface AiPatchBody {
 }
 
 // The POST body the server's strict CreateAiSchema accepts: exactly these keys.
-// `persona` is omitted for a stock template the user did not edit, so the
-// server applies its own default.
+// `persona` is omitted for an unedited stock template so the server applies its own default.
 export function buildCreateBody(
   form: AiCreateFields,
   limits: AiLimitsUsd | null,
@@ -54,7 +50,7 @@ export function buildCreateBody(
   };
 }
 
-/** PATCH carries only the fields that actually changed; null means nothing did. */
+// PATCH carries only the fields that actually changed.
 export function buildPatch(input: {
   name: string;
   originalName: string;

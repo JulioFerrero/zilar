@@ -1,4 +1,3 @@
-/** Length of the longest shared prefix of two strings. */
 export function commonPrefixLength(left: string, right: string): number {
   const max = Math.min(left.length, right.length);
   let index = 0;
@@ -8,22 +7,19 @@ export function commonPrefixLength(left: string, right: string): number {
   return index;
 }
 
-// Never cut between the two halves of a surrogate pair (most emoji): a half
-// renders as a replacement glyph for a frame.
+// Never cut between the two halves of a surrogate pair (most emoji): a half renders as a replacement glyph.
 export function safeCut(text: string, progress: number): number {
   const end = Math.floor(progress);
   const last = text.charCodeAt(end - 1);
   return end > 0 && end < text.length && last >= 0xd800 && last <= 0xdbff ? end + 1 : end;
 }
 
-/** A frame scheduler seam so tests can drive the reveal deterministically. */
 export interface FrameScheduler {
   request: (callback: (time: number) => void) => number;
   cancel: (handle: number) => void;
 }
 
-// The DOM and React Native provide these globals at runtime; the package's
-// TypeScript lib has neither, so read them through a guarded shape.
+// The DOM and React Native provide these globals at runtime; the package's TypeScript lib has neither, so read them through a guarded shape.
 interface AnimationFrameHost {
   requestAnimationFrame?: (callback: (time: number) => void) => number;
   cancelAnimationFrame?: (handle: number) => void;
@@ -44,49 +40,30 @@ const defaultFrameScheduler: FrameScheduler = {
   },
 };
 
-/**
- * A foreground/background seam: the web's page visibility and React Native's
- * `AppState` both fit it. The reveal snaps to the latest text when the window or
- * app becomes active again (a hidden tab pauses `requestAnimationFrame`).
- */
+// The reveal snaps to the latest text when the window or app becomes active again (a hidden tab pauses `requestAnimationFrame`).
 export interface ActiveSource {
   subscribe: (onActive: () => void) => () => void;
 }
 
-/** Time the reveal takes to clear the whole backlog of one update. */
 export const SMOOTH_CATCH_UP_MS = 350;
 
-/** While there is a backlog, the reveal advances at least this fast. */
 export const SMOOTH_MIN_CHARS_PER_SECOND = 60;
 
-/** A long stall (a hidden tab or a backgrounded app) must not flush the backlog in one frame. */
+// A long stall (a hidden tab or a backgrounded app) must not flush the backlog in one frame.
 const MAX_FRAME_MS = 100;
 
 export interface SmoothTextOptions {
-  /** `false` shows `target` at once (a message that was never a draft). */
   animate?: boolean | undefined;
-  /** Overrides the caller's reduced-motion setting. */
   reducedMotion?: boolean | undefined;
-  /** The frame scheduler; tests inject a manual one. */
   frames?: FrameScheduler | undefined;
-  /** The foreground source; tests inject a fake one. */
   active?: ActiveSource | undefined;
-  /**
-   * `'full'` paints the first target at once and animates only later growth, so
-   * remounting a reply never replays its reveal. The chat UI uses it.
-   */
+  // `'full'` paints the first target at once and animates only later growth, so remounting a reply never replays its reveal.
   initial?: 'zero' | 'full' | undefined;
-  /** Called whenever the shown text changes; the hook re-renders from it. */
   onChange?: (() => void) | undefined;
 }
 
-/**
- * The reveal itself: `text` is always a prefix of the target and grows every
- * frame until it equals it. The speed adapts to the backlog so each update clears
- * within ~350 ms, with a floor so a slow stream still moves. A target that no
- * longer starts with the shown text (the model restarted the cumulative reply)
- * resumes at the longest common prefix. Reduced motion shows the target at once.
- */
+// `text` is always a prefix of the target; the speed adapts to the backlog so each update clears within ~350 ms, with a floor.
+// A target that no longer starts with the shown text resumes at the longest common prefix; reduced motion shows the target at once.
 export class SmoothTextReveal {
   private target: string;
   private shown: string;
@@ -121,12 +98,7 @@ export class SmoothTextReveal {
     return this.text.length >= this.target.length;
   }
 
-  /**
-   * Applies `animate`/`reducedMotion` changes after construction. The caller's
-   * props can change (reduced motion can resolve, or a message can stop being a
-   * draft). Turning animation off shows the target at once; turning it on
-   * resumes the reveal from the current text.
-   */
+  // Turning animation off shows the target at once; turning it on resumes the reveal from the current text.
   setOptions(options: {
     animate?: boolean | undefined;
     reducedMotion?: boolean | undefined;
@@ -172,7 +144,6 @@ export class SmoothTextReveal {
     this.schedule();
   }
 
-  /** Shows the latest target at once (the page or app returned to the foreground). */
   snap(): void {
     if (this.disposed || !this.animate) {
       return;

@@ -1,19 +1,10 @@
-/**
- * Pure reducer for XEP-0308 corrections and XEP-0424 retractions.
- *
- * It is target-keyed like the reactions reducer: the store canonicalises every
- * target through its alias map before calling in, and updates that arrive
- * before their target message is loaded stay pending until the target shows up.
- */
+// Pure reducer for XEP-0308 corrections and XEP-0424 retractions; target-keyed, and updates that arrive before their target stay pending.
 import type { UiMessage } from './types';
 
-/** Sender-side edit window: only messages sent within this long can be edited. */
+// Sender-side edit window: 48 hours.
 export const EDIT_WINDOW_MS = 48 * 60 * 60 * 1000;
 
-/**
- * The sender-side edit limit: only my own text messages, within 48 hours.
- * Voice messages, images and cards cannot be edited.
- */
+// Only my own text messages, within 48 hours; voice, images and cards cannot be edited.
 export function canEditMessage(message: UiMessage, currentUserId: string, now: Date): boolean {
   return (
     message.senderId === currentUserId &&
@@ -26,36 +17,24 @@ export function canEditMessage(message: UiMessage, currentUserId: string, now: D
   );
 }
 
-/** The sender-side delete limit: my own messages of any kind, no time limit. */
+// My own messages of any kind, no time limit.
 export function canDeleteMessage(message: UiMessage, currentUserId: string): boolean {
   return message.senderId === currentUserId && message.deleted !== true;
 }
 
-/**
- * Whether a message can be named on the wire at all: reacting, editing and
- * deleting all carry the target's id in a stanza the other side must resolve.
- * A still-sending message has no server id yet, and a failed one never got
- * one, so the menu must not offer those actions (UI-7) instead of letting a
- * tap fail silently. The status tracks the wire state: once the ack lands the
- * status moves to `sent` even while the bubble keeps its optimistic id, so a
- * status check is the reliable signal here (a `local-*` prefix is not).
- */
+// A message can be named on the wire only once it has a server id: a still-sending or failed message has none.
+// The status is the reliable signal (the bubble keeps its optimistic id), so a `local-*` prefix is not.
 export function canAct(message: UiMessage): boolean {
   return message.status !== 'sending' && message.status !== 'failed' && message.failed !== true;
 }
 
-/** The author identity of a message, as far as it is known. */
 export interface EditAuthor {
-  /** Real bare JID when resolved, else the occupant JID. */
   jid: string;
-  /** True when `jid` is a real bare JID. */
   resolved: boolean;
   occupantId?: string;
-  /** MUC nickname, when the message came from a room. */
   nick?: string;
 }
 
-/** One XEP-0372 mention carried by a correction. UTF-16 offsets into the text. */
 export interface EditMention {
   jid: string;
   begin?: number;
@@ -64,12 +43,10 @@ export interface EditMention {
 
 export interface CorrectionUpdate {
   kind: 'correction';
-  /** Alias-resolved target message id. */
   targetId: string;
   author: EditAuthor;
-  /** The new full text. */
   text: string;
-  /** Stanza order: a larger value is newer and wins. */
+  // Stanza order: a larger value is newer and wins.
   order: number;
   mentions?: EditMention[];
 }
@@ -90,13 +67,9 @@ export interface CorrectionEntry {
 }
 
 export interface TargetEdits {
-  /** The original message's author, once its message has been seen. */
   author?: EditAuthor;
-  /** The latest authorized correction. */
   correction?: CorrectionEntry;
-  /** A retraction; it wins over everything, including later corrections. */
   retraction?: { order: number };
-  /** Updates that arrived before the target message was loaded. */
   pending: EditUpdate[];
 }
 
@@ -104,13 +77,10 @@ export interface EditsState {
   targets: Record<string, TargetEdits>;
 }
 
-/** The edit state of one message, ready to apply to its `UiMessage`. */
 export interface MessageEdits {
   edited: boolean;
   deleted: boolean;
-  /** The corrected text, when `edited` is true. */
   text?: string;
-  /** The latest correction's stanza time in ms, when `edited` is true. */
   editedAt?: number;
   mentions?: EditMention[];
 }
@@ -119,12 +89,7 @@ export function emptyEdits(): EditsState {
   return { targets: {} };
 }
 
-/**
- * The spec's authorization check: a correction or retraction counts only when
- * it comes from the original sender. A DM compares the bare JID; a group
- * compares the real JID when both sides are resolved, else the occupant-id,
- * else the nick.
- */
+// A correction or retraction counts only from the original sender: a DM compares the bare JID; a group compares the real JID, else occupant-id, else nick.
 export function isSameAuthor(original: EditAuthor, update: EditAuthor): boolean {
   if (original.resolved && update.resolved) {
     return original.jid === update.jid;
@@ -161,12 +126,7 @@ function withTarget(state: EditsState, targetId: string, entry: TargetEdits): Ed
   return { targets: { ...state.targets, [targetId]: entry } };
 }
 
-/**
- * Applies one correction or retraction. Without a known target author the
- * update is kept pending; with one, an update from any other author is ignored
- * and a retraction wins for good (later corrections and reactions never bring
- * the message back). The latest correction in stanza order wins.
- */
+// Without a known target author the update is kept pending; a retraction wins for good, and the latest correction in stanza order wins.
 export function applyEdit(state: EditsState, update: EditUpdate, target?: EditAuthor): EditsState {
   const existing = state.targets[update.targetId];
   if (existing?.retraction !== undefined) {
@@ -202,11 +162,7 @@ export function applyEdit(state: EditsState, update: EditUpdate, target?: EditAu
   return withTarget(state, update.targetId, { ...entry, author: target, correction });
 }
 
-/**
- * Learns the target's author and applies its pending updates in stanza order.
- * Called once the target message shows up in the store, so a correction read
- * from an older history page is not lost.
- */
+// Learns the target's author and applies its pending updates in stanza order.
 export function resolveEdits(state: EditsState, targetId: string, target: EditAuthor): EditsState {
   const entry = state.targets[targetId];
   if (entry === undefined) {
@@ -223,7 +179,6 @@ export function resolveEdits(state: EditsState, targetId: string, target: EditAu
   return next;
 }
 
-/** The edit state of one target message. */
 export function editsFor(state: EditsState, targetId: string): MessageEdits {
   const entry = state.targets[targetId];
   if (entry === undefined) {
@@ -257,10 +212,7 @@ function newerCorrection(
   return right.order > left.order ? right : left;
 }
 
-/**
- * Moves every entry stored under `from` onto `to`. Used when two message ids
- * turn out to be the same message (the optimistic local id and the server id).
- */
+// Used when two message ids turn out to be the same message (the optimistic local id and the server id).
 export function mergeEdits(state: EditsState, from: string, to: string): EditsState {
   if (from === to) return state;
   const source = state.targets[from];

@@ -1,8 +1,3 @@
-// Groups and channels (T-0124, T-0164): create, read, change members, role,
-// AIs and settings, and the open join of public groups. A channel is a group
-// with one feed. The detail fields an older server omitted stay optional, so
-// an older payload still parses.
-
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { CHAT_BACKGROUND_PRESET_IDS } from './chat-prefs';
@@ -27,7 +22,6 @@ const BackgroundPresetSchema = Schema.Literals(CHAT_BACKGROUND_PRESET_IDS);
 
 export type ListenerEagerness = (typeof LISTENER_EAGERNESS)[number];
 
-// Trimmed before the length checks, like zod's `.trim().min().max()`.
 const Title = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(100));
 const Description = Schema.Trim.check(Schema.isMaxLength(300));
 const Handle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
@@ -36,7 +30,7 @@ const MemberIds = Schema.Array(Schema.String.check(Schema.isMinLength(1))).check
   Schema.isMaxLength(GROUP_MEMBERS_MAX),
 );
 
-/** An omitted `memberIds` is an empty list; `kind`, `description`, `visibility` and `handle` are optional. */
+// An omitted `memberIds` is an empty list.
 export const CreateGroupPayload = Schema.Struct({
   title: Title,
   memberIds: Schema.optional(MemberIds),
@@ -46,7 +40,7 @@ export const CreateGroupPayload = Schema.Struct({
   handle: Schema.optional(Handle),
 });
 
-/** 1..50 non-empty user ids. */
+// 1..50 non-empty user ids.
 export const AddGroupMembersPayload = Schema.Struct({
   userIds: MemberIds.check(Schema.isMinLength(1)),
 });
@@ -57,12 +51,11 @@ export const AddGroupAiPayload = Schema.Struct({
 
 export const ChangeGroupRolePayload = Schema.Struct({ role: ChangeableRole });
 
-/** SG-4 (T-1187): the member the owner hands the group over to. */
 export const TransferGroupOwnerPayload = Schema.Struct({
   userId: Schema.String.check(Schema.isMinLength(1)),
 });
 
-/** Strict at the top level and on `background`: `undefined` keeps a field, `null` clears it. */
+// Strict at the top level and on `background`: `undefined` keeps a field, `null` clears it.
 export const GroupBackgroundPatch = Schema.Struct({
   backgroundPreset: Schema.optional(Schema.NullOr(BackgroundPresetSchema)),
   backgroundImageId: Schema.optional(Schema.NullOr(Handle)),
@@ -92,7 +85,6 @@ export const GroupMember = mutableStruct({
   userId: Schema.String,
   name: Schema.String,
   role: GroupMemberRole,
-  // The custom roles this member holds (T-0116); absent on older servers.
   roles: Schema.optional(
     Schema.mutable(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))),
   ),
@@ -112,7 +104,6 @@ export const GroupAi = mutableStruct({
 
 export type GroupAi = typeof GroupAi.Type;
 
-/** The group's shared background, set by owners and admins. */
 export const GroupBackground = Schema.Struct({
   backgroundPreset: Schema.NullOr(Schema.String),
   backgroundImageId: Schema.NullOr(Schema.String),
@@ -121,7 +112,7 @@ export const GroupBackground = Schema.Struct({
 
 export type GroupBackground = typeof GroupBackground.Type;
 
-/** `available` is the server's `LISTENER_ENABLED` flag: when false the controls stay disabled. */
+// `available` is the server's `LISTENER_ENABLED` flag: when false the controls stay disabled.
 export const GroupListener = Schema.Struct({
   enabled: Schema.Boolean,
   eagerness: ListenerEagernessSchema,
@@ -188,8 +179,7 @@ export const GroupsGroup = HttpApiGroup.make('groups')
       payload: TransferGroupOwnerPayload,
       success: GroupDetail,
     }).middleware(GroupsRoleRateLimit),
-    // T-1243: the owner deletes the group and everything under it. Answers 204
-    // with no body; a member or admin gets 403 and an unknown group a 404.
+    // A member or admin gets 403 and an unknown group a 404.
     HttpApiEndpoint.delete('deleteGroup', '/groups/:id', {
       params: GroupIdParams,
       success: HttpApiSchema.NoContent,

@@ -1,6 +1,5 @@
-// The audit read API (T-0079, T-0084): the audit rows of one group or one AI.
-// A request names exactly one of `groupId` / `aiId`; the handler answers 400
-// otherwise, because a query schema cannot express "one of two".
+// A request names exactly one of `groupId` / `aiId`; the handler answers 400 otherwise,
+// because a query schema cannot express "one of two".
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -8,8 +7,7 @@ import { AuditSchemaErrors, Session } from './middleware';
 
 export const MAX_AUDIT_LIST_LIMIT = 200;
 
-// `limit` travels as a string and decodes to a positive integer within range;
-// the query is strict, so an excess key is a 400.
+// `limit` travels as a string and decodes to a positive integer within range; the query is strict.
 export const ListAuditQuery = Schema.Struct({
   groupId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
   aiId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
@@ -22,12 +20,10 @@ export const ListAuditQuery = Schema.Struct({
   before: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
 });
 
-// Clients accept any object as `detail`, arrays included.
 const AuditDetail = Schema.declare(
   (value): value is Record<string, unknown> => typeof value === 'object' && value !== null,
 );
 
-/** The public shape of one audit row. */
 export const PublicAuditEntry = Schema.Struct({
   id: Schema.String,
   at: Schema.String,

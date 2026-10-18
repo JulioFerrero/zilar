@@ -1,18 +1,12 @@
-/**
- * Motion sniffing for picked sticker files: GIF, video (WebM/MP4/MOV),
- * animated WebP and APNG keep their motion, so a caller must not flatten
- * them to a still. The kind is read from the bytes only, never from the
- * name or type. Callers read at most the first `STICKER_SNIFF_BYTES` bytes
- * and hand that slice to `sniffMotionBytes`.
- */
+// The kind is read from the bytes only, never from the name or type; callers read at most the first `STICKER_SNIFF_BYTES` bytes.
 
 export type MotionKind = 'gif' | 'video' | 'animated-webp' | 'apng';
 
-/** The leading bytes a motion sniff reads (64 KiB). */
+// The leading bytes a motion sniff reads (64 KiB).
 export const STICKER_SNIFF_BYTES = 65536;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
-/** `ftyp` major brands that are still photos (HEIF/AVIF), never video. */
+// `ftyp` major brands that are still photos (HEIF/AVIF), never video.
 const STILL_FTYP_BRANDS = new Set([
   'avif',
   'avis',
@@ -39,9 +33,7 @@ export function sniffMotionBytes(bytes: Uint8Array): MotionKind | null {
   ) {
     return 'video';
   }
-  // An `ftyp` box also opens still HEIF/AVIF photos, so only a major brand
-  // outside the still set counts as video; the rest go down the still path,
-  // where the browser decodes them or reports them (T-1501 Review).
+  // Only a major brand outside the still set counts as video; the rest go down the still path.
   if (startsWithAscii(bytes, 4, 'ftyp')) {
     return STILL_FTYP_BRANDS.has(asciiAt(bytes, 8, 4)) ? null : 'video';
   }
@@ -54,7 +46,6 @@ export function sniffMotionBytes(bytes: Uint8Array): MotionKind | null {
   return null;
 }
 
-/** RIFF/WEBP with a VP8X chunk whose animation flag (0x02) is set. */
 function isAnimatedWebp(bytes: Uint8Array): boolean {
   return (
     bytes.length >= 21 &&
@@ -65,7 +56,6 @@ function isAnimatedWebp(bytes: Uint8Array): boolean {
   );
 }
 
-/** PNG signature, then chunks until an `acTL` (APNG) or the first `IDAT`. */
 function isApng(bytes: Uint8Array): boolean {
   if (bytes.length < PNG_SIGNATURE.length) {
     return false;

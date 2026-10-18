@@ -1,6 +1,4 @@
-// Custom group roles (T-0116): labels with two powers (private-topic access
-// and approver rights) that a group owner or admin hands to members. Reading
-// needs only membership; every write needs an owner or admin.
+// Reading needs only membership; every write needs an owner or admin.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -22,7 +20,7 @@ function hasControlCharacters(value: string): boolean {
   return false;
 }
 
-/** Trimmed before the checks: 1..30 characters, no control characters. */
+// Trimmed: 1..30 characters, no control characters.
 export const RoleName = Schema.Trim.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(ROLE_NAME_MAX),
@@ -31,11 +29,10 @@ export const RoleName = Schema.Trim.check(
   ),
 );
 
-// Both bodies are strict, so an excess key is a 400.
 export const CreateRolePayload = Schema.Struct({ name: RoleName });
 export const RenameRolePayload = Schema.Struct({ name: RoleName });
 
-/** Up to 50 non-empty user ids. */
+// Up to 50 non-empty user ids.
 export const SetRoleMembersPayload = Schema.Struct({
   userIds: Schema.mutable(Schema.Array(Schema.String.check(Schema.isMinLength(1)))).check(
     Schema.isMaxLength(ROLE_MEMBERS_MAX),
@@ -44,7 +41,6 @@ export const SetRoleMembersPayload = Schema.Struct({
 
 export const RoleMember = Schema.Struct({ userId: Schema.String, name: Schema.String });
 
-/** A role with its holders. The arrays are mutable in the type so a client can hand them on. */
 export const GroupRole = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

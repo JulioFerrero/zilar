@@ -1,14 +1,5 @@
-// GIF search, trending and the media proxy (T-0122, T-0586, T-0895). Every
-// media URL arrives as an opaque `mediaToken` minted for the caller; previews
-// and the send path load through the same-origin proxy
-// (`/api/gifs/media/:token`).
-//
-// `search` and `trending` declare their query keys as `RawQueryValue` (the
-// router accepts any string), because the server decodes the query by hand
-// inside the handler: the provider check and the limiter must run before the
-// decode (an invalid query still spends budget; the order is session, 501,
-// limiter, 400). `media` answers raw bytes with custom headers, so it declares
-// no success.
+// Every media URL arrives as an opaque `mediaToken` minted for the caller; previews and sends load through the same-origin proxy.
+// The query is decoded by hand so the provider check and limiter run before the decode (session, 501, limiter, 400).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
@@ -29,8 +20,6 @@ export const GifResult = Schema.Struct({
 export type GifResult = typeof GifResult.Type;
 
 export const GifResultPage = Schema.Struct({
-  // A client drops a malformed row and keeps the page; a `nextPos` of the
-  // wrong type reads as absent.
   items: lenientArray(GifResult),
   nextPos: LenientOptionalString,
 });
@@ -47,8 +36,7 @@ export const GifsGroup = HttpApiGroup.make('gifs')
       query: { pos: RawQueryValue },
       success: GifResultPage,
     }),
-    // The token is verified inside the handler so a bad token answers 404
-    // `not_found`, never a 400.
+    // The token is verified in the handler so a bad token answers 404 `not_found`, never a 400.
     HttpApiEndpoint.get('media', '/gifs/media/:token', {
       params: { token: Schema.String },
     }),
