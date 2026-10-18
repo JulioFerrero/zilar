@@ -3,51 +3,12 @@
 // segments are dropped, so no decoder dependency is needed. A structure the
 // walker cannot follow returns `null`, and the caller refuses the file rather
 // than storing bytes it could not clean.
+import { readU16BE, readU32BE, readU32LE, writeU32LE } from '../media-bytes';
 import type { ImageMime } from './sniff';
 
 const PNG_DROP = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt']);
 const JPEG_KEEP_APP = new Set([0xe0, 0xe2]);
 const WEBP_DROP = new Set(['EXIF', 'XMP ']);
-
-function readU16(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 2 > bytes.length) {
-    return null;
-  }
-  return bytes[offset]! * 0x100 + bytes[offset + 1]!;
-}
-
-function readU32BE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) {
-    return null;
-  }
-  return (
-    (bytes[offset]! * 0x1000000 +
-      bytes[offset + 1]! * 0x10000 +
-      bytes[offset + 2]! * 0x100 +
-      bytes[offset + 3]!) >>>
-    0
-  );
-}
-
-function readU32LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) {
-    return null;
-  }
-  return (
-    (bytes[offset]! +
-      bytes[offset + 1]! * 0x100 +
-      bytes[offset + 2]! * 0x10000 +
-      bytes[offset + 3]! * 0x1000000) >>>
-    0
-  );
-}
-
-function writeU32LE(bytes: Uint8Array, offset: number, value: number): void {
-  bytes[offset] = value & 0xff;
-  bytes[offset + 1] = (value >>> 8) & 0xff;
-  bytes[offset + 2] = (value >>> 16) & 0xff;
-  bytes[offset + 3] = (value >>> 24) & 0xff;
-}
 
 function fourcc(bytes: Uint8Array, offset: number): string | null {
   if (offset + 4 > bytes.length) {
@@ -182,7 +143,7 @@ function stripJpeg(bytes: Uint8Array): Uint8Array | null {
       parts.push(bytes.subarray(start, offset));
       continue;
     }
-    const length = readU16(bytes, offset);
+    const length = readU16BE(bytes, offset);
     if (length === null || length < 2 || offset + length > bytes.length) {
       return null;
     }

@@ -4,6 +4,7 @@
 // The type is detected from magic bytes — never from the client's
 // `Content-Type` or file name — and the width/height are parsed from the
 // headers by small pure functions, with no new dependency.
+import { readU16LE, readU24LE, readU32BE, readU32LE } from '../media-bytes';
 
 export const STICKER_MAX_BYTES = 512 * 1024;
 /** Cap on the raw upload, before an animated sticker is converted to WebP
@@ -78,7 +79,7 @@ export function isAnimatedPng(bytes: Uint8Array): boolean {
   let offset = 8;
   while (offset + 8 <= bytes.length) {
     const length = readU32BE(bytes, offset);
-    if (!Number.isSafeInteger(length) || length > bytes.length) {
+    if (length === null || !Number.isSafeInteger(length) || length > bytes.length) {
       return false;
     }
     const name = String.fromCharCode(
@@ -122,34 +123,6 @@ export function isWebp(bytes: Uint8Array): boolean {
   );
 }
 
-function readU32BE(bytes: Uint8Array, offset: number): number {
-  return (
-    (bytes[offset]! * 0x1000000 +
-      bytes[offset + 1]! * 0x10000 +
-      bytes[offset + 2]! * 0x100 +
-      bytes[offset + 3]!) >>>
-    0
-  );
-}
-
-function readU24LE(bytes: Uint8Array, offset: number): number {
-  return bytes[offset]! + bytes[offset + 1]! * 0x100 + bytes[offset + 2]! * 0x10000;
-}
-
-function readU16LE(bytes: Uint8Array, offset: number): number {
-  return bytes[offset]! + bytes[offset + 1]! * 0x100;
-}
-
-function readU32LE(bytes: Uint8Array, offset: number): number {
-  return (
-    (bytes[offset]! +
-      bytes[offset + 1]! * 0x100 +
-      bytes[offset + 2]! * 0x10000 +
-      bytes[offset + 3]! * 0x1000000) >>>
-    0
-  );
-}
-
 /** Validates sticker dimensions: integers in [1, 512] × [1, 512], and the
  *  decoded RGBA frame must fit in 4 MiB. */
 function checkDimensions(
@@ -180,7 +153,8 @@ function parsePng(
   if (bytes.length < 24) {
     return { ok: false, error: 'truncated' };
   }
-  if (readU32BE(bytes, 8) < 13) {
+  const ihdrLength = readU32BE(bytes, 8);
+  if (ihdrLength === null || ihdrLength < 13) {
     return { ok: false, error: 'truncated' };
   }
   if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) {
@@ -188,6 +162,9 @@ function parsePng(
   }
   const width = readU32BE(bytes, 16);
   const height = readU32BE(bytes, 20);
+  if (width === null || height === null) {
+    return { ok: false, error: 'truncated' };
+  }
   const checked = checkDimensions(width, height, limits);
   if (!checked.ok) {
     return checked;
@@ -218,8 +195,13 @@ function parseWebp(
     if (bytes[23] !== 0x9d || bytes[24] !== 0x01 || bytes[25] !== 0x2a) {
       return { ok: false, error: 'unsupported_layout' };
     }
-    const width = readU16LE(bytes, 26) & 0x3fff;
-    const height = readU16LE(bytes, 28) & 0x3fff;
+    const rawWidth = readU16LE(bytes, 26);
+    const rawHeight = readU16LE(bytes, 28);
+    if (rawWidth === null || rawHeight === null) {
+      return { ok: false, error: 'truncated' };
+    }
+    const width = rawWidth & 0x3fff;
+    const height = rawHeight & 0x3fff;
     const checked = checkDimensions(width, height, limits);
     if (!checked.ok) {
       return checked;
@@ -238,6 +220,9 @@ function parseWebp(
       return { ok: false, error: 'unsupported_layout' };
     }
     const bits = readU32LE(bytes, 21);
+    if (bits === null) {
+      return { ok: false, error: 'truncated' };
+    }
     const width = (bits & 0x3fff) + 1;
     const height = ((bits >> 14) & 0x3fff) + 1;
     const checked = checkDimensions(width, height, limits);
@@ -253,8 +238,13 @@ function parseWebp(
     if (bytes.length < 30) {
       return { ok: false, error: 'truncated' };
     }
-    const width = readU24LE(bytes, 24) + 1;
-    const height = readU24LE(bytes, 27) + 1;
+    const rawWidth = readU24LE(bytes, 24);
+    const rawHeight = readU24LE(bytes, 27);
+    if (rawWidth === null || rawHeight === null) {
+      return { ok: false, error: 'truncated' };
+    }
+    const width = rawWidth + 1;
+    const height = rawHeight + 1;
     const checked = checkDimensions(width, height, limits);
     if (!checked.ok) {
       return checked;

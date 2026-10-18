@@ -3,6 +3,7 @@
 // alone (no decode), so an oversized or decompression-bomb image is refused
 // before it can reach a phone. `sniffFile` accepts PDF and plain text only.
 import { isUtf8 } from 'node:buffer';
+import { readU16BE, readU16LE, readU24LE, readU32BE, readU32LE } from '../media-bytes';
 import { isPng, isWebp } from '../stickers/image';
 
 export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp';
@@ -23,53 +24,6 @@ function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
     return false;
   }
   return magic.every((value, index) => bytes[index] === value);
-}
-
-function readU16BE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 2 > bytes.length) {
-    return null;
-  }
-  return bytes[offset]! * 0x100 + bytes[offset + 1]!;
-}
-
-function readU16LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 2 > bytes.length) {
-    return null;
-  }
-  return bytes[offset]! + bytes[offset + 1]! * 0x100;
-}
-
-function readU24LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 3 > bytes.length) {
-    return null;
-  }
-  return bytes[offset]! + bytes[offset + 1]! * 0x100 + bytes[offset + 2]! * 0x10000;
-}
-
-function readU32BE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) {
-    return null;
-  }
-  return (
-    (bytes[offset]! * 0x1000000 +
-      bytes[offset + 1]! * 0x10000 +
-      bytes[offset + 2]! * 0x100 +
-      bytes[offset + 3]!) >>>
-    0
-  );
-}
-
-function readU32LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) {
-    return null;
-  }
-  return (
-    (bytes[offset]! +
-      bytes[offset + 1]! * 0x100 +
-      bytes[offset + 2]! * 0x10000 +
-      bytes[offset + 3]! * 0x1000000) >>>
-    0
-  );
 }
 
 // PNG: 8-byte signature, then the first chunk must be IHDR, whose payload
