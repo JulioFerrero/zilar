@@ -15,11 +15,11 @@ in one Service keeps their data and network untouched.
 
 ## The three resources
 
-| Resource       | Kind                                                       | Image                                                        | Route                                   | Internal port   | Strip prefix                                   | Health check                       |
-| -------------- | ---------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------- | --------------- | ---------------------------------------------- | ---------------------------------- |
-| `zilar-core`   | Service (Docker Compose = `deploy/coolify/zilar-core.yml`) | `ghcr.io/<owner>/zilar-{postgres,ejabberd,desk-agent}:<tag>` | `/xmpp-ws`, `/upload` on `ZILAR_DOMAIN` | 5280 (ejabberd) | `/xmpp-ws` on, `/upload` off (see "To verify") | per component, in the Compose file |
-| `zilar-server` | Application, Image                                         | `ghcr.io/<owner>/zilar-server:<tag>`                         | `/api` on `ZILAR_DOMAIN`                | 3000            | **off** (`/api/...` must reach the app)        | `GET /health` on 3000              |
-| `zilar-web`    | Application, Image                                         | `ghcr.io/<owner>/zilar-web:<tag>`                            | `/` on `ZILAR_DOMAIN`                   | 80              | n/a                                            | `GET /` on 80                      |
+| Resource       | Kind                                                       | Image                                                        | Route                                       | Internal port   | Strip prefix                                      | Health check                       |
+| -------------- | ---------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------- | --------------- | ------------------------------------------------- | ---------------------------------- |
+| `zilar-core`   | Service (Docker Compose = `deploy/coolify/zilar-core.yml`) | `ghcr.io/<owner>/zilar-{postgres,ejabberd,desk-agent}:<tag>` | `/xmpp-ws/ws`, `/upload/` on `ZILAR_DOMAIN` | 5280 (ejabberd) | labels: `/xmpp-ws` on, `/upload/` off (see below) | per component, in the Compose file |
+| `zilar-server` | Application, Image                                         | `ghcr.io/<owner>/zilar-server:<tag>`                         | `/api`, `/health` on `ZILAR_DOMAIN`         | 3000            | **off**, via custom labels                        | `GET /health` on 3000              |
+| `zilar-web`    | Application, Image                                         | `ghcr.io/<owner>/zilar-web:<tag>`                            | `/` on `ZILAR_DOMAIN`                       | 80              | n/a                                               | `GET /` on 80                      |
 
 `<owner>`/`<tag>` are `IMAGE_OWNER`/`IMAGE_TAG` (defaults `julioferrero`,
 `latest`). All three read the same `ZILAR_DOMAIN`; it is the host in
@@ -31,22 +31,27 @@ exactly one public host.
 - **Source:** the Coolify **Service** created from `deploy/coolify/zilar-core.yml`
   (Docker Compose). Components: `postgres`, `ejabberd`, `desk-agent` and
   `desk-egress`.
-- **Domain:** the generated domain is on the `ejabberd` component, port 5280,
-  path `/xmpp-ws`. The second path `/upload` is added to the same component's
-  **Domains** field after parsing (Coolify documents one path suffix per
-  `SERVICE_URL_*` variable, and the Domains field as the way to change a
-  component's domains). Both are unverified — see the last section.
+- **Domain:** the routes come from the Traefik labels on the `ejabberd`
+  component in `zilar-core.yml`, not from a `SERVICE_URL_*` variable, so the
+  component has **no Domains entry** and nothing to fix after parsing:
+  `zilar-xmpp-ws` routes the exact path `/xmpp-ws/ws` (stripped to `/ws` by
+  the `zilar-xmpp-strip` middleware) and `zilar-upload` routes `/upload/`
+  with no stripping. Two `http` routers redirect both paths to https.
+  Because the WebSocket rule is an exact `Path`, no other `/xmpp-ws/*` path
+  is routed (ejabberd's admin API at `/api` stays private).
 - **Reaches:** its own components by Compose service name (`postgres`,
-  `ejabberd`).
+  `ejabberd`). ejabberd's SQL host is `CORE_POSTGRES_HOST`: on Coolify's
+  shared `coolify` network the name `postgres` is an alias of Coolify's own
+  database, so ejabberd must dial `postgres-<core uuid>` instead.
 - **Reached by:** `zilar-server` (and `zilar-web`, if it ever needs them) as
   `postgres-<core uuid>` and `ejabberd-<core uuid>` — the container names
   Coolify gives a Service component — with **Connect to predefined network**
   on. It must be on before `zilar-server` starts.
 - **Volumes:** `postgres-data`, `ejabberd-database`, `ejabberd-uploads`,
-  `sticker-data`, `avatar-data`, `desk-socket`, `desk-egress-socket`. The last
-  four are declared here so the live data keeps its name across the cutover;
-  `sticker-data` and `avatar-data` are mounted by `zilar-server`, not by a
-  service in this file (see the volume note under "To verify").
+  `desk-socket` (external, named by `SERVER_DESK_SOCKET_VOLUME`) and
+  `desk-egress-socket`. `sticker-data` and `avatar-data` are **not** declared
+  here: an App cannot mount a Service's named volume, so they are the
+  `zilar-server` App's own persistent storages (see below).
 - **stop_grace_period:** `ejabberd` 20s (in the Compose file). The other
   components are single-process and exit at once.
 - **Desks:** `desk-agent` and `desk-egress` run in this Service always and stay
@@ -56,15 +61,46 @@ exactly one public host.
 ### zilar-server
 
 - **Image:** `ghcr.io/<owner>/zilar-server:<tag>`, internal port **3000**.
-- **Domain and path:** `https://ZILAR_DOMAIN/api`, **strip prefix off** (the
-  app serves `/api/...`; the spike showed Coolify strips by default and the
-  server app must turn it off).
+- **Domain and path:** `https://ZILAR_DOMAIN/api` and `/health`, **strip prefix
+  off** (the app serves `/api/...`; the spike showed Coolify strips by default,
+  and its API cannot turn that off). The App's `custom_labels` therefore carry
+  the routers themselves, without a `stripprefix` middleware; the rehearsal
+  used this list and `/api/...` arrived unchanged:
+
+  ```yaml
+  traefik.enable: 'true'
+  traefik.docker.network: coolify
+  traefik.http.services.zilar-server.loadbalancer.server.port: '3000'
+  traefik.http.middlewares.zilar-gzip.compress: 'true'
+  traefik.http.middlewares.zilar-https-redirect.redirectscheme.scheme: https
+  traefik.http.routers.zilar-server-api.rule: Host(`ZILAR_DOMAIN`) && PathPrefix(`/api`)
+  traefik.http.routers.zilar-server-api.entrypoints: https
+  traefik.http.routers.zilar-server-api.tls: 'true'
+  traefik.http.routers.zilar-server-api.tls.certresolver: letsencrypt
+  traefik.http.routers.zilar-server-api.middlewares: zilar-gzip
+  traefik.http.routers.zilar-server-health.rule: Host(`ZILAR_DOMAIN`) && Path(`/health`)
+  traefik.http.routers.zilar-server-health.entrypoints: https
+  traefik.http.routers.zilar-server-health.tls: 'true'
+  traefik.http.routers.zilar-server-health.tls.certresolver: letsencrypt
+  traefik.http.routers.zilar-server-health.middlewares: zilar-gzip
+  traefik.http.routers.zilar-server-api-http.rule: Host(`ZILAR_DOMAIN`) && PathPrefix(`/api`)
+  traefik.http.routers.zilar-server-api-http.entrypoints: http
+  traefik.http.routers.zilar-server-api-http.middlewares: zilar-https-redirect
+  traefik.http.routers.zilar-server-health-http.rule: Host(`ZILAR_DOMAIN`) && Path(`/health`)
+  traefik.http.routers.zilar-server-health-http.entrypoints: http
+  traefik.http.routers.zilar-server-health-http.middlewares: zilar-https-redirect
+  ```
+
 - **Health check:** Coolify runs it inside the container, so
   `wget -qO- http://127.0.0.1:3000/health` (the image is `node:alpine`, so
   busybox `wget` is present; the Dockerfile's own `HEALTHCHECK` uses `node`).
-- **Volumes:** mount the named volumes `sticker-data` → `/data/stickers` and
-  `avatar-data` → `/data/avatars`; also `desk-socket` → `/run/zilar` (the
-  server reaches `desk-agent` at the fixed `/run/zilar/desk.sock`).
+- **Volumes:** three persistent storages created on the App itself, not named
+  volumes from the core: `sticker-data` → `/data/stickers`, `avatar-data` →
+  `/data/avatars`, and `desk-socket` → `/run/zilar` (the server reaches
+  `desk-agent` at the fixed `/run/zilar/desk.sock`). Coolify names an App's
+  storage `<app uuid>-<name>`, so the third is the volume the core mounts as
+  `SERVER_DESK_SOCKET_VOLUME`. A `-v` in the App's custom Docker run options
+  is ignored: the storage has to be created in the App.
 - **Reaches:** `postgres-<core uuid>` and `ejabberd-<core uuid>`
   (`DATABASE_URL`, `XMPP_ARCHIVE_DATABASE_URL`, `EJABBERD_API_URL`,
   `PUSH_COMPONENT_HOST`), with **Connect to predefined network** on.
@@ -78,7 +114,7 @@ exactly one public host.
 
 - **Image:** `ghcr.io/<owner>/zilar-web:<tag>`, internal port **80**.
 - **Domain and path:** `https://ZILAR_DOMAIN/` (path `/`; strip prefix does not
-  matter). Traefik's longest path wins, so `/api`, `/xmpp-ws` and `/upload`
+  matter). Traefik's longest path wins, so `/api`, `/xmpp-ws/ws` and `/upload/`
   still reach the server and ejabberd, not this app.
 - **Health check:** `wget --no-verbose --tries=1 --spider http://127.0.0.1/`
   inside the container (the image is `caddy:alpine`, so `wget` is present).
@@ -86,24 +122,42 @@ exactly one public host.
 - **Environment:** none. The Caddy config is baked into the image and its
   public host comes from the App domain, so unlike the old `SERVICE_URL_WEB_80`
   there is nothing to set.
-- **Reaches:** nobody once Traefik routes `/api`, `/xmpp-ws` and `/upload`
+- **Reaches:** nobody once Traefik routes `/api`, `/xmpp-ws/ws` and `/upload/`
   itself (see "The web app and its Caddy").
 - **stop_grace_period:** about 20s, for the same drain reason.
 - **Deploys:** CI calls `POST /deploy` for this App after it publishes a new
   `zilar-web` image tag; like `zilar-server` it has no watch paths.
 
+## Order of creation
+
+1. Create the `zilar-server` App with its **3 persistent storages** and deploy
+   it once. It turns unhealthy without a database, but the storages now exist
+   under their `<app uuid>-<name>` names.
+2. Create `zilar-core` from `deploy/coolify/zilar-core.yml` with
+   `CORE_POSTGRES_HOST` and `SERVER_DESK_SOCKET_VOLUME` set and **Connect to
+   predefined network** on, then deploy it.
+3. Redeploy `zilar-server`: it now reaches the core's postgres and becomes
+   healthy.
+4. Create and deploy `zilar-web`.
+
+On the live host, stop and remove the old compose app (which owns `desk-net`)
+before `zilar-core` starts: the network has a fixed name and cannot be adopted
+twice.
+
 ## Routing (Traefik)
 
-| Public path | Reaches                     | Strip prefix | Why                                                                                                                  |
-| ----------- | --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `/`         | `zilar-web:80`              | n/a          | static build and SPA fallback                                                                                        |
-| `/api`      | `zilar-server:3000`         | **off**      | the server serves `/api/...`                                                                                         |
-| `/xmpp-ws`  | `ejabberd-<core uuid>:5280` | **on**       | ejabberd answers `/ws` (`request_handlers` in `deploy/ejabberd/ejabberd.yml`), so `/xmpp-ws/ws` must arrive as `/ws` |
-| `/upload`   | `ejabberd-<core uuid>:5280` | **off**      | `mod_http_upload` serves `/upload/...` as written                                                                    |
-| `/health`   | `zilar-server:3000`         | **off**      | the installer routes its install/uptime check to the server                                                          |
+| Public path   | Reaches                     | Strip prefix | Why                                                                                                                  |
+| ------------- | --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `/`           | `zilar-web:80`              | n/a          | static build and SPA fallback                                                                                        |
+| `/api`        | `zilar-server:3000`         | **off**      | the server serves `/api/...`                                                                                         |
+| `/xmpp-ws/ws` | `ejabberd-<core uuid>:5280` | **on**       | ejabberd answers `/ws` (`request_handlers` in `deploy/ejabberd/ejabberd.yml`), so `/xmpp-ws/ws` must arrive as `/ws` |
+| `/upload/`    | `ejabberd-<core uuid>:5280` | **off**      | `mod_http_upload` serves `/upload/...` as written                                                                    |
+| `/health`     | `zilar-server:3000`         | **off**      | the installer routes its install/uptime check to the server                                                          |
 
-The paths `/api`, `/xmpp-ws`, `/upload` are exact enough for the apps behind
-them because they existed the same way in `apps/web/Caddyfile`.
+The paths `/api`, `/xmpp-ws/ws` and `/upload/` are exact enough for the apps
+behind them because they existed the same way in `apps/web/Caddyfile`. The
+WebSocket router is an exact `Path`, so every other `/xmpp-ws/*` request has no
+route (404), as the Caddy file did.
 
 ## Deploys from CI
 
@@ -165,16 +219,18 @@ carry a different name on the resource: `ARCHIVE_DB_PASSWORD` is
 | `EJABBERD_MACRO_MUC_HOST`              | zilar-core (ejabberd)                                                      | derived (`rooms.ZILAR_DOMAIN`)                                                                                 |
 | `EJABBERD_MACRO_ADMIN`                 | zilar-core (ejabberd)                                                      | derived (`admin@ZILAR_DOMAIN`)                                                                                 |
 | `EJABBERD_MACRO_SQL_PASSWORD`          | zilar-core (ejabberd)                                                      | generated (same value as `EJABBERD_DB_PASSWORD`)                                                               |
+| `EJABBERD_MACRO_SQL_SERVER`            | zilar-core (ejabberd)                                                      | derived (same value as `CORE_POSTGRES_HOST`; ejabberd's config defaults it to `postgres`)                      |
+| `CORE_POSTGRES_HOST`                   | zilar-core (ejabberd)                                                      | derived (`postgres-<core uuid>`)                                                                               |
 | `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` | zilar-core (ejabberd)                                                      | generated (same value as `PUSH_COMPONENT_SECRET`)                                                              |
 | `EJABBERD_MACRO_UPLOAD_URL`            | zilar-core (ejabberd)                                                      | derived (`https://ZILAR_DOMAIN/upload`)                                                                        |
 | `EJABBERD_ADMIN_PASSWORD`              | zilar-core (ejabberd), zilar-server                                        | generated                                                                                                      |
 | `ZILAR_XMPP_JWT_SECRET`                | zilar-core (ejabberd), zilar-server                                        | generated (installer's `XMPP_JWT_SECRET`)                                                                      |
-| `SERVICE_URL_EJABBERD_5280`            | zilar-core (ejabberd)                                                      | fixed path `/xmpp-ws` (Coolify magic variable; the `/upload` path is added in the component's Domains field)   |
 | `DESK_RUNTIME`                         | zilar-core (desk-agent)                                                    | user-given (optional, default `runsc`)                                                                         |
 | `DESK_MAX_RUNNING`                     | zilar-core (desk-agent)                                                    | user-given (optional, default `12`)                                                                            |
 | `DESK_IMAGE_OWNER`                     | zilar-core (desk-agent)                                                    | fixed (derived from `IMAGE_OWNER`, default `julioferrero`)                                                     |
 | `DESK_IMAGE_TAG`                       | zilar-core (desk-agent)                                                    | fixed (derived from `IMAGE_TAG`, default `latest`)                                                             |
 | `DESK_IMAGE`                           | zilar-core (desk-agent), zilar-server                                      | user-given (optional override: a jail image pinned by digest; empty follows the release)                       |
+| `SERVER_DESK_SOCKET_VOLUME`            | zilar-core (desk-agent)                                                    | derived (`<server app uuid>-desk-socket`, the server App's storage volume)                                     |
 | `DESK_AGENT_SOCKET`                    | zilar-core (desk-agent), zilar-server                                      | fixed `/run/zilar/desk.sock`                                                                                   |
 | `DESK_NETWORK`                         | zilar-core (desk-agent)                                                    | fixed `desk-net`                                                                                               |
 | `DESK_CGROUP_PARENT`                   | zilar-core (desk-agent)                                                    | fixed `zilar-desks.slice`                                                                                      |
@@ -237,7 +293,7 @@ single entry point: it forwarded `/api` and `/health` to the server, and
 `/xmpp-ws/ws` (404 for every other `/xmpp-ws/*`, to keep ejabberd's admin REST
 API private) and `/upload/*` to ejabberd.
 
-After the split, Traefik sends `/api`, `/xmpp-ws` and `/upload` straight to
+After the split, Traefik sends `/api`, `/xmpp-ws/ws` and `/upload/` straight to
 `zilar-server` and `ejabberd`, so the web container only ever serves `/`,
 `/assets/*`, `/install.sh` and the SPA fallback. The forwarding blocks in
 `apps/web/Caddyfile` become unreachable — and would **502** if they were ever
@@ -250,47 +306,45 @@ create body carries `/api` and `/health`), so the install's
 `https://ZILAR_DOMAIN/health` wait reaches the server rather than the web App
 (see the table above).
 
-## To verify in the rehearsal (plan step 7)
+## Rehearsal findings (2026-10-18, plan step 7)
 
-1. **Two paths for one Service component.** Coolify documents one path suffix
-   per `SERVICE_URL_*` variable; confirm the `/upload` path can be added to the
-   `ejabberd` component's **Domains** field next to the `/xmpp-ws` path from
-   the Compose file, and survives the next save/parse.
-2. **Strip prefix, per path.** `/xmpp-ws/ws` must arrive at ejabberd as `/ws`
-   (strip on) and `/upload/...` must arrive unchanged (strip off). Confirm the
-   two paths can carry opposite strip settings. If a Service cannot, the
-   fallback is to keep `/upload` proxied by the web App's Caddy (its
-   `/upload/*` block already forwards to ejabberd without stripping).
-3. **The /xmpp-ws admin API.** `apps/web/Caddyfile` answers 404 for every
-   `/xmpp-ws/*` path except `/xmpp-ws/ws`, because ejabberd's `mod_http_api`
-   lives at `/api` on the same 5280 listener (SEC-2). Routing the prefix
-   `/xmpp-ws` to ejabberd would expose `/xmpp-ws/api/...` as `/api/...`. Check
-   that `/xmpp-ws/api` is not reachable after the cutover; if it is, tighten
-   the route or keep the WebSocket proxied by the web App's Caddy.
-4. **Cross-resource volumes.** Confirm `zilar-server` can mount the core
-   Service's `sticker-data` and `avatar-data` (a Dockerfile App mounting an
-   existing named volume, per the zero-downtime plan's spike list), and that
-   the same trick shares `desk-socket` so the server reaches `desk-agent` when
-   desks are on.
-5. **Path priorities.** `/` on `zilar-web`, `/api` on `zilar-server` and the
-   two ejabberd paths on one host: confirm each path reaches its own app and
-   nothing falls through to web.
-6. **`/health` after the split** (routing table above): the installer now routes
-   it to `zilar-server` (the App's create body carries `/api` and `/health`).
-   Confirm the rehearsal reaches the server on both `https://ZILAR_DOMAIN/api/...`
-   and `https://ZILAR_DOMAIN/health`.
-7. **Container-internal health checks.** The spike showed Coolify checks health
-   with `curl`/`wget` inside the container; both images ship `wget`, but confirm
-   the health check path/port Coolify runs for each App.
-8. **Cross-resource DNS.** `zilar-server` resolves `postgres-<core uuid>` and
-   `ejabberd-<core uuid>` after **Connect to predefined network** is on for
-   both, and reconnects after a core Service restart.
-9. **The server drain.** Re-run the spike's rolling-update test with the 5 s
-   SIGTERM drain so the server App's deploy loses no requests.
-10. **Desk services run everywhere.** Confirm the core Service starts
-    `desk-agent` and `desk-egress` without a profile, that they stay idle (no
-    running jails) until the host prep has run, and that computers then turn
-    on within about a minute with no redeploy.
-11. **Deploys.** CI's `POST /deploy` rebuilds only `zilar-server` or
-    `zilar-web` (whichever image it published), and neither restarts
-    `zilar-core`.
+The lead rehearsed this layout on a throwaway Coolify 4.4.6 project. Rolling
+deploys of `zilar-server` and `zilar-web` lost **0 API requests**. What the
+rehearsal settled:
+
+1. **Strip prefix is per component, not per path.** With one
+   `SERVICE_URL_*` path plus `/upload` added in the Domains field, both paths
+   shared the component's strip flag: `/upload/...` arrived stripped and
+   404'd. The fix is explicit labels with one router per path, as in
+   `zilar-core.yml`.
+2. **The WebSocket.** `/xmpp-ws/ws` upgraded fine (101) through the strip
+   middleware. The router is an exact `Path`, so no other `/xmpp-ws/*` request
+   is routed (404).
+3. **The admin API.** Under the prefix route `/xmpp-ws/api/status` reached
+   ejabberd's admin API (403 from ejabberd's own permissions). It must not be
+   reachable at all; the exact `Path` rule above does that.
+4. **Volumes.** An App cannot mount a Service's named volume, and a `-v` in
+   the App's custom Docker run options is ignored: an App's storage is
+   `<app uuid>-<name>`. So `sticker-data` and `avatar-data` are the server
+   App's storages, and `desk-socket` is declared `external` in the core with
+   `SERVER_DESK_SOCKET_VOLUME` naming that App's storage volume.
+5. **The name clash.** On the shared `coolify` network `postgres` is an alias
+   of Coolify's own database (`coolify-db`), so ejabberd's default SQL host
+   failed. `CORE_POSTGRES_HOST=postgres-<core uuid>` fixed it (`/health`
+   showed `ejabberd: ok`).
+6. **Cross-resource DNS and the server's strip prefix.** `zilar-server`
+   resolved `postgres-<core uuid>` and `ejabberd-<core uuid>`. Its strip
+   prefix cannot be turned off through Coolify's API, so the App's
+   `custom_labels` carry the routers above; `/api/...` arrived unchanged.
+7. **Desks.** gVisor is installed in production and 2 jails run: the
+   `desk-agent`/`desk-egress` pair and the `desk-net` network are live
+   concerns, not optional.
+
+### Still open
+
+- **Re-rehearse these files.** The label sets, the external `desk-socket` and
+  the order of creation above are written from the rehearsal but have not
+  been rehearsed as written.
+- **`ejabberdSchema: "drift"` on a fresh database.** Check `GET /health`
+  after the cutover: a fresh postgres should report `"ejabberdSchema":"ok"`;
+  `drift` means the archive tables do not match the committed list.

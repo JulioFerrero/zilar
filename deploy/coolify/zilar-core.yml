@@ -22,15 +22,17 @@
 # - the public host is the plain variable ZILAR_DOMAIN, not SERVICE_FQDN_WEB;
 # - only the stateful services live here; `server` and `web` moved to their own
 #   Applications (see LAYOUT.md);
-# - the sticker-data and avatar-data volumes stay declared (the zilar-server
-#   app mounts them), even though no service in this file uses them yet.
+# - the sticker-data and avatar-data volumes are gone: they are the
+#   zilar-server App's own persistent storages now, and desk-socket is an
+#   external volume naming that App's storage (see the volumes block);
 # Everything else (environment, volumes, health checks, networks) is copied
 # from that file unchanged.
 #
 # Coolify conventions used (https://coolify.io/docs/services/configuration/docker-compose):
 # - `${VAR:-default}` supplies a fallback.
-# - `SERVICE_URL_<SERVICE>_<PORT>` (with an optional path suffix) asks Coolify
-#   to generate a domain for that Compose service on that internal port.
+# - the public routes are explicit Traefik labels on ejabberd rather than a
+#   `SERVICE_URL_*` variable: a Service applies one strip-prefix flag per
+#   component, not per path, and /xmpp-ws/ws and /upload/ need opposite ones.
 # - Components in one stack reach each other by Compose service name; from
 #   another resource use `<service>-<this resource uuid>` (LAYOUT.md).
 # - Health checks live in Compose (Services have no separate health-check UI).
@@ -85,6 +87,13 @@ services:
       # `ejabberdctl register ... <password>` command line into the log.
       EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD}
+      # T-1939: the SQL host. ejabberd's config defaults SQL_SERVER to
+      # `postgres`, but on Coolify's shared `coolify` network that name is an
+      # alias of Coolify's own database (`coolify-db`), so the login fails and
+      # ejabberd stays down. Set CORE_POSTGRES_HOST to `postgres-<core uuid>`
+      # (the container name Coolify gives this Service's postgres component);
+      # the fallback only fits a plain local compose run.
+      EJABBERD_MACRO_SQL_SERVER: ${CORE_POSTGRES_HOST:-postgres}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal zilar-server's PUSH_COMPONENT_SECRET.
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET}
@@ -95,17 +104,42 @@ services:
       ZILAR_DOMAIN: ${ZILAR_DOMAIN}
       ZILAR_XMPP_JWT_SECRET: ${XMPP_JWT_SECRET}
       EJABBERD_MACRO_UPLOAD_URL: https://${ZILAR_DOMAIN}/upload
-      # T-1584: the public path Traefik sends straight to ejabberd: the
-      # WebSocket. ejabberd answers it at /ws (request_handlers in
-      # deploy/ejabberd/ejabberd.yml), and Coolify strips the path prefix, so
-      # /xmpp-ws/ws arrives as /ws, exactly like apps/web/Caddyfile today.
-      # The second path (/upload) cannot be a second SERVICE_URL_* suffix;
-      # per the Coolify docs it goes in the ejabberd component's Domains field
-      # after parsing. Both paths, and the strip-prefix question they raise,
-      # are "to verify" items in LAYOUT.md.
-      SERVICE_URL_EJABBERD_5280: /xmpp-ws
+      # T-1584/T-1939: the public paths Traefik sends straight to ejabberd.
+      # Routing is explicit in the `labels` below, not a SERVICE_URL_* magic
+      # variable: Coolify applies one strip-prefix flag per component and not
+      # per path, so /xmpp-ws/ws (which must arrive as /ws) and /upload/
+      # (which must arrive unchanged) cannot share one SERVICE_URL_* value.
     expose:
       - '5280'
+    labels:
+      # The WebSocket: ejabberd answers it at /ws (request_handlers in
+      # deploy/ejabberd/ejabberd.yml), so only the exact path /xmpp-ws/ws is
+      # routed and only it is stripped. A prefix route would expose
+      # /xmpp-ws/api/... as ejabberd's admin API (/api on the same listener).
+      traefik.enable: 'true'
+      traefik.docker.network: coolify
+      traefik.http.services.zilar-ejabberd.loadbalancer.server.port: '5280'
+      traefik.http.middlewares.zilar-xmpp-strip.stripprefix.prefixes: /xmpp-ws
+      traefik.http.routers.zilar-xmpp-ws.rule: Host(`${ZILAR_DOMAIN}`) && Path(`/xmpp-ws/ws`)
+      traefik.http.routers.zilar-xmpp-ws.entrypoints: https
+      traefik.http.routers.zilar-xmpp-ws.tls: 'true'
+      traefik.http.routers.zilar-xmpp-ws.tls.certresolver: letsencrypt
+      traefik.http.routers.zilar-xmpp-ws.middlewares: zilar-xmpp-strip
+      # Uploads: mod_http_upload serves /upload/... as written, so this router
+      # has no stripprefix middleware.
+      traefik.http.routers.zilar-upload.rule: Host(`${ZILAR_DOMAIN}`) && PathPrefix(`/upload/`)
+      traefik.http.routers.zilar-upload.entrypoints: https
+      traefik.http.routers.zilar-upload.tls: 'true'
+      traefik.http.routers.zilar-upload.tls.certresolver: letsencrypt
+      # Plain http on both paths redirects to https instead of reaching
+      # ejabberd unencrypted.
+      traefik.http.middlewares.zilar-https-redirect.redirectscheme.scheme: https
+      traefik.http.routers.zilar-xmpp-ws-http.rule: Host(`${ZILAR_DOMAIN}`) && Path(`/xmpp-ws/ws`)
+      traefik.http.routers.zilar-xmpp-ws-http.entrypoints: http
+      traefik.http.routers.zilar-xmpp-ws-http.middlewares: zilar-https-redirect
+      traefik.http.routers.zilar-upload-http.rule: Host(`${ZILAR_DOMAIN}`) && PathPrefix(`/upload/`)
+      traefik.http.routers.zilar-upload-http.entrypoints: http
+      traefik.http.routers.zilar-upload-http.middlewares: zilar-https-redirect
     volumes:
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
@@ -216,13 +250,16 @@ volumes:
   postgres-data:
   ejabberd-database:
   ejabberd-uploads:
-  # Sticker files (STICKER_STORAGE_DIR=/data/stickers on zilar-server).
-  sticker-data:
-  # Profile pictures and backgrounds (AVATAR_STORAGE_DIR=/data/avatars on
-  # zilar-server): mounted by that app, not by a service in this file, so the
-  # data survives the cutover and every later server replace.
-  avatar-data:
+  # T-1939: sticker-data and avatar-data are not declared here any more. An
+  # App cannot mount a Service's named volume: persistent storage belongs to
+  # the App that uses it, so zilar-server owns both (`<app uuid>-<name>`) and
+  # this Service never creates them.
   # The desk-agent unix socket, shared with zilar-server (DESK_AGENT_SOCKET).
+  # T-1939: it is the zilar-server App's own storage volume, so it already
+  # exists with the App's own name (`<server app uuid>-desk-socket`); declare
+  # that name as external instead of letting Compose create a core-owned one.
   desk-socket:
+    external: true
+    name: ${SERVER_DESK_SOCKET_VOLUME:?SERVER_DESK_SOCKET_VOLUME is required}
   # The egress policy registry socket, shared by desk-agent and desk-egress.
   desk-egress-socket:
