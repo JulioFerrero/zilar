@@ -1955,3 +1955,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1944](T-1944-token-during-boot.md) | the XMPP token is fetched beside the boot fetches | 2026-10-18 |
 | [T-1946](T-1946-phone-emoji-panel.md) | phone emoji panel: one scroll, category bar follows | 2026-10-18 |
 | [T-1947](T-1947-ui-consistency-audit.md) | UI consistency audit and fix batches (docs) | 2026-10-18 |
+| [T-1948](T-1948-phone-screen-header.md) | phone ScreenHeader: same root titles and sub headers | 2026-10-18 |

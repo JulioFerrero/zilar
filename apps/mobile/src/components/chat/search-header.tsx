@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
@@ -49,27 +50,27 @@ export function SearchHeader({
     );
   }
   return (
-    <View className="gap-2 px-4 py-2">
-      <Text className="text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground">
-        Chats
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Search chats and @usernames"
-        onPress={onOpen}
-        className="h-10 flex-row items-center gap-2 rounded-xl px-3"
-        style={well}
-      >
-        <Search size={16} color={MUTED_FOREGROUND} />
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          className="flex-1 text-[15px]"
-          style={{ color: MUTED_FOREGROUND }}
+    <View className="pb-2">
+      <ScreenHeader variant="root" title="Chats" />
+      <View className="px-4">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search chats and @usernames"
+          onPress={onOpen}
+          className="h-10 flex-row items-center gap-2 rounded-xl px-3"
+          style={well}
         >
-          Search chats and @usernames
-        </Text>
-      </Pressable>
+          <Search size={16} color={MUTED_FOREGROUND} />
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            className="flex-1 text-[15px]"
+            style={{ color: MUTED_FOREGROUND }}
+          >
+            Search chats and @usernames
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

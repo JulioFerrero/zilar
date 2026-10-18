@@ -1,13 +1,9 @@
-import { ChevronLeft } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tabScreenBottomPadding } from '@/components/nav/floating-tab-bar';
-import { IconButton } from '@/components/ui/icon-button';
-import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
-import { cn } from '@/lib/utils';
+import { ScreenHeader } from '@/components/ui/screen-header';
 
 type SettingsScreenShellProps = {
   title: string;
@@ -15,10 +11,7 @@ type SettingsScreenShellProps = {
   onBack?: (() => void) | undefined;
   /** A header action, e.g. the profile screen's save state. */
   right?: ReactNode;
-  /**
-   * Draws only Back and `right` in the key row, then the title at 28 px at the
-   * top of the content (the Stickers boards). The subtitle is not shown.
-   */
+  // T-1948: every sub screen now has the large title.
   largeTitle?: boolean;
   children: ReactNode;
 };
@@ -29,41 +22,18 @@ export function SettingsScreenShell({
   subtitle,
   onBack,
   right,
-  largeTitle = false,
   children,
 }: SettingsScreenShellProps) {
   const insets = useSafeAreaInsets();
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View
-        className={cn(
-          'flex-row items-center py-2',
-          largeTitle ? 'justify-between' : 'gap-1',
-          onBack === undefined ? 'px-4' : 'px-2',
-        )}
-      >
-        {onBack === undefined ? null : (
-          <IconButton label="Back" onPress={onBack}>
-            <ChevronLeft size={24} color={ICON} />
-          </IconButton>
-        )}
-        {largeTitle ? null : (
-          <View className="min-w-0 flex-1">
-            <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-              {title}
-            </Text>
-            {subtitle !== undefined ? (
-              <Text
-                numberOfLines={1}
-                className="mt-0.5 text-[14px] leading-5 text-muted-foreground"
-              >
-                {subtitle}
-              </Text>
-            ) : null}
-          </View>
-        )}
-        {right}
-      </View>
+      <ScreenHeader
+        variant={onBack === undefined ? 'root' : 'sub'}
+        title={title}
+        subtitle={subtitle}
+        onBack={onBack}
+        right={right}
+      />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -73,17 +43,7 @@ export function SettingsScreenShell({
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <View className="p-4">
-          {largeTitle ? (
-            <Text
-              numberOfLines={1}
-              className="text-[28px] font-semibold leading-8 mb-4 text-foreground"
-            >
-              {title}
-            </Text>
-          ) : null}
-          {children}
-        </View>
+        <View className="p-4">{children}</View>
       </ScrollView>
     </SafeAreaView>
   );
