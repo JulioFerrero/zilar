@@ -298,7 +298,7 @@ export function Composer({
   return (
     <div
       onPaste={attachments.onPaste}
-      className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5"
+      className="pointer-events-none relative px-3 pt-2 pb-3 *:pointer-events-auto wide:px-8 wide:pt-3 wide:pb-5"
     >
       {notInTopic.length > 0 && (
         <div className="mb-2 flex flex-col items-center gap-1.5">

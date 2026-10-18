@@ -153,12 +153,18 @@ export function ComposerControls({
         />
       )}
       {(voiceError !== undefined || attachmentError !== undefined) && (
-        <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
+        <div
+          className="mb-1 w-fit self-start rounded-[8px] bg-panel px-2 py-1 text-[12px] text-danger"
+          role="alert"
+        >
           {voiceError ?? attachmentError}
         </div>
       )}
       {voiceError === undefined && attachmentError === undefined && actionError !== undefined && (
-        <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
+        <div
+          className="mb-1 w-fit self-start rounded-[8px] bg-panel px-2 py-1 text-[12px] text-danger"
+          role="alert"
+        >
           {actionError}
         </div>
       )}

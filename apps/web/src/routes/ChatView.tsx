@@ -10,6 +10,7 @@ import { ChatHeader } from '@/components/ChatHeader';
 import { ChatMediaPanel } from '@/components/ChatMediaPanel';
 import { ChatSearchBar } from '@/components/ChatSearchBar';
 import { Composer } from '@/components/Composer';
+import { ComposerDock } from '@/components/ComposerDock';
 import { focusComposer } from '@/components/composer/useComposerFocus';
 import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
@@ -274,7 +275,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         {joinPreview ? (
           <TopicJoinView key={chat.id} chat={chat} />
         ) : (
-          <>
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <MessageList
               key={chat.id}
               chat={chat}
@@ -283,31 +284,33 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
               selection={selection}
               selecting={selectedIds !== null}
             />
-            {selectedIds !== null ? (
-              <SelectionBar
-                chat={chat}
-                selectedIds={selectedIds}
-                onForward={forwardSelected}
-                onCancel={() => setSelectedIds(null)}
-              />
-            ) : chat.chatKind === 'channel' ? (
-              <ChannelComposerBar chat={chat} />
-            ) : (
-              <>
-                <div className="relative z-10 h-0">
-                  <div className="absolute inset-x-0 bottom-1.5 flex justify-center px-3 wide:px-8">
-                    <AiStatusLine chat={chat} />
-                  </div>
-                </div>
-                <Composer
-                  chatId={chat.id}
-                  replyTo={replyTo}
-                  onCancelReply={cancelReply}
-                  onOpenStickersSettings={() => navigate('/settings/stickers')}
+            <ComposerDock>
+              {selectedIds !== null ? (
+                <SelectionBar
+                  chat={chat}
+                  selectedIds={selectedIds}
+                  onForward={forwardSelected}
+                  onCancel={() => setSelectedIds(null)}
                 />
-              </>
-            )}
-          </>
+              ) : chat.chatKind === 'channel' ? (
+                <ChannelComposerBar chat={chat} />
+              ) : (
+                <>
+                  <div className="relative z-10 h-0">
+                    <div className="pointer-events-none absolute inset-x-0 bottom-1.5 flex justify-center px-3 wide:px-8 *:pointer-events-auto">
+                      <AiStatusLine chat={chat} />
+                    </div>
+                  </div>
+                  <Composer
+                    chatId={chat.id}
+                    replyTo={replyTo}
+                    onCancelReply={cancelReply}
+                    onOpenStickersSettings={() => navigate('/settings/stickers')}
+                  />
+                </>
+              )}
+            </ComposerDock>
+          </div>
         )}
         {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
         {panel === 'group' && groupChat !== undefined && chat.chatKind !== 'channel' && (

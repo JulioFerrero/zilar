@@ -201,8 +201,10 @@ export const MessageList = memo(function MessageList({
       >
         <div
           ref={contentRef}
-          className={`mx-auto flex w-full max-w-[860px] flex-col px-3 wide:px-8 ${
-            chat.topic !== undefined ? 'pt-4 pb-14 wide:pt-6 wide:pb-14' : 'py-4 wide:py-6'
+          className={`mx-auto flex w-full max-w-[860px] flex-col px-3 pt-4 wide:px-8 wide:pt-6 ${
+            chat.topic !== undefined
+              ? 'pb-[calc(var(--composer-h,0px)+3.5rem)]'
+              : 'pb-[calc(var(--composer-h,0px)+1rem)] wide:pb-[calc(var(--composer-h,0px)+1.5rem)]'
           }`}
         >
           {loadingOlder && (
@@ -237,7 +239,7 @@ export const MessageList = memo(function MessageList({
             pending > 0 ? `Scroll to bottom, ${pending} new messages` : 'Scroll to bottom'
           }
           onClick={scrollToBottom}
-          className="absolute right-4 bottom-4"
+          className="absolute right-4 bottom-[calc(var(--composer-h,0px)+1rem)]"
         >
           <ArrowDown className="size-5" aria-hidden="true" />
           {pending > 0 && <Badge count={pending} className="absolute -top-1 -right-1 px-1" />}

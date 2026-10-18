@@ -162,7 +162,7 @@ export function useMessageListScroll({
         element.scrollTop = element.scrollHeight;
       }
     });
-    observer.observe(content);
+    observer.observe(content, { box: 'border-box' });
     return () => observer.disconnect();
   }, [hasContent]);
 
