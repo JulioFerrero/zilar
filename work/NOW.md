@@ -850,9 +850,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - T-1975: web request rows get avatars.
                       - T-1976: the mock gets `GET /routines`.
                       - T-1977: the phone Contact requests header and the Always allowed label.
-                    - **Running:**
-                      - T-1971;
-                      - T-1978: Edit profile, Stickers and the pack editor no longer flash a loading state on focus.
+                    - **Also merged:**
+                      - T-1971: pull to refresh on the tools settings lists, and lists stay visible on reload;
+                      - T-1978: no loading flash when returning to Edit profile, Stickers or the pack editor.
+                    - **Julio, about 13:50 UTC: "push the new version and apk".**
+                      - Combined gate PASS (45 files).
+                      - Pushed `784b7cef1`.
+                      - Tagged **v0.2.12**: the Android release and Production images workflows are running.
+                      - A `docker events` capture is running for this deploy.
                     - **Removed by Julio:** T-1594 (closed draft PR #1 and deleted its branch).
                     - **Next live push:** capture `docker events` with lifecycle filters before pushing, to confirm the stop now takes a few seconds.
                     - **Seen on the emulator before the fixes:**
@@ -865,7 +870,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **T-1942 merged and held after 5 rounds:** free models pause for 6 h on a refusal, at most 1 free session runs at a time, and an unknown free listing falls to paid. The autopilot was restarted on the new code at 12:40 UTC.
                   - **Claude $100 API credits (expire 11-08). Julio picked "Claude finds, DeepSeek fixes".**
                     - T-1968 (audit 1/4: auth and keys, `anthropic/claude-opus-5-5`) is specced. Its findings go to the private `~/.zilar-lead/audits/`, never the public repo.
-                    - **Waits for Julio** to add an API key to OpenCode himself (`opencode2 auth login anthropic`).
+                    - **Julio added the key (about 13:50 UTC).** T-1968 is running on `anthropic/claude-opus-5-5`; its first step cost $0.10. Measure its total cost before launching audits 2 to 4.
                 - **Models (10-18):**
                   - OpenCode's free gateway refuses every free model ("Detect Abuse Traffic"), and the Go key has expired (Go was already paused until 10-27).
                   - So workers run on the DeepSeek API and reviews on paid Muse. The autopilot was restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor`.
