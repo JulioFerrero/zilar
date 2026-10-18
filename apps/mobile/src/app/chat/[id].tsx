@@ -87,81 +87,47 @@ function Chat() {
     chat.topic.memberIds !== undefined &&
     !isTopicJoined(chat.topic, screen.myUserId);
 
-  if (!isTopic) {
-    // A legacy group row (older server, no topics) uses the full composer
-    // with the `@` picker (T-0227 S1), like the topic path; channels keep
-    // their feed bar, DMs keep today's text-only send.
-    const legacyComposer = composerBarFor(chat) === 'composer';
-    return (
-      <View className="flex-1 bg-background">
-        <ChatBackground />
-        <ChatHeaderBar
-          chat={chat}
-          onBack={() => goBackOrHome(router)}
-          onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
-          onOpenMedia={() => setMediaOpen(true)}
-          onOpenGroup={openGroup}
-        />
-        <PinnedBanner
-          pins={pins}
-          pinsError={pinsError}
-          index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
-          jumpError={jumpError}
-          onCycle={() => {
-            setJumpError('');
-            setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
-          }}
-          onTapPin={jumpToPin}
-          onOpenList={() => setPinsOpen(true)}
-          onDismissError={() => dismissPinsError()}
-        />
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <ChatThread screen={screen} chat={chat} />
-          <ChatComposerDock
-            screen={screen}
-            chat={chat}
-            variant={legacyComposer ? 'composer' : 'channel'}
-          />
-        </KeyboardAvoidingView>
-        <ChatOverlays screen={screen} chat={chat} />
-      </View>
-    );
-  }
+  const headerProps = {
+    chat,
+    onBack: () => goBackOrHome(router),
+    onSearchInChat: () => router.push({ pathname: '/', params: { searchChat: chat.id } }),
+    onOpenMedia: () => setMediaOpen(true),
+    onOpenGroup: openGroup,
+  };
+
+  const pinnedBanner = (
+    <PinnedBanner
+      pins={pins}
+      pinsError={pinsError}
+      index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
+      jumpError={jumpError}
+      onCycle={() => {
+        setJumpError('');
+        setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
+      }}
+      onTapPin={jumpToPin}
+      onOpenList={() => setPinsOpen(true)}
+      onDismissError={() => dismissPinsError()}
+    />
+  );
 
   // T-0144: a channel feed opens like any topic row (the feed IS the General
-  // topic); only the bottom bar differs (read-only for subscribers).
+  // topic); only the bottom bar differs (read-only for subscribers). A legacy
+  // group row (older server, no topics) uses the full composer with the `@`
+  // picker (T-0227 S1), like the topic path; channels keep their feed bar, DMs
+  // keep today's text-only send.
   if (!isTopic || chat.chatKind === 'channel') {
-    const channelBar = chat.chatKind === 'channel';
+    const legacyComposer = composerBarFor(chat) === 'composer';
+    const variant =
+      chat.chatKind === 'channel' ? 'channel' : legacyComposer ? 'composer' : 'channel';
     return (
       <View className="flex-1 bg-background">
         <ChatBackground />
-        <ChatHeaderBar
-          chat={chat}
-          onBack={() => goBackOrHome(router)}
-          onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
-          onOpenMedia={() => setMediaOpen(true)}
-          onOpenGroup={openGroup}
-        />
-        <PinnedBanner
-          pins={pins}
-          pinsError={pinsError}
-          index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
-          jumpError={jumpError}
-          onCycle={() => {
-            setJumpError('');
-            setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
-          }}
-          onTapPin={jumpToPin}
-          onOpenList={() => setPinsOpen(true)}
-          onDismissError={() => dismissPinsError()}
-        />
+        <ChatHeaderBar {...headerProps} />
+        {pinnedBanner}
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ChatThread screen={screen} chat={chat} />
-          <ChatComposerDock
-            screen={screen}
-            chat={chat}
-            variant={channelBar ? 'channel' : 'composer'}
-          />
+          <ChatComposerDock screen={screen} chat={chat} variant={variant} />
         </KeyboardAvoidingView>
         <ChatOverlays screen={screen} chat={chat} />
       </View>
@@ -171,28 +137,8 @@ function Chat() {
   return (
     <View className="flex-1 bg-background">
       <ChatBackground />
-      <ChatHeaderBar
-        chat={chat}
-        onBack={() => goBackOrHome(router)}
-        onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
-        onOpenMedia={() => setMediaOpen(true)}
-        topicGroupName={groupName}
-        onOpenInfo={openInfo}
-        onOpenGroup={openGroup}
-      />
-      <PinnedBanner
-        pins={pins}
-        pinsError={pinsError}
-        index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
-        jumpError={jumpError}
-        onCycle={() => {
-          setJumpError('');
-          setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
-        }}
-        onTapPin={jumpToPin}
-        onOpenList={() => setPinsOpen(true)}
-        onDismissError={() => dismissPinsError()}
-      />
+      <ChatHeaderBar {...headerProps} topicGroupName={groupName} onOpenInfo={openInfo} />
+      {pinnedBanner}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {joinPreview ? (
           <TopicJoinView key={chat.id} chat={chat} />

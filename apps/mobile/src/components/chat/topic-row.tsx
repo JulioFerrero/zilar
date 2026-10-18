@@ -14,35 +14,14 @@ import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { PreviewIcon } from '@/components/chat/preview-icon';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
+import { UnreadBadge } from '@/components/chat/unread-badge';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
-import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-
-function TopicUnreadBadge({ count, muted }: { count: number; muted: boolean }) {
-  return (
-    <View
-      // A fresh view per look: RN 0.86 on Android crashes in draw when a live
-      // view swaps one gradient style for another (device report 2026-10-04).
-      key={muted ? 'muted' : 'live'}
-      style={muted ? raisedPill : primaryKey}
-      className="h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full px-1.5"
-    >
-      <Text
-        className={cn(
-          'text-[12px] font-semibold',
-          muted ? 'text-foreground' : 'text-accent-foreground',
-        )}
-      >
-        {count}
-      </Text>
-    </View>
-  );
-}
 
 /**
  * One topic row on the topics screen (T-0112): the raised glyph tile, name
@@ -165,7 +144,7 @@ export function TopicRow({
               </View>
             )}
             {chat.unread > 0 ? (
-              <TopicUnreadBadge count={chat.unread} muted={chat.muted} />
+              <UnreadBadge count={chat.unread} muted={chat.muted} />
             ) : showTicks && last ? (
               <Ticks
                 status={last.status as MessageStatus}

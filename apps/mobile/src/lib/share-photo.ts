@@ -8,11 +8,10 @@
  */
 
 import { Effect } from 'effect';
-import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import type { MediaSource } from './media-source';
-import { cacheFileName, deleteQuietly } from './save-photo';
+import { deleteQuietly, downloadToCache } from './save-photo';
 
 export const SHARE_FAILED_MESSAGE = 'Could not share the photo.';
 
@@ -44,21 +43,7 @@ const shareEffect = (source: MediaSource): Effect.Effect<ShareResult> =>
     if (!available) {
       return FAILED;
     }
-    const destination = yield* Effect.try({
-      try: () => new File(Paths.cache, cacheFileName(source.uri)),
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined));
-    if (destination === undefined) {
-      return FAILED;
-    }
-    const file = yield* Effect.tryPromise({
-      try: () =>
-        File.downloadFileAsync(source.uri, destination, {
-          idempotent: true,
-          ...(source.headers === undefined ? {} : { headers: source.headers }),
-        }),
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined));
+    const file = yield* downloadToCache(source);
     if (file === undefined) {
       return FAILED;
     }

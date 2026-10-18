@@ -38,6 +38,27 @@ export function deleteQuietly(file: File): void {
   }
 }
 
+/** Downloads the photo to a fresh cache file; any failure is `undefined`. */
+export function downloadToCache(source: MediaSource): Effect.Effect<File | undefined> {
+  return Effect.gen(function* () {
+    const destination = yield* Effect.try({
+      try: () => new File(Paths.cache, cacheFileName(source.uri)),
+      catch: () => undefined,
+    }).pipe(Effect.orElseSucceed(() => undefined));
+    if (destination === undefined) {
+      return undefined;
+    }
+    return yield* Effect.tryPromise({
+      try: () =>
+        File.downloadFileAsync(source.uri, destination, {
+          idempotent: true,
+          ...(source.headers === undefined ? {} : { headers: source.headers }),
+        }),
+      catch: () => undefined,
+    }).pipe(Effect.orElseSucceed(() => undefined));
+  });
+}
+
 const saveEffect = (source: MediaSource): Effect.Effect<SaveResult> =>
   Effect.gen(function* () {
     const granted = yield* Effect.tryPromise({
@@ -50,21 +71,7 @@ const saveEffect = (source: MediaSource): Effect.Effect<SaveResult> =>
     if (!granted) {
       return FAILED;
     }
-    const destination = yield* Effect.try({
-      try: () => new File(Paths.cache, cacheFileName(source.uri)),
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined));
-    if (destination === undefined) {
-      return FAILED;
-    }
-    const file = yield* Effect.tryPromise({
-      try: () =>
-        File.downloadFileAsync(source.uri, destination, {
-          idempotent: true,
-          ...(source.headers === undefined ? {} : { headers: source.headers }),
-        }),
-      catch: () => undefined,
-    }).pipe(Effect.orElseSucceed(() => undefined));
+    const file = yield* downloadToCache(source);
     if (file === undefined) {
       return FAILED;
     }

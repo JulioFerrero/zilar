@@ -5,36 +5,14 @@ import { Pressable, View } from 'react-native';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { PreviewIcon } from '@/components/chat/preview-icon';
+import { UnreadBadge } from '@/components/chat/unread-badge';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { primaryKey, raisedPill } from '@/lib/depth';
 import { channelSubscriberLabel } from '@/lib/channels';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
-import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-
-function GroupUnreadBadge({ count, muted }: { count: number; muted: boolean }) {
-  return (
-    <View
-      // A fresh view per look: RN 0.86 on Android crashes in draw when a live
-      // view swaps one gradient style for another (device report 2026-10-04).
-      key={muted ? 'muted' : 'live'}
-      style={muted ? raisedPill : primaryKey}
-      className="h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full px-1.5"
-    >
-      <Text
-        className={cn(
-          'text-[12px] font-semibold',
-          muted ? 'text-foreground' : 'text-accent-foreground',
-        )}
-      >
-        {count}
-      </Text>
-    </View>
-  );
-}
 
 /**
  * One group row on the chat list (T-0112): title, "N topics", the aggregated
@@ -139,7 +117,7 @@ export function GroupListItem({
                 {body}
               </Text>
             </View>
-            {row.unread > 0 ? <GroupUnreadBadge count={row.unread} muted={row.muted} /> : null}
+            {row.unread > 0 ? <UnreadBadge count={row.unread} muted={row.muted} /> : null}
           </View>
         </View>
       </View>
