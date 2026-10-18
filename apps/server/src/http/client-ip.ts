@@ -6,6 +6,12 @@
 // RIGHT of `x-forwarded-for`: the proxies append truthfully on the right
 // while an attacker controls only the left side.
 
+// T-1983: the edge resolves the client IP once (from TRUSTED_PROXY_HOPS) and
+// writes it here; Better Auth reads only this header for rate limits and the
+// session IP. The edge overwrites any incoming value, so a client cannot pick
+// its own bucket.
+export const CLIENT_IP_HEADER = 'x-zilar-client-ip';
+
 // The Nth address from the right of an `x-forwarded-for` header, or null
 // when the header is missing or has fewer than N addresses. Empty entries
 // never count as an address.

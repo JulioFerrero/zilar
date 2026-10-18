@@ -9,6 +9,10 @@
 
 {
   admin off
+  # Trust the private-range proxy in front (Traefik on Coolify), so its X-Forwarded-For is kept and our peer appended instead of replacing it.
+  servers {
+    trusted_proxies static private_ranges
+  }
   # On stop, close open WebSockets after 2 s instead of waiting forever (deploys were force-killed at 30 s).
   grace_period 2s
 }

@@ -7,6 +7,7 @@ import type { ServerDatabase } from '../db/client';
 import { setUpContactsFromInvite } from '../contacts/service';
 import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { CLIENT_IP_HEADER } from '../http/client-ip';
 import { findUsableInvite } from './invites';
 import { cancelDeletionOnSignIn } from './deletion-request';
 import type { Mailer } from './mailer';
@@ -133,6 +134,12 @@ export function createAuth({
       // Better Auth skips origin checks in test environments by default; keep
       // them on everywhere so the WEB_ORIGINS trust list is always enforced.
       disableOriginCheck: false,
+      // T-1983: its default X-Forwarded-For rule sees the proxy, so read only
+      // the IP the edge resolved from TRUSTED_PROXY_HOPS (it overwrites any
+      // client-supplied value). Used for its rate limits and session.ip_address.
+      ipAddress: {
+        ipAddressHeaders: [CLIENT_IP_HEADER],
+      },
       useSecureCookies: config.NODE_ENV === 'production',
       defaultCookieAttributes: {
         httpOnly: true,

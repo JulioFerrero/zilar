@@ -26,6 +26,7 @@ import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'e
 import type { Logger } from 'pino';
 import type { ServerConfig } from '../config';
 import { HttpError } from '../errors';
+import { CLIENT_IP_HEADER, clientIpFrom } from '../http/client-ip';
 import {
   allowedOrigins,
   applyCors,
@@ -46,6 +47,9 @@ import {
 import { REQUEST_ID_HEADER, type EffectApiMount } from './http-core';
 
 export { allowedOrigins, durationSince, logPath, resolveRequestId, UNSAFE_METHODS };
+
+// The socket address the edge reports when the transport has no peer socket.
+const NO_SOCKET = 'unknown';
 
 export interface EdgeAuth {
   handler: (request: Request) => Promise<Response>;
@@ -81,6 +85,22 @@ export interface ZilarEdge {
    * real socket address.
    */
   layer: Layer.Layer<never, unknown, HttpRouter.HttpRouter>;
+}
+
+// T-1983: Better Auth keeps its own IP rule (for its rate limits and the
+// stored session IP) and cannot read TRUSTED_PROXY_HOPS, so the edge resolves
+// the IP once, with the same rule as the limiters, and passes it down. An
+// incoming CLIENT_IP_HEADER is overwritten so a client cannot choose its own.
+function withClientIp(request: Request, socketAddress: string, trustedProxyHops: number): Request {
+  const headers = new Headers(request.headers);
+  const forwardedFor = headers.get('x-forwarded-for') ?? undefined;
+  // `'unknown'` means the transport has no peer socket at all (the web
+  // handler used by tests; `NodeHttpServer` always has one). Only then treat
+  // X-Forwarded-For as a one-hop stand-in, so those callers still get a
+  // per-client bucket. A real socket never falls into this branch.
+  const hops = trustedProxyHops > 0 || socketAddress !== NO_SOCKET ? trustedProxyHops : 1;
+  headers.set(CLIENT_IP_HEADER, clientIpFrom({ forwardedFor, socketAddress }, hops));
+  return new Request(request, { headers });
 }
 
 export function createEdge(input: CreateEdgeInput): ZilarEdge {
@@ -142,7 +162,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     const dispatch = Effect.gen(function* () {
       // The socket address is the Node server's `remoteAddress`, or `'unknown'`
       // when there is no socket (web-handler callers such as tests).
-      const socketAddress = Option.getOrElse(request.remoteAddress, () => 'unknown');
+      const socketAddress = Option.getOrElse(request.remoteAddress, () => NO_SOCKET);
       // CORS preflight on /api/* answers here, before the origin guard and
       // routing, like the Hono cors middleware (204, echoed request headers,
       // `Vary: Origin`).
@@ -172,7 +192,8 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
       // better-auth passthrough keeps Hono's precedence over mounts.
       if (pathname === '/api/auth' || pathname.startsWith('/api/auth/')) {
         const webRequest = yield* HttpServerRequest.toWeb(request);
-        const webResponse = yield* Effect.promise(() => auth.handler(webRequest));
+        const authRequest = withClientIp(webRequest, socketAddress, config.TRUSTED_PROXY_HOPS);
+        const webResponse = yield* Effect.promise(() => auth.handler(authRequest));
         const response = withId(cors(HttpServerResponse.fromWeb(webResponse)));
         logRequest(response.status);
         return response;

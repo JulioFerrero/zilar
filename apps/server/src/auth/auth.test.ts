@@ -26,6 +26,10 @@ interface IdRow {
   id: string;
 }
 
+interface SessionIpRow {
+  ipAddress: string | null;
+}
+
 interface VerificationRow {
   id: string;
   identifier: string;
@@ -461,6 +465,53 @@ describe('auth flows', () => {
     } finally {
       await production.close();
     }
+  });
+
+  it('stores the visitor IP the edge resolved as the session IP (T-1983)', async () => {
+    // The edge overwrites the client header; Better Auth stores what it reads
+    // from ipAddressHeaders, so this proves the whole chain end to end.
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: { ...context.config, TRUSTED_PROXY_HOPS: 2 },
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
+    const invite = await createInvite(context.db, { createdBy: null });
+    const forwardedFor = { 'x-forwarded-for': '1.2.3.4, 10.0.0.2' };
+
+    const send = await app.request(`${BASE_URL}/api/auth/email-otp/send-verification-otp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [INVITE_HEADER]: invite.code,
+        ...forwardedFor,
+      },
+      body: JSON.stringify({ email: 'ip@example.com', type: 'sign-in' }),
+    });
+    expect(send.status).toBe(200);
+
+    const response = await app.request(`${BASE_URL}/api/auth/sign-in/email-otp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [INVITE_HEADER]: invite.code,
+        ...forwardedFor,
+      },
+      body: JSON.stringify({
+        email: 'ip@example.com',
+        otp: context.mailer.codeFor('ip@example.com'),
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<SessionIpRow>`SELECT ip_address AS "ipAddress" FROM "session"`;
+      }),
+    );
+    expect(rows.map((row) => row.ipAddress)).toEqual(['1.2.3.4']);
   });
 
   it('requires a session for /api/me and POST /api/invites', async () => {

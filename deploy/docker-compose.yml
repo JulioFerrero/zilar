@@ -142,6 +142,10 @@ services:
       PUBLIC_URL: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       WEB_ORIGINS: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      # The bundled Caddy writes the visitor's address as the only
+      # X-Forwarded-For value, so the client is one hop from the right.
+      # Shared by the per-IP limiters and the stored session IP.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
       EJABBERD_API_URL: http://ejabberd:5280/api
       EJABBERD_ADMIN_JID: admin@${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
