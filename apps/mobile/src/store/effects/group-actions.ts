@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import { ApiError } from '@zilar/api-contract';
 import {
   changeGroup as changeGroupCore,
   changeTopic as changeTopicCore,
@@ -132,12 +133,26 @@ export function makeGroupActions(
           {
             groupIdFor: (chatId) => h.groupIdForChat(chatId),
             currentUserId: () => get().me?.id,
-            removeMember: (chatId, userId) => removeTopicMemberEffect(chatId, userId),
+            // One DELETE, like web: the helper's refresh-on-failure would drop
+            // the row before core re-reads the topic id, and the leave flow
+            // does its own refresh after the 404.
+            removeMember: (chatId, userId) =>
+              changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+                topics.removeTopicMember(topicId, userId),
+              ),
           },
           {
-            isNotFound: () => false,
-            refreshTopicRow: () => Effect.succeed(false),
-            refreshChats: () => Effect.void,
+            // The last seat archives the topic: the server answers 404 and the
+            // refresh drops the row, which is the leave succeeding (as on web).
+            isNotFound: (error) => error instanceof ApiError && error.status === 404,
+            refreshTopicRow: (chatId, topicId) =>
+              Effect.gen(function* () {
+                yield* refreshQuietly;
+                return !get().chats.some(
+                  (chat) => chat.id === chatId || chat.topic?.id === topicId,
+                );
+              }),
+            refreshChats: () => refreshQuietly,
           },
           chatId,
         ),

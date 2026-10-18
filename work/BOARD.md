@@ -2043,3 +2043,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2037](T-2037-phone-markdown-shared.md) | phone renders Markdown from the shared parser (-500 lines) | 2026-10-18 |
 | [T-2042](T-2042-server-byte-readers.md) | server: one bounds-checked byte reader for media and stickers | 2026-10-18 |
 | [T-2043](T-2043-server-schema-message-walker.md) | server: one schema-issue message walker with options | 2026-10-18 |
+| [T-2041](T-2041-phone-last-seat-and-helpers.md) | phone: last-seat topic leave succeeds; shared helpers | 2026-10-18 |

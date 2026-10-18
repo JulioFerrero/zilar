@@ -1,3 +1,4 @@
+import { formatFileSize } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
 import { ArrowDown, FileText, RotateCcw } from 'lucide-react-native';
 import { useState } from 'react';
@@ -133,7 +134,7 @@ export function AttachmentFileRow({
 /** "3.9 KB PDF": the size plus the upper-case extension, Telegram-style. */
 function sizeTypeOf(attachment: Attachment): string {
   const extension = extensionOf(attachment.name);
-  return [formatSize(attachment.size), extension].filter((part) => part !== '').join(' ');
+  return [formatFileSize(attachment.size), extension].filter((part) => part !== '').join(' ');
 }
 
 /** The upper-case extension of a file name, or '' when it has none. */
@@ -143,22 +144,4 @@ function extensionOf(name: string): string {
     return '';
   }
   return name.slice(dot + 1).toUpperCase();
-}
-
-function formatSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return '';
-  }
-  if (bytes < 1024) {
-    return `${Math.round(bytes)} B`;
-  }
-  const units = ['KB', 'MB', 'GB', 'TB'] as const;
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${rounded} ${units[unit]}`;
 }

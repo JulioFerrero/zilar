@@ -1,4 +1,4 @@
-import { Exit, Schema } from 'effect';
+import { Duration, Effect, Exit, Schema } from 'effect';
 import type { EventSubscription } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -90,19 +90,6 @@ export async function readStoredRegistration(): Promise<StoredPushRegistration |
   } catch {
     return undefined;
   }
-}
-
-/** Races `task` against a timeout; the timer is always cleared. */
-function withTimeout<A>(task: Promise<A>, ms: number): Promise<A> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('push request timed out')), ms);
-  });
-  return Promise.race([task, timeout]).finally(() => {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  });
 }
 
 // One registration per device token per session (T-1150): the push-token
@@ -260,9 +247,14 @@ export async function unregisterNativePush(deps: UnregisterNativePushDeps = {}):
     const registration = parseRegistration(raw);
     if (registration !== undefined) {
       const client = createApiClient({ getToken, fetchImpl, apiUrl });
-      await withTimeout(
-        runApi(client.push.remove({ params: { id: registration.id } })),
-        UNREGISTER_TIMEOUT_MS,
+      await Effect.runPromise(
+        Effect.timeoutOrElse(
+          Effect.tryPromise(() => runApi(client.push.remove({ params: { id: registration.id } }))),
+          {
+            duration: Duration.millis(UNREGISTER_TIMEOUT_MS),
+            orElse: () => Effect.fail(new Error('push request timed out')),
+          },
+        ),
       );
     }
   } catch (error) {
