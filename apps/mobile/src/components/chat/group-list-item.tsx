@@ -1,4 +1,4 @@
-import { formatListTime, previewMessage } from '@zilar/chat-core';
+import { formatListTime, previewMessage, previewParts } from '@zilar/chat-core';
 import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -11,7 +11,6 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { channelSubscriberLabel } from '@/lib/channels';
 import { useBlockedJids } from '@/lib/blocked-users';
-import { previewParts } from '@/lib/format';
 import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';

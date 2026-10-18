@@ -1,4 +1,10 @@
-import { isTopicJoined, type ChatSummary, type ReplyRef, type UiMessage } from '@zilar/chat-core';
+import {
+  isTopicJoined,
+  replyRef,
+  type ChatSummary,
+  type ReplyRef,
+  type UiMessage,
+} from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -27,7 +33,6 @@ import { TopicPanel } from '@/components/TopicPanel';
 import { TopicJoinView } from '@/components/topic/TopicJoinView';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { runWeb } from '@/lib/effect/runtime';
-import { replyRef } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 type OpenPanel = 'ai' | 'group' | 'topic' | 'contact';

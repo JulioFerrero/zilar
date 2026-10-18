@@ -7,6 +7,7 @@ import {
   previewPrefix,
   shouldRenderMarkdown,
   topicActivityView,
+  typingLabel,
   type ChatSummary,
   type PreviewKind,
   type UiMessage,
@@ -28,7 +29,6 @@ import { AiActivityMarks } from './topic/AiActivityMarks';
 import { RowActions } from './chatList/RowActions';
 import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
-import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';

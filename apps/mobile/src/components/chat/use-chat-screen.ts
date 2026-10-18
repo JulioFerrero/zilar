@@ -1,9 +1,9 @@
+import { replyRef } from '@zilar/chat-core';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
-import { replyRef } from '@/lib/format';
 import { describeRolesError } from '@/lib/roles';
 import { selectedInOrder, toggleSelected } from '@/lib/selection';
 import { mayArchiveTopic } from '@/lib/topics';

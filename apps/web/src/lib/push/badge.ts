@@ -10,11 +10,7 @@ import type { ServiceWorkerRegistrationLike } from '@/lib/push';
 // The app badge shows the total unread excluding muted chats, where the
 // platform supports it. A zero count clears the badge; anything else is a
 // no-op when the API is missing.
-export function totalBadgeUnread(
-  chats: ReadonlyArray<{ muted?: boolean; unread: number }>,
-): number {
-  return chats.reduce((sum, chat) => (chat.muted === true ? sum : sum + chat.unread), 0);
-}
+export { totalBadgeUnread } from '@zilar/chat-core';
 interface BadgeSurface {
   setAppBadge?: (count: number) => Promise<void>;
   clearAppBadge?: () => Promise<void>;
@@ -79,7 +75,10 @@ const dismissChatNotificationsEffect = Effect.fnUntraced(function* (
 ) {
   const pending: Promise<ServiceWorkerRegistrationLike | undefined> | undefined =
     getRegistration === undefined ? navigator.serviceWorker?.getRegistration() : getRegistration();
-  const registration = pending === undefined ? undefined : yield* Effect.promise(() => pending);
+  const registration =
+    pending === undefined
+      ? undefined
+      : yield* Effect.tryPromise(() => pending).pipe(Effect.orElseSucceed(() => undefined));
   if (!canListNotifications(registration)) {
     return;
   }

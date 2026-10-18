@@ -1,4 +1,4 @@
-import { formatListTime, previewMessage } from '@zilar/chat-core';
+import { formatListTime, previewMessage, previewParts, typingLabel } from '@zilar/chat-core';
 import { Megaphone, Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -16,7 +16,6 @@ import { useComposerDraft } from '@/lib/composer-drafts';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { channelSubscriberCount, channelSubscriberLabel } from '@/lib/channels';
-import { previewParts, typingLabel } from '@/lib/format';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';

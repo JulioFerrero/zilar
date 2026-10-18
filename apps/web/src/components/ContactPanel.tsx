@@ -1,4 +1,4 @@
-import { localpartOf, type ChatSummary } from '@zilar/chat-core';
+import { chatSubtitle, localpartOf, type ChatSummary } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import {
@@ -22,7 +22,6 @@ import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { focusComposer } from '@/components/composer/useComposerFocus';
-import { chatSubtitle } from '@/lib/format';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from './EntityAvatar';
 import { ConfirmDialog } from './ConfirmDialog';

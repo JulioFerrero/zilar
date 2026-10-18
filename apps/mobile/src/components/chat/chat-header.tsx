@@ -1,4 +1,4 @@
-import { topicActivityView } from '@zilar/chat-core';
+import { topicActivityView, typingLabel } from '@zilar/chat-core';
 import { palette } from '@zilar/ui-tokens';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, Images, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
@@ -22,7 +22,6 @@ import { chatSubtitle } from '@/lib/chat';
 import { cn } from '@/lib/utils';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
-import { typingLabel } from '@/lib/format';
 import type { ChatSummary } from '@/lib/types';
 import { useDelayed } from '@/lib/use-delayed';
 import { useChatStore } from '@/store/chat-store-provider';

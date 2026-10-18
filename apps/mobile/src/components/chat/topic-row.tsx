@@ -1,4 +1,10 @@
-import { formatListTime, previewMessage, topicActivityView } from '@zilar/chat-core';
+import {
+  formatListTime,
+  previewMessage,
+  previewParts,
+  topicActivityView,
+  typingLabel,
+} from '@zilar/chat-core';
 import { Lock, Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -13,7 +19,6 @@ import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
-import { previewParts, typingLabel } from '@/lib/format';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';

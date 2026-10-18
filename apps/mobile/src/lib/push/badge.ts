@@ -10,7 +10,7 @@
 // module body reads the `__DEV__` global Metro defines but Vitest does not,
 // so a static import breaks every store test that never mocked notifications.
 
-import type { ChatSummary } from '@zilar/chat-core';
+import { totalBadgeUnread, type ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 
 /** The three notification calls used, behind a lazy require (see above). */
@@ -32,16 +32,11 @@ function natives(): BadgeNatives {
   return require('expo-notifications') as BadgeNatives;
 }
 
-/** The unread sum the badge shows, skipping muted chats (web `totalBadgeUnread`). */
-export function badgeUnread(chats: readonly ChatSummary[]): number {
-  return chats.reduce((sum, chat) => (chat.muted === true ? sum : sum + chat.unread), 0);
-}
-
 /** Sets the app-icon badge to the unread sum, best effort. */
 export function syncBadge(chats: readonly ChatSummary[]): Effect.Effect<void> {
   return Effect.suspend(() =>
     Effect.tryPromise({
-      try: () => natives().setBadgeCountAsync(badgeUnread(chats)),
+      try: () => natives().setBadgeCountAsync(totalBadgeUnread(chats)),
       catch: (error) => error,
     }).pipe(Effect.ignore),
   );

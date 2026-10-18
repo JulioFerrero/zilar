@@ -2,9 +2,7 @@ import {
   formatListTime,
   lightToPlain,
   markdownToPlain,
-  previewBody,
-  previewKind,
-  previewPrefix,
+  previewParts,
   shouldRenderMarkdown,
   type ChatSummary,
   type PreviewKind,
@@ -31,7 +29,7 @@ import { Badge } from './ui/badge';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { useComposerDraft } from '@/lib/composer-drafts';
-import { typingLabel } from '@/lib/format';
+import { typingLabel } from '@zilar/chat-core';
 import { previewMessage } from '@/lib/preview-message';
 import { cn } from '@/lib/utils';
 
@@ -70,9 +68,7 @@ export const ChatListItem = memo(function ChatListItem({
   const blockedJids = useBlockedJids();
   const preview = previewMessage(chat, messages, blockedJids, currentUserId);
   const options = { isGroup: chat.kind === 'group', currentUserId };
-  const prefix = previewPrefix(preview, options);
-  const rawBody = previewBody(preview);
-  const kind = previewKind(preview);
+  const { prefix, body: rawBody, kind } = previewParts(preview, options);
   const KindIcon = kind === undefined ? undefined : PREVIEW_ICONS[kind];
   // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
   // chat or in a group; your own message previews literally, exactly as its

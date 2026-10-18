@@ -89,6 +89,13 @@ export function writingLabel(names: readonly string[]): string | undefined {
   return `${names.length} writing…`;
 }
 
+/** The app badge count: the sum of `unread` over chats that are not muted. */
+export function totalBadgeUnread(
+  chats: ReadonlyArray<{ muted?: boolean; unread: number }>,
+): number {
+  return chats.reduce((sum, chat) => (chat.muted === true ? sum : sum + chat.unread), 0);
+}
+
 /** Reply reference built from a message, used by the composer's reply bar. */
 export function replyRef(message: UiMessage, currentUserId: string): ReplyRef {
   const text = previewBody(message);

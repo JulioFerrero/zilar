@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@zilar/chat-core';
+import { chatSubtitle, typingLabel, type ChatSummary } from '@zilar/chat-core';
 import {
   ArrowLeft,
   Bookmark,
@@ -22,7 +22,6 @@ import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const ARCHIVE_ERROR = 'Could not archive the topic.';
