@@ -37,11 +37,7 @@ type MessageListRowProps = {
   selection: MessageListSelection | undefined;
   onReply: MessageHandler;
   onReact: ReactHandler | undefined;
-  onEdit: MessageHandler | undefined;
-  onDelete: MessageHandler | undefined;
   onForward: MessageHandler | undefined;
-  onPin: MessageHandler | undefined;
-  onUnpin: MessageHandler | undefined;
   onRetrySticker: MessageHandler | undefined;
   onRetryAttachment: MessageHandler | undefined;
   onCancelAttachment: MessageHandler | undefined;
@@ -49,7 +45,6 @@ type MessageListRowProps = {
   onCancelVoice: MessageHandler | undefined;
   onOpenAttachment: MessageHandler | undefined;
   onToggleSelect: MessageHandler | undefined;
-  onStartSelect: MessageHandler | undefined;
 };
 
 function MessageListRowImpl({
@@ -63,11 +58,7 @@ function MessageListRowImpl({
   selection,
   onReply,
   onReact,
-  onEdit,
-  onDelete,
   onForward,
-  onPin,
-  onUnpin,
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
@@ -75,7 +66,6 @@ function MessageListRowImpl({
   onCancelVoice,
   onOpenAttachment,
   onToggleSelect,
-  onStartSelect,
 }: MessageListRowProps) {
   if (item.type === 'divider') {
     return <UnreadDivider />;
@@ -97,13 +87,9 @@ function MessageListRowImpl({
         currentUserId={currentUserId}
         onReply={onReply}
         {...(onReact === undefined ? {} : { onReact })}
-        {...(onEdit === undefined ? {} : { onEdit })}
-        {...(onDelete === undefined ? {} : { onDelete })}
         {...(onForward === undefined ? {} : { onForward })}
         canPin={canPinChat}
         isPinned={pinnedIds.includes(item.item.message.id)}
-        {...(onPin === undefined ? {} : { onPin })}
-        {...(onUnpin === undefined ? {} : { onUnpin })}
         draft={item.isDraft}
         revealTurnId={item.revealTurnId}
         {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
@@ -117,7 +103,6 @@ function MessageListRowImpl({
         selecting={selection !== undefined && selection.ids.length > 0}
         selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
         {...(onToggleSelect === undefined ? {} : { onToggleSelect })}
-        {...(onStartSelect === undefined ? {} : { onStartSelect })}
       />
     </AlbumMembersProvider>
   );
@@ -179,19 +164,14 @@ function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps):
     prev.selection === next.selection &&
     prev.onReply === next.onReply &&
     prev.onReact === next.onReact &&
-    prev.onEdit === next.onEdit &&
-    prev.onDelete === next.onDelete &&
     prev.onForward === next.onForward &&
-    prev.onPin === next.onPin &&
-    prev.onUnpin === next.onUnpin &&
     prev.onRetrySticker === next.onRetrySticker &&
     prev.onRetryAttachment === next.onRetryAttachment &&
     prev.onCancelAttachment === next.onCancelAttachment &&
     prev.onRetryVoice === next.onRetryVoice &&
     prev.onCancelVoice === next.onCancelVoice &&
     prev.onOpenAttachment === next.onOpenAttachment &&
-    prev.onToggleSelect === next.onToggleSelect &&
-    prev.onStartSelect === next.onStartSelect
+    prev.onToggleSelect === next.onToggleSelect
   );
 }
 

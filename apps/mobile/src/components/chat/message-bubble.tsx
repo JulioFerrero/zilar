@@ -4,11 +4,12 @@ import { memo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { useAlbumMembers } from '@/components/chat/album-members';
 import { useChatRowFacts } from '@/components/chat/chat-row-facts';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BubbleGesture } from '@/components/chat/bubble-gesture';
 import { HandoffLine } from '@/components/chat/handoff-line';
-import { BubbleActionsSheet, openMessageMenu } from '@/components/chat/message-bubble-actions';
+import { openMessageMenu } from '@/components/chat/message-bubble-actions';
 import { isMediaFirstMessage } from '@/components/chat/media-bubble';
 import {
   BigEmojiBubble,
@@ -18,6 +19,7 @@ import {
 } from '@/components/chat/message-bubble-content';
 import { appActiveSource, BubbleTail, LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
+import { useMessageMenu } from '@/components/chat/message-menu-host';
 import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { PersonPressable } from '@/components/chat/person-pressable';
@@ -41,13 +43,10 @@ function MessageBubbleImpl({
   draft = false,
   revealTurnId,
   onReact,
-  onEdit,
-  onDelete,
   onForward,
   selecting = false,
   selected = false,
   onToggleSelect,
-  onStartSelect,
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
@@ -58,13 +57,12 @@ function MessageBubbleImpl({
   voiceHost,
   canPin,
   isPinned,
-  onPin,
-  onUnpin,
 }: MessageBubbleProps) {
   const colors = BUBBLE_COLORS;
   const reduceMotion = useReducedMotion();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  // T-2018: the list's one menu, opened with this row's flags and album.
+  const menu = useMessageMenu();
+  const members = useAlbumMembers();
   // T-1575: the handoff line replaces the bubble; a press toggles the full one.
   const [handoffOpen, setHandoffOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
@@ -149,8 +147,29 @@ function MessageBubbleImpl({
   const showTail = isLastInGroup && sticker === undefined && !bigEmoji && !(mediaFirst && !hasText);
 
   // The haptic is a native call the press does not wait for; it starts here,
-  // in the press handler, and a failed haptic is ignored.
-  const openMenu = () => openMessageMenu(setMenuOpen);
+  // in the press handler, and a failed haptic is ignored. The target carries
+  // this row's flags and album, so the sheet can draw them once for the list.
+  const openMenu = () =>
+    openMessageMenu(() =>
+      menu.open({
+        message,
+        albumMembers:
+          message.album !== undefined && members !== null && members.length >= 2
+            ? [...members]
+            : undefined,
+        canCopy: hasText && sticker === undefined,
+        canEdit: sticker === undefined && message.voice === undefined && canEdit,
+        canDelete,
+        canDeleteForMe,
+        isDm,
+        own: outgoing,
+        senderName: message.senderName,
+        canForward: onForward !== undefined && canForward,
+        canPin,
+        isPinned,
+        myReactions,
+      }),
+    );
 
   // A failed sticker keeps its message and shows a Retry instead of a silent
   // "sending" state, like attachments do on web.
@@ -283,96 +302,68 @@ function MessageBubbleImpl({
   );
 
   return (
-    <>
-      <SwipeToReply
-        color={colors.incomingMeta}
-        enabled={selecting !== true}
-        onReply={() => onReply(message)}
+    <SwipeToReply
+      color={colors.incomingMeta}
+      enabled={selecting !== true}
+      onReply={() => onReply(message)}
+    >
+      <View
+        className={cn(
+          'relative flex-row px-2',
+          outgoing ? 'justify-end' : 'items-end',
+          isLastInGroup ? 'mb-2' : 'mb-0.5',
+        )}
       >
-        <View
-          className={cn(
-            'relative flex-row px-2',
-            outgoing ? 'justify-end' : 'items-end',
-            isLastInGroup ? 'mb-2' : 'mb-0.5',
-          )}
-        >
-          {selecting ? (
-            <View className="mr-2 self-center">
-              <Checkbox checked={selected} disabled={!canForward} />
-            </View>
-          ) : null}
-          {!outgoing && isGroup && handoff === undefined ? (
-            showAvatar ? (
-              <PersonPressable target={{ jid: message.senderId }} name={message.senderName}>
-                <EntityAvatar
-                  person={{
-                    id: message.senderId,
-                    name: message.senderName,
-                    ...(senderAvatar === undefined ? {} : { avatarUrl: senderAvatar }),
-                  }}
-                  size={34}
-                  className="mr-2"
-                />
-              </PersonPressable>
-            ) : (
-              <View className="mr-2" style={{ width: 34 }} />
-            )
-          ) : null}
-          {handoff !== undefined ? (
-            <View className="min-w-0 flex-1 items-center">
-              <HandoffLine
-                card={handoff}
-                chatId={message.chatId}
-                senderName={message.senderName}
-                onToggle={() => setHandoffOpen((open) => !open)}
+        {selecting ? (
+          <View className="mr-2 self-center">
+            <Checkbox checked={selected} disabled={!canForward} />
+          </View>
+        ) : null}
+        {!outgoing && isGroup && handoff === undefined ? (
+          showAvatar ? (
+            <PersonPressable target={{ jid: message.senderId }} name={message.senderName}>
+              <EntityAvatar
+                person={{
+                  id: message.senderId,
+                  name: message.senderName,
+                  ...(senderAvatar === undefined ? {} : { avatarUrl: senderAvatar }),
+                }}
+                size={34}
+                className="mr-2"
               />
-              {handoffOpen ? <View className="mt-1 w-full">{bubbleColumn}</View> : null}
-            </View>
+            </PersonPressable>
           ) : (
-            bubbleColumn
-          )}
-          {selecting ? (
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected === true, disabled: !canForward }}
-              accessibilityLabel="Select message"
-              onPress={() => {
-                if (canForward) {
-                  onToggleSelect?.(message);
-                }
-              }}
-              className="absolute inset-0"
+            <View className="mr-2" style={{ width: 34 }} />
+          )
+        ) : null}
+        {handoff !== undefined ? (
+          <View className="min-w-0 flex-1 items-center">
+            <HandoffLine
+              card={handoff}
+              chatId={message.chatId}
+              senderName={message.senderName}
+              onToggle={() => setHandoffOpen((open) => !open)}
             />
-          ) : null}
-        </View>
-      </SwipeToReply>
-      <BubbleActionsSheet
-        visible={menuOpen}
-        confirmOpen={confirmOpen}
-        message={message}
-        canCopy={hasText && sticker === undefined}
-        canEdit={sticker === undefined && message.voice === undefined && canEdit}
-        canDelete={canDelete}
-        canDeleteForMe={canDeleteForMe}
-        isDm={isDm}
-        own={outgoing}
-        senderName={message.senderName}
-        canForward={onForward !== undefined && canForward}
-        canPin={canPin}
-        isPinned={isPinned}
-        myReactions={myReactions}
-        onReply={onReply}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        onForward={onForward}
-        onStartSelect={onStartSelect}
-        onPin={onPin}
-        onUnpin={onUnpin}
-        react={react}
-        setMenuOpen={setMenuOpen}
-        setConfirmOpen={setConfirmOpen}
-      />
-    </>
+            {handoffOpen ? <View className="mt-1 w-full">{bubbleColumn}</View> : null}
+          </View>
+        ) : (
+          bubbleColumn
+        )}
+        {selecting ? (
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected === true, disabled: !canForward }}
+            accessibilityLabel="Select message"
+            onPress={() => {
+              if (canForward) {
+                onToggleSelect?.(message);
+              }
+            }}
+            className="absolute inset-0"
+          />
+        ) : null}
+      </View>
+    </SwipeToReply>
   );
 }
 

@@ -2,7 +2,6 @@ import { canAct, type UiMessage, type UiReaction } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 
-import { useAlbumMembers } from '@/components/chat/album-members';
 import { systemConfirmsCopy, useChatNotice } from '@/components/chat/chat-notice-context';
 import { tap } from '@/components/chat/haptics';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
@@ -27,6 +26,8 @@ type BubbleActionsSheetProps = {
   canPin: boolean | undefined;
   isPinned: boolean | undefined;
   myReactions: UiReaction[];
+  /** T-1274: an album's members, so Delete acts on the whole album. */
+  albumMembers?: UiMessage[] | undefined;
   onReply: (message: UiMessage) => void;
   onEdit: ((message: UiMessage) => void) | undefined;
   onDelete: ((message: UiMessage) => void) | undefined;
@@ -45,9 +46,9 @@ function copyMessageText(text: string): void {
 
 // The haptic is a native call the press does not wait for; it starts here,
 // in the press handler, and a failed haptic is ignored.
-export function openMessageMenu(setMenuOpen: (open: boolean) => void): void {
+export function openMessageMenu(open: () => void): void {
   tap();
-  setMenuOpen(true);
+  open();
 }
 
 export function BubbleActionsSheet({
@@ -65,6 +66,7 @@ export function BubbleActionsSheet({
   canPin,
   isPinned,
   myReactions,
+  albumMembers,
   onReply,
   onEdit,
   onDelete,
@@ -86,14 +88,10 @@ export function BubbleActionsSheet({
   // The chat's one toast, for the "Copied" confirmation (T-1693). A sheet
   // drawn outside a thread gets the no-op.
   const notify = useChatNotice();
-  // T-1274: on an album bubble Delete acts on every photo. The list row hands
-  // the grid its grouped members; with two or more, both confirms loop over all
-  // of them (an album is one sender, so the own/peer rule is unchanged). A lone
-  // photo, or a bubble drawn without a provider, keeps the single-message
-  // action.
-  const members = useAlbumMembers();
-  const albumMembers =
-    message.album !== undefined && members !== null && members.length >= 2 ? members : undefined;
+  // T-1274: on an album bubble Delete acts on every photo. The bubble hands
+  // over the grid's grouped members when its menu opens; with two or more, both
+  // confirms loop over all of them (an album is one sender, so the own/peer
+  // rule is unchanged). A lone photo keeps the single-message action.
   const deleteTargets = albumMembers ?? [message];
   const deleteTitle = albumMembers === undefined ? undefined : 'Delete album?';
   // A failed own text (the core's `retryText` guard, mirrored): attachments,
