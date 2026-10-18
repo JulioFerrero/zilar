@@ -1,4 +1,7 @@
-import { memo, type ReactNode } from 'react';
+import { parseMessageMarkdown } from '@zilar/chat-core/markdown-ast';
+import type { MdBlock, MdInline, MdListItem } from '@zilar/chat-core/markdown-ast';
+import { Square, SquareCheck } from 'lucide-react-native';
+import { memo, useMemo, type ReactNode } from 'react';
 import {
   Linking,
   ScrollView,
@@ -10,13 +13,7 @@ import {
 
 import { well } from '../../lib/depth';
 import { safeLinkTarget } from '../../lib/links';
-import { parseInline, parseMarkdown, type Block, type InlineNode } from '../../lib/markdown';
-import {
-  MarkdownTable,
-  splitMarkdownTables,
-  type MarkdownPart,
-  type MarkdownTableData,
-} from './markdown-table';
+import { MarkdownTable } from './markdown-table';
 
 // The bubble text, code and inline-code looks, shared with `link-text.tsx`
 // (T-1227) so the plain path matches the full Markdown renderer.
@@ -33,27 +30,35 @@ function headingStyle(level: number): TextStyle {
   return { fontSize: size, lineHeight: Math.round(size * 1.35), fontFamily: 'Geist_600SemiBold' };
 }
 
-function renderInline(nodes: InlineNode[]): ReactNode[] {
+/**
+ * The URL to open for a link. The shared parser only emits `http:`, `https:`
+ * and `mailto:`, and `safeLinkTarget` guards every other scheme.
+ */
+function openTarget(href: string): string | undefined {
+  return /^mailto:/i.test(href) ? href : safeLinkTarget(href);
+}
+
+function renderInline(nodes: MdInline[]): ReactNode[] {
   return nodes.map((node, index) => {
     switch (node.type) {
       case 'text':
         return node.value;
-      case 'bold':
+      case 'strong':
         return (
           <RNText key={index} style={{ fontFamily: 'Geist_600SemiBold' }}>
-            {node.value}
+            {renderInline(node.children)}
           </RNText>
         );
-      case 'italic':
+      case 'em':
         return (
           <RNText key={index} style={{ fontStyle: 'italic' }}>
-            {node.value}
+            {renderInline(node.children)}
           </RNText>
         );
-      case 'strike':
+      case 'del':
         return (
           <RNText key={index} style={{ textDecorationLine: 'line-through' }}>
-            {node.value}
+            {renderInline(node.children)}
           </RNText>
         );
       case 'code':
@@ -71,9 +76,9 @@ function renderInline(nodes: InlineNode[]): ReactNode[] {
           </RNText>
         );
       case 'link': {
-        const target = safeLinkTarget(node.href);
+        const target = openTarget(node.href);
         if (target === undefined) {
-          return node.value;
+          return renderInline(node.children);
         }
         return (
           <RNText
@@ -83,10 +88,12 @@ function renderInline(nodes: InlineNode[]): ReactNode[] {
               void Linking.openURL(target);
             }}
           >
-            {node.value}
+            {renderInline(node.children)}
           </RNText>
         );
       }
+      case 'break':
+        return '\n';
     }
   });
 }
@@ -97,7 +104,7 @@ function Body({
   style,
   trailing,
 }: {
-  nodes: InlineNode[];
+  nodes: MdInline[];
   color: string;
   style?: TextStyle;
   trailing?: ReactNode;
@@ -110,19 +117,75 @@ function Body({
   );
 }
 
-function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; color: string }) {
+function TaskBox({ checked, color }: { checked: boolean; color: string }) {
+  const Box = checked ? SquareCheck : Square;
+  return <Box size={14} color={color} style={{ marginTop: 3, marginRight: 6 }} aria-hidden />;
+}
+
+function ItemBlocks({ blocks, color }: { blocks: MdBlock[]; color: string }) {
+  return (
+    <View style={{ paddingLeft: 12, marginTop: BLOCK_GAP }}>
+      {blocks.map((block, index) => (
+        <BlockView key={index} block={block} color={color} first={index === 0} />
+      ))}
+    </View>
+  );
+}
+
+function ListItem({ item, color, marker }: { item: MdListItem; color: string; marker: string }) {
+  const [head, ...rest] = item.children;
+  const inline = head?.type === 'paragraph' ? head.children : undefined;
+  const restBlocks = rest.length > 0 ? <ItemBlocks blocks={rest} color={color} /> : null;
+
+  if (inline !== undefined && item.checked !== undefined) {
+    return (
+      <View>
+        <View style={{ flexDirection: 'row', paddingLeft: 12 }}>
+          <TaskBox checked={item.checked} color={color} />
+          <RNText style={[BODY, { color, flexShrink: 1 }]}>{renderInline(inline)}</RNText>
+        </View>
+        {restBlocks}
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <RNText style={[BODY, { color, paddingLeft: 12 }]}>
+        {marker}
+        {inline === undefined ? null : (
+          <>
+            {'\u00a0'}
+            {renderInline(inline)}
+          </>
+        )}
+      </RNText>
+      {head !== undefined && head.type !== 'paragraph' ? (
+        <View style={{ paddingLeft: 12 }}>
+          <BlockView block={head} color={color} first />
+        </View>
+      ) : null}
+      {restBlocks}
+    </View>
+  );
+}
+
+function ListBlock({ block, color }: { block: Extract<MdBlock, { type: 'list' }>; color: string }) {
+  const start = block.start ?? 1;
   return (
     <View>
       {/* One `Text` per item with the marker inline. A row whose body was
           measured at one width and laid out at another left the bubble taller
           than its content, so the item is a single flowing text instead. Wrapped
-          lines start under the marker; that is accepted. */}
+          lines start under the marker; that is accepted. A task item needs the
+          box icon, so only that row is a flex row. */}
       {block.items.map((item, index) => (
-        <RNText key={index} style={[BODY, { color, paddingLeft: 12 }]}>
-          {block.ordered ? item.marker : '•'}
-          {'\u00a0'}
-          {renderInline(item.nodes)}
-        </RNText>
+        <ListItem
+          key={index}
+          item={item}
+          color={color}
+          marker={block.ordered ? `${start + index}.` : '•'}
+        />
       ))}
     </View>
   );
@@ -133,7 +196,7 @@ export function CodeBlock({
   block,
   color,
 }: {
-  block: Extract<Block, { type: 'code' }>;
+  block: Extract<MdBlock, { type: 'code' }>;
   color: string;
 }) {
   return (
@@ -157,7 +220,7 @@ function BlockView({
   first,
   trailing,
 }: {
-  block: Block;
+  block: MdBlock;
   color: string;
   first: boolean;
   trailing?: ReactNode;
@@ -167,13 +230,13 @@ function BlockView({
     case 'paragraph':
       return (
         <View style={wrapper}>
-          <Body nodes={block.nodes} color={color} trailing={trailing} />
+          <Body nodes={block.children} color={color} trailing={trailing} />
         </View>
       );
     case 'heading':
       return (
         <View style={wrapper}>
-          <Body nodes={block.nodes} color={color} style={headingStyle(block.level)} />
+          <Body nodes={block.children} color={color} style={headingStyle(block.level)} />
         </View>
       );
     case 'code':
@@ -185,7 +248,9 @@ function BlockView({
     case 'quote':
       return (
         <View style={[{ borderLeftWidth: 2, borderLeftColor: QUOTE_BAR, paddingLeft: 8 }, wrapper]}>
-          <Body nodes={block.nodes} color={color} />
+          {block.children.map((child, index) => (
+            <BlockView key={index} block={child} color={color} first={index === 0} />
+          ))}
         </View>
       );
     case 'list':
@@ -194,33 +259,27 @@ function BlockView({
           <ListBlock block={block} color={color} />
         </View>
       );
+    case 'table':
+      return (
+        <View style={wrapper}>
+          <MarkdownTable
+            align={block.align}
+            rows={block.rows}
+            color={color}
+            renderCell={renderInline}
+          />
+        </View>
+      );
     case 'hr':
       return <View style={[{ height: 1, backgroundColor: RULE }, wrapper]} />;
   }
 }
 
-type RenderItem = { kind: 'block'; block: Block } | { kind: 'table'; table: MarkdownTableData };
-
-/** Flattens the table split back into one ordered list of blocks and tables. */
-function toItems(parts: MarkdownPart[]): RenderItem[] {
-  const items: RenderItem[] = [];
-  for (const part of parts) {
-    if (part.kind === 'table') {
-      items.push({ kind: 'table', table: part.table });
-      continue;
-    }
-    for (const block of parseMarkdown(part.text)) {
-      items.push({ kind: 'block', block });
-    }
-  }
-  return items;
-}
-
 /**
  * Renders a safe Markdown reply with React Native `Text` and `View` only: no
- * library, no raw HTML and no remote image. GFM tables come from
- * `markdown-table`, the rest from the shared parser. Memoized on `text`,
- * `color` and `trailing`, so a reveal frame that repeats the same text does not
+ * raw HTML and no remote image. The shared chat-core parser (T-2033) produces
+ * the same AST web renders through react-markdown. Memoized on `text`, `color`
+ * and `trailing`, so a reveal frame that repeats the same text does not
  * re-parse the whole reply.
  *
  * `trailing` is the caret plus an invisible copy of the time/ticks meta that
@@ -238,10 +297,9 @@ export const MarkdownText = memo(function MarkdownText({
   color: string;
   trailing?: ReactNode;
 }) {
-  const items = toItems(splitMarkdownTables(text));
-  const last = items[items.length - 1];
-  const inlineTrailing =
-    last !== undefined && last.kind === 'block' && last.block.type === 'paragraph';
+  const blocks = useMemo(() => parseMessageMarkdown(text), [text]);
+  const last = blocks[blocks.length - 1];
+  const inlineTrailing = last !== undefined && last.type === 'paragraph';
 
   const trailingRow =
     trailing === undefined ? null : (
@@ -250,35 +308,21 @@ export const MarkdownText = memo(function MarkdownText({
       </View>
     );
 
-  if (items.length === 0) {
+  if (blocks.length === 0) {
     return trailingRow;
   }
 
   return (
     <View>
-      {items.map((item, index) => {
-        const first = index === 0;
-        if (item.kind === 'table') {
-          return (
-            <View key={index} style={first ? undefined : { marginTop: BLOCK_GAP }}>
-              <MarkdownTable
-                table={item.table}
-                color={color}
-                renderCell={(cell) => renderInline(parseInline(cell))}
-              />
-            </View>
-          );
-        }
-        return (
-          <BlockView
-            key={index}
-            block={item.block}
-            color={color}
-            first={first}
-            trailing={inlineTrailing && index === items.length - 1 ? trailing : undefined}
-          />
-        );
-      })}
+      {blocks.map((block, index) => (
+        <BlockView
+          key={index}
+          block={block}
+          color={color}
+          first={index === 0}
+          trailing={inlineTrailing && index === blocks.length - 1 ? trailing : undefined}
+        />
+      ))}
       {inlineTrailing ? null : trailingRow}
     </View>
   );
