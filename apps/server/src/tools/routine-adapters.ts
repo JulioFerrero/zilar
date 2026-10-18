@@ -40,6 +40,30 @@ function promptForCard(prompt: string): string {
     : `${prompt.slice(0, MAX_PROMPT_CARD_CHARS)}…`;
 }
 
+// Turns a `RoutineServiceError` into a summary; any other failure throws.
+async function serviceSummary(run: () => Promise<string>): Promise<{ summary: string }> {
+  try {
+    return { summary: await run() };
+  } catch (error) {
+    if (error instanceof RoutineServiceError) {
+      return { summary: serviceFailure(error) };
+    }
+    throw error;
+  }
+}
+
+// Shared tail of the two create paths: create the routine, then answer with
+// its title and next run.
+function scheduledSummary(
+  created: Promise<{ title: string; schedule: RoutineSchedule }>,
+  now: Date,
+): Promise<{ summary: string }> {
+  return serviceSummary(async () => {
+    const routine = await created;
+    return `Scheduled "${routine.title}"; next run ${formatNextRun(routine.schedule, nextRunAfter(routine.schedule, now))}`;
+  });
+}
+
 // `schedule` in words for cards, lists and summaries, e.g. `every 6 hours`
 // or `daily at 09:00 Europe/Madrid on Mon, Wed, Fri`.
 export function describeSchedule(schedule: RoutineSchedule): string {
@@ -210,8 +234,8 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
       // a `kind = 'prompt'` routine the AI runs itself and posts here.
       if (parsed.prompt !== undefined) {
         const owner = await ownerOf(state.db, actionCtx.aiId);
-        try {
-          const created = await createPromptRoutine(
+        return scheduledSummary(
+          createPromptRoutine(
             state.db,
             {
               aiId: actionCtx.aiId,
@@ -225,17 +249,9 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
             },
             state.now(),
             ...(state.audit === undefined ? [] : ([state.audit] as const)),
-          );
-          const next = nextRunAfter(created.schedule, state.now());
-          return {
-            summary: `Scheduled "${created.title}"; next run ${formatNextRun(created.schedule, next)}`,
-          };
-        } catch (error) {
-          if (error instanceof RoutineServiceError) {
-            return { summary: serviceFailure(error) };
-          }
-          throw error;
-        }
+          ),
+          state.now(),
+        );
       }
       const found = await findToolByName(state, actionCtx, parsed.tool);
       if (!found) {
@@ -259,8 +275,8 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         return { summary: 'the tool hosts are not approved yet; run tool.approve_hosts first' };
       }
       const owner = await ownerOf(state.db, actionCtx.aiId);
-      try {
-        const created = await createRoutine(
+      return scheduledSummary(
+        createRoutine(
           state.db,
           {
             aiId: actionCtx.aiId,
@@ -276,17 +292,9 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
           },
           state.now(),
           ...(state.audit === undefined ? [] : ([state.audit] as const)),
-        );
-        const next = nextRunAfter(created.schedule, state.now());
-        return {
-          summary: `Scheduled "${created.title}"; next run ${formatNextRun(created.schedule, next)}`,
-        };
-      } catch (error) {
-        if (error instanceof RoutineServiceError) {
-          return { summary: serviceFailure(error) };
-        }
-        throw error;
-      }
+        ),
+        state.now(),
+      );
     },
   };
 }
@@ -318,7 +326,7 @@ export function routinePauseAdapter(state: AdapterState): ActionAdapter<unknown>
         return { summary: `already paused "${found.title}"` };
       }
       const owner = await ownerOf(state.db, actionCtx.aiId);
-      try {
+      return serviceSummary(async () => {
         await pauseRoutine(
           state.db,
           found.id,
@@ -326,13 +334,8 @@ export function routinePauseAdapter(state: AdapterState): ActionAdapter<unknown>
           state.now(),
           ...(state.audit === undefined ? [] : ([state.audit] as const)),
         );
-        return { summary: `paused "${found.title}"` };
-      } catch (error) {
-        if (error instanceof RoutineServiceError) {
-          return { summary: serviceFailure(error) };
-        }
-        throw error;
-      }
+        return `paused "${found.title}"`;
+      });
     },
   };
 }
@@ -361,7 +364,7 @@ export function routineDeleteAdapter(state: AdapterState): ActionAdapter<unknown
         return { summary: found.summary };
       }
       const owner = await ownerOf(state.db, actionCtx.aiId);
-      try {
+      return serviceSummary(async () => {
         await deleteRoutine(
           state.db,
           found.id,
@@ -369,13 +372,8 @@ export function routineDeleteAdapter(state: AdapterState): ActionAdapter<unknown
           state.now(),
           ...(state.audit === undefined ? [] : ([state.audit] as const)),
         );
-        return { summary: `deleted "${found.title}"` };
-      } catch (error) {
-        if (error instanceof RoutineServiceError) {
-          return { summary: serviceFailure(error) };
-        }
-        throw error;
-      }
+        return `deleted "${found.title}"`;
+      });
     },
   };
 }

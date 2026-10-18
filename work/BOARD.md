@@ -2063,3 +2063,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2064](T-2064-core-status-and-wire-reply.md) | core: one status-mark walk, one wire-reply helper | 2026-10-18 |
 | [T-2056](T-2056-shared-groups-api.md) | one groups, roles and invite-links API in client-core | 2026-10-18 |
 | [T-2063](T-2063-phone-clones-one.md) | phone: one unread badge, one chat branch, one photo download | 2026-10-18 |
+| [T-2060](T-2060-server-self-clones.md) | server: one helper each for four in-file copies | 2026-10-18 |

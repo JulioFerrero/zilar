@@ -23,6 +23,7 @@
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import type { HttpServerRequest } from 'effect/http';
 import {
   CreateConnectionPayload,
   ConnectionsGroup,
@@ -188,6 +189,35 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
     return deps.cipher;
   }
 
+  // Shared opening of both writes: cipher (503), limit (429), JSON (400), strict decode (400).
+  function readBody<S extends Schema.ConstraintDecoder<unknown>>(
+    request: { readonly request: HttpServerRequest.HttpServerRequest },
+    userId: string,
+    schema: S,
+  ): Effect.Effect<{ keyCipher: KeyCipher; body: S['Type'] }> {
+    return Effect.gen(function* () {
+      const keyCipher = requireCipher();
+      if (!writeLimiter.allow(userId)) {
+        throw new HttpError(
+          429,
+          'rate_limited',
+          'Too many connection changes, try again in a minute',
+        );
+      }
+      const raw = yield* request.request.json.pipe(
+        Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
+      );
+      if (raw === INVALID_JSON) {
+        throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
+      }
+      const decoded = Schema.decodeUnknownOption(schema, STRICT_DECODE)(raw);
+      if (Option.isNone(decoded)) {
+        throw new HttpError(400, 'invalid_request', 'Invalid connection request');
+      }
+      return { keyCipher, body: decoded.value };
+    });
+  }
+
   const groupLayer = HttpApiBuilder.group(ConnectionsApi, 'connections', (handlers) =>
     handlers
       .handle(
@@ -201,25 +231,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
         'create',
         handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const keyCipher = requireCipher();
-            if (!writeLimiter.allow(user.id)) {
-              throw new HttpError(
-                429,
-                'rate_limited',
-                'Too many connection changes, try again in a minute',
-              );
-            }
-            const raw = yield* request.request.json.pipe(
-              Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
-            );
-            if (raw === INVALID_JSON) {
-              throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
-            }
-            const decoded = Schema.decodeUnknownOption(CreateConnectionPayload, STRICT_DECODE)(raw);
-            if (Option.isNone(decoded)) {
-              throw new HttpError(400, 'invalid_request', 'Invalid connection request');
-            }
-            const body = decoded.value;
+            const { keyCipher, body } = yield* readBody(request, user.id, CreateConnectionPayload);
             const created = yield* Effect.promise(async () => {
               const baseUrl = await connectionBaseUrl(body.provider, body.baseUrl);
               return createConnectionRow(deps.db, {
@@ -243,29 +255,12 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
         'update',
         handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const keyCipher = requireCipher();
-            if (!writeLimiter.allow(user.id)) {
-              throw new HttpError(
-                429,
-                'rate_limited',
-                'Too many connection changes, try again in a minute',
-              );
-            }
-            const raw = yield* request.request.json.pipe(
-              Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
-            );
-            if (raw === INVALID_JSON) {
-              throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
-            }
-            const decoded = Schema.decodeUnknownOption(UpdateConnectionPayload, STRICT_DECODE)(raw);
-            if (Option.isNone(decoded)) {
-              throw new HttpError(400, 'invalid_request', 'Invalid connection request');
-            }
+            const { keyCipher, body } = yield* readBody(request, user.id, UpdateConnectionPayload);
             const updated = yield* Effect.promise(() =>
               updateConnectionKey(deps.db, {
                 id: request.params.id,
                 owner: user.id,
-                encryptedKey: keyCipher.encrypt(decoded.value.key),
+                encryptedKey: keyCipher.encrypt(body.key),
               }),
             );
             if (updated === null) {

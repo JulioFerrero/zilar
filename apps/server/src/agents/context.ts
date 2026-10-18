@@ -171,48 +171,22 @@ export function buildMemoryMessage(memory: MemoryContext): string | null {
 }
 
 // Maps one history item to a turn, or null when it carries no usable text.
-// The owner's messages become `user` turns; the AI's own become `assistant`
-// turns. Anything else (strangers, other AIs, non-text payloads) is dropped:
-// a DM context has only two speakers.
+// The AI's own messages become `assistant` turns; everyone else's becomes a
+// `user` turn with the caller's content (null drops a stranger).
 function toTurn(
   message: ChatMessage,
   aiBare: string,
-  ownerBare: string,
-): { id: string; role: 'user' | 'assistant'; content: string } | null {
-  if (!isNonEmptyText(message.body)) {
-    return null;
-  }
-  const from = bareJid(message.fromJid);
-  if (from === aiBare || message.outgoing) {
-    return { id: message.id, role: 'assistant', content: message.body };
-  }
-  if (from === ownerBare) {
-    return { id: message.id, role: 'user', content: message.body };
-  }
-  return null;
-}
-
-// Maps one room history item to a turn, or null when it carries no usable
-// text. The AI's own messages become `assistant` turns; everyone else's become
-// `user` turns prefixed with the sender's display name, so the model always
-// knows who said what. Other AIs' messages stay plain text: there are no
-// AI-to-AI turns in M2.
-function toGroupTurn(
-  message: ChatMessage,
-  aiBare: string,
-  senderNames: ReadonlyMap<string, string>,
-): { id: string; role: 'user' | 'assistant'; content: string } | null {
+  userContent: string | null | undefined,
+): HistoryTurn | null {
   if (!isNonEmptyText(message.body)) {
     return null;
   }
   if (bareJid(message.fromJid) === aiBare || message.outgoing) {
     return { id: message.id, role: 'assistant', content: message.body };
   }
-  return {
-    id: message.id,
-    role: 'user',
-    content: `${displayNameOf(message, senderNames)}: ${message.body}`,
-  };
+  return userContent === null || userContent === undefined
+    ? null
+    : { id: message.id, role: 'user', content: userContent };
 }
 
 // The sender's display name: the database name for a resolved bare JID, the
@@ -230,40 +204,26 @@ export function displayNameOf(
   return nick === '' ? jid : nick;
 }
 
-// Builds the full message list for one group turn: system, capped history,
-// then the triggering message unless it is already the last history item
-// (deduplicated by message id). The trigger always fits on top, like in DMs.
+// Builds the full message list for one group turn.
 export function buildGroupMessages(input: GroupContextInput): ChatCompletionMessage[] {
-  const system = buildGroupSystemMessage(input);
   const aiBare = bareJid(input.aiJid);
   const sender = input.senderName.trim() === '' ? 'a member' : input.senderName.trim();
-
-  const recent = applyEdits(input.history).slice(-DM_HISTORY_MESSAGE_LIMIT);
   const senderNames = input.senderNames ?? new Map<string, string>();
-  const turns: Array<{ id: string; role: 'user' | 'assistant'; content: string }> = [];
-  for (const message of recent) {
-    const turn = toGroupTurn(message, aiBare, senderNames);
-    if (turn !== null) {
-      turns.push(turn);
-    }
-  }
-  const capped = capHistoryByChars(turns, DM_HISTORY_CHAR_BUDGET);
-
-  const messages: ChatCompletionMessage[] = [{ role: 'system', content: system }];
-  const memoryText = input.memory === undefined ? null : buildMemoryMessage(input.memory);
-  if (memoryText !== null) {
-    messages.push({ role: 'system', content: memoryText });
-  }
-  for (const turn of capped) {
-    messages.push({ role: turn.role, content: turn.content });
-  }
-
   const triggerBody = isNonEmptyText(input.trigger.body) ? input.trigger.body : '';
-  const lastId = capped.length > 0 ? capped[capped.length - 1]!.id : undefined;
-  if (triggerBody !== '' && input.trigger.id !== lastId) {
-    messages.push({ role: 'user', content: `${sender}: ${triggerBody}` });
-  }
-  return messages;
+  return assembleMessages(
+    buildGroupSystemMessage(input),
+    input.memory,
+    input.history,
+    (message) => toTurn(message, aiBare, `${displayNameOf(message, senderNames)}: ${message.body}`),
+    input.trigger,
+    `${sender}: ${triggerBody}`,
+  );
+}
+
+interface HistoryTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 // Drops the oldest turns until the history fits the character budget.
@@ -277,37 +237,49 @@ export function capHistoryByChars<T extends { content: string }>(turns: T[], bud
   return turns.slice(start);
 }
 
-// Builds the full message list for one DM turn: system, capped history, then
-// the triggering message unless it is already the last history item
-// (deduplicated by message id).
-export function buildDmMessages(input: DmContextInput): ChatCompletionMessage[] {
-  const system = buildSystemMessage(input);
-  const aiBare = bareJid(input.aiJid);
-  const ownerBare = bareJid(input.ownerJid);
-
-  const recent = applyEdits(input.history).slice(-DM_HISTORY_MESSAGE_LIMIT);
-  const turns: Array<{ id: string; role: 'user' | 'assistant'; content: string }> = [];
-  for (const message of recent) {
-    const turn = toTurn(message, aiBare, ownerBare);
-    if (turn !== null) {
-      turns.push(turn);
-    }
-  }
+// Shared body of both builders: collect and cap the turns, add the system and
+// memory messages, then the trigger unless it is already the last turn.
+function assembleMessages(
+  system: string,
+  memory: MemoryContext | undefined,
+  history: ChatMessage[],
+  mapper: (message: ChatMessage) => HistoryTurn | null,
+  trigger: Pick<ChatMessage, 'id' | 'body'>,
+  triggerContent: string,
+): ChatCompletionMessage[] {
+  const turns = applyEdits(history)
+    .slice(-DM_HISTORY_MESSAGE_LIMIT)
+    .flatMap((message) => {
+      const turn = mapper(message);
+      return turn === null ? [] : [turn];
+    });
   const capped = capHistoryByChars(turns, DM_HISTORY_CHAR_BUDGET);
-
   const messages: ChatCompletionMessage[] = [{ role: 'system', content: system }];
-  const memoryText = input.memory === undefined ? null : buildMemoryMessage(input.memory);
+  const memoryText = memory === undefined ? null : buildMemoryMessage(memory);
   if (memoryText !== null) {
     messages.push({ role: 'system', content: memoryText });
   }
   for (const turn of capped) {
     messages.push({ role: turn.role, content: turn.content });
   }
-
-  const triggerBody = isNonEmptyText(input.trigger.body) ? input.trigger.body : '';
   const lastId = capped.length > 0 ? capped[capped.length - 1]!.id : undefined;
-  if (triggerBody !== '' && input.trigger.id !== lastId) {
-    messages.push({ role: 'user', content: triggerBody });
+  if (isNonEmptyText(trigger.body) && trigger.id !== lastId) {
+    messages.push({ role: 'user', content: triggerContent });
   }
   return messages;
+}
+
+// Builds the full message list for one DM turn.
+export function buildDmMessages(input: DmContextInput): ChatCompletionMessage[] {
+  const aiBare = bareJid(input.aiJid);
+  const owner = bareJid(input.ownerJid);
+  const triggerBody = isNonEmptyText(input.trigger.body) ? input.trigger.body : '';
+  return assembleMessages(
+    buildSystemMessage(input),
+    input.memory,
+    input.history,
+    (message) => toTurn(message, aiBare, bareJid(message.fromJid) === owner ? message.body : null),
+    input.trigger,
+    triggerBody,
+  );
 }

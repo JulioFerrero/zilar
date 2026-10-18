@@ -56,7 +56,12 @@ export async function runRequest(
   }
 
   if (verdict.kind === 'allow') {
-    return runAllowedAction(deps, params, adapter as ActionAdapter<unknown>);
+    const executed = await executeAction(deps, params, adapter as ActionAdapter<unknown>, null);
+    if (executed === null) {
+      return { status: 'denied', reason: 'invalid_args' };
+    }
+    await writeAllowAudit(deps, params, executed.run.outcome);
+    return executed.run.response;
   }
 
   // T-0099: a tier-2 request that matches an active standing rule skips the
@@ -92,61 +97,80 @@ export async function runRequest(
   return runApprovalPath(deps, params, adapter, at);
 }
 
-async function runAllowedAction(
+interface AdapterRun {
+  outcome: 'ok' | 'error';
+  response: RequestOutcome;
+}
+
+// Runs one adapter and maps its result. The error text is never stored,
+// returned or logged with the message: only the error class name is logged,
+// for ops.
+async function runAdapter(
   deps: ActionGatewayDependencies,
   params: RequestParams,
   adapter: ActionAdapter<unknown>,
-): Promise<RequestOutcome> {
-  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
-  if (!parsed.ok) {
-    // The policy already ran the same decode, so this is a defence in
-    // depth. It cannot trip in production but a custom adapter that
-    // mutates state between calls could in theory disagree.
-    return { status: 'denied', reason: 'invalid_args' };
+  ctx: ActionContext,
+  parsedArgs: unknown,
+  ruleId: string | null,
+): Promise<AdapterRun> {
+  let result: ActionResult;
+  try {
+    result = await adapter.execute(ctx, parsedArgs);
+  } catch (error) {
+    deps.logger.warn(
+      {
+        err: errorName(error),
+        action: params.action,
+        aiId: params.aiId,
+        ...(ruleId === null ? {} : { ruleId }),
+      },
+      ruleId === null ? 'action adapter threw' : 'action adapter threw under auto-approval',
+    );
+    return { outcome: 'error', response: { status: 'failed' } };
   }
-  const parsedArgs = parsed.value;
+  const summary = truncateSummary(result.summary);
+  const modelText = sanitiseModelText(result.modelText);
+  // `modelText` and `posted` ride back to the model only: never stored on a
+  // row, never audited, never announced.
+  return {
+    outcome: 'ok',
+    response:
+      summary === null
+        ? { status: 'failed' }
+        : {
+            status: 'executed',
+            summary,
+            ...(modelText === undefined ? {} : { modelText }),
+            ...(result.posted === true ? { posted: true } : {}),
+          },
+  };
+}
+
+// Decodes the args and runs the adapter with the request's context. Null means
+// the args failed to decode; the caller answers the denial the policy would.
+async function executeAction(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  ruleId: string | null,
+): Promise<{ parsedArgs: unknown; run: AdapterRun } | null> {
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  // The policy already ran the same decode: this is defence in depth for a
+  // custom adapter that mutates state between calls.
+  if (!parsed.ok) {
+    return null;
+  }
   const ctx: ActionContext = {
     aiId: params.aiId,
     groupId: params.groupId ?? null,
     topicId: params.topicId ?? null,
-    requestId: 'allow-' + randomUUID(),
+    requestId: ruleId === null ? 'allow-' + randomUUID() : 'rule-' + ruleId,
     logger: deps.logger,
   };
-
-  let outcome: 'ok' | 'error';
-  let summary: string | null = null;
-  let modelText: string | undefined;
-  let posted = false;
-  try {
-    const result: ActionResult = await adapter.execute(ctx, parsedArgs);
-    outcome = 'ok';
-    summary = truncateSummary(result.summary);
-    modelText = sanitiseModelText(result.modelText);
-    posted = result.posted === true;
-  } catch (error) {
-    outcome = 'error';
-    // The error text is never stored, never returned, never logged with
-    // the message. The name of the error class is logged for ops; that is
-    // all the surface area a failure exposes.
-    deps.logger.warn(
-      { err: errorName(error), action: params.action, aiId: params.aiId },
-      'action adapter threw',
-    );
-  }
-
-  await writeAllowAudit(deps, params, outcome);
-  // `modelText` rides back to the model only: it is never stored on a row
-  // (there is no row on this path), never audited, never announced below.
-  // T-1761: `posted` rides back the same way, telling the turn a card already
-  // reached the room.
-  return outcome === 'ok' && summary !== null
-    ? {
-        status: 'executed',
-        summary,
-        ...(modelText === undefined ? {} : { modelText }),
-        ...(posted ? { posted: true } : {}),
-      }
-    : { status: 'failed' };
+  return {
+    parsedArgs: parsed.value,
+    run: await runAdapter(deps, params, adapter, ctx, parsed.value, ruleId),
+  };
 }
 
 // T-0099: a tier-2 request that matches an active standing rule runs
@@ -162,47 +186,15 @@ async function runAutoApprovedAction(
   adapter: ActionAdapter<unknown>,
   ruleId: string,
 ): Promise<RequestOutcome> {
-  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
-  if (!parsed.ok) {
-    // Defence in depth: invalid args fall through to the normal
-    // approval path. We do this by reporting the same denial the
-    // allow path would; the policy has the same order, but a custom
-    // adapter that mutates state between calls could in theory
-    // disagree.
+  const executed = await executeAction(deps, params, adapter, ruleId);
+  if (executed === null) {
     return { status: 'denied', reason: 'invalid_args' };
   }
-  const parsedArgs = parsed.value;
-  const ctx: ActionContext = {
-    aiId: params.aiId,
-    groupId: params.groupId ?? null,
-    topicId: params.topicId ?? null,
-    requestId: 'rule-' + ruleId,
-    logger: deps.logger,
-  };
-
-  let outcome: 'ok' | 'error';
-  let summary: string | null = null;
-  let modelText: string | undefined;
-  let posted = false;
-  try {
-    const result: ActionResult = await adapter.execute(ctx, parsedArgs);
-    outcome = 'ok';
-    summary = truncateSummary(result.summary);
-    modelText = sanitiseModelText(result.modelText);
-    posted = result.posted === true;
-  } catch (error) {
-    outcome = 'error';
-    // Adapter error text is never stored, never returned, never logged
-    // with the message. The class name is logged for ops.
-    deps.logger.warn(
-      { err: errorName(error), action: params.action, aiId: params.aiId, ruleId },
-      'action adapter threw under auto-approval',
-    );
-  }
+  const { run } = executed;
 
   // The args hash is computed over the parsed args so an audit reader
   // can join back to the request without ever seeing the args.
-  const hash = argsHash(parsedArgs);
+  const hash = argsHash(executed.parsedArgs);
   if (!ARGS_HASH_PATTERN.test(hash)) {
     // Defence in depth: if canonical hashing rejects the args we
     // never ran anything we could not audit. Practically unreachable.
@@ -225,7 +217,7 @@ async function runAutoApprovedAction(
     result: 'ok',
     detail: null,
   });
-  await writeAllowAudit(deps, params, outcome);
+  await writeAllowAudit(deps, params, run.outcome);
 
   // The chat sees the outcome with the "Ran automatically" prefix the
   // spec asks for, so the owner can tell the card was skipped.
@@ -234,20 +226,13 @@ async function runAutoApprovedAction(
       aiId: params.aiId,
       groupId: params.groupId ?? null,
       ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
-      status: outcome === 'ok' ? 'executed' : 'failed',
+      status: run.outcome === 'ok' ? 'executed' : 'failed',
       summary:
-        outcome === 'ok' && summary !== null
-          ? `Ran automatically (always allowed in this chat): ${summary}`
+        run.response.status === 'executed'
+          ? `Ran automatically (always allowed in this chat): ${run.response.summary}`
           : null,
     },
   });
 
-  return outcome === 'ok' && summary !== null
-    ? {
-        status: 'executed',
-        summary,
-        ...(modelText === undefined ? {} : { modelText }),
-        ...(posted ? { posted: true } : {}),
-      }
-    : { status: 'failed' };
+  return run.response;
 }
