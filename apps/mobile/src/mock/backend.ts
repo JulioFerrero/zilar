@@ -12,7 +12,7 @@
  */
 import { createMockBackend, defaultSeed } from '@zilar/mock-backend';
 
-const backend = createMockBackend();
+const backend = createMockBackend({ historyDelayMs: 300 });
 
 /** The seeded viewer's id; mock mode signs nobody in, so owner checks use this. */
 export const mockViewerId: string = defaultSeed.me.id;

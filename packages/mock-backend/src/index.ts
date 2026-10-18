@@ -30,6 +30,8 @@ export interface MockBackendOptions {
   seed?: MockSeed;
   /** Request delay in ms; defaults to `DEFAULT_DELAY_MS` (150). */
   delayMs?: number;
+  /** History page delay in ms; defaults to 0 (instant). App mock mode uses 300. */
+  historyDelayMs?: number;
   /** Clock for the seed's relative timestamps; defaults to `() => new Date()`. */
   now?: () => Date;
 }
@@ -52,7 +54,11 @@ export function createMockBackend(options: MockBackendOptions = {}): MockBackend
   let handler = createMockHttp(data, () => delayMs);
   return {
     http: (path, init) => handler(path, init),
-    xmpp: (xmppOptions) => createMockXmppCore(data, xmppOptions),
+    xmpp: (xmppOptions) =>
+      createMockXmppCore(data, {
+        ...xmppOptions,
+        historyDelayMs: options.historyDelayMs ?? 0,
+      }),
     get data(): MockData {
       return data;
     },

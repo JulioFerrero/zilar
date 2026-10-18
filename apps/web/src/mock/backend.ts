@@ -10,7 +10,7 @@
  */
 import { createMockBackend } from '@zilar/mock-backend';
 
-const backend = createMockBackend();
+const backend = createMockBackend({ historyDelayMs: 300 });
 
 export { backend };
 

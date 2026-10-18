@@ -11,7 +11,6 @@ import type {
   ChatKind,
   ChatMessage,
   ConnectionStatus,
-  HistoryPage,
   SendCorrectionOptions,
   SendMessageOptions,
   UploadRequest,
@@ -41,6 +40,11 @@ export interface MockXmppCoreOptions extends XmppCoreOptions {
    * `DEFAULT_REPLY_DELAY_MS` (1500); 0 disables the reply.
    */
   replyDelayMs?: number;
+  /**
+   * Milliseconds before a history page answers, so app mock mode can show the
+   * loading state while paging. Defaults to 0 (instant), which keeps tests fast.
+   */
+  historyDelayMs?: number;
 }
 
 export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions): FakeXmppCore {
@@ -54,6 +58,7 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
   let replyTurn = 0;
   const nickByRoom = new Map<string, string>();
   const pendingReplies = new Set<ReturnType<typeof setTimeout>>();
+  const historyDelayMs = options.historyDelayMs ?? 0;
 
   const nextId = (prefix: string): string => {
     sequence += 1;
@@ -250,10 +255,15 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
         data.appendMessage(chatJid, message);
         fake.emit('message', message);
       }),
-    loadHistory: (chatJid, _kind, opts) =>
-      startAsync('loadHistory', [chatJid, opts], (): HistoryPage =>
-        historyPage(data.messages[chatJid] ?? [], opts),
-      ),
+    loadHistory: async (chatJid, _kind, opts) => {
+      start('loadHistory', [chatJid, opts]);
+      if (historyDelayMs > 0) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, historyDelayMs);
+        });
+      }
+      return historyPage(data.messages[chatJid] ?? [], opts);
+    },
     requestUploadSlot: (request: UploadRequest) =>
       startAsync('requestUploadSlot', [request], (): UploadSlot => {
         // The PUT needs no server: a `data:` URL accepts the bytes. The

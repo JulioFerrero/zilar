@@ -8,6 +8,7 @@ import { devTeamMessages } from './dev-team';
 import { familiaMessages } from './familia';
 import { gymMessages } from './gym';
 import { ideasMessages } from './ideas';
+import { longMessages } from './long';
 import { luisMessages } from './luis';
 import { marketingAiMessages } from './marketing-ai';
 import { martaMessages } from './marta';
@@ -23,7 +24,7 @@ export const messageSeeds: Readonly<Record<string, readonly MockMessageSeed[]>> 
   'acme@rooms.zilar.test': acmeMessages,
   'dev-team@rooms.zilar.test': devTeamMessages,
   't-devteam-bug@rooms.zilar.test': checkoutMessages,
-  'viernes@rooms.zilar.test': viernesMessages,
+  'viernes@rooms.zilar.test': [...longMessages, ...viernesMessages],
   'ai-dev-1@zilar.test': devAiMessages,
   'marta@zilar.test': martaMessages,
   'familia@rooms.zilar.test': familiaMessages,
