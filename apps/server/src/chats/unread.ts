@@ -1,8 +1,4 @@
-// Unread counts and previews for the chat list (T-1198): per chat, the
-// number of archived messages after the caller's read mark plus the newest
-// archived message. At most two archive queries per list, whatever the chat
-// count; without an archive pool the answer is empty and the list omits both
-// fields.
+// Per chat, the count after the caller's read mark plus the newest preview; at most two queries per list.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -33,23 +29,19 @@ export interface ChatUnread {
     text: string;
     senderName?: string;
     at: string;
-    /** The row's archive timestamp as a decimal string (T-1214): the read
-     * mark for this preview. The origin id above is not a mark. */
+    // The preview's read mark as a decimal string; the origin id is not a mark.
     archiveId: string;
   };
 }
 
 export type UnreadScope = { kind: 'dm'; peer: string } | { kind: 'room'; room: string };
 
-// The row's archive timestamp as a decimal string (T-1214): the read mark
-// for the preview. Stringify only — never construct a `BigInt`, so no
-// `BigInt` value reaches postgres.js (the T-1198 incident, T-1205).
+// Stringify only — never a `BigInt`, so none reaches postgres.js.
 function archiveIdOf(timestamp: number | string | bigint): string {
   return typeof timestamp === 'bigint' ? timestamp.toString() : String(timestamp);
 }
 
-// A non-text row gets a short label, like the clients' pin fallbacks
-// (apps/web/src/components/PinsPanel.tsx:16-22).
+// A non-text row gets a short label, like the clients' pin fallbacks.
 function labelForRow(text: string | null, xml: string): string {
   const album = albumInfoFromXml(xml);
   if (album !== undefined) {
@@ -71,11 +63,8 @@ function labelForRow(text: string | null, xml: string): string {
   return 'File';
 }
 
-// Whether the row was sent by the caller. A room row names the real sender in
-// `bare_peer`, not in the free-text nick (the nick is display text); DM rows
-// are matched on the stanza's `from` like the search sender rule
-// (search/snippet.ts:52-58). Only a row with no `bare_peer` at all (a legacy or
-// malformed row) falls back to the nick, case-insensitively.
+// A room row names the real sender in `bare_peer` (the nick is display text); DM rows match the stanza `from`.
+// Only a row with no `bare_peer` falls back to the nick, case-insensitively.
 function isOwnRow(
   row: Pick<ArchiveUnreadRow, 'kind' | 'nick' | 'barePeer' | 'xml'>,
   ownJid: string,
@@ -110,24 +99,16 @@ function senderNameForPreview(
   return allowed.peerNames.get(row.barePeer) ?? 'Someone';
 }
 
-// The real sender JIDs of a batch's room rows, for one batched name lookup
-// per read (never one query per row).
+// The real sender JIDs of the batch's room rows, for one name lookup per read.
 function senderJidsOf(rows: readonly ArchiveUnreadRow[]): string[] {
   return rows
     .filter((row) => row.kind === 'groupchat' && row.barePeer !== '')
     .map((row) => bareJid(row.barePeer));
 }
 
-// Turns one chat's batch read into an unread count and a preview. A resent
-// message reaches the archive as a second row under the same origin id (a lost
-// stream-management ack makes the client resend, T-1217); per chat, the
-// identity of a counted row is its sender plus that origin id. An album's
-// photos archive as one row each under distinct origin ids but one album id
-// (T-1267): `album:<id>` replaces the origin id, so the whole album counts
-// once (T-1272). Rows arrive newest-first per chat (the join keeps each chat's
-// order), so the first row kept per chat is its preview. The unread count
-// stops at the cap: rows past it still set the preview but no longer bump the
-// count.
+// A resent message archives as a second row under the same origin id, so identity is sender plus origin id.
+// An album's photos share one album id (`album:<id>`), so the whole album counts once.
+// Rows arrive newest-first; the first kept per chat is the preview, and the count stops at the cap.
 export function summarizeUnread(
   page: ArchiveUnreadRow[],
   chats: ChatThreshold[],
@@ -137,15 +118,13 @@ export function summarizeUnread(
 ): Record<string, ChatUnread> {
   const answer: Record<string, ChatUnread> = {};
   const counted = new Map<string, Set<string>>();
-  // The batch's live-UI origin ids, read once for the skip below (T-1400).
   const liveIds = liveAiUiIds(page);
   for (const row of page) {
     const chat = chats.find((entry) => entry.jid.toLowerCase() === row.chatJid.toLowerCase());
     if (chat === undefined) {
       continue;
     }
-    // The live AI UI and its edits are not messages: they neither count nor
-    // become the preview, so the loop keeps walking to the newest real message.
+    // Live AI UI and its edits neither count nor become the preview.
     if (skipUnreadRow(row.xml, row.barePeer, liveIds)) {
       continue;
     }
@@ -170,8 +149,7 @@ export function summarizeUnread(
       }
       const album = albumInfoFromXml(row.xml);
       const identity = album === undefined ? row.originId : `album:${album.id}`;
-      // The dedupe key names the real sender (`bare_peer`) for a room row, so
-      // a resent message still counts once whatever nick the client sent.
+      // The key names the real sender (`bare_peer`) for a room row, so a resend counts once whatever nick.
       const senderKey = row.kind === 'groupchat' ? row.barePeer : row.nick;
       const key = `${row.kind}\u0000${row.barePeer}\u0000${senderKey}\u0000${identity}`;
       if (seen.has(key)) {
@@ -187,12 +165,7 @@ export function summarizeUnread(
   return answer;
 }
 
-/**
- * Unread counts and previews for the caller's chats. The input maps each
- * visible chat JID to its archive scope; only scoped chats are read, so a
- * chat the caller may not see never appears in the answer. At most two
- * archive queries in total.
- */
+// Only scoped chats are read, so a chat the caller may not see never appears; at most two queries.
 export async function unreadForChats(
   db: ServerDatabase,
   config: ServerConfig,
@@ -226,16 +199,13 @@ export async function unreadForChats(
     if (!inScope) {
       continue;
     }
-    // A stored mark is always numeric (writes validate it); a legacy row
-    // that is not parses as no mark rather than failing the list.
+    // A legacy non-numeric mark parses as no mark rather than failing the list.
     let after = floor;
     const mark = markByJid.get(jid.toLowerCase());
     if (mark !== undefined) {
       try {
         const parsed = BigInt(mark);
-        // Decimal strings only: a mark that fits int8 stringifies exactly,
-        // so postgres.js binds text and the `::bigint[]` cast compares it
-        // as a number. Never pass a JS BigInt to the archive pool.
+        // A decimal string binds exactly and the `::bigint[]` cast compares it as a number; never pass a JS BigInt.
         after = parsed.toString();
       } catch {
         after = floor;
@@ -253,8 +223,7 @@ export async function unreadForChats(
   }
   const page = (await archive.query(built.text, built.values)) as unknown as ArchiveUnreadRow[];
 
-  // One batched display-name lookup for the page's room senders (T-2004),
-  // keyed by the archived `bare_peer`.
+  // One batched display-name lookup for the page's room senders, keyed by `bare_peer`.
   const pageNames = await senderNamesByJid(db, senderJidsOf(page));
   const answer = summarizeUnread(page, chats, allowed, ownJid, pageNames);
 
@@ -264,9 +233,7 @@ export async function unreadForChats(
     const rows = (await archive.query(newest.text, newest.values)) as unknown as ArchiveUnreadRow[];
     const newestNames = await senderNamesByJid(db, senderJidsOf(rows));
     for (const chat of missing) {
-      // Newest first: the first row that is neither live AI UI nor an edit of
-      // one is the preview, so a chat the card alone pushed past its mark
-      // keeps showing its newest real message (T-1400).
+      // The first row that is neither live AI UI nor an edit is the preview.
       const row = newestUnskippedRow(rows, chat.jid);
       if (row === undefined) {
         continue;

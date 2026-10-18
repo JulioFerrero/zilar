@@ -1,5 +1,3 @@
-// T-0984: size split of `routines/service.ts`. The routine limits, service
-// error, types and title schema live here; the old path stays the barrel.
 import { Exit, Schema } from 'effect';
 import type { RoutineRow } from '../db/rows';
 import { firstIssueMessage } from '../effect/schema-issues';
@@ -26,8 +24,7 @@ export type RoutineLastStatus = 'ok' | 'error' | 'skipped';
 
 export type { RoutineRow };
 
-// The tool columns `createRoutine` checks before inserting a routine; the
-// effect/sql row comes back camelCased.
+// The tool columns `createRoutine` checks; the effect/sql row is camelCased.
 export type RoutineToolRow = {
   id: string;
   aiId: string;
@@ -57,7 +54,7 @@ export interface CreateRoutineInput {
   input?: unknown;
   approvedHosts: string[];
   userId: string;
-  // T-1870: the alert card block that drives this routine.
+  // The alert card block that drives this routine.
   alertCard?: { cardId: string; blockId: string };
 }
 
@@ -69,7 +66,7 @@ export interface CreatePromptRoutineInput {
   schedule: unknown;
   prompt: string;
   userId: string;
-  // T-1870: the alert card block that drives this routine.
+  // The alert card block that drives this routine.
   alertCard?: { cardId: string; blockId: string };
 }
 
@@ -90,7 +87,7 @@ export interface PublicRoutine {
   lastRunAt: Date | null;
   lastStatus: RoutineLastStatus | null;
   approvedHosts: string[];
-  /** `personal` means the owner's DM with the AI; `group` a group topic. */
+  // `personal` means the owner's DM with the AI; `group` a group topic.
   scope: 'personal' | 'group';
 }
 
@@ -113,10 +110,7 @@ const TITLE_CONTROL_CHARS = String.fromCharCode(
   127,
 );
 
-// Replaces `z.string().min(1).max(80).refine(...)`: one `makeFilter` returns
-// each text in the old order (empty, too long, control characters). In Effect
-// 4.0.2 `{ message }` on the length checks does not reach the issue
-// annotations, but a filter's returned string does (T-0561 pitfall).
+// One `makeFilter` returns each text in order; effect 4's `{ message }` does not reach annotations, a filter's string does.
 export const titleSchema = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter((value: string) => {
@@ -134,9 +128,7 @@ export const titleSchema = Schema.String.pipe(
   ),
 );
 
-// T-1641: the title decode shared by `createRoutine` and
-// `createPromptRoutine`. Throws the same `invalid_request` service error the
-// inline copy in `support.ts` used to.
+// The title decode shared by both creators; throws `invalid_request`.
 export function parseRoutineTitle(title: unknown): string {
   const decoded = Schema.decodeUnknownExit(titleSchema)(title);
   if (!Exit.isSuccess(decoded)) {

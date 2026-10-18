@@ -8,9 +8,7 @@ import { listRoutinesForTopic, toPublicRoutines } from './queries';
 import type { PublicRoutine } from './schemas';
 import type { RoutineRow } from './service';
 
-// The module's own reads on `effect/sql`. `SELECT *` returns camelCased
-// columns (see `../effect/sql`), so the rows keep the `TopicRow` and
-// `RoutineRow` shapes the access helpers and wire mappers already expect.
+// `SELECT *` returns camelCased columns, so rows keep the shapes the access helpers expect.
 export async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
   const [row] = await runSql(
     db,
@@ -73,16 +71,12 @@ export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: 
   return row ?? null;
 }
 
-// T-1717: a routine row plus the name of the AI it belongs to (`ai_name` is
-// camelCased to `aiName` like every other column). T-1719 adds the AI's own
-// JID (`ai_jid`), the DM chat of a personal routine.
+// A routine row plus the AI's name and JID (the DM chat of a personal routine).
 export interface MyRoutineRow extends RoutineRow {
   aiName: string;
   aiJid: string;
 }
 
-// One entry of the caller's own routine list: the routine, the AI's name and
-// picture, the chat it runs in and that chat's JID.
 export interface MyRoutineView {
   routine: PublicRoutine;
   aiName: string;
@@ -91,9 +85,7 @@ export interface MyRoutineView {
   chatJid: string | null;
 }
 
-// Every non-deleted routine of every AI the caller owns, across all their
-// chats, with the AI's name. The topic visibility filter runs in
-// `listMyRoutines`.
+// Every non-deleted routine of every AI the caller owns, with the AI's name.
 export async function listRoutinesForOwner(
   db: ServerDatabase,
   ownerId: string,
@@ -145,18 +137,8 @@ async function findGroupTitlesByIds(
   return new Map(rows.map((row) => [row.id, row.title]));
 }
 
-// T-1717: the caller's routines across every AI they own, with the AI's name
-// and picture and the chat name, for Settings › Routines. A routine in a
-// private topic the caller cannot see is left out, the same filter `listForAi`
-// applies. `chatName` is null for a personal chat, the topic name otherwise,
-// and the group name when the topic is the group's General topic. One query
-// each for the routines, the topics, the groups and the AI avatars.
-//
-// T-1719: each entry also carries `chatJid`, the room JID of its chat. A group
-// routine uses its topic's `<roomLocalpart>@<mucDomain>` (lowercased, like
-// `delete-group`); a personal one uses the AI's own DM JID. `mucDomain` is
-// optional so a caller without the config still gets the personal JIDs and a
-// null for the group ones.
+// The caller's routines across every AI they own, with the AI's name, picture and chat name.
+// A routine in a private topic the caller cannot see is left out; one query each for routines, topics, groups and avatars.
 export async function listMyRoutines(
   db: ServerDatabase,
   userId: string,
@@ -223,9 +205,7 @@ export async function listMyRoutines(
   return result;
 }
 
-// T-1753: the routines of one topic, for the "In this topic" row. A missing
-// topic and one the caller may not see both answer null, so the route replies
-// the same 404 for either and ids cannot be probed.
+// A missing topic and one the caller may not see both answer null, so ids cannot be probed.
 export async function listVisibleTopicRoutines(
   db: ServerDatabase,
   topicId: string,

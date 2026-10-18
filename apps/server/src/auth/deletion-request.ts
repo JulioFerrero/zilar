@@ -1,11 +1,5 @@
-// Account-deletion request and cancel (T-1261, task T-A of
-// `docs/audit/account-deletion-plan.md` §9). This module owns the 7-day grace
-// row in `user_deletions` (§5a): it schedules, reads and cancels it. It never
-// deletes anything — the deletion job is task T-B, held for the plan's §8
-// decisions.
-//
-// Audit entries carry ids only (§5d): `subject_id` is the user id, and the
-// sign-in cancel adds `detail: { by: 'sign-in' }`. Nothing else.
+// The 7-day grace row in `user_deletions`: schedules, reads and cancels it, never deletes anything.
+// Audit entries carry ids only: `subject_id` is the user id, and the sign-in cancel adds `detail: { by: 'sign-in' }`.
 
 import type { AuthDeletionStatus } from '@zilar/api-contract';
 import { Effect } from 'effect';
@@ -17,32 +11,24 @@ import { HttpError } from '../errors';
 import type { SessionsDeps } from './sessions';
 import { currentSession } from './sessions';
 
-// The plan's §5a: `delete_after = requested_at + interval '7 days'`.
+// `delete_after = requested_at + interval '7 days'`.
 const DELETION_GRACE_DAYS = 7;
 
-/**
- * The plan's §9 decision 9: the whole-account routes demand a session at most
- * 30 minutes old, stricter than Better Auth's 24 h `freshAge`. Shared by the
- * deletion request (below) and the export (T-1262).
- */
+// Whole-account routes demand a session at most 30 minutes old, stricter than Better Auth's 24 h.
 export const FRESH_SESSION_MS = 30 * 60 * 1000;
 
-/** The name the deletion route and its tests already use. */
 export const DELETION_FRESH_SESSION_MS = FRESH_SESSION_MS;
 
-/** The 403 the fresh-session gate answers when the session is older than 30 min. */
 export function assertFreshSession(createdAt: Date, nowMs: number, message: string): void {
   if (nowMs - createdAt.getTime() > FRESH_SESSION_MS) {
     throw new HttpError(403, 'reauth_required', message);
   }
 }
 
-/** The ready-to-deploy status the three routes answer. */
 export const DELETION_NOT_SCHEDULED: AuthDeletionStatus = { scheduled: false };
 
 export interface DeletionDeps extends SessionsDeps {
   audit: AuditRecorder;
-  /** Injected in tests; the freshness window is measured against it. */
   now?: () => number;
 }
 
@@ -50,7 +36,6 @@ interface DeletionRow {
   deleteAfter: Date;
 }
 
-/** The caller's grace status: scheduled with its date, or not scheduled. */
 export async function deletionStatus(
   db: ServerDatabase,
   userId: string,
@@ -59,11 +44,7 @@ export async function deletionStatus(
   return row === undefined ? DELETION_NOT_SCHEDULED : scheduled(row.deleteAfter);
 }
 
-/**
- * Schedules the deletion seven days out and answers the status. It is
- * idempotent: `ON CONFLICT DO NOTHING` keeps the first `delete_after`, so a
- * second request never pushes the date back.
- */
+// Idempotent: `ON CONFLICT DO NOTHING` keeps the first `delete_after`, so a second request never pushes it back.
 export async function requestDeletion(
   deps: DeletionDeps,
   userId: string,
@@ -84,7 +65,7 @@ export async function requestDeletion(
   );
   const [insertedRow] = inserted;
   if (insertedRow !== undefined) {
-    // Ids only: actor and subject are the user; no detail on the first request.
+    // Ids only: actor and subject are the user.
     await deps.audit.record({
       actorUserId: userId,
       aiId: null,
@@ -103,10 +84,7 @@ export async function requestDeletion(
   return row === undefined ? DELETION_NOT_SCHEDULED : scheduled(row.deleteAfter);
 }
 
-/**
- * Cancels the request and answers `{ scheduled: false }`. It is idempotent: a
- * user with no row still gets the same answer and no audit entry.
- */
+// Idempotent: a user with no row gets the same answer and no audit entry.
 export async function cancelDeletion(
   deps: { db: ServerDatabase; audit: AuditRecorder },
   userId: string,
@@ -138,11 +116,7 @@ export async function cancelDeletion(
   return DELETION_NOT_SCHEDULED;
 }
 
-/**
- * Better Auth's `session.create.after` hook: a successful sign-in cancels a
- * pending deletion (plan §5b). Best effort — a failure is logged and never
- * blocks the sign-in.
- */
+// A successful sign-in cancels a pending deletion; best effort, never blocks the sign-in.
 export async function cancelDeletionOnSignIn(
   db: ServerDatabase,
   logger: AuditLogger | undefined,

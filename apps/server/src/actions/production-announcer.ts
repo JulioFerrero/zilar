@@ -7,11 +7,6 @@ import { runSql } from '../effect/sql';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { approvalCardBody, buildApprovalCardPayload, type ActionAnnouncer } from './announce';
 
-// The card builder receives the camelCase row; the read below returns it
-// through `transformResultNames`.
-
-// The narrow slice of pino the production announcer needs. Real wiring
-// passes the server's logger; tests pass a captor.
 export interface ProductionAnnouncerLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
@@ -21,13 +16,7 @@ export interface ProductionAnnouncerDeps {
   domain: string;
   mucDomain: string;
   logger: ProductionAnnouncerLogger;
-  /**
-   * Resolves the agent gateway at call time (not at build time): the
-   * action gateway is built before the agent gateway exists, so the
-   * announcer closes over this accessor and the calls resolve at runtime
-   * once the gateway is wired. Null (or a stopped gateway) means every
-   * announcement is a no-op — `postToChat` would answer `false` anyway.
-   */
+  // Resolved at call time because the action gateway is built before the agent gateway exists.
   getGateway: () => { postToChat(input: PostToChatInput): Promise<boolean> } | null;
 }
 
@@ -39,12 +28,7 @@ export interface PostToChatInput {
   payload?: Payload;
 }
 
-// The production announcer (T-0092, topic wiring T-0110): turns a tier-2
-// request and its outcome into one chat message each, posted through the
-// AI's own live XMPP session. A card requested in a topic goes into that
-// topic's room (never bare General); a personal-chat request goes to the
-// owner's DM. Every failure is a no-op with one log line: the gateway
-// never lets an announcement change an outcome, a row or an audit entry.
+// Posts one message per tier-2 request and outcome through the AI's own session; failures are a no-op with one log line.
 export function createProductionAnnouncer(deps: ProductionAnnouncerDeps): ActionAnnouncer {
   return {
     async approvalRequested(input: {

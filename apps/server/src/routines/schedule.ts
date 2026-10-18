@@ -1,15 +1,6 @@
-// T-0104: routine schedules. Pure module, no dependencies: time zones go
-// through `Intl.DateTimeFormat`, validation through `zod`.
-//
-// Two shapes:
-// - `{ kind: 'daily', time: 'HH:MM', timezone: <IANA name>, weekdays?: number[] }`
-//   (1 = Monday … 7 = Sunday, default all days, at least one). The run is a
-//   wall-clock time in the zone, correct across daylight-saving changes: a
-//   wall time that does not exist (spring forward) runs at the first valid
-//   moment after it that day (02:30 becomes 03:00); an ambiguous wall time
-//   (fall back) runs once, at the first occurrence.
-// - `{ kind: 'interval', everyMinutes: number }` with
-//   1 <= everyMinutes <= 10 080.
+// Two shapes: `{ kind: 'daily', time: 'HH:MM', timezone, weekdays? }` (1 = Monday … 7 = Sunday, default all days)
+// and `{ kind: 'interval', everyMinutes }` with 1 <= everyMinutes <= 10 080.
+// A wall time in the DST gap runs at the first valid moment after it; an ambiguous one runs once, at the first occurrence.
 import { Exit, Schema, SchemaIssue } from 'effect';
 import { struct } from '@zilar/protocol';
 import { firstIssueMessage } from '../effect/schema-issues';
@@ -17,9 +8,7 @@ import { firstIssueMessage } from '../effect/schema-issues';
 export const MIN_INTERVAL_MINUTES = 1;
 export const MAX_INTERVAL_MINUTES = 10_080;
 
-// Every custom message is a `makeFilter` text: effect 4 drops the
-// `{ message }` option on `isMinLength`/`isMaxLength`, but a filter that
-// returns the text carries it on the issue annotations.
+// effect 4 drops `{ message }` on length checks, but a filter that returns the text carries it.
 const timeSchema = Schema.String.check(
   Schema.makeFilter((value: string) =>
     /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? undefined : 'time must be HH:MM (00:00-23:59)',
@@ -81,9 +70,7 @@ export type RoutineSchedule = Schema.Schema.Type<typeof routineScheduleSchema>;
 
 export type ParsedSchedule = { ok: true; value: RoutineSchedule } | { ok: false; message: string };
 
-// A union whose `kind` matches no member decodes to an empty `AnyOf` with no
-// child issues, so no filter text is available: name the discriminator the
-// way the old zod error did.
+// A union with no matching `kind` decodes to an empty `AnyOf`, so name the discriminator explicitly.
 function scheduleMessage(issue: SchemaIssue.Issue, fullMessage: string): string {
   const custom = firstIssueMessage(issue, { filterAnnotations: true });
   if (custom !== undefined) {
@@ -95,9 +82,7 @@ function scheduleMessage(issue: SchemaIssue.Issue, fullMessage: string): string 
   return fullMessage.split('\n')[0] ?? 'Invalid schedule';
 }
 
-// Validates an unknown schedule value at the boundary. `weekdays` defaults
-// to all days; the normalised value always carries it explicitly for daily
-// schedules. Unknown keys are rejected, like the old strict zod schemas.
+// `weekdays` defaults to all days and is always explicit after decode; unknown keys are rejected.
 export function parseRoutineSchedule(input: unknown): ParsedSchedule {
   const exit = Schema.decodeUnknownExit(routineScheduleSchema, {
     errors: 'all',
@@ -121,9 +106,7 @@ export function parseRoutineSchedule(input: unknown): ParsedSchedule {
   return { ok: true, value };
 }
 
-// The next occurrence strictly after `from`. Interval schedules anchor on
-// `everyMinutes` boundaries since the epoch. Daily schedules fire at the
-// wall-clock time in the zone on each selected weekday.
+// The next occurrence strictly after `from`; interval schedules anchor on `everyMinutes` boundaries since the epoch.
 export function nextRunAfter(schedule: RoutineSchedule, from: Date): Date {
   if (schedule.kind === 'interval') {
     const stepMs = schedule.everyMinutes * 60_000;
@@ -131,8 +114,7 @@ export function nextRunAfter(schedule: RoutineSchedule, from: Date): Date {
   }
   const [hour, minute] = schedule.time.split(':').map(Number) as [number, number];
   const weekdays = new Set(schedule.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
-  // Check `from`'s own zone day first, then up to one full week ahead, so a
-  // weekday filter always finds its day.
+  // Check `from`'s own zone day first, then up to one full week ahead.
   const fromDate = zoneDateOf(from, schedule.timezone);
   for (let offset = 0; offset <= 7; offset += 1) {
     const date = addDays(fromDate, offset);
@@ -147,8 +129,7 @@ export function nextRunAfter(schedule: RoutineSchedule, from: Date): Date {
   throw new Error('No daily occurrence found within a week');
 }
 
-// Whether `Intl` knows the zone. `DateTimeFormat` throws `RangeError` for
-// an unknown zone name; a valid name never does.
+// `DateTimeFormat` throws `RangeError` for an unknown zone; a valid name never does.
 export function isKnownTimeZone(timezone: string): boolean {
   try {
     formatterFor(timezone);
@@ -220,10 +201,7 @@ function isoWeekday(year: number, month: number, day: number): number {
   return sundayFirst === 0 ? 7 : sundayFirst;
 }
 
-// The instant the zone wall clock reads midnight starting `date`.
-// Iterative: shifting a UTC instant shifts the wall reading by (almost)
-// the same amount, so adding the observed wall error converges even when
-// a transition lands exactly at midnight.
+// The instant the zone wall clock reads midnight starting `date`; iterative so a transition at midnight still converges.
 function zoneMidnight(date: ZoneDate, timezone: string): Date {
   const targetDay = Date.UTC(date.year, date.month - 1, date.day);
   let candidate = new Date(targetDay);
@@ -240,19 +218,11 @@ function zoneMidnight(date: ZoneDate, timezone: string): Date {
   return candidate;
 }
 
-// The instant the zone wall clock reads `hour:minute` on `date`,
-// corrected for DST transitions. Resolution rule: the first UTC minute
-// (scanning forward from midnight) whose wall reading is on `date` and at
-// or after the target. On a normal day that is the target itself; on a
-// spring-forward day a target inside the gap resolves to the first valid
-// moment after the gap (02:30 becomes 03:00); on a fall-back day an
-// ambiguous target resolves to its first occurrence. The fast path covers
-// normal days with two `Intl` calls; only transition days pay the scan.
+// The first UTC minute whose wall reading is on `date` and at or after `hour:minute`; the fast path covers normal days, transition days pay the scan.
+// A target inside the spring-forward gap resolves to the first valid moment; an ambiguous one to its first occurrence.
 function dailyOccurrence(date: ZoneDate, hour: number, minute: number, timezone: string): Date {
   const midnight = zoneMidnight(date, timezone);
-  // First guess: wall time advances 1:1 with UTC, so the instant is
-  // midnight plus the wall offset. Exact on normal days (verified below);
-  // transition days fall through to the scan.
+  // Wall time advances 1:1 with UTC, so midnight plus the wall offset is exact on normal days.
   const naive = new Date(midnight.getTime() + (hour * 60 + minute) * 60_000);
   const parts = zoneParts(naive, timezone);
   if (
@@ -264,9 +234,7 @@ function dailyOccurrence(date: ZoneDate, hour: number, minute: number, timezone:
   ) {
     return naive;
   }
-  // Transition day: scan UTC minutes forward from midnight. A zone day is
-  // at most 26 hours (Lord Howe's 30-minute fall-back aside, 27 covers
-  // every real zone), so 27 * 60 steps always terminate on `date`.
+  // A zone day is at most 26 hours (27 covers every real zone), so the scan terminates on `date`.
   for (let step = 0; step <= 27 * 60; step += 1) {
     const candidate = new Date(midnight.getTime() + step * 60_000);
     const wall = zoneParts(candidate, timezone);

@@ -1,12 +1,9 @@
-// The user's IANA time zone (T-1440). It lives in `user_profiles` beside the
-// bio, outside Better Auth's `user` table. The zone never reaches a log: only
-// these helpers touch it, and none logs.
+// The IANA zone lives in `user_profiles` and never reaches a log.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-/** True for a valid IANA zone at most 64 characters long. */
 export function isValidTimeZone(timeZone: string): boolean {
   if (timeZone.length > 64) {
     return false;
@@ -19,7 +16,6 @@ export function isValidTimeZone(timeZone: string): boolean {
   }
 }
 
-/** Upserts the zone; callers validate it first. */
 export async function upsertProfileTimeZone(
   db: ServerDatabase,
   userId: string,
@@ -38,10 +34,6 @@ export async function upsertProfileTimeZone(
   );
 }
 
-/**
- * The zone, or null when the user has no profile row or none stored. A LEFT
- * JOIN is not needed: a missing `user_profiles` row means no zone.
- */
 export async function timeZoneFor(db: ServerDatabase, userId: string): Promise<string | null> {
   const [row] = await runSql(
     db,
@@ -54,11 +46,7 @@ export async function timeZoneFor(db: ServerDatabase, userId: string): Promise<s
   return row?.timeZone ?? null;
 }
 
-/**
- * The zone of the user whose XMPP JID is `jid` (the group turn's sender), or
- * null when the sender is not a user (an AI, a stranger, an unresolved nick).
- * The JID must be the bare, lowercase form the rest of the gateway uses.
- */
+// The zone of the user whose bare, lowercase JID is `jid`, or null when the sender is not a user.
 export async function timeZoneForJid(db: ServerDatabase, jid: string): Promise<string | null> {
   const [row] = await runSql(
     db,

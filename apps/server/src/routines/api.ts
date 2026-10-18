@@ -1,8 +1,4 @@
-// Routines module on the Effect `HttpApi` adapter (T-0554): the same
-// methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the old router (`routes.ts`), which has since been deleted along
-// with its thin wrapper; mounted by the Effect edge
-// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
+// Routines routes on the Effect `HttpApi` adapter; 204 on delete.
 
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -49,9 +45,8 @@ export interface RoutinesApiDependencies {
   db: ServerDatabase;
   logger: Logger;
   audit?: AuditRecorder;
-  /** Injected in tests so pause/resume/delete timestamps can advance. */
   now?: () => Date;
-  /** T-1719: the MUC domain room JIDs are built from. Optional so tests can omit it. */
+  // The MUC domain room JIDs are built from; optional so tests can omit it.
   mucDomain?: string;
 }
 
@@ -64,8 +59,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
       .handle(
         'listMine',
         handler(logger, async (_request, user) => {
-          // Running first, then by title: the Settings › Routines page groups
-          // Running and Paused, so the server sends them in order.
+          // Running first, then by title, the order Settings › Routines groups by.
           const routines = await listMyRoutines(deps.db, user.id, deps.mucDomain);
           routines.sort(
             (a, b) =>
@@ -83,9 +77,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
           if (!ai) {
             throw new HttpError(404, 'not_found', 'AI not found');
           }
-          // Only routines of topics the owner can see: a routine in a
-          // private topic the owner was removed from stays hidden until
-          // they are back.
+          // A routine in a private topic the owner was removed from stays hidden until they are back.
           const all = await listRoutinesForAi(deps.db, ai.id);
           const visible: PublicRoutine[] = [];
           for (const routine of all) {
@@ -157,9 +149,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
         'remove',
         handler(logger, async (request, user) => {
           const routineId = request.params.id;
-          // Like the tools delete: managers resolve on the raw row
-          // (including soft-deleted ones) so a re-delete answers 204;
-          // strangers still get the missing-id 404.
+          // Managers resolve on the raw row so a re-delete answers 204; strangers still get the missing-id 404.
           const access = await routineAccessIncludingDeleted(deps.db, routineId, user.id);
           if (!access || !access.manager) {
             throw new HttpError(404, 'not_found', 'Routine not found');
@@ -169,8 +159,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
       ),
   );
 
-  // Pause and resume share the access check and the re-read; only the service
-  // call differs. A service error maps through `mapServiceError`.
+  // Pause and resume share the access check and re-read; only the service call differs.
   function changeStatus(
     routineId: string,
     userId: string,

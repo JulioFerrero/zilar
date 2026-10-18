@@ -1,9 +1,4 @@
-// T-0104: production wiring for the routines scheduler. `index.ts` calls
-// `buildRoutineScheduler` after the server is listening and stops the
-// handle on shutdown, like the other timers. The scheduler starts only
-// when `ROUTINES_ENABLED=true` **and** a tool runner is configured: with
-// the flag on and no runner it logs one warning and stays off (the unit
-// tests cover this builder, not `index.ts`).
+// Production wiring: the scheduler starts only when `ROUTINES_ENABLED=true` and a tool runner is configured; otherwise one warning and off.
 import type { Payload } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -21,9 +16,9 @@ export type { RoutineSchedulerHandle };
 export interface BuildRoutineSchedulerDeps {
   db: ServerDatabase;
   routinesEnabled: boolean;
-  /** Absent = no runner (T-0105 wires the sandbox): the scheduler stays off. */
+  // Absent = no runner, so the scheduler stays off.
   toolRunner?: ToolRunner;
-  /** Posts as the AI (`postToChat` via the `gatewayRef` closure). */
+  // Posts as the AI (`postToChat` via the `gatewayRef` closure).
   post: (input: {
     aiId: string;
     groupId: string | null;
@@ -31,18 +26,15 @@ export interface BuildRoutineSchedulerDeps {
     text: string;
     payload?: Payload;
   }) => Promise<boolean>;
-  /** Runs a prompt routine through the gateway (`runScheduledTurn`); absent
-   * while the gateway is null, so the run is recorded `skipped`. */
+  // Runs a prompt routine through the gateway; absent while the gateway is null, so the run is `skipped`.
   runPrompt?: PromptRunner;
-  /** T-1880: corrects a linked alert card in the room (`correctInRoom`). */
+  // Corrects a linked alert card in the room (`correctInRoom`).
   correctCard?: ExecuteRoutinePorts['correctCard'];
   audit: AuditRecorder;
   logger: RoutineLogger;
 }
 
-// Returns a started handle, or null when the scheduler must stay off. The
-// single warning covers the misconfigured case (flag on, no runner); the
-// flag-off case is silent, like the other feature flags.
+// Returns a started handle, or null; the single warning covers flag on with no runner.
 export function buildRoutineScheduler(
   deps: BuildRoutineSchedulerDeps,
 ): RoutineSchedulerHandle | null {

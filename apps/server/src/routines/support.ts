@@ -1,6 +1,4 @@
-// T-0984: size split of `routines/service.ts`. The routine mutations (create,
-// pause, resume, delete) and their result types live here; the old path stays
-// the barrel.
+// The routine mutations (create, pause, resume, delete) and their result types.
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -24,15 +22,8 @@ import {
   type RoutineVersionRow,
 } from './schemas';
 
-// Creates a routine after a human approved it (the T-0105 adapter calls
-// this). Validates the title, schedule and input; checks the tool belongs
-// to the same (AI, topic) and is not deleted; requires `approvedHosts`
-// to be a superset of the tool's current version hosts (otherwise
-// `hosts_not_approved`); T-0132 additionally requires every host in
-// `approvedHosts` to be inside the TOOL's approved set (otherwise
-// `tool_hosts_not_approved`, model told to run `tool.approve_hosts`);
-// enforces the 10-routines limit; computes `next_run_at` from `now`;
-// audits `routine.created` with ids only.
+// Creates a routine after a human approved it: validates title, schedule and input, checks the tool belongs to the same (AI, topic).
+// Requires `approvedHosts` to cover the tool's hosts and to sit inside the tool's approved set; enforces the 10-routines limit and audits ids only.
 export async function createRoutine(
   db: ServerDatabase,
   input: CreateRoutineInput,
@@ -97,10 +88,7 @@ export async function createRoutine(
       'The approved hosts must include every host the tool contacts',
     );
   }
-  // T-0132: the routine's card hosts must also sit inside the tool's
-  // approved set, so a routine can never reach a host the tool itself may
-  // not contact. (The adapter checks this first with a model-actionable
-  // summary; this is the defence in depth for direct service callers.)
+  // A routine can never reach a host the tool itself may not contact; the adapter checks first, this is defence in depth.
   const toolApproved = new Set(tool.approvedHosts ?? []);
   if (!approved.every((host) => toolApproved.has(host))) {
     throw new RoutineServiceError(
@@ -140,8 +128,7 @@ export async function createRoutine(
       }),
     );
   } catch (error) {
-    // T-1870: the partial unique index on the alert card block refused a
-    // second live routine; nothing was inserted and no audit is written.
+    // The partial unique index refused a second live routine; nothing was inserted and no audit written.
     if (isUniqueViolation(error)) {
       throw new RoutineServiceError(
         'alert_card_taken',
@@ -170,9 +157,7 @@ export async function createRoutine(
   return toPublicRoutine(inserted, tool.name, schedule.value);
 }
 
-// Pauses an active routine (`paused_reason = 'user'`). Idempotent: an
-// already paused (or `needs_approval`) routine returns `paused: false` and
-// writes nothing. Audits `routine.paused` only when it actually paused.
+// Pauses an active routine; an already paused one returns `paused: false` and writes nothing.
 export async function pauseRoutine(
   db: ServerDatabase,
   id: string,
@@ -222,10 +207,7 @@ export async function pauseRoutine(
   return { routine: updated, paused: true };
 }
 
-// Resumes a paused routine. `needs_approval` answers 409 `needs_approval`
-// (a human must re-schedule it); a routine paused for `failures` resumes
-// with `consecutive_failures = 0` and `next_run_at` recomputed from now.
-// An active routine is a no-op. Audits `routine.resumed` on a real resume.
+// `needs_approval` answers 409; a `failures` pause resumes with the counter reset and `next_run_at` from now.
 export async function resumeRoutine(
   db: ServerDatabase,
   id: string,
@@ -290,9 +272,7 @@ export async function resumeRoutine(
   return { routine: updated, resumed: true };
 }
 
-// Soft-deletes one routine. Idempotent: a missing id or an already
-// deleted routine returns `deleted: false` and writes nothing. Audits
-// `routine.deleted` on a real delete.
+// Idempotent: a missing or already deleted routine returns `deleted: false` and writes nothing.
 export async function deleteRoutine(
   db: ServerDatabase,
   id: string,

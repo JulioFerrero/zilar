@@ -7,11 +7,8 @@ import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import { getTool, getVersion, listRuns, listTools, listVersions, type PublicTool } from './service';
 
-// Reader = the AI's owner who can see the topic, or a member of the
-// topic. Manager = the AI's owner who can see the topic, or a group
-// owner/admin who can see the topic. Returns null for a missing/deleted
-// tool, a blind viewer, or a stranger (same shape for all, so existence
-// is never leaked).
+// Reader = the AI's owner or a topic member; manager = the owner or a group owner/admin who can see the topic.
+// Null for missing, blind, or stranger alike, so existence is never leaked.
 export async function toolAccess(
   db: ServerDatabase,
   toolId: string,
@@ -49,10 +46,7 @@ export async function toolAccess(
   return { tool, manager: isGroupManagerRole(membership.role) };
 }
 
-// Same manager check as `toolAccess`, but on the raw tool row — including
-// soft-deleted ones. Only the DELETE route uses this (idempotent 204);
-// every other route goes through `toolAccess`, so deleted tools still
-// read as missing everywhere else.
+// Same manager check on the raw row, for the idempotent DELETE (204); every other route reads deleted as missing.
 export async function toolAccessIncludingDeleted(
   db: ServerDatabase,
   toolId: string,
@@ -167,9 +161,7 @@ export async function requireReadableRuns(db: ServerDatabase, toolId: string, us
   return runs;
 }
 
-// All non-deleted tools of every AI attached to a group, each with its
-// scope — but only in topics the viewer can see. The caller is a member
-// (checked by the route); the helper additionally gates each topic.
+// All non-deleted tools of every AI attached to a group, in topics the viewer can see.
 export async function listToolsForGroup(
   db: ServerDatabase,
   groupId: string,

@@ -7,15 +7,10 @@ import type { ActionGateway, ActionGatewayDependencies, ActionGatewayLogger } fr
 import { cancelPending } from './queries';
 import { errorName } from './support';
 
-// 10 minutes: a `running` row older than this is considered stuck and
-// `recoverStuck` flips it to `failed` without re-executing.
+// 10 minutes: older `running` rows are considered stuck and flipped to `failed` without re-executing.
 export const STUCK_RUNNING_MS = 10 * 60 * 1000;
 
-// Handle returned by `startRecoveryStuckTimer`. A background Effect fiber
-// that runs `recoverStuck` on a cadence, with `close()` to stop it on
-// shutdown. The loop never re-runs an action: `recoverStuck` only marks
-// `running` rows as `failed` and cancels `waiting` rows whose approval is
-// past due.
+// Background fiber that runs `recoverStuck` on a cadence; it never re-runs an action.
 export interface RecoveryStuckHandle {
   close: () => void;
 }
@@ -31,8 +26,6 @@ export function startRecoveryStuckTimer({
   logger,
   intervalMs = 5 * 60 * 1000,
 }: StartRecoveryStuckTimerOptions): RecoveryStuckHandle {
-  // Today's tick: run `recoverStuck`, log a failure with the error class
-  // name only, and let the loop carry on either way.
   async function tick(): Promise<void> {
     try {
       await gateway.recoverStuck();
@@ -41,16 +34,11 @@ export function startRecoveryStuckTimer({
     }
   }
 
-  // First run after one interval, not at boot, so the timer delay never
-  // blocks startup; callers that want an immediate sweep can call
-  // `gateway.recoverStuck()` themselves.
+  // First run after one interval, so the timer delay never blocks startup.
   return startSweepLoop(intervalMs, tick);
 }
 
-// Marks a `running` row older than `STUCK_RUNNING_MS` as `failed` with a
-// `reason: 'stuck'` audit entry. Also cancels `waiting` rows whose
-// approval is past due. Never re-runs anything: a `running` row's args
-// are never executed again.
+// Marks stale `running` rows `failed` and cancels `waiting` rows whose approval is past due; never re-runs anything.
 export async function runRecoverStuck(
   deps: ActionGatewayDependencies,
   now: () => Date,

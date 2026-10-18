@@ -1,7 +1,4 @@
-// The read mark write (T-1198): `PUT /api/chats/:jid/read` stores the
-// caller's last-read archive id per chat, forward only. The handler checks
-// chat access with the same rule the chat prefs use, so a chat the caller
-// may not see answers the same 404 as an unknown one.
+// Stores the caller's last-read archive id per chat, forward only; invisible and unknown chats answer the same 404.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -12,10 +9,7 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { DeliveryLookup } from './deliveries';
 
-/**
- * Whether the caller may mark `chatJid` read. Answers the same 404 for an
- * unknown and an invisible chat, like the chat-prefs access check.
- */
+// The same 404 for an unknown and an invisible chat, like chat prefs.
 export async function requireChatReadAccess(
   db: ServerDatabase,
   options: { chatJid: string; userId: string; domain: string; mucDomain: string },
@@ -23,14 +17,12 @@ export async function requireChatReadAccess(
   return requireChatAccess(db, options);
 }
 
-/** The parts of the chats API dependencies the param check reads. */
 export interface ChatAccessDependencies {
   db: ServerDatabase;
   config: Pick<ServerConfig, 'xmpp'>;
 }
 
-// The bare JID a mark or reply may use. A malformed param answers the same
-// 404 as an unknown or invisible chat, so JIDs cannot be probed.
+// A malformed param answers the same 404, so JIDs cannot be probed.
 export async function chatAccessFromParam(
   deps: ChatAccessDependencies,
   encodedJid: string,
@@ -50,17 +42,10 @@ export async function chatAccessFromParam(
   });
 }
 
-/**
- * Archive ids are microsecond-timestamp int8s: the range check below rejects a
- * well-formed mark Postgres could not cast, so it answers 400, not 500.
- */
+// Microsecond int8 ids: the range check rejects what Postgres could not cast, so it answers 400, not 500.
 const MAX_ARCHIVE_ID = 9223372036854775807n;
 
-/**
- * Stores the caller's read mark for a visible chat, keeping the larger
- * archive id (microsecond timestamps compare as numbers), so an old device
- * cannot move the mark back. Unknown and invisible chats answer 404 alike.
- */
+// Keeps the larger id, so an old device cannot move the mark back.
 export async function putChatRead(
   db: ServerDatabase,
   options: {
@@ -85,15 +70,10 @@ export async function putChatRead(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // T-1244: opening the chat clears a manual unread mark on every device,
-      // whatever the read mark does — the `unread_mark` guard makes the update
-      // scoped to the caller and skips the row when it is already clear.
+      // Opening the chat clears the manual unread mark on every device, scoped to the caller.
       yield* sql`UPDATE chat_prefs SET unread_mark = false, updated_at = now()
         WHERE user_id = ${options.userId} AND chat_jid = ${options.bare} AND unread_mark`;
-      // Forward only. The `WHERE` keeps that rule atomic: two devices racing
-      // cannot move the mark back between the read above and this write.
-      // Stored marks are always numeric (writes validate first), so the
-      // bigint cast cannot fail.
+      // The `WHERE` keeps forward-only atomic; stored marks are validated, so the bigint cast cannot fail.
       yield* sql`INSERT INTO chat_reads (user_id, chat_jid, last_read_id, updated_at)
         VALUES (${options.userId}, ${options.bare}, ${options.messageId}, now())
         ON CONFLICT (user_id, chat_jid) DO UPDATE SET
@@ -104,16 +84,8 @@ export async function putChatRead(
   );
 }
 
-/**
- * The peer's read marks for the caller's DMs (T-1311), in the caller's
- * own-message terms. A peer's device stores its read mark under its own user
- * id with the caller's JID as the chat (`putChatRead`), so one query per list
- * finds each peer's newest mark whatever the chat count. Keys are the chat
- * JIDs the caller passed in; a chat without a peer mark is left out.
- *
- * The stored id is the id both DM sides share (the server's archive
- * stanza-id), so it compares directly against the caller's own message ids.
- */
+// One query finds each peer's newest mark under its own user id with the caller's JID.
+// The stored id is the one both DM sides share, so it compares against the caller's message ids.
 export async function readForChats(
   db: ServerDatabase,
   options: { userId: string; callerJid: string; lookups: readonly DeliveryLookup[] },
@@ -128,9 +100,7 @@ export async function readForChats(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // The peer's row is keyed by its own user id under the caller's JID, so
-      // another peer's mark can never leak into this DM. Stored marks are
-      // always numeric (writes validate first), so the bigint cast cannot fail.
+      // Keyed by the peer's user id under the caller's JID, so another peer's mark cannot leak in.
       return yield* sql<{
         userId: string;
         lastReadId: string;

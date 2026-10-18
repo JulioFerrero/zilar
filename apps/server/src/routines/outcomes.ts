@@ -1,6 +1,4 @@
-// T-1028: size split of `routines/execute.ts`. The records one run writes
-// (skipped, ok, failure, pause), the fixed notices and the post helpers live
-// here; the old path stays the barrel.
+// The records one run writes, the fixed notices and the post helpers.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
@@ -44,21 +42,14 @@ export async function postResult(
       ...(payload === undefined ? {} : { payload }),
     });
   } catch {
-    // A throwing post is a `skipped` like a `false` answer: the chat
-    // layer is best-effort, and the failure counter is for tool runs.
+    // A throwing post is a `skipped` like a `false` answer; the failure counter is for tool runs.
     options.logger.warn({ routineId: row.id }, 'routine post threw');
     return false;
   }
 }
 
-// T-1759: a saved tool may return blocks. A valid set rides on the post as a
-// `blocks` payload whose header is the routine title and whose meta line is
-// the schedule text; the plain text goes out unchanged either way, so
-// previews, push and old clients keep working. Invalid blocks log only the
-// routine id (never the reason) and fall back to today's plain post.
-// T-1766: the tool's `card.icon`, when it has one, is kept as the header icon;
-// the routine title and schedule stay authoritative for a routine.
-// T-1872: media blocks are dropped, because a routine cannot fetch media.
+// A saved tool's valid blocks ride on the post as a `blocks` payload with the routine title and schedule text; invalid blocks log only the routine id and fall back to plain text.
+// The tool's `card.icon` is kept; media blocks are dropped because a routine cannot fetch media.
 function routineBlocksPayload(
   row: RoutineRow,
   outputText: string,
@@ -70,7 +61,6 @@ function routineBlocksPayload(
     return undefined;
   }
   const parsed = parseRoutineSchedule(row.schedule);
-  // T-1872: a routine cannot fetch media, so it never posts a media block.
   const blocks = Array.isArray(outputBlocks) ? withoutMedia(outputBlocks) : outputBlocks;
   const built = buildBlocksPayload(
     {
@@ -126,9 +116,7 @@ export async function markOk(
   await auditRun(options, row, 'ok', startedAt);
 }
 
-// One failure more. The 3rd consecutive failure also pauses the routine
-// and posts the fixed notice once. A deleted tool (`deleted: true`, from
-// the step-2/step-4 race) pauses immediately with the same notice.
+// The 3rd consecutive failure pauses and posts the fixed notice once; a deleted tool pauses immediately.
 export async function recordFailure(
   db: ServerDatabase,
   options: ExecuteRoutineOptions,
@@ -195,8 +183,7 @@ export async function pauseForHostsChanged(
   await postNotice(ports, options, row, HOSTS_CHANGED_NOTICE(row.title));
 }
 
-// Best-effort fixed notices: the chat layer may answer `false` (the AI
-// left the room); the pause itself is already recorded either way.
+// The chat layer may answer `false`; the pause is already recorded either way.
 async function postNotice(
   ports: ExecuteRoutinePorts,
   options: ExecuteRoutineOptions,

@@ -1,6 +1,3 @@
-// T-0984: size split of `routines/service.ts`. The routine reads, the row to
-// view mapping and the per-topic limit check live here; the old path stays
-// the barrel.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -14,7 +11,6 @@ import {
   type RoutineToolNameRow,
 } from './schemas';
 
-// One non-deleted routine, or null for a missing/deleted id.
 export async function getRoutine(
   db: ServerDatabase,
   id: string,

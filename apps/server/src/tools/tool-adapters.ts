@@ -1,5 +1,5 @@
-// effect-plain: moved unchanged from apps/server/src/tools/adapters.ts (size split)
-// T-0966: the `tool.*` adapters, split out of `tools/adapters.ts` unchanged.
+// effect-plain: tool adapter definitions
+// The `tool.*` adapters.
 import type { Schema } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
@@ -164,10 +164,7 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
       if (saved.unchanged) {
         return { summary: `${head} (unchanged)` };
       }
-      // T-0132: a version that declares any host outside the approved set
-      // keeps working without that host (no network for it) until a new
-      // `tool.approve_hosts` is approved. The model text names the
-      // unapproved hosts so the model can ask for approval.
+      // A version declaring an unapproved host keeps working without it until a new approval; the model text names them.
       const unapproved = saved.version.hosts.filter(
         (host) => !saved.tool.approvedHosts.includes(host),
       );
@@ -175,14 +172,12 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
         unapproved.length === 0
           ? ''
           : ` Unapproved hosts (no network for them yet): ${hostsLine(unapproved)}. Ask for tool.approve_hosts to allow them.`;
-      // T-1993: the save's test run spends from the same budget as `tool.run`.
-      // The save lands either way; only the test run is skipped.
+      // The save's test run spends from the same budget as `tool.run`; the save lands either way.
       const runKey = `${actionCtx.aiId}\n${actionCtx.groupId ?? ''}\n${actionCtx.topicId ?? ''}`;
       if (!state.runLimiter.allow(runKey)) {
         return { summary: `${head}; test run skipped: run limit reached${approvalHint}` };
       }
-      // The save itself is never rolled back when the test run fails: the
-      // model fixes the code in the next call.
+      // The save is never rolled back when the test run fails.
       let testSummary: string;
       let testText: string;
       try {
@@ -199,8 +194,7 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
         if (result.ok) {
           testSummary = 'test run ok';
           testText = result.output.text;
-          // T-1768: tell the AI whether its card would post, from the same
-          // check `tool.run` applies. A tool without blocks gets no line.
+          // Tell the AI whether its card would post, from the same check `tool.run` applies.
           const cardLine = describeToolCard(result.output, saved.tool.name);
           if (cardLine !== null) {
             testSummary = `test run ok, ${cardLine}`;
@@ -278,12 +272,8 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
         };
       }
       const text = ran.result.output.text;
-      // T-1761: a saved tool may return `blocks`. T-1766: it may also return a
-      // `card` header. A valid set rides on the post as a `blocks` card; a
-      // broken set falls back to today's plain text (the reason is never
-      // logged, the AI id only). The live example the user sees is still the
-      // output posted as the AI into the topic. A `false` answer (stopped AI,
-      // left room) still returns the normal result — delivery is best-effort.
+      // A saved tool's valid blocks ride on the post as a `blocks` card; a broken set falls back to plain text, logging only the AI id.
+      // A `false` answer (stopped AI, left room) still returns the normal result: delivery is best-effort.
       const blocks = ran.result.output.blocks;
       const card = cardHeader(ran.result.output.card);
       const postText = `${found.name}\n${truncateChars(text, MAX_TOOL_POST_CHARS)}`;
@@ -304,8 +294,7 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
               title: card.title ?? readableToolName(found.name),
               icon: card.icon,
               meta: card.meta,
-              // T-1872: a saved tool cannot fetch media, so it never posts a
-              // media block or a map image.
+              // A saved tool cannot fetch media, so it never posts a media block or map image.
               blocks: Array.isArray(blocks) ? withoutMedia(blocks) : blocks,
             },
             text,
@@ -313,16 +302,13 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
           if (built.ok) {
             posted = await state.post(postArgs(built.payload));
           } else {
-            // T-1761: route the ops warning through the gateway's redacting
-            // logger (the one `ActionContext` carries), not `console.warn`;
-            // ids only, never the reason.
+            // Route the warning through the gateway's redacting logger; ids only, never the reason.
             actionCtx.logger?.warn({ aiId: actionCtx.aiId }, 'tool.run blocks invalid');
             posted = await state.post(postArgs());
           }
         }
       } catch {
-        // Best-effort like the gateway announcer: a throwing chat layer
-        // never turns a good run into a failure.
+        // A throwing chat layer never turns a good run into a failure.
       }
       return { summary: 'ok', modelText: text, ...(posted ? { posted: true } : {}) };
     },

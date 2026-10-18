@@ -1,4 +1,4 @@
-// effect-plain: runRequest and its helpers; the Effect approval path moved to approval-path.ts (size split)
+// effect-plain: runRequest and its helpers.
 import { randomUUID } from 'node:crypto';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import { findActiveRule } from '../approvals/rules';
@@ -25,18 +25,12 @@ export async function runRequest(
   const at = now();
   const adapter = deps.adapters[params.action] ?? null;
 
-  // The adapter lookup is cheap; the AI and group lookups are database
-  // reads. Do the cheap thing first so an unknown action never queries
-  // the database, and so the gateway's denial order (adapter exists →
-  // AI exists → ...) is honoured even on a hot path.
+  // Cheap adapter lookup first, and the gateway's denial order holds even on a hot path.
   if (adapter === null) {
     return { status: 'denied', reason: 'unknown_action' };
   }
 
-  // Read the AI row. `null` (missing or not visible to the caller) and
-  // `disabled`/`stopped` both feed down `ai_not_active`. We do not throw
-  // early on a missing AI: the policy returns the same denial for every
-  // non-`active` status so existence is never disclosed.
+  // Missing AI and every non-`active` status share `ai_not_active`, so existence is never disclosed.
   const aiRow = await readAiStatus(deps.db, params.aiId);
 
   let aiInGroup: boolean | null = null;
@@ -64,14 +58,8 @@ export async function runRequest(
     return executed.run.response;
   }
 
-  // T-0099: a tier-2 request that matches an active standing rule skips the
-  // card. This runs only after the policy accepted the request (the AI is
-  // active, it belongs to the named group, the args parse), so a stopped AI
-  // is never auto-approved and a rule can never widen who or where. The rule
-  // is (AI, chat, action)-exact: any mismatch leaves the request on the
-  // normal approval path. Eligibility is re-checked here, not only when the
-  // rule was created: an adapter that gained an `estimateCost` (or lost
-  // `allowAlways`) since then no longer auto-runs.
+  // A tier-2 request matching an active standing rule skips the card; eligibility is re-checked here, not only when the rule was created.
+  // The rule is (AI, chat, action)-exact, so any mismatch leaves the request on the normal approval path.
   if (adapter.allowAlways === true && adapter.estimateCost === undefined) {
     const rule = await findActiveRule(deps.db, {
       aiId: params.aiId,
@@ -84,12 +72,7 @@ export async function runRequest(
     }
   }
 
-  // T-1655: a scheduled run has no person to approve a card, so a tier-2
-  // request that reached this point (no matching standing rule) is refused
-  // with `needs_approval` instead of parking a card nobody will see. Tier 0/1
-  // and the standing-rule auto-approval above returned earlier and are
-  // unchanged; like every policy denial this writes no approval row and
-  // announces nothing.
+  // A scheduled run has no approver, so a tier-2 request without a standing rule is denied `needs_approval` instead of parking a card nobody will see.
   if (params.unattended === true) {
     return { status: 'denied', reason: 'needs_approval' };
   }
@@ -102,9 +85,7 @@ interface AdapterRun {
   response: RequestOutcome;
 }
 
-// Runs one adapter and maps its result. The error text is never stored,
-// returned or logged with the message: only the error class name is logged,
-// for ops.
+// Only the error class name is logged; the adapter's error text is never stored, returned or logged.
 async function runAdapter(
   deps: ActionGatewayDependencies,
   params: RequestParams,
@@ -130,8 +111,7 @@ async function runAdapter(
   }
   const summary = truncateSummary(result.summary);
   const modelText = sanitiseModelText(result.modelText);
-  // `modelText` and `posted` ride back to the model only: never stored on a
-  // row, never audited, never announced.
+  // `modelText` and `posted` go to the model only: never stored, audited or announced.
   return {
     outcome: 'ok',
     response:
@@ -146,8 +126,6 @@ async function runAdapter(
   };
 }
 
-// Decodes the args and runs the adapter with the request's context. Null means
-// the args failed to decode; the caller answers the denial the policy would.
 async function executeAction(
   deps: ActionGatewayDependencies,
   params: RequestParams,
@@ -155,8 +133,7 @@ async function executeAction(
   ruleId: string | null,
 ): Promise<{ parsedArgs: unknown; run: AdapterRun } | null> {
   const parsed = decodeActionArgs(adapter.argsSchema, params.args);
-  // The policy already ran the same decode: this is defence in depth for a
-  // custom adapter that mutates state between calls.
+  // Defence in depth: the policy already decoded once; a mutation between calls still fails here.
   if (!parsed.ok) {
     return null;
   }
@@ -173,13 +150,8 @@ async function executeAction(
   };
 }
 
-// T-0099: a tier-2 request that matches an active standing rule runs
-// immediately, like the allow path. The AI must still be `active`
-// (checked by `runRequest` before this function is reached) and the
-// adapter must still be always-eligible (`allowAlways: true` and no
-// `estimateCost`) — both enforced at the gateway entry. We never write
-// an approval row, never post a card, and the audit carries the rule id
-// as the `subject` so a reader can join the rule to the action.
+// A tier-2 request matching an active standing rule runs immediately; the adapter must still be always-eligible.
+// The audit carries the rule id as `subject`.
 async function runAutoApprovedAction(
   deps: ActionGatewayDependencies,
   params: RequestParams,
@@ -192,19 +164,14 @@ async function runAutoApprovedAction(
   }
   const { run } = executed;
 
-  // The args hash is computed over the parsed args so an audit reader
-  // can join back to the request without ever seeing the args.
+  // Hash over parsed args; the audit carries it so a reader can join without seeing the args.
   const hash = argsHash(executed.parsedArgs);
   if (!ARGS_HASH_PATTERN.test(hash)) {
-    // Defence in depth: if canonical hashing rejects the args we
-    // never ran anything we could not audit. Practically unreachable.
+    // Defence in depth: never run something we could not audit.
     return { status: 'denied', reason: 'invalid_args' };
   }
 
-  // Two audit entries: `action.auto_approved` (subject = rule id) and
-  // `action.executed` / `action.failed` (subject = null, no rule
-  // attached) so the existing audit queries continue to surface every
-  // action outcome regardless of how it was authorised.
+  // Two entries: `action.auto_approved` (subject = rule id) plus `action.executed`/`action.failed` (subject = null).
   await deps.audit.record({
     actorUserId: null,
     aiId: params.aiId,
@@ -219,8 +186,7 @@ async function runAutoApprovedAction(
   });
   await writeAllowAudit(deps, params, run.outcome);
 
-  // The chat sees the outcome with the "Ran automatically" prefix the
-  // spec asks for, so the owner can tell the card was skipped.
+  // The "Ran automatically" prefix tells the owner the card was skipped.
   await safeAnnounce(deps, {
     outcome: {
       aiId: params.aiId,

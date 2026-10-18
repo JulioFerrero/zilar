@@ -1,6 +1,3 @@
-// The `/me` view helpers (T-1559 size split): `meView` and its row lookup,
-// moved unchanged from `api.ts`. See the header there for the route wiring.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -49,8 +46,7 @@ export async function meView(
       return yield* sql<HandleLookupRow>`SELECT handle FROM handles WHERE user_id = ${userId} LIMIT 1`;
     }),
   );
-  // T-0165: a stored picture wins (`/api/avatars/<id>`), otherwise the
-  // existing `user.image` value is kept (Better Auth's table untouched).
+  // A stored picture wins, otherwise the existing `user.image` is kept.
   const ownAvatar = await avatarIdsByOwner(deps.db, 'user', [userId]);
   const avatarId = ownAvatar.get(userId);
   return {
@@ -74,10 +70,7 @@ async function sessionUserById(
   deps: AuthApiDependencies,
   userId: string,
 ): Promise<{ id: string; email: string; name: string; image: string | null; createdAt: Date }> {
-  // `created_at` is a timestamp WITHOUT a time zone, which the pg driver parses
-  // in the process's local zone. The
-  // `AT TIME ZONE 'UTC'` cast returns the same instant as a timestamptz, so
-  // `/me` answers the same `createdAt` in any process time zone.
+  // `created_at` is `timestamp WITHOUT time zone`; the `AT TIME ZONE 'UTC'` cast makes `/me` timezone-independent.
   const [sessionUser] = await runSql(
     deps.db,
     Effect.gen(function* () {

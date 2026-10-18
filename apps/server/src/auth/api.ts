@@ -1,13 +1,4 @@
-// Auth module on the Effect `HttpApi` adapter (T-0561): the same methods,
-// paths, statuses, bodies and texts as the deleted router (`routes.ts`),
-// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its services
-// run on effect/sql and call Better Auth's API.
-//
-// The name decode runs manually inside the PATCH handler (Effect Schema,
-// same rules as the old zod schema) instead of by the framework, so
-// the route keeps its exact order: session -> raw body -> decode ->
-// `updateUser` -> session read again -> roster refresh. No decode text
-// changes: every failure answers byte-identical codes and messages.
+// Name decode runs by hand inside PATCH so the route keeps its exact order and failure texts; the framework decode would change them.
 
 import { Effect, Exit, Layer, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -58,18 +49,12 @@ export interface AuthApiDependencies {
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: Logger;
-  /** Injected in tests so the rate-limit window can advance. */
   now?: () => number;
-  /**
-   * The read-only archive pool for `GET /me/export` (T-1262). Absent, the
-   * export route resolves one from `XMPP_ARCHIVE_DATABASE_URL`
-   * (`createExportArchivePool`), so `app.ts` needs no new wiring.
-   */
+  // Absent, the export route resolves a pool from `XMPP_ARCHIVE_DATABASE_URL`.
   archive?: ArchivePool;
 }
 
-// The profile rules (name and bio) live in the contract as `UpdateMePayload`,
-// non-strict: unknown keys are stripped.
+// `UpdateMePayload` is non-strict: unknown keys are stripped.
 const UpdateMeBody = UpdateMePayload;
 
 const PROFILE_MESSAGES = new Set([
@@ -96,17 +81,8 @@ function updateMeMessage(body: unknown): string {
   return 'Invalid name';
 }
 
-// The groups and the reply schemas live in the shared contract
-// (`@zilar/api-contract`, `auth.ts`, T-0895). GET /invites/:code stays public:
-// a would-be sign-up needs to know if a code works. Every other route requires
-// a session.
-//
-// PATCH /me declares its payload so a derived client is typed, but it is
-// served with `handleRaw`: the framework does not decode the body. The name
-// rules run by hand (see the header) because the framework's decode would
-// change the texts of a malformed or empty body (400 "Expected a valid JSON
-// body" instead of "Invalid name") and reject a request without a JSON
-// content-type with 415.
+// GET /invites/:code is public so a would-be sign-up can test a code; every other route requires a session.
+// PATCH /me declares its payload for typing but is served with `handleRaw`: decoding by hand preserves its texts.
 const AuthApi = HttpApi.make('auth').add(AuthGroup, AuthInvitesPublicGroup);
 
 export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
@@ -136,8 +112,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
         handler(logger, (request) =>
           Effect.gen(function* () {
             const headers = new Headers(request.request.headers);
-            // Mirrors `c.req.json().catch(() => null)`: an unparseable body
-            // is a validation failure, not a 500.
+            // An unparseable body is a validation failure, not a 500.
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(null)),
             );
@@ -171,9 +146,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
           return { revoked: true };
         }),
       )
-      // The caller's own sessions (T-1235): a direct `session` read, so a
-      // session older than 24 h still lists (`freshSessionMiddleware` is not
-      // in play, unlike Better Auth's own `/list-sessions`).
+      // A direct `session` read so a session older than 24 h still lists (no fresh-session gate).
       .handle(
         'listSessions',
         handler(logger, (request, user) =>
@@ -202,9 +175,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
           ),
         ),
       )
-      // The 7-day account-deletion grace (T-1261). GET and DELETE never touch
-      // anything but the caller's row; POST demands a fresh session and is
-      // idempotent, keeping the first date.
+      // GET and DELETE touch only the caller's row; POST needs a fresh session and keeps the first date.
       .handle(
         'getDeletion',
         handler(logger, (_request, user) => deletionStatus(deps.db, user.id)),
@@ -223,8 +194,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
         'cancelDeletion',
         handler(logger, (_request, user) => cancelDeletion({ db: deps.db, audit }, user.id, null)),
       )
-      // The streamed account export (T-1262): a raw body, so the handler
-      // returns the `HttpServerResponse` the service built.
+      // A raw body: the handler returns the `HttpServerResponse` the service built.
       .handle(
         'export',
         handler(logger, (request, user) =>
@@ -238,31 +208,25 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     if (!Exit.isSuccess(exit)) {
       throw new HttpError(400, 'invalid_request', updateMeMessage(raw));
     }
-    // T-1440: validate the zone before any write, so a refused PATCH has no
-    // side effects (no rename, no bio write, no roster refresh).
+    // Validate before any write, so a refused PATCH has no side effects.
     if (exit.value.timeZone !== undefined && !isValidTimeZone(exit.value.timeZone)) {
       throw new HttpError(400, 'invalid_request', 'timeZone must be a valid IANA time zone');
     }
-    // Update through Better Auth's own API so its hooks and
-    // validation apply.
+    // Through Better Auth's own API so its hooks and validation apply.
     await deps.auth.api.updateUser({ headers, body: { name: exit.value.name } });
     const session = await deps.auth.api.getSession({ headers });
     if (!session) {
       throw new HttpError(401, 'unauthorized', 'Authentication required');
     }
     const { user } = session;
-    // T-1258: the bio lives in its own table; upsert it when the payload
-    // carries one (`''` clears it). The bio is never logged.
+    // The bio lives in its own table and is never logged; `''` clears it.
     if (exit.value.bio !== undefined) {
       await upsertProfileBio(deps.db, user.id, exit.value.bio);
     }
-    // T-1440: the zone lives beside the bio; it was validated above.
     if (exit.value.timeZone !== undefined) {
       await upsertProfileTimeZone(deps.db, user.id, exit.value.timeZone);
     }
-    // The nickname must follow the name in every contact's roster.
-    // Best-effort: a failure leaves the rows unsynced and the token
-    // endpoint retries with the current name. Logs ids only.
+    // Best effort: the token endpoint retries with the current name; logs ids only.
     const refreshed = await refreshRosterNicknames(
       deps.db,
       deps.adminClient,

@@ -1,16 +1,5 @@
-// T-1645: the prompt-routine path of a scheduled run. A prompt routine has
-// no tool: it asks the AI gateway for one scheduled turn through the
-// optional `runPrompt` port. Until that port is wired (a later task) it is
-// absent in production, so every prompt routine is recorded `skipped`.
-//
-// A run takes one slot from a per-AI, per-UTC-day cap first
-// (`routine_prompt_runs`, 1440/day), atomically, so parallel schedulers cannot
-// overshoot. Then it runs the prompt once through the port and records the
-// outcome:
-//   replied              -> ok
-//   failed               -> the failure counter (the 3rd pauses)
-//   stopped, limited,    -> skipped (nothing was posted; the AI or the
-//   offline, not_in_room     room, not the routine, is the reason)
+// A prompt routine asks the AI gateway for one scheduled turn through the optional `runPrompt` port; without it the run is `skipped`.
+// The per-AI, per-UTC-day cap (1440) is taken atomically before the turn, so parallel schedulers cannot overshoot.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -22,8 +11,7 @@ import { markOk, markSkipped, recordFailure } from './outcomes';
 export type PromptRunOutcome =
   'replied' | 'failed' | 'stopped' | 'limited' | 'offline' | 'not_in_room';
 
-// The AI gateway's scheduled turn, wired in a later task. Absent in
-// production until then.
+// The AI gateway's scheduled turn; absent until wired, so the run is recorded `skipped`.
 export type PromptRunner = (input: {
   aiId: string;
   groupId: string | null;
@@ -33,18 +21,14 @@ export type PromptRunner = (input: {
   prompt: string;
 }) => Promise<PromptRunOutcome>;
 
-// At most this many prompt runs per AI per UTC day. Scheduled work is
-// valuable but a runaway routine must not burn the whole budget.
+// At most this many prompt runs per AI per UTC day, so a runaway routine cannot burn the budget.
 export const MAX_PROMPT_RUNS_PER_DAY = 1440;
 
 interface PromptRunCountRow {
   count: number;
 }
 
-// Takes one slot for the day of `at` (its UTC date). One statement, so two
-// schedulers racing the same AI can never exceed the cap: the conflict path
-// only increments while the stored count is still below it, and a row is
-// returned only when a slot was taken.
+// One statement, so two racing schedulers cannot exceed the cap; a row returns only when a slot was taken.
 export async function claimPromptRun(db: ServerDatabase, aiId: string, at: Date): Promise<boolean> {
   const day = at.toISOString().slice(0, 10);
   const rows = await runSql(
@@ -61,9 +45,7 @@ export async function claimPromptRun(db: ServerDatabase, aiId: string, at: Date)
   return rows.length > 0;
 }
 
-// Gives back the slot a claim took for the day of `at` (its UTC date), when
-// the run did not actually reach the AI (offline, or the room is gone). The
-// `count > 0` guard keeps a stray refund from going negative.
+// Gives back a slot when the run never reached the AI; `count > 0` keeps a stray refund from going negative.
 export async function refundPromptRun(db: ServerDatabase, aiId: string, at: Date): Promise<void> {
   const day = at.toISOString().slice(0, 10);
   await runSql(
@@ -108,8 +90,7 @@ export async function executePromptRoutine(
       prompt: row.prompt,
     });
   } catch {
-    // A throwing runner did not produce an answer: count it a failure, like
-    // `failed`. The error text never reaches the chat or the audit.
+    // A throwing runner counts as a failure; the error text never reaches the chat or the audit.
     outcome = 'failed';
   }
 
@@ -122,8 +103,7 @@ export async function executePromptRoutine(
     return;
   }
   if (outcome === 'offline' || outcome === 'not_in_room') {
-    // The run never reached the AI, so it must not burn one of the day's
-    // shared slots: refund the claim and say so, with ids only.
+    // The run never reached the AI, so refund the slot; ids only.
     options.logger.warn(
       { routineId: row.id, aiId: row.aiId, outcome },
       'prompt routine skipped: AI not reachable',

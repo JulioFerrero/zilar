@@ -29,23 +29,12 @@ import type {
 interface AppendVersionResult {
   tool: ToolDetail;
   version: ToolVersionDetail;
-  /** True when source and hosts matched the current version, so no new row
-   *  was written. */
+  // True when source and hosts matched, so no new row was written.
   unchanged: boolean;
 }
 
-// Creates the tool with version 1 when the name is new in that topic, or
-// appends version N+1 when source or hosts differ from the current
-// version. An identical save returns the current version with
-// `unchanged: true` and writes nothing. All in one transaction; the tool
-// row is locked (`SELECT … FOR UPDATE`) so two concurrent saves end with
-// consecutive version numbers and no duplicate.
-//
-// `audit` is optional: when present, a `tool.created` or `tool.updated`
-// entry is written after the transaction commits, with `detail { name,
-// version }` and never any source. (No route in this task creates or
-// updates tools — T-0104's AI-facing tools will pass the recorder.)
-// The audit write never throws into the caller.
+// Creates version 1 or appends N+1 when source or hosts differ; an identical save returns the current version unchanged.
+// One transaction with the tool row locked (`FOR UPDATE`), so concurrent saves end with consecutive versions; the audit is written after commit, ids only.
 export async function saveToolVersion(
   db: ServerDatabase,
   input: SaveToolVersionInput,
@@ -113,9 +102,7 @@ export async function saveToolVersion(
                 created: true,
               };
             }
-            // Lost the race with a concurrent create of the same name: append
-            // to the winner's history instead. The `ON CONFLICT DO NOTHING`
-            // never aborts the transaction, so this read is safe here.
+            // Lost the race with a concurrent create; `ON CONFLICT DO NOTHING` never aborts, so append to the winner's history.
             const winner = yield* findActiveTool(sql, input.aiId, input.topicId, name);
             if (!winner) {
               return yield* Effect.die(new Error('Failed to create tool'));
@@ -200,9 +187,7 @@ interface AppendVersionInput {
   now: Date;
 }
 
-// Appends version N+1 inside the caller's transaction, or returns the
-// current version unchanged when source and hosts both match. The lock on
-// the tool row (taken by the caller) serialises concurrent appends.
+// Appends N+1 inside the caller's transaction; the caller's lock on the tool row serialises concurrent appends.
 function appendVersion(
   sql: SqlClient.SqlClient,
   input: AppendVersionInput,
@@ -256,9 +241,7 @@ function appendVersion(
   });
 }
 
-// Appends a new version copying an older version's source and hosts. The
-// message is the standard `Revert to v<N>` unless the caller passes one.
-// History is never rewritten: older rows are untouched.
+// Appends a new version copying an older one; history is never rewritten.
 export async function revertTool(
   db: ServerDatabase,
   input: RevertToolInput,

@@ -1,6 +1,4 @@
-// T-1737: the `tool.list` routine lines, and the pending `routine.schedule`
-// approvals that read as "waiting for approval". Split out of
-// `tool-adapters.ts` so that file stays under the size ceiling.
+// The `tool.list` routine lines and pending `routine.schedule` approvals.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ActionContext } from '../actions/registry';
@@ -9,8 +7,7 @@ import type { PublicRoutine } from '../routines/service';
 import type { AdapterState } from './adapter-support';
 import { describeSchedule } from './routine-adapters';
 
-// One routine line: `- <title> [id <first 8 chars>]: runs tool <name>, <schedule> [<status>]`,
-// or `runs a prompt` for a prompt routine.
+// One line: `- <title> [id <first 8 chars>]: runs tool <name>, <schedule> [<status>]`, or `runs a prompt`.
 export function routineLine(routine: PublicRoutine): string {
   const target =
     routine.kind === 'prompt'
@@ -21,17 +18,12 @@ export function routineLine(routine: PublicRoutine): string {
   return `- ${routine.title} [id ${routine.id.slice(0, 8)}]: ${target}, ${describeSchedule(routine.schedule)} [${routine.status}]`;
 }
 
-// One pending `routine.schedule` approval of this AI in this topic. The
-// summary is the card's summary, so the model can recognise the request it
-// already raised.
+// One pending `routine.schedule` approval, using the card's summary so the model recognises it.
 export function pendingApprovalLine(summary: string): string {
   return `- ${summary}: waiting for approval`;
 }
 
-// The pending, unexpired `routine.schedule` approval summaries of this AI in
-// this topic, oldest first. Personal chat = both `topicId` and `groupId`
-// null; group chat = exact topic match. `IS NOT DISTINCT FROM` compares the
-// nullable columns so a personal chat matches only the null pair.
+// Pending, unexpired approvals of this AI in this topic, oldest first; `IS NOT DISTINCT FROM` matches the null pair for personal chats.
 export async function pendingRoutineApprovals(
   state: AdapterState,
   ctx: ActionContext,

@@ -1,12 +1,5 @@
-// The streamed account export (T-1262, task T-C of
-// `docs/audit/account-deletion-plan.md` §9). This file turns the caller's
-// archive pages into the plan's §6a JSON without ever holding the whole
-// document in memory: it writes the header, then one chat at a time, one page
-// at a time, and stops at the byte cap with `"truncated": true`.
-//
-// A DM message's `from` is `"me"`/`"them"`, decided by the stanza's `from`
-// against the caller's own bare JID; a room message keeps the sender's JID.
-// The body and kind come from the shared media extractor (`extract.ts`).
+// Streams the caller's archive as the export JSON without holding it in memory; stops at the byte cap with `"truncated": true`.
+// A DM message's `from` is `"me"`/`"them"` by the stanza `from` against the caller's bare JID; a room message keeps the sender's JID.
 
 import { Stream } from 'effect';
 import { bareJid } from '../jid';
@@ -28,7 +21,6 @@ export interface ExportContact {
   jid: string;
 }
 
-/** One chat of the export: ascending archive pages, keyset by timestamp. */
 export interface ExportChat {
   jid: string;
   kind: 'dm' | 'room';
@@ -40,9 +32,8 @@ export interface ExportStreamInput {
   profile: ExportProfile;
   contacts: ExportContact[];
   chats: AsyncIterable<ExportChat>;
-  /** The caller's own bare JID, so a DM `from` maps to me/them. */
+  // The caller's own bare JID, so a DM `from` maps to me/them.
   ownBareJid: string;
-  /** The same archive the chats read, for the correction/retraction pass. */
   archive: ArchivePool;
   byteCap: number;
 }
@@ -61,7 +52,6 @@ export interface ExportMessage {
   kind: string;
 }
 
-/** One archive row as an export message (the plan's §6a message shape). */
 export function exportMessage(
   row: ArchiveRow,
   ownBareJid: string,
@@ -80,7 +70,6 @@ export function exportMessage(
   };
 }
 
-// The archive scope of one exported chat, the same scope its pages read.
 function exportScope(chat: ExportChat, ownBareJid: string): EditScope {
   if (chat.kind === 'room') {
     return { kind: 'room', room: chat.jid };
@@ -90,13 +79,8 @@ function exportScope(chat: ExportChat, ownBareJid: string): EditScope {
   return { kind: 'dm', owner: at === -1 ? owner : owner.slice(0, at), peer: chat.jid };
 }
 
-/**
- * The download's body: Effect's `Stream` bridges the async page generator to a
- * web `ReadableStream`, so the socket's backpressure reaches the archive reads
- * and a client disconnect unwinds the generator's `finally`. `onComplete` runs
- * once with the counts the caller logs and audits, whether the stream finishes
- * or the client disconnects.
- */
+// Effect's `Stream` bridges the async page generator to a web `ReadableStream`, so backpressure reaches the reads and a disconnect unwinds the generator's `finally`.
+// `onComplete` runs once with the counts the caller logs and audits.
 export function createExportStream(
   input: ExportStreamInput,
   onComplete: (summary: ExportSummary) => void,
@@ -126,9 +110,7 @@ async function* exportChunks(
     );
     let firstChat = true;
     let openChat = false;
-    // The byte cap can only be decided while a message is written, so a
-    // truncation leaves the current chat's `messages` array open for the
-    // cleanup below.
+    // The cap can only be decided mid-message, so a truncation leaves the current chat's array open for cleanup.
     outer: for await (const chat of input.chats) {
       openChat = true;
       yield write(
@@ -144,8 +126,7 @@ async function* exportChunks(
           page.map((row) => row.originId),
         );
         for (const row of page) {
-          // A correction or retraction is an edit row, not a message: the
-          // original row carries the export entry, with the overlay applied.
+          // A correction or retraction is an edit row; the original carries the export entry with the overlay applied.
           if (retractTarget(row.xml) !== null || correctionTarget(row.xml) !== null) {
             continue;
           }

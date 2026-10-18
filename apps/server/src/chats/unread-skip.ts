@@ -1,11 +1,8 @@
-// The unread/preview skip rule for live AI UI (T-1400). Kept out of
-// `unread.ts` (which sits near the 400-line cap) so the counting loop stays
-// small; the rule itself lives in `notify/ai-cards.ts`.
+// The skip rule for live AI UI lives in `notify/ai-cards.ts`.
 
 import { isLiveAiUiEdit, isLiveAiUiRow, liveAiUiIds } from '../notify/ai-cards';
 
-/** The row shape both unread reads return: the chat key, the archive timestamp,
- * the real sender's bare JID and the xml the skip rule reads. */
+// The row shape both unread reads return: chat key, timestamp, real sender and xml.
 export interface UnreadSkipRow {
   chatJid: string;
   originId: string;
@@ -14,8 +11,7 @@ export interface UnreadSkipRow {
   xml: string;
 }
 
-/** True when a row is the live AI UI or an edit of one in the same batch, so
- * the unread count and the preview skip it and keep walking back. */
+// Live AI UI and edits of it are skipped so the count and preview keep walking back.
 export function skipUnreadRow(
   xml: string,
   barePeer: string,
@@ -24,9 +20,7 @@ export function skipUnreadRow(
   return isLiveAiUiRow(xml, barePeer) || isLiveAiUiEdit(xml, liveIds);
 }
 
-// The archive timestamp is microseconds since the epoch; postgres.js hands a
-// bigint back as a string, so it is normalised before comparing (never a JS
-// `BigInt` into a query — this only sorts in memory).
+// The timestamp is microseconds; postgres.js returns a bigint as a string, normalised before comparing in memory.
 function toMicros(value: number | string | bigint): bigint {
   return typeof value === 'bigint' ? value : BigInt(value);
 }
@@ -40,9 +34,7 @@ function newestFirst(a: UnreadSkipRow, b: UnreadSkipRow): number {
   return left < right ? 1 : -1;
 }
 
-/** The newest row of one chat that is neither live AI UI nor an edit of one,
- * or undefined when the chat has only those. Sorted here, so the answer does
- * not depend on the order Postgres returns the rows in. */
+// Newest row that is neither live AI UI nor an edit; sorted here, independent of Postgres order.
 export function newestUnskippedRow<T extends UnreadSkipRow>(
   rows: readonly T[],
   chatJid: string,

@@ -21,10 +21,7 @@ const CHANGE_TEXT: Record<HostsChange, string> = {
   revoke: 'revoking hosts',
 };
 
-// The shared body of approve and revoke (T-0132): load the tool and its
-// current version, replace `approved_hosts`, read the last run status and
-// record the audit entry. The recorder swallows its own failures, so this
-// never throws into the caller.
+// Loads the tool and current version, replaces `approved_hosts`, reads the last run status and audits; never throws.
 async function setToolHosts(
   db: ServerDatabase,
   input: { toolId: string; userId: string },
@@ -96,10 +93,7 @@ async function setToolHosts(
   return toToolDetail(updated, current, lastRunStatus);
 }
 
-// Sets the tool's `approved_hosts` to exactly `hosts` (T-0132). Used by
-// the `tool.approve_hosts` adapter after a human approved the card whose
-// hosts were read from the current version. The audit detail carries ids
-// and host names only, never code or output.
+// Sets `approved_hosts` exactly; the audit carries ids and host names only, never code or output.
 export async function approveToolHosts(
   db: ServerDatabase,
   input: { toolId: string; hosts: string[]; userId: string },
@@ -110,9 +104,7 @@ export async function approveToolHosts(
   return setToolHosts(db, input, hosts, now, audit, 'approve');
 }
 
-// Empties the tool's `approved_hosts` (T-0132 `tool.revoke_hosts`): the
-// tool keeps running with no network until a new approval. Audits
-// `tool.hosts_revoked` with `detail { name }` only.
+// Empties the set; the tool runs without network until a new approval. Audits `detail { name }` only.
 export async function revokeToolHosts(
   db: ServerDatabase,
   input: { toolId: string; userId: string },

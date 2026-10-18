@@ -1,11 +1,6 @@
-// T-1889: the reply route behind a notification's Reply action. A phone
-// notification sends the reply headlessly, without an XMPP connection, so this
-// route injects the same stanza the app builds as the signed-in user.
-//
-// The claim row (`notification_replies`) makes a retried action idempotent: the
-// winner inserts it, sends, then marks it sent; a loser answers 204 when the
-// first send finished, 409 while it is still in flight and the claim is fresh.
-// The reply text is never logged.
+// The reply route behind a notification's Reply action: a phone sends headlessly, so the route injects the stanza as the signed-in user.
+// The `notification_replies` claim row makes a retry idempotent: the winner inserts, sends, then marks it sent.
+// A loser answers 204 when the first send finished and 409 while the claim is fresh. The reply text is never logged.
 
 import { buildMessage } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
@@ -29,16 +24,12 @@ interface ReplyRequest {
   request: HttpServerRequest.HttpServerRequest;
 }
 
-// A room JID is on the MUC domain; everything else the access check let
-// through is a DM.
+// A room JID is on the MUC domain; anything else the access check let through is a DM.
 export function kindFor(bare: string, mucDomain: string): 'groupchat' | 'chat' {
   return bare.slice(bare.indexOf('@') + 1) === mucDomain.toLowerCase() ? 'groupchat' : 'chat';
 }
 
-// Claim the `clientId` before sending. The insert is the atomic part: only one
-// request can win it. No row means someone else holds the claim, so the state
-// of that row decides whether this request waits, reports success or takes it
-// over.
+// The insert is the atomic claim: only one request wins; the row's state decides whether this request waits, succeeds or takes over.
 async function claimReply(
   db: ServerDatabase,
   input: { userId: string; clientId: string; chatJid: string },
@@ -71,9 +62,7 @@ async function claimReply(
     }),
   );
   if (existing === undefined) {
-    // The claim was released between the insert and this read (a failed send).
-    // Another retry may claim it; this request waits rather than send without a
-    // claim.
+    // The claim was released between insert and read; this request waits rather than send without one.
     return 'in_flight';
   }
   if (existing.sent) {
@@ -83,8 +72,7 @@ async function claimReply(
     return 'in_flight';
   }
 
-  // Abandon the stale claim and take it over. The `WHERE` keeps the takeover
-  // atomic: two retries racing on an old claim cannot both win it.
+  // The `WHERE` keeps the takeover atomic: two racing retries cannot both win.
   const taken = await runSql(
     db,
     Effect.gen(function* () {
@@ -129,11 +117,7 @@ async function releaseReply(
   );
 }
 
-/**
- * `POST /api/chats/:jid/reply` (T-1889): sends `text` as the caller through
- * ejabberd's `send_stanza`. Access, DM block, reply budget and the idempotency
- * claim are checked in that order; the claim is released when the send fails.
- */
+// Access, DM block, reply budget and the claim are checked in that order; the claim is released when the send fails.
 export async function replyFor(
   deps: ChatsApiDependencies,
   limiter: RateLimiter,

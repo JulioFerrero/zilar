@@ -1,7 +1,5 @@
-// effect-plain: moved unchanged from apps/server/src/routines/execute.ts (size split)
-// T-1028: size split of `routines/execute.ts`. The two audit entries one run
-// writes (`routine.run`, `routine.paused`) live here; the old path stays the
-// barrel. Both carry ids and a fixed detail only, never output text or errors.
+// effect-plain: audit recorder helpers
+// Both audit entries carry ids and a fixed detail only, never output text or errors.
 import type { RoutineRow } from '../db/rows';
 import type { ExecuteRoutineOptions } from './execute';
 
@@ -11,8 +9,7 @@ export async function auditRun(
   status: 'ok' | 'error' | 'skipped',
   startedAt: number,
 ): Promise<void> {
-  // `detail` carries the status and the duration only: never output text,
-  // source, or an error message.
+  // `detail` carries the status and duration only: never output text, source, or an error message.
   await options.audit.record({
     actorUserId: null,
     aiId: row.aiId,

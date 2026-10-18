@@ -1,7 +1,4 @@
-// T-1766: the card header a saved tool may return, and the readable-name
-// fallback for `tool.run`. A tool's `card` is passed through unchecked like
-// `blocks`; only `buildBlocksPayload` validates it, so these helpers never
-// reject a shape, they only read its keys safely.
+// The card header a saved tool may return; these helpers read keys safely, `buildBlocksPayload` validates.
 import type { Block } from '@zilar/protocol';
 import { buildBlocksPayload } from '../message-blocks/build';
 import { CARD_KINDS } from '../message-blocks/guide';
@@ -20,17 +17,13 @@ export function cardHeader(card: unknown): ToolCardHeader {
   return { title: record.title, icon: record.icon, meta: record.meta };
 }
 
-// `market-prices` reads as `Market prices`: hyphens and underscores become
-// spaces and the first letter is upper case.
+// `market-prices` reads as `Market prices`.
 export function readableToolName(name: string): string {
   const spaced = name.replace(/[-_]/g, ' ').trim();
   return spaced.length === 0 ? spaced : spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-// T-1768: after a saved tool's test run, tell the AI whether its card would
-// post. This reads the tool output exactly as `tool.run` does, so the AI learns
-// from the same answer. It never throws and it never rejects a card itself:
-// `buildBlocksPayload` owns the shape, and `CARD_KINDS` owns what the apps draw.
+// Tells the AI whether its card would post, from the same check `tool.run` applies; never throws and never rejects a card.
 export function describeToolCard(
   output: { text: string; blocks?: unknown; card?: unknown },
   toolName: string,

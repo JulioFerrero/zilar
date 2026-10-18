@@ -6,9 +6,7 @@ import { runMigrations } from '../db/migrate';
 import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import { createInvite, DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_DAYS } from './invites';
 
-// Replaces `z.coerce.number().int()`: `Number(value)` (so `'2.5'` fails the
-// integer check and `'abc'` fails as `NaN`), then the bounds. The decoded
-// default is the encoded string of the same constant.
+// `Number(value)` first so `'2.5'` fails the integer check and `'abc'` is `NaN`, then the bounds.
 const toInt = SchemaGetter.transform((value: string) => Number(value));
 const toText = SchemaGetter.transform((value: number) => String(value));
 
@@ -72,9 +70,7 @@ async function main(): Promise<void> {
   const { db, close } = createDb(config.DATABASE_URL);
 
   try {
-    // The migrator and `createInvite` both run on `effect/sql`; this process
-    // never builds an app, so it registers (and below disposes) the runtime for
-    // its own database before the first query.
+    // This process never builds an app, so it registers its own runtime before the first query.
     registerSqlRuntime(db, config.DATABASE_URL);
     await runMigrations(db);
     const invite = await createInvite(db, {
@@ -88,7 +84,6 @@ async function main(): Promise<void> {
     console.log(`Expires at: ${invite.expiresAt.toISOString()}`);
     console.log(`Maximum uses: ${invite.maxUses}`);
   } finally {
-    // Dispose the `effect/sql` pool, which owns the connections, before closing.
     await disposeSqlRuntime(db);
     await close();
   }

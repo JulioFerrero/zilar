@@ -2,9 +2,7 @@ import { Exit, Schema, SchemaGetter } from 'effect';
 import { struct } from '@zilar/protocol';
 import { firstIssueMessage } from '../effect/schema-issues';
 
-// T-0103: one shared schema for tool names, descriptions, sources and host
-// allowlists. Routes and the service both validate through it, so the rules
-// below hold at every boundary.
+// One shared schema for names, descriptions, sources and host allowlists, so the rules hold at every boundary.
 
 export const MAX_TOOL_SOURCE_BYTES = 64 * 1024;
 export const MAX_TOOL_HOSTS = 5;
@@ -15,9 +13,8 @@ function hasControl(value: string): boolean {
   return value.split('').some((char) => CONTROL_CHARS.includes(char));
 }
 
-// A slug: start lowercase, then lowercase, digits, `_` or `-`. Every custom
-// message is a `makeFilter` text: effect 4 drops the `{ message }` option on
-// `isMinLength`/`isMaxLength`, but a filter that returns the text carries it.
+// A slug: start lowercase, then lowercase, digits, `_` or `-`.
+// effect 4 drops `{ message }` on length checks, but a filter's returned text carries.
 export const toolNameSchema = Schema.String.check(
   Schema.makeFilter((value: string) =>
     /^[a-z][a-z0-9_-]{1,39}$/.test(value) ? undefined : 'name must match ^[a-z][a-z0-9_-]{1,39}$',
@@ -37,8 +34,7 @@ export const toolDescriptionSchema = Schema.String.check(
   ),
 );
 
-// The "commit message" attached to one version. Same bounds as the
-// description so version history renders the same way.
+// The version's message; same bounds as the description so history renders the same.
 export const toolMessageSchema = Schema.String.check(
   Schema.makeFilter((value: string) =>
     value.length >= 1 ? undefined : 'message must not be empty',
@@ -63,10 +59,8 @@ export const toolSourceSchema = Schema.String.check(
   ),
 );
 
-// One host allowlist entry: a lowercase DNS hostname with at least one
-// dot. No scheme, port, path, wildcard or IP literal. Callers pass raw
-// strings; the schema normalises to lowercase and rejects the rest. The
-// trim runs before the length checks, exactly like the old zod chain.
+// A lowercase DNS hostname with at least one dot: no scheme, port, path, wildcard or IP literal.
+// Raw strings are normalised to lowercase; trim runs before the length checks.
 const singleHostSchema = Schema.Trim.check(
   Schema.makeFilter((value: string) =>
     value.length >= 1 ? undefined : 'hosts must not contain an empty entry',
@@ -127,7 +121,6 @@ export const toolHostsSchema = Schema.mutable(Schema.Array(singleHostSchema))
     }),
   );
 
-// The full boundary for creating or updating a tool's code.
 export const toolVersionInputSchema = struct({
   name: toolNameSchema,
   description: toolDescriptionSchema,
@@ -144,8 +137,7 @@ export interface ToolVersionInput {
   message: string;
 }
 
-// Validates and normalises (hosts are lowercased and de-duplicated). Unknown
-// keys are stripped, exactly like the old non-strict zod object.
+// Normalises hosts and strips unknown keys, like the old non-strict zod object.
 export function parseToolVersionInput(input: unknown):
   | {
       ok: true;

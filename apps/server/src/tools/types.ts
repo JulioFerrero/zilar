@@ -1,6 +1,4 @@
-// T-0103: the runner port (T-0102 exports a compatible type; the wiring is
-// T-0105's job, so this module must not import from `../sandbox`). The
-// runner executes one version's source in its sandbox and reports back.
+// The runner port; this module must not import from `../sandbox`.
 export type ToolRunner = (params: {
   source: string;
   input: unknown;

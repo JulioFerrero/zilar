@@ -8,10 +8,7 @@ import { errorName } from '../effect/error-utils';
 import { cancelPending } from './queries';
 import { buildRegistry } from './registry';
 
-// T-1991: an AI that leaves a group or a topic leaves its waiting actions
-// behind. The decision route cancels them at run time too, but a row that
-// sits `waiting` in a room the AI no longer belongs to must never fire if a
-// later path decides it without that re-check.
+// An AI that left a group or topic must not have a waiting action fire later, even if a path decides it without a re-check.
 export interface PendingActionScope {
   aiId: string;
   groupId: string;
@@ -22,10 +19,7 @@ export interface PendingCancelLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
-// Cancels the AI's waiting actions in one group (or one topic of it) through
-// the same path as a decision: status, audit entry and the optional notice.
-// Best effort: the removal has already committed, and the run-time re-check
-// in `runOnApprovalDecided` still stops a survivor from executing.
+// Same path as a decision: status, audit entry and optional notice; best effort after the removal already committed.
 export async function cancelPendingActionsForAi(
   deps: { db: ServerDatabase; logger: PendingCancelLogger },
   scope: PendingActionScope,

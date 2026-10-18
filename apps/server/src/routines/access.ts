@@ -1,5 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/routines/api.ts (size split)
-
+// effect-plain: pure access checks
 import type { ServerDatabase } from '../db/client';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
@@ -11,10 +10,8 @@ export interface RoutineAccess {
   manager: boolean;
 }
 
-// Reader = the AI's owner, or anyone who can see the topic. Manager =
-// the AI's owner, or a group owner/admin who can see the topic. Null for
-// a missing/deleted routine, a blind viewer, or a stranger (same shape
-// for all, so existence is never leaked).
+// Reader = the AI's owner or anyone who can see the topic; manager = the owner or a group owner/admin who can see it.
+// Null for missing, blind, or stranger alike, so existence is never leaked.
 export async function routineAccess(
   db: ServerDatabase,
   routineId: string,
@@ -27,8 +24,7 @@ export async function routineAccess(
   return accessFor(db, found.routine, userId);
 }
 
-// Same manager check on the raw row, including soft-deleted ones. Only
-// the DELETE route uses this (idempotent 204).
+// Same manager check on the raw row, including soft-deleted ones, for the idempotent DELETE (204).
 export async function routineAccessIncludingDeleted(
   db: ServerDatabase,
   routineId: string,
@@ -39,8 +35,7 @@ export async function routineAccessIncludingDeleted(
     return null;
   }
   if (row.deletedAt !== null) {
-    // A deleted routine reads as missing everywhere except the manager
-    // check: resolve the manager on the row so a re-delete answers 204.
+    // Resolve the manager on the raw row so a re-delete answers 204.
     return deletedAccessFor(db, row, userId);
   }
   return accessFor(db, row, userId);
@@ -78,8 +73,7 @@ async function deletedAccessFor(
   routine: { id: string; aiId: string; groupId: string | null; topicId: string | null },
   userId: string,
 ): Promise<RoutineAccess | null> {
-  // A deleted row's topic may itself be gone; fall back to the group
-  // membership alone so the manager check still resolves.
+  // A deleted row's topic may be gone; fall back to group membership alone.
   const ai = await findAiOwner(db, routine.aiId);
   if (!ai) {
     return null;

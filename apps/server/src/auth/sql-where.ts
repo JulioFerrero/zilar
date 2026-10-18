@@ -1,5 +1,3 @@
-// The auth tables' column maps and the where-clause builders of the better-auth
-// SQL adapter, kept apart from `sql-adapter.ts`.
 import { Statement } from 'effect/sql';
 import type { CleanedWhere } from 'better-auth/adapters';
 import type { ServerDatabase } from '../db/client';
@@ -8,9 +6,7 @@ import { bindValue } from './sql-adapter';
 const TABLES = ['user', 'session', 'account', 'verification'] as const;
 type AuthTable = (typeof TABLES)[number];
 
-// Fields whose snake_case column differs from the canonical better-auth name.
-// A field absent here is stored under its own name (id, name, email, token,
-// identifier, value, scope, password, image).
+// Fields whose snake_case column differs from the canonical better-auth name; an absent field is stored under its own name.
 const FIELD_NAMES: Record<AuthTable, Record<string, string>> = {
   user: {
     emailVerified: 'email_verified',
@@ -63,8 +59,7 @@ export function toColumns(model: string, data: Record<string, unknown>): Record<
   return row;
 }
 
-// A literal substring search, like the memory adapter: escape the LIKE
-// wildcards so a `%` or `_` in the value matches itself.
+// Escape the LIKE wildcards so a `%` or `_` in the value matches itself.
 function likePattern(kind: 'contains' | 'starts_with' | 'ends_with', value: unknown): string {
   const escaped = String(value).replace(/[\\%_]/g, (char) => `\\${char}`);
   if (kind === 'starts_with') return `${escaped}%`;
@@ -112,8 +107,7 @@ function clauseFragment(
   }
 }
 
-// The where clauses fold left to right: each clause's connector links it to the
-// running result, matching how the memory adapter evaluates them.
+// Clauses fold left to right, matching how the memory adapter evaluates them.
 export function whereFragment(
   db: ServerDatabase,
   sql: Statement.Constructor,

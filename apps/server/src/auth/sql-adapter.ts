@@ -1,12 +1,5 @@
-// T-0690: the better-auth database adapter over `effect/sql`, used by `auth.ts`.
-// It runs on the same `SqlClient` the rest of the server uses (`sqlRuntimeFor(db)`),
-// so it works against Postgres and PGlite with no new dependency.
-//
-// better-auth hands the custom adapter canonical camelCase field names and
-// expects canonical camelCase rows back. The SQL client camelCases result
-// column names (`snakeToCamel`), and the field map in `sql-where.ts` covers the
-// four auth tables' snake_case columns, so no other layer needs to know the
-// difference.
+// The better-auth adapter on `effect/sql`; works against Postgres and PGlite with no new dependency.
+// better-auth hands canonical camelCase, and the SQL client camelCases results; the field map in `sql-where.ts` covers the rest.
 
 import { Effect } from 'effect';
 import { PgTypes } from '@effect/sql-pg';
@@ -47,13 +40,8 @@ type CountArgs = { model: string; where?: CleanedWhere[] | undefined };
 type UpdateArgs = { model: string; where: CleanedWhere[]; update: Row };
 type DeleteArgs = { model: string; where: CleanedWhere[] };
 
-// The auth tables' timestamps are `timestamp` (no time zone). The PGlite driver
-// writes a `Date` as its UTC wall clock but reads it back as local time; rebuild
-// the instant from the local components so the round trip preserves the value.
-// On a UTC host this is the identity.
-// Real pg needs no rebuild: its `timestamp` codec already maps the wall-clock
-// fields to the UTC fields of the `Date` (@effect/sql-pg 4.0.2,
-// dist/PgTypes.js:23-27), so `normalizeRow` leaves those rows unchanged.
+// PGlite writes a `Date` as UTC wall clock but reads it as local, so rebuild the instant from local components; on a UTC host this is the identity.
+// Real pg needs no rebuild: `@effect/sql-pg` maps wall-clock fields to UTC.
 function utcTimestamp(value: Date): Date {
   return new Date(
     Date.UTC(
@@ -81,11 +69,8 @@ function normalizeRow(db: ServerDatabase, config: AdapterConfig, model: string, 
   return row;
 }
 
-// On real pg a `Date` binds as `timestamptz`, and a `timestamp` column stores it
-// as wall clock in the session `TimeZone`. `PgTypes.timestamp` binds the UTC
-// fields instead, so the stored wall clock is UTC whatever the session is. PGlite
-// keeps the plain `Date` binding it has always had. Written values and where
-// values bind the same way, so a comparison sees the stored wall clock.
+// On real pg a `Date` would bind as `timestamptz` in the session zone; `PgTypes.timestamp` binds UTC fields instead, so the stored wall clock is UTC.
+// PGlite keeps the plain `Date` binding, and where values bind the same way.
 export function bindValue(db: ServerDatabase, value: unknown): unknown {
   return !isPgliteDatabase(db) && value instanceof Date ? PgTypes.timestamp(value) : value;
 }
@@ -104,19 +89,14 @@ function makeAdapter(
   pendingInviteCodes: Map<string, string>,
 ): CustomAdapter {
   async function create({ model, data }: CreateArgs): Promise<Row> {
-    // T-1286 (SG-9): a sign-up's `create.before` hook records the invite code
-    // under the user's email. When present, the invite is consumed and the row
-    // inserted in ONE transaction: a failed insert rolls the use back, and two
-    // racing sign-ups serialize on the invite row, so the cap is never
-    // exceeded. Reading and clearing the entry is the per-request hand-off.
+    // The invite is consumed and the user inserted in one transaction: a failed insert rolls the use back, and racing sign-ups serialize on the row.
     const email = model === 'user' && typeof data.email === 'string' ? data.email : undefined;
     const inviteCode = email === undefined ? undefined : pendingInviteCodes.get(email);
     if (email !== undefined) {
       pendingInviteCodes.delete(email);
     }
     const row = toColumns(model, data);
-    // `session.updated_at` and `account.updated_at` have no database default;
-    // The adapter fills them on insert.
+    // `session.updated_at` and `account.updated_at` have no database default; the adapter fills them.
     if (row.updated_at === undefined) {
       row.updated_at = new Date();
     }
@@ -275,9 +255,7 @@ function makeAdapter(
     );
   }
 
-  // The handler signatures are narrower than the generic `CustomAdapter` ones
-  // (the lib types each method as returning the caller's `T`); the cast keeps
-  // the concrete row types we actually produce.
+  // The lib types each method as returning the caller's `T`; the cast keeps the concrete row types.
   return {
     create,
     findOne,

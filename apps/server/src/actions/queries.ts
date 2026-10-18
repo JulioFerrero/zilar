@@ -10,18 +10,12 @@ import type { ActionGatewayDependencies, RequestParams } from './gateway';
 import type { ActionResult } from './registry';
 import { errorName, safeAnnounce, truncateSummary, truncateText } from './support';
 
-// Internal row shapes. Extracted so the implementation does not lean on the
-// schema inference for places where we hand-pick columns.
 type AiStatusRow = Pick<AisRow, 'id' | 'status'>;
 
-// The cancelled notice names the approval, so it stays short: the card's own
-// summary is already bounded, and this is only here to keep a future caller
-// from posting an unbounded string.
+// Bounded like the card summary, so a future caller cannot post an unbounded string.
 const CANCELLED_SUMMARY_MAX = 200;
 
-// Best effort: the approval's own summary names the request the chat saw on
-// the card. A failed read or a missing row returns `null`, and the announcer
-// falls back to the fixed notice.
+// Best effort: a failed read or missing row falls back to the fixed notice.
 async function approvalSummary(
   deps: ActionGatewayDependencies,
   approvalId: string,
@@ -172,11 +166,7 @@ async function isAiInGroup(db: ServerDatabase, aiId: string, groupId: string): P
   return row !== undefined;
 }
 
-// T-0110: a request with a `groupId` must carry a `topicId` that belongs to
-// that group and to a room the AI is a member of (`topic_ais`, or General
-// via `group_ais`). Anything else — a missing topic, a topic of another
-// group, a topic the AI was never added to — denies with the existing
-// `ai_not_in_group` reason.
+// A request with a `groupId` must name a `topicId` in that group and in a room the AI is a member of; anything else denies `ai_not_in_group`.
 export async function isAiInTopic(
   db: ServerDatabase,
   aiId: string,
@@ -196,23 +186,18 @@ export async function isAiInTopic(
         WHERE id = ${topicId} LIMIT 1`;
     }),
   );
-  // The topic must belong to the group and be live: an archived topic's
-  // room is gone (the AI left it), so nothing may fire there anymore.
+  // The topic must be live: an archived topic's room is gone.
   if (!topic || topic.groupId !== groupId || topic.archivedAt !== null) {
     return false;
   }
   if (topic.isGeneral) {
     return isAiInGroup(db, aiId, groupId);
   }
-  // T-0109 rule: in a private topic the AI counts only while its owner is a
-  // topic member, so an AI that lost its room cannot still raise requests.
+  // In a private topic the AI counts only while its owner is a member.
   return (await allowedTopicAiIds(db, topic)).has(aiId);
 }
 
-// Wired into the approvals POST `/decision` route. Idempotent: a second
-// caller for an already-decided approval finds the pending row already
-// moved on and returns silently. Safe to call concurrently: the
-// conditional `waiting → running` update makes exactly one caller win.
+// Idempotent and concurrency-safe: the conditional `waiting → running` update makes exactly one caller win.
 export async function runOnApprovalDecided(
   deps: ActionGatewayDependencies,
   approvalId: string,
@@ -247,9 +232,7 @@ export async function runOnApprovalDecided(
     return;
   }
 
-  // Re-check the AI status: a stop between request and approval must
-  // cancel the action. The approval service has already accepted the
-  // human's decision; the kill switch wins here.
+  // A stop between request and approval cancels the action; the kill switch wins over the human decision.
   const [ai] = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -263,9 +246,7 @@ export async function runOnApprovalDecided(
     return;
   }
 
-  // T-1991: the AI must still be in the room the request came from. A
-  // removal after the request and before this decision cancels the action
-  // instead of running it in a room the AI has already left.
+  // An AI removed from the room after the request cancels instead of running there.
   if (
     pending.groupId !== null &&
     !(await isAiInTopic(deps.db, pending.aiId, pending.groupId, pending.topicId ?? undefined))
@@ -279,20 +260,13 @@ export async function runOnApprovalDecided(
     return;
   }
   if (approval.status === 'pending') {
-    // Not decided yet: nothing to run and nothing to cancel.
     return;
   }
 
   const verify = await verifyApproval(deps.db, { approvalId, argsHash: pending.argsHash }, at);
   if (!verify.ok) {
-    // `verifyApproval` returns `{ ok: false }` for any of: missing, wrong
-    // status, expired, hash mismatch, or a parallel caller already
-    // consumed the approval. The last case is the same race the claim
-    // step below handles: a peer is already executing this row, so we
-    // must return silently rather than try to cancel. Re-read the
-    // approval to tell them apart: `consumed` means a peer won the
-    // verify race, anything else (denied / expired / wrong hash) means
-    // we should cancel.
+    // `{ ok: false }` covers missing, wrong status, expired, hash mismatch and a peer that already consumed the row.
+    // Re-read to tell a lost race (`consumed`, return silently) from a cancel (denied/expired/wrong hash).
     const [postVerify] = await runSql(
       deps.db,
       Effect.gen(function* () {
@@ -307,9 +281,7 @@ export async function runOnApprovalDecided(
     return;
   }
 
-  // The race-safe claim. Exactly one caller wins; the loser sees zero rows
-  // updated and returns silently. After this point a crash leaves it
-  // `running`, which `recoverStuck` reports — never re-executes.
+  // Exactly one caller wins; a crash after this leaves `running`, which `recoverStuck` reports and never re-executes.
   const claimed = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -349,8 +321,6 @@ export async function runOnApprovalDecided(
         groupId: pending.groupId,
         topicId: pending.topicId,
         requestId: pending.id,
-        // T-1763: the same gateway logger the request path uses, so an
-        // approved `tool.run` with invalid blocks logs its ids-only warning.
         logger: deps.logger,
       },
       pending.args,
@@ -372,8 +342,7 @@ export async function runOnApprovalDecided(
     outcome === 'ok' ? 'action.executed' : 'action.failed',
     outcome,
   );
-  // T-1716: on success the approval card already shows the decided result, so
-  // post an outcome message only when the action failed.
+  // The card already shows a decided success, so post an outcome message only on failure.
   if (outcome !== 'ok') {
     await safeAnnounce(deps, {
       outcome: {

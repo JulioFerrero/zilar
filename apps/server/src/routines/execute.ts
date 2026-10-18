@@ -1,33 +1,9 @@
-// T-0104: one routine run. The scheduler claims the row first (advancing
-// `next_run_at`); this module runs the claimed row through the ordered
-// checks and records the outcome. Stops at the first failing step:
-//
-// 1. The AI must be `active` and (for a topic routine) still a member of
-//    the topic's room — otherwise `skipped`, post nothing, stay active.
-//    Both kinds share this step; a prompt routine then takes its own path
-//    (`executePromptRoutine`, T-1645) and skips step 2 onwards.
-// 2. The tool must exist (not deleted) — otherwise `paused`/`failures`
-//    with the fixed 3-failure notice.
-// 3. Host pinning: the tool's current version `hosts` must be a subset of
-//    the routine's `approved_hosts` — otherwise `needs_approval` /
-//    `hosts_changed` with the fixed hosts notice, audited `routine.paused`.
-// 4. Run the current version through the injected `runTool` port
-//    (`trigger: 'routine'`, the routine's `input`).
-// 5. Success posts `"<title>\n<output.text>"` (trimmed to 4 000 chars)
-//    through `post`; a `false` answer means the AI is stopped or not in
-//    the room, so `skipped` with no failure count. A routine linked to an
-//    alert card posts only when `output.data.value` reaches
-//    `input.threshold` (T-1878): below it the run is `ok` and silent, and
-//    a missing number on either side is a failure. A linked run also rewrites
-//    the card's note with the last check and value (T-1880); a failed refresh
-//    never changes the outcome.
-// 6. Failure increments `consecutive_failures`; the 3rd in a row pauses
-//    with the fixed notice. Tool error text and logs never reach the chat
-//    (they stay in `ai_tool_runs`).
-//
-// Every run audits `routine.run` with `detail { status, durationMs }`
-// only — never output text, source, or an error message. Pauses also
-// audit `routine.paused` with the reason.
+// One routine run through the ordered checks, stopping at the first failing step:
+// 1. AI `active` and (topic routine) still in the room, else `skipped`; a prompt routine takes its own path.
+// 2. Tool exists, else `paused`/`failures` with the fixed 3-failure notice.
+// 3. Host pinning: current version hosts must be a subset of `approved_hosts`, else `needs_approval`/`hosts_changed`.
+// 4-5. Run the tool; a linked alert card posts only when the value reaches the threshold and rewrites the note.
+// Every run audits `routine.run` with `{ status, durationMs }` only — never output text, source or an error.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
@@ -51,9 +27,6 @@ import {
 } from './outcomes';
 import { isAiInTopicRoom, isSubset, readCurrentHosts } from './preflight';
 
-// T-1028: size split of this file. The records a run writes live in
-// `./outcomes`, the preflight checks in `./preflight` and the audit entries in
-// `./audit`; this path stays the barrel so importers do not change.
 export {
   FAILURE_PAUSE_NOTICE,
   HOSTS_CHANGED_NOTICE,
@@ -72,9 +45,8 @@ interface ToolRow {
 }
 
 export interface ExecuteRoutinePorts {
-  /** Runs one tool version (`runToolVersion` in production). */
   runTool: ToolRunner;
-  /** Posts as the AI (`postToChat` in production). `false` = not posted. */
+  // Posts as the AI; `false` = not posted.
   post: (input: {
     aiId: string;
     groupId: string | null;
@@ -82,16 +54,9 @@ export interface ExecuteRoutinePorts {
     text: string;
     payload?: Payload;
   }) => Promise<boolean>;
-  /**
-   * T-1645: runs one scheduled prompt turn (the AI gateway's scheduled turn),
-   * for a `kind = 'prompt'` routine. Absent until a later task wires it; a
-   * prompt routine is then recorded `skipped`.
-   */
+  // The gateway's scheduled prompt turn; absent means the run is recorded `skipped`.
   runPrompt?: PromptRunner;
-  /**
-   * T-1880: corrects the linked alert card in the room after its note is
-   * saved. Absent = no send (tests, no gateway).
-   */
+  // Corrects the linked alert card in the room; absent = no send.
   correctCard?: (input: CorrectCardInput) => Promise<boolean>;
 }
 
@@ -104,14 +69,13 @@ export interface ExecuteRoutineOptions {
   now?: () => Date;
   audit: AuditRecorder;
   logger: RoutineRunLogger;
-  /** AI-18: how long to wait before the one post retry. Defaults to 30 s. */
+  // How long to wait before the one post retry. Defaults to 30 s.
   postRetryDelayMs?: number;
-  /** Sleep seam for the post retry (tests pass a fake to run instantly). */
+  // Sleep seam for the post retry (tests pass a fake).
   sleep?: (ms: number) => Promise<void>;
 }
 
-// AI-18: a post during the AI's reconnect answers `false`; one retry after
-// this wait catches the connection the next attempt.
+// A post during the AI's reconnect answers `false`; one retry after this wait catches the next connection.
 export const POST_RETRY_DELAY_MS = 30_000;
 
 function defaultSleep(ms: number): Promise<void> {
@@ -130,9 +94,7 @@ export async function executeRoutine(
   const startedAt = Date.now();
   const at = now();
 
-  // Step 1: the AI must be active and (for a topic routine) still a member
-  // of the topic's room. A personal routine needs no room row: the `post`
-  // answering `false` is the guard there.
+  // Step 1: the AI must be active and, for a topic routine, still in the room; a personal routine relies on `post` answering `false`.
   const [ai] = await runSql(
     db,
     Effect.gen(function* () {
@@ -149,9 +111,7 @@ export async function executeRoutine(
     return;
   }
 
-  // T-1645: a prompt routine needs no tool. Both kinds share the AI/room
-  // preflight above; a prompt run then goes through its own path (daily cap,
-  // the `runPrompt` port, `replied`/`failed`/`skipped`).
+  // A prompt routine needs no tool; it shares the AI/room preflight and then takes its own path.
   if (row.kind === 'prompt') {
     await executePromptRoutine(ports, row, options, at, startedAt);
     return;
@@ -160,8 +120,7 @@ export async function executeRoutine(
   // Step 2: the tool must exist (not deleted).
   const toolId = row.toolId;
   if (toolId === null) {
-    // A malformed tool row (a `kind = 'tool'` routine with no tool): fail
-    // like a deleted tool.
+    // A `kind = 'tool'` routine with no tool fails like a deleted tool.
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
     return;
   }
@@ -177,8 +136,7 @@ export async function executeRoutine(
     return;
   }
 
-  // Step 3: host pinning against the current version. Fewer hosts (or a
-  // code-only change) keep running; a new host pauses before any run.
+  // Step 3: fewer hosts or a code-only change keep running; a new host pauses before any run.
   const currentHosts = await readCurrentHosts(db, toolId, tool.currentVersion);
   if (currentHosts === null) {
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
@@ -189,7 +147,6 @@ export async function executeRoutine(
     return;
   }
 
-  // Step 4: run the current version with the routine's input.
   let outputText: string | null = null;
   let outputBlocks: unknown = undefined;
   let outputCard: unknown = undefined;
@@ -209,10 +166,7 @@ export async function executeRoutine(
     outputCard = result.output.card;
     outputData = result.output.data;
   } catch (error) {
-    // `runToolVersion` throws `ai_not_active` when the AI stopped between
-    // the step-1 check and the run, and `not_found` when the tool was
-    // deleted in between. Anything else is a run failure like `ok: false`
-    // (a throwing runner still counts: the tool did not produce output).
+    // `ai_not_active` and `not_found` between checks and the run become skips; anything else is a run failure.
     if (error instanceof ToolServiceError && error.errorCode === 'ai_not_active') {
       await markSkipped(db, options, row, at, startedAt);
       return;
@@ -226,19 +180,14 @@ export async function executeRoutine(
     return;
   }
 
-  // T-1878: a routine linked to an alert card reads the tool's numeric
-  // `data.value` and compares it with the card's threshold. No number on
-  // either side is a failure; below the threshold the run is `ok` and posts
-  // nothing.
+  // A linked alert card reads the numeric value; no number is a failure, below the threshold is `ok` and silent.
   if (row.alertCardId != null) {
     const verdict = alertVerdict(row.input, outputData);
     if (verdict.kind === 'error') {
       await recordFailure(db, options, ports, row, at, startedAt);
       return;
     }
-    // T-1880: the card's note says when the routine last checked and what it
-    // saw, whether the run posts or stays quiet. A failed refresh is logged
-    // and swallowed, so it never changes the outcome below.
+    // The note says when it last checked and what it saw; a failed refresh never changes the outcome.
     await refreshAlertNote({
       db,
       ports,
@@ -252,10 +201,7 @@ export async function executeRoutine(
     }
   }
 
-  // Step 5: post the output as the AI. `false` (or a throw) means the AI
-  // is stopped or not in the room. AI-18: a post during the AI's reconnect
-  // also answers `false`, so retry once after a short wait before giving up;
-  // only then is the run `skipped` with no failure count.
+  // Step 5: post as the AI; `false` or a throw means stopped or out of the room, so retry once before `skipped`.
   let posted = await postResult(ports, options, row, outputText, outputBlocks, outputCard);
   if (!posted) {
     await sleep(postRetryDelayMs);

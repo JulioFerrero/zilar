@@ -1,6 +1,4 @@
-// T-1641: creates a `kind = 'prompt'` routine (a scheduled prompt with no
-// tool and no hosts). Nothing creates prompt routines until the chat action
-// ships (plan task 6); only the chat action and these tests call this.
+// Creates a `kind = 'prompt'` routine: no tool and no hosts.
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -19,10 +17,7 @@ import {
   type PublicRoutine,
 } from './schemas';
 
-// Creates a prompt routine after a human approved it. Validates the title,
-// schedule and prompt; enforces the same 10-routines-per-topic limit as a
-// tool routine; computes `next_run_at` from `now`; audits `routine.created`
-// with ids only. The prompt text is never written to the audit.
+// Validates title, schedule and prompt; enforces the same 10-per-topic limit as a tool routine and audits ids only.
 export async function createPromptRoutine(
   db: ServerDatabase,
   input: CreatePromptRoutineInput,
@@ -76,8 +71,7 @@ export async function createPromptRoutine(
       }),
     );
   } catch (error) {
-    // T-1870: the partial unique index on the alert card block refused a
-    // second live routine; nothing was inserted and no audit is written.
+    // The partial unique index on the alert card block refused a second live routine; no audit is written.
     if (isUniqueViolation(error)) {
       throw new RoutineServiceError(
         'alert_card_taken',

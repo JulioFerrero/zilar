@@ -1,9 +1,4 @@
-// Clear-history and delete-for-me for DMs (T-1236): the caller deletes their
-// own copy of a direct chat. A DM is archived per user in ejabberd's
-// `archive` table, so the caller's rows are `username = <caller localpart>`
-// with `bare_peer = <peer bare JID>` — the same scope the unread query reads
-// (unread.ts:144-145). Deleting those rows changes only the caller's history;
-// the peer's rows live under the peer's own `username` and are untouched.
+// Clear-history and delete-for-me for DMs, scoped to the caller's own archive rows (username = caller localpart, bare_peer = peer).
 // Only direct chats: a group or room answers 400.
 
 import { Effect } from 'effect';
@@ -21,23 +16,19 @@ import { createRateLimiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
 
-// The two delete-for-me writes share one budget, like the chat prefs writes
-// (chat-prefs/api.ts:35-36,76-80). Access is checked first, so probing an
-// invisible chat costs no token and answers the same 404 as an unknown one.
+// The two delete-for-me writes share one budget; access is checked first, so a probe costs no token.
 export const CHAT_HISTORY_WRITE_RATE_LIMIT_MAX = 60;
 export const CHAT_HISTORY_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface DeleteOwnDependencies {
   db: ServerDatabase;
-  /** The ejabberd MAM pool. Undefined answers 503, like the search route. */
+  // Undefined answers 503, like the search route.
   archive: ArchivePool | undefined;
-  /** Records one id-only entry per delete; a failed audit write never throws. */
+  // Records one id-only entry per delete; a failed audit write never throws.
   audit: AuditRecorder;
 }
 
-// Int8 bound, mirroring reads.ts:29. The id is bound as a string (never a
-// `BigInt`, the T-1198/T-1205 incident), so an id Postgres could not cast is
-// refused here with 400 instead of surfacing as a 500.
+// Int8 bound, and the id is bound as a string (never a `BigInt`), so an id Postgres could not cast is a 400, not a 500.
 const ARCHIVE_ID_PATTERN = /^\d+$/;
 const MAX_ARCHIVE_ID = 9223372036854775807n;
 
@@ -48,12 +39,7 @@ function archiveRequired(archive: ArchivePool | undefined): ArchivePool {
   return archive;
 }
 
-/**
- * Whether the caller may delete their copy of `chatJid`: the same access rule
- * the read mark uses, so an unknown or invisible chat answers the same 404. A
- * group or room is visible but not a DM, so it answers 400 "Only direct
- * chats".
- */
+// The same access rule as the read mark, so unknown and invisible chats answer the same 404; a group answers 400.
 export async function requireDmAccess(
   db: ServerDatabase,
   options: { chatJid: string; userId: string; domain: string; mucDomain: string },
@@ -66,11 +52,7 @@ export async function requireDmAccess(
   return { bare };
 }
 
-/**
- * Deletes the caller's archive rows with `bare`, then the caller's read mark
- * and delivery mark for the chat, and records one audit entry. Returns the
- * number of archive rows deleted.
- */
+// Deletes the caller's archive rows with `bare`, then the read and delivery marks, and records one audit entry.
 export async function clearOwnHistory(
   deps: DeleteOwnDependencies,
   options: { userId: string; bare: string },
@@ -87,9 +69,7 @@ export async function clearOwnHistory(
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM chat_reads
         WHERE user_id = ${options.userId} AND chat_jid = ${options.bare}`;
-      // T-1229: the caller's own delivery row (`user_id = caller`, keyed by the
-      // author's JID) held a mark into the author's archive; clearing the copy
-      // drops it with the read mark.
+      // The caller's own delivery row held a mark into the author's archive; clearing the copy drops it.
       yield* sql`DELETE FROM chat_deliveries
         WHERE user_id = ${options.userId} AND chat_jid = ${options.bare}`;
     }),
@@ -109,12 +89,7 @@ export async function clearOwnHistory(
   return deleted.length;
 }
 
-/**
- * Deletes exactly one of the caller's archive rows: `username = caller`,
- * `bare_peer = bare` and `timestamp = archiveId`. Returns whether a row was
- * deleted; the route answers 404 when not. The id is validated as digits and
- * bound as a string, never a `BigInt` (T-1198/T-1205).
- */
+// Deletes exactly one of the caller's archive rows; the id is validated as digits and bound as a string, never a `BigInt`.
 export async function deleteOwnArchiveRow(
   deps: DeleteOwnDependencies,
   options: { userId: string; bare: string; archiveId: string },
@@ -150,16 +125,12 @@ export async function deleteOwnArchiveRow(
   return true;
 }
 
-// The two delete-for-me handlers live here so `api.ts` only names them: it
-// stays inside its 400-line bar while the access/decode/limit/delete wiring
-// sits next to the service calls above. All the fields below already ride
-// `ChatsApiDependencies`, so `api.ts` passes its own deps through unchanged.
+// The two delete handlers live here so `api.ts` only names them.
 export interface DeleteOwnHandlerDependencies {
   db: ServerDatabase;
   archive: ArchivePool | undefined;
   config: ServerConfig;
   logger: Logger;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
 
@@ -186,15 +157,10 @@ function tooManyChanges(): HttpError {
   return new HttpError(429, 'rate_limited', 'Too many history changes, try again later');
 }
 
-/**
- * The wrapped `clearHistory` and `deleteForMe` handlers. Both check DM access
- * before the shared write budget, so a probe of an invisible chat costs no
- * token and answers the same 404 as an unknown one.
- */
+// Both check DM access before the shared write budget.
 export function deleteOwnHandlers(deps: DeleteOwnHandlerDependencies) {
   const logger = deps.logger;
-  // Built here (like app.ts's default) so `app.ts` does not change; a failed
-  // audit write is logged, never thrown.
+  // A failed audit write is logged, never thrown.
   const audit = createAuditRecorder({ db: deps.db, logger });
   const limiter = createRateLimiter({
     max: CHAT_HISTORY_WRITE_RATE_LIMIT_MAX,

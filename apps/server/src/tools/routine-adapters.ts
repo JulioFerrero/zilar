@@ -1,6 +1,5 @@
-// effect-plain: moved unchanged from apps/server/src/tools/adapters.ts (size split)
-// T-0966: the `routine.*` adapters and schedule formatting, split out of
-// `tools/adapters.ts` unchanged.
+// effect-plain: routine adapter definitions
+// The `routine.*` adapters and schedule formatting.
 import { Option, Schema } from 'effect';
 import { BlocksDataSchema } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
@@ -30,8 +29,7 @@ import { routineScheduleArgsSchema, routineTargetArgsSchema } from './tool-arg-s
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-// T-1649: the approval card shows at most this many characters of a
-// scheduled prompt; the full prompt stays in the routine row.
+// The approval card shows at most this many characters of a prompt; the full prompt stays in the row.
 const MAX_PROMPT_CARD_CHARS = 500;
 
 function promptForCard(prompt: string): string {
@@ -52,8 +50,7 @@ async function serviceSummary(run: () => Promise<string>): Promise<{ summary: st
   }
 }
 
-// Shared tail of the two create paths: create the routine, then answer with
-// its title and next run.
+// Shared tail: create the routine, then answer with its title and next run.
 function scheduledSummary(
   created: Promise<{ title: string; schedule: RoutineSchedule }>,
   now: Date,
@@ -64,8 +61,7 @@ function scheduledSummary(
   });
 }
 
-// `schedule` in words for cards, lists and summaries, e.g. `every 6 hours`
-// or `daily at 09:00 Europe/Madrid on Mon, Wed, Fri`.
+// `schedule` in words for cards and lists, e.g. `every 6 hours`.
 export function describeSchedule(schedule: RoutineSchedule): string {
   if (schedule.kind === 'interval') {
     const minutes = schedule.everyMinutes;
@@ -88,8 +84,7 @@ export function describeSchedule(schedule: RoutineSchedule): string {
   return `daily at ${schedule.time} ${schedule.timezone}${days}`;
 }
 
-// The routine's next run as an ISO time in the schedule's zone (daily) or
-// a plain UTC ISO instant (interval, which has no zone).
+// The next run as an ISO time in the schedule's zone (daily) or a UTC instant (interval).
 export function formatNextRun(schedule: RoutineSchedule, at: Date): string {
   if (schedule.kind !== 'daily') {
     return at.toISOString();
@@ -116,9 +111,7 @@ interface AlertCardArgs {
   block: string;
 }
 
-// T-1871: the alert card must be this AI's, in this chat, and hold the named
-// `alert` block. Every failure answers the same message, so a card id from
-// another chat cannot be probed. A `prepareArgs` throw becomes `failed`.
+// The card must be this AI's, in this chat, and hold the named `alert` block; every failure answers the same message.
 async function requireOwnAlertCard(
   state: AdapterState,
   actionCtx: ActionContext,
@@ -141,7 +134,6 @@ async function requireOwnAlertCard(
   }
 }
 
-// The link stored in the hashed args and passed to the create call.
 function alertCardLink(args: {
   alert_card?: AlertCardArgs;
 }): { cardId: string; blockId: string } | undefined {
@@ -159,10 +151,7 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
     argsExample:
       '{"title":"Release notes digest","schedule":{"kind":"interval","everyMinutes":120},"prompt":"Summarise the release notes posted in this chat since the last run."}',
     argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
-    // T-1737: the tool form may omit `hosts`; bind the saved tool's CURRENT
-    // hosts here, before the args hash is computed and the card described,
-    // so the card lists them and `execute`'s fail-safe still compares equal
-    // sets. A missing tool throws, which the gateway answers as `failed`.
+    // The tool form may omit `hosts`; bind the saved tool's current hosts before the hash and card.
     prepareArgs: async (ctx, args) => {
       const parsed = args as {
         tool?: string;
@@ -224,14 +213,11 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         alert_card?: AlertCardArgs;
       };
       const alertCard = alertCardLink(parsed);
-      // T-1737: a second approval for the same title must not make a second
-      // routine. Checked before either create path so a retry after an
-      // already-approved schedule creates nothing and says so.
+      // A second approval for the same title creates nothing and says so.
       if (await activeRoutineWithTitleExists(state, actionCtx, parsed.title)) {
         return { summary: `a routine called "${parsed.title}" already exists here` };
       }
-      // T-1649: the prompt form needs no tool and no hosts check; it creates
-      // a `kind = 'prompt'` routine the AI runs itself and posts here.
+      // The prompt form needs no tool or hosts check; it creates a `kind = 'prompt'` routine.
       if (parsed.prompt !== undefined) {
         const owner = await ownerOf(state.db, actionCtx.aiId);
         return scheduledSummary(
@@ -257,20 +243,13 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
       if (!found) {
         return { summary: 'no such tool' };
       }
-      // Fail safe: the card showed `hosts`, so the tool's current version
-      // must still contact exactly that set. A code change after the card
-      // means nothing runs — the throw becomes the gateway's generic
-      // `failed`, which the model hears as "the action failed".
+      // Fail safe: a code change after the card means nothing runs.
       const detail = await getTool(state.db, found.id);
       if (!detail || !hostsEqualAsSets(detail.hosts, parsed.hosts)) {
         throw new Error('tool hosts changed after the approval card was shown');
       }
-      // T-0132: every host on the card must be inside the tool's approved
-      // set, else `failed` and the model is told to run `tool.approve_hosts`
-      // first. The set check and `createRoutine` below are not atomic: a
-      // revocation racing approval could slip a host through the scheduler's
-      // own pinning, but `runToolVersion` intersects with the CURRENT
-      // approved set at run time, so the sandbox still refuses it.
+      // Every card host must be in the tool's approved set, else `failed` with a `tool.approve_hosts` hint.
+      // The set check and create are not atomic, but `runToolVersion` intersects with the current set at run time.
       if (!isSubsetOf(parsed.hosts, detail.approvedHosts)) {
         return { summary: 'the tool hosts are not approved yet; run tool.approve_hosts first' };
       }

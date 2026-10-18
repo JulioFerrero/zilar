@@ -5,9 +5,7 @@ import { runSql } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/service';
 import type { ToolRow } from './queries';
 
-// Soft-deletes one tool by id, and soft-deletes the tool's routines with
-// it (T-0104). Idempotent: a missing id or an already deleted tool
-// returns `deleted: false` and writes nothing.
+// Soft-deletes one tool and its routines; a missing or already deleted id returns `deleted: false` and writes nothing.
 export async function deleteTool(
   db: ServerDatabase,
   toolId: string,
@@ -30,9 +28,7 @@ export async function deleteTool(
   return { deleted: true };
 }
 
-// Effect versions of the two deletes (T-0664): one AI's tools in one topic,
-// and one AI's tools in every topic of a group. A caller that already holds a
-// `SqlClient` runs them directly. Returns the deleted ids.
+// Effect versions of the two bulk deletes, for a caller that already holds a `SqlClient`; returns the deleted ids.
 export function deleteToolsForAiInTopicEffect(input: {
   aiId: string;
   topicId: string;

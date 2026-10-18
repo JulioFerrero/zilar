@@ -1,6 +1,4 @@
-// T-0574: every query runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`). The exported functions stay `async` so
-// callers and tests keep their shape.
+// Every query runs on the `effect/sql` client registered for this database; functions stay `async` for callers.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
@@ -86,10 +84,7 @@ export async function findUsableInvite(
   return invite ?? null;
 }
 
-// T-1286 (SG-9): the atomic consume as an Effect on the ambient `SqlClient`, so
-// the SQL adapter can run it in the same transaction as the user insert. A
-// failed insert rolls the use back; two racing sign-ups serialize on the invite
-// row, so the cap cannot be exceeded.
+// The atomic consume as an Effect on the ambient client, so the SQL adapter can run it in the same transaction as the insert; a failed insert rolls back and racing sign-ups serialize on the invite row.
 export function consumeInviteEffect(
   code: string,
   now: Date = new Date(),
@@ -108,7 +103,6 @@ export async function consumeInvite(
   code: string,
   now: Date = new Date(),
 ): Promise<Invite | null> {
-  // One conditional statement, so two concurrent consumes cannot both win.
   return runSql(db, consumeInviteEffect(code, now));
 }
 

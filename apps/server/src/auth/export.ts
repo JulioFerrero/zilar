@@ -1,14 +1,6 @@
-// The account export route (T-1262, task T-C of
-// `docs/audit/account-deletion-plan.md` §9). It streams the plan's §6a JSON
-// document: the caller's profile, contacts and their own archive. The archive
-// is read under the same scope as search (`allowedArchives`), never a peer's,
-// and is paged by timestamp so memory stays flat.
-//
-// Limits: a session at most 30 minutes old (403 `reauth_required`), one export
-// per hour per user (429 `rate_limited`), and 200 000 messages (413
-// `export_too_large`) counted up front. A 250 MB byte cap truncates the stream
-// with `"truncated": true` instead of failing mid-download. The log carries
-// only `{ userId, messageCount, byteSize }` — never a body or an XML stanza.
+// Streams the caller's profile, contacts and own archive, read under the same scope as search and paged by timestamp.
+// Limits: fresh session (30 min, 403 `reauth_required`), one export per hour (429), 200 000 messages (413), 250 MB cap with `"truncated": true`.
+// The log carries only `{ userId, messageCount, byteSize }`, never a body or an XML stanza.
 
 import { Effect } from 'effect';
 import { HttpServerResponse } from 'effect/http';
@@ -57,9 +49,8 @@ export interface ExportDeps {
   audit: AuditRecorder;
   logger: Logger;
   limiter: Pick<RateLimiter, 'allow'>;
-  /** Absent (and `XMPP_ARCHIVE_DATABASE_URL` unset) → 501 `export_unavailable`. */
+  // Absent and `XMPP_ARCHIVE_DATABASE_URL` unset → 501 `export_unavailable`.
   archive?: ArchivePool;
-  /** Injected in tests so the freshness check is measured against it. */
   now?: () => number;
 }
 
@@ -71,18 +62,12 @@ interface ContactRow {
   jid: string | null;
 }
 
-/**
- * The export's own read-only archive pool when the app did not pass one. The
- * `/me/export` route lives on the auth group, which `app.ts` builds without an
- * archive (T-1262 keeps `app.ts` untouched), so the module resolves the pool
- * from the same config `main.ts` uses.
- */
+// Resolves a read-only pool from the same config `main.ts` uses when the app passed none.
 export function createExportArchivePool(config: ServerConfig): ArchivePool | undefined {
   const url = config.XMPP_ARCHIVE_DATABASE_URL;
   return url === undefined ? undefined : createArchivePool(url);
 }
 
-/** The pieces `createAuthApi` already holds; the factory builds the rest. */
 export interface ExportRouteDeps {
   db: ServerDatabase;
   config: ServerConfig;
@@ -93,11 +78,7 @@ export interface ExportRouteDeps {
   now?: () => number;
 }
 
-/**
- * The `GET /me/export` handler closure. It owns the per-user limiter (one
- * export per hour) and resolves the archive pool from the injected one or from
- * `XMPP_ARCHIVE_DATABASE_URL`, so `auth/api.ts` wires the route in one line.
- */
+// Owns the per-user limiter and resolves the archive pool in one line at wiring.
 export function createExportHandler(
   deps: ExportRouteDeps,
 ): (userId: string, headers: Headers) => Promise<HttpServerResponse.HttpServerResponse> {
@@ -125,11 +106,7 @@ export function createExportHandler(
     );
 }
 
-/**
- * The `GET /me/export` handler: every gate first, then the streamed answer. The
- * size `count(*)` runs before a byte is written; a decode failure after this
- * point is a defect the shared envelope renders.
- */
+// Every gate first, then the streamed answer; the size count runs before a byte is written.
 export async function runExport(
   deps: ExportDeps,
   userId: string,
@@ -140,9 +117,7 @@ export async function runExport(
     throw new HttpError(501, 'export_unavailable', 'Account export is not configured');
   }
   const now = deps.now ?? Date.now;
-  // T-1981: the whole archive is at stake, so never trust the 5-minute
-  // session cache cookie. Reading the session without it makes a session
-  // revoked elsewhere fail here instead of staying valid for five minutes.
+  // Never trust the 5-minute session cache cookie here: a session revoked elsewhere must fail instead of staying valid.
   const session = await currentSession(deps.auth, headersWithoutSessionCache(headers));
   assertFreshSession(session.createdAt, now(), 'Sign in again to export your messages.');
   if (!deps.limiter.allow(userId)) {
@@ -200,8 +175,7 @@ function recordExportDone(deps: ExportDeps, userId: string, summary: ExportSumma
   });
 }
 
-// One chat per DM peer then one per room, exactly the order `allowedArchives`
-// builds them, so each chat's rows are read (and streamed) on their own.
+// One chat per DM peer then one per room, the same order `allowedArchives` builds.
 async function* exportChats(
   archive: ArchivePool,
   allowed: SearchOwner,
@@ -218,8 +192,7 @@ async function* exportChats(
   }
 }
 
-// Keyset by timestamp: each page asks for rows newer than the last row read, so
-// the read is a bounded index scan however long the history is.
+// Keyset by timestamp: each page reads newer rows, so the index scan stays bounded.
 async function* chatPages(archive: ArchivePool, scope: ChatScope): AsyncGenerator<ArchiveRow[]> {
   let cursor = 0n;
   for (;;) {
@@ -257,8 +230,7 @@ function buildChatPageQuery(
   };
 }
 
-// The whole scoped archive in one count: exactly the scope `archive-query.ts`
-// uses with no chat filter (rooms any, DMs under the caller's own username).
+// Exactly the scope `archive-query.ts` uses with no chat filter.
 function buildCountQuery(allowed: SearchOwner): { text: string; values: unknown[] } {
   const values: unknown[] = [];
   const next = (value: unknown): string => {
@@ -312,8 +284,7 @@ async function exportProfile(db: ServerDatabase, userId: string): Promise<Export
   };
 }
 
-// The caller's contacts (never a blocked peer), the same rows `allowedArchives`
-// reads, but keeping the `userId` the export's `contacts` entry needs.
+// Contacts never include a blocked peer; keeps the `userId` the export entry needs.
 async function listContacts(
   db: ServerDatabase,
   config: ServerConfig,

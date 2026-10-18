@@ -2086,3 +2086,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2083](T-2083-comments-server-agents.md) | comments: server agents (-1,276) | 2026-10-18 |
 | [T-2088](T-2088-gate-soft-size-comments.md) | gate: 400 lines warns, 800 fails; no task IDs in new comments | 2026-10-18 |
 | [T-2077](T-2077-comments-phone-components-rest.md) | comments: phone components outside chat and AIs (-1,204) | 2026-10-18 |
+| [T-2085](T-2085-comments-server-routines-chats-actions-auth-tools.md) | comments: server routines, chats, actions, auth, tools (-1,439) | 2026-10-18 |

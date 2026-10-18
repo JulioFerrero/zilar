@@ -1,8 +1,5 @@
-// effect-plain: moved unchanged from apps/server/src/chats/api.ts (size split)
-// The two mark handler bodies (`markRead`, `markDelivered`) and their shared
-// chat access helper, moved out of `api.ts` (T-1543 size split). `api.ts` wraps
-// them with `handler` and passes the API's rate limiter, so the check order is
-// unchanged: access first, then the write budget.
+// effect-plain: mark handler bodies, access and limits only
+// `api.ts` wraps these with `handler` and the limiter, so access is checked before the write budget.
 
 import { buildDisplayed } from '@zilar/xmpp-core';
 import type { HttpServerRequest } from 'effect/http';
@@ -27,9 +24,7 @@ interface MarkDeliveredRequest {
   request: HttpServerRequest.HttpServerRequest;
 }
 
-// The caller's read mark for one chat. Access is checked before the write
-// budget is charged, so a probe of an invisible chat costs nothing and answers
-// the same 404 as an unknown chat.
+// Access is checked before the write budget, so a probe costs nothing and answers the same 404.
 export async function markReadFor(
   deps: ChatsApiDependencies,
   limiter: RateLimiter,
@@ -49,9 +44,7 @@ export async function markReadFor(
     messageId: request.payload.messageId,
   });
 
-  // T-1893: a notification's Mark as read sends the same XEP-0333 marker an
-  // in-app read sends, as the caller. Best effort: the mark is already stored,
-  // so a failed send never fails the read.
+  // Sends the same XEP-0333 marker an in-app read does; best effort, the mark is already stored.
   const displayed = request.payload.displayed;
   const adminClient = deps.adminClient;
   if (displayed !== undefined && adminClient !== undefined) {
@@ -69,9 +62,7 @@ export async function markReadFor(
   }
 }
 
-// The receiving device's delivery confirmation. Access is checked before the
-// write budget is charged, like the read mark, so a probe of an invisible chat
-// costs nothing and answers the same 404 as an unknown chat.
+// Access is checked before the write budget, like the read mark.
 export async function markDeliveredFor(
   deps: ChatsApiDependencies,
   limiter: RateLimiter,
@@ -85,8 +76,7 @@ export async function markDeliveredFor(
       new HttpError(429, 'rate_limited', 'Too many delivered updates, try again later'),
     );
   }
-  // One call: store the mark and (for a moved DM) tell the author's
-  // online devices, best effort and off the HTTP path (T-1245).
+  // Stores the mark and, for a moved DM, tells the author's devices off the HTTP path.
   await markDeliveredAndNotify(deps, {
     bare,
     userId: user.id,

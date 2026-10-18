@@ -1,6 +1,4 @@
-// T-1713: the routine's single live message. A routine posts one message and
-// every later run edits it (`docs/plan/routine-live-message.md`); these helpers
-// store, load and clear the id of that message on the `routines` row.
+// The routine's single live message: these helpers store, load and clear its id on the `routines` row.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -11,8 +9,7 @@ interface RoutineMessageRow {
   lastMessageAt: Date | null;
 }
 
-// The routine's stored message, or null when it has none (either column null)
-// or the routine is deleted.
+// The routine's stored message, or null when it has none or is deleted.
 export async function loadRoutineMessage(
   db: ServerDatabase,
   routineId: string,
@@ -32,7 +29,7 @@ export async function loadRoutineMessage(
   return { messageId: row.lastMessageId, at: row.lastMessageAt };
 }
 
-// Stamps the posted message id and the time it was posted on the routine.
+// Stamps the posted message id and the time it was posted.
 export async function recordRoutineMessage(
   db: ServerDatabase,
   routineId: string,
@@ -63,8 +60,7 @@ export async function clearRoutineMessage(db: ServerDatabase, routineId: string)
   );
 }
 
-// Forgets the routine holding this message id, so a message that is gone is
-// never edited by a later run.
+// Forgets the routine holding this message id, so a gone message is never edited later.
 export async function clearRoutineMessageByTarget(
   db: ServerDatabase,
   messageId: string,

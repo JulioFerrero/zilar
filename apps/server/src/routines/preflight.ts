@@ -1,6 +1,4 @@
-// T-1028: size split of `routines/execute.ts`. The ordered preflight checks —
-// the AI/room membership, the tool's current hosts and the approved-host
-// subset — live here; the old path stays the barrel.
+// The ordered preflight checks: AI/room membership and host pinning.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -19,11 +17,8 @@ interface GroupAiRow {
 
 type TopicRoomRow = Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>;
 
-// Whether the AI is still a member of the routine topic's room: General
-// topics read `group_ais`; other topics use the derived rule of
-// `allowedTopicAiIds` (the AI is in `topic_ais` and, in a non-General topic,
-// its owner is still a member), so the tool never runs for an AI that may no
-// longer be there. An archived topic's room is gone, so the routine skips.
+// General topics read `group_ais`; other topics follow `allowedTopicAiIds`, so the tool never runs for an AI that may have left.
+// An archived topic's room is gone, so the routine skips.
 export async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boolean> {
   const [topic] = await runSql(
     db,

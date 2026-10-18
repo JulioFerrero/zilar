@@ -1,5 +1,4 @@
-// T-0966: shared state, lookups and helpers for the tool and routine
-// adapters. Split out of `tools/adapters.ts` unchanged.
+// Shared state, lookups and helpers for the tool and routine adapters.
 import { Effect, type Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
@@ -20,7 +19,7 @@ import type { ToolRunner } from './types';
 export interface BuildToolAdaptersDeps {
   db: ServerDatabase;
   runner: ToolRunner;
-  /** Posts as the AI (`postToChat` in production). `false` = not posted. */
+  // Posts as the AI; `false` = not posted.
   post: (input: {
     aiId: string;
     groupId: string | null;
@@ -29,24 +28,20 @@ export interface BuildToolAdaptersDeps {
     payload?: Payload;
   }) => Promise<boolean>;
   now?: () => Date;
-  /** When false, `routine.schedule` is not registered (tools still work). */
+  // When false, `routine.schedule` is not registered (tools still work).
   routinesEnabled?: boolean;
-  /** Passed to the tools/routines services so saves and schedules audit
-   *  ids and names only — never source, output or error text. */
+  // Saves and schedules audit ids and names only — never source, output or error text.
   audit?: AuditRecorder;
 }
 
-// At most 6 `tool.run` executions per AI per chat per hour. Over the cap
-// the adapter answers `run limit reached, try later` without running.
+// At most 6 `tool.run` executions per AI per chat per hour; over it the adapter answers `run limit reached, try later`.
 export const TOOL_RUNS_PER_HOUR = 6;
 export const TOOL_RUN_WINDOW_MS = 60 * 60 * 1000;
 
-// A `tool.run` post is `"<name>\n<text>"` cut at 4 000 chars, like the
-// routine posts in `routines/execute.ts`.
+// A `tool.run` post is `"<name>\n<text>"` cut at 4 000 chars.
 export const MAX_TOOL_POST_CHARS = 4_000;
 
-// `tool.save`'s `modelText`: the test run's output text or its error
-// message plus captured logs, capped at 2 KiB.
+// `tool.save`'s `modelText`: test output or error plus logs, capped at 2 KiB.
 export const MAX_SAVE_MODEL_TEXT_CHARS = 2 * 1024;
 
 export interface AdapterState {
@@ -74,11 +69,7 @@ export function createAdapterState(deps: BuildToolAdaptersDeps): AdapterState {
   };
 }
 
-// Every read runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported surface stays the same.
-// The AI's owner id. The gateway already denied stopped AIs before
-// `execute`, so a missing row is unexpected and throws (the gateway's
-// generic `failed`, never a leak).
+// A missing AI row is unexpected (the gateway denied stopped AIs) and throws into the generic `failed`.
 export async function ownerOf(db: ServerDatabase, aiId: string): Promise<string> {
   const [row] = await runSql(
     db,
@@ -101,10 +92,7 @@ export function hostsLine(hosts: readonly string[]): string {
   return hosts.length === 0 ? 'no sites' : hosts.join(', ');
 }
 
-// Every adapter returns expected problems as a summary the model can act
-// on; only unexpected exceptions propagate to the gateway's generic
-// `failed`. Service error messages carry constraint text, never tool
-// source, output or fetched strings, so they are safe to surface.
+// Expected problems are an actionable summary; only unexpected exceptions reach the gateway's generic `failed`.
 export function serviceFailure(error: ToolServiceError | RoutineServiceError): string {
   if (error.errorCode === 'tool_limit' || error.errorCode === 'routine_limit') {
     return error.errorCode === 'tool_limit' ? 'tool limit reached' : 'routine limit reached';
@@ -116,9 +104,7 @@ export function serviceFailure(error: ToolServiceError | RoutineServiceError): s
     return 'the AI is not active';
   }
   if (error.errorCode === 'hosts_not_approved') {
-    // Routine creation keeps its own message (the routine's approved hosts
-    // must be a superset of the tool's CURRENT version hosts); the tool
-    // approval path has its own hint (see `routineScheduleAdapter`).
+    // Routine creation keeps its own hosts message; the tool approval path has its own hint.
     return 'the approved hosts must include every host the tool contacts';
   }
   if (error.errorCode === 'tool_hosts_not_approved') {
@@ -127,9 +113,7 @@ export function serviceFailure(error: ToolServiceError | RoutineServiceError): s
   return error.message;
 }
 
-// One tool of this (AI, topic) by name, or null for a missing name —
-// including a tool that belongs to another chat or AI, which `listTools`
-// never returns.
+// One tool of this (AI, topic) by name, or null for a missing or foreign name.
 export async function findToolByName(
   state: AdapterState,
   ctx: ActionContext,
@@ -143,18 +127,14 @@ export async function findToolByName(
   return tools.find((tool) => tool.name === name) ?? null;
 }
 
-// Every routine of this (AI, topic), oldest first. Personal chat =
-// `topicId` null on both sides; group chat = exact topic match.
+// Every routine of this (AI, topic), oldest first; personal chat has null topic on both sides.
 export async function routinesInScope(state: AdapterState, ctx: ActionContext) {
   const all = await listRoutinesForAi(state.db, ctx.aiId);
   return all.filter((routine) => routine.topicId === ctx.topicId);
 }
 
-// T-1737: resolves the `{id, title}` target `routine.pause` and
-// `routine.delete` accept. An `id` matches the full id or the 8-character
-// prefix `tool.list` prints; a `title` matches every routine in scope with
-// that title. Ambiguity (several routines sharing a title, or two ids
-// sharing a prefix) is an error summary the model can act on.
+// Resolves the `{id, title}` target `routine.pause`/`routine.delete` accept: an id, its 8-character prefix, or a title.
+// Ambiguity is an error summary the model can act on.
 export type RoutineTarget =
   | { status: 'found'; id: string; title: string; routineStatus: string }
   | { status: 'error'; summary: string };
@@ -201,8 +181,7 @@ export async function findRoutineTarget(
   return { status: 'found', id: match.id, title: match.title, routineStatus: match.status };
 }
 
-// T-1737: true when a live, active routine with this title already exists in
-// scope, so an approved `routine.schedule` creates nothing and says so.
+// True when a live, active routine with this title already exists in scope, so the schedule creates nothing.
 export async function activeRoutineWithTitleExists(
   state: AdapterState,
   ctx: ActionContext,
@@ -225,14 +204,8 @@ export function isSubsetOf(current: readonly string[], approved: readonly string
   return current.every((host) => allowed.has(host));
 }
 
-// T-0132: `tool.approve_hosts` (tier 2, a card in the topic): "Allow the
-// tool <name> to contact: <hosts>". Args carry the tool name only; the
-// gateway's `prepareArgs` hook binds the current version's hosts before
-// the args hash is computed, the card shows exactly that set
-// (`toolHostsSchema` validation/normalisation, exact hostnames, no
-// wildcards), and `execute` approves it fail-safe like `routine.schedule`:
-// when the current version's hosts differ from the card's set, it does
-// nothing and fails (the throw becomes the gateway's generic `failed`).
+// `tool.approve_hosts` (tier 2): the model names the tool; `prepareArgs` binds the current version's hosts before the hash and card.
+// `execute` approves fail-safe: if the current hosts differ from the card's set, it does nothing and fails.
 export function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
   return {
     name: 'tool.approve_hosts',
@@ -267,10 +240,7 @@ export function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unkn
       if (!found) {
         throw new Error('tool hosts changed after the approval card was shown');
       }
-      // Fail safe: the card showed `hosts`, so the tool's current version
-      // must still declare exactly that set. A save after the card means
-      // nothing is approved — the throw becomes the gateway's generic
-      // `failed`, which the model hears as "the action failed".
+      // Fail safe: a save after the card means nothing is approved; the throw becomes the generic `failed`.
       const detail = await getTool(state.db, found.id);
       if (!detail || !hostsEqualAsSets(detail.hosts, parsed.hosts)) {
         throw new Error('tool hosts changed after the approval card was shown');
@@ -299,9 +269,7 @@ export function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unkn
   };
 }
 
-// T-0132: `tool.revoke_hosts` (tier 1): empties the tool's approved set.
-// The tool keeps working without network until a new approval. Audited
-// (`tool.hosts_revoked`, ids and the name only), never code or output.
+// `tool.revoke_hosts` (tier 1) empties the set; the tool keeps working without network. Audits ids and the name only.
 export function toolRevokeHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
   return {
     name: 'tool.revoke_hosts',

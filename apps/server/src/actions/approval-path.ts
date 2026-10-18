@@ -9,14 +9,10 @@ import type { ActionGatewayDependencies, RequestOutcome, RequestParams } from '.
 import { decodeActionArgs, type ActionAdapter, type ActionContext } from './registry';
 import { errorName, safeAnnounce, safeStringify, truncateText } from './support';
 
-// 30 minutes: the spec says a tier-2 card is short-lived. The approvals
-// service already enforces the hard 24-hour ceiling above this number, so
-// no extra validation is needed in `request`.
+// 30 minutes: short-lived tier-2 card; the approvals service enforces the 24-hour ceiling.
 export const APPROVAL_TTL_MS = 30 * 60 * 1000;
 
-// 20 KB cap on the serialised stored args. Bigger than this would suggest
-// the adapter's schema is wrong; rejecting early keeps the row from
-// silently growing.
+// 20 KB cap on the serialised stored args; rejecting early keeps the row from growing silently.
 export const MAX_STORED_ARGS_BYTES = 20 * 1024;
 
 export async function runApprovalPath(
@@ -29,11 +25,7 @@ export async function runApprovalPath(
   if (!parsed.ok) {
     return { status: 'denied', reason: 'invalid_args' };
   }
-  // T-0132: an adapter may bind server-side state into the stored args
-  // before the hash is computed (card-time hosts read from the DB). The
-  // hook runs before policy-relevant checks below so a stale card can
-  // never be described or stored; a throw (e.g. a missing tool) becomes
-  // the gateway's generic `failed`, never a leak and never `denied`.
+  // Adapters may bind server-side state into the args before the hash is computed; a throw becomes the gateway's generic `failed`.
   let parsedArgs: unknown = parsed.value;
   if (adapter.prepareArgs !== undefined) {
     const prepareCtx: ActionContext = {
@@ -74,14 +66,7 @@ export async function runApprovalPath(
   const expiresAt = new Date(at.getTime() + APPROVAL_TTL_MS);
   const summary = truncateText(described.summary, 500);
 
-  // One transaction: the approval row and the `pending_actions` row commit
-  // together or not at all. The approval row carries `args_hash`; the
-  // pending-action row carries the exact parsed args. The hash is computed
-  // from the parsed args, the approval's `verifyApproval` re-hashes the
-  // stored value, and the two must match — `argsHash` here is the only place
-  // that gets to touch the args. `createApprovalEffect` fails with an
-  // `ApprovalServiceError` (e.g. `pending_limit`), which the catch below maps
-  // to a stable reason.
+  // The approval row and `pending_actions` commit together; `args_hash` and the stored args must match on re-hash.
   let approvalId: string;
   let reused = false;
   try {
@@ -91,10 +76,7 @@ export async function runApprovalPath(
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(
           Effect.gen(function* () {
-            // T-1737: an identical request (same AI, action, topic/group and
-            // summary) that is still pending reuses its open card instead of
-            // parking a second one. Read inside the transaction so the diff
-            // is against committed state.
+            // An identical request still pending reuses its open card; read inside the transaction against committed state.
             const [existing] = yield* sql<{ id: string }>`SELECT id FROM approvals
               WHERE ai_id = ${params.aiId}
                 AND action = ${params.action}
@@ -149,12 +131,7 @@ export async function runApprovalPath(
     approvalId = result.id;
     reused = result.reused;
   } catch {
-    // The approval service throws `ApprovalServiceError` (e.g.
-    // `pending_limit`); the gateway answers `denied` with a stable reason
-    // so the caller can branch without a string match. Anything else is
-    // logged and treated as `ai_not_active` — the same denial a transient
-    // error already gets, and never `internal_error` (the platform must
-    // not echo a database error to an AI).
+    // The approval service's typed error becomes a stable `denied` reason; anything else is logged and treated as `ai_not_active`, never `internal_error`.
     deps.logger.warn(
       { action: params.action, aiId: params.aiId },
       'failed to create approval+pending-action pair',
@@ -162,15 +139,11 @@ export async function runApprovalPath(
     return { status: 'denied', reason: 'ai_not_active' };
   }
 
-  // T-1737: the request reused an open card; nothing new was written and
-  // nothing is announced, so the caller sees the same approval id again.
   if (reused) {
     return { status: 'pending_approval', approvalId };
   }
 
-  // Audit after the commit. The approval id is the subject so the audit
-  // reader can join back to the row; the hash is the same one the approval
-  // row carries.
+  // Audited after commit; the approval id is the subject so the reader can join back to the row.
   await deps.audit.record({
     actorUserId: null,
     aiId: params.aiId,
@@ -184,9 +157,7 @@ export async function runApprovalPath(
     detail: null,
   });
 
-  // Best-effort card announcement. The approval id and the chat target are
-  // enough for the announcer to build the payload; the gateway does not
-  // wait on it and a throw never changes the returned outcome.
+  // Best-effort: a throw never changes the returned outcome.
   await safeAnnounce(deps, {
     approvalRequested: {
       aiId: params.aiId,

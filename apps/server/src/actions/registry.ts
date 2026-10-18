@@ -1,14 +1,9 @@
 import { Exit, Schema } from 'effect';
 
-// The args schema an adapter carries: an Effect schema that decodes
-// service-free (plan T-G removed the zod member).
+// The args schema an adapter carries: an Effect schema that decodes service-free.
 export type ArgsSchema<Args> = Schema.Codec<Args, unknown, never>;
 
-// The one decode seam for adapter args. Callers only need success or failure
-// and the decoded value: the deny reason is the fixed `invalid_args`, so no
-// message is produced here (the plan's issue walker belongs to T-B). The
-// decode is strict (`onExcessProperty: 'error'`) to match the old zod
-// schemas' `.strict()`.
+// The one decode seam for adapter args; strict (`onExcessProperty: 'error'`), and failures answer the fixed `invalid_args`.
 export function decodeActionArgs<Args>(
   schema: ArgsSchema<Args>,
   raw: unknown,
@@ -19,25 +14,13 @@ export function decodeActionArgs<Args>(
   return Exit.isSuccess(exit) ? { ok: true, value: exit.value } : { ok: false };
 }
 
-// T-1761: the redacting logger the gateway passes an adapter for ops
-// warnings. It is the same logger the gateway itself logs through (`pino`
-// in production), so a warning goes through the same redaction wiring as
-// every other gateway log. Adapters log ids only — never message text,
-// args or tool output.
+// The gateway's redacting logger for ops warnings; adapters log ids only, never message text, args or tool output.
 export interface ActionContextLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
-// The context the adapter receives at execution time. `aiId`, `groupId`
-// and `topicId` come from the gateway (never from the request), so an
-// adapter can never be tricked into acting on a different AI's behalf.
-// Personal chat = `groupId` and `topicId` both null; group chat = both
-// set (T-0110 scope). `requestId` is the id of the pending-action row the
-// gateway wrote, in case the adapter wants to log it for its own
-// bookkeeping (the adapter never sees the stored args outside of the
-// `args` argument). `logger` (T-1761) is optional so a caller that builds
-// a context by hand (tests, the approval path) still compiles; the
-// gateway always sets it.
+// `aiId`, `groupId` and `topicId` come from the gateway, never the request, so an adapter cannot act for another AI.
+// Personal chat = both group and topic null; group chat = both set.
 export interface ActionContext {
   aiId: string;
   groupId: string | null;
@@ -46,31 +29,18 @@ export interface ActionContext {
   logger?: ActionContextLogger;
 }
 
-// The result an adapter returns on success. `summary` is what gets stored on
-// the pending-action row (truncated to 500 chars) and bubbled up to the
-// gateway caller; it must not include the adapter's internal error text.
-// `modelText` (T-0105) carries a larger payload for the model only (tool
-// source, a test run's output): the gateway returns it in the outcome of an
-// immediately executed action, never stores it, never audits or logs it,
-// never puts it in an announcement or an approval row.
+// `summary` is stored on the row (truncated to 500 chars) and must not contain adapter error text.
+// `modelText` goes to the model only: never stored, audited, logged or announced.
 export interface ActionResult {
   summary: string;
   modelText?: string;
-  /**
-   * T-1761: true when the adapter posted the answer into the room itself (a
-   * `blocks` card). The group turn sees it on the executed outcome and sends
-   * no echo reply, so the room gets the card and nothing else.
-   */
+  // True when the adapter already posted its answer into the room, so the group turn sends no echo.
   posted?: boolean;
 }
 
-// The hard ceiling on an adapter's `modelText`: longer text is truncated
-// with `…`. 16 KiB is enough for a tool source or a failing test run's
-// logs, small enough that it never bloats a turn.
+// 16 KiB is enough for a tool source or a failing test run's logs without bloating a turn.
 export const ACTION_MODEL_TEXT_MAX_CHARS = 16 * 1024;
 
-// Truncates an adapter's `modelText` to the ceiling above, appending `…`
-// when cut. Pure so adapters and the gateway share it.
 export function truncateModelText(value: string): string {
   if (value.length <= ACTION_MODEL_TEXT_MAX_CHARS) {
     return value;
@@ -78,13 +48,8 @@ export function truncateModelText(value: string): string {
   return `${value.slice(0, ACTION_MODEL_TEXT_MAX_CHARS)}…`;
 }
 
-// Removes every occurrence of the wrapper's closing tag from `modelText`
-// so a hostile tool output cannot close the labelled block early.
-//
-// Matching is case-insensitive and tolerates whitespace inside the tag, and it
-// repeats until nothing is left to remove: a single pass would let
-// `</untrusted-tool-<untrusted-tool-output>output>` collapse into a working
-// closing tag once the inner one is removed.
+// Removes every closing tag from `modelText` so hostile output cannot close the labelled block early.
+// Case-insensitive, whitespace-tolerant, repeated until none is left: one pass would let nested tags collapse into one.
 const MODEL_TEXT_CLOSE_PATTERN = /<\/\s*untrusted-tool-output\s*>/gi;
 
 export function stripModelTextCloseTag(value: string): string {
@@ -98,92 +63,44 @@ export function stripModelTextCloseTag(value: string): string {
   }
 }
 
-// The optional worst-case cost the adapter reports so the approval card can
-// show it. `currency` is the same enum the audit log already understands.
+// Optional worst-case cost for the approval card; `currency` is the audit log's enum.
 export interface ActionCost {
   currency: 'EUR' | 'USD';
   amount: number;
 }
 
-// One adapter. `argsSchema` is an Effect schema. The gateway calls
-// `decodeActionArgs(input.args)` and uses the parsed value as the
-// canonical-JSON/args-hash input. `describe` builds the card text
-// (`summary` is the bolded line, `details` the body, both bounded).
-// `description` is one short line the model sees in the `request_action`
-// tool definition, so it knows what each adapter does without a long card.
-// `argsExample` (T-1616) is a compact JSON object of valid args the model
-// also sees there, next to the action, so it calls with the right field
-// names; its own `argsSchema` accepts it.
-// `execute` performs the side effect and returns the success summary.
-//
-// `allowAlways` (T-0099) opts the adapter in to the standing-rule flow:
-// an owner who clicks "Approve always" in this chat for this action
-// creates an `approval_rules` row that runs future matching requests
-// without a card. Off by default — most adapters should never be granted
-// a standing approval. Adapters that report a worst-case cost
-// (`estimateCost`) cannot opt in: money is never auto-approved.
+// `argsSchema` decodes the request args; `describe` builds the bounded card text; `description` and `argsExample` are what the model sees.
+// `allowAlways` opts into standing rules; an adapter with `estimateCost` cannot opt in because money is never auto-approved.
 export interface ActionAdapter<Args> {
   name: string;
   description: string;
   tier: 0 | 1 | 2;
   argsSchema: ArgsSchema<Args>;
-  /**
-   * A compact JSON object of valid args, at most
-   * `ADAPTER_ARGS_EXAMPLE_MAX_LENGTH` characters, that the model sees in
-   * the `request_action` tool definition next to the action. Its own
-   * `argsSchema` accepts it (checked by `args-example.test.ts`).
-   */
+  // Compact JSON of valid args, accepted by its own `argsSchema`, shown to the model.
   argsExample?: string;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
-  /**
-   * When `true`, an "Approve always" decision for this adapter is
-   * accepted and stored as an `approval_rules` row. When `false` or
-   * omitted, an "Approve always" decision is refused with 400
-   * `always_not_allowed`. Adapters that report a worst-case cost
-   * (`estimateCost`) cannot opt in: the registry rejects the
-   * combination at startup so money can never get a standing approval.
-   */
+  // Accepts "Approve always"; refusal is 400 `always_not_allowed`. An adapter with `estimateCost`
+  // cannot opt in: money is never auto-approved.
   allowAlways?: boolean;
   execute: (ctx: ActionContext, args: Args) => Promise<ActionResult>;
-  /**
-   * Optional server-side normalisation of the parsed args, run by the
-   * gateway on the approval path (T-0132) before the args hash is computed
-   * and the card is described. Lets a tier-2 adapter bind server-side state
-   * (e.g. hosts read from the DB at card time) into the stored args, so the
-   * fail-safe holds: any state change after the card means the execution
-   * cannot match and fails. Async-capable; a throw becomes the gateway's
-   * generic `failed` via the approval path's error handling. Never called
-   * on the allow or auto-approved paths.
-   */
+  // Server-side normalisation before the args hash and card, so a state change after the card makes execution fail.
+  // Never called on the allow or auto-approved paths.
   prepareArgs?: (ctx: ActionContext, args: Args) => Promise<Args> | Args;
 }
 
-// The hard ceiling on an adapter's description: short enough to fit one
-// line in the `request_action` tool definition next to the action name.
+// Short enough to fit one line next to the action name.
 export const ADAPTER_DESCRIPTION_MAX_LENGTH = 200;
 
-// The hard ceiling on an adapter's `argsExample`: a compact one-line JSON
-// object the model reads in the `request_action` tool definition.
 export const ADAPTER_ARGS_EXAMPLE_MAX_LENGTH = 200;
 
-// A registry is a plain object indexed by adapter name. The gateway keeps
-// it in a typed record so an unknown action answers `unknown_action`
-// without a runtime lookup. Construction validates names and rejects
-// duplicates at startup, so the running server never has to defend against
-// a malformed registry.
+// Validated at startup, so the running server never defends against a malformed registry.
 export type ActionRegistry = Record<string, ActionAdapter<unknown>>;
 
-// Adapters are registered by dotted name; the same regex the audit log
-// uses (`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`) keeps the namespace flat
-// and rejects typos that would silently make an action unreachable.
+// Dotted names, same regex as the audit log, so typos cannot silently make an action unreachable.
 const ADAPTER_NAME_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
-// Shape checks performed at startup so a buggy adapter never reaches the
-// request path: `tier` must be one of the three values the spec defines,
-// `name` must match the dotted pattern and be non-empty, `description`
-// must be a one-line string under the ceiling, and `describe` / `execute`
-// must be functions.
+// Shape checks at startup so a buggy adapter never reaches the request path.
 export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): ActionRegistry {
   const registry: ActionRegistry = {};
   for (const adapter of adapters) {
@@ -223,10 +140,7 @@ export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): 
     if (typeof adapter.execute !== 'function') {
       throw new AdapterRegistryError(`adapter "${adapter.name}" is missing execute`);
     }
-    // T-0099: an adapter that reports a worst-case cost can never opt in
-    // to standing rules — money is never auto-approved. The registry
-    // refuses the combination at startup so a misconfigured demo or
-    // future adapter can never reach the request path with this state.
+    // A cost-reporting adapter can never opt into standing rules: money is never auto-approved.
     if (adapter.allowAlways === true && adapter.estimateCost !== undefined) {
       throw new AdapterRegistryError(
         `adapter "${adapter.name}" has allowAlways=true but reports a worst-case cost; ` +
@@ -245,19 +159,8 @@ export class AdapterRegistryError extends Error {
   }
 }
 
-// T-0099: the "always-eligible" predicate the approvals routes use to
-// decide whether `approve_always` is a real choice (button shown, rule
-// created) or an unavailable one (400 `always_not_allowed`). It folds
-// the three blockers the spec names into a single boolean:
-//   - the action must be registered (unknown actions never get a card)
-//   - the adapter must have opted in via `allowAlways: true`
-//   - the adapter must not report a worst-case cost (money is never
-//     auto-approved)
-//
-// Keeping it here, next to the registry, means the predicate and the
-// validation rules above cannot drift apart — a future change that
-// rejects `allowAlways + estimateCost` at startup also makes this
-// predicate return `false` for the same case at runtime.
+// Whether `approve_always` is a real choice: action registered, `allowAlways: true`, and no `estimateCost`.
+// Kept next to the registry so the predicate and the startup validation cannot drift apart.
 export function buildAlwaysEligible(registry: ActionRegistry): (action: string) => boolean {
   return (action: string): boolean => {
     const adapter = registry[action];

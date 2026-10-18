@@ -12,8 +12,7 @@ import type {
 } from './service';
 import { ToolServiceError } from './service';
 
-// `input` serialises to at most 16 KiB (T-0105, shared with the `tool.run`
-// adapter): anything larger is 400 `invalid_request` before any run.
+// `input` serialises to at most 16 KiB; larger is 400 `invalid_request` before any run.
 export const MAX_TOOL_RUN_INPUT_BYTES = 16 * 1024;
 
 export function toListWire(tool: PublicTool & { scope: 'personal' | 'group' }) {
@@ -123,8 +122,7 @@ export function toRunWire(result: Awaited<ReturnType<typeof runToolVersion>>['re
   };
 }
 
-// The old `runBodySchema` refine: `input` must serialise to at most 16 KiB
-// of UTF-8, and a value that cannot be stringified fails.
+// `input` must serialise to at most 16 KiB of UTF-8; one that cannot be stringified fails.
 export function runInputWithinLimit(input: unknown): boolean {
   if (input === undefined) {
     return true;
@@ -138,8 +136,7 @@ export function runInputWithinLimit(input: unknown): boolean {
   return Buffer.byteLength(serialised, 'utf8') <= MAX_TOOL_RUN_INPUT_BYTES;
 }
 
-// Reads the request body as JSON without throwing: a malformed body answers
-// `Invalid JSON body`, exactly like the old `readJson`.
+// A malformed body answers `Invalid JSON body`.
 export function readJsonBody(
   request: HttpServerRequest.HttpServerRequest,
 ): Effect.Effect<{ parsed: boolean; value: unknown }> {
@@ -167,7 +164,6 @@ function mapServiceError(error: unknown): unknown {
   return error;
 }
 
-// The shared wrapper with the tools mapper: same transport rules as the
-// routines, only the allowed codes differ.
+// The shared wrapper with the tools mapper; only the allowed codes differ.
 export const withServiceErrors = <A>(promise: () => Promise<A>): Effect.Effect<A> =>
   withServiceErrorsMapped(promise, mapServiceError);

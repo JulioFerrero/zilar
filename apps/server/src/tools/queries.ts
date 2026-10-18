@@ -14,9 +14,7 @@ import { toPublicRun, toPublicVersion, toToolDetail, toVersionDetail } from './t
 
 export { toPublicRun, toToolDetail, toVersionDetail } from './tool-views';
 
-// Caps: at most 20 active tools per (AI, topic), at most 200 versions per
-// tool. The runner output stored on a run row is truncated to 2 KiB, and
-// only the newest 50 runs per tool are kept.
+// At most 20 active tools per (AI, topic), 200 versions per tool, 2 KiB stored output, newest 50 runs.
 export const MAX_TOOLS_PER_TOPIC = 20;
 export const MAX_VERSIONS_PER_TOOL = 200;
 export const MAX_RUNS_PER_TOOL = 50;
@@ -36,8 +34,7 @@ export type ToolRow = AiToolRow;
 export type VersionRow = AiToolVersionRow;
 export type RunRow = AiToolRunRow;
 
-// Lists the non-deleted tools of one AI in one topic (no source). The
-// route decides which topics to query; the helper does not.
+// Lists the non-deleted tools of one AI in one topic, without source.
 export async function listTools(
   db: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null },
@@ -79,8 +76,7 @@ export async function listTools(
   return result;
 }
 
-// One non-deleted tool with its current source, or null for a missing id
-// and a deleted one alike.
+// One non-deleted tool with its current source, or null.
 export async function getTool(db: ServerDatabase, id: string): Promise<ToolDetail | null> {
   const tool = await runSql(
     db,
@@ -114,8 +110,7 @@ export async function getTool(db: ServerDatabase, id: string): Promise<ToolDetai
   return toToolDetail(tool, current, lastRunStatus);
 }
 
-// Every version of a tool, newest first, without source. Returns null for
-// a missing or deleted tool.
+// Every version of a tool, newest first, without source.
 export async function listVersions(
   db: ServerDatabase,
   toolId: string,
@@ -142,7 +137,6 @@ export async function listVersions(
   return rows.map(toPublicVersion);
 }
 
-// One version with source, or null for a missing/deleted tool or version.
 export async function getVersion(
   db: ServerDatabase,
   toolId: string,
@@ -169,8 +163,7 @@ export async function getVersion(
   return row ? toVersionDetail(row) : null;
 }
 
-// Newest runs of a tool, newest first, capped at 20 for the public route.
-// Returns null for a missing or deleted tool.
+// Newest runs of a tool, capped at 20 for the public route.
 export async function listRuns(
   db: ServerDatabase,
   toolId: string,
@@ -220,8 +213,7 @@ export function enforceToolLimit(
   topicId: string | null,
 ): Effect.Effect<void, SqlError.SqlError | ToolServiceError> {
   return Effect.gen(function* () {
-    // T-1995: the count and the insert share one transaction, so the cap is
-    // read under a lock keyed on the AI and topic.
+    // The count and insert share one transaction, so the cap is read under a lock keyed on the AI and topic.
     yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`tools:${aiId}:${topicId ?? ''}`}))`;
     const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
     const [row] = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ai_tools
@@ -247,7 +239,6 @@ export function getToolRow(
   });
 }
 
-// The newest run's status for one tool, or null when it has never run.
 export function latestRunStatus(
   sql: SqlClient.SqlClient,
   toolId: string,
@@ -261,9 +252,7 @@ export function latestRunStatus(
   });
 }
 
-// The list views of many tools in two queries, whatever the count: the
-// hosts of each tool's current version (no source) and the newest run's
-// status of each tool.
+// The list views of many tools in two queries, whatever the count.
 export function listViewExtras(
   sql: SqlClient.SqlClient,
   tools: readonly ToolRow[],
@@ -296,15 +285,14 @@ export function listViewExtras(
   });
 }
 
-// Counts the active tools of one AI across every topic, for the route that
-// lists all of an AI's tools.
+// Counts the active tools of one AI across every topic.
 export async function listToolsForAi(
   db: ServerDatabase,
   aiId: string,
 ): Promise<
   Array<
     PublicTool & {
-      /** `personal` means the owner's DM with the AI; `group` a real group topic. */
+      // `personal` means the owner's DM with the AI; `group` a real group topic.
       scope: 'personal' | 'group';
     }
   >

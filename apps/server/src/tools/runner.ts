@@ -16,17 +16,9 @@ import {
 import type { PublicToolRun, RunToolVersionDeps, RunToolVersionInput } from './service';
 import type { ToolRunResult } from './types';
 
-// Runs one version (default: current) through the injected runner port and
-// records an `ai_tool_runs` row in the same step. The AI must be `active`
-// (the kill switch): a stopped or provisioning AI throws
-// `ai_not_active` before the runner is called. A runner failure is
-// recorded as `error` with its kind and returned, never thrown.
-//
-// T-0132: the sandbox may only contact `declared hosts ∩ approved hosts`.
-// `allowedHosts` passed to the runner is that intersection (already
-// lowercased by `toolHostsSchema`), so a tool with no approved hosts still
-// runs, with no network. This holds for every trigger (`manual`,
-// `routine`, `ai`) because every run path goes through here.
+// Runs one version through the runner port and records an `ai_tool_runs` row in the same step.
+// A stopped or provisioning AI throws `ai_not_active` before the runner; a runner failure is recorded as `error` and returned.
+// `allowedHosts` is `declared hosts ∩ approved hosts`, for every trigger, so a tool with none runs without network.
 export async function runToolVersion(
   deps: RunToolVersionDeps,
   input: RunToolVersionInput,
@@ -103,10 +95,7 @@ interface RecordSaveAuditInput {
   name: string;
 }
 
-// Writes the `tool.created` / `tool.updated` audit entry: actor, AI and
-// chat ids, subject = the tool id looked up by name, `detail { name,
-// version }`. Never source, hosts or output. The recorder swallows its
-// own failures, so this never throws into the save.
+// Writes the save audit: ids, subject = the tool id, `detail { name, version }`; never source, hosts or output.
 export async function recordSaveAudit(
   audit: AuditRecorder,
   input: RecordSaveAuditInput,
@@ -158,8 +147,7 @@ interface RecordRunInput {
   now: Date;
 }
 
-// Inserts the run row and prunes older rows beyond the newest 50, in one
-// transaction. Output text is truncated to 2 KiB (UTF-8 bytes).
+// Inserts the run row and prunes beyond the newest 50 in one transaction; output is truncated to 2 KiB.
 function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<PublicToolRun> {
   return runSql(
     db,

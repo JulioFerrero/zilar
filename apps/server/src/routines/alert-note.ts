@@ -1,10 +1,5 @@
-// T-1880: every run of a routine linked to an alert card rewrites the card's
-// note to when it last checked and the value it saw, then corrects the message
-// in the room. A quiet run (T-1878) posts nothing, so this note is the only
-// sign the check is running. The refresh is best-effort: a missing card, a
-// card of another AI, an unreadable block or a failed correction is logged
-// with the routine id and swallowed, so the run's outcome never depends on
-// the card.
+// Every run of a routine linked to an alert card rewrites the card's note with the last check and value, then corrects it in the room.
+// Best effort: a missing or foreign card, unreadable block or failed correction is logged and swallowed.
 import { Option, Schema } from 'effect';
 import { BlocksDataSchema, type BlocksData } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
@@ -14,7 +9,7 @@ import type { CorrectCardInput } from '../message-blocks/respond';
 import { describeSchedule } from '../tools/routine-adapters';
 import { parseRoutineSchedule } from './schedule';
 
-// The alert block's `note` is `ShortText` (`MAX_SHORT` in the protocol).
+// The alert block's `note` is `ShortText` (`MAX_SHORT`).
 const MAX_NOTE_CHARS = 40;
 
 export interface AlertNotePorts {
@@ -33,8 +28,7 @@ export interface RefreshAlertNoteInput {
   logger: AlertNoteLogger;
 }
 
-// `Checked every 5 minutes · now 82,302`, cut to the note's 40 characters. A
-// long schedule loses its tail, never the value: the value is what moved.
+// Cut to the note's 40 characters; a long schedule loses its tail, never the value.
 function noteFor(schedule: string, value: number): string {
   const tail = ` · now ${value.toLocaleString('en-US')}`;
   const head = `Checked ${schedule}`;
@@ -61,8 +55,7 @@ export async function refreshAlertNote(input: RefreshAlertNoteInput): Promise<vo
       logger.warn({ routineId: row.id }, 'alert card missing');
       return;
     }
-    // The card must be the routine's own AI's, even if a future path links one
-    // without running the `routine.schedule` ownership check.
+    // The card must be the routine's own AI's, even if a future path links one without the ownership check.
     if (card.aiId !== row.aiId) {
       logger.warn({ routineId: row.id }, 'alert card belongs to another AI');
       return;

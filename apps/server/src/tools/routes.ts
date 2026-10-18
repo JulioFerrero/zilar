@@ -56,9 +56,7 @@ export const TOOL_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// `revert` and `run` declare their payloads in the contract for the derived
-// client, but are served with `handleRaw`: their bodies are decoded by hand in
-// the handlers, so the 400, 404, 429 and 501 order stays (see the header).
+// `revert` and `run` declare payloads for the client but decode by hand, keeping the 400/404/429/501 order.
 const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
 
 export interface ToolsApiDependencies {
@@ -66,11 +64,10 @@ export interface ToolsApiDependencies {
   db: ServerDatabase;
   logger: Logger;
   audit?: AuditRecorder;
-  /** Absent = no runner (T-0105 wires the sandbox): run answers 501. */
+  // Absent = no runner; run answers 501.
   toolRunner?: ToolRunner;
-  /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
-  /** Injected so tests can share one limiter; otherwise built from `now`. */
+  // Injected so tests can share one limiter; otherwise built from `now`.
   runLimiter?: RateLimiter;
 }
 
@@ -97,8 +94,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             if (!ai) {
               throw new HttpError(404, 'not_found', 'AI not found');
             }
-            // Only tools of topics the owner can see: tools in a private topic the
-            // owner was removed from stay hidden until they are added back.
+            // Tools in a private topic the owner was removed from stay hidden until they are added back.
             const tools = yield* Effect.promise(() => listToolsForAi(deps.db, ai.id));
             const visible: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
             for (const tool of tools) {
@@ -127,15 +123,13 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             if (!membership) {
               throw new HttpError(404, 'not_found', 'Group not found');
             }
-            // Only tools of topics the viewer can see: a group admin who is not in
-            // a private topic never sees its tools.
+            // A group admin not in a private topic never sees its tools.
             const tools = yield* Effect.promise(() => listToolsForGroup(deps.db, groupId, user.id));
             return tools.map(toListWire);
           }),
         ),
       )
-      // T-0110: the tools of one topic. Anyone who can see the topic reads;
-      // anyone else gets the same 404 as a missing id.
+      // Anyone who can see the topic reads; anyone else gets the same 404 as a missing id.
       .handle(
         'listForTopic',
         handler(logger, (request, user) =>
@@ -290,10 +284,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
         handler(logger, (request, user) =>
           Effect.gen(function* () {
             const toolId = request.params.id;
-            // `toolAccess` hides soft-deleted rows (they read as missing), but the
-            // delete must be idempotent: a manager re-deleting sees 204, like the
-            // approval-rule revoke. So managers are resolved on the raw row here,
-            // including deleted ones; strangers still get the missing-id 404.
+            // Resolve managers on the raw row so a re-delete is 204; strangers still get the missing-id 404.
             const access = yield* Effect.promise(() =>
               toolAccessIncludingDeleted(deps.db, toolId, user.id),
             );

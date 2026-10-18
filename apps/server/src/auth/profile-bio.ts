@@ -1,12 +1,9 @@
-// The user's short bio (T-1258). It lives in its own `user_profiles` table so
-// Better Auth's `user` table stays as Better Auth expects it. The bio never
-// reaches a log: only these two helpers touch it, and neither logs.
+// The bio lives in its own `user_profiles` table and never reaches a log.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 
-/** Upserts the bio; `''` clears it. */
 export async function upsertProfileBio(
   db: ServerDatabase,
   userId: string,
@@ -23,10 +20,7 @@ export async function upsertProfileBio(
   );
 }
 
-/**
- * The bio, or null when the user has no profile row or the bio is empty. A
- * LEFT JOIN, so a missing row means no bio.
- */
+// A LEFT JOIN, so a missing profile row means no bio.
 export async function bioForUser(db: ServerDatabase, userId: string): Promise<string | null> {
   const [row] = await runSql(
     db,

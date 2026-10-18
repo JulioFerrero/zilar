@@ -25,11 +25,7 @@ export class MailerDeliveryError extends Error {
   }
 }
 
-// Thrown when no mail transport is configured (T-0161): no
-// `MAIL_TRANSPORT`/`SMTP_*` env and no stored Resend settings from the
-// setup screen. The sign-in hook maps it to a 503 `mail_not_configured`
-// response (see `auth/auth.ts`); the message never names a provider or a
-// secret.
+// Thrown when no transport is configured; the sign-in hook maps it to 503 `mail_not_configured`, and the message never names a provider or secret.
 export class MailNotConfiguredError extends Error {
   constructor() {
     super('Email is not configured. Finish the server setup first.');
@@ -40,10 +36,7 @@ export class MailNotConfiguredError extends Error {
 const CONNECTION_TIMEOUT_MS = 10_000;
 const SEND_TIMEOUT_MS = 20_000;
 
-// Internal failure modes of `SmtpMailer.sendOtp` (never exported): the
-// transport rejected, or the send outlived `sendTimeoutMs`. `smtpCode` is
-// the numeric SMTP response code when there is one, only for the log line —
-// never the provider's message.
+// `smtpCode` is the numeric SMTP code, only for the log line — never the provider's message.
 class MailerSendFailed extends Data.TaggedError('MailerSendFailed')<{
   readonly smtpCode: number | string;
 }> {}
@@ -229,13 +222,7 @@ export class ConsoleMailer implements Mailer {
   }
 }
 
-/**
- * The live sign-in mailer while no transport is configured (T-0161): no
- * `MAIL_TRANSPORT`/`SMTP_*` env and no stored Resend settings from the
- * setup screen. The server boots with it in production, and every code
- * send fails with a clear logged error (no secret in it) so the caller
- * can answer 503 `mail_not_configured`.
- */
+// The live mailer while unconfigured: every send fails with a clear logged error (no secret) so the caller answers 503.
 export class NotConfiguredMailer implements Mailer {
   readonly #logger: Logger;
 
@@ -252,13 +239,7 @@ export class NotConfiguredMailer implements Mailer {
   }
 }
 
-/**
- * The single live mailer the auth flow sends through (T-0161). It
- * delegates to the current transport and swaps it without a restart:
- * explicit `MAIL_TRANSPORT`/`SMTP_*` env sets it at boot, otherwise it
- * starts as `NotConfiguredMailer` and the setup screen swaps in the
- * stored Resend mailer on success (and at the next boot, from storage).
- */
+// Delegates to the current transport and swaps without restart: env at boot, otherwise the setup screen swaps in Resend.
 export class CurrentMailer implements Mailer {
   #current: Mailer;
 
@@ -279,10 +260,7 @@ export class CurrentMailer implements Mailer {
   }
 }
 
-/**
- * Whether a mailer can actually send: anything except the
- * `NotConfiguredMailer` counts (test fakes, console, SMTP, Resend).
- */
+// Anything except `NotConfiguredMailer` counts (test fakes, console, SMTP, Resend).
 export function isTransportConfigured(mailer: Mailer): boolean {
   if (mailer instanceof CurrentMailer) {
     return mailer.configured;
@@ -292,8 +270,7 @@ export function isTransportConfigured(mailer: Mailer): boolean {
 
 export const RESEND_SMTP = { host: 'smtp.resend.com', port: 465, user: 'resend' } as const;
 
-// Resend is used through its SMTP endpoint with the existing SMTP mailer:
-// the API key is the SMTP password. No new dependency.
+// Resend through its SMTP endpoint: the API key is the SMTP password, no new dependency.
 export function createResendMailer(
   config: ServerConfig,
   logger: Logger,

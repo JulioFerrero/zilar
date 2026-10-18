@@ -3,11 +3,7 @@ import type { ToolRunner } from './types';
 
 export type { ToolRunner, ToolRunResult } from './types';
 
-// T-0103: versioned tool code per AI and topic. A tool belongs to one AI
-// and one topic (`groupId` + `topicId`, or both null for the personal chat
-// with the owner). History is append-only: `saveToolVersion` and
-// `revertTool` only insert into `ai_tool_versions`; no function here ever
-// updates or deletes a version row.
+// Versioned tool code per AI and topic; history is append-only — nothing updates or deletes a version row.
 
 export interface SaveToolVersionInput {
   aiId: string;
@@ -21,27 +17,23 @@ export interface SaveToolVersionInput {
   userId: string;
 }
 
-// One tool as the list returns it: no source. `hosts` and `lastRunStatus`
-// come from the current version and the newest run row. `approvedHosts`
-// is the human-approved set (T-0132): the sandbox may only contact the
-// intersection of declared `hosts` and this set.
+// No source; `hosts` and `lastRunStatus` come from the current version and newest run, `approvedHosts` from the human.
 export interface PublicTool {
   id: string;
   aiId: string;
   groupId: string | null;
-  /** The topic the tool belongs to. Null for personal-chat tools. */
+  // The topic the tool belongs to. Null for personal-chat tools.
   topicId: string | null;
   name: string;
   description: string;
   currentVersion: number;
   hosts: string[];
-  /** Hosts a human approved via `tool.approve_hosts` (default empty). */
+  // Hosts a human approved via `tool.approve_hosts` (default empty).
   approvedHosts: string[];
   lastRunStatus: 'ok' | 'error' | null;
   updatedAt: Date;
 }
 
-// One tool with its current source, as `getTool` returns it.
 export interface ToolDetail extends PublicTool {
   source: string;
 }
@@ -76,10 +68,9 @@ export interface PublicToolRun {
 export interface SaveToolVersionResult {
   tool: ToolDetail;
   version: ToolVersionDetail;
-  /** True when source and hosts matched the current version, so no new row
-   *  was written. */
+  // True when source and hosts matched, so no new row was written.
   unchanged: boolean;
-  /** `created: true` when the tool row was inserted by this call. */
+  // `created: true` when the tool row was inserted by this call.
   created: boolean;
 }
 

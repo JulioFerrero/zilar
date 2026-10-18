@@ -1,10 +1,5 @@
-// Delivery marks (T-1229): `PUT /api/chats/:jid/delivered` stores the
-// caller's confirmation that their device holds messages, and `/api/chats`
-// reports each chat's mark to the sender. The mark is an archive id in the
-// AUTHOR's archive terms (like `chat_reads`, but the other side's mark): a
-// DM confirm reads the max archive timestamp of the peer's rows in the
-// author's archive; a group confirm reads the max timestamp of the room's
-// own archive rows. Forward only, like `putChatRead`.
+// Delivery marks store the caller's confirmation as an archive id in the AUTHOR's archive terms, forward only.
+// A DM confirm reads the peer's rows in the author's archive; a group confirm reads the room's own rows.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -30,11 +25,8 @@ interface ArchiveDeliveryRow {
   originId: string;
 }
 
-// Whether the archive row was written by the confirming caller. A room row
-// names the real sender in `bare_peer`, not in the free-text nick (the nick is
-// display text); DM rows match on the stanza's `from` like the unread own-row
-// rule (chats/unread.ts `isOwnRow`). Only a row with no `bare_peer` at all
-// (a legacy or malformed row) falls back to the nick, case-insensitively.
+// A room row names the real sender in `bare_peer` (the nick is display text); DM rows match the stanza `from`.
+// Only a row with no `bare_peer` falls back to the nick, case-insensitively.
 function isCallerRow(
   row: Pick<ArchiveDeliveryRow, 'kind' | 'nick' | 'barePeer' | 'xml'>,
   allowed: SearchOwner,
@@ -53,12 +45,7 @@ function isCallerRow(
 export type DeliveryScope =
   { kind: 'dm'; authorLocalpart: string; callerBareJid: string } | { kind: 'room'; room: string };
 
-/**
- * The archive timestamps of the caller's confirmed messages: rows under the
- * given origin ids in the author's archive scope that the caller did NOT
- * write. DM scope is the author's own `username` with the caller as
- * `bare_peer`; room scope is the room's own `username`.
- */
+// Rows under the given origin ids in the author's scope that the caller did NOT write.
 export async function archiveTimestampsForOrigins(
   archive: ArchivePool,
   allowed: SearchOwner,
@@ -80,11 +67,7 @@ export async function archiveTimestampsForOrigins(
     const owner = next(scope.room);
     scopeText = `username = ${owner}`;
   }
-  // Decimal strings only (T-1205): postgres.js sends a JS `bigint[]` as the
-  // malformed literal `10,20`, so origin ids travel as text (no numeric
-  // cast: origin ids are opaque). The array is bound as a Postgres array
-  // literal, like the `pgliteArchivePool` test fake does, because some
-  // drivers serialize a JS array parameter as one text value.
+  // Origin ids travel as decimal text (postgres.js would send a `bigint[]` as `10,20`) and bind as an array literal.
   const ids = next(`{${originIds.map((id) => `"${id.replaceAll('"', '""')}"`).join(',')}}`);
   const rows = (await archive.query(
     `SELECT kind, nick, bare_peer AS "barePeer", xml, timestamp, origin_id AS "originId" FROM archive
@@ -98,12 +81,7 @@ export async function archiveTimestampsForOrigins(
     );
 }
 
-/**
- * Stores the caller's delivery mark for one chat, keeping the larger archive
- * id (microsecond timestamps compare as numbers), so an old device cannot
- * move the mark back. Reports whether the mark moved, so only a real forward
- * step notifies the author's devices (T-1245).
- */
+// Stores the mark, keeping the larger id (microsecond timestamps); reports whether it moved so only a forward step notifies.
 export async function putChatDelivery(
   db: ServerDatabase,
   options: { bare: string; userId: string; deliveredId: string },
@@ -112,12 +90,8 @@ export async function putChatDelivery(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // The `WHERE` keeps the forward-only rule atomic, like `putChatRead`
-      // (reads.ts:72-81): two devices racing cannot move the mark back
-      // between the read above and this write. A legacy non-numeric row
-      // compares as no row: the uncastable `delivered_id` falls out of the
-      // comparison and the write wins. `RETURNING` tells a moved write (one
-      // row) from a no-op (zero rows).
+      // The `WHERE` keeps forward-only atomic, so two racing devices cannot move it back.
+      // A legacy non-numeric `delivered_id` falls out of the comparison and the write wins.
       return yield* sql<{
         deliveredId: string;
       }>`INSERT INTO chat_deliveries (user_id, chat_jid, delivered_id, updated_at)
@@ -132,26 +106,14 @@ export async function putChatDelivery(
   return rows.length > 0;
 }
 
-/**
- * What one `/api/chats` entry needs to find its mark: a DM entry names the
- * peer's user id (the row's `user_id`; the stored `chat_jid` is the
- * caller's own JID), a group or topic entry names the room JID (any other
- * member's row counts).
- */
+// A DM entry names the peer's user id; a group or topic entry names the room JID.
 export interface DeliveryLookup {
-  /** The `/api/chats` key the mark attaches to. */
   chatJid: string;
   dmPeerUserId?: string;
   roomJid?: string;
 }
 
-/**
- * Delivery marks for the caller's chats, in the caller's own-message terms:
- * a DM chat carries the peer's mark (stored under the caller's bare JID);
- * a group or topic chat carries the highest mark of any other member. One
- * query per kind in total (DM, room), whatever the chat count. Keys are the
- * chat JIDs the caller passed in.
- */
+// A DM carries the peer's mark; a group or topic the highest of any other member. One query per kind.
 export async function deliveredForChats(
   db: ServerDatabase,
   options: { userId: string; callerJid: string; lookups: DeliveryLookup[] },
@@ -167,11 +129,7 @@ export async function deliveredForChats(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // The DM arm matches rows by the peer's user id under the caller's
-      // own JID (so another peer's confirm never leaks into this DM); the
-      // room arm takes the max over any other member, grouped by chat (one
-      // row per chat). Stored `chat_jid` values are normalised lowercase by
-      // the access check, so the exact match uses the `chat_jid` index.
+      // The DM arm keys on the peer's user id under the caller's JID, so another peer's confirm cannot leak in.
       const dm =
         peerIds.length === 0
           ? []
@@ -214,10 +172,7 @@ export async function deliveredForChats(
   return answer;
 }
 
-// Archive ids are microsecond-timestamp decimal strings (T-1205): compare
-// them as numbers without ever constructing a `BigInt`, so no `BigInt`
-// value reaches postgres.js. Non-numeric ids sort below any numeric one;
-// two non-numeric ids compare as strings.
+// Microsecond decimal ids compared as numbers, never `BigInt`; non-numeric ids sort below numeric ones.
 function compareArchiveIds(left: string, right: string): number {
   const leftNumeric = /^[0-9]+$/.test(left);
   const rightNumeric = /^[0-9]+$/.test(right);
@@ -235,10 +190,7 @@ function compareArchiveIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/**
- * The max of a non-empty id list, compared as decimals (never `BigInt`), so
- * the confirmed mark stays a plain string for postgres.js.
- */
+// The max of a non-empty id list, compared as decimals, never `BigInt`.
 export function maxArchiveId(ids: [string, ...string[]]): string {
   let best = ids[0];
   for (const candidate of ids) {
@@ -249,13 +201,7 @@ export function maxArchiveId(ids: [string, ...string[]]): string {
   return best;
 }
 
-/**
- * Which archive scope the caller's confirmation reads: the room's own
- * archive when the chat is a visible room, else the DM author's archive
- * (the peer's localpart, taken as-is from the bare JID — it IS the archive
- * username, never re-derived) with the caller as bare peer. Reads only
- * archives the caller may see, like the unread scopes.
- */
+// Room scope is the room's own archive, else the peer's localpart taken as-is from the bare JID.
 export async function deliveryScopeForChat(
   db: ServerDatabase,
   config: ServerConfig,
@@ -274,16 +220,12 @@ export async function deliveryScopeForChat(
   };
 }
 
-/** The mark fields a topic view may gain. Structurally the `ChatUnreadFields`
- * shape `api.ts` declares, so `api.ts` can assign the result without a cycle. */
 export interface TopicMarks {
   unread?: number;
   lastMessage?: ChatUnread['lastMessage'];
   deliveredUntil?: string;
 }
 
-// Merges the unread and delivered marks into each topic view. A topic with
-// neither mark keeps its shape.
 export function mergeTopicMarks(
   topics: TopicView[],
   unread: Record<string, ChatUnread>,
@@ -309,15 +251,7 @@ export function mergeTopicMarks(
   });
 }
 
-/**
- * Stores the caller's delivery mark for one chat from the confirmed origin
- * ids: the max archive timestamp of the caller's own messages (compared as
- * decimals, never `BigInt` — T-1205), or no write at all when none is found.
- *
- * Returns the notice data when a **DM** mark actually moved, so the caller can
- * tell the author's online devices; a room mark, an unmoved mark and a missing
- * archive all return `undefined` (T-1245).
- */
+// Stores the mark from the confirmed origin ids, or writes nothing; returns the notice data only when a DM mark moved.
 export async function putDeliveredMark(
   db: ServerDatabase,
   config: ServerConfig,
@@ -336,9 +270,7 @@ export async function putDeliveredMark(
     scope,
     options.originIds,
   );
-  // Nothing found: no write. Otherwise the mark is the max confirmed
-  // timestamp, compared as decimals (never `BigInt` — T-1205) and bound as
-  // a string.
+  // Nothing found: no write; otherwise the max id, compared as decimals and bound as a string.
   const [first, ...rest] = timestamps;
   if (first === undefined) {
     return undefined;
@@ -349,8 +281,7 @@ export async function putDeliveredMark(
     userId: options.userId,
     deliveredId: until,
   });
-  // Only a moved DM mark notifies: a room has no per-resource fan-out in this
-  // task (docs/plan/delivered-tick.md §3), and an unmoved mark changes nothing.
+  // Only a moved DM mark notifies; a room has no per-resource fan-out here.
   if (!moved || scope.kind !== 'dm') {
     return undefined;
   }

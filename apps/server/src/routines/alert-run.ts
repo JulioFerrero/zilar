@@ -1,8 +1,5 @@
-// T-1878: the alert card's quiet run. A routine linked to an alert card reads
-// the tool's numeric `output.data.value` and compares it with the number in
-// `input.threshold` (`setRoutineThreshold` in `./alert-link`). Below it the run
-// stays `ok` and silent; at or above it posts like any other run. A run with no
-// number on either side is a failure, so it counts toward the 3-failure pause.
+// A routine linked to an alert card reads the tool's `output.data.value` and compares it with `input.threshold`.
+// Below it the run stays `ok` and silent; at or above it posts; a missing number on either side is a failure.
 export type AlertVerdict =
   { kind: 'post'; value: number } | { kind: 'quiet'; value: number } | { kind: 'error' };
 

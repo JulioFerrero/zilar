@@ -9,52 +9,28 @@ import { runRecoverStuck } from './recovery';
 
 export type { ActionAnnouncer };
 
-// The result of `request`. The gateway never throws for a policy decision;
-// it answers one of these four shapes. `executed` carries a `summary` and,
-// when the adapter returned one, a `modelText` for the model only (never
-// stored, never audited, never announced — see `ActionResult.modelText`);
-// `denied` carries a `reason`. `failed` returns nothing: the gateway
-// audited the failure, and the caller learns it failed, not why (the
-// adapter's error text must never leak).
+// Policy decisions never throw: `executed` carries a summary and optional `modelText` (never stored, audited or announced), `denied` a reason, and `failed` no detail so adapter error text cannot leak.
 export type RequestOutcome =
   | { status: 'executed'; summary: string; modelText?: string; posted?: boolean }
   | { status: 'failed' }
   | { status: 'denied'; reason: PolicyDenialReason }
   | { status: 'pending_approval'; approvalId: string };
 
-// The narrow slice of pino the gateway needs. Real wiring passes the
-// server's logger; tests pass a captor that records the `err` field
-// without echoing rows or arguments.
 export interface ActionGatewayLogger extends ActionContextLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
 }
 
-// A simple logger shape that swallows `record` failures. The gateway wraps
-// the recorder so a database write error never propagates into the caller's
-// `request` — the audit log is best-effort, the gateway's job is to do
-// what the policy says.
+// A recorder failure is swallowed: the audit log is best-effort and must not change what the policy answers.
 export interface ActionGatewayDependencies {
   db: ServerDatabase;
   adapters: ActionRegistry;
   audit: AuditRecorder;
   logger: ActionGatewayLogger;
-  /**
-   * Optional port the gateway uses to announce tier-2 requests and their
-   * outcomes into the chat. Absent in tests and the default gateway; present
-   * in `index.ts` so a stopped AI posts nothing. Every call is best-effort:
-   * the gateway swallows a rejection.
-   */
+  // Optional port that announces tier-2 requests and outcomes; every call is best-effort.
   announce?: ActionAnnouncer;
   now?: () => Date;
 }
 
-// The handle returned by `createActionGateway`. `request` is the only
-// public surface right now; `onApprovalDecided` is wired into the
-// approvals route, and `recoverStuck` runs at startup and on a timer.
-// `listActions` is the read-only view the agent gateway uses to build the
-// `request_action` tool definition: every registered action's name,
-// description and args example, sorted by name so the order is stable for
-// the model.
 export interface ActionGateway {
   request: (params: RequestParams) => Promise<RequestOutcome>;
   onApprovalDecided: (approvalId: string) => Promise<void>;
@@ -65,23 +41,15 @@ export interface ActionGateway {
 export interface RequestParams {
   aiId: string;
   groupId?: string;
-  /** The topic the request was raised in. Required with `groupId`
-   *  (group scope is always a topic; General is a topic too), absent for
-   *  personal chats. The gateway denies the request when the topic does
-   *  not belong to the group or the AI is not a member of it. */
+  // Required with `groupId`; the gateway denies a topic that is not in the group or whose room the AI is not in.
   topicId?: string;
   action: string;
   args: unknown;
   requestedBy: string;
-  /** T-1655: a scheduled run, where no person is watching. Tier 0/1 and
-   *  standing-rule auto-approvals are unchanged; a tier-2 request without a
-   *  matching standing rule is denied `needs_approval` instead of parking a
-   *  card nobody will see. */
+  // A scheduled run has no approver: tier 0/1 unchanged, tier 2 without a rule is denied `needs_approval`.
   unattended?: boolean;
 }
 
-// Re-export the policy reason enum so callers can branch without depending
-// on the policy module directly.
 export type DeniedReason = PolicyDenialReason;
 
 export function createActionGateway(deps: ActionGatewayDependencies): ActionGateway {
@@ -95,10 +63,7 @@ export function createActionGateway(deps: ActionGatewayDependencies): ActionGate
   };
 }
 
-// The model-facing view of the registry: name, description and the args
-// example, sorted by name so the tool definition the AI sees is the same on
-// every turn. The full adapter (tier, schema, execute) stays behind the
-// gateway.
+// Model-facing view: name, description and args example, sorted so the tool definition is stable.
 function listActions(
   deps: ActionGatewayDependencies,
 ): Array<{ name: string; description: string; argsExample?: string }> {
