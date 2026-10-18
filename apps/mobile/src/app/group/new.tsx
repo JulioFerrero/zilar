@@ -1,8 +1,6 @@
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -16,9 +14,8 @@ import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { NewGroupMembers } from '@/components/group/new-group-members';
 import { NewGroupName } from '@/components/group/new-group-name';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
 import type { Contact } from '@/lib/contacts-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { toggleSelected } from '@/lib/selection';
@@ -121,42 +118,39 @@ function NewGroupFlow() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center gap-1 px-2 py-2">
-        <IconButton label="Back" onPress={goBack}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-            New group
-          </Text>
-          <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
-            {step === 'members'
-              ? 'Add members'
-              : `${selected.length} ${selected.length === 1 ? 'member' : 'members'}`}
-          </Text>
-        </View>
-        {step === 'members' ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            accessibilityLabel="Next"
-            disabled={selected.length === 0}
-            onPress={() => setStep('name')}
-          >
-            <Text>Next</Text>
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            accessibilityLabel="Create group"
-            disabled={busy}
-            onPress={create}
-          >
-            <Text>{busy ? 'Creating…' : 'Create'}</Text>
-          </Button>
-        )}
-      </View>
+      <ScreenHeader
+        variant="sub"
+        title="New group"
+        subtitle={
+          step === 'members'
+            ? 'Add members'
+            : `${selected.length} ${selected.length === 1 ? 'member' : 'members'}`
+        }
+        onBack={goBack}
+        right={
+          step === 'members' ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              accessibilityLabel="Next"
+              disabled={selected.length === 0}
+              onPress={() => setStep('name')}
+            >
+              <Text>Next</Text>
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              accessibilityLabel="Create group"
+              disabled={busy}
+              onPress={create}
+            >
+              <Text>{busy ? 'Creating…' : 'Create'}</Text>
+            </Button>
+          )
+        }
+      />
 
       {step === 'members' ? (
         <NewGroupMembers
