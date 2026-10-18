@@ -11,3 +11,4 @@ export { ApiFailure } from './errors';
 export { failureOf, isWaiting, makeUseAction } from './use-action';
 export type { ActionControls, ActionMode, ActionState, UseActionOptions } from './use-action';
 export { makeUseQuery } from './use-query';
+export { useSmoothText } from './use-smooth-text';

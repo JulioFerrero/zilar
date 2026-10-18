@@ -2018,3 +2018,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2017](T-2017-mock-long-chat.md) | mock: an 800-message group chat and history page delay | 2026-10-18 |
 | [T-2004](T-2004-room-sender-real-jid.md) | room senders from the real JID; blocks hold in group pushes | 2026-10-18 |
 | [T-2019](T-2019-shared-message-cache.md) | shared message-cache codec; phone keeps editedAt as a date | 2026-10-18 |
+| [T-2021](T-2021-shared-smooth-text.md) | one streaming-text reveal shared by web and phone | 2026-10-18 |
