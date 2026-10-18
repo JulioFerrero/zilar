@@ -14,6 +14,7 @@ import {
   chatJidFor,
   correctionTarget,
   headlineToSnippet,
+  plainSnippet,
   retractTarget,
   SEARCH_MIN_FUZZY_QUERY_CHARS,
   senderNameFor,
@@ -168,14 +169,15 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       marks: Array<[number, number]>,
       match: 'exact' | 'fuzzy',
     ): void => {
+      const plain = plainSnippet({ snippet, marks });
       seen.add(key);
       items.push({
         chatJid,
         messageId: row.originId,
         senderName: senderNameFor(row, ownJid, allowed.peerNames, roomNames),
         at: timestampToIso(row.timestamp),
-        snippet,
-        marks,
+        snippet: plain.snippet,
+        marks: plain.marks,
         match,
       });
       oldest = BigInt(row.timestamp);
