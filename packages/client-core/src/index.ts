@@ -12,6 +12,7 @@ export {
   type PeopleSearchView,
 } from './people-handle-search';
 export * from './ais-api';
+export * from './tools-api';
 export {
   createAtomStore,
   createBoundStore,
