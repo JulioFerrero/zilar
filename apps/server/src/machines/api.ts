@@ -1,7 +1,3 @@
-// Owner routes run the session middleware first; the public pair route runs the
-// global then per-IP limiter before the body. The per-IP limiter reads
-// `socketAddressOf`, the header the edge stamps.
-
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
@@ -9,12 +5,13 @@ import {
   MachinesPairingCodeRateLimit,
   PairMachinePayload,
   RenameMachinePayload,
+  type Machine,
 } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/recorder';
-import type { Auth } from '../auth/auth';
+import { type Logger } from 'pino';
+import { type AuditRecorder } from '../audit/recorder';
+import { type Auth } from '../auth/auth';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import type { ServerDatabase } from '../db/client';
+import { type ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   handler,
@@ -26,7 +23,6 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
-import { INVALID_JSON, invalidCode, toConflict, toMachineView } from './api-helpers';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
@@ -42,7 +38,32 @@ import {
   revokeMachine,
   toPublicMachine,
   verifyPairingSignature,
+  MachineServiceError,
+  type PublicMachine,
 } from './service';
+// The dates travel as ISO strings.
+function toMachineView(machine: PublicMachine): Machine {
+  return {
+    ...machine,
+    createdAt: machine.createdAt.toISOString(),
+    approvedAt: machine.approvedAt?.toISOString() ?? null,
+    lastSeenAt: machine.lastSeenAt?.toISOString() ?? null,
+  };
+}
+
+function invalidCode(): HttpError {
+  return new HttpError(400, 'invalid_code', 'Invalid or expired pairing code');
+}
+
+function toConflict(error: unknown): unknown {
+  if (error instanceof MachineServiceError) {
+    return new HttpError(409, error.errorCode, error.message);
+  }
+  throw error;
+}
+
+// Tells a malformed JSON body from a shape violation after decoding.
+const INVALID_JSON = Symbol('invalid-json');
 
 // Pairing codes are minted sparingly: 10 per hour per user.
 export const PAIRING_CODE_RATE_LIMIT_MAX = 10;

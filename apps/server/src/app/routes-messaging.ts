@@ -1,16 +1,20 @@
-import type { EffectApiMount } from '../effect/http-core';
-import type { TurnWatcher } from '../agents/gateway/stop-types';
+import {
+  type EffectApiMount,
+  handler,
+  mountApi,
+  sessionLayer,
+  schemaErrorLayer,
+  type EffectApiRoute,
+  Session,
+} from '../effect/http-core';
+import { type TurnWatcher } from '../agents/gateway/stop-types';
 import { createAgentTasksApi } from '../agents/log/api';
 import { createAiMemoryApi } from '../agents/memory/api';
 import { createAuthApi } from '../auth/api';
-import { createBlocksApi } from '../blocks/api';
 import { createChatFoldersApi } from '../chat-folders/api';
 import { createChatPrefsApi } from '../chat-prefs/api';
 import { createChatsApi } from '../chats/api';
 import { createContactRequestsApi } from '../contact-requests/api';
-import { createContactsApi } from '../contacts/api';
-import { createDirectoryApi } from '../directory/api';
-import { createDraftsApi } from '../drafts/api';
 import { createFilesApi } from '../files/api';
 import { createGroupsApi } from '../groups/api';
 import { createHandlesApi } from '../handles/api';
@@ -19,16 +23,548 @@ import { createMachinesApi } from '../machines/api';
 import { createDbMachineRegistry } from '../machines/registry';
 import { createMediaApi } from '../media/api';
 import { cardCorrectorOf, createMessageBlocksApi, type CardCorrector } from '../message-blocks/api';
-import { createPinsApi } from '../pins/api';
 import { createPushApi } from '../push/api';
 import { loadPushConfig } from '../push/config';
-import { createRolesApi } from '../roles/api';
 import { createSearchApi } from '../search/api';
 import { createSetupApi } from '../setup/api';
 import { createTopicsApi } from '../topics/api';
 import { turnWatcherOf } from '../topics/ai-activity';
-import type { RouteWiring } from './deps';
+import { type RouteWiring } from './deps';
 import { opt } from './opt';
+import { Layer, Duration, Effect, Queue, Schema, Stream } from 'effect';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import {
+  ContactsGroup,
+  ContactsWriteRateLimit,
+  DirectoryGroup,
+  DirectoryRateLimit,
+  PinsGroup,
+  PinsWriteRateLimit,
+  BlocksGroup,
+  BlocksReadRateLimit,
+  BlocksWriteRateLimit,
+  RolesGroup,
+} from '@zilar/api-contract';
+import { type Logger, pino } from 'pino';
+import { createAuditRecorder, type AuditRecorder } from '../audit/recorder';
+import { type ServerConfig } from '../config/load';
+import { type EjabberdAdminClient } from '../xmpp/admin/types';
+import { type Auth } from '../auth/auth';
+import { type ServerDatabase } from '../db/client';
+import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
+import { listContacts, removeContact, type RemoveContactDeps } from '../contacts/service';
+import { publicGroupForHandle, searchDirectory, type GroupKind } from '../directory/service';
+import { HttpServer, HttpRouter, HttpServerResponse } from 'effect/http';
+import { listPins, pinMessage, unpinMessage, type PinsServiceDeps } from '../pins/service';
+import { blockUser, listBlockedUsers, unblockUser, type BlocksDeps } from '../blocks/service';
+import {
+  createRole,
+  deleteRole,
+  listRoles,
+  renameRole,
+  setRoleMembers,
+  type RolesServiceDeps,
+} from '../roles/service';
+import { type DraftHubEvent } from '../drafts/events';
+import { sharedDraftHub, type DraftHub } from '../drafts/hub';
+// A comment line this often keeps the connection (and any proxy buffer) alive between
+// turns; event parsers ignore it.
+const DRAFT_SSE_HEARTBEAT_MS = 25_000;
+
+// The stream ends after this long: the session is only checked when the request opens,
+// so a revoked session would otherwise keep receiving drafts. Both clients reconnect,
+// which re-runs the session check.
+const DRAFT_STREAM_MAX_MS = 10 * 60_000;
+
+interface DraftsApiDependencies {
+  auth: Auth;
+  hub?: DraftHub;
+  logger?: Logger;
+}
+
+const DraftStreamSuccess = Schema.String;
+
+const DraftsGroup = HttpApiGroup.make('drafts')
+  .add(HttpApiEndpoint.get('stream', '/drafts/stream', { success: DraftStreamSuccess }))
+  .middleware(Session)
+  .prefix('/api');
+
+const DraftsApi = HttpApi.make('drafts').add(DraftsGroup);
+
+function encodeSseEvent(event: DraftHubEvent): string {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function encodeHeartbeat(): string {
+  return ': heartbeat\n\n';
+}
+
+function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
+  const logger = deps.logger ?? defaultLogger();
+  const hub = deps.hub ?? sharedDraftHub;
+
+  const groupLayer = HttpApiBuilder.group(DraftsApi, 'drafts', (handlers) =>
+    handlers.handle(
+      'stream',
+      handler(logger, (_request, user) =>
+        Effect.sync(() => {
+          const frames = Stream.unwrap(
+            Effect.acquireRelease(
+              Effect.gen(function* () {
+                const queue = yield* Queue.unbounded<DraftHubEvent>();
+                const unsubscribe = hub.subscribe(user.id, (event) => {
+                  Queue.offerUnsafe(queue, event);
+                });
+                return { queue, unsubscribe };
+              }),
+              ({ unsubscribe }) => Effect.sync(unsubscribe),
+            ).pipe(
+              Effect.map(({ queue }) =>
+                Stream.fromEffectRepeat(
+                  // The timeout reads full with `Duration`, so vitest's fake timers keep
+                  // controlling the heartbeat test.
+                  Queue.take(queue).pipe(
+                    Effect.timeoutOption(Duration.millis(DRAFT_SSE_HEARTBEAT_MS)),
+                    Effect.map((event) =>
+                      event._tag === 'Some' ? encodeSseEvent(event.value) : encodeHeartbeat(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          return HttpServerResponse.stream(
+            frames.pipe(
+              // End the response after the cap; the client reconnects and re-auths.
+              Stream.interruptWhen(Effect.sleep(Duration.millis(DRAFT_STREAM_MAX_MS))),
+              Stream.encodeText,
+            ),
+            {
+              headers: {
+                'content-type': 'text/event-stream',
+                'cache-control': 'no-cache',
+                connection: 'keep-alive',
+                'transfer-encoding': 'chunked',
+                'x-accel-buffering': 'no',
+              },
+            },
+          );
+        }),
+      ),
+    ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(DraftsApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+  );
+
+  return mountApi(DraftsApi, apiLayer);
+}
+
+let silentLogger: Logger | undefined;
+
+function defaultLogger(): Logger {
+  silentLogger ??= pino({ level: 'silent' });
+  return silentLogger;
+}
+
+const RolesApi = HttpApi.make('roles').add(RolesGroup);
+
+interface RolesApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  adminClient: EjabberdAdminClient;
+  logger: Logger;
+  audit?: AuditRecorder;
+}
+
+function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
+  const logger = deps.logger;
+
+  function serviceDeps(): RolesServiceDeps {
+    return {
+      db: deps.db,
+      adminClient: deps.adminClient,
+      domain: deps.config.xmpp.domain,
+      logger: deps.logger,
+      ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+    };
+  }
+
+  const groupLayer = HttpApiBuilder.group(RolesApi, 'roles', (handlers) =>
+    handlers
+      // The group's roles with their holders; any member may read.
+      .handle(
+        'list',
+        handler(logger, async (request, user) => ({
+          roles: await listRoles(deps.db, request.params.id, user.id),
+        })),
+      )
+      // Creates a role (owner/admin only); capped at `MAX_ROLES_PER_GROUP`.
+      .handle(
+        'create',
+        handler(logger, (request, user) =>
+          createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
+        ),
+      )
+      .handle(
+        'rename',
+        handler(logger, (request, user) =>
+          renameRole(
+            serviceDeps(),
+            request.params.id,
+            request.params.roleId,
+            user.id,
+            request.payload.name,
+          ),
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          await deleteRole(serviceDeps(), request.params.id, request.params.roleId, user.id);
+        }),
+      )
+      // Replaces a role's member set (owner/admin only), last write wins.
+      .handle(
+        'setMembers',
+        handler(logger, (request, user) =>
+          setRoleMembers(
+            serviceDeps(),
+            request.params.id,
+            request.params.roleId,
+            user.id,
+            request.payload.userIds,
+          ),
+        ),
+      ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(RolesApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(schemaErrorLayer(logger)),
+  );
+
+  return mountApi(RolesApi, apiLayer);
+}
+
+const BLOCK_WRITE_RATE_LIMIT_MAX = 30;
+const BLOCK_WRITE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const BLOCK_READ_RATE_LIMIT_MAX = 120;
+const BLOCK_READ_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+interface BlocksRoutesDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  audit?: AuditRecorder;
+  config?: ServerConfig;
+  adminClient?: EjabberdAdminClient;
+  now?: () => number;
+  writeLimiter?: RateLimiter;
+  readLimiter?: RateLimiter;
+}
+
+interface BlocksApiDependencies extends BlocksRoutesDependencies {
+  logger: Logger;
+}
+
+// The write budget runs before the service.
+const RATE_LIMIT_MESSAGE = 'Too many attempts, try again later';
+
+const BlocksApi = HttpApi.make('blocks').add(BlocksGroup);
+
+function blocksServiceFor(deps: BlocksRoutesDependencies): BlocksDeps {
+  return {
+    db: deps.db,
+    ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+    ...(deps.adminClient === undefined ? {} : { adminClient: deps.adminClient }),
+    ...(deps.config === undefined ? {} : { domain: deps.config.xmpp.domain }),
+  };
+}
+
+function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
+  const now = deps.now ?? Date.now;
+  const logger = deps.logger;
+  const writeLimiter =
+    deps.writeLimiter ??
+    createRateLimiter({
+      max: BLOCK_WRITE_RATE_LIMIT_MAX,
+      windowMs: BLOCK_WRITE_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const readLimiter =
+    deps.readLimiter ??
+    createRateLimiter({
+      max: BLOCK_READ_RATE_LIMIT_MAX,
+      windowMs: BLOCK_READ_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const service = blocksServiceFor(deps);
+
+  // Roster cleanup after a block warns, never fails; the warn needs the request logger.
+  const serviceWithLogger = { ...service, logger };
+
+  const groupLayer = HttpApiBuilder.group(BlocksApi, 'blocks', (handlers) =>
+    handlers
+      .handle(
+        'block',
+        handler(logger, (request, user) =>
+          blockUser(serviceWithLogger, user.id, request.params.userId),
+        ),
+      )
+      .handle(
+        'unblock',
+        handler(logger, (request, user) => unblockUser(service, user.id, request.params.userId)),
+      )
+      .handle(
+        'list',
+        handler(logger, (_request, user) => listBlockedUsers(service, user.id)),
+      ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(BlocksApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(rateLimitLayer(BlocksWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE)),
+    Layer.provide(rateLimitLayer(BlocksReadRateLimit, readLimiter, RATE_LIMIT_MESSAGE)),
+  );
+
+  return mountApi(BlocksApi, apiLayer);
+}
+
+const PINS_WRITE_RATE_LIMIT_MAX = 60;
+const PINS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+const PinsApi = HttpApi.make('pins').add(PinsGroup);
+
+interface PinsApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  audit?: AuditRecorder;
+  logger: Logger;
+  now?: () => number;
+  writeLimiter?: RateLimiter;
+}
+
+const PINS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
+  { method: 'GET', path: '/api/pins' },
+  { method: 'POST', path: '/api/pins' },
+  { method: 'DELETE', path: '/api/pins/:id' },
+];
+
+function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
+  const logger = deps.logger;
+  const writeLimiter =
+    deps.writeLimiter ??
+    createRateLimiter({
+      max: PINS_WRITE_RATE_LIMIT_MAX,
+      windowMs: PINS_WRITE_RATE_LIMIT_WINDOW_MS,
+      now: deps.now ?? Date.now,
+    });
+
+  function serviceDeps(): PinsServiceDeps {
+    return {
+      db: deps.db,
+      domain: deps.config.xmpp.domain,
+      mucDomain: deps.config.xmpp.mucDomain,
+      ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+    };
+  }
+
+  const groupLayer = HttpApiBuilder.group(PinsApi, 'pins', (handlers) =>
+    handlers
+      .handle(
+        'list',
+        handler(logger, async (request, user) => ({
+          pins: await listPins(serviceDeps(), request.query.chat, user.id),
+        })),
+      )
+      // The write budget was already charged, before the payload decode.
+      .handle(
+        'create',
+        handler(logger, (request, user) =>
+          pinMessage(serviceDeps(), { ...request.payload, actorId: user.id }),
+        ),
+      )
+      // The write budget was already charged.
+      .handle(
+        'remove',
+        handler(logger, (request, user) => unpinMessage(serviceDeps(), request.params.id, user.id)),
+      ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(PinsApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(schemaErrorLayer(logger)),
+    // The write budget runs before the payload is decoded: an invalid body still spends
+    // budget.
+    Layer.provide(
+      rateLimitLayer(PinsWriteRateLimit, writeLimiter, 'Too many pins, try again later'),
+    ),
+  );
+
+  const { handler: effectHandler } = HttpRouter.toWebHandler(
+    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
+    { disableLogger: true },
+  );
+
+  return { handler: effectHandler, routes: PINS_API_ROUTES };
+}
+
+export const DIRECTORY_RATE_LIMIT_MAX = 30;
+const DIRECTORY_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
+interface DirectoryApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  now?: () => number;
+  limiter?: RateLimiter;
+  logger: Logger;
+}
+
+function toEntry(row: {
+  id: string;
+  kind: GroupKind;
+  title: string;
+  handle: string;
+  description: string | null;
+  memberCount: number;
+  joined: boolean;
+  avatarUrl?: string | undefined;
+}) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    handle: row.handle,
+    description: row.description,
+    memberCount: row.memberCount,
+    joined: row.joined,
+    ...(row.avatarUrl === undefined ? {} : { avatarUrl: row.avatarUrl }),
+  };
+}
+
+const DirectoryApi = HttpApi.make('directory').add(DirectoryGroup);
+
+function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMount {
+  const now = deps.now ?? Date.now;
+  const logger = deps.logger;
+  const limiter =
+    deps.limiter ??
+    createRateLimiter({
+      max: DIRECTORY_RATE_LIMIT_MAX,
+      windowMs: DIRECTORY_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+
+  const groupLayer = HttpApiBuilder.group(DirectoryApi, 'directory', (handlers) =>
+    handlers
+      // `q` matches handle or title prefix; optional `kind`; 20 per page with a cursor.
+      .handle(
+        'search',
+        handler(logger, async (request, user) => {
+          const page = await searchDirectory(deps.db, user.id, {
+            query: request.query.q,
+            kind: request.query.kind,
+            cursor: request.query.cursor,
+          });
+          return { entries: page.entries.map(toEntry), next: page.next };
+        }),
+      )
+      .handle(
+        'byHandle',
+        handler(logger, async (request, user) =>
+          toEntry(await publicGroupForHandle(deps.db, user.id, request.params.handle)),
+        ),
+      ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(DirectoryApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+    // The read budget runs before the query is decoded: an invalid query still spends
+    // budget.
+    Layer.provide(
+      rateLimitLayer(DirectoryRateLimit, limiter, 'Too many attempts, try again later'),
+    ),
+    Layer.provide(schemaErrorLayer(logger)),
+  );
+
+  return mountApi(DirectoryApi, apiLayer);
+}
+
+// The same write budget as the blocks API: removing a contact deletes the pair and
+// touches ejabberd.
+const CONTACTS_WRITE_RATE_LIMIT_MAX = 30;
+const CONTACTS_WRITE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
+interface ContactsApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  logger: Logger;
+  audit?: AuditRecorder;
+  adminClient?: EjabberdAdminClient;
+  now?: () => number;
+  writeLimiter?: RateLimiter;
+}
+
+const ContactsApi = HttpApi.make('contacts').add(ContactsGroup);
+
+function serviceFor(deps: ContactsApiDependencies): RemoveContactDeps {
+  return {
+    db: deps.db,
+    domain: deps.config.xmpp.domain,
+    audit: deps.audit ?? createAuditRecorder({ db: deps.db, logger: deps.logger }),
+    ...(deps.adminClient === undefined ? {} : { adminClient: deps.adminClient }),
+  };
+}
+
+function createContactsApi(deps: ContactsApiDependencies): EffectApiMount {
+  const logger = deps.logger;
+  const config = deps.config;
+  const writeLimiter =
+    deps.writeLimiter ??
+    createRateLimiter({
+      max: CONTACTS_WRITE_RATE_LIMIT_MAX,
+      windowMs: CONTACTS_WRITE_RATE_LIMIT_WINDOW_MS,
+      now: deps.now ?? Date.now,
+    });
+  const service = serviceFor(deps);
+
+  // Roster cleanup after a removal warns, never fails; the warn needs the request logger.
+  const serviceWithLogger = { ...service, logger };
+
+  const groupLayer = HttpApiBuilder.group(ContactsApi, 'contacts', (handlers) =>
+    handlers
+      .handle(
+        'list',
+        handler(logger, (_request, user) => listContacts(deps.db, user.id, config.xmpp.domain)),
+      )
+      // The write budget runs first; a target that is not a contact answers 404.
+      .handle(
+        'remove',
+        handler(logger, (request, user) =>
+          removeContact(serviceWithLogger, user.id, request.params.userId),
+        ),
+      ),
+  );
+
+  const apiLayer = HttpApiBuilder.layer(ContactsApi).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(rateLimitLayer(ContactsWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE)),
+  );
+
+  return mountApi(ContactsApi, apiLayer);
+}
 
 export function messagingRoutes({
   deps,

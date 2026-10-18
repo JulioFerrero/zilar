@@ -1,23 +1,80 @@
-// A room member answers the interactive card an AI posted: record, merge, save
-// and correct the card in the room as the AI. It never wakes the AI. A card the
-// caller may not see answers the same 404 as a missing one, so ids cannot be
-// probed.
-
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { BlocksRespondPayload, BlocksRespondValue } from '@zilar/api-contract';
+import { type BlocksRespondPayload, type BlocksRespondValue } from '@zilar/api-contract';
 import { BlocksDataSchema, type Block, type BlocksData, type Payload } from '@zilar/protocol';
-import type { Logger } from 'pino';
+import { type Logger } from 'pino';
 import { loadAiOwnerId } from '../agents/gateway/db';
-import type { AuditRecorder } from '../audit/recorder';
-import type { ServerDatabase } from '../db/client';
-import type { BlockCardRow, BlockResponseRow } from '../db/rows';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerDatabase } from '../db/client';
+import { type BlockCardRow, type BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { getGroupMembership, isTopicMember, requireVisibleTopic } from '../topics/access';
-import { applyAlertToRoutine, requireAlertManager } from './alert-routine';
 import { applyResponses } from './apply';
 import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse } from './cards';
+import { errorName } from '../effect/error-utils';
+import { routineAccess } from '../routines/access';
+import { findAlertRoutine, setRoutineThreshold } from '../routines/alert-link';
+import { pauseRoutine, resumeRoutine } from '../routines/support';
+interface AlertRoutineDeps {
+  db: ServerDatabase;
+  logger: Logger;
+  audit?: AuditRecorder;
+}
+
+// An unlinked alert has no manager; a linked one is answerable only by the
+// routine's manager (the AI owner, or a group owner/admin).
+async function requireAlertManager(
+  db: ServerDatabase,
+  cardId: string,
+  blockId: string,
+  userId: string,
+): Promise<void> {
+  const routine = await findAlertRoutine(db, cardId, blockId);
+  if (routine === undefined) {
+    return;
+  }
+  const access = await routineAccess(db, routine.id, userId);
+  if (access?.manager !== true) {
+    throw cardNotFound();
+  }
+}
+
+// The same strip rule as `respond.ts`, which already rejected anything else.
+function parseThreshold(text: string): number {
+  return Number(text.replace(/[ ,]/g, '').replace(/^[$€£]/, ''));
+}
+
+async function applyAlertToRoutine(
+  deps: AlertRoutineDeps,
+  card: BlockCardRow,
+  blockId: string,
+  actorId: string,
+  value: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const routine = await findAlertRoutine(deps.db, card.originId, blockId);
+    if (routine === undefined) {
+      return;
+    }
+    const now = new Date();
+    const threshold = typeof value.threshold === 'string' ? value.threshold : undefined;
+    if (threshold !== undefined) {
+      await setRoutineThreshold(deps.db, routine.id, parseThreshold(threshold), now);
+    }
+    const on = value.on;
+    if (on === false) {
+      await pauseRoutine(deps.db, routine.id, actorId, now, deps.audit);
+    } else if (on === true && routine.pausedReason === 'user') {
+      await resumeRoutine(deps.db, routine.id, actorId, now, deps.audit);
+    }
+  } catch (error) {
+    deps.logger.warn(
+      { cardId: card.originId, blockId, err: errorName(error) },
+      'Alert answer did not reach the routine',
+    );
+  }
+}
 
 const FORM_VALUE_MAX = 120;
 

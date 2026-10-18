@@ -1,12 +1,11 @@
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import type { Logger } from 'pino';
+import { type Logger } from 'pino';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
-import type { AvatarsRoutesDependencies } from './routes';
 import {
   AVATAR_MAX_BYTES,
   AVATAR_READ_RATE_LIMIT_MAX,
@@ -21,6 +20,19 @@ import {
   type AvatarKind,
   type AvatarsServiceDeps,
 } from './service';
+import { type Auth } from '../auth/auth';
+import { type ServerConfig } from '../config/load';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerDatabase } from '../db/client';
+interface AvatarsRoutesDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  storageDir: string;
+  audit?: AuditRecorder;
+  now?: () => number;
+  uploadLimiter?: { allow: (key: string) => boolean };
+}
 
 export interface AvatarsApiDependencies extends AvatarsRoutesDependencies {
   logger: Logger;

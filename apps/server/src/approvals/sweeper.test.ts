@@ -6,7 +6,7 @@ import type { AuditEntry } from '../audit/schema';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { createApproval } from './service';
-import { startApprovalsSweeper, type SweeperLogger } from './sweeper';
+import { startApprovalsSweeper, type SweeperLogger } from '../leader/start';
 
 function argsHash(seed: number): string {
   const buf = randomBytes(32);

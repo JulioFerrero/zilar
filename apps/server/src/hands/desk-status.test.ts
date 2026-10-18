@@ -11,7 +11,7 @@ import type { Logger } from 'pino';
 import { loadServerConfig } from '../config/load';
 import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
-import { createDeskProbe } from './desk-status';
+import { createDeskProbe } from '../startup/components';
 
 const DIGEST = `zilar-desk@sha256:${'a'.repeat(64)}`;
 const OVERRIDE = `zilar-desk@sha256:${'b'.repeat(64)}`;

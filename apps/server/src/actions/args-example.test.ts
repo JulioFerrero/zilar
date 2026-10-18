@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ServerDatabase } from '../db/client';
 import { buildToolAdapters } from '../tools/adapters';
 import type { ToolRunner } from '../tools/types';
-import { buildWebToolsAdapters } from '../web-tools/adapters';
+import { buildWebToolsAdapters } from '../startup/components';
 import { buildRegistry, decodeActionArgs, type ActionAdapter } from './registry';
 
 // The web, tool and routine adapters as production registers them. The

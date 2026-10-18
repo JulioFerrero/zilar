@@ -1,34 +1,243 @@
-// effect-plain: the leader-only background work. Plain async start/stop handles for the
-// shared components; a follower never runs them. `createLeaderLock` calls `start()` when
-// this instance wins the advisory lock and `stop()` when it steps down.
-import type { Logger } from 'pino';
+import { type Logger } from 'pino';
 import { redactSecrets } from '../ai/http';
-import type { ActionGateway } from '../actions/gateway';
-import { startRecoveryStuckTimer, type RecoveryStuckHandle } from '../actions/gateway';
-import type { AgentGateway } from '../agents/gateway';
+import {
+  type ActionGateway,
+  startRecoveryStuckTimer,
+  type RecoveryStuckHandle,
+} from '../actions/gateway';
+import { type AgentGateway } from '../agents/gateway';
 import { initTopicFollow } from '../agents/gateway/topic-follow';
-import { startApprovalsSweeper, type ApprovalsSweeperHandle } from '../approvals/sweeper';
 import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agents/log/retention';
-import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerConfig } from '../config/load';
+import { type ServerDatabase } from '../db/client';
 import { startRunnerHub, type RunnerHub } from '../machines/hub';
-import type { DbMachineRegistry } from '../machines/registry';
-import type { CorrectCardInput } from '../message-blocks/respond';
+import { type DbMachineRegistry } from '../machines/registry';
+import { type CorrectCardInput } from '../message-blocks/respond';
 import { startPushComponent, type PushComponentHandle } from '../push/component';
 import { pushConfigError, type PushConfig } from '../push/config';
 import { createPushCipher } from '../push/crypto';
 import { startGroupNotifier } from '../push/group-notifier';
 import { createNativeSender } from '../push/native-sender';
 import { createWebPushSender } from '../push/sender';
-import { buildRoutineScheduler, type RoutineSchedulerHandle } from '../routines/wiring';
-import type { PromptRunner } from '../routines/execute-prompt';
-import type { ArchivePool } from '../search/service';
-import type { BuildToolAdaptersDeps } from '../tools/adapters';
-import type { ToolRunner } from '../tools/types';
-import { reconcileRoomRights } from '../groups/room-reconcile';
-import { reconcileRoomSubscriptionOptions } from '../topics/rooms';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import { type PromptRunner } from '../routines/execute-prompt';
+import { type ArchivePool } from '../search/service';
+import { type BuildToolAdaptersDeps } from '../tools/adapters';
+import { type ToolRunner } from '../tools/types';
+import { reconcileRoomSubscriptionOptions, syncTopicRoom } from '../topics/rooms';
+import { type EjabberdAdminClient } from '../xmpp/admin/types';
+import { type Payload } from '@zilar/protocol';
+import { type ExecuteRoutinePorts } from '../routines/execute';
+import {
+  createRoutineScheduler,
+  type RoutineLogger,
+  type RoutineSchedulerHandle,
+} from '../routines/scheduler';
+import { type AuditEntry } from '../audit/schema';
+import { startSweepLoop } from '../effect/sweep-loop';
+import { expireStale } from '../approvals/service';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { errorClassName } from '../effect/error-utils';
+import { runSql } from '../effect/sql';
+import { type TopicRow } from '../topics/access';
+import { type InviteLogger } from '../groups/schemas';
+interface RoomReconcileLogger extends InviteLogger {
+  info: (fields: Record<string, unknown>, message: string) => void;
+}
+
+interface RoomReconcileDeps {
+  db: ServerDatabase;
+  adminClient: EjabberdAdminClient;
+  domain: string;
+  logger: RoomReconcileLogger;
+  signal?: AbortSignal;
+  pauseMs?: number;
+}
+
+// About three rooms per second keeps the admin API and ejabberd calm.
+const DEFAULT_PAUSE_MS = 350;
+
+const PRIVATE_ROOM_OPTIONS: ReadonlyArray<readonly [string, string]> = [
+  ['members_only', 'true'],
+  ['public', 'false'],
+  ['public_list', 'false'],
+];
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function liveTopics(db: ServerDatabase): Promise<TopicRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE archived_at IS NULL`;
+    }),
+  );
+  return [...rows];
+}
+
+async function reconcileRoom(deps: RoomReconcileDeps, topic: TopicRow): Promise<boolean> {
+  try {
+    await syncTopicRoom(
+      { db: deps.db, adminClient: deps.adminClient, domain: deps.domain, logger: deps.logger },
+      topic,
+    );
+    for (const [option, value] of PRIVATE_ROOM_OPTIONS) {
+      await deps.adminClient.changeRoomOption(topic.roomLocalpart, option, value);
+    }
+    return true;
+  } catch (error) {
+    deps.logger.warn(
+      { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
+      'could not reconcile a room',
+    );
+    return false;
+  }
+}
+
+// Once per leader start, re-sync every live group and topic room:
+// `syncTopicRoom` re-applies the plain `member` affiliations, then the room
+// options. Idempotent, throttled, one summary line; a failure is logged by
+// localpart and never stops the pass. Archived topics re-sync on removal.
+async function reconcileRoomRights(deps: RoomReconcileDeps): Promise<void> {
+  const pauseMs = deps.pauseMs ?? DEFAULT_PAUSE_MS;
+  const topics = await liveTopics(deps.db);
+  let reconciled = 0;
+  let failed = 0;
+  for (const topic of topics) {
+    if (deps.signal?.aborted) {
+      break;
+    }
+    if (await reconcileRoom(deps, topic)) {
+      reconciled += 1;
+    } else {
+      failed += 1;
+    }
+    await pause(pauseMs);
+  }
+  deps.logger.info(
+    { rooms: topics.length, reconciled, failed, interrupted: deps.signal?.aborted === true },
+    'room rights reconcile finished',
+  );
+}
+
+// The minimum slice of pino's Logger the sweeper needs.
+export interface SweeperLogger {
+  error: (fields: Record<string, unknown>, message: string) => void;
+}
+
+interface StartApprovalsSweeperOptions {
+  db: ServerDatabase;
+  /** Each swept row writes exactly one `approval.expired` entry. */
+  audit: { record: (entry: AuditEntry) => Promise<void> };
+  logger: SweeperLogger;
+  /** Tick cadence in milliseconds. Defaults to 60 s. */
+  intervalMs?: number;
+  now?: () => Date;
+}
+
+interface ApprovalsSweeperHandle {
+  close(): void;
+}
+
+// `expireStale`'s conditional update makes racing sweeps safe: the second sees
+// an empty `RETURNING`.
+export function startApprovalsSweeper({
+  db,
+  audit,
+  logger,
+  intervalMs = 60_000,
+  now = () => new Date(),
+}: StartApprovalsSweeperOptions): ApprovalsSweeperHandle {
+  async function tick(): Promise<void> {
+    const at = now();
+    let swept: Array<{ id: string; aiId: string; groupId: string | null }>;
+    try {
+      swept = await expireStale(db, at);
+    } catch (error) {
+      // No row or AI ids in the log; the next successful tick brings the data.
+      logger.error({ err: serializeError(error) }, 'approvals sweeper tick failed');
+      return;
+    }
+    for (const row of swept) {
+      try {
+        await audit.record({
+          action: 'approval.expired',
+          actorUserId: null,
+          aiId: row.aiId,
+          groupId: row.groupId,
+          subjectId: row.id,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'denied',
+          detail: null,
+        });
+      } catch (error) {
+        logger.error({ err: serializeError(error) }, 'approvals sweeper audit write failed');
+      }
+    }
+  }
+
+  // First run after one interval, not at boot, so the delay never blocks startup.
+  return startSweepLoop(intervalMs, tick);
+}
+
+function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message };
+  }
+  return { message: String(error) };
+}
+
+interface BuildRoutineSchedulerDeps {
+  db: ServerDatabase;
+  routinesEnabled: boolean;
+  // Absent = no runner, so the scheduler stays off.
+  toolRunner?: ToolRunner;
+  // Posts as the AI (`postToChat` via the `gatewayRef` closure).
+  post: (input: {
+    aiId: string;
+    groupId: string | null;
+    topicId?: string;
+    text: string;
+    payload?: Payload;
+  }) => Promise<boolean>;
+  // Runs a prompt routine through the gateway; absent while the gateway is null, so the run is `skipped`.
+  runPrompt?: PromptRunner;
+  // Corrects a linked alert card in the room (`correctInRoom`).
+  correctCard?: ExecuteRoutinePorts['correctCard'];
+  audit: AuditRecorder;
+  logger: RoutineLogger;
+}
+
+// Returns a started handle, or null; the single warning covers flag on with no runner.
+function buildRoutineScheduler(deps: BuildRoutineSchedulerDeps): RoutineSchedulerHandle | null {
+  if (!deps.routinesEnabled) {
+    return null;
+  }
+  if (deps.toolRunner === undefined) {
+    deps.logger.warn(
+      {},
+      'ROUTINES_ENABLED=true but no tool runner is configured; the routines scheduler stays off',
+    );
+    return null;
+  }
+  const handle = createRoutineScheduler({
+    db: deps.db,
+    runTool: deps.toolRunner,
+    post: deps.post,
+    ...(deps.runPrompt === undefined ? {} : { runPrompt: deps.runPrompt }),
+    ...(deps.correctCard === undefined ? {} : { correctCard: deps.correctCard }),
+    audit: deps.audit,
+    logger: deps.logger,
+  });
+  handle.start();
+  return handle;
+}
 
 export interface LeaderWorkDeps {
   db: ServerDatabase;

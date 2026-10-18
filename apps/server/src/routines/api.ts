@@ -1,15 +1,13 @@
-// Routines routes on the Effect `HttpApi` adapter; 204 on delete.
-
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RoutinesGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/recorder';
+import { type Logger } from 'pino';
+import { type AuditRecorder } from '../audit/recorder';
 import { deleteRoutine, pauseRoutine, resumeRoutine } from './support';
 import { getRoutine, listRoutinesForAi, listRoutinesForTopic } from './queries';
-import type { PublicRoutine } from './schemas';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+import { type PublicRoutine } from './schemas';
+import { type Auth } from '../auth/auth';
+import { type ServerDatabase } from '../db/client';
 import {
   handler,
   mountApi,
@@ -30,7 +28,58 @@ import {
   type MyRoutineView,
 } from './reads';
 import { withServiceErrors } from './status-errors';
-import { toDetailWire, toListWire } from './wire';
+function toListWire(routine: PublicRoutine) {
+  return {
+    id: routine.id,
+    aiId: routine.aiId,
+    groupId: routine.groupId,
+    topicId: routine.topicId,
+    kind: routine.kind,
+    toolId: routine.toolId ?? undefined,
+    toolName: routine.toolName,
+    title: routine.title,
+    schedule: routine.schedule,
+    status: routine.status,
+    pausedReason: routine.pausedReason,
+    nextRunAt: routine.nextRunAt.toISOString(),
+    lastRunAt: routine.lastRunAt === null ? null : routine.lastRunAt.toISOString(),
+    lastStatus: routine.lastStatus,
+    approvedHosts: [...routine.approvedHosts],
+    scope: routine.scope,
+  };
+}
+
+function toDetailWire(
+  routine: {
+    id: string;
+    title: string;
+    schedule: unknown;
+    status: 'active' | 'paused' | 'needs_approval';
+    pausedReason: 'user' | 'failures' | 'hosts_changed' | null;
+    nextRunAt: Date;
+    lastRunAt: Date | null;
+    lastStatus: 'ok' | 'error' | 'skipped' | null;
+    approvedHosts: string[];
+    groupId: string | null;
+    kind: 'tool' | 'prompt';
+  },
+  toolName: string,
+) {
+  return {
+    id: routine.id,
+    kind: routine.kind,
+    title: routine.title,
+    toolName,
+    schedule: routine.schedule,
+    status: routine.status,
+    pausedReason: routine.pausedReason,
+    nextRunAt: routine.nextRunAt.toISOString(),
+    lastRunAt: routine.lastRunAt === null ? null : routine.lastRunAt.toISOString(),
+    lastStatus: routine.lastStatus,
+    approvedHosts: [...routine.approvedHosts],
+    scope: routine.groupId === null ? ('personal' as const) : ('group' as const),
+  };
+}
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
 

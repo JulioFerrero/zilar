@@ -1,21 +1,13 @@
-// One routine run through the ordered checks, stopping at the first failing step:
-// 1. AI `active` and (topic routine) still in the room, else `skipped`; a prompt routine takes its own path.
-// 2. Tool exists, else `paused`/`failures` with the fixed 3-failure notice.
-// 3. Host pinning: current version hosts must be a subset of `approved_hosts`, else `needs_approval`/`hosts_changed`.
-// 4-5. Run the tool; a linked alert card posts only when the value reaches the threshold and rewrites the note.
-// Every run audits `routine.run` with `{ status, durationMs }` only — never output text, source or an error.
-import { Effect } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { Payload } from '@zilar/protocol';
-import type { AuditRecorder } from '../audit/recorder';
-import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
+import { type Payload, BlocksDataSchema, type BlocksData } from '@zilar/protocol';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerDatabase } from '../db/client';
+import { type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import type { CorrectCardInput } from '../message-blocks/respond';
+import { type CorrectCardInput } from '../message-blocks/respond';
 import { runToolVersion, ToolServiceError } from '../tools/service';
-import type { ToolRunner } from '../tools/types';
-import { refreshAlertNote } from './alert-note';
-import { alertVerdict } from './alert-run';
+import { type ToolRunner } from '../tools/types';
 import { executePromptRoutine, type PromptRunner } from './execute-prompt';
 import {
   markOk,
@@ -25,7 +17,188 @@ import {
   postResult,
   recordFailure,
 } from './outcomes';
-import { isAiInTopicRoom, isSubset, readCurrentHosts } from './preflight';
+import { type TopicRow, allowedTopicAiIds } from '../topics/access';
+import { findCard, saveCardData } from '../message-blocks/cards';
+import { describeSchedule } from '../tools/routine-adapters';
+import { parseRoutineSchedule } from './schedule';
+// The alert block's `note` is `ShortText` (`MAX_SHORT`).
+const MAX_NOTE_CHARS = 40;
+
+interface AlertNotePorts {
+  correctCard?: (input: CorrectCardInput) => Promise<boolean>;
+}
+
+interface AlertNoteLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
+interface RefreshAlertNoteInput {
+  db: ServerDatabase;
+  ports: AlertNotePorts;
+  row: RoutineRow;
+  value: number;
+  logger: AlertNoteLogger;
+}
+
+// Cut to the note's 40 characters; a long schedule loses its tail, never the value.
+function noteFor(schedule: string, value: number): string {
+  const tail = ` · now ${value.toLocaleString('en-US')}`;
+  const head = `Checked ${schedule}`;
+  const room = MAX_NOTE_CHARS - tail.length - 1;
+  const cut = head.length <= room ? head : `${head.slice(0, Math.max(0, room))}…`;
+  return `${cut}${tail}`.slice(0, MAX_NOTE_CHARS);
+}
+
+async function refreshAlertNote(input: RefreshAlertNoteInput): Promise<void> {
+  const { db, ports, row, value, logger } = input;
+  const cardId = row.alertCardId;
+  const blockId = row.alertBlockId;
+  if (cardId === null || blockId === null) {
+    return;
+  }
+  try {
+    const parsed = parseRoutineSchedule(row.schedule);
+    if (!parsed.ok) {
+      logger.warn({ routineId: row.id }, 'alert routine schedule unreadable');
+      return;
+    }
+    const card = await findCard(db, cardId);
+    if (card === null) {
+      logger.warn({ routineId: row.id }, 'alert card missing');
+      return;
+    }
+    // The card must be the routine's own AI's, even if a future path links one without the ownership check.
+    if (card.aiId !== row.aiId) {
+      logger.warn({ routineId: row.id }, 'alert card belongs to another AI');
+      return;
+    }
+    const decoded = Schema.decodeUnknownOption(BlocksDataSchema)(card.data);
+    if (Option.isNone(decoded)) {
+      logger.warn({ routineId: row.id }, 'alert card data unreadable');
+      return;
+    }
+    if (!decoded.value.blocks.some((block) => block.kind === 'alert' && block.id === blockId)) {
+      logger.warn({ routineId: row.id }, 'alert block missing from card');
+      return;
+    }
+    const note = noteFor(describeSchedule(parsed.value), value);
+    const data: BlocksData = {
+      ...decoded.value,
+      blocks: decoded.value.blocks.map((block) =>
+        block.kind === 'alert' && block.id === blockId ? { ...block, note } : block,
+      ),
+    };
+    const saved = await saveCardData(db, card.originId, data);
+    if (!saved) {
+      logger.warn({ routineId: row.id }, 'alert card not saved');
+      return;
+    }
+    const correct = ports.correctCard;
+    if (correct === undefined) {
+      return;
+    }
+    const corrected = await correct({
+      aiId: card.aiId,
+      roomJid: card.roomJid,
+      originalId: card.originId,
+      text: data.fallback,
+      payload: { v: 0, type: 'blocks', data },
+    });
+    if (!corrected) {
+      logger.warn({ routineId: row.id }, 'alert card correction not sent');
+    }
+  } catch {
+    logger.warn({ routineId: row.id }, 'alert note refresh failed');
+  }
+}
+
+interface ToolVersionHostsRow {
+  hosts: string[];
+}
+
+interface GroupAiRow {
+  aiId: string;
+}
+
+type TopicRoomRow = Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>;
+
+// General topics read `group_ais`; other topics follow `allowedTopicAiIds`, so the tool never runs for an AI that may have left.
+// An archived topic's room is gone, so the routine skips.
+async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boolean> {
+  const [topic] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRoomRow>`SELECT id, group_id, visibility, is_general, archived_at
+        FROM topics
+        WHERE id = ${row.topicId as string}
+        LIMIT 1`;
+    }),
+  );
+  if (!topic || topic.archivedAt !== null) {
+    return false;
+  }
+  if (topic.isGeneral) {
+    const [match] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupAiRow>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${row.groupId as string} AND ai_id = ${row.aiId}
+          LIMIT 1`;
+      }),
+    );
+    return match !== undefined;
+  }
+  return (await allowedTopicAiIds(db, topic)).has(row.aiId);
+}
+
+async function readCurrentHosts(
+  db: ServerDatabase,
+  toolId: string,
+  currentVersion: number,
+): Promise<string[] | null> {
+  const [version] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolVersionHostsRow>`SELECT hosts FROM ai_tool_versions
+        WHERE tool_id = ${toolId} AND version = ${currentVersion}
+        LIMIT 1`;
+    }),
+  );
+  return version ? [...version.hosts] : null;
+}
+
+function isSubset(current: readonly string[], approved: readonly string[]): boolean {
+  const allowed = new Set(approved);
+  return current.every((host) => allowed.has(host));
+}
+
+// A routine linked to an alert card reads the tool's `output.data.value` and compares it with `input.threshold`.
+// Below it the run stays `ok` and silent; at or above it posts; a missing number on either side is a failure.
+type AlertVerdict =
+  { kind: 'post'; value: number } | { kind: 'quiet'; value: number } | { kind: 'error' };
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readKey(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  return (value as Record<string, unknown>)[key];
+}
+
+function alertVerdict(input: unknown, data: unknown): AlertVerdict {
+  const value = finiteNumber(readKey(data, 'value'));
+  const threshold = finiteNumber(readKey(input, 'threshold'));
+  if (value === null || threshold === null) {
+    return { kind: 'error' };
+  }
+  return value >= threshold ? { kind: 'post', value } : { kind: 'quiet', value };
+}
 
 export {
   FAILURE_PAUSE_NOTICE,

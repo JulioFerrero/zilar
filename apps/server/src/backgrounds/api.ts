@@ -2,7 +2,7 @@ import { Effect, Layer } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BackgroundsGroup, BackgroundsUploadRateLimit } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+import { type Logger } from 'pino';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
@@ -14,7 +14,6 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import type { BackgroundsRoutesDependencies } from './routes';
 import {
   BACKGROUND_MAX_BYTES,
   BACKGROUND_UPLOAD_RATE_LIMIT_MAX,
@@ -25,6 +24,15 @@ import {
   uploadBackground,
   type BackgroundsServiceDeps,
 } from './service';
+import { type Auth } from '../auth/auth';
+import { type ServerDatabase } from '../db/client';
+interface BackgroundsRoutesDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  storageDir: string;
+  now?: () => number;
+  uploadLimiter?: { allow: (key: string) => boolean };
+}
 
 export interface BackgroundsApiDependencies extends BackgroundsRoutesDependencies {
   logger: Logger;

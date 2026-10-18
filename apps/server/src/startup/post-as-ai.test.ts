@@ -2,7 +2,7 @@
 // the text; a dropped payload is the live bug this test pins.
 import type { Payload } from '@zilar/protocol';
 import { describe, expect, it, vi } from 'vitest';
-import { postAsAi } from './post-as-ai';
+import { postAsAi } from './components';
 
 const blocksPayload: Payload = {
   v: 0,

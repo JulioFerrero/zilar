@@ -9,7 +9,7 @@ import { SqlClient } from 'effect/sql';
 import { aiLocalpart } from '../ais/provisioning-xmpp';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
-import { DIRECTORY_RATE_LIMIT_MAX } from '../directory/api';
+import { DIRECTORY_RATE_LIMIT_MAX } from '../app/routes-messaging';
 import {
   bootstrapUser,
   contactOf,

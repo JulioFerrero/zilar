@@ -1,18 +1,55 @@
-// The records one run writes, the fixed notices and the post helpers.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { Payload } from '@zilar/protocol';
-import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
+import { type Payload } from '@zilar/protocol';
+import { type ServerDatabase } from '../db/client';
+import { type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { buildBlocksPayload } from '../message-blocks/build';
 import { withoutMedia } from '../message-blocks/media-ids';
 import { truncateChars } from '../text';
 import { cardHeader } from '../tools/card-header';
 import { describeSchedule } from '../tools/routine-adapters';
-import { auditPaused, auditRun } from './audit';
-import type { ExecuteRoutineOptions, ExecuteRoutinePorts } from './execute';
+import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { parseRoutineSchedule } from './schedule';
+async function auditRun(
+  options: ExecuteRoutineOptions,
+  row: RoutineRow,
+  status: 'ok' | 'error' | 'skipped',
+  startedAt: number,
+): Promise<void> {
+  // `detail` carries the status and duration only: never output text, source, or an error message.
+  await options.audit.record({
+    actorUserId: null,
+    aiId: row.aiId,
+    groupId: row.groupId,
+    action: 'routine.run',
+    subjectId: row.id,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: status === 'error' ? 'error' : 'ok',
+    detail: { status, durationMs: Math.max(0, Date.now() - startedAt) },
+  });
+}
+
+async function auditPaused(
+  options: ExecuteRoutineOptions,
+  row: RoutineRow,
+  reason: 'failures' | 'hosts_changed',
+): Promise<void> {
+  await options.audit.record({
+    actorUserId: null,
+    aiId: row.aiId,
+    groupId: row.groupId,
+    action: 'routine.paused',
+    subjectId: row.id,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: { reason },
+  });
+}
 
 export const MAX_POST_TEXT_CHARS = 4_000;
 export const MAX_CONSECUTIVE_FAILURES = 3;

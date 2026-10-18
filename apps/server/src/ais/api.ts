@@ -1,19 +1,24 @@
-import { Layer } from 'effect';
-import { HttpApiBuilder } from 'effect/http-api';
-import { AisSchemaErrors, type PublicAi as WireAi } from '@zilar/api-contract';
+import { Layer, Effect } from 'effect';
+import { HttpApiBuilder, HttpApi } from 'effect/http-api';
+import {
+  AisSchemaErrors,
+  type PublicAi as WireAi,
+  AisConfigured,
+  AisGroup,
+} from '@zilar/api-contract';
 import { getAiCatalog } from '../ai/catalog';
-import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerConfig } from '../config/load';
+import { type EjabberdAdminClient } from '../xmpp/admin/types';
 import { assignMachine, resumeAi, stopAi } from './status';
 import { createAi, updateAi } from './provisioning';
 import { deleteAi } from './provisioning-xmpp';
 import { getOwnedAi, listAis } from './queries';
-import type { AiLogger, PublicAi } from './persona';
-import type { Auth } from '../auth/auth';
+import { type AiLogger, type PublicAi } from './persona';
+import { type Auth } from '../auth/auth';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
-import type { KeyCipher } from '../connections/crypto';
-import type { ServerDatabase } from '../db/client';
+import { type KeyCipher } from '../connections/crypto';
+import { type ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   handler,
@@ -21,13 +26,139 @@ import {
   schemaErrorLayerFor,
   sessionLayer,
   type EffectApiMount,
+  httpErrorResponse,
+  requestIdOf,
+  type SchemaErrorRender,
 } from '../effect/http-core';
-import type { TurnStopper } from '../agents/gateway/stop-types';
-import { AisApi, configuredLayer, renderSchemaError } from './api-layers';
-import { toLogger } from './http-logger';
-import { stopTurn } from './stop-turn';
-import { withLastFailures } from './health';
+import { type TurnStopper } from '../agents/gateway/stop-types';
 import { getAiUsage } from './usage';
+import { type Logger } from 'pino';
+import { HttpServerRequest } from 'effect/http';
+import { SqlClient } from 'effect/sql';
+import { runSql } from '../effect/sql';
+interface LastFailure {
+  kind: string;
+  at: string;
+}
+
+type WithLastFailure<T> = T & { lastFailure: LastFailure | null };
+
+// A product choice: the log is kept 30 days, but 7 is what stays interesting.
+const FAILURE_WINDOW = '7 days';
+
+// `data->>'kind'` is text or null (a row written before the field existed).
+interface LastFailureRow {
+  aiId: string;
+  kind: string | null;
+  at: Date;
+}
+
+// `DISTINCT ON` keeps the newest error and `NOT EXISTS` drops one an answer has
+// cleared. No ids means no query.
+export async function lastFailures(
+  db: ServerDatabase,
+  aiIds: readonly string[],
+): Promise<Map<string, LastFailure>> {
+  if (aiIds.length === 0) {
+    return new Map();
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<LastFailureRow>`SELECT DISTINCT ON (e.ai_id) e.ai_id, e.data->>'kind' AS kind, e.at
+        FROM agent_task_events e
+        WHERE e.ai_id IN ${sql.in(aiIds)} AND e.kind = ${'error'} AND e.at > now() - ${FAILURE_WINDOW}::interval
+          AND NOT EXISTS (SELECT 1 FROM agent_task_events a
+            WHERE a.ai_id = e.ai_id AND a.kind = ${'answer'} AND a.at > e.at)
+        ORDER BY e.ai_id, e.at DESC`;
+    }),
+  );
+  const failures = new Map<string, LastFailure>();
+  for (const row of rows) {
+    if (row.kind === null) {
+      continue;
+    }
+    failures.set(row.aiId, { kind: row.kind, at: new Date(row.at).toISOString() });
+  }
+  return failures;
+}
+
+// One read for the whole list; any failure gives every AI `lastFailure: null`.
+export async function withLastFailures<T extends { id: string }>(
+  db: ServerDatabase,
+  list: readonly T[],
+): Promise<Array<WithLastFailure<T>>> {
+  if (list.length === 0) {
+    return [];
+  }
+  let failures: Map<string, LastFailure>;
+  try {
+    failures = await lastFailures(
+      db,
+      list.map((item) => item.id),
+    );
+  } catch {
+    failures = new Map();
+  }
+  return list.map((item) => ({ ...item, lastFailure: failures.get(item.id) ?? null }));
+}
+
+const renderSchemaError: SchemaErrorRender = (error) =>
+  Effect.succeed(
+    new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
+  );
+
+// The 503 gate runs before the payload is decoded, so a malformed body on an
+// unconfigured server answers 503, not 400.
+
+function configuredLayer(deps: { cipher?: KeyCipher }): Layer.Layer<AisConfigured> {
+  return Layer.succeed(
+    AisConfigured,
+    AisConfigured.of(
+      Effect.fnUntraced(function* (httpEffect) {
+        if (deps.cipher === undefined) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          return httpErrorResponse(
+            requestIdOf(request),
+            new HttpError(503, 'ais_unavailable', 'AI management is not configured on this server'),
+          );
+        }
+        return yield* httpEffect;
+      }),
+    ),
+  );
+}
+
+const AisApi = HttpApi.make('ais').add(AisGroup);
+
+interface StopTurnDeps {
+  db: ServerDatabase;
+  getGateway: () => TurnStopper | null;
+}
+
+interface StopTurnInput {
+  aiId: string;
+  userId: string;
+  chatJid: string;
+}
+
+async function stopTurn(deps: StopTurnDeps, input: StopTurnInput): Promise<{ stopped: boolean }> {
+  const ai = await getOwnedAi(deps.db, input.aiId, input.userId);
+  if (ai === null) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  const stopped = deps.getGateway()?.stopTurn(ai.id, input.chatJid) ?? false;
+  return { stopped };
+}
+
+function toLogger(logger: AiLogger): Logger {
+  return {
+    error: (fields: Record<string, unknown>, message: string) => {
+      logger.warn(fields, message);
+    },
+  } as unknown as Logger;
+}
 
 export interface AisApiDependencies {
   auth: Auth;

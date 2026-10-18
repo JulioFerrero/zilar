@@ -1,10 +1,18 @@
-import { TunnelServer } from '@zilar/runner-tunnel';
-import type { KeyRegistry } from '@zilar/runner-tunnel';
+import { TunnelServer, type KeyRegistry, type DeskServer } from '@zilar/runner-tunnel';
 import { Duration, Effect, Fiber, Schedule } from 'effect';
-import type { ServerDatabase } from '../db/client';
-import type { RunnerDesk } from '../hands/runner-hands';
-import { bindRunnerDesk } from './runner-desk';
+import { type ServerDatabase } from '../db/client';
+import { type RunnerDesk } from '../hands/runner-hands';
 import { listApprovedMachineKeys } from './service';
+/**
+ * Binds the desk server to one runner, so a turn's `RunnerDesk` never carries
+ * (or leaks) the runner id.
+ */
+function bindRunnerDesk(desk: DeskServer, runnerId: string): RunnerDesk {
+  return {
+    sendDesk: (frame) => desk.sendDesk(runnerId, frame),
+    openDeskExec: (deskId) => desk.openDeskExec(runnerId, deskId),
+  };
+}
 
 export interface HubLogger {
   info: (fields: Record<string, unknown>, message: string) => void;

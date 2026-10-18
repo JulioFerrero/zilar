@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
-import { lastFailures, withLastFailures } from './health';
+import { lastFailures, withLastFailures } from './api';
 
 describe('lastFailures', () => {
   let context: TestContext;

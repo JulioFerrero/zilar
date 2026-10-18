@@ -1,16 +1,13 @@
-// Step order: `needsSetup` 404, limiter 429, decode 400, transaction, test send, mailer
-// swap, audit.
-
-import { Effect, Layer, Result, Schema } from 'effect';
-import type { HttpServerRequest } from 'effect/http';
+import { Effect, Layer, Result, Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { type HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { Auth } from '../auth/auth';
+import { SqlClient, SqlError } from 'effect/sql';
+import { type Logger } from 'pino';
+import { type AuditRecorder } from '../audit/recorder';
+import { type ServerConfig } from '../config/load';
+import { type Auth, INVITE_HEADER } from '../auth/auth';
 import { createResendMailer, type CurrentMailer, type Mailer } from '../auth/mailer';
-import type { ServerDatabase } from '../db/client';
+import { type ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import {
   mountApi,
@@ -22,8 +19,6 @@ import {
 import { HttpError } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { createSetupInvite, mailConfigured, sendSetupTestCode } from './mail';
-import { SetupBody, SetupStatus, SetupResult, firstMessage } from './schema';
 import {
   deleteMailSettingsEffect,
   needsSetup,
@@ -31,7 +26,135 @@ import {
   saveMailSettingsEffect,
   settingsCipherFor,
   takeSetupLockEffect,
+  getMailSettings,
 } from './settings';
+import { randomUUID } from 'node:crypto';
+import {
+  DEFAULT_INVITE_MAX_USES,
+  DEFAULT_INVITE_TTL_DAYS,
+  generateInviteCode,
+} from '../auth/invites';
+import { firstIssueMessage } from '../effect/schema-issues';
+// A pragmatic email check: an address the setup page accepted stays accepted.
+const EMAIL_PATTERN =
+  /^(?:[A-Za-z0-9_'+-]+\.)*[A-Za-z0-9_'+-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/;
+
+// Trimmed before the length checks. In effect 4.0.2 the `{ message }` option on
+// `isMinLength`/`isMaxLength` does not reach the issue annotations, so one `makeFilter`
+// returns each text.
+function lengthChecked(field: string, max: number): (value: string) => string | undefined {
+  return (value) => {
+    if (value.length < 1) {
+      return `${field} must not be empty`;
+    }
+    if (value.length > max) {
+      return `${field} must be at most ${max} characters`;
+    }
+    return undefined;
+  };
+}
+
+const ResendApiKey = Schema.Trim.pipe(
+  Schema.check(Schema.makeFilter(lengthChecked('resendApiKey', 256))),
+);
+
+const From = Schema.Trim.pipe(Schema.check(Schema.makeFilter(lengthChecked('from', 320))));
+
+const Lowercased = Schema.Trim.pipe(
+  Schema.decodeTo(Schema.String, {
+    decode: SchemaGetter.transform((value: string) => value.toLowerCase()),
+    encode: SchemaGetter.transform((value: string) => value),
+  }),
+);
+
+const AdminEmail = Lowercased.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) => {
+      if (value.length < 1) {
+        return 'adminEmail must not be empty';
+      }
+      if (value.length > 320) {
+        return 'adminEmail must be at most 320 characters';
+      }
+      if (!EMAIL_PATTERN.test(value)) {
+        return 'adminEmail must be a valid email address';
+      }
+      return undefined;
+    }),
+  ),
+);
+
+const SetupBody = Schema.Struct({
+  resendApiKey: ResendApiKey,
+  from: From,
+  adminEmail: AdminEmail,
+});
+
+const SetupStatus = Schema.Struct({
+  needsSetup: Schema.Boolean,
+  mailConfigured: Schema.Boolean,
+});
+
+const SetupResult = Schema.Struct({
+  ok: Schema.Boolean,
+  inviteCode: Schema.String,
+});
+
+// The first failure's message: a `makeFilter` text when one is set, else the fallback.
+function firstMessage(issue: SchemaIssue.Issue): string | undefined {
+  return firstIssueMessage(issue, { firstChildOnly: true });
+}
+
+// Explicit `MAIL_TRANSPORT`/`SMTP_*` env means mail is configured without the setup
+// screen. Otherwise it is configured when the stored settings exist (read without the
+// key, so the secret is never decrypted just to answer the status).
+async function mailConfigured(deps: SetupApiDependencies): Promise<boolean> {
+  if (deps.config.MAIL_TRANSPORT !== undefined) {
+    return true;
+  }
+  return (await getMailSettings(deps.db, settingsCipherFor(deps.config))) !== null;
+}
+
+// Inserted in the setup transaction so it commits atomically with the settings; same
+// single-use, 7-day shape as a bootstrap invite.
+function createSetupInvite(): Effect.Effect<
+  string,
+  HttpError | SqlError.SqlError,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const now = new Date();
+    const code = generateInviteCode();
+    const rows = yield* sql<{ code: string }>`INSERT INTO invites
+      (id, code, created_by, created_at, expires_at, max_uses, uses)
+      VALUES (${randomUUID()}, ${code}, ${null}, ${now},
+        ${new Date(now.getTime() + DEFAULT_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000)},
+        ${DEFAULT_INVITE_MAX_USES}, ${0})
+      RETURNING code`;
+    const invite = rows[0];
+    if (invite === undefined) {
+      return yield* Effect.fail(new HttpError(500, 'internal_error', 'Setup failed, try again'));
+    }
+    return invite.code;
+  });
+}
+
+// Mints a real OTP through the auth server (so the sign-in flow accepts it) and sends it.
+// The setup invite header lets the unknown email through the pre-sign-up hook. Any
+// failure surfaces as a delivery error, mapped to 422 with no provider detail.
+async function sendSetupTestCode(input: {
+  auth: Auth;
+  mailer: Mailer;
+  email: string;
+  inviteCode: string;
+}): Promise<void> {
+  const otp = await input.auth.api.createVerificationOTP({
+    body: { email: input.email, type: 'sign-in' },
+    headers: new Headers({ [INVITE_HEADER]: input.inviteCode }),
+  });
+  await input.mailer.sendOtp(input.email, otp, 'sign-in');
+}
 
 export const SETUP_RATE_LIMIT_MAX = 5;
 export const SETUP_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;

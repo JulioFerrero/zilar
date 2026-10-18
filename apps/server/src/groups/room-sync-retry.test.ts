@@ -12,8 +12,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
-import { syncGroupTopicRooms } from './ais';
-import { drainPendingGroupSyncs, stopRoomSyncRetry } from './room-sync-retry';
+import { drainPendingGroupSyncs, stopRoomSyncRetry, syncGroupTopicRooms } from './ais';
 
 // An ejabberd whose first affiliation write fails and works afterwards, like a
 // server that was briefly unreachable during a membership change.

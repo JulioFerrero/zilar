@@ -14,7 +14,7 @@ import {
   type ContactRequestsDeps,
 } from './service';
 import { relationFor, relationsFor } from './reads';
-import { searchUsers } from './search';
+import { searchUsers } from './api';
 
 describe('contact request permissions (T-0994)', () => {
   let context: TestContext;

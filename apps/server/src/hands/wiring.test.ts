@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, loadServerConfig } from '../config/load';
 import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
-import { buildDeskProbe } from './wiring';
+import { buildDeskProbe } from '../startup/components';
 
 const baseEnv = {
   DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
