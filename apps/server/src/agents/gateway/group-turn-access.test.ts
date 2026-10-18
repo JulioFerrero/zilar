@@ -7,8 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GroupRole } from '../../groups/schemas';
 import type { RoomGateState } from './db';
-import { groupTurnAccess, type GroupTurnAccess } from './group-turn-access';
-import type { RoomPendingMessage } from './pending';
+import { groupTurnAccess, type GroupTurnAccess } from './group-turn-body';
+import type { RoomPendingMessage } from './contracts';
 
 const AI_OWNER_BARE = 'alice@example.com';
 

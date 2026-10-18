@@ -1,23 +1,233 @@
 // The one place a model call is made: builds a provider client per call from
 // the AI's decrypted key and maps every `AiError` to `ChatCompletionError`.
-import { Duration, Effect, Schedule, Stream } from 'effect';
-import { AiError, type Response as AiResponse, type Tool } from 'effect/ai';
+import { Duration, Effect, Schedule, Stream, type JsonSchema } from 'effect';
+import { AiError, type Response as AiResponse, Prompt, Tool, Toolkit } from 'effect/ai';
 import { FetchHttpClient, type HttpClient } from 'effect/http';
 import { customProviderFetch, type PinnedFetchOptions } from '../connections/pinned-fetch';
-import { type FetchLike } from './http';
-import { ChatCompletionError, chatErrorFromAiError } from './model-errors';
-import {
-  toPrompt,
-  toToolkit,
-  type ModelRequestMessage,
-  type ModelToolDefinition,
-} from './model-prompt';
+import { type FetchLike, redactSecrets } from './http';
 import { buildLanguageModel, type ModelTarget } from './providers';
 
-export type { ModelTarget } from './providers';
-export type { ModelRequestMessage, ModelToolDefinition } from './model-prompt';
+// Converts our wire shapes into the Effect AI `Prompt`/`Toolkit` shapes.
+export interface ModelRequestMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
 
-export { ChatCompletionError, chatErrorFromAiError } from './model-errors';
+export interface ModelToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+// An empty or malformed arguments string becomes `{}` so the prompt still
+// decodes; the executor validates the original itself.
+function parseArguments(argsJson: string): unknown {
+  if (argsJson.trim() === '') {
+    return {};
+  }
+  try {
+    return JSON.parse(argsJson);
+  } catch {
+    return {};
+  }
+}
+
+// A tool result only carries the call id; the name comes from the assistant
+// `tool_calls` it answers.
+function toolNamesById(messages: readonly ModelRequestMessage[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const message of messages) {
+    for (const call of message.tool_calls ?? []) {
+      names.set(call.id, call.function.name);
+    }
+  }
+  return names;
+}
+
+function encodeMessage(
+  message: ModelRequestMessage,
+  names: Map<string, string>,
+): Prompt.MessageEncoded {
+  switch (message.role) {
+    case 'system':
+      return { role: 'system', content: message.content };
+    case 'user':
+      return { role: 'user', content: message.content };
+    case 'assistant': {
+      const parts: Array<Prompt.AssistantMessagePartEncoded> = [];
+      if (message.content !== '') {
+        parts.push({ type: 'text', text: message.content });
+      }
+      for (const call of message.tool_calls ?? []) {
+        parts.push({
+          type: 'tool-call',
+          id: call.id,
+          name: call.function.name,
+          params: parseArguments(call.function.arguments),
+        });
+      }
+      return parts.length === 0
+        ? { role: 'assistant', content: '' }
+        : { role: 'assistant', content: parts };
+    }
+    case 'tool': {
+      const id = message.tool_call_id ?? '';
+      return {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            id,
+            name: names.get(id) ?? 'unknown',
+            result: message.content,
+            isFailure: false,
+          },
+        ],
+      };
+    }
+  }
+}
+
+export function toPrompt(messages: readonly ModelRequestMessage[]): Prompt.Prompt {
+  const names = toolNamesById(messages);
+  return Prompt.make(messages.map((message) => encodeMessage(message, names)));
+}
+
+// A dynamic tool needs no handler: the agent loop validates and executes every
+// call itself (`disableToolCallResolution`), so the one here is never invoked.
+export function toToolkit(
+  definitions: readonly ModelToolDefinition[],
+): Toolkit.WithHandler<Record<string, Tool.Any>> | undefined {
+  if (definitions.length === 0) {
+    return undefined;
+  }
+  const tools: Array<Tool.Any> = definitions.map((definition) =>
+    Tool.dynamic(definition.function.name, {
+      description: definition.function.description,
+      parameters: definition.function.parameters as unknown as JsonSchema.JsonSchema,
+    }),
+  );
+  return Toolkit.make(...tools) as unknown as Toolkit.WithHandler<Record<string, Tool.Any>>;
+}
+// The failure seam for a model call: the error a caller sees and the one
+// mapping from an Effect AI error to its status and detail.
+// The detail is redacted where the error is built: it never carries the key,
+// whatever the provider echoed back.
+export class ChatCompletionError extends Error {
+  readonly status: number;
+  readonly detail: string;
+
+  constructor(status: number, detail: string) {
+    super(
+      status === 0
+        ? `chat completions request failed: ${detail}`
+        : `chat completions failed with HTTP ${status}: ${detail}`,
+    );
+    this.name = 'ChatCompletionError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+// The HTTP status our failure classes expect, from the `AiError` reason.
+function statusOf(reason: AiError.AiErrorReason): number {
+  switch (reason._tag) {
+    case 'RateLimitError':
+      return 429;
+    case 'AuthenticationError':
+      return reason.kind === 'InsufficientPermissions' ? 403 : 401;
+    case 'QuotaExhaustedError':
+    case 'InvalidRequestError':
+    case 'ContentPolicyError':
+      return 400;
+    case 'InternalProviderError':
+      return 500;
+    // SDK parse failures are not worth a retry: the provider would answer the
+    // same bytes again, so the turn fails with the transient text.
+    case 'ToolParameterValidationError':
+    case 'InvalidOutputError':
+      return 200;
+    default: {
+      // Unmapped response-carrying errors keep their real HTTP status, so an
+      // unmapped 402 or 418 stays a non-retryable provider error.
+      const httpStatus = 'http' in reason ? reason.http?.response?.status : undefined;
+      return httpStatus ?? 0;
+    }
+  }
+}
+
+// The message a provider's JSON error body carries, falling back to the raw
+// body: `RateLimitError` keeps the body but no `description`.
+function providerBodyMessage(body: string | undefined): string | undefined {
+  if (body === undefined || body === '') {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (parsed !== null && typeof parsed === 'object') {
+    const error = (parsed as { error?: unknown }).error;
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error !== null && typeof error === 'object') {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string') {
+        return message;
+      }
+    }
+    return JSON.stringify(parsed);
+  }
+  return body;
+}
+
+// The detail `classifyFailure` reads: it keeps the provider's description so
+// the model-name and context-length patterns still match.
+function detailOf(reason: AiError.AiErrorReason): string {
+  switch (reason._tag) {
+    case 'RateLimitError':
+      // A 429 body can still name a model, context or budget problem, so keep
+      // the provider's message for `classifyFailure`.
+      return providerBodyMessage(reason.http?.body) ?? 'rate limited';
+    case 'AuthenticationError':
+      return `authentication failed: ${reason.kind}`;
+    case 'QuotaExhaustedError':
+      return 'budget exhausted';
+    case 'InvalidRequestError':
+      return reason.description ?? 'invalid request';
+    case 'ContentPolicyError':
+      return reason.description ?? 'content policy violation';
+    case 'InternalProviderError':
+      return reason.description ?? 'internal provider error';
+    case 'NetworkError':
+      return reason.description ?? `network error: ${reason.reason}`;
+    default:
+      return reason.message;
+  }
+}
+
+export function chatErrorFromAiError(
+  error: AiError.AiError,
+  secrets: readonly string[] = [],
+): ChatCompletionError {
+  return new ChatCompletionError(
+    statusOf(error.reason),
+    redactSecrets(detailOf(error.reason), secrets),
+  );
+}
+export type { ModelTarget } from './providers';
 
 export const MODEL_CHAT_TIMEOUT_MS = 90_000;
 

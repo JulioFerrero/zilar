@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runTool } from './run-tool';
-import type { RunToolResult } from './types';
+import type { RunToolResult } from './run-tool';
 import type { HostFetcher } from './host-fetch';
 import { readableToolName } from '../tools/card-header';
 

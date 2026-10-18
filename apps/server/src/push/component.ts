@@ -1,10 +1,104 @@
 import { Effect, Fiber } from 'effect';
 import { component, xml, type PushComponentFactory, type PushXmppElement } from '@xmpp/component';
-import { parsePushIq } from './notification';
-import { PUBSUB_NAMESPACE, PUSH_NAMESPACE, type PushNotification } from './protocol';
+import {
+  PUBSUB_NAMESPACE,
+  PUSH_NAMESPACE,
+  type PushNotification,
+  DATA_FORMS_NAMESPACE,
+  PUSH_SUMMARY_FORM_TYPE,
+} from './protocol';
 import { handleIncomingPush, type PushServiceDeps } from './service';
 import { markPushOffline, markPushOnline } from '../health-status';
 
+// Parses the IQ mod_push routes to the component; shape from XEP-0357
+// example 12/13 and mod_push.erl `notify/7`.
+function parsePushIq(stanza: PushXmppElement): PushNotification | undefined {
+  if (!stanza.is('iq') || stanza.attrs['type'] !== 'set') {
+    return undefined;
+  }
+  const pubsub = stanza.getChild('pubsub', PUBSUB_NAMESPACE);
+  if (pubsub === undefined) {
+    return undefined;
+  }
+  const publish = pubsub.getChild('publish');
+  if (publish === undefined) {
+    return undefined;
+  }
+  const node = publish.attrs['node'];
+  if (node === undefined || node === '') {
+    return undefined;
+  }
+  const notification = publish.getChild('item')?.getChild('notification', PUSH_NAMESPACE);
+  if (notification === undefined) {
+    return undefined;
+  }
+  const from = stanza.attrs['from'];
+  if (from === undefined || from === '') {
+    return undefined;
+  }
+
+  const fields = readSummaryFields(notification);
+  if (fields === undefined) {
+    return undefined;
+  }
+
+  // `<publish-options>` (the enable-time secret echo) is deliberately not
+  // parsed: the publish arrives over our own authenticated component
+  // connection, so the sender is trusted, and logging it would put a
+  // credential-adjacent value in the log path.
+  const result: PushNotification = {
+    node,
+    from,
+    ...fields,
+  };
+  return result;
+}
+
+function readSummaryFields(
+  notification: PushXmppElement,
+): Pick<PushNotification, 'messageCount' | 'lastMessageSender' | 'lastMessageBody'> | undefined {
+  const forms = notification.getChildren('x', DATA_FORMS_NAMESPACE);
+  if (forms.length === 0) {
+    return {};
+  }
+  const summary = forms.find((form) => formTypeOf(form) === PUSH_SUMMARY_FORM_TYPE);
+  if (summary === undefined) {
+    return undefined;
+  }
+  const result: Pick<PushNotification, 'messageCount' | 'lastMessageSender' | 'lastMessageBody'> =
+    {};
+  const count = readField(summary, 'message-count');
+  if (count !== undefined) {
+    result.messageCount = count;
+  }
+  const sender = readField(summary, 'last-message-sender');
+  if (sender !== undefined) {
+    result.lastMessageSender = sender;
+  }
+  const body = readField(summary, 'last-message-body');
+  if (body !== undefined) {
+    result.lastMessageBody = body;
+  }
+  return result;
+}
+
+function formTypeOf(form: PushXmppElement): string | undefined {
+  for (const field of form.getChildren('field')) {
+    if (field.attrs['var'] === 'FORM_TYPE') {
+      return field.getChildText('value') ?? undefined;
+    }
+  }
+  return undefined;
+}
+
+function readField(form: PushXmppElement, name: string): string | undefined {
+  for (const field of form.getChildren('field')) {
+    if (field.attrs['var'] === name) {
+      return field.getChildText('value') ?? undefined;
+    }
+  }
+  return undefined;
+}
 const DISCO_INFO_NAMESPACE = 'http://jabber.org/protocol/disco#info';
 
 // How many publishes may wait or run for one node; over the cap a publish is

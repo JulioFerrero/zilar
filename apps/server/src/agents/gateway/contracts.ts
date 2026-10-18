@@ -13,15 +13,40 @@ import type { completeChat } from '../dm-turn';
 import type { XmppConfig } from '../../xmpp/config';
 import type { RunnerDeskSource } from '../../hands/resolve';
 import type { DeskClient } from './desk-exec';
-import type { PendingMessage, RoomPendingMessage, ScheduledRunOutcome } from './pending';
 
-export type {
-  PendingMessage,
-  RoomPendingMessage,
-  ScheduledRunOutcome,
-  ScheduledTurnOutcome,
-} from './pending';
+export type ScheduledTurnOutcome = 'replied' | 'failed' | 'stopped' | 'limited' | 'offline';
 
+export type ScheduledRunOutcome = ScheduledTurnOutcome | 'not_in_room';
+
+export interface PendingMessage {
+  id: string;
+  body: string;
+  fromJid: string;
+  synthetic?: true;
+  scheduled?: {
+    routineId: string;
+    onStart?: () => void;
+    onOutcome: (outcome: ScheduledTurnOutcome) => void;
+  };
+}
+
+export interface RoomPendingMessage {
+  id: string;
+  body: string;
+  fromJid: string;
+  fromResolved: boolean;
+  fromNick?: string;
+  timestamp: Date;
+  synthetic?: true;
+  wake?: true;
+  handoff?: true;
+  delegationId?: string;
+  scheduled?: {
+    routineId: string;
+    onStart?: () => void;
+    onOutcome: (outcome: ScheduledTurnOutcome) => void;
+  };
+}
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;

@@ -9,19 +9,16 @@ import {
   DELEGATE_TOOL,
   FETCH_MEDIA_TOOL,
   MEMORY_ZOOM_TOOL,
+  PERSONA_SUMMARY_MAX_LENGTH,
   POST_BLOCKS_TOOL,
   RECALL_TOOL,
+  REMEMBERED_FACT_MAX_LENGTH,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
 } from '../tools/schemas';
-import {
-  formatPersonaUpdatedLine,
-  formatRememberedLine,
-  PERSONA_RESTORED_LINE,
-} from '../tools/reply-lines';
 import { TOOL_GUIDE } from '../tool-guide';
 import { looksLikeSecret } from '../memory/secrets';
 import {
@@ -37,16 +34,135 @@ import { runSaveTextMedia } from './save-text-media';
 import { recordCard } from '../../message-blocks/cards';
 import { getCardMedia } from '../../card-media/service';
 import { createDelegateRunner } from './delegate-run';
-import { createRequestActionRunner } from './request-action';
 import {
   type AgentGatewayDeps,
   type AiSession,
   type GatewayLogger,
   type RoomRound,
+  denialReasonForModel,
+  errorName,
+  formatModelText,
 } from './contracts';
 import type { createLiveSession } from './live';
 import type { RequestActionContext } from './group-turn';
+import type { ActionGateway, RequestOutcome } from '../../actions/gateway';
 
+type RequestActionCall = Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>;
+type RequestActionChat = { groupId: string; topicId: string };
+
+// Routes a `request_action` call into the action gateway. The ai id and chat
+// ids always come from the session, never from the call: a model that smuggles
+// `aiId` or `groupId` inside `args` cannot change who is asked. No adapter text
+// beyond the success `summary` reaches the AI. The group context adjusts the
+// pending wording ("in this chat" vs "in this room") and tags the group and
+// topic ids.
+export function createRequestActionRunner(
+  actions: ActionGateway | undefined,
+  logger: GatewayLogger,
+) {
+  const runRequestActionEffect = Effect.fnUntraced(function* (
+    session: AiSession,
+    call: RequestActionCall,
+    chat?: RequestActionChat,
+    unattended?: boolean,
+  ): Effect.fn.Return<ToolExecution> {
+    if (actions === undefined) {
+      return { content: 'invalid: unknown tool: request_action' };
+    }
+    const outcome = yield* Effect.promise(() =>
+      actions.request({
+        aiId: session.aiId,
+        ...(chat === undefined ? {} : { groupId: chat.groupId, topicId: chat.topicId }),
+        action: call.action,
+        args: call.args,
+        requestedBy: session.aiJid,
+        // A scheduled (unattended) run runs tier 0/1 and refuses a tier-2
+        // request without a standing rule instead of parking a card.
+        ...(unattended === true ? { unattended: true } : {}),
+      }),
+    ).pipe(
+      Effect.catchDefect((error) =>
+        // The gateway is best-effort: a thrown error here would mean a bug
+        // we cannot leak. Log the class name only and answer as failed.
+        Effect.sync((): RequestOutcome | null => {
+          logger.warn(
+            { err: errorName(error), aiId: session.aiId, action: call.action },
+            'action gateway request threw',
+          );
+          return null;
+        }),
+      ),
+    );
+    if (outcome === null) {
+      return { content: 'the action failed' };
+    }
+    switch (outcome.status) {
+      case 'executed':
+        return {
+          content: `done: ${outcome.summary}${formatModelText(outcome.modelText)}`,
+          // The adapter posted the answer into the room itself (a `blocks`
+          // card), so the group turn sends no echo reply.
+          ...(outcome.posted === true ? { postedToRoom: true } : {}),
+        };
+      case 'pending_approval':
+        // The card is the owner's view; the model gets a short fixed line. In
+        // groups only admins, owners and the AI's owner get the buttons. The
+        // approval id rides along so the session log can record it.
+        return {
+          content:
+            chat === undefined
+              ? "waiting for your owner's approval; a card was posted in this chat"
+              : "waiting for an admin's approval; a card was posted in this room",
+          approvalId: outcome.approvalId,
+        };
+      case 'failed':
+        return { content: 'the action failed' };
+      case 'denied':
+        return { content: `denied: ${denialReasonForModel(outcome.reason)}` };
+    }
+  });
+
+  const runRequestAction = (
+    session: AiSession,
+    call: RequestActionCall,
+    chat?: RequestActionChat,
+    unattended?: boolean,
+  ): Promise<ToolExecution> =>
+    Effect.runPromise(runRequestActionEffect(session, call, chat, unattended));
+
+  return { runRequestAction, runRequestActionEffect };
+}
+// One line appended after a successful `update_persona`, so the owner sees what
+// happened without relying on the model to say it.
+function formatPersonaUpdatedLine(summary: string): string {
+  const clean = sanitizeSummary(summary);
+  return `\n\n✏️ Persona updated: ${clean === '' ? 'updated' : clean}. Say "undo" to revert.`;
+}
+
+const PERSONA_RESTORED_LINE = '\n\n↩️ Persona restored.';
+
+// One plain line appended after a successful `remember`, so everyone sees which
+// fact was pinned. No emoji.
+function formatRememberedLine(text: string): string {
+  return `\n\nRemembered: ${sanitizeLine(text, REMEMBERED_FACT_MAX_LENGTH)}`;
+}
+
+// The summary rides into the DM text, so it stays one short line: newlines
+// and control characters become spaces, runs collapse, and it caps at 200.
+function sanitizeSummary(summary: string): string {
+  return sanitizeLine(summary, PERSONA_SUMMARY_MAX_LENGTH);
+}
+
+// Shared by both lines: control characters become spaces, whitespace runs
+// collapse, and the result caps at `maxLength`.
+function sanitizeLine(text: string, maxLength: number): string {
+  let out = '';
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 32;
+    out += code < 32 || code === 127 ? ' ' : char;
+  }
+  return out.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
 type LiveSession = ReturnType<typeof createLiveSession>;
 
 interface ToolExecContext {

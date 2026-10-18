@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildGroupTools, buildTools } from './definitions';
-import { deskToolDefinitions } from './desk-definitions';
+import { deskToolDefinitions } from './definitions';
 import { parseToolArguments } from './parse';
 
 // T-1409: the desk tools are advertised only when the turn says the AI has a

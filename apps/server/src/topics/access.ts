@@ -1,10 +1,103 @@
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { GroupMemberRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { holdsTopicRole } from '../roles/service';
+import { holdsTopicRole, topicRoleHolderIds } from '../roles/service';
+import type { AiActivityState } from './ai-activity';
+
+export type { TopicRow };
+
+// Whether an AI may be in a topic's room: the derived rule that keeps an AI
+// from reading a conversation its owner cannot see. Only General is the
+// whole group and has no `topic_ais` rows; elsewhere a row counts only while
+// the AI's owner is a topic member still in the group. The rows are never
+// deleted because this is evaluated live, so it cannot drift.
+export async function aiMayBeInTopic(
+  db: ServerDatabase,
+  topic: TopicRow,
+  ai: { id: string; owner: string; status: string },
+): Promise<boolean> {
+  if (topic.isGeneral || topic.archivedAt !== null || ai.status !== 'active') {
+    return false;
+  }
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM topic_ais
+        WHERE topic_id = ${topic.id} AND ai_id = ${ai.id}
+        LIMIT 1`;
+    }),
+  );
+  if (!row) {
+    return false;
+  }
+  // A non-General topic allows the AI only while its owner is a topic member;
+  // `canSeeTopic` stays true for every member on a public topic, so it is not
+  // enough here.
+  if (!(await isTopicMember(db, topic.id, ai.owner))) {
+    return false;
+  }
+  // The owner must still be in the group too, so a half-finished leave cannot
+  // make the two AI rules disagree.
+  return (await getGroupMembership(db, topic.groupId, ai.owner)) !== null;
+}
+
+// The AI ids currently allowed in one topic; the fast path for the gateway
+// listing. Takes the narrow slice of the topic row the rule reads.
+export async function allowedTopicAiIds(
+  db: ServerDatabase,
+  topic: Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>,
+): Promise<Set<string>> {
+  if (topic.isGeneral || topic.archivedAt !== null) {
+    return new Set();
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        aiId: string;
+        owner: string;
+        status: string;
+      }>`SELECT ta.ai_id, a.owner, a.status
+        FROM topic_ais ta
+        INNER JOIN ais a ON a.id = ta.ai_id
+        WHERE ta.topic_id = ${topic.id}`;
+    }),
+  );
+  const active = rows.filter((row) => row.status === 'active');
+  const memberRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
+        WHERE topic_id = ${topic.id}`;
+    }),
+  );
+  const memberIds = new Set(memberRows.map((row) => row.userId));
+  // An owner who reaches the topic only through a role keeps their AI in the
+  // room, like the room sync.
+  for (const holder of await topicRoleHolderIds(db, topic.id, topic.groupId)) {
+    memberIds.add(holder);
+  }
+  const groupRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${topic.groupId}`;
+    }),
+  );
+  const groupIds = new Set(groupRows.map((row) => row.userId));
+  return new Set(
+    active
+      .filter((row) => memberIds.has(row.owner) && groupIds.has(row.owner))
+      .map((row) => row.aiId),
+  );
+}
 
 const MISSING_TOPIC_MESSAGE = 'Topic not found';
 // A missing topic id and one the caller may not see answer
@@ -236,19 +329,86 @@ export async function canCreateTopic(
   return membersCanCreateTopics;
 }
 
-export type {
-  TopicActivityEntry,
-  TopicAiView,
-  TopicKind,
-  TopicOwnerView,
-  TopicRoleView,
-  TopicRow,
-  TopicStatus,
-  TopicView,
-  TopicVisibility,
-} from './types';
-export { topicKindSchema, topicStatusSchema, topicVisibilitySchema } from './types';
-export { aiMayBeInTopic, allowedTopicAiIds } from './ai-access';
+export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
+export type TopicVisibility = typeof topicVisibilitySchema.Type;
+
+export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
+export type TopicKind = typeof topicKindSchema.Type;
+
+export const topicStatusSchema = Schema.Literals([
+  'open',
+  'in_progress',
+  'in_review',
+  'blocked',
+  'done',
+]);
+export type TopicStatus = typeof topicStatusSchema.Type;
+
+export interface TopicOwnerView {
+  kind: 'user' | 'ai';
+  id: string;
+  name: string;
+}
+
+export interface TopicRoleView {
+  id: string;
+  name: string;
+  memberCount: number;
+}
+
+/** One AI at work in a topic, with its state and picture. */
+export interface TopicActivityEntry {
+  aiId: string;
+  name: string;
+  /** The AI's bare JID, so the client can match its live card. */
+  jid?: string;
+  avatarUrl?: string;
+  /** An open question makes the AI wait; this is the card's message id. */
+  questionId?: string;
+  state: AiActivityState;
+}
+
+export interface TopicView {
+  id: string;
+  groupId: string;
+  name: string;
+  glyph: string;
+  chatJid: string;
+  visibility: TopicVisibility;
+  kind: TopicKind;
+  status: TopicStatus;
+  owner: TopicOwnerView | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  isGeneral: boolean;
+  archived: boolean;
+  /** When a person marked the topic done, an ISO time, null when open;
+   * optional only so older fixtures typecheck. */
+  doneAt?: string | null;
+  memberCount: number;
+  /** The people in this topic (General: the whole group; otherwise its
+   * `topic_members` plus role holders), sorted; optional only so older
+   * fixtures typecheck. */
+  memberIds?: string[];
+  /** AIs added to this topic (never private names). */
+  ais: TopicAiView[];
+  /** roles with access to this topic (empty for public topics). */
+  roles: TopicRoleView[];
+  /** the role whose holders may decide approvals here, if any. */
+  approverRole: { id: string; name: string } | null;
+  /** The AIs at work in this topic, idle ones left out; filled on the list
+   * routes only. */
+  activity?: TopicActivityEntry[];
+}
+
+export interface TopicAiView {
+  id: string;
+  name: string;
+  /** the AI's picture; omitted when it has none. */
+  avatarUrl?: string;
+  /** the AI's JID, so its row can open the AI's chat. */
+  jid?: string;
+}
 
 export {
   countTopicMembers,

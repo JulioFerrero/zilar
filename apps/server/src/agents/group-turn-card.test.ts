@@ -7,7 +7,7 @@ import type { ActionGateway } from '../actions/gateway';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/model-client';
 import type { AiSession } from './gateway/contracts';
-import { createRequestActionRunner } from './gateway/request-action';
+import { createRequestActionRunner } from './gateway/tool-exec';
 import { runGroupTurn } from './group-turn';
 import { REQUEST_ACTION_TOOL } from './tools/schemas';
 import { buildRequestActionTool, type ChatToolDefinition } from './tools/definitions';

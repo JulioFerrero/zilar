@@ -7,20 +7,102 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config/load';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
-import { type ArchivePool } from '../search/service';
+import type { ArchivePool } from '../search/service';
 import {
   handler,
   mountApi,
   schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
+  httpErrorResponse,
+  requestIdOf,
+  type SessionUser,
 } from '../effect/http-core';
-import { createRateLimiter } from '../rate-limit';
+import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { deleteOwnHandlers } from './delete-own';
 import { listChatsFor } from './list-handler';
-import { markDeliveredFor, markReadFor } from './mark-handlers';
-import { replyFor } from './reply-handler';
+import { replyFor, kindFor } from './reply-handler';
+import { buildDisplayed } from '@zilar/xmpp-core';
+import type { HttpServerRequest } from 'effect/http';
+import { HttpError } from '../errors';
+import { jidFor, localpartFor } from '../xmpp/provisioning';
+import { markDeliveredAndNotify } from './delivered-notice';
+import { chatAccessFromParam, putChatRead } from './reads';
 
+// effect-plain: mark handler bodies, access and limits only
+// `api.ts` wraps these with `handler` and the limiter, so access is checked before the write budget.
+
+interface MarkReadRequest {
+  params: { jid: string };
+  payload: { messageId: string; displayed?: string | undefined };
+  request: HttpServerRequest.HttpServerRequest;
+}
+
+interface MarkDeliveredRequest {
+  params: { jid: string };
+  payload: { originIds: readonly string[] };
+  request: HttpServerRequest.HttpServerRequest;
+}
+
+// Access is checked before the write budget, so a probe costs nothing and answers the same 404.
+async function markReadFor(
+  deps: ChatsApiDependencies,
+  limiter: RateLimiter,
+  request: MarkReadRequest,
+  user: SessionUser,
+) {
+  const { bare } = await chatAccessFromParam(deps, request.params.jid, user.id);
+  if (!limiter.allow(user.id)) {
+    return httpErrorResponse(
+      requestIdOf(request.request),
+      new HttpError(429, 'rate_limited', 'Too many read updates, try again later'),
+    );
+  }
+  await putChatRead(deps.db, {
+    bare,
+    userId: user.id,
+    messageId: request.payload.messageId,
+  });
+
+  // Sends the same XEP-0333 marker an in-app read does; best effort, the mark is already stored.
+  const displayed = request.payload.displayed;
+  const adminClient = deps.adminClient;
+  if (displayed !== undefined && adminClient !== undefined) {
+    try {
+      const callerBare = jidFor(localpartFor(user.id), deps.config.xmpp.domain);
+      const stanza = buildDisplayed({
+        chatJid: bare,
+        kind: kindFor(bare, deps.config.xmpp.mucDomain),
+        messageId: displayed,
+      }).toString();
+      await adminClient.sendStanza(callerBare, bare, stanza);
+    } catch {
+      deps.logger.warn({ userId: user.id, chatJid: bare }, 'read marker send failed');
+    }
+  }
+}
+
+// Access is checked before the write budget, like the read mark.
+async function markDeliveredFor(
+  deps: ChatsApiDependencies,
+  limiter: RateLimiter,
+  request: MarkDeliveredRequest,
+  user: SessionUser,
+) {
+  const { bare } = await chatAccessFromParam(deps, request.params.jid, user.id);
+  if (!limiter.allow(user.id)) {
+    return httpErrorResponse(
+      requestIdOf(request.request),
+      new HttpError(429, 'rate_limited', 'Too many delivered updates, try again later'),
+    );
+  }
+  // Stores the mark and, for a moved DM, tells the author's devices off the HTTP path.
+  await markDeliveredAndNotify(deps, {
+    bare,
+    userId: user.id,
+    originIds: request.payload.originIds,
+  });
+}
 export const CHAT_READ_RATE_LIMIT_MAX = 600;
 export const CHAT_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 

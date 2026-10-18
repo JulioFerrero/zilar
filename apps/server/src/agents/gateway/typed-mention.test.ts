@@ -2,7 +2,7 @@
 // wakes the AI even though the sender never picked an entry from the mention
 // list. These tests cover the body matcher the group ingest runs on the server.
 import { describe, expect, it } from 'vitest';
-import { bodyAddressesAi } from './typed-mention';
+import { bodyAddressesAi } from './addressing';
 
 describe('bodyAddressesAi', () => {
   it('matches an @name with a boundary on each side', () => {

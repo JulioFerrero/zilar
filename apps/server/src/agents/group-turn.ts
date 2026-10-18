@@ -1,13 +1,11 @@
 // effect-plain: this module's public edge stays Promise-shaped.
-import type { Payload } from '@zilar/protocol';
-import type { SendMessageOptions } from '@zilar/xmpp-core';
+import type { Payload, HandoffLine } from '@zilar/protocol';
+import type { SendMessageOptions, ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './tool-rounds';
-import { buildHandoffLine, findHandoffIndex } from './handoff';
-import { stripLeadingMention } from './reply-mention';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import { sendGroupReply } from './turn-send';
@@ -25,13 +23,149 @@ import {
   requestCompletion,
   type ExecuteToolCall,
   type ModelRequestMessage,
+  type TurnCaps,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
-import type { GroupTurnDeps } from './group-turn-deps';
+import type { ChatCompletionMessage } from './context';
+import type { ChatToolDefinition } from './tools/definitions';
 
-export type { GroupTurnDeps } from './group-turn-deps';
+const HANDOFF_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;
+
+function findHandoffIndex(text: string, nick: string): number | null {
+  const needle = `@${nick}`;
+  const lowerNeedle = needle.toLowerCase();
+  for (let index = 0; index + needle.length <= text.length; index += 1) {
+    if (text.slice(index, index + needle.length).toLowerCase() !== lowerNeedle) {
+      continue;
+    }
+    const after = text[index + needle.length];
+    if (after === undefined || HANDOFF_BOUNDARY.test(after)) {
+      return index;
+    }
+  }
+  return null;
+}
+
+const HANDOFF_TASK_MAX = 200;
+
+export function buildHandoffLine(input: {
+  fromJid: string;
+  text: string;
+  targets: ReadonlyArray<{ nick: string; jid: string }>;
+}): HandoffLine | null {
+  const to: string[] = [];
+  let lastEnd = -1;
+  for (const target of input.targets) {
+    const nick = target.nick.trim();
+    if (nick === '') {
+      continue;
+    }
+    const index = findHandoffIndex(input.text, nick);
+    if (index === null) {
+      continue;
+    }
+    if (to.length < 2) {
+      to.push(target.jid.toLowerCase());
+    }
+    lastEnd = Math.max(lastEnd, index + nick.length + 1);
+  }
+  if (lastEnd === -1) {
+    return null;
+  }
+  return {
+    from: input.fromJid,
+    to,
+    task: oneLineTask(input.text.slice(lastEnd)),
+  };
+}
+
+// The reply text after the mention, collapsed to one line, with the leading
+// `:`, `,`, `-` and spaces stripped, then cut to 200 characters.
+function oneLineTask(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s:,-]+/, '')
+    .trimEnd()
+    .slice(0, HANDOFF_TASK_MAX);
+}
+export interface GroupTurnDeps {
+  aiId: string;
+  /** The AI's own bare JID, the `from` of the handoff marker. With no JID,
+   * `wire()` attaches no marker. */
+  aiJid?: string;
+  roomJid: string;
+  triggerId: string;
+  syntheticTrigger?: boolean;
+  senderJid: string;
+  senderName: string;
+  messages: ChatCompletionMessage[];
+  target: ModelTarget;
+  fetchImpl?: FetchLike;
+  timeoutMs?: number;
+  sendMessage: (
+    to: string,
+    kind: ChatKind,
+    text: string,
+    opts: SendMessageOptions,
+  ) => Promise<unknown>;
+  sendTyping: (to: string, kind: ChatKind, state: 'composing' | 'paused') => void;
+  logger: {
+    warn: (fields: Record<string, unknown>, message: string) => void;
+  };
+  /** Extra secrets to redact from every log line (e.g. the master key). */
+  secrets?: readonly string[];
+  /** Receives the token counters of every model call in the turn. */
+  onUsage?: (usage: ChatUsage) => void;
+  signal?: AbortSignal;
+  /**
+   * Tools to advertise to the model. Absent (or empty) = the plain
+   * `completeChat` path. A group turn always carries the memory tools; persona
+   * tools are never offered in a group, and `request_action` appears only when
+   * the trigger is allowed to ask for one.
+   */
+  tools?: ChatToolDefinition[];
+  executeTool?: ExecuteToolCall;
+  maxRounds?: number;
+  caps?: TurnCaps;
+  checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
+  turnStartMs?: number;
+  nowMs?: () => number;
+  reportProgress?: (stage: string) => Promise<string | null>;
+  finishProgress?: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
+  turnLogger?: {
+    info: (fields: Record<string, unknown>, message: string) => void;
+  };
+  handoffTargets?: { nick: string; jid: string }[];
+  onFailure?: (reason: string) => Promise<void>;
+  log?: TurnLog;
+}
+const MENTION_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;
+
+export function stripLeadingMention(text: string, name: string): string {
+  const nick = name.trim();
+  if (nick === '') {
+    return text;
+  }
+  const pattern = new RegExp(
+    `^@${escapeRegExp(nick)}(?=$|${MENTION_BOUNDARY.source})\\s*[,:]?\\s*`,
+    'i',
+  );
+  let rest = text;
+  for (;;) {
+    const next = rest.replace(pattern, '');
+    if (next === rest || next === '') {
+      break;
+    }
+    rest = next;
+  }
+  return rest === '' ? text : rest;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Tells the owner the real reason a room turn failed, best
 // effort. The room already heard `GROUP_FAILURE_REPLY`; a throw from the

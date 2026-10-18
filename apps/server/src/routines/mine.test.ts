@@ -10,7 +10,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { createPromptRoutine } from './prompt-routines';
+import { createPromptRoutine } from '../tools/routine-adapters';
 import { listMyRoutines } from './reads';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');

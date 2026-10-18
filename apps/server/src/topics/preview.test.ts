@@ -17,7 +17,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { seedGroup } from '../test-support/seed';
-import { readTopicPreview, TOPIC_PREVIEW_LIMIT } from './preview';
+import { readTopicPreview, TOPIC_PREVIEW_LIMIT } from './api';
 
 const ROOM_JID = `roompub@${TEST_XMPP_MUC_DOMAIN}`;
 const BOB = 'bob@zilar.localhost';

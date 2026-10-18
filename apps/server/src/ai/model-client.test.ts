@@ -8,7 +8,7 @@ import {
 } from '../agents/replies';
 import type { FetchLike } from './http';
 import { ChatCompletionError, chat, chatErrorFromAiError } from './model-client';
-import { toPrompt, toToolkit, type ModelRequestMessage } from './model-prompt';
+import { toPrompt, toToolkit, type ModelRequestMessage } from './model-client';
 
 const RECALL_TOOL = {
   type: 'function' as const,

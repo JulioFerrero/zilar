@@ -6,7 +6,7 @@ import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import type { ApprovalRow } from '../../db/rows';
 import type { AiSession } from './contracts';
-import { createApprovalFollowUp, type ApprovalFollowUpDeps } from './approval-follow-up';
+import { createApprovalFollowUp, type ApprovalFollowUpDeps } from '../gateway';
 import { createOnDecided } from './approval-on-decided';
 
 const DOMAIN = 'zilar.localhost';

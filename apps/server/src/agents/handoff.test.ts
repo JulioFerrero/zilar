@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildHandoffLine } from './handoff';
+import { buildHandoffLine } from './group-turn';
 
 const FROM = 'ai-dev@zilar.localhost';
 

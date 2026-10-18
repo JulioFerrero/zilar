@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Schema } from 'effect';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
-import { outputJsonSchema } from '../sandbox/run-tool-schemas';
+import { outputJsonSchema } from '../sandbox/run-tool';
 import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { postResult } from './outcomes';
 

@@ -3,12 +3,156 @@ import type { ModelTarget } from '../../ai/providers';
 import { recordUsage } from '../../ais/usage-store';
 import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import type { MemoryContext } from '../context';
-import { compactMemoryEffect } from '../memory/compactor';
 import { indexMemory, type MemoryScope } from '../memory/indexer';
 import { listFacts } from '../memory/facts';
 import { renderMemoryBlock } from '../memory/render';
 import { completeChat } from '../dm-turn';
+import type { ServerDatabase } from '../../db/client';
+import { looksLikeSecret } from '../memory/secrets';
+import {
+  formatBlockId,
+  MEMORY_LINE_MAX,
+  MEMORY_MIN_BLOCK,
+  pending,
+  type Block,
+} from '../memory/tree';
+import { SqlClient } from 'effect/sql';
+import { runSql } from '../../effect/sql';
+import { blockKey, formatRow, loadNodeMap, loadRows, memoryRange } from '../memory/mirror';
+import { blockLines } from '../memory/recall';
 
+// The blocks that can be summarised now, smallest first, only above the floor
+// and never past `end` (messages still in the window have no tree yet).
+async function pendingNodes(
+  db: ServerDatabase,
+  aiId: string,
+  chatKey: string,
+  limit: number,
+): Promise<Block[]> {
+  const { end, floor } = await memoryRange(db, aiId, chatKey);
+  const built = await loadNodeMap(db, aiId, chatKey);
+  return pending(end, (block) => built.has(blockKey(block)))
+    .filter((block) => block.lo >= floor)
+    .slice(0, limit);
+}
+
+// What the compactor feeds the model: the raw rows of a size-16 block (deleted
+// rows skipped) or the two summaries of a larger block.
+async function compactionInput(
+  db: ServerDatabase,
+  aiId: string,
+  chatKey: string,
+  block: Block,
+): Promise<string[]> {
+  const size = block.hi - block.lo;
+  if (size === MEMORY_MIN_BLOCK) {
+    const rows = await loadRows(db, aiId, chatKey, block);
+    return rows.filter((row) => !row.deleted).map(formatRow);
+  }
+
+  return blockLines(db, aiId, chatKey, block);
+}
+
+// Store one node summary, cut to one line. The cut never leaves a lone high
+// surrogate at the end (the string would then be half an astral character). A
+// concurrent build wins: a second insert for the same block is dropped.
+async function putNode(
+  db: ServerDatabase,
+  aiId: string,
+  chatKey: string,
+  block: Block,
+  summary: string,
+): Promise<void> {
+  const cut = summary.slice(0, MEMORY_LINE_MAX);
+  const value = /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_nodes (ai_id, chat_key, lo, hi, summary)
+        VALUES (${aiId}, ${chatKey}, ${block.lo}, ${block.hi}, ${value})
+        ON CONFLICT DO NOTHING`;
+    }),
+  );
+}
+
+// The pure compaction prompt: the fixed instruction followed by the input
+// lines. No text from the chat is formatted here beyond what the caller passes.
+function buildCompactionPrompt(blockId: string, inputLines: string[]): string {
+  const header =
+    `Compress chat memory #${blockId} into one line of at most ${MEMORY_LINE_MAX} characters. ` +
+    'Keep what has lasting effect (decisions, facts, preferences, plans, who said what that ' +
+    'matters); drop small talk. Invent nothing. Never include passwords, codes, keys or tokens. ' +
+    'Reply with the line only.';
+  if (inputLines.length === 0) return header;
+  return `${header}\n${inputLines.join('\n')}`;
+}
+interface CompactMemoryInput {
+  db: ServerDatabase;
+  aiId: string;
+  chatKey: string;
+  complete: (prompt: string) => Promise<string>;
+  limit?: number;
+}
+
+interface CompactMemoryResult {
+  built: number;
+  withheld: number;
+}
+
+const DEFAULT_LIMIT = 4;
+const NOTHING_KEPT = '(nothing kept)';
+const SUMMARY_WITHHELD = '(summary withheld)';
+
+// The first non-empty line of the model's reply, trimmed; '' when there is none.
+function firstLine(raw: string): string {
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed !== '') return trimmed;
+  }
+  return '';
+}
+
+// Build the pending nodes for one chat, in order. A `complete` that throws
+// stops the loop and is rethrown: the caller (the gateway) logs it. A block
+// whose input is empty (every row deleted) is stored as `(nothing kept)`
+// without a model call; a summary that looks like a secret is withheld. The
+// database and model calls are lifted with plain `Effect.promise`, so a
+// failure dies with the original error and `runPromise` rejects with it
+// unwrapped.
+const compactMemoryEffect = Effect.fnUntraced(function* (
+  input: CompactMemoryInput,
+): Effect.fn.Return<CompactMemoryResult> {
+  const { db, aiId, chatKey, complete } = input;
+  const limit = input.limit ?? DEFAULT_LIMIT;
+  let built = 0;
+  let withheld = 0;
+
+  const blocks = yield* Effect.promise(() => pendingNodes(db, aiId, chatKey, limit));
+  for (const block of blocks) {
+    const lines = yield* Effect.promise(() => compactionInput(db, aiId, chatKey, block));
+    let summary = NOTHING_KEPT;
+    if (lines.length > 0) {
+      const raw = yield* Effect.promise(() =>
+        complete(buildCompactionPrompt(formatBlockId(block), lines)),
+      );
+      const line = firstLine(raw);
+      if (line !== '') summary = line;
+    }
+    if (looksLikeSecret(summary)) {
+      summary = SUMMARY_WITHHELD;
+      withheld += 1;
+    }
+    yield* Effect.promise(() => putNode(db, aiId, chatKey, block, summary));
+    built += 1;
+  }
+
+  return { built, withheld };
+});
+
+export function compactMemory(input: CompactMemoryInput): Promise<CompactMemoryResult> {
+  return Effect.runPromise(compactMemoryEffect(input));
+}
 export interface MemoryRunnerContext {
   deps: Pick<AgentGatewayDeps, 'db' | 'archive' | 'fetchImpl'>;
   logger: GatewayLogger;

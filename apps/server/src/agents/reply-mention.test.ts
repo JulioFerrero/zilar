@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stripLeadingMention } from './reply-mention';
+import { stripLeadingMention } from './group-turn';
 
 describe('stripLeadingMention (T-1625)', () => {
   it('removes a leading @name echoed by the model', () => {

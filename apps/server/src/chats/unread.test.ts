@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SearchOwner } from '../search/service';
-import { newestUnskippedRow } from './unread-skip';
+import { newestUnskippedRow } from './unread';
 import { summarizeUnread } from './unread';
 
 const PEER = 'ana@zilar.test';

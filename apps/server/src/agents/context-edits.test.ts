@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
-import { applyEdits } from './context-edits';
+import { applyEdits } from './context';
 
 function message(overrides: Partial<ChatMessage> & Pick<ChatMessage, 'id'>): ChatMessage {
   return {

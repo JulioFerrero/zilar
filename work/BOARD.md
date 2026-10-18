@@ -2111,3 +2111,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2093](T-2093-shared-key-check.md) | share: one key check for web and phone in client-core | 2026-10-18 |
 | [T-2109](T-2109-fold-packages.md) | packages: fold 37 single-use files into their importer | 2026-10-18 |
 | [T-2098](T-2098-api-chat-extras.md) | share: one pins, memory, media and search API for both apps | 2026-10-18 |
+| [T-2107](T-2107-fold-server-a.md) | server: fold 56 single-use files into their importer | 2026-10-18 |

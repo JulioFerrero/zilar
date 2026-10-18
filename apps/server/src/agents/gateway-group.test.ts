@@ -27,7 +27,7 @@ import { createGroupTurn } from './gateway/group-turn';
 import { createBudgetGate } from './gateway/budget';
 import { createLiveSession } from './gateway/live';
 import { createMemoryRunner } from './gateway/memory';
-import { checkRoomLimits, shouldSendRateNotice } from './gateway/room-limits';
+import { checkRoomLimits, shouldSendRateNotice } from './gateway/group-turn';
 import { GROUP_FAILURE_REPLY, PROVIDER_KEY_REJECTED_REPLY } from './replies';
 import { TOOL_TURN_WALL_CLOCK_MS } from './tool-loop';
 import { TOOL_TURN_MIN_CALL_MS, remainingTurnBudgetMs } from './turn-budget';

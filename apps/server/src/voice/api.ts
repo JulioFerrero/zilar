@@ -1,6 +1,5 @@
 // The endpoint declares no payload schema, so nothing is buffered before the handler: it
 // reads the body stream chunk by chunk and stops past the cap, and answers raw bytes.
-
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +10,19 @@ import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { NotAudioError, createFfmpegEngine } from './engine';
-import { VOICE_MAX_BYTES, VOICE_MAX_DURATION_MS, type VoiceRoutesDependencies } from './routes';
+import { NotAudioError, createFfmpegEngine, type VoiceEngine } from './engine';
+import type { Auth } from '../auth/auth';
 
+/** Hard cap on the uploaded recording, enforced while reading the body. */
+const VOICE_MAX_BYTES = 10 * 1024 * 1024;
+/** Recordings shorter than a blink or longer than five minutes are rejected. */
+const VOICE_MAX_DURATION_MS = 5 * 60 * 1000;
+
+interface VoiceRoutesDependencies {
+  auth: Auth;
+  engine?: VoiceEngine;
+  maxBytes?: number;
+}
 export interface VoiceApiDependencies extends VoiceRoutesDependencies {
   logger: Logger;
 }

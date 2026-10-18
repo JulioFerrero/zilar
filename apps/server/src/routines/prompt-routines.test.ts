@@ -9,7 +9,7 @@ import type { AuditRecorder } from '../audit/recorder';
 import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { createPromptRoutine } from './prompt-routines';
+import { createPromptRoutine } from '../tools/routine-adapters';
 import { MAX_ROUTINE_PROMPT_CHARS, type CreatePromptRoutineInput } from './schemas';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');

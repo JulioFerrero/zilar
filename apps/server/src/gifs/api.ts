@@ -1,9 +1,9 @@
 // Step order is security-relevant: session, provider check (501), then the limiter, then
 // the 400 query decode, so an invalid query still spends budget.
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { Layer, Option, Schema } from 'effect';
+import { Layer, Option, Schema, Exit } from 'effect';
 import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { GifsGroup } from '@zilar/api-contract';
@@ -36,8 +36,69 @@ import {
   type GifsRoutesDependencies,
   type MediaFetch,
 } from './routes';
-import { createGifTokenIssuer, type GifTokenIssuer } from './token';
+import { struct } from '@zilar/protocol';
 
+const GIF_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+const tokenPayloadSchema = struct({
+  u: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  m: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(2048))),
+  e: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThan(0))),
+});
+
+/**
+ * HMAC-signed, expiring after 15 minutes, bound to the exact provider URL and user id: a
+ * token for user A fails for user B, and any edit fails the signature.
+ */
+interface GifTokenIssuer {
+  issue(userId: string, mediaUrl: string): string;
+  verify(token: string, userId: string): string | undefined;
+}
+
+function createGifTokenIssuer(options: { secret: string; now?: () => number }): GifTokenIssuer {
+  const now = options.now ?? Date.now;
+  const secret = options.secret;
+
+  return {
+    issue(userId: string, mediaUrl: string): string {
+      const payload = JSON.stringify({ u: userId, m: mediaUrl, e: now() + GIF_TOKEN_TTL_MS });
+      const signature = createHmac('sha256', secret).update(payload).digest('base64url');
+      return `${Buffer.from(payload, 'utf8').toString('base64url')}.${signature}`;
+    },
+
+    verify(token: string, userId: string): string | undefined {
+      const dot = token.indexOf('.');
+      if (dot <= 0) {
+        return undefined;
+      }
+      const encoded = token.slice(0, dot);
+      const signature = token.slice(dot + 1);
+      let payload: string;
+      try {
+        payload = Buffer.from(encoded, 'base64url').toString('utf8');
+      } catch {
+        return undefined;
+      }
+      const expected = createHmac('sha256', secret).update(payload).digest('base64url');
+      const left = Buffer.from(signature);
+      const right = Buffer.from(expected);
+      if (left.length !== right.length || !timingSafeEqual(left, right)) {
+        return undefined;
+      }
+      const exit = Schema.decodeUnknownExit(tokenPayloadSchema)(JSON.parse(payload));
+      if (!Exit.isSuccess(exit)) {
+        return undefined;
+      }
+      if (exit.value.u !== userId) {
+        return undefined;
+      }
+      if (exit.value.e <= now()) {
+        return undefined;
+      }
+      return exit.value.m;
+    },
+  };
+}
 export interface GifsApiDependencies extends GifsRoutesDependencies {
   auth: Auth;
   config: ServerConfig;

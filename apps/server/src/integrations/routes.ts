@@ -1,7 +1,6 @@
 // Integration settings helpers: rate-limit constants, dependencies, the per-request bot
 // token resolver and shared helpers. Every route needs a session, and a non-owner gets the
 // same 404 as an unknown route, so existence never leaks.
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
@@ -15,13 +14,66 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { getMailSettings, settingsCipherFor } from '../setup/settings';
-import {
-  deleteStoredTelegramToken,
-  saveStoredTelegramToken,
-  getStoredTelegramToken,
-  TELEGRAM_BOT_TOKEN_SETTING,
-} from './settings';
+import type { createSettingsCipher } from '../setup/crypto';
 
+// Instance-level secrets the owner manages from Settings → Integrations, sealed with the
+// envelope cipher; env variables still win when set. The owner is the user with the
+// earliest `createdAt` (there is no global admin role), and everyone else gets the same
+// 404 as an unknown route.
+
+const TELEGRAM_BOT_TOKEN_SETTING = 'telegram.bot_token';
+
+type Decrypter = Pick<ReturnType<typeof createSettingsCipher>, 'decrypt'>;
+type Encrypter = Pick<ReturnType<typeof createSettingsCipher>, 'encrypt'>;
+
+interface StoredValueRow {
+  value: string;
+}
+
+async function getStoredTelegramToken(
+  db: ServerDatabase,
+  cipher: Decrypter,
+): Promise<string | null> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StoredValueRow>`SELECT value FROM instance_settings WHERE key = ${TELEGRAM_BOT_TOKEN_SETTING}`;
+    }),
+  );
+  const row = rows[0];
+  if (row === undefined) {
+    return null;
+  }
+  return cipher.decrypt(row.value);
+}
+
+async function saveStoredTelegramToken(
+  db: ServerDatabase,
+  cipher: Encrypter,
+  token: string,
+): Promise<void> {
+  const value = cipher.encrypt(token);
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql`INSERT INTO instance_settings (key, value)
+        VALUES (${TELEGRAM_BOT_TOKEN_SETTING}, ${value})
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+    }),
+  );
+}
+
+async function deleteStoredTelegramToken(db: ServerDatabase): Promise<void> {
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql`DELETE FROM instance_settings WHERE key = ${TELEGRAM_BOT_TOKEN_SETTING}`;
+    }),
+  );
+}
 export const INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX = 10;
 export const INTEGRATIONS_TELEGRAM_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const INTEGRATIONS_EMAIL_RATE_LIMIT_MAX = 5;

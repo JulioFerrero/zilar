@@ -6,7 +6,7 @@ import type { RoutineRow } from '../db/rows';
 import { createAuditRecorder } from '../audit/recorder';
 import { listAuditForAi } from '../audit/list';
 import { AlertLinkTaken, linkAlertCard } from '../routines/alert-link';
-import { createPromptRoutine } from '../routines/prompt-routines';
+import { createPromptRoutine } from '../tools/routine-adapters';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';

@@ -10,10 +10,58 @@ import type {
   ToolDetail,
   ToolVersionDetail,
 } from './service';
-import { toPublicRun, toPublicVersion, toToolDetail, toVersionDetail } from './tool-views';
 
-export { toPublicRun, toToolDetail, toVersionDetail } from './tool-views';
+export function toToolDetail(
+  tool: ToolRow,
+  current: VersionRow,
+  lastRunStatus: 'ok' | 'error' | null,
+): ToolDetail {
+  return {
+    id: tool.id,
+    aiId: tool.aiId,
+    groupId: tool.groupId,
+    topicId: tool.topicId,
+    name: tool.name,
+    description: tool.description,
+    currentVersion: tool.currentVersion,
+    hosts: current.hosts,
+    approvedHosts: [...(tool.approvedHosts ?? [])],
+    source: current.source,
+    lastRunStatus,
+    updatedAt: tool.updatedAt,
+  };
+}
 
+function toPublicVersion(row: VersionRow): PublicToolVersion {
+  return {
+    id: row.id,
+    toolId: row.toolId,
+    version: row.version,
+    message: row.message,
+    hosts: row.hosts,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+  };
+}
+
+export function toVersionDetail(row: VersionRow): ToolVersionDetail {
+  return { ...toPublicVersion(row), source: row.source };
+}
+
+export function toPublicRun(row: RunRow): PublicToolRun {
+  return {
+    id: row.id,
+    toolId: row.toolId,
+    version: row.version,
+    trigger: row.trigger,
+    status: row.status,
+    errorKind: row.errorKind,
+    durationMs: row.durationMs,
+    fetchCount: row.fetchCount,
+    outputText: row.outputText,
+    createdAt: row.createdAt,
+  };
+}
 // At most 20 active tools per (AI, topic), 200 versions per tool, 2 KiB stored output, newest 50 runs.
 export const MAX_TOOLS_PER_TOPIC = 20;
 export const MAX_VERSIONS_PER_TOOL = 200;

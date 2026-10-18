@@ -1,5 +1,4 @@
 // Builds the caller's chat list from contacts, groups, AIs, avatars, topics and marks.
-
 import { Effect } from 'effect';
 import { listAis } from '../ais/queries';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -12,11 +11,31 @@ import { toTopicViews, type TopicView } from '../topics/access';
 import { withTopicActivity } from '../topics/ai-activity';
 import { visibleTopicsForGroups } from '../topics/visible-batch';
 import type { ChatsApiDependencies } from './api';
-import { aiDmEntries } from './ai-entries';
 import { deliveredForChats, mergeTopicMarks, type DeliveryLookup } from './deliveries';
 import { readForChats } from './reads';
 import { unreadForChats, type ChatUnread, type UnreadScope } from './unread';
+import type { PublicAi } from '../ais/persona';
 
+// Each active AI the caller owns is a DM with its own XMPP account.
+// It carries the AI's `createdAt` (ISO) so a just-created, still-empty AI chat sorts first, like a group.
+// Disabled AIs and other people's AIs are left out; no avatar key when the AI has none.
+function aiDmEntries(
+  ais: readonly PublicAi[],
+  aiAvatars: ReadonlyMap<string, string>,
+): ChatListEntry[] {
+  return ais
+    .filter((ai) => ai.status === 'active')
+    .map((ai): ChatListEntry => ({
+      kind: 'dm',
+      chatJid: ai.jid,
+      title: ai.name,
+      isAi: true,
+      createdAt: ai.createdAt.toISOString(),
+      ...(aiAvatars.get(ai.id) === undefined
+        ? {}
+        : { avatarUrl: avatarUrlFor(aiAvatars.get(ai.id)!) }),
+    }));
+}
 export interface ChatUnreadFields {
   unread?: number;
   lastMessage?: ChatUnread['lastMessage'];

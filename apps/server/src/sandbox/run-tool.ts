@@ -8,17 +8,125 @@ import {
   type DnsResolver,
   type HostFetcher,
 } from './host-fetch';
-import {
-  MAX_SOURCE_BYTES,
-  parseToolOutput,
-  resolveLimits,
-  withFetchPrefix,
-  type RunToolResult,
-  type SandboxErrorKind,
-  type SandboxLimits,
-} from './types';
-import { outputJsonSchema, sanitizeMessage, workerEventSchema } from './run-tool-schemas';
+import { MAX_SOURCE_BYTES, resolveLimits, withFetchPrefix, type SandboxLimits } from './limits';
 
+type SandboxErrorKind =
+  | 'invalid_source'
+  | 'syntax'
+  | 'runtime'
+  | 'timeout'
+  | 'memory'
+  | 'output_too_large'
+  | 'invalid_output'
+  | 'fetch_denied'
+  | 'sandbox_failure';
+
+interface ToolOutput {
+  text: string;
+  data?: unknown;
+  blocks?: unknown;
+  card?: unknown;
+}
+
+export type RunToolResult =
+  | {
+      ok: true;
+      output: ToolOutput;
+      logs: string;
+      durationMs: number;
+      fetchCount: number;
+    }
+  | {
+      ok: false;
+      error: { kind: SandboxErrorKind; message: string };
+      logs: string;
+      durationMs: number;
+      fetchCount: number;
+    };
+
+const toolOutputSchema = Schema.Struct({
+  text: Schema.String,
+  data: Schema.optional(Schema.Unknown),
+  blocks: Schema.optional(Schema.Unknown),
+  card: Schema.optional(Schema.Unknown),
+});
+
+function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | null {
+  const parsed = Schema.decodeUnknownOption(toolOutputSchema)(value);
+  if (Option.isNone(parsed)) {
+    return null;
+  }
+  const output = parsed.value;
+  if (output.text.length > maxBytes) {
+    return null;
+  }
+  // `blocks` and `card` pass through unchecked; `buildBlocksPayload` rejects a
+  // broken shape later, so a bad tool never breaks its own run.
+  return {
+    text: output.text,
+    ...(output.data === undefined ? {} : { data: output.data }),
+    ...(output.blocks === undefined ? {} : { blocks: output.blocks }),
+    ...(output.card === undefined ? {} : { card: output.card }),
+  };
+}
+const nonNegativeInt = Schema.Finite.pipe(
+  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+);
+
+const workerResultSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('result'),
+    outputJson: Schema.String,
+    fetchCount: nonNegativeInt,
+    durationMs: Schema.Finite,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('error'),
+    kind: Schema.Literals([
+      'timeout',
+      'memory',
+      'runtime',
+      'syntax',
+      'invalid_output',
+      'fetch_denied',
+      'output_too_large',
+    ]),
+    message: Schema.String,
+    fetchCount: nonNegativeInt,
+    durationMs: Schema.Finite,
+  }),
+]);
+
+const workerEventSchema = Schema.Union([
+  workerResultSchema,
+  Schema.Struct({ type: Schema.Literal('log'), text: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal('fetch'),
+    id: nonNegativeInt,
+    url: Schema.String,
+    method: Schema.String,
+    headers: Schema.Record(Schema.String, Schema.String),
+    bodyPresent: Schema.Boolean,
+  }),
+]);
+
+export const outputJsonSchema = Schema.Struct({
+  text: Schema.String,
+  data: Schema.optional(Schema.Unknown),
+  blocks: Schema.optional(Schema.Unknown),
+  card: Schema.optional(Schema.Unknown),
+});
+
+function sanitizeMessage(message: string): string {
+  return message
+    .replace(/[A-Z]:[\\/][^\s]*/g, '[path]')
+    .replace(/\/(?:app|home|Users)[^\s]*/g, '[path]')
+    .replace(/node_modules[^\s]*/g, '[lib]')
+    .replace(/wasm[^:\s]*:\d+/g, '[vm]')
+    .replace(/\s+at\s+[^\n]*/g, '')
+    .trim()
+    .slice(0, 300);
+}
 // Never runs tool code in this thread: every execution spawns a QuickJS worker,
 // terminated when the wall clock passes. The parent validates fetch requests
 // (allowlist + SSRF guard) and performs the real HTTPS calls.

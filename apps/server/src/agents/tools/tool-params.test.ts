@@ -7,9 +7,9 @@ import {
   buildDelegateTool,
   buildRequestActionTool,
 } from './definitions';
-import { FETCH_MEDIA_TOOL_DEF, SAVE_TEXT_MEDIA_TOOL_DEF } from './media-tool';
-import { POST_BLOCKS_TOOL_DEF } from './blocks-tool';
-import { deskToolDefinitions } from './desk-definitions';
+import { FETCH_MEDIA_TOOL_DEF, SAVE_TEXT_MEDIA_TOOL_DEF } from './definitions';
+import { POST_BLOCKS_TOOL_DEF } from './definitions';
+import { deskToolDefinitions } from './definitions';
 
 const TOOLS = [
   ...PERSONA_TOOLS,

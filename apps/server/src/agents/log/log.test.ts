@@ -8,7 +8,7 @@ import { createKeyCipher } from '../../connections/crypto';
 import type { ServerDatabase } from '../../db/client';
 import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../../test-support';
 import { createTurnLog, insertEvent, TASK_EVENT_TEXT_MAX_BYTES } from './append';
-import { listTaskEvents, loadTaskOwnerId } from './read';
+import { listTaskEvents, loadTaskOwnerId } from './api';
 import { deleteEventsOlderThan, retentionCutoff, TASK_EVENT_RETENTION_DAYS } from './retention';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';

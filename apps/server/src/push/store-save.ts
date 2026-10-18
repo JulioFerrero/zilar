@@ -1,16 +1,47 @@
 // The device save keeps one row per identity: a re-registration follows its
 // token to the new session, and a revoked session's rows go with it, so the
 // component drops the freed node as `unknown-device`.
-
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { PushSubscriptionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { PushCipher } from './crypto';
-import type { WebPushSubscription } from './subscriptions';
+import { isAllowedPushEndpoint } from '@zilar/api-contract';
+import { struct } from '@zilar/protocol';
 
+// The browser's PushSubscription JSON, validated at the route boundary
+// before anything is stored.
+const WebPushKeysSchema = struct({
+  p256dh: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
+  auth: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
+});
+
+// The endpoint must be a real Web Push service address: the shared allowlist
+// rejects internal hosts, other ports and plain http.
+const WebPushSubscriptionSchema = struct({
+  endpoint: Schema.String.pipe(
+    Schema.check(
+      Schema.isMaxLength(2048),
+      Schema.makeFilter((value) =>
+        isAllowedPushEndpoint(value) ? undefined : 'must be a Web Push service endpoint',
+      ),
+    ),
+  ),
+  expirationTime: Schema.optional(Schema.NullOr(Schema.Number)),
+  keys: WebPushKeysSchema,
+});
+
+type WebPushSubscription = Schema.Schema.Type<typeof WebPushSubscriptionSchema>;
+
+// A native device token, validated at the route boundary before it is
+// stored in the clear.
+const NativePushTokenSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+);
+
+export type NativePushToken = Schema.Schema.Type<typeof NativePushTokenSchema>;
 export const PUSH_MAX_DEVICES_PER_USER = 20;
 
 interface SaveDeviceBase {

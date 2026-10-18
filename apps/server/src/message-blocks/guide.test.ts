@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BlockSchema } from '@zilar/protocol';
 import { TOOL_GUIDE } from '../agents/tool-guide';
-import { POST_BLOCKS_TOOL_DEF } from '../agents/tools/blocks-tool';
+import { POST_BLOCKS_TOOL_DEF } from '../agents/tools/definitions';
 import {
   CARD_KINDS,
   CARD_RULES,
