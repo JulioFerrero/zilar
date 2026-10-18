@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { MonitorSmartphone } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -16,7 +16,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { AuthApiError, listSessions, revokeSession } from '@/lib/auth-api';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
@@ -122,6 +122,7 @@ function DevicesList() {
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // The load callback keeps its identity between focuses, so it reads the
   // status from a ref: a refresh with the devices on screen keeps them and
@@ -141,10 +142,12 @@ function DevicesList() {
           Effect.sync(() => {
             setSessions([...body.sessions]);
             setStatus('ready');
+            setRefreshing(false);
           }),
         ),
         Effect.catch(() =>
           Effect.sync(() => {
+            setRefreshing(false);
             // A failed background refresh keeps the devices; the next focus retries.
             if (keepContent) {
               return;
@@ -217,6 +220,16 @@ function DevicesList() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+          />
+        }
       >
         <View className="p-4">
           {status === 'loading' ? <StateMessage kind="loading" title="Loading devices…" /> : null}

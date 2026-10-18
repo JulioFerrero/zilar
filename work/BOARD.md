@@ -1971,3 +1971,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1966](T-1966-phone-last-headers.md) | phone last headers use ScreenHeader; drop largeTitle | 2026-10-18 |
 | [T-1969](T-1969-phone-tab-reselect-top.md) | phone re-tap active tab scrolls to top | 2026-10-18 |
 | [T-1973](T-1973-caddy-grace-period.md) | Caddy grace_period 2s: stop no longer waits 30 s on sockets | 2026-10-18 |
+| [T-1970](T-1970-phone-pull-refresh-people.md) | phone pull to refresh on people settings lists | 2026-10-18 |

@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ScrollView, Share, View } from 'react-native';
+import { RefreshControl, ScrollView, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { domainOfJid, type Contact } from '@/lib/contacts-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
@@ -51,6 +52,7 @@ function ContactsList() {
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // A new load replaces one still running (the focus refresh and Retry).
   const [, reload] = useAction<void, void, never>(
@@ -71,10 +73,12 @@ function ContactsList() {
           Effect.sync(() => {
             setPeople([...contacts]);
             setStatus('ready');
+            setRefreshing(false);
           }),
         ),
         Effect.catch((message: string) =>
           Effect.sync(() => {
+            setRefreshing(false);
             // A failed background refresh keeps the rows; the next focus retries.
             if (status === 'ready') {
               return;
@@ -160,6 +164,16 @@ function ContactsList() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={() => {
+              setRefreshing(true);
+              reload();
+            }}
+          />
+        }
       >
         <View className="p-4">
           {shareUrl !== null ? (

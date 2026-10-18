@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ban, ChevronLeft, UserPlus } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -13,7 +13,7 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import type { ContactRequestView } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import {
@@ -49,6 +49,7 @@ function RequestsList() {
   const [outgoing, setOutgoing] = useState<ContactRequestView[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // A new load replaces one still running (the focus refresh and Retry).
   const [, reload] = useAction<void, void, never>(
@@ -70,10 +71,12 @@ function RequestsList() {
             setIncoming(list.incoming);
             setOutgoing(list.outgoing);
             setStatus('ready');
+            setRefreshing(false);
           }),
         ),
         Effect.catch((message: string) =>
           Effect.sync(() => {
+            setRefreshing(false);
             // A failed background refresh keeps the requests; the next focus retries.
             if (status === 'ready') {
               return;
@@ -139,6 +142,16 @@ function RequestsList() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={() => {
+              setRefreshing(true);
+              reload();
+            }}
+          />
+        }
       >
         <View className="p-4">
           {status === 'loading' ? <StateMessage kind="loading" title="Loading requests…" /> : null}
