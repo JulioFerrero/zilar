@@ -129,6 +129,40 @@ export async function requireVisibleTopic(
   return topic;
 }
 
+// The ids among `privateIds` the user may see: a direct row or a role (T-0116).
+export async function visiblePrivateTopicIds(
+  db: ServerDatabase,
+  privateIds: string[],
+  userId: string,
+): Promise<Set<string>> {
+  if (privateIds.length === 0) {
+    return new Set();
+  }
+  const memberRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_members
+        WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${userId}`;
+    }),
+  );
+  const visible = new Set(memberRows.map((row) => row.topicId));
+  // T-0116: topics reached through a role, not a direct row.
+  const roleRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ topicId: string }>`SELECT tra.topic_id FROM topic_role_access tra
+        INNER JOIN group_member_roles gmr ON gmr.role_id = tra.role_id
+        WHERE tra.topic_id IN ${sql.in(privateIds)} AND gmr.user_id = ${userId}`;
+    }),
+  );
+  for (const row of roleRows) {
+    visible.add(row.topicId);
+  }
+  return visible;
+}
+
 // Every non-archived topic of the group the user may see.
 export async function visibleTopics(
   db: ServerDatabase,
@@ -151,31 +185,7 @@ export async function visibleTopics(
     return [];
   }
   const privateIds = active.filter((row) => row.visibility === 'private').map((row) => row.id);
-  let privateSeen = new Set<string>();
-  if (privateIds.length > 0) {
-    const memberRows = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_members
-          WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${userId}`;
-      }),
-    );
-    privateSeen = new Set(memberRows.map((row) => row.topicId));
-    // T-0116: topics reached through a role, not a direct row.
-    const roleRows = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ topicId: string }>`SELECT tra.topic_id FROM topic_role_access tra
-          INNER JOIN group_member_roles gmr ON gmr.role_id = tra.role_id
-          WHERE tra.topic_id IN ${sql.in(privateIds)} AND gmr.user_id = ${userId}`;
-      }),
-    );
-    for (const row of roleRows) {
-      privateSeen.add(row.topicId);
-    }
-  }
+  const privateSeen = await visiblePrivateTopicIds(db, privateIds, userId);
   return active.filter((row) => row.visibility !== 'private' || privateSeen.has(row.id));
 }
 

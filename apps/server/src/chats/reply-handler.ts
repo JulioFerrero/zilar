@@ -19,7 +19,7 @@ import { HttpError, xmppUnavailable } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { ChatsApiDependencies } from './api';
-import { requireChatReadAccess } from './reads';
+import { chatAccessFromParam } from './reads';
 
 type ClaimResult = 'claimed' | 'sent' | 'in_flight';
 
@@ -27,27 +27,6 @@ interface ReplyRequest {
   params: { jid: string };
   payload: { clientId: string; text: string };
   request: HttpServerRequest.HttpServerRequest;
-}
-
-// The normalised bare JID a reply may be sent to. A malformed param answers the
-// same 404 as an unknown or invisible chat, so JIDs cannot be probed.
-async function chatAccessForReply(
-  deps: ChatsApiDependencies,
-  encodedJid: string,
-  userId: string,
-): Promise<{ bare: string }> {
-  let jid: string;
-  try {
-    jid = decodeURIComponent(encodedJid);
-  } catch {
-    throw new HttpError(404, 'not_found', 'Chat not found');
-  }
-  return requireChatReadAccess(deps.db, {
-    chatJid: jid,
-    userId,
-    domain: deps.config.xmpp.domain,
-    mucDomain: deps.config.xmpp.mucDomain,
-  });
 }
 
 // A room JID is on the MUC domain; everything else the access check let
@@ -161,7 +140,7 @@ export async function replyFor(
   request: ReplyRequest,
   user: SessionUser,
 ) {
-  const { bare } = await chatAccessForReply(deps, request.params.jid, user.id);
+  const { bare } = await chatAccessFromParam(deps, request.params.jid, user.id);
   const kind = kindFor(bare, deps.config.xmpp.mucDomain);
 
   if (kind === 'chat' && (await isDmBlocked(deps.db, user.id, bare))) {

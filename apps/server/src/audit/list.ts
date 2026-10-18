@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import { MAX_AUDIT_LIST_LIMIT } from '@zilar/api-contract';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
+import { visiblePrivateTopicIds } from '../topics/access';
 
 export const DEFAULT_AUDIT_LIST_LIMIT = 50;
 
@@ -253,32 +254,8 @@ async function filterHiddenTopicEntries(
     }),
   );
   const byId = new Map(topicRows.map((row) => [row.id, row]));
-  let privateSeen: Set<string> = new Set();
   const privateIds = topicRows.filter((row) => row.visibility === 'private').map((row) => row.id);
-  if (privateIds.length > 0) {
-    const memberRows = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_members
-          WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${userId}`;
-      }),
-    );
-    privateSeen = new Set(memberRows.map((row) => row.topicId));
-    // T-0116: topics reached through a role, not a direct row.
-    const roleRows = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ topicId: string }>`SELECT tra.topic_id FROM topic_role_access tra
-          INNER JOIN group_member_roles gmr ON gmr.role_id = tra.role_id
-          WHERE tra.topic_id IN ${sql.in(privateIds)} AND gmr.user_id = ${userId}`;
-      }),
-    );
-    for (const row of roleRows) {
-      privateSeen.add(row.topicId);
-    }
-  }
+  const privateSeen = await visiblePrivateTopicIds(db, privateIds, userId);
   return entries.filter((entry) => {
     if (!entry.action.startsWith('topic.') || entry.subjectId === null) {
       return true;

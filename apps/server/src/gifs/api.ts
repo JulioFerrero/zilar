@@ -15,7 +15,7 @@ import { createHmac } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { GifsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
@@ -30,6 +30,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
+import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { createRateLimiter } from '../rate-limit';
 import { classifyIp } from '../sandbox/ip-guard';
 import { GIPHY_MEDIA_HOSTS, createGiphyProvider } from './giphy';
@@ -67,23 +68,6 @@ const GifSearchQuery = Schema.Struct({
 const GifTrendingQuery = Schema.Struct({
   pos: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(128)))),
 });
-
-const STRICT_QUERY = { onExcessProperty: 'error' } as const;
-
-function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<string, string> {
-  const queryIndex = request.originalUrl.indexOf('?');
-  if (queryIndex === -1) {
-    return {};
-  }
-  const params = new URLSearchParams(request.originalUrl.slice(queryIndex + 1));
-  const record: Record<string, string> = {};
-  for (const [key, value] of params) {
-    if (!(key in record)) {
-      record[key] = value;
-    }
-  }
-  return record;
-}
 
 // The group and the reply schemas live in the shared contract
 // (`@zilar/api-contract`, `gifs.ts`, T-0895). The queries are decoded by hand

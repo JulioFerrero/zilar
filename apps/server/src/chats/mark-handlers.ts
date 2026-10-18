@@ -12,7 +12,7 @@ import type { RateLimiter } from '../rate-limit';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { ChatsApiDependencies } from './api';
 import { markDeliveredAndNotify } from './delivered-notice';
-import { putChatRead, requireChatReadAccess } from './reads';
+import { chatAccessFromParam, putChatRead } from './reads';
 import { kindFor } from './reply-handler';
 
 interface MarkReadRequest {
@@ -27,28 +27,6 @@ interface MarkDeliveredRequest {
   request: HttpServerRequest.HttpServerRequest;
 }
 
-// The normalised bare JID a mark may be stored under. A malformed param
-// answers the same 404 as an unknown or invisible chat, so JIDs cannot be
-// probed.
-async function chatAccessForMark(
-  deps: ChatsApiDependencies,
-  encodedJid: string,
-  userId: string,
-): Promise<{ bare: string }> {
-  let jid: string;
-  try {
-    jid = decodeURIComponent(encodedJid);
-  } catch {
-    throw new HttpError(404, 'not_found', 'Chat not found');
-  }
-  return requireChatReadAccess(deps.db, {
-    chatJid: jid,
-    userId,
-    domain: deps.config.xmpp.domain,
-    mucDomain: deps.config.xmpp.mucDomain,
-  });
-}
-
 // The caller's read mark for one chat. Access is checked before the write
 // budget is charged, so a probe of an invisible chat costs nothing and answers
 // the same 404 as an unknown chat.
@@ -58,7 +36,7 @@ export async function markReadFor(
   request: MarkReadRequest,
   user: SessionUser,
 ) {
-  const { bare } = await chatAccessForMark(deps, request.params.jid, user.id);
+  const { bare } = await chatAccessFromParam(deps, request.params.jid, user.id);
   if (!limiter.allow(user.id)) {
     return httpErrorResponse(
       requestIdOf(request.request),
@@ -100,7 +78,7 @@ export async function markDeliveredFor(
   request: MarkDeliveredRequest,
   user: SessionUser,
 ) {
-  const { bare } = await chatAccessForMark(deps, request.params.jid, user.id);
+  const { bare } = await chatAccessFromParam(deps, request.params.jid, user.id);
   if (!limiter.allow(user.id)) {
     return httpErrorResponse(
       requestIdOf(request.request),

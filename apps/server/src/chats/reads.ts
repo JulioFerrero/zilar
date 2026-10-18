@@ -6,6 +6,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { requireChatAccess } from '../chat-prefs/access';
+import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
@@ -20,6 +21,33 @@ export async function requireChatReadAccess(
   options: { chatJid: string; userId: string; domain: string; mucDomain: string },
 ): Promise<{ bare: string }> {
   return requireChatAccess(db, options);
+}
+
+/** The parts of the chats API dependencies the param check reads. */
+export interface ChatAccessDependencies {
+  db: ServerDatabase;
+  config: Pick<ServerConfig, 'xmpp'>;
+}
+
+// The bare JID a mark or reply may use. A malformed param answers the same
+// 404 as an unknown or invisible chat, so JIDs cannot be probed.
+export async function chatAccessFromParam(
+  deps: ChatAccessDependencies,
+  encodedJid: string,
+  userId: string,
+): Promise<{ bare: string }> {
+  let jid: string;
+  try {
+    jid = decodeURIComponent(encodedJid);
+  } catch {
+    throw new HttpError(404, 'not_found', 'Chat not found');
+  }
+  return requireChatReadAccess(deps.db, {
+    chatJid: jid,
+    userId,
+    domain: deps.config.xmpp.domain,
+    mucDomain: deps.config.xmpp.mucDomain,
+  });
 }
 
 /**

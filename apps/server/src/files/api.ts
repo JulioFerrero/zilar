@@ -1,7 +1,7 @@
 // Files module on the Effect `HttpApi` adapter (T-0580): the same method,
 // path, step order, statuses, texts, logs and headers as the old router
 // (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`;
+// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChatOnDemand`;
 // the file-row read runs on the `effect/sql` client.
 //
 // The query is decoded manually inside the handler (Effect Schema, same rules
@@ -15,7 +15,7 @@
 // body flows through as a web `ReadableStream` via `HttpServerResponse.raw`
 // and is never read into memory.
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
@@ -27,9 +27,10 @@ import { errorClassName } from '../effect/error-utils';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
-import { indexChat } from '../media/indexer';
+import { indexChatOnDemand } from '../media/indexer';
 import { toInternalUploadUrl } from '../voice-transcription/routes';
 import { defaultInternalFetch, type InternalFetch } from './internal-fetch';
 
@@ -65,23 +66,6 @@ const FilesQuery = Schema.Struct({
   // accepted and ignored. Every other excess key still fails below.
   retry: Schema.optional(Schema.String.check(Schema.isMaxLength(32))),
 });
-
-const STRICT_QUERY = { onExcessProperty: 'error' } as const;
-
-function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<string, string> {
-  const queryIndex = request.originalUrl.indexOf('?');
-  if (queryIndex === -1) {
-    return {};
-  }
-  const params = new URLSearchParams(request.originalUrl.slice(queryIndex + 1));
-  const record: Record<string, string> = {};
-  for (const [key, value] of params) {
-    if (!(key in record)) {
-      record[key] = value;
-    }
-  }
-  return record;
-}
 
 function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'File not found');
@@ -258,28 +242,21 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           let row = firstLookup.row;
           if (row === undefined) {
             // A just-sent file has no indexed row yet: index this chat on demand
-            // and look again. A failure is logged (ids and the error name only)
-            // and the lookup below still answers.
+            // and look again. A failure is logged and the lookup below answers.
             const archive = deps.archive;
-            const indexed = yield* Effect.promise(() =>
-              indexChat({
+            yield* Effect.promise(() =>
+              indexChatOnDemand({
                 archive,
                 db: deps.db,
                 archiveOwner,
                 chatJid,
                 scope: filter,
                 now: new Date(now()),
+                logger: deps.logger,
+                userId: user.id,
+                logMessage: 'files index failed',
               }),
-            ).pipe(
-              Effect.map(() => ({ ok: true as const })),
-              Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
             );
-            if (!indexed.ok) {
-              deps.logger.warn(
-                { userId: user.id, err: errorClassName(indexed.defect) },
-                'files index failed',
-              );
-            }
             const secondLookup = yield* Effect.promise(() =>
               findFileRow(deps.db, archiveOwner, chatJid, query.url),
             ).pipe(

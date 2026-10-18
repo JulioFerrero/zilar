@@ -1,7 +1,7 @@
 // Media gallery module on the Effect `HttpApi` adapter (T-0560): the same
 // method, path, step order, statuses, texts and payloads as the deleted
 // router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`
+// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChatOnDemand`
 // and the gallery read, which runs on effect/sql.
 //
 // The query is decoded manually inside the handler (Effect Schema, same rules
@@ -21,7 +21,6 @@ import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
-import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import {
   handler,
@@ -31,11 +30,12 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
+import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
 import { senderNamesByJid } from '../xmpp/archive-sender';
 import { fetchLinkPreview, fetchLinkPreviewImage } from '../link-preview/fetch';
-import { indexChat, type MediaKind } from './indexer';
+import { indexChatOnDemand, type MediaKind } from './indexer';
 import { roomSenderJids, senderNameFor, toMediaItem } from './items';
 
 export const MEDIA_RATE_LIMIT_MAX = 30;
@@ -93,23 +93,6 @@ const MediaQuery = Schema.Struct({
     ),
   ),
 });
-
-const STRICT_QUERY = { onExcessProperty: 'error' } as const;
-
-function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<string, string> {
-  const queryIndex = request.originalUrl.indexOf('?');
-  if (queryIndex === -1) {
-    return {};
-  }
-  const params = new URLSearchParams(request.originalUrl.slice(queryIndex + 1));
-  const record: Record<string, string> = {};
-  for (const [key, value] of params) {
-    if (!(key in record)) {
-      record[key] = value;
-    }
-  }
-  return record;
-}
 
 // T-1234: the link-preview URL, decoded by hand like the gallery query so a
 // missing, non-https or overlong value is the handler's fixed 400.
@@ -183,30 +166,21 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
           const before = query.before;
 
           // Index the chat on demand. A failure is logged (ids and the error
-          // name only, never message contents) and the rows already stored
-          // still answer. A rejection surfaces as a defect, which `yield*`
-          // does not throw into a surrounding `try`; map it to a value
-          // instead.
+          // name only) and the rows already stored still answer.
           const archive = deps.archive;
-          const indexed = yield* Effect.promise(() =>
-            indexChat({
+          yield* Effect.promise(() =>
+            indexChatOnDemand({
               archive,
               db: deps.db,
               archiveOwner,
               chatJid,
               scope: filter,
               now: new Date(now()),
+              logger: deps.logger,
+              userId: user.id,
+              logMessage: 'media index failed',
             }),
-          ).pipe(
-            Effect.map(() => ({ ok: true as const })),
-            Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
           );
-          if (!indexed.ok) {
-            deps.logger.warn(
-              { userId: user.id, err: errorClassName(indexed.defect) },
-              'media index failed',
-            );
-          }
 
           const rows = yield* Effect.promise(() =>
             runSql(

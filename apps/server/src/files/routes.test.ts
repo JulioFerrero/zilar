@@ -374,7 +374,7 @@ describe('GET /api/files', () => {
         originId: 'o-retract',
         timestamp: at('2026-05-02T00:00:00.000Z'),
         txt: 'This person attempted to retract a previous message.',
-        xml: `<message type="chat"><body>This person attempted to retract a previous message.</body><retract xmlns="urn:xmpp:message-retract:1" id="o-doc"/></message>`,
+        xml: `<message type="chat" from="${peer}/phone"><body>This person attempted to retract a previous message.</body><retract xmlns="urn:xmpp:message-retract:1" id="o-doc"/></message>`,
       },
     ]);
     const { fetchImpl, calls } = makeFetch(
@@ -386,6 +386,45 @@ describe('GET /api/files', () => {
     expect(status).toBe(404);
     expect(errorCode(json)).toBe('not_found');
     expect(calls).toEqual([]);
+  });
+
+  it('answers 200 for a row retracted by another sender', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-doc',
+        timestamp: at('2026-05-01T00:00:00.000Z'),
+        txt: '',
+        xml: payloadMessage(DOC, undefined, `${peer}/phone`),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-retract',
+        timestamp: at('2026-05-02T00:00:00.000Z'),
+        txt: 'This person attempted to retract a previous message.',
+        xml: `<message type="chat" from="${dmJid(alice.id)}/web"><body>This person attempted to retract a previous message.</body><retract xmlns="urn:xmpp:message-retract:1" id="o-doc"/></message>`,
+      },
+    ]);
+    const { fetchImpl, calls } = makeFetch(
+      200,
+      { 'content-type': 'application/pdf' },
+      'hello-bytes',
+    );
+    const { status, text } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
+    expect(status).toBe(200);
+    expect(text).toBe('hello-bytes');
+    expect(calls).toHaveLength(1);
   });
 
   it('answers 404 for a blocked DM in either direction', async () => {

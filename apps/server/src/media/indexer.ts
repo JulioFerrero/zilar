@@ -2,6 +2,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
+import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { bareJid } from '../jid';
 import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
@@ -337,4 +338,23 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
   );
 
   return { read: rows.length, inserted: result.inserted, done: rows.length < MEDIA_INDEX_MAX_ROWS };
+}
+
+/** The chat index pass, with the failure log the read handlers share (T-2058). */
+export interface IndexChatOnDemandInput extends IndexChatInput {
+  logger: Pick<Logger, 'warn'>;
+  userId: string;
+  /** The handler's fixed message, e.g. `'files index failed'`. */
+  logMessage: string;
+}
+
+// Index the chat once; a failed pass is logged (ids and the error name only,
+// never message contents) and the rows already stored still answer.
+export async function indexChatOnDemand(input: IndexChatOnDemandInput): Promise<void> {
+  const { logger, userId, logMessage, ...chat } = input;
+  try {
+    await indexChat(chat);
+  } catch (error) {
+    logger.warn({ userId, err: errorClassName(error) }, logMessage);
+  }
 }
