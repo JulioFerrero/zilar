@@ -33,9 +33,10 @@ import {
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
+import { senderNamesByJid } from '../xmpp/archive-sender';
 import { fetchLinkPreview, fetchLinkPreviewImage } from '../link-preview/fetch';
 import { indexChat, type MediaKind } from './indexer';
-import { senderNameFor, toMediaItem } from './items';
+import { roomSenderJids, senderNameFor, toMediaItem } from './items';
 
 export const MEDIA_RATE_LIMIT_MAX = 30;
 export const MEDIA_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -236,8 +237,18 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
 
           const hasMore = rows.length > limit;
           const page = hasMore ? rows.slice(0, limit) : rows;
+          // One batched name lookup for the page's real room senders (T-2014):
+          // a room sender's name comes from `bare_peer`, never from the nick.
+          // The rows are already in hand and `senderNameFor` falls back to the
+          // nick (or `Unknown`), so a failed lookup must not fail the page.
+          const roomNames = yield* Effect.promise(() =>
+            senderNamesByJid(deps.db, roomSenderJids(page)),
+          ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
           const items = page.map((row) =>
-            toMediaItem(row, senderNameFor(row, filter, allowed, deps.config.xmpp.domain)),
+            toMediaItem(
+              row,
+              senderNameFor(row, filter, allowed, deps.config.xmpp.domain, roomNames),
+            ),
           );
           const last = page[page.length - 1];
           const next = hasMore && last !== undefined ? String(last.atMicros) : null;

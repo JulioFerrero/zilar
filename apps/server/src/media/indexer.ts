@@ -3,6 +3,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
+import { bareJid } from '../jid';
 import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 import { extractLinks, extractMediaItems } from './extract';
@@ -113,12 +114,19 @@ export function buildTargetAuthorQuery(input: {
     return `$${values.length}`;
   };
   return {
-    text: `SELECT xml FROM archive WHERE ${scopeSql(input, next)} AND origin_id = ${next(input.messageId)} ORDER BY timestamp ASC LIMIT 8`,
+    text: `SELECT bare_peer AS "barePeer", kind, xml FROM archive WHERE ${scopeSql(input, next)} AND origin_id = ${next(input.messageId)} ORDER BY timestamp ASC LIMIT 8`,
     values,
   };
 }
 
+// The stored author: a room row's real sender is the archived `bare_peer` (the
+// stanza's `from` is `room/nick`, a free display name anyone can take). A DM
+// row's sender stays the stanza's bare `from`, which is where ejabberd stores
+// it. Rows indexed before T-2014 keep their old `room/nick` value.
 function senderJidFor(row: ArchiveRow): string {
+  if (row.kind === 'groupchat') {
+    return bareJid(row.barePeer);
+  }
   return stanzaFrom(row.xml) ?? '';
 }
 

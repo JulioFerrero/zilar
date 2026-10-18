@@ -8,9 +8,10 @@
 // live AI UI; a correction without a payload (an old server) is still caught
 // by its target id.
 
-import { decodePayload, type Payload } from '@zilar/protocol';
-import { findCloseTag, nextOpenTag } from '../markup/scan';
-import { correctionTarget, retractTarget } from '../search/snippet';
+import { decodePayload, isAiJid, type Payload } from '@zilar/protocol';
+import { bareJid } from '../jid';
+import { findCloseTag, nextOpenTag, openTagAttrs } from '../markup/scan';
+import { correctionTarget, retractTarget, stanzaFrom } from '../search/snippet';
 
 // The agent payload namespace (packages/xmpp-core/src/namespaces.ts). The
 // server cannot import it, so the value is repeated with this pointer.
@@ -53,9 +54,28 @@ export function decodeAgentPayload(xml: string): Payload | null {
 }
 
 /** True when an archive row is the live AI UI itself: an `<agent>` payload of
- * type `progress`, the card the gateway posts and edits while a turn runs. */
-export function isLiveAiUiRow(xml: string): boolean {
-  return decodeAgentPayload(xml)?.type === 'progress';
+ * type `progress` sent by an AI. The sender comes from the archive, never from
+ * the free-text nick or the stanza's `from` in a room: ejabberd stores the real
+ * sender of a room row in `bare_peer`, and a member can pick any nick. A person
+ * posting a `progress` payload is therefore not a card. */
+export function isLiveAiUiRow(xml: string, barePeer: string): boolean {
+  if (decodeAgentPayload(xml)?.type !== 'progress') {
+    return false;
+  }
+  const sender = senderBareJid(xml, barePeer);
+  return sender !== null && isAiJid(sender);
+}
+
+// A room row's sender is the archived `bare_peer`; any other row's sender is
+// the stanza's bare `from`. Null when the row names neither.
+function senderBareJid(xml: string, barePeer: string): string | null {
+  const attrs = openTagAttrs(xml, 'message');
+  const type = attrs?.match(/\btype\s*=\s*(["'])([^"']*)\1/)?.[2]?.trim();
+  if (type === 'groupchat') {
+    return barePeer.trim() === '' ? null : bareJid(barePeer);
+  }
+  const from = stanzaFrom(xml);
+  return from === null ? null : bareJid(from);
 }
 
 /** The origin id a correction or retraction row edits, or null when the row is
@@ -75,10 +95,12 @@ export function isLiveAiUiEdit(xml: string, liveIds: ReadonlySet<string>): boole
 
 /** The origin ids of the live-UI rows in one batch, so a reader can tell an
  * edit of a card from an edit of a real message. */
-export function liveAiUiIds(rows: readonly { originId: string; xml: string }[]): Set<string> {
+export function liveAiUiIds(
+  rows: readonly { originId: string; xml: string; barePeer: string }[],
+): Set<string> {
   const ids = new Set<string>();
   for (const row of rows) {
-    if (isLiveAiUiRow(row.xml)) {
+    if (isLiveAiUiRow(row.xml, row.barePeer)) {
       ids.add(row.originId);
     }
   }

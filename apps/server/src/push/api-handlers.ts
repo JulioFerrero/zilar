@@ -212,7 +212,9 @@ export function createPushGroupLayer(
                 try: () => readCandidateByOriginId(archive, allowed, editTarget),
                 catch: () => xmppUnavailable(),
               }).pipe(Effect.orDie);
-              if (targetRow !== undefined && isLiveAiUiRow(targetRow.xml)) liveIds.add(editTarget);
+              if (targetRow !== undefined && isLiveAiUiRow(targetRow.xml, targetRow.barePeer)) {
+                liveIds.add(editTarget);
+              }
             }
             const candidate =
               ownEdit?.latestText === undefined ? row : { ...row, text: ownEdit.latestText };

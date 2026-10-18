@@ -9,6 +9,8 @@
 // (target count × 20 edit reads, same-sender only).
 
 import type { TopicPreviewMessage } from '@zilar/api-contract';
+import { isAiJid } from '@zilar/protocol';
+import { bareJid } from '../jid';
 import { decodeAgentPayload, isLiveAiUiEdit, isLiveAiUiRow, liveAiUiIds } from '../notify/ai-cards';
 import { loadEditsForTargets } from '../search/edit-overlay';
 import { correctionTarget, retractTarget, timestampToIso } from '../search/snippet';
@@ -38,14 +40,21 @@ function buildRowsQuery(roomJid: string): { text: string; values: unknown[] } {
  * newest body, retracted messages and the live AI progress card are dropped,
  * and a row with no body and no payload is not a message. `id` is the target
  * `origin_id`: a correction keeps it, so a message keeps one id across edits.
+ * `loadRoomNames` supplies the real senders' display names in one batched read.
  */
+export type RoomNameLookup = (jids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
+
+const NO_ROOM_NAMES: RoomNameLookup = async () => new Map();
+
 export async function readTopicPreview(
   archive: ArchivePool,
   roomJid: string,
   limit = TOPIC_PREVIEW_LIMIT,
+  loadRoomNames: RoomNameLookup = NO_ROOM_NAMES,
 ): Promise<TopicPreviewMessage[]> {
   const rowsQuery = buildRowsQuery(roomJid);
   const rows = await archive.query(rowsQuery.text, rowsQuery.values);
+  const roomNames = await loadRoomNames(rows.map((row) => row.barePeer));
 
   // Only the original sender's correction or retraction counts: the shared
   // helper drops an edit from anyone else.
@@ -87,18 +96,23 @@ export async function readTopicPreview(
     // The live progress card an AI posts and edits while a turn runs is not a
     // chat message (T-1400), and neither is an edit of one: the card carries
     // the payload, so `liveIds` is what this batch already read.
-    if (isLiveAiUiRow(row.xml) || isLiveAiUiEdit(row.xml, liveIds)) {
+    if (isLiveAiUiRow(row.xml, row.barePeer) || isLiveAiUiEdit(row.xml, liveIds)) {
       continue;
     }
     const body = row.body ?? '';
-    const payload = decodeAgentPayload(row.xml);
+    // T-2014 addendum: only an AI may draw a card in the preview. A person can
+    // post a `blocks` or `progress` payload, and non-members see this preview
+    // without a sender of their own to check.
+    const payload = isAiJid(bareJid(row.barePeer)) ? decodeAgentPayload(row.xml) : null;
     if (body === '' && payload === null) {
       continue;
     }
     messages.push({
       id: key,
       at: timestampToIso(row.timestamp),
-      nick: row.nick,
+      // The real sender's database name; the nick only for an old row with no
+      // `bare_peer`.
+      nick: roomNames.get(bareJid(row.barePeer)) ?? row.nick,
       body,
       ...(payload === null ? {} : { payload }),
     });

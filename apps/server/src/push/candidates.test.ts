@@ -213,7 +213,7 @@ describe('resolveCandidate', () => {
 
   it('skips a progress card', async () => {
     const userId = await seedUser(context);
-    const peer = `ana@${context.config.xmpp.domain}`;
+    const peer = `ai-bot@${context.config.xmpp.domain}`;
     const row: ArchiveCandidate = {
       owner: localpartFor(userId),
       barePeer: peer,
@@ -222,15 +222,15 @@ describe('resolveCandidate', () => {
       originId: 'progress-1',
       timestamp: 0,
       text: 'Searching the web',
-      xml: `<message type="chat" from="ana/phone"><body>Searching the web</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"ana@${context.config.xmpp.domain}","stage":"Searching the web"}}</agent></message>`,
+      xml: `<message type="chat" from="${peer}/desk"><body>Searching the web</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"${peer}","stage":"Searching the web"}}</agent></message>`,
     };
-    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Helper']]) };
     expect(await resolveCandidate(deps, userId, allowed, row)).toEqual({ status: 'skip' });
   });
 
   it('skips a correction of a progress card', async () => {
     const userId = await seedUser(context);
-    const peer = `ana@${context.config.xmpp.domain}`;
+    const peer = `ai-bot@${context.config.xmpp.domain}`;
     const row: ArchiveCandidate = {
       owner: localpartFor(userId),
       barePeer: peer,
@@ -239,9 +239,9 @@ describe('resolveCandidate', () => {
       originId: 'progress-2',
       timestamp: 0,
       text: 'Working',
-      xml: `<message type="chat" from="ana/phone"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="progress-1"/></message>`,
+      xml: `<message type="chat" from="${peer}/desk"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="progress-1"/></message>`,
     };
-    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Helper']]) };
     expect(await resolveCandidate(deps, userId, allowed, row, new Set(['progress-1']))).toEqual({
       status: 'skip',
     });

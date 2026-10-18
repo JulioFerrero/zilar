@@ -146,7 +146,7 @@ export function summarizeUnread(
     }
     // The live AI UI and its edits are not messages: they neither count nor
     // become the preview, so the loop keeps walking to the newest real message.
-    if (skipUnreadRow(row.xml, liveIds)) {
+    if (skipUnreadRow(row.xml, row.barePeer, liveIds)) {
       continue;
     }
     const current = answer[chat.jid];

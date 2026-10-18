@@ -55,7 +55,8 @@ import {
 } from './service';
 import { joinTopic } from './members';
 import { patchTopic } from './patch';
-import { readTopicPreview } from './preview';
+import { readTopicPreview, TOPIC_PREVIEW_LIMIT } from './preview';
+import { senderNamesByJid } from '../xmpp/archive-sender';
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
 export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -259,7 +260,10 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             }
             const roomJid = `${topic.roomLocalpart}@${mucDomain}`;
             const messages = yield* Effect.tryPromise({
-              try: () => readTopicPreview(archive, roomJid),
+              try: () =>
+                readTopicPreview(archive, roomJid, TOPIC_PREVIEW_LIMIT, (jids) =>
+                  senderNamesByJid(deps.db, jids),
+                ),
               catch: () => {
                 logger.error({ topicId: topic.id }, 'topic preview failed');
                 return new HttpError(

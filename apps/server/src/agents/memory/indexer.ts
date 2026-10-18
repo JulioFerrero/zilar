@@ -11,6 +11,7 @@ import { bareJid } from '../../jid';
 import { decodeAgentPayload, isLiveAiUiRow } from '../../notify/ai-cards';
 import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
+import { senderNamesByJid } from '../../xmpp/archive-sender';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
 
 // The read bounds, copied from the media indexer (apps/server/src/media/indexer.ts):
@@ -83,7 +84,7 @@ function mediaPlaceholder(items: ExtractedMediaItem[]): string | null {
 export function memoryText(row: ArchiveRow): string {
   // The live AI UI is not a message: a progress card's stage text is not
   // something the AI should remember from the conversation (T-1400).
-  if (isLiveAiUiRow(row.xml)) {
+  if (isLiveAiUiRow(row.xml, row.barePeer)) {
     return '';
   }
   const body = (row.body ?? '').trim();
@@ -97,13 +98,22 @@ export function memoryText(row: ArchiveRow): string {
   return cutText(body);
 }
 
-function senderFor(input: IndexMemoryInput, row: ArchiveRow): string {
+// The name stored for a room message: the real sender is the archived
+// `bare_peer`, and our tables give their display name, so nobody can pose as
+// another member with a nick. The nick is only a fallback for an old or
+// malformed row with no `bare_peer`.
+function senderFor(
+  input: IndexMemoryInput,
+  row: ArchiveRow,
+  roomNames: ReadonlyMap<string, string>,
+): string {
   const from = stanzaFrom(row.xml);
   if (from !== null && bareJid(from) === bareJid(input.aiBareJid)) {
     return 'AI';
   }
   if (input.scope.kind === 'room') {
-    return row.nick;
+    const sender = row.barePeer.trim() === '' ? null : bareJid(row.barePeer);
+    return (sender === null ? undefined : roomNames.get(sender)) ?? row.nick;
   }
   return input.ownerName ?? 'Owner';
 }
@@ -200,6 +210,17 @@ export async function indexMemory(input: IndexMemoryInput): Promise<IndexMemoryR
           const rows = yield* Effect.promise(() => archive.query(built.text, built.values));
           const read = rows.length;
           const done = rows.length < MEMORY_INDEX_MAX_ROWS;
+          // One batched name lookup for the batch's real room senders, like the
+          // unread read does; the nick is never the stored sender.
+          const roomNames =
+            scope.kind === 'room'
+              ? yield* Effect.promise(() =>
+                  senderNamesByJid(
+                    db,
+                    rows.flatMap((row) => (row.barePeer.trim() === '' ? [] : [row.barePeer])),
+                  ),
+                )
+              : new Map<string, string>();
 
           const maxSeqRows = yield* sql<{ seq: number | null }>`SELECT max(seq) AS seq
             FROM ai_memory_messages WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
@@ -250,7 +271,7 @@ export async function indexMemory(input: IndexMemoryInput): Promise<IndexMemoryR
               (ai_id, chat_key, seq, message_id, at, sender, text, deleted)
               VALUES (
                 ${aiId}, ${chatKey}, ${nextSeq}, ${row.originId},
-                ${new Date(Number(atMicros / 1000n))}, ${senderFor(input, row)}, ${text}, false
+                ${new Date(Number(atMicros / 1000n))}, ${senderFor(input, row, roomNames)}, ${text}, false
               )
               ON CONFLICT (ai_id, chat_key, message_id) DO NOTHING
               RETURNING seq`;

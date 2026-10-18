@@ -2,13 +2,14 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { ownBareJid } from '../jid';
+import { bareJid, ownBareJid } from '../jid';
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import { allowedArchives, resolveChatFilter, type ArchivePool, type ArchiveRow } from './service';
 import { buildTsQuery, matchMessageTerms, searchTerms, windowSnippet } from './match';
 import { buildArchiveQuery, buildFuzzyCandidatesQuery, exactInCodeMarks } from './archive-query';
 import { loadEditsForTargets, type EditOverlay, type EditScope } from './edit-overlay';
+import { senderNamesByJid } from '../xmpp/archive-sender';
 import {
   chatJidFor,
   correctionTarget,
@@ -140,15 +141,25 @@ export const runSearchEffect = Effect.fnUntraced(function* (
   // whether the fuzzy pass runs; when it does, the overlay is rebuilt over the
   // union of exact rows and fuzzy candidates, so a fuzzy-only hit of a
   // retracted (or corrected) message cannot slip through.
-  const render = (
+  const render = async (
     overlay: EditOverlay,
     fuzzyRows: readonly ArchiveRow[],
-  ): { items: SearchItem[]; oldest: bigint | null } => {
+  ): Promise<{ items: SearchItem[]; oldest: bigint | null }> => {
     const seen = new Set<string>();
     const items: SearchItem[] = [];
     // `as` keeps TypeScript from narrowing `oldest` to `null`: pushItem assigns it inside a closure.
     let oldest = null as bigint | null;
     const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
+    // The names of the real room senders in this page, one batched read (never
+    // one per hit). The nick is only their fallback, never the name shown, so
+    // a failed lookup degrades to that fallback instead of failing the page:
+    // the hits are already in hand.
+    const roomNames = await senderNamesByJid(
+      deps.db,
+      [...rows, ...fuzzyRows].flatMap((row) =>
+        row.kind === 'groupchat' && row.barePeer !== '' ? [bareJid(row.barePeer)] : [],
+      ),
+    ).catch(() => new Map<string, string>());
     const pushItem = (
       row: ArchiveRow,
       chatJid: string,
@@ -161,7 +172,7 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       items.push({
         chatJid,
         messageId: row.originId,
-        senderName: senderNameFor(row, ownJid, allowed.peerNames),
+        senderName: senderNameFor(row, ownJid, allowed.peerNames, roomNames),
         at: timestampToIso(row.timestamp),
         snippet,
         marks,
@@ -234,7 +245,8 @@ export const runSearchEffect = Effect.fnUntraced(function* (
     return { items, oldest };
   };
 
-  let result = render(yield* loadOverlay(editTargets(rows)), []);
+  const firstOverlay = yield* loadOverlay(editTargets(rows));
+  let result = yield* Effect.promise(() => render(firstOverlay, []));
 
   // Typo-tolerance second pass: only when the first pass is short, never
   // for a query shorter than 3 characters. It reuses the same scope,
@@ -257,7 +269,7 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       catch: searchFailed,
     });
     const overlay = yield* loadOverlay(editTargets([...rows, ...candidates]));
-    result = render(overlay, candidates);
+    result = yield* Effect.promise(() => render(overlay, candidates));
   }
 
   // The log carries only the result count and duration — never the query.

@@ -27,6 +27,7 @@ import type { DeskTurnContext } from './desk-exec';
 import { notifyOwnerOfFailure, runGroupTurnBody } from './group-turn-body';
 import { settleFor } from './scheduled-settle';
 import { openTurnLog } from '../log/append';
+import { senderNamesByJid } from '../../xmpp/archive-sender';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -271,7 +272,20 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     // The room history the AI reads for a turn is that topic's room only:
     // the `roomJid` above is the joined topic room, and `loadHistory` reads
     // that room alone. The trigger is always inside it (checked at enqueue).
-    const senderName = displayNameOf({ fromJid: trigger.fromJid, fromNick: trigger.fromNick });
+    // The trigger's label is its database name when the archive resolved the
+    // sender; a nick is free text and only labels an unresolved sender. A
+    // failed lookup falls back to the bare JID, never the nick.
+    const triggerNames = yield* Effect.promise(() =>
+      senderNamesByJid(deps.db, [trigger.fromJid]),
+    ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
+    const senderName = displayNameOf(
+      {
+        fromJid: trigger.fromJid,
+        fromResolved: trigger.fromResolved,
+        ...(trigger.fromNick === undefined ? {} : { fromNick: trigger.fromNick }),
+      },
+      triggerNames,
+    );
     // T-0109: names for the topic-aware system prompt. Best effort: a lookup
     // failure keeps the old generic prompt. The topic name goes to the model
     // alone, never into another topic's turn or any log line.

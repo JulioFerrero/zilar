@@ -40,6 +40,7 @@ import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
 import { turnLimits } from './turn-rounds';
+import { senderNamesByJid } from '../../xmpp/archive-sender';
 
 export interface GroupTurnBodyInput {
   ctx: GroupTurnContext;
@@ -160,10 +161,8 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         secret: target.apiKey,
       }),
     );
-    // The batch is newer than the archive may know: merge the eligible
-    // messages into the history (skipping ids MAM already returned) so a
-    // coalesced turn sees every mention that arrived, and the context
-    // builder below deduplicates the trigger by id.
+    // The batch is newer than the archive may know: merge it into the history
+    // so a coalesced turn sees every mention (the context dedupes by id).
     const knownIds = new Set(history.map((message) => message.id));
     const fresh: ChatMessage[] = eligible
       .filter((item) => !knownIds.has(item.id))
@@ -180,12 +179,23 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       }));
     const roster = yield* resolveHandoffRoster(deps.db, sessions, session, roomJid);
     const { handoffTargets, canDelegate } = roster;
+    // One batched name lookup for this turn's resolved room senders (T-2014);
+    // the nick only labels an unresolved sender. A failure keeps bare JIDs.
+    const senderNames = yield* Effect.promise(() =>
+      senderNamesByJid(
+        deps.db,
+        [...history, ...fresh].flatMap((message) =>
+          message.fromResolved ? [message.fromJid] : [],
+        ),
+      ),
+    ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
     const messages: ChatCompletionMessage[] = buildGroupMessages({
       aiName: ai.name,
       persona: ai.persona,
       senderName,
       today,
       aiJid: ai.jid,
+      senderNames,
       ...(groupName === undefined ? {} : { groupName }),
       ...(topicName === undefined ? {} : { topicName }),
       ...(handoffTargets.length === 0
@@ -228,20 +238,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     });
     const isStillAllowed = makeIsStillAllowed(deps.db, deps.xmpp.domain, room, triggerBare);
 
-    // No persona tools in groups and no drafts: the reply goes straight to
-    // the room with `composing`/`paused` chat states around it. The 80%
-    // warnings go out after it, so the owner reads the answer first. The
-    // `live*` wrappers drop the reply when the AI was stopped between the
-    // mention arriving and the LLM call resolving. The room reply always
-    // goes through the same tool loop as DMs (T-0098, extended by T-0444);
-    // the executor carries the room's group id, the re-check callback and
-    // whether `request_action` is allowed.
-    // T-0106: the guide is appended to the last user turn only when tools
-    // are enabled and the room offers `request_action`; the loop runs
-    // `toolMaxRounds` rounds with a live progress message.
-    // T-1714: a scheduled run posts one message per routine and edits it on
-    // later runs; it shows no progress card and no waiting-for-computer stage.
-    // A live turn keeps the T-1414 card exactly as before.
+    // The room reply uses the shared group tool loop (T-0098) with the guide
+    // on the last user turn when tools are on (T-0106); a scheduled run posts
+    // one message per routine and edits it on later runs (T-1714), while a
+    // live turn keeps the T-1414 progress card.
     const routineSend =
       trigger.scheduled === undefined
         ? null

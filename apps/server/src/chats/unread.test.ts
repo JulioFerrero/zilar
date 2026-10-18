@@ -64,15 +64,15 @@ function plainXml(): string {
 }
 
 function progressXml(): string {
-  return `<message type="chat" from="ai@zilar.test/desk"><body>Searching</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"ai@zilar.test","stage":"Searching"}}</agent></message>`;
+  return `<message type="chat" from="ai-bot@zilar.test/desk"><body>Searching</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"ai-bot@zilar.test","stage":"Searching"}}</agent></message>`;
 }
 
 function correctionXml(target: string): string {
-  return `<message type="chat" from="ai@zilar.test/desk"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="${target}"/></message>`;
+  return `<message type="chat" from="ai-bot@zilar.test/desk"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="${target}"/></message>`;
 }
 
 function retractionXml(target: string): string {
-  return `<message type="chat" from="ai@zilar.test/desk"><body>…attempted to retract…</body><retract xmlns="urn:xmpp:message-retract:1" id="${target}"/></message>`;
+  return `<message type="chat" from="ai-bot@zilar.test/desk"><body>…attempted to retract…</body><retract xmlns="urn:xmpp:message-retract:1" id="${target}"/></message>`;
 }
 
 describe('summarizeUnread', () => {

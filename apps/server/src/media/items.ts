@@ -29,11 +29,19 @@ export interface MediaItem {
 // hands back as a string, so it is `string | number` here and converted to a
 // number when mapping (the values fit in a double).
 
-// The nick is the part after `/` in a room stanza's `from`; an empty nick (or
-// no resource at all) answers "Unknown", like search's `senderNameFor`.
+// The nick is the part after `/` in an old room stanza's `from`, which the
+// index stored as `sender_jid` before T-2014; an empty nick (or no resource at
+// all) answers "Unknown", like search's `senderNameFor`.
 function roomNick(senderJid: string): string {
   const nick = senderJid.split('/')[1]?.trim() ?? '';
   return nick === '' ? 'Unknown' : nick;
+}
+
+// The bare JIDs a gallery page names from our tables: new room rows store the
+// real sender's bare JID, old ones store `room/nick`, whose bare part is the
+// room and simply finds no name. One batched lookup per page.
+export function roomSenderJids(rows: readonly MediaItemRow[]): string[] {
+  return rows.map((row) => bareJid(row.senderJid)).filter((jid) => jid !== '');
 }
 
 export function senderNameFor(
@@ -41,9 +49,12 @@ export function senderNameFor(
   filter: MediaChatScope,
   allowed: SearchOwner,
   domain: string,
+  roomNames: ReadonlyMap<string, string> = new Map(),
 ): string {
   if (filter.kind === 'room') {
-    return roomNick(row.senderJid);
+    // A room sender's name comes from `bare_peer` through our tables, never
+    // from the nick; an old `room/nick` row falls back to that nick.
+    return roomNames.get(bareJid(row.senderJid)) ?? roomNick(row.senderJid);
   }
   // In a DM the caller's own outgoing messages carry their own bare JID as
   // the stanza `from`; anything else is the peer.

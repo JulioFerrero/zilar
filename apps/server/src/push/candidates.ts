@@ -41,7 +41,7 @@ export async function resolveCandidate(
   // correction or retraction that edits one (T-1400): never notify for them.
   // The card itself carries the payload; a card edit only names its target, so
   // `liveIds` is the batch's live-UI origin ids the caller already read.
-  if (isLiveAiUiRow(row.xml) || isLiveAiUiEdit(row.xml, liveIds)) {
+  if (isLiveAiUiRow(row.xml, row.barePeer) || isLiveAiUiEdit(row.xml, liveIds)) {
     return { status: 'skip' };
   }
   // A retraction archives with the stock fallback sentence as its text:

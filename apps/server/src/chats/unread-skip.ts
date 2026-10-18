@@ -4,19 +4,24 @@
 
 import { isLiveAiUiEdit, isLiveAiUiRow, liveAiUiIds } from '../notify/ai-cards';
 
-/** The row shape both unread reads return: the chat key, the archive timestamp
- * and the xml the skip rule reads. */
+/** The row shape both unread reads return: the chat key, the archive timestamp,
+ * the real sender's bare JID and the xml the skip rule reads. */
 export interface UnreadSkipRow {
   chatJid: string;
   originId: string;
+  barePeer: string;
   timestamp: number | string | bigint;
   xml: string;
 }
 
 /** True when a row is the live AI UI or an edit of one in the same batch, so
  * the unread count and the preview skip it and keep walking back. */
-export function skipUnreadRow(xml: string, liveIds: ReadonlySet<string>): boolean {
-  return isLiveAiUiRow(xml) || isLiveAiUiEdit(xml, liveIds);
+export function skipUnreadRow(
+  xml: string,
+  barePeer: string,
+  liveIds: ReadonlySet<string>,
+): boolean {
+  return isLiveAiUiRow(xml, barePeer) || isLiveAiUiEdit(xml, liveIds);
 }
 
 // The archive timestamp is microseconds since the epoch; postgres.js hands a
@@ -46,5 +51,5 @@ export function newestUnskippedRow<T extends UnreadSkipRow>(
     .filter((row) => row.chatJid.toLowerCase() === chatJid.toLowerCase())
     .sort(newestFirst);
   const liveIds = liveAiUiIds(mine);
-  return mine.find((row) => !skipUnreadRow(row.xml, liveIds));
+  return mine.find((row) => !skipUnreadRow(row.xml, row.barePeer, liveIds));
 }

@@ -23,8 +23,12 @@ const ARCHIVE_DDL = `CREATE TABLE archive (
 );`;
 
 const ROOM = 'team@conference.example.test';
+// Occupant JIDs as the stanza's `from` (the free nick lives after the slash) and
+// the real sender JIDs ejabberd stores in `bare_peer`.
 const ALICE = `${ROOM}/alice`;
 const MALLORY = `${ROOM}/mallory`;
+const ALICE_JID = 'alice@example.test';
+const MALLORY_JID = 'mallory@example.test';
 const NOW = new Date('2026-06-01T00:00:00.000Z');
 const FILE_URL = 'https://files.example.test/doc.pdf';
 
@@ -83,10 +87,18 @@ function escapeXmlText(value: string): string {
 
 interface MessageInput {
   from: string;
+  /** The real sender, as ejabberd archives it; defaults from `from`. */
+  barePeer?: string;
   body?: string;
   attachment?: unknown;
   replace?: string;
   retract?: string;
+}
+
+function realSenderOf(from: string): string {
+  if (from === ALICE) return ALICE_JID;
+  if (from === MALLORY) return MALLORY_JID;
+  return ROOM;
 }
 
 function messageXml(input: MessageInput): string {
@@ -115,7 +127,7 @@ function seedRow(input: SeedMessage): ArchiveRow {
   return {
     owner: ROOM,
     peer: ROOM,
-    barePeer: ROOM,
+    barePeer: input.barePeer ?? realSenderOf(input.from),
     kind: 'groupchat',
     nick: '',
     originId: input.originId,
@@ -230,7 +242,9 @@ describe('media indexer', () => {
     const result = await runIndex();
 
     expect(result.read).toBe(2);
-    expect(await itemsOf('alice-1')).toEqual([{ kind: 'file', senderJid: ALICE, deleted: false }]);
+    expect(await itemsOf('alice-1')).toEqual([
+      { kind: 'file', senderJid: ALICE_JID, deleted: false },
+    ]);
   });
 
   it('the victim own retraction hides the row', async () => {
@@ -251,7 +265,9 @@ describe('media indexer', () => {
 
     await runIndex();
 
-    expect(await itemsOf('alice-2')).toEqual([{ kind: 'file', senderJid: ALICE, deleted: true }]);
+    expect(await itemsOf('alice-2')).toEqual([
+      { kind: 'file', senderJid: ALICE_JID, deleted: true },
+    ]);
   });
 
   it('a correction from another sender inserts nothing', async () => {
@@ -273,7 +289,36 @@ describe('media indexer', () => {
 
     await runIndex();
 
-    expect(await itemsOf('alice-4')).toEqual([{ kind: 'file', senderJid: ALICE, deleted: false }]);
+    expect(await itemsOf('alice-4')).toEqual([
+      { kind: 'file', senderJid: ALICE_JID, deleted: false },
+    ]);
+  });
+
+  it('a correction from another bare_peer with the same nick leaves the target alone', async () => {
+    await seedArchive(archiveClient, [
+      seedRow({
+        originId: 'alice-spoof',
+        atMicros: at('2026-05-01T02:00:00.000Z'),
+        from: ALICE,
+        attachment: FILE_PAYLOAD,
+      }),
+      seedRow({
+        originId: 'mallory-spoof',
+        atMicros: at('2026-05-01T02:01:00.000Z'),
+        // She joined with Alice's nick, but the archive knows her real JID.
+        from: ALICE,
+        barePeer: MALLORY_JID,
+        body: 'https://evil.example.test/spoof',
+        replace: 'alice-spoof',
+      }),
+    ]);
+
+    await runIndex();
+
+    expect(await itemsOf('alice-spoof')).toEqual([
+      { kind: 'file', senderJid: ALICE_JID, deleted: false },
+    ]);
+    expect(await itemsOf('mallory-spoof')).toEqual([]);
   });
 
   it('a foreign correction of a text-only message inserts nothing', async () => {
@@ -322,7 +367,7 @@ describe('media indexer', () => {
     await runIndex();
 
     expect(await itemsOf('alice-text-own')).toEqual([
-      { kind: 'link', senderJid: ALICE, deleted: false },
+      { kind: 'link', senderJid: ALICE_JID, deleted: false },
     ]);
   });
 
@@ -370,7 +415,7 @@ describe('media indexer', () => {
     expect(skipped).toEqual([{ messageId: 'alice-edit-fail', err: 'Error' }]);
     expect(await itemsOf('alice-text-fail')).toEqual([]);
     expect(await itemsOf('alice-after-fail')).toEqual([
-      { kind: 'file', senderJid: ALICE, deleted: false },
+      { kind: 'file', senderJid: ALICE_JID, deleted: false },
     ]);
     expect(await cursor()).toBe(BigInt(fileAt));
   });

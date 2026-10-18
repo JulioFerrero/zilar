@@ -87,6 +87,10 @@ export interface GroupContextInput {
   topicName?: string;
   /** Room history oldest first, as MAM returns it. */
   history: ChatMessage[];
+  /** Display names of resolved senders, keyed by bare JID: one batched read per
+   * turn. A resolved sender's nick is never trusted; only an unresolved one's
+   * nick is used. */
+  senderNames?: ReadonlyMap<string, string>;
   /** The room message that mentioned the AI. */
   trigger: Pick<ChatMessage, 'id' | 'body'>;
   /** Pinned facts and memory block, in their own system message. */
@@ -196,6 +200,7 @@ function toTurn(
 function toGroupTurn(
   message: ChatMessage,
   aiBare: string,
+  senderNames: ReadonlyMap<string, string>,
 ): { id: string; role: 'user' | 'assistant'; content: string } | null {
   if (!isNonEmptyText(message.body)) {
     return null;
@@ -203,13 +208,26 @@ function toGroupTurn(
   if (bareJid(message.fromJid) === aiBare || message.outgoing) {
     return { id: message.id, role: 'assistant', content: message.body };
   }
-  return { id: message.id, role: 'user', content: `${displayNameOf(message)}: ${message.body}` };
+  return {
+    id: message.id,
+    role: 'user',
+    content: `${displayNameOf(message, senderNames)}: ${message.body}`,
+  };
 }
 
-// The sender's display name: the MUC nick when known, else the bare JID.
-export function displayNameOf(message: { fromJid: string; fromNick?: string | undefined }): string {
+// The sender's display name: the database name for a resolved bare JID, the
+// MUC nick only when the sender is unresolved, and the bare JID otherwise. A
+// resolved sender's nick is free text anyone can take, so it is never shown.
+export function displayNameOf(
+  message: { fromJid: string; fromResolved?: boolean | undefined; fromNick?: string | undefined },
+  senderNames: ReadonlyMap<string, string> = new Map(),
+): string {
+  const jid = bareJid(message.fromJid);
+  if (message.fromResolved === true) {
+    return senderNames.get(jid) ?? jid;
+  }
   const nick = message.fromNick?.trim() ?? '';
-  return nick === '' ? bareJid(message.fromJid) : nick;
+  return nick === '' ? jid : nick;
 }
 
 // Builds the full message list for one group turn: system, capped history,
@@ -221,9 +239,10 @@ export function buildGroupMessages(input: GroupContextInput): ChatCompletionMess
   const sender = input.senderName.trim() === '' ? 'a member' : input.senderName.trim();
 
   const recent = applyEdits(input.history).slice(-DM_HISTORY_MESSAGE_LIMIT);
+  const senderNames = input.senderNames ?? new Map<string, string>();
   const turns: Array<{ id: string; role: 'user' | 'assistant'; content: string }> = [];
   for (const message of recent) {
-    const turn = toGroupTurn(message, aiBare);
+    const turn = toGroupTurn(message, aiBare, senderNames);
     if (turn !== null) {
       turns.push(turn);
     }

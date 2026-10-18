@@ -17,10 +17,12 @@ import {
   type TestContext,
 } from '../test-support';
 import { seedGroup } from '../test-support/seed';
+import { readTopicPreview, TOPIC_PREVIEW_LIMIT } from './preview';
 
 const ROOM_JID = `roompub@${TEST_XMPP_MUC_DOMAIN}`;
 const BOB = 'bob@zilar.localhost';
 const CAROL = 'carol@zilar.localhost';
+const AI = 'ai-helper@zilar.localhost';
 
 function row(overrides: Partial<ArchiveRow> & { originId: string; timestamp: bigint }): ArchiveRow {
   return {
@@ -242,7 +244,14 @@ describe('GET /api/topics/:id/preview', () => {
         ROOM_JID,
         [
           row({ originId: 'm2', timestamp: at(60), body: 'kept' }),
-          row({ originId: 'p1', timestamp: at(50), body: 'Working', xml: progress }),
+          row({
+            originId: 'p1',
+            timestamp: at(50),
+            body: 'Working',
+            barePeer: 'ai-1@zilar.localhost',
+            nick: 'Helper',
+            xml: progress,
+          }),
           row({ originId: 'rr', timestamp: at(40), body: 'retracted fallback', xml: retraction }),
           row({ originId: 'r1', timestamp: at(30), body: 'to be retracted' }),
           row({ originId: 'c1', timestamp: at(20), body: 'new body', xml: correction }),
@@ -267,5 +276,52 @@ describe('GET /api/topics/:id/preview', () => {
     // The correction keeps the original message's id, not the correction row's.
     expect(messages.map((message) => message.id)).toEqual(['m1', 'm2']);
     expect(messages.map((message) => message.body)).toEqual(['new body', 'kept']);
+  });
+
+  it('names a room sender from the database, never the spoofed nick', async () => {
+    const messages = [
+      row({ originId: 'm9', timestamp: at(10), body: 'hello', barePeer: BOB, nick: 'Julio' }),
+    ];
+
+    const preview = await readTopicPreview(
+      fakeArchive(ROOM_JID, messages),
+      ROOM_JID,
+      TOPIC_PREVIEW_LIMIT,
+      async () => new Map([[BOB, 'Bob']]),
+    );
+
+    expect(preview).toEqual([
+      { id: 'm9', at: new Date(Number(at(10) / 1_000n)).toISOString(), nick: 'Bob', body: 'hello' },
+    ]);
+  });
+
+  it('attaches a card payload only when the room sender is an AI', async () => {
+    const blocks =
+      '<message type="groupchat"><body>Report</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"blocks","data":{"fallback":"Report","blocks":[{"kind":"callout","tone":"info","text":"Report"}]}}</agent></message>';
+    const messages = [
+      row({
+        originId: 'person-blocks',
+        timestamp: at(10),
+        body: 'Report',
+        barePeer: BOB,
+        nick: 'Julio',
+        xml: blocks,
+      }),
+      row({
+        originId: 'ai-blocks',
+        timestamp: at(20),
+        body: 'Report',
+        barePeer: AI,
+        nick: 'Helper',
+        xml: blocks,
+      }),
+    ];
+
+    const preview = await readTopicPreview(fakeArchive(ROOM_JID, messages), ROOM_JID);
+
+    expect(preview.map((message) => [message.id, message.payload !== undefined])).toEqual([
+      ['ai-blocks', true],
+      ['person-blocks', false],
+    ]);
   });
 });

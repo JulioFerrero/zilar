@@ -93,7 +93,7 @@ export function extractLinks(text: string): MediaLink[] {
 export function extractMediaItems(row: ArchiveRow): ExtractedMediaItem[] {
   // The live AI UI (a progress card) is not a message: its stage text is not
   // content, so it contributes no media and no links (T-1400).
-  if (isLiveAiUiRow(row.xml)) {
+  if (isLiveAiUiRow(row.xml, row.barePeer)) {
     return [];
   }
   try {

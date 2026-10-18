@@ -2025,3 +2025,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2026](T-2026-phone-menu-longpress-fix.md) | phone: long-press opens the message menu again | 2026-10-18 |
 | [T-2029](T-2029-shared-media-sanitise.md) | one media-panel image trust rule shared by web and phone | 2026-10-18 |
 | [T-2028](T-2028-shared-draft-events.md) | AI draft-stream events and backoff shared by web and phone | 2026-10-18 |
+| [T-2014](T-2014-room-sender-everywhere.md) | server reads room senders from bare_peer everywhere | 2026-10-18 |
