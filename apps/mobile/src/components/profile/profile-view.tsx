@@ -6,8 +6,9 @@ import { Pressable, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
 import { Text } from '@/components/ui/text';
+import { ActionTiles } from '@/components/ui/action-tiles';
 import { Button } from '@/components/ui/button';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 
 import { avatarImageSource } from '@/components/settings/profile-logic';
 import { API_URL } from '@/lib/auth';
@@ -41,35 +42,6 @@ type ProfileViewProps = ProfileViewHandlers & {
   /** The bearer for the same-origin picture load, if any. */
   token?: string | undefined;
 };
-
-function ActionKey({
-  label,
-  onPress,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      className="flex-1 items-center justify-center gap-1 rounded-xl px-2 py-3 active:opacity-90"
-      style={{
-        experimental_backgroundImage: 'linear-gradient(180deg, #2c2c2c, #151515)',
-        borderWidth: 1,
-        borderColor: '#050505',
-        boxShadow:
-          'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.65), 0 1px 0 rgba(0,0,0,0.95), 0 3px 6px -1px rgba(0,0,0,0.75)',
-      }}
-    >
-      {children}
-      <Text className="text-[11px] text-foreground">{label}</Text>
-    </Pressable>
-  );
-}
 
 /**
  * The Profile tab body: the centered avatar, name and online line, the
@@ -130,17 +102,14 @@ export function ProfileViewContent({
         </View>
       </View>
 
-      <View className="flex-row gap-2">
-        <ActionKey label="Set photo" onPress={onSetPhoto}>
-          <Camera size={20} color={ICON} />
-        </ActionKey>
-        <ActionKey label="Edit info" onPress={onEditInfo}>
-          <Pencil size={20} color={ICON} />
-        </ActionKey>
-        <ActionKey label="Settings" onPress={onOpenSettings}>
-          <Settings size={20} color={ICON} />
-        </ActionKey>
-      </View>
+      <ActionTiles
+        accessibilityLabel="Profile actions"
+        items={[
+          { key: 'photo', label: 'Set photo', icon: Camera, onPress: onSetPhoto },
+          { key: 'edit', label: 'Edit info', icon: Pencil, onPress: onEditInfo },
+          { key: 'settings', label: 'Settings', icon: Settings, onPress: onOpenSettings },
+        ]}
+      />
 
       {photoEdit === undefined ? null : <PhotoEditRow edit={photoEdit} stagedName={profile.name} />}
 

@@ -14,13 +14,14 @@ import {
 } from '@/components/contacts/add-contact';
 import { performBlock, performUnblock } from '@/components/contacts/blocks';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { buildActions, ProfileActions } from '@/components/profile/profile-actions';
+import { buildActions } from '@/components/profile/profile-actions';
 import { ProfileBlock } from '@/components/profile/profile-block';
 import { ProfileHeader } from '@/components/profile/profile-header';
 import { ProfileInfo } from '@/components/profile/profile-info';
 import { ProfileMedia } from '@/components/profile/profile-media';
 import type { ProfilePerson } from '@/components/profile/profile-person';
 import { useProfileDm } from '@/components/profile/use-profile-dm';
+import { ActionTiles } from '@/components/ui/action-tiles';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -41,7 +42,7 @@ function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
 
 /**
  * The `@handle` profile screen (T-0182, rebuilt Telegram-style in T-1308): a
- * large centred photo with the name and status, a round action row, the info
+ * large centred photo with the name and status, the action row, the info
  * card and Block at the bottom. States: loading, the profile, one plain
  * "No user with that username" for a bad handle, and an error with Retry.
  */
@@ -284,7 +285,7 @@ function HandleProfileView() {
             <View className="gap-6">
               <ProfileHeader person={profile} status={status} online={online} />
               <View className="gap-3">
-                <ProfileActions actions={actions} />
+                <ActionTiles items={actions} accessibilityLabel="Profile actions" />
                 {requestNote !== null ? (
                   <Text className="text-center text-[13px] text-muted-foreground">
                     {requestNote}
