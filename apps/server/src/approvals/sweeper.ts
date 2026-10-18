@@ -1,6 +1,7 @@
-import { Effect, Schedule, type Fiber } from 'effect';
+// effect-plain: the tick stays a Promise over expireStale; the loop lives in effect/sweep-loop.ts
 import type { ServerDatabase } from '../db/client';
 import type { AuditEntry } from '../audit/service';
+import { startSweepLoop } from '../effect/sweep-loop';
 import { expireStale } from './service';
 
 // The minimum slice of pino's Logger the sweeper needs. The real server wires
@@ -41,8 +42,6 @@ export function startApprovalsSweeper({
   intervalMs = 60_000,
   now = () => new Date(),
 }: StartApprovalsSweeperOptions): ApprovalsSweeperHandle {
-  let fiber: Fiber.Fiber<void, never> | null = null;
-
   async function tick(): Promise<void> {
     const at = now();
     let swept: Array<{ id: string; aiId: string; groupId: string | null }>;
@@ -74,34 +73,9 @@ export function startApprovalsSweeper({
     }
   }
 
-  // The background loop repeats the tick with `Schedule.spaced`, first
-  // after one interval. The tick runs uninterruptibly so an in-flight
-  // sweep finishes after `close()`; only the sleep between ticks is
-  // interruptible.
-  function loop(): Effect.Effect<void, never, never> {
-    const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
-    return Effect.sleep(intervalMs).pipe(
-      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(intervalMs))),
-    );
-  }
-
-  // First run after one interval, not at boot. `index.ts` starts the sweeper
-  // after the edge server is listening (`serveEdgeOnNode` in `index.ts`) so
-  // the API is already listening and the timer delay never blocks startup.
-  fiber = Effect.runFork(loop());
-
-  return {
-    close(): void {
-      if (fiber !== null) {
-        fiber.interruptUnsafe();
-        fiber = null;
-      }
-      // An in-flight tick keeps running (its `await audit.record` calls have
-      // no other side effects), but the timer is stopped and no new tick
-      // is scheduled. `index.ts` calls `close()` before the database close
-      // so the in-flight queries settle on the live connection.
-    },
-  };
+  // First run after one interval, not at boot, so the timer delay never
+  // blocks startup.
+  return startSweepLoop(intervalMs, tick);
 }
 
 // Reduce a thrown error to `{ name, message }`, matching `machines/hub.ts`.

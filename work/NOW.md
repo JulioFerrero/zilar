@@ -938,7 +938,34 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - main with W1 + W2: 87% and 84% janky, p50 93 and 85 ms;
                       - so W1 + W2 reach older pages sooner (one page further in 10 flings) but aren't smoother. The cost is per row.
                       - APKs are in `tmp/apks/`. Next: measure W3a (T-2018, merged), W3b (T-2022, running), then W4 (row leaves, after T-2001).
-                    - **Share plan wave 1:** merged T-2019 (message cache; phone `editedAt` fix) and T-2021 (smooth text, −77 lines). T-2020 (drafts) was sent back for being +45 lines.
+                    - **Share plan, merged 10-18:**
+
+                      | Task | What | Lines |
+                      | --- | --- | ---: |
+                      | T-2019 | message cache | — |
+                      | T-2021 | smooth text | −77 |
+                      | T-2020 | drafts | −130 |
+                      | T-2024 | media retry | −64 |
+                      | T-2028 | draft events | −53 |
+                      | T-2029 | media trust | −4 |
+                      | T-2030 | attachments | −3 |
+                      | T-2023 | stickers, which also fixes the phone `..` token leak | −41 |
+                      | T-2027 | chat-list cache | −102 |
+                      | T-2031 | API errors | −29 |
+                      | T-2032 | web message cache | −216 |
+                      | T-2034 | version and requests | −61 |
+                      | T-2033 | Markdown AST | added; it pays off in T-2037 |
+
+                      - **Running:**
+                        - T-2035: history merge, web keeps prefs on failure, phone prunes;
+                        - T-2037: phone Markdown on the shared AST, about −400;
+                        - T-2038: server sweep loop;
+                        - T-2039: web clones;
+                        - T-2040: server hosts and entities.
+                      - **Also merged:**
+                        - T-2036: channel owners and admins see full topic members;
+                        - T-2001: AI-only cards;
+                        - T-2014: server room senders by `bare_peer`.
                     - **Julio's 4 share decisions:** memory `decisions-1018-share`.
                     - **Live since 17:46:** `d8523011e`, with 0 server errors.
                       - **Includes:**

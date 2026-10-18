@@ -2,10 +2,11 @@
 // days are deleted by a leader-only 60 s tick registered next to the approvals
 // sweeper (`leader/start.ts`). A tick failure logs and never throws, so the
 // timer keeps running.
-import { Effect, Schedule, type Fiber } from 'effect';
+import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
+import { startSweepLoop } from '../../effect/sweep-loop';
 
 /** The retention window; the lead's decision (T-1398 Review). */
 export const TASK_EVENT_RETENTION_DAYS = 30;
@@ -54,8 +55,6 @@ export function startTaskEventRetention({
   intervalMs = 60_000,
   now = () => new Date(),
 }: StartTaskEventRetentionOptions): TaskEventRetentionHandle {
-  let fiber: Fiber.Fiber<void, never> | null = null;
-
   async function tick(): Promise<void> {
     try {
       await deleteEventsOlderThan(db, retentionCutoff(now()));
@@ -68,21 +67,5 @@ export function startTaskEventRetention({
     }
   }
 
-  function loop(): Effect.Effect<void, never, never> {
-    const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
-    return Effect.sleep(intervalMs).pipe(
-      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(intervalMs))),
-    );
-  }
-
-  fiber = Effect.runFork(loop());
-
-  return {
-    close(): void {
-      if (fiber !== null) {
-        fiber.interruptUnsafe();
-        fiber = null;
-      }
-    },
-  };
+  return startSweepLoop(intervalMs, tick);
 }

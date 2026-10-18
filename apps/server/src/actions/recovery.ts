@@ -1,7 +1,8 @@
-import { Effect, Schedule, type Fiber } from 'effect';
+import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ApprovalRow, PendingActionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { startSweepLoop } from '../effect/sweep-loop';
 import type { ActionGateway, ActionGatewayDependencies, ActionGatewayLogger } from './gateway';
 import { cancelPending } from './queries';
 import { errorName } from './support';
@@ -30,8 +31,6 @@ export function startRecoveryStuckTimer({
   logger,
   intervalMs = 5 * 60 * 1000,
 }: StartRecoveryStuckTimerOptions): RecoveryStuckHandle {
-  let fiber: Fiber.Fiber<void, never> | null = null;
-
   // Today's tick: run `recoverStuck`, log a failure with the error class
   // name only, and let the loop carry on either way.
   async function tick(): Promise<void> {
@@ -42,36 +41,10 @@ export function startRecoveryStuckTimer({
     }
   }
 
-  // The background loop repeats the tick with `Schedule.spaced`, first
-  // after one interval. The tick runs uninterruptibly so an in-flight
-  // sweep finishes after `close()`, the same shutdown behaviour as the
-  // approvals sweeper; only the sleep between ticks is interruptible.
-  function loop(): Effect.Effect<void, never, never> {
-    const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
-    return Effect.sleep(intervalMs).pipe(
-      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(intervalMs))),
-    );
-  }
-
-  // First run after one interval, not at boot. `index.ts` starts the
-  // recovery loop after the edge server is listening (`serveEdgeOnNode` in
-  // `index.ts`) so the API is already listening and the timer delay never
-  // blocks startup. Callers that want an immediate sweep can call
+  // First run after one interval, not at boot, so the timer delay never
+  // blocks startup; callers that want an immediate sweep can call
   // `gateway.recoverStuck()` themselves.
-  fiber = Effect.runFork(loop());
-
-  return {
-    close(): void {
-      if (fiber !== null) {
-        fiber.interruptUnsafe();
-        fiber = null;
-      }
-      // An in-flight tick keeps running, but the timer is stopped and no
-      // new tick is scheduled. `index.ts` calls `close()` before the
-      // database close so the in-flight queries settle on the live
-      // connection.
-    },
-  };
+  return startSweepLoop(intervalMs, tick);
 }
 
 // Marks a `running` row older than `STUCK_RUNNING_MS` as `failed` with a

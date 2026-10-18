@@ -2036,3 +2036,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2001](T-2001-ai-only-cards.md) | AI-only cards render only from AIs; approvals use server data | 2026-10-18 |
 | [T-2036](T-2036-channel-topic-viewer.md) | channel owners and admins see full topic members again | 2026-10-18 |
 | [T-2034](T-2034-shared-version-and-requests.md) | version check and contact-requests poll shared by web and phone | 2026-10-18 |
+| [T-2038](T-2038-server-sweep-loop.md) | one server sweep loop replaces three copies | 2026-10-18 |
