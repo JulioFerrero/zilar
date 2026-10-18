@@ -5,7 +5,6 @@ import type { DeskSpec } from '../hands';
 import type { DockerSettings } from './config';
 import { DESK_LABEL } from './docker';
 
-/** Runs one docker CLI call and resolves its stdout; tests swap in a fake. */
 export type Exec = (
   command: string,
   args: readonly string[],
@@ -33,7 +32,6 @@ export function execFile(
   });
 }
 
-/** Keeps a jail alive; every tool then runs in the daemon via `docker exec`. */
 function keepAliveFlags(image: string): readonly string[] {
   if (image.startsWith('-')) {
     throw new Error('the desk image is invalid');
@@ -69,7 +67,6 @@ function isIpv4Literal(host: string): boolean {
   );
 }
 
-/** The container id of the compose service `host`, on any network. */
 export async function egressContainerId(
   host: string,
   exec: Exec = execFile,
@@ -88,7 +85,6 @@ export async function egressContainerId(
   );
 }
 
-/** The container's IPv4 on `network`, or null when it is not attached there. */
 export async function containerAddress(
   network: string,
   id: string,
@@ -108,11 +104,8 @@ export async function containerAddress(
   }
 }
 
-/**
- * Finds the egress proxy's IPv4 on the jail network. gVisor's own network stack
- * cannot reach Docker's embedded DNS, so the proxy name is pinned in the jail's
- * /etc/hosts instead (the lead's live check, plan §4.4).
- */
+// gVisor's network stack cannot reach Docker's embedded DNS, so the proxy's IPv4
+// is pinned in the jail's /etc/hosts.
 export async function proxyAddress(
   network: string,
   host: string,
@@ -132,7 +125,6 @@ export async function proxyAddress(
   }
 }
 
-/** The §4.2 run flags, fixed in code; only validated numbers come from the spec. */
 export function createArgs(
   name: string,
   spec: DeskSpec,

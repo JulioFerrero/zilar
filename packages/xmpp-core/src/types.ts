@@ -36,94 +36,51 @@ export interface XmppCoreOptions {
   /** Called for every (re)connect; must return a fresh short-lived JWT. */
   getToken: () => Promise<{ jid: string; token: string }>;
   /**
-   * Idle time without any received stanza before the client pings the
-   * server domain (XEP-0199). Defaults to 30 000; 0 disables the keepalive.
+   * Idle time without a received stanza before the client pings the server
+   * (XEP-0199). Defaults to 30 000; 0 disables the keepalive.
    */
   keepaliveMs?: number;
   /**
-   * Time to wait for the keepalive ping reply (a result or an error counts
-   * as alive) before the connection is treated as dead and reconnected.
-   * Defaults to 15 000; 0 disables the keepalive.
+   * Time to wait for the keepalive reply (a result or an error counts) before the
+   * connection is treated as dead; defaults 15 000, 0 disables.
    */
   keepaliveTimeoutMs?: number;
-  /**
-   * How long the client may stay connecting or reconnecting before it is torn
-   * down and replaced by a fresh one. Defaults to a schedule of 5, 8, 12 and
-   * 20 s; a number replaces it with one fixed wait, 0 disables.
-   */
+  /** How long connecting may last before a fresh client replaces it; 5, 8, 12 then 20 s. */
   reconnectWatchdogMs?: number;
-  /**
-   * Fixed XMPP resource, e.g. `gateway`. When absent, a random
-   * `zilar-xxxxxxxx` resource is used, as before.
-   */
   resource?: string;
 }
 
 export interface ChatMessage {
   /** Archive stanza-id (XEP-0359) when known, else the message id. */
   id: string;
-  /**
-   * The sender-generated id: the stanza's `id` attribute or its `<origin-id/>`
-   * (XEP-0359). Kept so an edit can name the original by the id the sender
-   * chose (XEP-0308 requires it, in DMs and in groups).
-   */
+  /** The sender-generated id (XEP-0359), so an edit can name the original (XEP-0308). */
   originId?: string;
-  /** Bare JID of the room, or of the DM peer. */
   chatJid: string;
   kind: ChatKind;
-  /** Real bare JID of the sender when known, else the occupant JID. */
   fromJid: string;
-  /** True when `fromJid` is a real bare JID, false when it is an occupant JID. */
   fromResolved: boolean;
-  /** MUC nickname, when the message came from a room. */
   fromNick?: string;
-  /** XEP occupant-id of the sender, when the message carries one. */
   occupantId?: string;
   body?: string;
-  /** Decoded with `decodePayload`; invalid payloads are dropped. */
   payload?: Payload;
-  /** Album membership (`urn:zilar:album:0`); a malformed marker is dropped. */
   album?: MessageAlbum;
-  /**
-   * Where the message was forwarded from, captured at forward time. A
-   * malformed `<forward>` element is dropped, so this is absent when invalid.
-   */
   forward?: ForwardOrigin;
   replyTo?: { id: string; to?: string; text?: string };
-  /**
-   * XEP-0444 reactions carried by a body-less message: the target message id
-   * and the reactor's complete current set (empty clears it). Present only on
-   * a reaction update; it is not a chat message for display.
-   */
+  /** XEP-0444 reactions from a body-less message: target id and full set; not a chat message. */
   reactions?: MessageReactions;
-  /**
-   * XEP-0308 correction: the corrected message's id. `body` holds the new full
-   * text. Not a chat message of its own: it edits the target.
-   */
+  /** XEP-0308 correction: the target's id; `body` is the new full text, not a message of its own. */
   correction?: MessageCorrection;
-  /**
-   * XEP-0424 retraction: the retracted message's id. The fallback body is
-   * dropped, so `body` is undefined. Not a chat message of its own.
-   */
+  /** XEP-0424 retraction: the target's id; `body` is dropped, not a message of its own. */
   retraction?: MessageRetraction;
-  /**
-   * XEP-0372 mentions. Offsets are in UTF-16 code units (JS string indices);
-   * `buildMessage` converts them to the XEP-0372 code-point offsets on the
-   * wire and the parser converts them back.
-   */
+  /** XEP-0372 mentions; offsets are UTF-16 code units, converted to code points on the wire. */
   mentions?: Mention[];
-  /** From `<delay/>` or the archive; receive time when neither is present. */
   timestamp: Date;
-  /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
 }
 
-/** One present occupant of a room, tracked from that room's MUC presence. */
 export interface Occupant {
-  /** Occupant JID: `roomJid/nick`. */
   jid: string;
   nick: string;
-  /** Real bare JID, when the room is non-anonymous and reveals it. */
   realJid?: string;
   occupantId?: string;
   affiliation?: string;
@@ -137,11 +94,8 @@ export interface OccupantsEvent {
 }
 
 export interface HistoryPage {
-  /** Oldest first. */
   messages: ChatMessage[];
-  /** True when the archive reported there is nothing older. */
   complete: boolean;
-  /** RSM cursor: pass as `before` to load the previous page. */
   first?: string;
 }
 
@@ -149,43 +103,32 @@ export interface TypingEvent {
   chatJid: string;
   fromJid: string;
   state: 'composing' | 'paused' | 'active';
-  /** T-1406: the short fixed status text an AI carries (e.g. "Searching the web"). */
   status?: string;
-  /** True when the chat state is mine (a MUC reflection of my own state). */
   outgoing: boolean;
 }
 
-/** A contact's (roster) availability, from a bare-JID presence stanza. */
 export interface PresenceEvent {
-  /** Bare JID of the contact. */
   jid: string;
   available: boolean;
-  /** The `<delay/>` stamp of an offline (unavailable) presence, when present. */
   delayedAt?: number;
 }
-/** The MUC presence the parser returns; `destroyed` marks XEP-0045 room destruction. */
 export type ParsedMucPresence = MucPresence & { destroyed?: true };
 
 export interface DisplayedEvent {
   chatJid: string;
   fromJid: string;
   messageId: string;
-  /** True when the marker is mine (a MUC reflection of my own marker). */
   outgoing: boolean;
 }
 
-/** A direct MUC invitation (XEP-0249). */
 export interface InvitedEvent {
-  /** Bare JID of the room, on the MUC domain (`rooms.<domain>`). */
   roomJid: string;
-  /** Bare JID of the sender, when the stanza carried one. */
   fromJid?: string;
   reason?: string;
 }
 
 export type RosterSubscription = 'none' | 'to' | 'from' | 'both' | 'remove';
 
-/** One item of a roster push from our own server (RFC 6121 §2.1.6). */
 export interface RosterEvent {
   jid: string;
   subscription: RosterSubscription;
@@ -194,51 +137,32 @@ export interface RosterEvent {
 
 export interface SendMessageOptions {
   payload?: Payload;
-  /** Origin to attach when this message is a forward. */
   forward?: ForwardOrigin;
   replyTo?: { id: string; to?: string; text?: string };
-  /** Offsets are UTF-16 code units; `buildMessage` writes them as code points. */
   mentions?: MentionInput[];
-  /** Album marker to attach when this message is one photo of an album. */
   album?: MessageAlbum;
-  /** Stanza `id` to send under; a fresh one is minted when absent. An outbox
-   * resend passes the first send's id, so the receiver dedupes on it. */
   id?: string;
 }
 
-/** Options for an edit; mentions are rebuilt from the new text, as on a send. */
 export interface SendCorrectionOptions {
-  /** Offsets are UTF-16 code units; `buildCorrection` writes them as code points. */
   mentions?: MentionInput[];
-  /** T-1414: an `<agent>` payload to carry with the edit, so a correction can
-   * update a task card in place (written exactly like a send). */
   payload?: Payload;
 }
 
-/** A file we want to upload through XEP-0363. */
 export interface UploadRequest {
-  /** Original file name, shown in the download URL. */
   filename: string;
-  /** Exact byte size the client is about to PUT. */
   size: number;
-  /** MIME type of the bytes. */
   contentType: string;
 }
 
-/** The slot the upload service hands back (XEP-0363 §4). */
 export interface UploadSlot {
-  /** URL to PUT the bytes to. */
   putUrl: string;
-  /** URL the receiver GETs the bytes from; this is what goes in the message. */
   getUrl: string;
-  /** Extra headers the PUT must carry. */
   headers: Record<string, string>;
 }
 
 export interface LoadHistoryOptions {
-  /** Archive id to page before. */
   before?: string;
-  /** Page size, default 50. */
   max?: number;
 }
 
@@ -248,13 +172,11 @@ export interface ErrorEvent {
 
 export interface XmppCore extends XmppSuspend {
   status(): ConnectionStatus;
-  /** My bare JID once online. */
   me(): string | undefined;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   joinRoom(roomJid: string, nick: string): Promise<void>;
   leaveRoom(roomJid: string): Promise<void>;
-  /** Present occupants of a room, tracked from that room's MUC presence. */
   occupants(roomJid: string): Occupant[];
   sendMessage(
     to: string,
@@ -262,17 +184,7 @@ export interface XmppCore extends XmppSuspend {
     text: string,
     opts?: SendMessageOptions,
   ): Promise<{ id: string }>;
-  /**
-   * Sends my complete XEP-0444 reaction set for a message (XEP-0444). An empty
-   * `emojis` array clears my reactions. Invalid emoji are dropped and the set
-   * is capped at six distinct reactions.
-   */
   sendReactions(chatJid: string, kind: ChatKind, targetId: string, emojis: string[]): Promise<void>;
-  /**
-   * Sends a XEP-0308 correction: the new full body and a `<replace/>` naming the
-   * original message by its sender-generated id. Returns the new message id.
-   * Mentions are rebuilt from the new text and carried as XEP-0372 references.
-   */
   sendCorrection(
     chatJid: string,
     kind: ChatKind,
@@ -280,21 +192,9 @@ export interface XmppCore extends XmppSuspend {
     text: string,
     opts?: SendCorrectionOptions,
   ): Promise<{ id: string }>;
-  /**
-   * Sends a XEP-0424 retraction ("delete for everyone") with a fallback body
-   * and a store hint. `targetId` is the original's id in DMs, its stanza-id in
-   * groups.
-   */
   sendRetraction(chatJid: string, kind: ChatKind, targetId: string): Promise<void>;
   loadHistory(chatJid: string, kind: ChatKind, opts?: LoadHistoryOptions): Promise<HistoryPage>;
-  /** Asks the HTTP upload service for a slot to PUT a file to (XEP-0363). */
   requestUploadSlot(request: UploadRequest): Promise<UploadSlot>;
-  /**
-   * Enables or disables push for this session's push pair (XEP-0357). Sent
-   * over the user's own session, which ejabberd requires; resolves on
-   * `result`, rejects on `error` or timeout. Optional so older or partial
-   * cores still satisfy the interface; callers feature-detect.
-   */
   setPushEnabled?: (options: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
   sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused', status?: string): void;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): void;
@@ -318,36 +218,15 @@ export interface XmppCore extends XmppSuspend {
   on(event: 'invited', cb: (e: InvitedEvent) => void): () => void;
   on(event: 'roster', cb: (e: RosterEvent) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
-  /**
-   * Another session logged in with the same full JID and replaced this one
-   * (the `conflict` stream error). The client is already stopped with no
-   * auto-reconnect when this fires.
-   */
   on(event: 'replaced', cb: () => void): () => void;
 }
 
-/**
- * What the Effect core fails with when a send is rejected: `NotOnline`, or the
- * error the library's `send` rejected with (kept as thrown).
- */
 export type SendError = NotOnline | Error;
 
-/**
- * The same chat API as `XmppCore`, as Effects and Streams. Every method does
- * what its `XmppCore` namesake does; the Promise form is this API run with
- * `Effect.runPromise`.
- */
 export interface XmppCoreEffect extends XmppSuspendEffect {
   status(): ConnectionStatus;
-  /** My bare JID once online. */
   me(): string | undefined;
-  /** Present occupants of a room, tracked from that room's MUC presence. */
   occupants(roomJid: string): Occupant[];
-  /**
-   * Succeeds when the client is online. Fails with `ConnectTimeout`,
-   * `Disconnected`, or the error that stopped the attempt for good (a
-   * conflict or a bad login), as thrown by the library.
-   */
   connect(): Effect.Effect<void, Error>;
   disconnect(): Effect.Effect<void>;
   joinRoom(roomJid: string, nick: string): Effect.Effect<void, XmppCoreError>;
@@ -383,7 +262,6 @@ export interface XmppCoreEffect extends XmppSuspendEffect {
     node: string;
     enable: boolean;
   }): Effect.Effect<void, XmppCoreError>;
-  /** Fire and forget: does nothing offline; a failed send becomes an `error` event. */
   sendTyping(
     to: string,
     kind: ChatKind,

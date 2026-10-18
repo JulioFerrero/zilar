@@ -14,12 +14,9 @@ export interface ReplyDeps {
   repoRoot: string;
 }
 
-// Answers a waiting worker: interrupts its session, then re-prompts with the
-// lead's text. There is no API to answer a `question` tool call directly, so
-// interrupt-plus-prompt is the whole mechanism. With `fresh`, the lead's text
-// goes to a new session instead: the old one is interrupted, a fresh session
-// is opened in the same worktree with the `fresh` template plus the lead's
-// text, and the state points at the new session.
+// There is no API to answer a `question` call directly, so the mechanism is interrupt,
+// then re-prompt with the lead's text. With `fresh`, that text opens a new session in
+// the same worktree and the state points at it.
 export async function replyToWorker(
   task: string,
   promptFile: string,
@@ -45,9 +42,8 @@ export async function replyToWorker(
     deps.client.promptDetached(record.sessionId, text);
     return;
   }
-  // Every local check runs before the interrupt, so a typo or a missing
-  // file never stops the old worker without a replacement (switch-model.ts
-  // does the same). The prompt bytes are identical either way.
+  // Every local check runs before the interrupt, so a typo never stops the old worker
+  // without a replacement.
   const file = findTaskFile(record.worktree, task);
   const fields = parseFrontMatter(
     fs.readFileSync(path.join(record.worktree, 'work', file), 'utf8'),

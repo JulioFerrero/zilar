@@ -1,6 +1,5 @@
-// `WatchApp`: the pure `lead watch` view (view plus refresh state in,
-// terminal lines out) so tests can render it with `ink-testing-library`.
-// Moved unchanged from `lead/watch-app.tsx` (size split).
+// `WatchApp`: the pure view (view plus refresh state in, lines out), so tests can
+// render it with `ink-testing-library`.
 
 import { Box, useStdout } from 'ink';
 import type { ReactNode } from 'react';
@@ -51,8 +50,7 @@ export function WatchApp({
   const showIcons = icons ?? iconsEnabled(false);
   const compact = width < COMPACT_WIDTH;
 
-  // Without a known height (a non-TTY) render everything in one column, as
-  // before scrolling and the two-column layout existed.
+  // Without a known height (a non-TTY) render everything in one column.
   if (knownRows === undefined) {
     return (
       <Box flexDirection="column" width={width}>

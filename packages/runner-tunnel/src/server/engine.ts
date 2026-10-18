@@ -1,12 +1,12 @@
-// effect-plain: moved unchanged from packages/runner-tunnel/src/server.ts (size split)
+// effect-plain: the engine streams are loopback sockets over the mux, which owns the Effect.
 import type { Socket } from 'node:net';
 import { TunnelHttpAgent, createLoopbackPair } from '../http-agent.ts';
 import { TunnelClosedError, attachSocketToStream } from '../mux.ts';
 import type { ServerRuntime } from './conn.ts';
 
 /**
- * Open a stream to a runner port and return the local end as a connected
- * TCP socket. Refusals and drops destroy the socket with a TunnelClosedError.
+ * Opens a stream to a runner port and returns a connected TCP socket; refusals and
+ * drops destroy it with a `TunnelClosedError`.
  */
 export async function openEngineStream(
   rt: ServerRuntime,

@@ -5,11 +5,9 @@ import { Deferred, Effect } from 'effect';
 import { TunnelClosedError } from './mux.ts';
 
 /**
- * Open one tunnel stream and return the local end as a connected TCP socket.
- * The socket is a localhost loopback pair whose far end is bridged to the
- * stream, so node's HTTP stack only ever sees a real `net.Socket`. The extra
- * hop costs a fraction of a millisecond and keeps every HTTP behavior
- * (chunked bodies, SSE, trailers, error events) exactly as usual.
+ * Opens a tunnel stream and returns the local end as a connected TCP socket: a
+ * loopback pair whose far end bridges the stream, so node's HTTP stack only sees a
+ * real `net.Socket` and every behaviour (chunked, SSE, trailers) stays usual.
  */
 export type TunnelDialer = (port: number) => Promise<net.Socket>;
 
@@ -53,9 +51,8 @@ export const createLoopbackPair = (): Promise<{ client: net.Socket; server: net.
   Effect.runPromise(createLoopbackPairEffect);
 
 /**
- * An `http.Agent` whose connections travel through the tunnel. The `port` of
- * the request selects the runner port to open, exactly like a direct request;
- * the host is ignored because the tunnel decides where bytes go.
+ * An `http.Agent` whose connections travel through the tunnel: `port` selects the
+ * runner port, the host is ignored because the tunnel decides where bytes go.
  */
 export class TunnelHttpAgent extends http.Agent {
   private readonly dial: TunnelDialer;

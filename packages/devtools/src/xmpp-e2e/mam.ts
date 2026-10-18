@@ -1,4 +1,3 @@
-// Room history (MAM) queries for the XMPP end-to-end spike.
 import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
 import { errorMessage, STEP_TIMEOUT_MS, withDeadline, xmppErrorCondition } from './harness';
 

@@ -1,5 +1,4 @@
-// The `lead` entry point. The command functions live under `cli/` (T-1468);
-// this file keeps `main`, the entry check and the call, and stays invoked as
+// The `lead` entry point: `main` and the entry check, invoked as
 // `pnpm exec tsx src/lead/cli.ts <command>`.
 
 import { runForget } from './forget.js';

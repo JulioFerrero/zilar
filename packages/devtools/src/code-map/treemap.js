@@ -23,7 +23,6 @@ let W = 1;
 let H = 1;
 let dpr = 1;
 
-// Squarified treemap: rows of boxes whose aspect ratios stay close to square.
 function squarify(nodes, x, y, w, h, out) {
   const items = nodes.filter((n) => n.value > 0).sort((a, b) => b.value - a.value);
   const total = items.reduce((s, n) => s + n.value, 0);

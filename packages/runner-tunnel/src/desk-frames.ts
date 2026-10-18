@@ -1,11 +1,7 @@
 import { Schema } from 'effect';
 
-/**
- * The `desk.*` control frames (plan §2, §6.1) that carry the four hands
- * operations over the tunnel. They are snake_cased like the rest of the
- * protocol and validated with the same bounded schemas; `desk.snapshot` is a
- * later task and is deliberately absent.
- */
+/** The `desk.*` control frames (plan §2, §6.1), snake_cased like the rest of the
+ * protocol and validated with the same bounded schemas. */
 
 /** The plan's fixed error taxonomy; never raw host text (plan §2). */
 export const DeskErrorCodeSchema = Schema.Literals([
@@ -21,7 +17,6 @@ export const DeskErrorCodeSchema = Schema.Literals([
 
 export type DeskErrorCode = typeof DeskErrorCodeSchema.Type;
 
-/** The per-jail ceilings a server may ask for (plan §4.2). */
 export const MAX_MEMORY_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_PIDS = 256;
 export const MAX_DISK_BYTES = 5 * 1024 * 1024 * 1024;
@@ -128,13 +123,10 @@ export type DeskStoppedFrame = typeof DeskStoppedSchema.Type;
 export type DeskErrorFrame = typeof DeskErrorSchema.Type;
 export type DeskQueuedFrame = typeof DeskQueuedSchema.Type;
 
-/** A server→runner desk frame that expects a reply frame. */
 export type DeskRequestFrame = DeskProvisionFrame | DeskStopFrame;
 
-/** A runner→server reply to a `sendDesk` request. */
 export type DeskReplyFrame = DeskReadyFrame | DeskStoppedFrame | DeskErrorFrame | DeskQueuedFrame;
 
-/** A desk transport failure (bad state, a timeout) with a taxonomy code. */
 export class DeskRequestError extends Error {
   readonly code: DeskErrorCode;
 

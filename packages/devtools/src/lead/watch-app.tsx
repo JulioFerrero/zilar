@@ -1,10 +1,6 @@
-// `lead watch` as a proper terminal app, rendered with Ink. `WatchApp` is
-// pure (view plus refresh state in, terminal lines out) so tests render it
-// with `ink-testing-library`; `WatchLive` owns the 3-second child-process
-// refresh, the clock ticker and the quit keys.
-//
-// Split under `watch-app/` (T-0985). Every importer keeps using
-// `./watch-app.js`; this barrel re-exports the same names it always did.
+// `lead watch` as an Ink terminal app: `WatchApp` is pure (view in, lines out) so
+// tests render it with `ink-testing-library`; `WatchLive` owns the refresh, clock and
+// quit keys.
 
 export { WatchLive } from './watch-app/live.js';
 export type { WatchAppProps } from './watch-app/view.js';

@@ -1,6 +1,3 @@
-// Changed-file parsing for `lead watch`, moved unchanged from `lead/watch.ts`
-// (size split).
-
 export type FileKind = 'created' | 'modified' | 'deleted';
 
 export interface ChangedFile {
@@ -8,10 +5,9 @@ export interface ChangedFile {
   kind: FileKind;
 }
 
-// `--name-status` lines look like `M\tpath` or `R<score>\told\tnew`. `git
-// status --porcelain` untracked lines look like `?? path`. Both are joined
-// into one list, deduplicated, and ordered created → modified → deleted,
-// each sorted alphabetically. Paths under `work/` are dropped.
+// `--name-status` lines look like `M\tpath` or `R<score>\told\tnew`; untracked lines
+// look like `?? path`. Both are joined, deduplicated and ordered created -> modified ->
+// deleted, each alphabetically. Paths under `work/` are dropped.
 export function parseChangedFiles(nameStatus: string, porcelain: string): ChangedFile[] {
   const created = new Set<string>();
   const modified = new Set<string>();
@@ -33,7 +29,6 @@ export function parseChangedFiles(nameStatus: string, porcelain: string): Change
     } else if (status.startsWith('D')) {
       addIfReal(deleted, parts[1]);
     } else if (status.startsWith('R')) {
-      // A rename shows up as a delete of the old name and a create of the new.
       const oldPath = parts[1];
       const newPath = parts[2];
       if (oldPath !== undefined) {

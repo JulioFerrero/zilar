@@ -1,6 +1,5 @@
-// effect-plain: the egress registry is an in-memory map plus a tiny newline-JSON
-// unix socket the sidecar uses on provision and stop. The socket is a local
-// host daemon, so it has no Effect runtime; `Schema` only guards the wire shape.
+// effect-plain: the egress registry is an in-memory map plus a newline-JSON unix
+// socket the sidecar uses on provision and stop; `Schema` only guards the wire shape.
 import { timingSafeEqual } from 'node:crypto';
 import { unlinkSync } from 'node:fs';
 import { connect, createServer, type Server, type Socket } from 'node:net';
@@ -9,7 +8,6 @@ import { Exit, Schema } from 'effect';
 /** The default unix socket the proxy's registry listens on. */
 export const DEFAULT_REGISTRY_SOCKET = '/run/zilar/egress.sock';
 
-/** What the proxy needs to answer for one desk. */
 export interface DeskRegistration {
   readonly deskId: string;
   readonly secret: string;
@@ -26,7 +24,6 @@ function secretsMatch(expected: string, provided: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Maps a desk's proxy credential to its egress policy, in memory only. */
 export class DeskRegistry {
   private readonly byDesk = new Map<string, DeskRegistration>();
 
@@ -38,7 +35,6 @@ export class DeskRegistry {
     this.byDesk.delete(deskId);
   }
 
-  /** The registration when the desk exists and the secret matches, else null. */
   authenticate(deskId: string, secret: string): DeskRegistration | null {
     const registration = this.byDesk.get(deskId);
     if (registration === undefined || !secretsMatch(registration.secret, secret)) {
@@ -110,7 +106,6 @@ function replyFor(request: RegistryRequest | null, registry: DeskRegistry): stri
   return JSON.stringify({ id: request.id, ok: true });
 }
 
-/** Serves `register`/`unregister` on a unix socket, one JSON line each way. */
 export function createRegistryServer(registry: DeskRegistry, socketPath: string): RegistryServer {
   const server: Server = createServer((socket: Socket) => {
     let buffer = '';
@@ -205,7 +200,6 @@ function call(socketPath: string, payload: object): Promise<void> {
   });
 }
 
-/** The sidecar's client for the registry socket. */
 export function createRegistryClient(socketPath: string): RegistryClient {
   return {
     register(registration) {

@@ -31,7 +31,6 @@ function portFromEnv(value: string | undefined): number {
   return parsed;
 }
 
-/** Reads the proxy's settings from the environment. */
 export function loadEgressConfig(env: NodeJS.ProcessEnv): EgressConfig {
   return {
     port: portFromEnv(env.DESK_EGRESS_PORT),
@@ -51,7 +50,6 @@ export interface RunningEgress {
   readonly registry: RegistryServer;
 }
 
-/** Builds the proxy from the environment and starts both listeners. */
 export async function start(env: NodeJS.ProcessEnv = process.env): Promise<RunningEgress> {
   const config = loadEgressConfig(env);
   const registry = new DeskRegistry();
@@ -68,7 +66,6 @@ export async function start(env: NodeJS.ProcessEnv = process.env): Promise<Runni
   return { proxy, registry: registryServer };
 }
 
-/** `desk-egress`: runs until SIGTERM/SIGINT, then closes both listeners. */
 export async function main(): Promise<number> {
   const running = await start();
   await new Promise<void>((resolve) => {

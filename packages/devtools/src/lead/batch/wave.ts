@@ -57,11 +57,8 @@ function dirOf(file: string): string {
   return slash < 0 ? '' : file.slice(0, slash);
 }
 
-/**
- * The task that owns a failing file: the first task whose diff holds it. A test
- * file also belongs to the task whose diff holds a file with the same base name
- * in the same folder (`foo.test.tsx` and `foo.tsx`).
- */
+/** The task whose diff holds a failing file; a test also belongs to the task whose
+ * diff holds its same-named source. */
 export function ownerOf(
   file: string,
   owned: { task: string; files: string[] }[],

@@ -16,9 +16,8 @@ import { appendLog, loadState, updateState } from '../state.js';
 import { splitModel } from '../task-file.js';
 import type { DoctorRecord } from '../types.js';
 
-// The `since` for the very first audit: the first parent of the commit 30
-// commits back, so the first audit covers a bounded window; the root commit
-// when the history is shorter.
+// The `since` for the first audit: the first parent of the commit 30 back, so the
+// first audit covers a bounded window (the root commit on a shorter history).
 function firstAuditSince(deps: AutopilotDeps, mainHead: string): string {
   const base30 = deps.runner.run(deps.repoRoot, ['rev-parse', `${mainHead}~30^`]);
   if (base30.ok && /^[0-9a-f]{40}$/.test(base30.stdout.trim())) {
@@ -32,10 +31,8 @@ function firstAuditSince(deps: AutopilotDeps, mainHead: string): string {
   return first ?? mainHead;
 }
 
-// One audit step over main HEAD: gather the doctor inputs (main HEAD and its
-// commit time through the runner in repoRoot, the doctor session state, the
-// report in the doctor worktree) and apply decideDoctor. The task loop above
-// is untouched by a doctor failure.
+// One audit step over main HEAD: gather the inputs (HEAD and commit time, doctor
+// state, report) and apply decideDoctor; a doctor failure never touches the task loop.
 export async function tickDoctor(
   deps: AutopilotDeps,
   options: { dryRun: boolean; now: number },
@@ -73,8 +70,7 @@ export async function tickDoctor(
       sessionState = summary.state;
       quotaError = summary.quotaError;
       freeRefusal = summary.freeRefusal;
-      // T-1942: a doctor session on a free listing the gateway refused pauses
-      // all free listings, so the fallback below and later starts skip them.
+      // A doctor session on a free listing the gateway refused pauses all free listings.
       if (!options.dryRun) {
         pauseFreeOnRefusal(new Date(options.now), doctor.model ?? FREE_MUSE, freeRefusal);
       }

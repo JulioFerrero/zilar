@@ -5,10 +5,9 @@ import type { XmppCore, XmppCoreOptions } from './types';
 export type { ClientFactory, ClientOptions, CoreDependencies } from './core-effect';
 
 /**
- * The Promise facade over the Effect core: each method runs the core's Effect
- * with `Effect.runPromise`, so a rejection is the error the Effect failed
- * with. Typing and read markers are fire and forget, and `on` is the core's
- * synchronous callback form.
+ * The Promise facade over the Effect core: each method runs the core's Effect with
+ * `Effect.runPromise`, so a rejection is the error it failed with. `on` is the
+ * callback form; typing and read markers are fire and forget.
  */
 export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}): XmppCore {
   const core = createCoreEffect(options, deps);

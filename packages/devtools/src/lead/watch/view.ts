@@ -1,6 +1,3 @@
-// The `lead watch` view model and its JSON decoder, moved unchanged from
-// `lead/watch.ts` (size split).
-
 import { Result, Schema } from 'effect';
 import type { ChangedFile } from './changed-files.js';
 import type { SessionSpeed } from './speed.js';
@@ -29,9 +26,8 @@ export interface WatchView {
   entries: WatchEntry[];
 }
 
-// The `--data` child process prints one JSON line and exits; this parses it.
-// Junk of any kind — malformed JSON, missing fields, wrong types — returns
-// `null` so the watcher can keep the previous view.
+// Parses the one JSON line of the `--data` child; junk of any kind returns `null` so
+// the watcher keeps the previous view.
 const FileSchema = Schema.Struct({
   path: Schema.String,
   kind: Schema.Literals(['created', 'modified', 'deleted']),
@@ -89,8 +85,8 @@ export function parseWatchView(line: string): WatchView | null {
   };
 }
 
-// Phase ids that mean the worker is still busy. `waiting-lead`, `blocked`,
-// `idle` and `quota` are all steady states — the worker is not running.
+// Phase ids that mean the worker is still busy. `waiting-lead`, `blocked`, `idle` and
+// `quota` are steady states.
 export function isRunningPhase(phaseId: string): boolean {
   return (
     phaseId === 'coding' ||
@@ -100,8 +96,7 @@ export function isRunningPhase(phaseId: string): boolean {
   );
 }
 
-// While the pre-review session runs the worker session is silent; use the
-// pre-review's messages for the live step.
+// While the pre-review runs the worker is silent, so use the pre-review's messages.
 export function chooseSessionId(
   phaseId: string,
   workerSessionId: string,

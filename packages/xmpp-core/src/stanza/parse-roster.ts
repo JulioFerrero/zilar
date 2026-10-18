@@ -32,9 +32,8 @@ function parseRosterEvent(item: XmppElement): RosterEvent | undefined {
   return event;
 }
 
-// RFC 6121 §2.1.6: a roster push is an `iq type="set"` with a roster query,
-// sent by our own server (no `from`), our own bare JID or our domain. Anything
-// else is a spoof and is answered with an error instead of being applied.
+// RFC 6121 §2.1.6: a roster push comes from our own server (no `from`), our own bare JID
+// or our domain; anything else is a spoof and is answered with an error.
 export function parseRosterPush(
   stanza: XmppElement,
   domain: string,

@@ -18,14 +18,8 @@ export type PermissionDecision = 'once' | 'reject';
 
 export interface OpenCodeClient {
   createSession(options: CreateSessionOptions): Promise<string>;
-  // Fire-and-forget: session.prompt blocks until the turn ends, so the
-  // autopilot and launch always send it detached.
   promptDetached(sessionId: string, text: string): void;
   interrupt(sessionId: string): Promise<void>;
-  // Returns a discriminated outcome instead of throwing so callers like
-  // `switch-model` can keep going on a 404 / already-idle session. Anything
-  // unexpected comes back as `{ kind: 'error', message }` and is the
-  // caller's call.
   tryInterrupt(
     sessionId: string,
   ): Promise<

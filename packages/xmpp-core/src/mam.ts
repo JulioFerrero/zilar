@@ -24,9 +24,8 @@ export function buildMamQuery(query: MamQuery): XmppElement {
   }
 
   const rsm: XmppElement[] = [xml('max', {}, String(query.max))];
-  // XEP-0059 §2.5: an empty <before/> asks for the last page, which is the
-  // newest messages. Callers that pass no cursor want that; a cursor still
-  // pages backwards from the given id.
+  // XEP-0059 §2.5: an empty `<before/>` asks for the newest page; a cursor pages
+  // backwards from the given id.
   rsm.push(xml('before', {}, query.before ?? ''));
 
   return xml(
@@ -72,9 +71,8 @@ export function toHistoryPage(messages: ChatMessage[], fin: MamFin): HistoryPage
   return page;
 }
 
-// MAM returns a page in chronological order on most servers, but the XEP lets a
-// server answer newest-first. Detect that from the timestamps and reverse so the
-// caller always gets oldest first.
+// MAM returns a page oldest-first on most servers, but the XEP allows newest-first;
+// detect that from the timestamps and reverse so callers always get oldest first.
 export function orderOldestFirst(messages: ChatMessage[]): ChatMessage[] {
   if (messages.length < 2) {
     return messages;

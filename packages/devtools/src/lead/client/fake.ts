@@ -30,8 +30,7 @@ export class FakeOpenCodeClient implements OpenCodeClient {
   readonly switched: { sessionId: string; model: SessionModel }[] = [];
   readonly interrupted: string[] = [];
   readonly interruptOutcomes: { sessionId: string; outcome: InterruptOutcome }[] = [];
-  // Per-session interrupt script: tests push a result to override the
-  // default `{ kind: 'ok' }`. Used to exercise idle / 404 / error paths.
+  // Per-session interrupt script: tests push a result to override the default `{ kind: 'ok' }`.
   private interruptScripts = new Map<string, InterruptOutcome[]>();
   created: { options: CreateSessionOptions; sessionId: string }[] = [];
   private nextId = 1;
@@ -40,8 +39,7 @@ export class FakeOpenCodeClient implements OpenCodeClient {
     this.sessions.set(sessionId, session);
   }
 
-  // Queues an interrupt outcome for `sessionId`. Each call consumes the
-  // head of the queue; once empty, the fake returns `{ kind: 'ok' }`.
+  // Queues an interrupt outcome for `sessionId`; once empty the fake returns ok.
   scriptInterrupt(sessionId: string, outcome: InterruptOutcome): void {
     const queue = this.interruptScripts.get(sessionId) ?? [];
     queue.push(outcome);
@@ -69,10 +67,8 @@ export class FakeOpenCodeClient implements OpenCodeClient {
     this.prompted.push({ sessionId, text });
   }
 
-  // Mirrors the real OpencodeCliClient.interrupt exactly: any non-ok
-  // outcome (including a scripted error, an idle session, or an unknown
-  // session id) throws. The lenient `tryInterrupt` below is reserved for
-  // `lead switch-model`'s quota-fallback path.
+  // Mirrors the real interrupt: any non-ok outcome throws. The lenient `tryInterrupt`
+  // below is only for `lead switch-model`'s quota fallback.
   async interrupt(sessionId: string): Promise<void> {
     const outcome = await this.tryInterrupt(sessionId);
     if (outcome.kind !== 'ok') {
@@ -85,8 +81,6 @@ export class FakeOpenCodeClient implements OpenCodeClient {
   }
 
   async tryInterrupt(sessionId: string): Promise<InterruptOutcome> {
-    // A missing session is reported as `not_found` without recording an
-    // interrupt — the real client returns 404 before it touches state.
     const queue = this.interruptScripts.get(sessionId);
     const scripted = queue?.shift();
     const outcome: InterruptOutcome =

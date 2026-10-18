@@ -1,7 +1,5 @@
-// The "Allowed files" section of a task file names, in backticks, the paths a
-// worker may change. The gate turns those tokens into matchers and lists every
-// changed file that matches none of them, so the lead sees scope creep without
-// reading the whole diff.
+// The task's "Allowed files" tokens, in backticks, become matchers; every changed
+// file that matches none is reported.
 
 export function allowedTokens(taskText: string): string[] {
   const section = /^### Allowed files\s*\n([\s\S]*?)(?=^### |^---\s*$|^## )/m.exec(taskText);
@@ -40,17 +38,13 @@ function globToRegexSource(glob: string): string {
     .join('');
 }
 
-// `a/b/**` matches everything below a/b; `a/*.ts` stays inside one folder; a
-// bare path matches itself and anything below it (a folder name).
 export function tokenMatcher(token: string): RegExp {
   const cleaned = token.replace(/^\.\//, '').replace(/\/$/, '');
   return new RegExp(`^${globToRegexSource(cleaned)}(/.*)?$`);
 }
 
 export interface ScopeReport {
-  /** Files changed that no Allowed-files token covers. */
   outside: string[];
-  /** True when the task named no usable tokens (nothing to compare against). */
   unchecked: boolean;
 }
 

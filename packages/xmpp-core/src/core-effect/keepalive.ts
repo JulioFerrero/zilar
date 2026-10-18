@@ -16,11 +16,8 @@ export type KeepaliveApi = {
   handleKeepaliveReply: (id: string) => boolean;
 };
 
-// The XEP-0199 keepalive: while online, ping the server domain after an idle
-// period without any received stanza; without a reply the connection counts
-// as dead and is torn down so the normal path reconnects. It lives apart from
-// `lifecycle.ts` (which is at its line budget) and reaches the shared
-// `disconnectQuietly` through the argument the lifecycle passes in.
+// The XEP-0199 keepalive: while online, ping the server after an idle period and tear
+// the connection down when no reply comes, so the normal path reconnects.
 export function createKeepalive(
   runtime: CoreRuntime,
   disconnectQuietly: (current: XmppClient) => void,
@@ -43,9 +40,7 @@ export function createKeepalive(
     }
   }
 
-  // While online, pings the server domain after `keepaliveMs` without any
-  // received stanza; without a reply in `keepaliveTimeoutMs` the connection
-  // counts as dead and is torn down so the normal path reconnects.
+  // Pings after `keepaliveMs` of silence; no reply in `keepaliveTimeoutMs` means dead.
   function startKeepalive(): void {
     stopKeepalive();
     if (!keepaliveEnabled() || !runtime.desiredOnline) return;
@@ -86,9 +81,8 @@ export function createKeepalive(
     );
   });
 
-  // The keepalive found a dead connection: tear the socket down. The
-  // resulting `disconnect` status lets the library reconnect through the
-  // normal path (status `reconnecting`, then `online` again).
+  // The keepalive found a dead connection: tear the socket down so the library reconnects
+  // through the normal path.
   function reconnectDeadConnection(): void {
     stopKeepalive();
     const current = runtime.xmpp;
@@ -103,8 +97,7 @@ export function createKeepalive(
       runtime.keepaliveReplyTimer();
       runtime.keepaliveReplyTimer = undefined;
     }
-    // A result or an error both prove the connection is alive: a fresh idle
-    // period starts.
+    // A result or an error both prove the connection is alive.
     startKeepalive();
     return true;
   }

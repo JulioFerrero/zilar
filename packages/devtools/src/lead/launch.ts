@@ -16,11 +16,9 @@ export interface LaunchDeps {
   promptsDirPath: string;
   statePath: string;
   runner: GitRunner;
-  // Injectable clock for tests of `model: auto` peak-hour resolution.
   now?: () => Date;
 }
 
-// Finds work/T-XXXX-*.md inside a checkout. Exactly one must match.
 export function findTaskFile(dir: string, task: string): string {
   const work = path.join(dir, 'work');
   let entries: string[];
@@ -43,8 +41,6 @@ export function worktreeFor(repoRoot: string, task: string): string {
   return path.join(path.dirname(path.resolve(repoRoot)), `zilar-${task}`);
 }
 
-// Loads the task's front matter from the repo root. Reused by launch and the
-// state checks before switch-model touches anything.
 export function readTaskFrontMatter(
   repoRoot: string,
   task: string,
@@ -76,8 +72,7 @@ interface StartSessionOptions {
   model: SessionModel;
   rules: ReturnType<typeof loadRulesFile>;
   template: 'worker' | 'switch';
-  // The OpenCode agent id; defaults to `build` for the worker. Pulled out
-  // only so future pre-review callers can swap it; switch-model keeps `build`.
+  // The OpenCode agent id; defaults to `build`.
   agent?: string;
 }
 
@@ -86,12 +81,8 @@ interface StartSessionResult {
   prompt: string;
 }
 
-// Builds the worker prompt for a task, with all placeholders filled in, and
-// asserts the rendered output contains every substituted value. Shared
-// between `startWorkerSession` and `switchModel` so the validation lives in
-// exactly one place. Throwing here means the caller never reaches
-// `createSession` — a broken template must not leave an orphan session
-// behind.
+// Builds the worker prompt and asserts every substituted value is present. Throwing
+// before `createSession` means a broken template leaves no orphan session.
 export function renderWorkerPrompt(options: {
   promptsDirPath: string;
   task: string;
@@ -108,9 +99,7 @@ export function renderWorkerPrompt(options: {
     BRANCH: options.branch,
   };
   const prompt = renderPrompt(loadPrompt(options.promptsDirPath, templateFile), substitutions);
-  // Catch two ways a template can be broken:
-  //  1. it still contains `{{NAME}}` after rendering (placeholder not in template);
-  //  2. it does not contain the substituted value (template dropped it).
+  // Catch two broken templates: a leftover `{{NAME}}`, or a substituted value missing.
   const unfilled = unfilledPlaceholders(prompt).filter((name) =>
     (Object.keys(substitutions) as (keyof typeof substitutions)[]).includes(name as never),
   );
@@ -128,10 +117,8 @@ export function renderWorkerPrompt(options: {
   return prompt;
 }
 
-// Starts a session in the given worktree and sends the worker prompt with the
-// task placeholders filled in. Shared between launch (fresh worktree) and
-// switch-model (existing worktree, different model). Validates the prompt
-// BEFORE createSession so a broken template never leaves an orphan session.
+// Starts a session in the worktree and sends the worker prompt; shared by launch and
+// switch-model, and validated before `createSession`.
 export async function startWorkerSession(
   options: StartSessionOptions,
 ): Promise<StartSessionResult> {
@@ -165,8 +152,7 @@ function argValue(args: string[], name: string): string | undefined {
   return value;
 }
 
-// Parses `lead launch <T-XXXX> [--extra-rules <file>] [--base <ref>]`. It lives
-// here rather than in cli.ts so that command file stays within its line budget.
+// Parses `lead launch <T-XXXX> [--extra-rules <file>] [--base <ref>]`.
 export function parseLaunchArgs(args: string[]): LaunchOptions {
   const task = args.find((arg) => !arg.startsWith('--'));
   if (task === undefined) {
@@ -179,11 +165,8 @@ export function parseLaunchArgs(args: string[]): LaunchOptions {
   };
 }
 
-// A worktree built from an older commit (a model eval replay), or one whose
-// spec is not committed on main, does not contain the task file. Copy the spec
-// in and commit it on the task branch so the worker finds its brief, and main
-// stays free of the extra bookkeeping commit. Both failures are hard: a worker
-// without its spec misses the whole task.
+// A worktree from an older commit, or one whose spec is not on main, lacks the task
+// file; copy the spec in and commit it on the task branch so the worker has its brief.
 function commitSpec(deps: LaunchDeps, worktree: string, file: string, message: string): void {
   const relative = path.posix.join('work', file);
   const destination = path.join(worktree, relative);
@@ -204,9 +187,7 @@ function commitSpec(deps: LaunchDeps, worktree: string, file: string, message: s
   }
 }
 
-// Removes the spec's uncommitted copy from the main checkout once it has been
-// committed on the task branch, so main stays clean. A staged copy is removed
-// through git (index and working tree); an untracked one is unlinked.
+// Removes the spec's uncommitted copy from main once it is committed on the task branch.
 function removeUncommittedSpec(deps: LaunchDeps, relative: string): void {
   const staged = deps.runner.run(deps.repoRoot, ['ls-files', '--error-unmatch', '--', relative]);
   if (staged.ok) {
@@ -237,10 +218,8 @@ export async function launchTask(
   const goPaused = isGoPaused(now);
   const freePaused = isFreePaused(now);
   const resolved = resolveWorkerModel(modelString, now, goPaused, freePaused);
-  // T-1942: at most one tracked session may run on a free listing. While free
-  // is paused, or while another worker, pre-review or doctor already holds the
-  // free slot, a free pick moves to its paid step (Go, or the metered API while
-  // Go is paused too). The launch line names the model that actually starts.
+  // One tracked session may run on a free listing: when free is paused or the slot is
+  // taken, the pick moves to its paid step.
   let selected = resolved.model;
   if (isFreeListing(selected) && (freePaused || freeSessionInUse(loadState(deps.statePath)))) {
     selected = paidStep(selected, goPaused) ?? selected;
@@ -277,7 +256,6 @@ export async function launchTask(
     commitSpec(deps, worktree, file, `${task}: eval spec`);
   } else {
     const relative = path.posix.join('work', file);
-    // The spec is already on main: the worktree built from main carries it.
     const committed = deps.runner.run(deps.repoRoot, ['cat-file', '-e', `HEAD:${relative}`]);
     if (!committed.ok) {
       // An uncommitted spec (untracked or staged) is committed on the task

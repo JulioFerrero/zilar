@@ -16,9 +16,8 @@ import { connectOnce } from './handshake.ts';
 import { computeBackoff, type RunnerOptions, type RunnerOptionsDecoded } from './options.ts';
 
 /**
- * The mutable state of one `RunnerClient`. The class keeps it private and hands
- * it to the sibling modules, so the connection, handshake and lifecycle code can
- * share state without widening the public class.
+ * The mutable state of one `RunnerClient`; the class keeps it private and hands it to
+ * the sibling modules.
  */
 export interface RunnerRuntime {
   readonly serverUrl: string;
@@ -112,7 +111,6 @@ function emitFailed(rt: RunnerRuntime, err: Error): void {
   }
 }
 
-/** Connect. Resolves on the first authentication. */
 export async function startRunner(rt: RunnerRuntime): Promise<void> {
   if (rt.started) {
     throw new Error('runner already started');
@@ -129,8 +127,7 @@ export async function startRunner(rt: RunnerRuntime): Promise<void> {
       offFailed();
       reject(err ?? new TunnelClosedError('runner failed'));
     });
-    // The reconnect loop never rejects: every failure is either retried or
-    // reported through 'failed'.
+    // The reconnect loop never rejects: failures are retried or reported through 'failed'.
     rt.runFiber = Effect.runFork(runEffect(rt));
   });
 }

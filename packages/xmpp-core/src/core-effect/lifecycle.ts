@@ -78,13 +78,10 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     });
   }
 
-  // The client has not come online in time: drop it and start a fresh one.
-  // `xmpp` is cleared first, so every late event of the old client is ignored
-  // (see the `current !== xmpp` guards in `attachHandlers`). Stanzas the old
-  // client's stream management still queues never get an `ack` or a `fail`
-  // (a resume happens on a new client, not on this queue), so each queued
-  // outgoing `<message/>` is reported as `unacked` first: the store resends
-  // it once under the same id on the next online (T-1216).
+  // The client has not come online in time: drop it and start a fresh one. `xmpp` is
+  // cleared first so every late event of the old client is ignored, and each queued
+  // outgoing `<message/>` is reported as `unacked` first, so the store resends it once
+  // under the same id on the next online.
   const restartStuckClient = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
     if (!runtime.desiredOnline || runtime.currentStatus === 'online') return;
     const stale = runtime.xmpp;
@@ -94,26 +91,19 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     runtime.transientTokenError = undefined;
     if (stale !== undefined) {
       reportStaleQueue(stale);
-      // The old stream is already dead; nothing useful to report.
       yield* attempt(() => stale.stop()).pipe(Effect.ignore);
     }
-    // Arm before the guards below: a concurrent ensureClient (an explicit
-    // connect() landing while the old client stops) must not leave the core
-    // watchdog-less, or xmpp.js's growing backoff stalls the reconnect (T-1220).
+    // Arm before the guards: a concurrent ensureClient must not leave the core
+    // watchdog-less, or xmpp.js's growing backoff stalls the reconnect.
     armWatchdog();
     if (!runtime.desiredOnline || isOnline() || runtime.xmpp !== undefined) return;
     const fresh = runtime.ensureClient();
-    // The error event reports the failure; the watchdog tries again.
     Effect.runFork(attempt(() => fresh.start()).pipe(Effect.ignore));
   });
 
-  // Reads the stale client's queued stream-management stanzas the same way
-  // the core reaches the library (`core-effect.ts:153-162`): the `outbound_q`
-  // the `disconnect` handler deliberately leaves alone
-  // (`@xmpp/stream-management/index.js:56-62`). Each queued outgoing
-  // `<message/>` with an `id` fires the core's `unacked` event — the same
-  // event a `fail` maps to (`core-effect.ts:220-223`, via
-  // `installStreamManagementAck`) — before the old client is stopped.
+  // Reads the stale client's queued stream-management stanzas from the `outbound_q` the
+  // `disconnect` handler leaves alone; each queued outgoing `<message/>` with an `id`
+  // fires `unacked`, the same event a `fail` maps to.
   function reportStaleQueue(stale: XmppClient): void {
     const sm = (stale as XmppClient & { streamManagement?: unknown }).streamManagement as
       { outbound_q?: unknown } | undefined;
@@ -144,16 +134,10 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     Deferred.doneUnsafe(pending, error === undefined ? Effect.void : Effect.fail(error));
   }
 
-  // The token fetch and SASL live in `token-auth.ts`, so this module stays
-  // under its line budget; the credentials provider is what the client calls.
   const tokenAuth = createTokenAuth(runtime);
 
-  // The keepalive lives in `keepalive.ts`; it reaches `disconnectQuietly`
-  // (declared below, hoisted) to tear down a dead connection.
   const keepalive = createKeepalive(runtime, disconnectQuietly);
 
-  // The reconnect attempt counter, the cold-start flag and the keepalive make
-  // up the per-attempt online state: every teardown resets them.
   function resetOnlineState(): void {
     runtime.reconnectAttempt = 0;
     runtime.coldAttemptSeen = false;
@@ -170,7 +154,6 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     rejectPendingIqs(() => new ConnectionFailed());
     const current = runtime.xmpp;
     if (current !== undefined) {
-      // The stream is already failing; nothing useful to report.
       yield* attempt(() => current.stop()).pipe(Effect.ignore);
     }
   });
@@ -182,8 +165,7 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     }
   }
 
-  // Drives the library's wait before its next auto-reconnect: the schedule
-  // in `reconnect.delay` is read when the retry is queued, so setting it at
+  // The library reads its reconnect schedule when the retry is queued, so setting it at
   // the start of every attempt governs the wait after that attempt fails.
   function setReconnectDelay(ms: number): void {
     const current = runtime.xmpp;
@@ -200,8 +182,6 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     );
   }
 
-  // The stream may already be dead (or its disconnect may throw): the
-  // disconnect status still fires and the normal path reconnects.
   function disconnectQuietly(current: XmppClient): void {
     Effect.runFork(attempt(() => current.disconnect()).pipe(Effect.ignore));
   }
@@ -210,8 +190,7 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     yield* runtime.sendQuietly(current, buildAvailablePresence());
     yield* runtime.sendQuietly(current, buildCarbonsEnable(runtime.generateId()));
     for (const [roomJid, nick] of runtime.joinedRooms) {
-      // The server sends the full occupant list when we rejoin, so drop the
-      // stale roster first.
+      // The server sends the full occupant list when we rejoin, so drop the stale roster first.
       runtime.clearRoster(roomJid);
       yield* runtime.sendQuietly(current, buildJoinPresence(roomJid, nick));
     }
@@ -243,9 +222,8 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     );
   }
 
-  // Resolves when the client is online. It fails with `ConnectTimeout`,
-  // `Disconnected`, or the error that stopped the attempt for good (a
-  // conflict, a bad login), as thrown by the library.
+  // Resolves when online; fails with `ConnectTimeout`, `Disconnected`, or the error that
+  // stopped the attempt for good (conflict, bad login).
   const connectEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void, Error> {
     if (runtime.currentStatus === 'online') return;
     if (runtime.pendingConnect !== undefined) return yield* Deferred.await(runtime.pendingConnect);
@@ -253,8 +231,7 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     runtime.desiredOnline = true;
     runtime.authFailed = false;
     runtime.coldAttemptSeen = false;
-    // An explicit connect() while the client is stuck mid-attempt (a resume
-    // from the background) replaces it at once instead of waiting.
+    // An explicit connect() while the client is stuck mid-attempt replaces it at once.
     const stuck =
       runtime.xmpp !== undefined &&
       (runtime.currentStatus === 'connecting' || runtime.currentStatus === 'reconnecting');
@@ -270,7 +247,6 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     if (stuck) {
       Effect.runFork(restartStuckClient());
     } else {
-      // The error event reports the failure; auto-reconnect keeps trying.
       Effect.runFork(attempt(() => current.start()).pipe(Effect.ignore));
     }
 

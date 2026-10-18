@@ -2,10 +2,8 @@ import fs from 'node:fs';
 import { Result, Schema } from 'effect';
 import { currentHead, type GitRunner } from './git.js';
 
-// Everything `buildView` and `collectSnapshot` need from one worktree at one
-// point in time. `key` is HEAD plus the porcelain status: when it repeats, the
-// cached `commitMs`, `commits` and diff are reused and no `git log`,
-// `git rev-list`, `git merge-base` or `git diff` runs.
+// One worktree's git facts at one point in time. `key` is HEAD plus the porcelain
+// status: when it repeats, the cached facts are reused and no git command runs.
 export interface WorktreeGit {
   key: string;
   head: string | undefined;
@@ -13,7 +11,6 @@ export interface WorktreeGit {
   porcelain: string;
   commitMs: number;
   commits: number;
-  /** False when the diff could not be read; the caller keeps the old files. */
   ok: boolean;
 }
 
@@ -34,10 +31,8 @@ const gitCacheFileSchema = Schema.Struct({
   worktrees: Schema.Record(Schema.String, worktreeGitSchema),
 });
 
-// The git cache lives in a file next to the state file so it survives the
-// fresh `--data` process the watcher spawns on every refresh. Reads are
-// best-effort: a missing or malformed file just means the next refresh runs
-// the git commands again.
+// The git cache lives next to the state file so it survives the fresh `--data` process;
+// a missing or malformed file just means the next refresh runs git again.
 export function loadGitCache(file: string): GitCache {
   let raw: string;
   try {
@@ -93,9 +88,6 @@ function commitsAhead(runner: GitRunner, cwd: string): number {
   return result.ok ? Number(result.stdout.trim()) || 0 : 0;
 }
 
-// Reads one worktree's git facts, reusing the cache when HEAD and the
-// porcelain status are unchanged. Without a cache (e.g. `lead snapshot`) it
-// only reads what the snapshot needs, exactly like before.
 export function readWorktreeGit(
   runner: GitRunner,
   worktree: string,

@@ -206,7 +206,6 @@ export function isReadOnlyCurl(args: string[]): boolean {
           ) {
             return false;
           }
-          // e, m, A, x, w take a harmless value, already consumed.
           break;
         }
         if (!CURL_SHORT_BOOL.has(flag)) {

@@ -1,4 +1,3 @@
-// effect-plain: moved unchanged from packages/runner-tunnel/src/server.ts (size split)
 import { TunnelClosedError } from '../mux.ts';
 import { CLOSE_UNKNOWN_TYPE, type ControlMessage } from '../protocol.ts';
 import { closeWith } from './conn.ts';
@@ -27,7 +26,6 @@ export function handleReadyMessage(
       mux.handleResume(message.stream_id);
       break;
     case 'heartbeat':
-      // Validated and accepted; liveness itself is tracked by ping/pong.
       break;
     default:
       if (rt.desk.route(conn.runnerId, message)) break;

@@ -1,8 +1,6 @@
-// The gate's slot lock: at most two worker gates run at once, plus one `merge`
-// slot that never waits behind them. A slot is a directory under `dir` holding
-// a `pid` file, created with `mkdirSync` so two gates racing for the same name
-// cannot both win. A slot whose pid is no longer alive is stale; it is reclaimed
-// by renaming it to a unique tombstone first, so only one waiter can take it.
+// At most two worker gates run at once, plus a `merge` slot that never waits. A slot
+// is a directory holding a pid file, created with `mkdirSync` so two gates racing for
+// the same name cannot both win; a dead pid's slot is reclaimed by renaming it first.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,11 +10,8 @@ import path from 'node:path';
 export const gateSlotsDir = path.join(os.homedir(), '.zilar-lead', 'gate-slots');
 
 export interface SlotDeps {
-  /** The pid written into a slot this process claims. */
   pid: number;
-  /** Whether a pid is still running; `process.kill(pid, 0)` throwing means it is not. */
   isAlive: (pid: number) => boolean;
-  /** Milliseconds since the epoch; keeps a stale reclaim's tombstone name unique. */
   now: () => number;
 }
 
@@ -56,7 +51,7 @@ export function claimPid(slot: string, pid: number): boolean {
 }
 
 // Renaming the stale slot is atomic: of the waiters that saw the same dead pid,
-// only the one whose rename succeeds goes on to delete and re-create it.
+// only the one whose rename succeeds deletes and re-creates it.
 function reclaim(dir: string, name: string, deps: SlotDeps): boolean {
   const slot = path.join(dir, name);
   const tombstone = path.join(dir, `${name}.stale.${deps.pid}.${deps.now()}`);
@@ -108,9 +103,6 @@ function acquire(dir: string, name: string, deps: SlotDeps): boolean {
   return claimPid(slot, deps.pid);
 }
 
-// Takes the first free name. A slot with a live pid is busy; a slot with a dead
-// (or missing) pid is reclaimed and taken. Returns the name, or undefined when
-// every name is busy.
 export function tryAcquire(
   dir: string,
   names: string[],

@@ -72,15 +72,13 @@ export function createPresence(runtime: CoreRuntime): PresenceApi {
       if (roster.delete(presence.occupantJid)) {
         emitOccupants(presence.roomJid);
       }
-      // The server removed me: my own unavailable self-presence carries
-      // status 110 with 307 (kicked), 301 (banned) or 321 (the affiliation
-      // changed to none). An unavailable presence from someone else only
-      // means they left, never me.
+      // The server removed me: my own unavailable self-presence carries status 110 with 307
+      // (kicked), 301 (banned) or 321 (affiliation changed). An unavailable presence from
+      // someone else only means they left.
       const mine = runtime.joinedRooms.get(presence.roomJid) === presence.nick;
       const codes = presence.statusCodes ?? [];
-      // XEP-0045 §10.9: destroying the room sends my own unavailable
-      // self-presence with a <destroy/> child (usually status 110). Drop the
-      // chat at once, like a kick or a ban.
+      // XEP-0045 §10.9: destroying the room sends my own unavailable self-presence with a
+      // `<destroy/>` (usually status 110); drop the chat at once, like a kick or ban.
       if (presence.destroyed === true && (codes.includes(110) || mine)) {
         runtime.emitEvent('removed', { roomJid: presence.roomJid });
         return;
@@ -139,8 +137,8 @@ export function createPresence(runtime: CoreRuntime): PresenceApi {
       }
     }
 
-    // Roster data is only trusted from rooms we joined and only from the MUC
-    // domain, so another sender cannot claim an identity.
+    // Roster data is only trusted from rooms we joined and only from the MUC domain, so
+    // another sender cannot claim an identity.
     const presence = parseMucPresence(stanza, runtime.mucDomain);
     if (presence !== undefined && runtime.joinedRooms.has(presence.roomJid)) {
       applyPresence(presence);

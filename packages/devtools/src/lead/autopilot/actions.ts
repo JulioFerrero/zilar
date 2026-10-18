@@ -63,9 +63,8 @@ export async function applyActions(
         BRANCH: info?.branch ?? '',
       });
       if (action.template === 'autofix') {
-        // Fix rounds start in a fresh session: the original one carries every
-        // file read and test log so far, which re-sends ~138k tokens per
-        // step. The old session is idle, so it needs no interrupt.
+        // Fix rounds start in a fresh session: the original carries every file read and test
+        // log so far, re-sending ~138k tokens per step.
         const round = current.autoFixRounds + 1;
         const { sessionId, model } = await startFreshWorkerSession(
           { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
@@ -151,11 +150,9 @@ export async function applyActions(
 // In-memory throttle for the process sweeper: at most one sweep every 5 min.
 let lastSweepAt: number | undefined;
 
-// Stops leftover vitest/tsc/tsgo/turbo processes that run in a known worktree
-// for too long, or at any age when the task file says `blocked`. Never touches
-// `opencode`, the lead's own pids, or anything outside the worktrees. Called
-// from tickOnce, but only when a sweeper is wired in, so unit tests that call
-// tickOnce directly never shell out.
+// Stops leftover vitest/tsc/tsgo/turbo processes that run in a known worktree for too
+// long, or at any age when the task says `blocked`. Never touches `opencode` or the
+// lead's own pids.
 export async function maybeSweep(
   state: StateFile,
   deps: AutopilotDeps,

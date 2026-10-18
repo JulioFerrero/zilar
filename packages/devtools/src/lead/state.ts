@@ -106,12 +106,8 @@ export function appendLog(statePath: string, line: string): void {
   fs.appendFileSync(logFilePath(statePath), stamped);
 }
 
-// T-1942: the launch paths ask this before starting a session on a free listing.
-// "Live" here means "tracked": every worker, pre-review and doctor the lead knows
-// about counts, because a merged task is dropped with `lead forget --finished`.
-// The caller skips its own records so a fresh session or a pre-review of the same
-// task does not count itself; a pre-review with no recorded model started on the
-// free Muse, so it counts as free.
+// The launch paths ask this before starting on a free listing. "Live" means tracked:
+// a pre-review with no recorded model started on the free Muse, so it counts as free.
 export interface FreeSessionScope {
   task?: string | undefined;
   sessionId?: string | undefined;

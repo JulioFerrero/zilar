@@ -1,13 +1,7 @@
-// T-1357 reproduction for the XMPP end-to-end spike: a DM and a group post to
-// a *pending* (XEP-0198 hibernated) push-enabled session must reach the push
-// component.
-//
-// It stands in for the server's push component with a bare XEP-0114 client
-// (the dev stack exposes the component listener on 127.0.0.1:5347), so the
-// check needs only ejabberd: connect a fake `push.<domain>` component, enable
-// XEP-0357 on a client, drop the socket below the stream so ejabberd moves the
-// session to `pending`, then have another client message it and assert the
-// publish IQ lands on the component.
+// A DM and a group post to a *pending* (XEP-0198 hibernated) push-enabled session
+// must reach the push component. A bare XEP-0114 client stands in for the server's
+// component (the dev stack listens on 127.0.0.1:5347): enable XEP-0357, drop the
+// socket below the stream, message it, and assert the publish IQ arrives.
 import { createHash } from 'node:crypto';
 import { connect as netConnect } from 'node:net';
 import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
@@ -22,9 +16,8 @@ const PUSH_NAMESPACE = 'urn:xmpp:push:0';
 const COMPONENT_NAMESPACE = 'jabber:component:accept';
 const STREAMS_NAMESPACE = 'http://etherx.jabber.org/streams';
 
-// The dev stack publishes the component listener on 127.0.0.1:5347. A stack
-// built on other ports (an isolated worktree stack) points us at its own with
-// `PUSH_COMPONENT_HOST` / `PUSH_COMPONENT_PORT`.
+// The dev stack publishes the component listener on 127.0.0.1:5347; an isolated
+// worktree stack points us at its own with `PUSH_COMPONENT_HOST` / `_PORT`.
 function componentHost(): string {
   return process.env['PUSH_COMPONENT_HOST'] ?? '127.0.0.1';
 }
@@ -44,12 +37,8 @@ export type PushProbe = {
   stop: () => Promise<void>;
 };
 
-/**
- * A minimal XEP-0114 component (the handshake, no stanza library): it
- * authenticates as `push.<domain>` and records every `<publish node='…'>` the
- * server routes to it. Only the dev spike uses it; the real component is
- * `apps/server/src/push/component.ts`.
- */
+/** A minimal XEP-0114 component: authenticates as `push.<domain>` and records every
+ * `<publish node='…'>` the server routes to it. */
 export async function startPushProbe(domain: string): Promise<PushProbe> {
   const socket = netConnect({ host: componentHost(), port: componentPort() });
   const componentJid = `push.${domain}`;
@@ -108,11 +97,8 @@ export async function startPushProbe(domain: string): Promise<PushProbe> {
 }
 
 /**
- * Waits until XEP-0198 stream management is negotiated. `@xmpp/client` emits
- * `online` right after resource binding, *before* it sends `<enable/>`, so
- * suspending on `online` can drop a stream that never had SM: ejabberd then
- * takes the session offline instead of `pending`, and the repro no longer
- * exercises the path the live bug is about.
+ * Waits for XEP-0198 stream management: `online` fires before `<enable/>` is sent, so
+ * suspending on it would drop a stream that never had SM and never reach `pending`.
  */
 export async function waitForStreamManagement(xmpp: XmppClient): Promise<void> {
   const client = xmpp as unknown as { streamManagement?: { enabled?: boolean } };
@@ -165,12 +151,8 @@ export interface PushReproDeps {
   prefix: string;
 }
 
-/**
- * Registers two throwaway users, makes them contacts (SG-2's
- * `mod_block_strangers` drops a `chat` stanza without a roster subscription),
- * then: A enables push, A goes pending, B DMs A, and the component must see the
- * publish. Returns a line for the step output.
- */
+/** Two throwaway users in each other's rosters (mod_block_strangers drops a bare
+ * chat stanza), then A enables push, goes pending, B messages A. */
 export async function pushPendingDm(deps: PushReproDeps): Promise<string> {
   const { config, runtime, admin } = deps;
   const suffix = `${deps.prefix}${randomSuffix()}`;
@@ -219,10 +201,7 @@ export async function pushPendingDm(deps: PushReproDeps): Promise<string> {
   }
 }
 
-/**
- * The same shape for a group: A joins a fresh members-only room, enables push,
- * goes pending, B posts to the room, and the component must see the publish.
- */
+/** The same shape for a group: join a room, enable push, go pending, post. */
 export async function pushPendingGroup(deps: PushReproDeps): Promise<string> {
   const { config, runtime, admin } = deps;
   const suffix = `${deps.prefix}${randomSuffix()}`;

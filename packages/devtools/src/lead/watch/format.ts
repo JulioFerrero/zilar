@@ -1,12 +1,7 @@
-// Pure formatting helpers for `lead watch`, moved unchanged from
-// `lead/watch.ts` (size split).
-
 import { GO_MUSE } from '../models.js';
 
-// `meta/muse-spark-1.3-contributor` + `low` → `muse-spark-1.3-contributor (low)`.
-// The flat-rate Go Muse shares the metered Meta listing's name, so its provider
-// is tagged to keep the two readable apart (T-1362). Go DeepSeek stays distinct
-// on its own id.
+// The flat-rate Go Muse shares the metered listing's name, so its provider is tagged;
+// Go DeepSeek stays distinct on its own id.
 export function modelLabel(model: string, variant: string | undefined): string {
   const stripped = model.includes('/') ? model.slice(model.indexOf('/') + 1) : model;
   const name = model === GO_MUSE ? 'muse (go)' : stripped;
@@ -16,9 +11,8 @@ export function modelLabel(model: string, variant: string | undefined): string {
   return name;
 }
 
-// `formatContext(158705) === '158k'`, `formatContext(1_234_000) === '1.2M'`.
-// Numbers under 1k keep the full integer; numbers under 1M truncate to
-// thousands (so `158_705 → 158k`, not `159k`); millions one-decimal.
+// `formatContext(158705) === '158k'`, `1_234_000 === '1.2M'`: under 1k the full
+// integer, under 1M truncated thousands, millions one-decimal.
 export function formatContext(tokens: number): string {
   if (!Number.isFinite(tokens) || tokens < 0) {
     return '0';
@@ -42,8 +36,8 @@ function trimmed(value: number): string {
   return rounded.toFixed(1);
 }
 
-// Sparkline of the last N values, scaled between the lowest and highest of
-// those N (all equal: all `▄`). Oldest left, newest right.
+// Sparkline of the last N values, scaled between their lowest and highest (all equal:
+// all `▄`). Oldest left.
 const SPARK_BARS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const SPARK_EQUAL_BAR = '▄';
 

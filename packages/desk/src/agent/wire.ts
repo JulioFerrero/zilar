@@ -11,11 +11,9 @@ import { DeskError } from '../protocol';
 import type { DeskStatus } from './lifecycle';
 
 /**
- * The sidecar's unix-socket wire protocol: one JSON object per newline. A
- * request names a `method`; a reply carries the request's `id`. `execute`
- * streams `{ id, chunk }` lines and ends with `{ id, done: true }`. The request
- * schemas are decoded with `onExcessProperty: 'error'`, so a caller can only
- * ever send the declared fields — never a host path, an image or a run flag.
+ * One JSON object per newline; a request names a `method`, a reply carries its `id`.
+ * Requests decode with `onExcessProperty: 'error'`, so a caller can only send the
+ * declared fields — never a host path, an image or a run flag.
  */
 
 const requestIdSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));

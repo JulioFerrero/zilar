@@ -1,12 +1,8 @@
-// Which checks the gate runs for a set of changed files. Lint and typecheck
-// cover the whole repo (typecheck only the affected packages); format checks
-// just the changed files unless `--full`; tests run only for the packages whose
-// files changed, always with the worker cap; the server production build runs
-// when the server, a shared package or a manifest changes. By default
-// only the nearest tests run: the changed test files themselves plus, for each
-// changed source file, the tests sitting in the same folder. A few boot guards
-// (see BOOT_GUARD_TESTS) always run too. `--full` keeps the older behaviour of
-// letting Vitest pull in every test that imports the change.
+// Which checks run for a set of changed files. Lint covers the repo, typecheck the
+// packages, format the changed files, tests only the changed packages with the worker cap,
+// and the server build when the server, a shared package or a manifest changes. By default
+// only the nearest tests run: the changed test files plus each changed source's folder tests,
+// and a few boot guards; `--full` lets Vitest pull in every test that imports the change.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -25,31 +21,24 @@ export interface GateStep {
   label: string;
   command: string;
   args: string[];
-  /** Extra environment variables for this step, merged over `process.env`. */
   env?: Record<string, string>;
-  /** Set when there is nothing to run: the gate prints it and still passes. */
   skipReason?: string;
 }
 
 export interface GateOptions {
-  /** Run each touched package's whole `--changed` set instead of the nearest tests. */
   full?: boolean;
-  /** A merge gate must not reuse Turbo's cache: its typecheck runs with `--force`. */
+  /** A merge gate must not reuse Turbo's cache. */
   merge?: boolean;
-  /** Turbo's persistent cache, shared by every worktree; defaults to `~/.zilar-turbo-cache`. */
   cacheDir?: string;
-  /** Every test file in the repo, relative to the root; the near-test search space. */
   testFiles?: string[];
-  /** Whether a changed path is still on disk; a deleted file must not be checked or run. */
   exists?: (file: string) => boolean;
 }
 
-// No gate step may run forever: a hung test once sat inside `pnpm gate` for
-// 50 minutes before anyone noticed (2026-10-08). Tests get the longer limit.
+// No gate step may run forever: a hung test once sat inside `pnpm gate` for 50
+// minutes. Tests get the longer limit.
 export const TESTS_TIMEOUT_MS = 20 * 60 * 1000;
 export const STEP_TIMEOUT_MS = 10 * 60 * 1000;
 
-// A step's time limit, chosen from its label: `tests …` gets the longer one.
 export function stepTimeoutMs(label: string): number {
   return label.startsWith('tests ') ? TESTS_TIMEOUT_MS : STEP_TIMEOUT_MS;
 }
@@ -62,19 +51,12 @@ export function isTestFile(file: string): boolean {
 }
 
 export interface BootGuardTest {
-  /** A changed non-test file under this prefix triggers the guard. */
   when: string;
-  /** The test that must run when the guard triggers, if it is on disk. */
   test: string;
 }
 
-// Tests that prove a package still boots. The nearest-test search misses them
-// when the change is in a different folder: T-1704 changed only
-// `apps/server/src/tools/routine-adapters.ts`, the gate ran just the `tools/`
-// tests, and the over-long adapter description (over
-// ADAPTER_DESCRIPTION_MAX_LENGTH in `actions/registry.ts`) reached prod, where
-// the server threw AdapterRegistryError at start and stayed down ~26 minutes
-// (2026-10-16). Each guard always runs when a source under its prefix changes.
+// Tests that prove a package still boots, missed by the nearest-test search when the
+// change is in another folder; each always runs when a source under its prefix changes.
 export const BOOT_GUARD_TESTS: BootGuardTest[] = [
   { when: 'apps/server/src/', test: 'apps/server/src/actions/args-example.test.ts' },
 ];
@@ -89,16 +71,9 @@ function baseOf(file: string): string {
   return file.slice(slash + 1);
 }
 
-// The nearest tests for a set of changed files: the changed test files
-// themselves, plus for every changed `dir/name.ts(x)` the tests in `dir` whose
-// name starts with `name.` (so `service.ts` picks `service.test.ts` and
-// `service.effect.test.ts`). When no test is named after the source file, every
-// test sitting directly in `dir` is selected instead, so a file whose tests live
-// under a different name (`roles/service.ts` and `roles/roles.test.ts`) still
-// gets its folder's tests; tests in subfolders are not. A folder with no tests
-// selects nothing. `exists` guards against a changed test file the branch
-// deleted: it is still in the diff but must not be handed to Vitest, which would
-// fail on a missing file.
+// The nearest tests: the changed test files, plus for every changed `dir/name.ts(x)`
+// the tests in `dir` named `name.*`; when none is named after it, every test directly
+// in `dir` runs. `exists` skips a changed test file the branch deleted.
 export function selectTestFiles(
   changedFiles: string[],
   testFiles: string[],
@@ -225,9 +200,8 @@ export function gateSteps(
   return steps;
 }
 
-// The format step: the changed files that still exist, checked with Prettier
-// directly. `--full` keeps the whole-repo check. Nothing changed means nothing
-// to check, so the step is skipped rather than checking the whole repo.
+// Format checks the changed files that still exist with Prettier directly; `--full`
+// keeps the whole-repo check.
 function formatStep(
   changedFiles: string[],
   full: boolean,
@@ -252,10 +226,7 @@ function formatStep(
   };
 }
 
-// The Effect ratchet (task R6): the changed counted sources that still exist are
-// checked against the base, so a new or regressed needs-effect file fails. Skipped
-// when no existing changed file is a counted source. Runs in devtools, which is
-// exempt, so the step's own files never trip it.
+// The Effect ratchet checks the changed counted sources against the base.
 function effectStep(
   changedFiles: string[],
   base: string,
@@ -286,11 +257,8 @@ function effectStep(
   };
 }
 
-// The server production bundle, built the same way the deploy builds it. The
-// gate skipped this once (T-2025): a dependency the bundle imports through a
-// workspace package was no longer a production dependency, `pnpm gate` stayed
-// green, and the deploy failed at `pnpm --filter @zilar/server build`. Anything
-// under the server, the shared packages or any manifest can break the bundle.
+// The server production bundle, built as the deploy builds it: anything under the
+// server, the shared packages or a manifest can break it.
 function buildStep(changedFiles: string[]): GateStep {
   const needsBuild = changedFiles.some(
     (file) =>
@@ -313,7 +281,6 @@ function buildStep(changedFiles: string[]): GateStep {
   };
 }
 
-// Merge and patch leftovers that must never be committed.
 export function strayFiles(trackedFiles: string[]): string[] {
   return trackedFiles.filter((file) => /\.(orig|rej|bak)$/.test(file));
 }

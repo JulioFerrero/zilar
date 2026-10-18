@@ -1,8 +1,6 @@
-// Parses the Telegram parity matrix (section 2 of
-// docs/audit/telegram-parity-audit.md) into one row per feature, keeping the
-// area heading that sits above each table. Only rows of a table whose header
-// names the four parity columns are read, so section 4's fix-plan table and
-// the summary tables elsewhere are ignored.
+// Parses the Telegram parity matrix (section 2 of docs/audit/telegram-parity-audit.md)
+// into one row per feature. Only tables whose header names the four parity columns are
+// read, so the fix-plan and summary tables are ignored.
 export interface ParityRow {
   area: string | null;
   feature: string;

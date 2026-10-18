@@ -23,7 +23,6 @@ export interface ServerConn {
   mux: StreamMux | null;
   lastPongAt: number;
   handshakeFiber: Fiber.Fiber<void, never> | null;
-  /** Engine streams this connection opened but the runner has not settled yet. */
   pendingOpens: Map<number, PendingOpen>;
 }
 
@@ -34,9 +33,8 @@ export interface PendingOpen {
 }
 
 /**
- * The mutable state of one `TunnelServer`. The class keeps it private and hands
- * it to the sibling modules, so connection, handshake, heartbeat, engine and
- * preview code can share it without widening the public class.
+ * The mutable state of one `TunnelServer`; the class keeps it private and hands it to
+ * the sibling modules.
  */
 export interface ServerRuntime {
   readonly registry: KeyRegistry;
@@ -118,10 +116,8 @@ export function dropConn(rt: ServerRuntime, conn: ServerConn, code: number, reas
     if (wasLive) {
       rt.live.delete(conn.runnerId);
     }
-    // A connection that only sent `hello` never held the runner's requests;
-    // failing them here would let it break the live connection's desk calls.
-    // A ready connection that a newer one replaced must not fail the requests
-    // that now belong to its successor either.
+    // A connection that only sent `hello`, or that a newer one replaced, must not fail
+    // the requests that belong to the live connection.
     if (wasLive || (conn.state === 'ready' && !rt.live.has(conn.runnerId))) {
       rt.desk.failRunner(conn.runnerId);
     }
@@ -132,7 +128,6 @@ export function closeWith(conn: ServerConn, code: number, reason: string): void 
   closeQuietly(conn.ws, code, reason);
 }
 
-/** Detach a connection's pending handshake fiber so the caller can interrupt it. */
 export function takeHandshakeFiber(conn: ServerConn): Fiber.Fiber<void, never> | null {
   const fiber = conn.handshakeFiber;
   conn.handshakeFiber = null;

@@ -60,10 +60,8 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
     }
     return { verdict: 'escalate' };
   }
-  // Local fetches: allowed only for read-only GETs that print to stdout.
-  // Anything that mutates, writes a file, or carries credentials escalates
-  // (Julio's port 3000 always escalates). Non-local fetches fall through
-  // below and escalate as unknown commands.
+  // Local fetches: only read-only GETs that print to stdout; anything that mutates,
+  // writes a file or carries credentials escalates.
   const head = firstWord(normalized);
   if (!hasHiddenEffects(normalized)) {
     const bare = stripEnvPrefix(normalized);
@@ -82,8 +80,7 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
     const readOnly = head === 'curl' ? isReadOnlyCurl(fetchArgs) : isReadOnlyWget(fetchArgs);
     return readOnly ? { verdict: 'allow' } : { verdict: 'escalate' };
   }
-  // Read-only git inspection, after the same global-flag stripping as the
-  // reject rules, so `git --no-pager status` stays allowed.
+  // Read-only git inspection, after the same global-flag stripping as the reject rules.
   const rest = gitRest(normalized);
   if (rest !== null) {
     return GIT_ALLOW_PATTERN.test(rest) ? { verdict: 'allow' } : { verdict: 'escalate' };
@@ -96,16 +93,11 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
   return { verdict: 'escalate' };
 }
 
-// Classifies one pending permission request. `allow` means the autopilot
-// answers `once` itself; `reject` means it answers `reject` with the message;
-// `escalate` means it prints a LEAD: line and leaves the request pending.
-// Every element is classified on its own and the worst verdict wins
-// (reject > escalate > allow), so one dangerous pipeline segment can never
-// hide behind a harmless one.
-// Julio's explicit choice (2026-09-30): with ZILAR_LEAD_ALLOW_ALL=1 the
-// autopilot answers `once` to every permission request, including the ones
-// the rules below would reject or escalate. Off by default; unset the
-// variable and restart the autopilot to bring the rules back.
+// `allow` answers `once`, `reject` answers `reject` with the message, `escalate`
+// leaves the request pending and prints a LEAD: line. Every element is classified
+// on its own and the worst verdict wins, so a dangerous segment cannot hide behind
+// a harmless one. With `ZILAR_LEAD_ALLOW_ALL=1` every request is allowed; off by
+// default.
 export function allowAllEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.ZILAR_LEAD_ALLOW_ALL === '1';
 }
@@ -140,8 +132,6 @@ export function classifyPermission(request: PermissionRequest, ctx: PolicyContex
   return sawEscalate ? { verdict: 'escalate' } : { verdict: 'allow' };
 }
 
-// Pulls one shell command per element out of an OpenCode permission
-// request's resources, whatever shape they arrive in.
 export function extractCommands(resources: unknown): string[] {
   if (typeof resources === 'string') {
     return resources.trim().length > 0 ? [resources] : [];

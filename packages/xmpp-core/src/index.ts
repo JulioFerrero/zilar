@@ -56,28 +56,20 @@ export {
 } from './errors';
 export type { XmppCoreError } from './errors';
 
-// T-1889: the notification reply route builds the same stanza the app sends,
-// so the server and the apps share one builder.
+// The notification reply route builds the same stanza the app sends.
 export { buildMessage } from './stanza/build-outgoing';
 
-// T-1893: the read route sends the same XEP-0333 marker the apps send.
+// The read route sends the same XEP-0333 marker the apps send.
 export { buildDisplayed } from './stanza/build-control';
 
-/**
- * Creates the shared XMPP client. The returned object is the only chat API the
- * web and mobile apps use; each (re)connect asks `getToken` for a fresh JWT.
- */
+/** The shared XMPP client, the only chat API the apps use; each (re)connect asks
+ * `getToken` for a fresh JWT. */
 export function createXmppCore(options: XmppCoreOptions): XmppCore {
   return createCore(options);
 }
 
-/**
- * Creates the shared XMPP client as Effects and Streams: the same core
- * `createXmppCore` wraps, with every method an `Effect` and one `Stream` per
- * event in `events`. A plain factory rather than a `Context.Service`, because
- * the core is per-login state built from the options (`getToken`, the domain),
- * and no consumer provides it through a Layer yet.
- */
+/** The same core with every method an `Effect` and one `Stream` per event; a plain
+ * factory because the core is per-login state, not a Layer. */
 export function createXmppCoreEffect(options: XmppCoreOptions): XmppCoreEffect {
   return createCoreEffect(options);
 }

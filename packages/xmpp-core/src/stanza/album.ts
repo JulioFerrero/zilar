@@ -1,23 +1,19 @@
 import { xml, type XmppElement } from '@xmpp/client';
 import { ALBUM_NAMESPACE } from '../namespaces';
 
-/** One photo's place in an album: the shared id, its index and the total count. */
 export interface MessageAlbum {
   id: string;
   index: number;
   count: number;
 }
 
-/** Telegram's cap, and the mobile picker's `selectionLimit` (T-1246). */
 export const ALBUM_MAX = 10;
-/** Longest accepted marker id; a longer one is dropped. */
+/** Telegram's cap, and the mobile picker's `selectionLimit`. */
 export const ALBUM_ID_MAX = 64;
 
 /**
- * The `<album xmlns='urn:zilar:album:0' id index count/>` marker carried by
- * every photo of an album. One message per photo: a client without Zilar
- * support ignores the child and shows an ordinary single-photo message
- * (`docs/audit/albums-plan.md` §1.2, Option A).
+ * The `<album xmlns='urn:zilar:album:0' id index count/>` marker on every photo of an
+ * album: one message per photo, and a client without Zilar support shows a single photo.
  */
 export function albumElement(album: MessageAlbum): XmppElement {
   return xml('album', {
@@ -29,9 +25,8 @@ export function albumElement(album: MessageAlbum): XmppElement {
 }
 
 /**
- * Reads the marker, dropping it when it breaks the invariants (§1.4): a
- * non-empty id of at most `ALBUM_ID_MAX` characters, `2 <= count <= ALBUM_MAX`
- * and `0 <= index < count`. A dropped marker leaves the message a single photo.
+ * Reads the marker, dropping it when it breaks the invariants: a non-empty id of at most
+ * `ALBUM_ID_MAX`, `2 <= count <= ALBUM_MAX` and `0 <= index < count`.
  */
 export function parseAlbum(stanza: XmppElement): MessageAlbum | undefined {
   const element = stanza.getChild('album', ALBUM_NAMESPACE);
@@ -46,8 +41,7 @@ export function parseAlbum(stanza: XmppElement): MessageAlbum | undefined {
   return { id, index, count };
 }
 
-// A non-negative integer attribute; anything else (`x`, `1.5`, `-1`, ``) is
-// unusable, so the marker is dropped.
+// A non-negative integer attribute; anything else (`x`, `1.5`, `-1`, ``) drops the marker.
 function parseAlbumNumber(value: string | undefined): number | undefined {
   if (value === undefined || !/^\d+$/.test(value)) return undefined;
   const parsed = Number.parseInt(value, 10);

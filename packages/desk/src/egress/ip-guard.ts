@@ -151,15 +151,12 @@ function isBlockedV6(groups: number[]): boolean {
     return true;
   }
   if (g0 === 0x2001 && g1 === 0) {
-    // Teredo (RFC 4380): 2001::/32 embeds an IPv4 address. Block it
-    // outright: even a public embedded address must not punch through the
-    // allowlist via an IPv6 literal the validator never sees as IPv4.
+    // Teredo (RFC 4380) 2001::/32 embeds an IPv4 address; block it so an IPv6
+    // literal cannot bypass the IPv4 classification.
     return true;
   }
   if (g0 === 0x2002) {
-    // 6to4 (RFC 3056): 2002::/16 embeds an IPv4 address. Block the whole
-    // range: the embedded address bypasses the IPv4 classification the
-    // validator applies to plain A records.
+    // 6to4 (RFC 3056) 2002::/16 embeds an IPv4 address that bypasses IPv4 classification.
     return true;
   }
   if ((g0 & 0xffc0) === 0xfec0) {

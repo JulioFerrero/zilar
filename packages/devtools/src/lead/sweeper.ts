@@ -7,13 +7,11 @@ import {
   type StopProcessesDeps,
 } from './processes.js';
 
-// The gate kills its own steps on timeout (TESTS_TIMEOUT_MS = 20 min,
-// STEP_TIMEOUT_MS = 10 min), so anything older than 25 min is a leftover that
-// the gate no longer owns.
+// The gate kills its own steps on timeout (10 and 20 min), so anything older than
+// 25 min is a leftover the gate no longer owns.
 export const SWEEP_MAX_AGE_MS = 25 * 60 * 1000;
 export const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
-// A process as read from `ps -axo pid=,etime=,command=`.
 export interface SweepRow {
   pid: number;
   elapsedMs: number;
@@ -25,9 +23,8 @@ export interface SweepRow {
 const SWEEP_KEYWORDS = ['vitest', 'tsc', 'tsgo', 'turbo'];
 const FORBIDDEN = 'opencode';
 
-// `ps` prints elapsed time as `[[dd-]hh:]mm:ss` (e.g. `04:31`, `1:02:33`,
-// `2-03:04:05`). Returns undefined for anything else so a malformed line is
-// skipped rather than treated as a very old process.
+// `ps` prints elapsed time as `[[dd-]hh:]mm:ss` (e.g. `04:31`, `1:02:33`); anything else
+// is skipped rather than treated as very old.
 function parseEtime(text: string): number | undefined {
   const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text);
   if (match === null) {
@@ -64,8 +61,7 @@ export function parsePsElapsed(output: string): SweepRow[] {
   return rows;
 }
 
-// True when `command` mentions `root` at a path or token boundary. Mirrors
-// processes.ts: `zilar-T-0047` never matches `zilar-T-00470`.
+// True when `command` mentions `root` at a path or token boundary.
 export function worktreeForCommand(command: string, roots: string[]): string | undefined {
   for (const root of roots) {
     if (root.length === 0) {
@@ -92,18 +88,14 @@ export function worktreeForCommand(command: string, roots: string[]): string | u
 }
 
 export interface SweepOptions {
-  /** Every `../zilar-T-*` worktree the state knows about. */
   worktreeRoots: string[];
-  /** Worktrees whose task file says `status: blocked`; their rows go at any age. */
   blockedWorktrees: string[];
   maxAgeMs: number;
   protectedPids: number[];
 }
 
-// Picks the rows the sweeper may stop. A row qualifies only when its command
-// belongs to a test/typecheck/build run, its command mentions a known
-// worktree, and it is older than `maxAgeMs` (or runs in a blocked worktree).
-// Protected pids and anything named `opencode` are never picked.
+// A row qualifies only when its command is a test/typecheck/build run, mentions a known
+// worktree, and is older than `maxAgeMs` (or runs in a blocked worktree).
 export function sweepCandidates(rows: SweepRow[], options: SweepOptions): SweepRow[] {
   const protectedPids = new Set(options.protectedPids);
   const blocked = new Set(options.blockedWorktrees);
@@ -125,7 +117,6 @@ export function sweepCandidates(rows: SweepRow[], options: SweepOptions): SweepR
   });
 }
 
-// A row that the sweeper selected, tagged with the task it belongs to.
 export interface SweptProcess {
   pid: number;
   task: string;
@@ -134,16 +125,12 @@ export interface SweptProcess {
 }
 
 export interface SweepOutcome {
-  /** Every row that qualified, before anything was stopped. */
   candidates: SweptProcess[];
-  /** The rows we actually stopped (empty in dry-run and on survivors). */
   stopped: SweptProcess[];
-  /** The rows that survived SIGKILL: still running, reported with SWEEP FAILED. */
   survivors: SweptProcess[];
 }
 
-// Seams so tests never touch the real OS: `ps` returns the raw process list,
-// `stop` ends the picked processes.
+// Seams so tests never touch the real OS: `ps` returns the raw list, `stop` ends a row.
 export interface SweepDeps {
   ps: () => string;
   stop: (candidates: CandidateProcess[], deps?: StopProcessesDeps) => Promise<StoppedProcess[]>;
@@ -206,8 +193,7 @@ export async function runSweep(
     if (row === undefined) {
       continue;
     }
-    // `survived` means SIGKILL did not end it: they were not stopped, so they
-    // never count in the SWEPT line, and they go to the SWEEP FAILED line.
+    // `survived` means SIGKILL did not end it: not stopped, so it goes to SWEEP FAILED.
     if (entry.survived) {
       survivors.push(toSwept(row, options, entry.command));
     } else {
@@ -217,21 +203,19 @@ export async function runSweep(
   return { candidates, stopped: swept, survivors };
 }
 
-// The `task:basename:minutes` list shared by both sweep lines.
 function entryList(entries: SweptProcess[]): string {
   return entries
     .map((entry) => `${entry.task}:${entry.basename}:${Math.round(entry.elapsedMs / 60_000)}m`)
     .join(', ');
 }
 
-// One line per sweep that stopped something: the task, the executable and how
-// long it had been running. Basenames only: command lines can carry secrets.
+// One line per sweep that stopped something: task, executable and age. Basenames only:
+// command lines can carry secrets.
 export function sweepLine(entries: SweptProcess[]): string {
   return `LEAD: SWEPT ${entries.length} process(es): ${entryList(entries)}`;
 }
 
-// One line per sweep whose processes survived SIGKILL. Same entry format as
-// sweepLine, so the lead can read the task and executable at a glance.
+// One line per sweep whose processes survived SIGKILL, same entry format.
 export function sweepFailedLine(entries: SweptProcess[]): string {
   return `LEAD: SWEEP FAILED ${entries.length} process(es) survived SIGKILL: ${entryList(entries)}`;
 }

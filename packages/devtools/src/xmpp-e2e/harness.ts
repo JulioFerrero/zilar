@@ -83,8 +83,6 @@ export type Deadline<T> = {
   reject: (error: unknown) => void;
 };
 
-// Resolves or rejects once; a timer calls `onTimeout` for the error when nobody
-// settles first. Replaces the settled-flag and clearTimeout boilerplate.
 export function withDeadline<T>(timeoutMs: number, onTimeout: () => Error): Deadline<T> {
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;

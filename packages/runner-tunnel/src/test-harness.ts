@@ -207,7 +207,6 @@ export interface HttpResult {
   body: Buffer;
 }
 
-/** One GET/POST with an optional agent. Rejects on socket errors (no hangs). */
 export function httpThrough(
   url: string,
   options?: {
@@ -241,10 +240,8 @@ export function httpThrough(
 }
 
 /**
- * A minimal raw WebSocket client over a real TCP socket: completes the HTTP
- * upgrade, sends masked client frames, and reports server frames. Used to
- * test handshake rejections, dead peers that never pong, and protocol
- * violations the polite RunnerClient would never send.
+ * A minimal raw WebSocket client over a real TCP socket: completes the upgrade, sends
+ * masked frames, reports server frames. Tests rejections the polite client never sends.
  */
 export class RawRunner {
   private socket: net.Socket | null = null;
@@ -388,7 +385,6 @@ export async function rawHandshake(
   return raw;
 }
 
-/** A ws-library client that fails the handshake on purpose (malformed frames, old version). */
 export async function wsCloseCode(
   server: TunnelServer,
   send: (ws: WebSocket) => void,

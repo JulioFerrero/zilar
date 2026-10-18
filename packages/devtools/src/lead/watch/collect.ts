@@ -1,6 +1,3 @@
-// Collects the git, board and session facts the `lead watch` view needs,
-// moved unchanged from `lead/watch.ts` (size split).
-
 import fs from 'node:fs';
 import path from 'node:path';
 import type { OpenCodeClient } from '../client.js';
@@ -35,8 +32,7 @@ export async function collectFiles(
   if (worktree === '' || !fs.existsSync(worktree)) {
     return fallback;
   }
-  // A cached snapshot from `collectSnapshot` already carries the diff for the
-  // current HEAD, so no `git merge-base` or `git diff` runs here.
+  // A cached snapshot already carries the diff for the current HEAD, so no git runs here.
   if (cached !== undefined) {
     return cached.ok ? parseChangedFiles(cached.nameStatus, cached.porcelain) : fallback;
   }
@@ -62,8 +58,7 @@ export async function collectFiles(
   return parseChangedFiles(nameStatus, porcelain);
 }
 
-// Reads `effort:` from the task's front matter. The lead state file does
-// not carry it, so we go to the worktree where the task file lives.
+// Reads `effort:` from the task's front matter, which the state file does not carry.
 function readEffort(worktree: string, taskId: string): string | undefined {
   try {
     const file = findTaskFile(worktree, taskId);
@@ -75,9 +70,7 @@ function readEffort(worktree: string, taskId: string): string | undefined {
   }
 }
 
-// The board's model column for one task: the 4th cell of its row, e.g.
-// `| [T-0757](T-0757-x.md) | title | in-progress | haiku-5.5 | ...`. An empty
-// cell, or no row for the id, gives `undefined`.
+// The board's model column: the 4th cell of the task's row.
 export function boardModelFor(boardText: string, id: string): string | undefined {
   const prefix = `| [${id}](`;
   const line = boardText.split('\n').find((candidate) => candidate.startsWith(prefix));
@@ -93,8 +86,6 @@ interface BoardPhase {
   needsLead: boolean;
 }
 
-// The board statuses that get a card, mapped to the phases the cards use.
-// `todo` and anything else give no card.
 function boardPhase(status: string): BoardPhase | null {
   if (status === 'in-progress') {
     return { phaseId: 'coding', needsLead: false };
@@ -117,8 +108,6 @@ export interface BoardTaskFacts {
   step: string | null;
 }
 
-// The card for a board row whose task has no autopilot record (a task run as a
-// Claude subagent). Pure: the git and file facts are passed in.
 export function boardTaskEntry(facts: BoardTaskFacts): WatchEntry | null {
   const { row } = facts;
   const phase = boardPhase(row.status);
@@ -144,7 +133,6 @@ export function boardTaskEntry(facts: BoardTaskFacts): WatchEntry | null {
   };
 }
 
-// Age from the first commit after main, else from the worktree directory's mtime.
 function boardTotalAge(runner: GitRunner, worktree: string, now: number): string {
   const log = runner.run(worktree, ['log', '--reverse', '--format=%ct', 'main..HEAD']);
   const first = log.ok ? log.stdout.split('\n').find((line) => line.trim() !== '') : undefined;
@@ -153,7 +141,6 @@ function boardTotalAge(runner: GitRunner, worktree: string, now: number): string
   return formatDuration((now - started) / 1000);
 }
 
-// The subject of the newest commit beyond main, or null when there is none.
 function boardStep(runner: GitRunner, worktree: string): string | null {
   const log = runner.run(worktree, ['log', '-1', '--format=%s', 'main..HEAD']);
   const subject = log.ok ? log.stdout.trim() : '';
@@ -168,8 +155,6 @@ function readBoard(root: string): string {
   }
 }
 
-// Cards for the open board rows that have a worktree `../zilar-<id>` and no
-// autopilot record. Rows that have a record are shown by the loop in `buildView`.
 async function boardOnlyEntries(
   root: string,
   hasRecord: (id: string) => boolean,
@@ -202,9 +187,8 @@ async function boardOnlyEntries(
   return entries;
 }
 
-// Pulls everything the renderer needs in one pass. Errors inside the loop
-// flip `refreshFailed` so the header says so; the renderer keeps showing
-// the previous data.
+// Pulls everything the renderer needs in one pass. Errors flip `refreshFailed` so the
+// header says so; the renderer keeps showing the previous data.
 export async function buildView(
   previous: WatchView,
   root: string,
@@ -215,9 +199,8 @@ export async function buildView(
   now: number,
 ): Promise<WatchView> {
   const clock = formatClock(new Date(now));
-  // One list per session for this refresh: `collectSnapshot` fills the cache
-  // and the live-step read below reuses it instead of spawning `opencode2`
-  // again for a session it already listed.
+  // One list per session for this refresh: `collectSnapshot` fills the cache and the
+  // live-step read below reuses it instead of spawning `opencode2` again.
   const messages: MessageCache = new Map();
   let snapshot;
   try {

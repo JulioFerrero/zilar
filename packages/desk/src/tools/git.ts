@@ -2,14 +2,10 @@ import { Schema } from 'effect';
 import { runCommand } from '../process';
 import { outcome, type ToolContext, type ToolOutcome } from '../tool';
 
-/**
- * Options a task may not pass because they inject config or run a program.
- * `GIT_ALLOW_PROTOCOL=https` (below) is what enforces the transport for clone,
- * fetch, push, submodules and remotes, so the arguments need no remote parsing.
- * The jail is the real security boundary (the `bash` tool can already run
- * anything); this hardening stops a repo from running hooks or reaching local
- * files through git. Matched exactly and with `=value`.
- */
+// Options a task may not pass because they inject config or run a program.
+// `GIT_ALLOW_PROTOCOL=https` enforces the transport, so arguments need no remote
+// parsing; the jail is the real boundary, this stops a repo running hooks or
+// reading local files through git. Matched exactly and with `=value`.
 const REFUSED_OPTIONS = [
   '--config',
   '--config-env',
@@ -25,11 +21,9 @@ export const gitArgs = Schema.Struct({
 
 export type GitArgs = typeof gitArgs.Type;
 
-/**
- * `-c` in any form (`-c foo=bar`, `-cfoo=bar`) and the long options above. The
- * bare `-u` is left alone: it is also `push -u`, `add -u` and `stash push -u`,
- * and `GIT_ALLOW_PROTOCOL=https` already makes `--upload-pack` harmless.
- */
+// `-c` in any form (`-c foo=bar`, `-cfoo=bar`) and the long options above; bare `-u`
+// is left alone because it is also `push -u`, and `GIT_ALLOW_PROTOCOL=https` makes
+// `--upload-pack` harmless.
 function refusedFlag(args: readonly string[]): string | undefined {
   return args.find(
     (arg) =>
@@ -38,7 +32,6 @@ function refusedFlag(args: readonly string[]): string | undefined {
   );
 }
 
-/** A hardened `git`: https only, no repo config, no hooks, no LFS filters, no prompts. */
 export async function runGit(args: GitArgs, ctx: ToolContext): Promise<ToolOutcome> {
   const flag = refusedFlag(args.args);
   if (flag !== undefined) {

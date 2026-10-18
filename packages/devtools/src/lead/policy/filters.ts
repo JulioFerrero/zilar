@@ -1,9 +1,8 @@
 import { splitArgs, stripEnvPrefix } from './shell-parse.js';
 import type { PolicyContext } from './types.js';
 
-// Shell syntax that can run or write something the segment's first word
-// does not show: command substitution, process substitution, or a redirect
-// to anything but a file descriptor or /dev/null.
+// Shell syntax that can run or write something the first word does not show:
+// command or process substitution, or a redirect to anything but a fd or /dev/null.
 export function hasHiddenEffects(segment: string): boolean {
   if (/\$\(|`|<\(|>\(/.test(segment)) {
     return true;
@@ -13,7 +12,6 @@ export function hasHiddenEffects(segment: string): boolean {
   return unquoted.replace(/\d?>&\d|&?\d?>\s*\/dev\/null/g, '').includes('>');
 }
 
-// Pure text filters and timers: they read stdin or named files and print.
 export const FILTER_ALLOW =
   /^(grep|egrep|fgrep|echo|printf|sleep|cmp|diff|basename|dirname|date|seq|true)(\s|$)/;
 
@@ -40,9 +38,6 @@ export function isReadOnlySed(segment: string): boolean {
   );
 }
 
-// The rehearsal stack (T-0159) is a throwaway: containers named
-// `zilar-rehearsal-*`. Inspecting them or running commands inside them can
-// only touch that stack, never the live install.
 const REHEARSAL_CONTAINER = /^zilar-rehearsal-[a-z0-9-]+$/;
 const DOCKER_VALUE_FLAGS = new Set([
   '-e',
@@ -77,8 +72,6 @@ export function isRehearsalDocker(segment: string): boolean {
   return false;
 }
 
-// Any curl method is fine against the rehearsal stack's own port, as long as
-// every URL names it and any file it writes stays in a temp folder.
 const CURL_WRITE_FLAGS = new Set(['-o', '--output', '-D', '--dump-header', '-c', '--cookie-jar']);
 
 export function isRehearsalCurl(segment: string, ctx: PolicyContext): boolean {

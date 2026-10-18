@@ -9,8 +9,7 @@ export interface GitRunner {
   run(cwd: string, args: string[]): GitResult;
 }
 
-// Synchronous git for the lead tools. Output is captured, never piped
-// through a shell, so filenames with spaces are safe.
+// Synchronous git for the lead tools; output is captured, never a shell, so filenames with spaces are safe.
 export class RealGitRunner implements GitRunner {
   run(cwd: string, args: string[]): GitResult {
     const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 120_000 });

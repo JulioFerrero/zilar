@@ -1,6 +1,3 @@
-// `WatchLive`: the live shell around `WatchApp`. Moved unchanged from
-// `lead/watch-app.tsx` (size split).
-
 import { execFile } from 'node:child_process';
 import { useApp, useInput, useStdin, useStdout } from 'ink';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -10,10 +7,9 @@ import type { WatchView } from '../watch.js';
 import { HEADER_ROWS, rowHeights, rowsOf } from './segments.js';
 import { WatchApp } from './view.js';
 
-// The live shell around `WatchApp`: refreshes the view every 3 seconds from
-// a `lead watch --data` child process (its synchronous git/OpenCode calls
-// never block the animation), ticks the clock every second, and quits
-// cleanly on `q` or Ctrl-C through Ink, which restores the terminal.
+// Refreshes every 3 seconds from a `lead watch --data` child (its synchronous git and
+// OpenCode calls never block the animation), ticks the clock every second, and quits
+// on `q` or Ctrl-C through Ink, which restores the terminal.
 export function WatchLive({ initial, icons }: { initial: WatchView; icons?: boolean }): ReactNode {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
@@ -33,8 +29,7 @@ export function WatchLive({ initial, icons }: { initial: WatchView; icons?: bool
   const maxOffset = Math.max(0, totalRows - 1);
   const availableRows =
     knownRows === undefined ? Number.POSITIVE_INFINITY : Math.max(0, knownRows - HEADER_ROWS - 1);
-  // Entries, columns or rows can change under us: clamp while rendering so the
-  // offset never points past the end.
+  // Entries, columns or rows can change under us: clamp so the offset never passes the end.
   const scrollOffset = Math.min(scroll, maxOffset);
   const slice = visibleSlice(rowHeights(cardRows), scrollOffset, availableRows);
   const pageRows = Math.max(1, slice.end - slice.start);

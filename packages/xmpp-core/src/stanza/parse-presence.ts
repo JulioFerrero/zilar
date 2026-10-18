@@ -63,9 +63,8 @@ export function parseMucPresence(
   if (affiliation !== undefined) presence.affiliation = affiliation;
   const role = item?.attrs['role'];
   if (role !== undefined) presence.role = role;
-  // The room's self-presence carries status codes (321 affiliation change,
-  // 307 kick, 301 ban): an unavailable self-presence with one of them means
-  // the server removed me, so the core can drop the chat at once.
+  // The room's self-presence carries status codes (321 affiliation change, 307 kick,
+  // 301 ban): an unavailable self-presence with one means the server removed me.
   const statuses = userX?.getChildren('status') ?? [];
   const codes: number[] = [];
   for (const status of statuses) {
@@ -73,18 +72,14 @@ export function parseMucPresence(
     if (Number.isInteger(code)) codes.push(code);
   }
   if (codes.length > 0) presence.statusCodes = codes;
-  // XEP-0045 §10.9: a `<destroy/>` child in the muc#user `<x/>` announces the
-  // room is being destroyed. An unavailable self-presence carrying it means the
-  // chat is gone, like a kick or a ban.
+  // XEP-0045 §10.9: a `<destroy/>` child means the room is gone, like a kick or a ban.
   if (userX?.getChild('destroy') !== undefined) presence.destroyed = true;
   return presence;
 }
 
-// A contact's presence is a bare-JID stanza from our own domain. MUC presence
-// (resources on the MUC domain) is handled by `parseMucPresence`; subscription
-// requests and errors are not availability and are ignored. An unavailable
-// presence may carry a `<delay/>` stamp saying when the contact went offline,
-// so the header shows when they were last seen instead of "just now".
+// A contact's presence is a bare-JID stanza from our own domain; MUC presence is handled
+// by `parseMucPresence`. An unavailable presence may carry a `<delay/>` stamp, so the
+// header can show when the contact was last seen.
 export function parseContactPresence(
   stanza: XmppElement,
   domain: string,
@@ -109,10 +104,8 @@ export function parseContactPresence(
   return event;
 }
 
-// A XEP-0249 direct invitation is a message with a `jabber:x:conference`
-// element naming the room. It is trusted only when the room is on our MUC
-// domain and the sender is on one of our domains, so another server cannot
-// point the client at an arbitrary room.
+// A XEP-0249 invitation is trusted only when the room is on our MUC domain and the
+// sender is on one of our domains, so another server cannot point us at a room.
 export function parseDirectInvitation(
   stanza: XmppElement,
   domain: string,

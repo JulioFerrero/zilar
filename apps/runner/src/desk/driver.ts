@@ -5,16 +5,9 @@ import os from 'node:os';
 import { promisify } from 'node:util';
 
 /**
- * The isolation driver a runner runs desks with (plan §6.2). There is **no
- * unsandboxed mode**: when no driver is available the runner still pairs and
- * serves its other features, but every `desk.provision` answers
- * `jail_unavailable`.
- *
- * - Linux: Docker with the `runsc` runtime registered -> `runsc`.
- * - macOS: Docker Desktop or OrbStack, whose Linux VM is the boundary ->
- *   `docker-vm`, with `--runtime` left at the daemon default.
- * - Anything else: refuse.
- * (bubblewrap on Linux is a later task; see the task Report.)
+ * The isolation driver (plan §6.2). There is no unsandboxed mode: with no driver,
+ * `desk.provision` answers `jail_unavailable`. Linux needs Docker with `runsc`;
+ * macOS uses Docker Desktop or OrbStack's VM boundary; anything else refuses.
  */
 
 export type DeskDriverKind = 'runsc' | 'docker-vm' | 'none';
@@ -23,7 +16,6 @@ export interface DeskDriver {
   readonly kind: DeskDriverKind;
   /** The runtime for `--runtime`, or null to leave the daemon default. */
   readonly dockerRuntime: string | null;
-  /** Driver names to report in `capabilities.drivers` (what was found). */
   readonly labels: readonly string[];
   /** A short reason for logs when the driver is `none`; never a secret. */
   readonly reason: string;
@@ -77,7 +69,6 @@ async function hasRunsc(deps: DriverDeps): Promise<boolean> {
   }
 }
 
-/** Picks the driver for this host, or `none` when there is no jail. */
 export async function detectDriver(deps: DriverDeps = defaultDriverDeps()): Promise<DeskDriver> {
   if (!(await hasDocker(deps))) {
     return { kind: 'none', dockerRuntime: null, labels: [], reason: 'docker is not available' };

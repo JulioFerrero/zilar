@@ -18,23 +18,16 @@ interface PendingDesk {
 }
 
 /**
- * Requests are keyed by runner *and* desk id: desk ids are deterministic per
- * ai/project, so two runners may legitimately hold a request for the same id,
- * and a reply from one runner must never resolve another's request.
+ * Keyed by runner *and* desk id: ids are deterministic per ai/project, so two
+ * runners may hold the same id and a reply may only resolve its own runner's request.
  */
 function pendingKey(runnerId: string, deskId: string): string {
   return `${runnerId}\u0000${deskId}`;
 }
 
 /**
- * The server side of the desk frames (plan §2, §6.1). The hub's `RunnerHands`
- * adapter uses it (the next task wires that in):
- *
- * - `sendDesk` sends a `desk.provision`/`desk.stop` and resolves with the
- *   runner's reply frame (`desk.ready`, `desk.stopped`, `desk.error` or
- *   `queued`), or rejects on a timeout or a dropped runner;
- * - `openDeskExec` sends `desk.exec` and returns the local end of a duplex
- *   socket bridged to the jail's tool daemon over the mux stream.
+ * The server side of the desk frames: `sendDesk` sends provision/stop and resolves
+ * with the reply frame; `openDeskExec` opens a duplex socket to the jail's daemon.
  */
 export class DeskServer {
   private readonly pending = new Map<string, PendingDesk>();
@@ -73,7 +66,6 @@ export class DeskServer {
     });
   }
 
-  /** Opens a `desk.exec` stream; the returned socket carries the daemon bytes. */
   async openDeskExec(runnerId: string, deskId: string): Promise<net.Socket> {
     const mux = this.muxFor(runnerId);
     if (mux === null) {
@@ -99,9 +91,8 @@ export class DeskServer {
   }
 
   /**
-   * Routes a reply frame from `runnerId`. False when the frame is not a reply.
-   * A reply from a runner that holds no matching request is dropped, so one
-   * runner can never resolve another runner's request.
+   * Routes a reply from `runnerId`; false when it is not a reply. A reply from a
+   * runner holding no matching request is dropped, so one cannot resolve another's.
    */
   route(runnerId: string | null, message: ControlMessage): boolean {
     if (
@@ -119,8 +110,7 @@ export class DeskServer {
     const key = pendingKey(runnerId, message.desk_id);
     const pending = this.pending.get(key);
     if (pending === undefined) {
-      // A recognized reply with no request pending (e.g. after a timeout):
-      // drop it rather than treat it as a protocol violation.
+      // A reply with no request pending (e.g. after a timeout) is dropped, not a violation.
       return true;
     }
     this.pending.delete(key);

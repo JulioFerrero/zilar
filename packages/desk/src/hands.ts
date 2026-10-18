@@ -2,18 +2,11 @@ import { Schema } from 'effect';
 import { ToolNameSchema } from './protocol';
 
 /**
- * The hands interface (plan §2): the four operations the brain calls on a desk.
- * It is implemented once for Zilar cloud (the `src/agent` sidecar) and once per
- * runner; both speak the same tool daemon, so `execute` has one shape
- * everywhere.
+ * The four operations the brain calls on a desk (plan §2), implemented once for
+ * Zilar cloud and once per runner over the same tool daemon.
  *
- * The plain interfaces are the plan's shapes and the schemas are the boundary
- * validators. The sidecar's unix socket decodes every request against these
- * schemas with `onExcessProperty: 'error'`, so a caller can only ever send the
- * fields declared here — never a host path, an image name or a runtime flag.
- *
- * The fixed error codes live in `protocol.ts` (`ToolErrorCode`, `DeskError`) and
- * are re-exported with the package.
+ * The schemas are the boundary: every request decodes with `onExcessProperty: 'error'`,
+ * so a caller can only send the fields here — never a host path, an image or a flag.
  */
 
 /** The plan's per-jail ceilings, enforced at the schema boundary (§2, §4.2). */
@@ -113,7 +106,6 @@ export type SnapshotRef = typeof SnapshotRefSchema.Type;
 export interface Hands {
   /** Idempotent per `DeskKey`: a second call returns the live desk, never a second jail. */
   provision(spec: DeskSpec): Promise<DeskRef>;
-  /** Runs one tool; yields stdout/stderr chunks and a final exit chunk. */
   execute(ref: DeskRef, call: DeskToolCall, signal?: AbortSignal): AsyncIterable<DeskChunk>;
   /** Kills the jail. The workspace image survives unless `keepWorkspace` is false. */
   stop(ref: DeskRef, opts?: { readonly keepWorkspace?: boolean }): Promise<void>;
@@ -121,9 +113,8 @@ export interface Hands {
 }
 
 /**
- * Thrown by an adapter when the host is over its running cap or memory pool, so
- * the caller can show "Queued (n ahead)" and retry (plan §2, §4.3). It is never
- * a hard failure: `position` is how many desks are ahead.
+ * Thrown when the host is over its running cap or memory pool; `position` is how
+ * many desks are ahead, so the caller can show "Queued (n ahead)" and retry.
  */
 export class DeskQueued extends Error {
   readonly position: number;

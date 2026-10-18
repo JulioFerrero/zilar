@@ -53,8 +53,7 @@ export function normalizePairingCode(input: string): string | null {
   return normalized;
 }
 
-// Matches the server's pairingSignatureMessage
-// (apps/server/src/machines/codes.ts).
+// Matches the server's `pairingSignatureMessage` (apps/server/src/machines/codes.ts).
 function pairingSignatureMessage(normalized: string): Buffer {
   return Buffer.from(`zilar-pair:v1:${normalized}`, 'ascii');
 }
@@ -201,10 +200,8 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
     );
   }
   if (response.status === 409) {
-    // Never echo server-provided text: a hostile or buggy server body could
-    // trick the CLI into printing something we don't want on the user's
-    // terminal. Map the known 409 codes to fixed sentences; fall back to a
-    // single generic line for anything else.
+    // Never echo server-provided text: a hostile body could print anything on the terminal.
+    // Known 409 codes map to fixed sentences; anything else gets one generic line.
     let detail = 'Another machine already uses this key.';
     try {
       const data = (await response.json()) as { code?: string };

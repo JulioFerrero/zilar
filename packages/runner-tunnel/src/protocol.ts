@@ -9,13 +9,11 @@ import {
   DeskStopSchema,
 } from './desk-frames.ts';
 
-/** The protocol version this build speaks; desk frames arrived in version 2. */
 export const PROTOCOL_VERSION = 2;
 
 /**
- * The versions the server still accepts, so a runner from the previous release
- * keeps pairing (plan §6.1). Version 1 has no desk frames; the hub must only
- * send `desk.*` to a version-2 runner.
+ * Versions the server still accepts, so a runner from the previous release keeps
+ * pairing; the hub must send `desk.*` only to a version-2 runner.
  */
 const ACCEPTED_PROTOCOL_VERSIONS: readonly number[] = [1, PROTOCOL_VERSION];
 
@@ -41,9 +39,8 @@ export const FRAME_HEADER_BYTES = 5;
 export const MAX_FRAME_BYTES = 256 * 1024;
 
 /**
- * Largest WebSocket message either side accepts. Control frames are small JSON
- * and stream frames are capped at MAX_FRAME_BYTES plus the header, so anything
- * bigger is an attack or a bug, not traffic.
+ * Largest WebSocket message either side accepts: control frames are small and stream
+ * frames are capped at `MAX_FRAME_BYTES` plus the header, so bigger is an attack.
  */
 export const MAX_WS_PAYLOAD_BYTES = MAX_FRAME_BYTES + FRAME_HEADER_BYTES;
 
@@ -201,10 +198,7 @@ export interface ControlParseFail {
   reason: string;
 }
 
-/**
- * Validate one text frame. Never throws: any garbage becomes a close code,
- * so a handler can close the socket cleanly instead of crashing.
- */
+/** Validate one text frame; never throws, garbage becomes a close code. */
 export function parseControlMessage(
   raw: string,
   direction: MessageDirection,

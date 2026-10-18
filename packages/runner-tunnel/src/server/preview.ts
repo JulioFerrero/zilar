@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from packages/runner-tunnel/src/server.ts (size split)
+// effect-plain: the preview proxy is plain node:http; the tunnel supplies the stream.
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
 import { TunnelHttpAgent } from '../http-agent.ts';
@@ -7,9 +7,8 @@ import { openEngineStream } from './engine.ts';
 import { HOP_BY_HOP_HEADERS } from './options.ts';
 
 /**
- * Mint a preview token for one runner port. The 16 random bytes are
- * 128 bits, base64url-encoded; the token is the capability (room-member
- * authorization is M3 work, see the task Report).
+ * Mint a preview token for one runner port: 16 random bytes (128 bits), base64url; the
+ * token itself is the capability.
  */
 export function createPreviewToken(rt: ServerRuntime, runnerId: string, port: number): string {
   const token = randomBytes(16).toString('base64url');

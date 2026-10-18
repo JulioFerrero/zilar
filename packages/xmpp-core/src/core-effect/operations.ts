@@ -55,14 +55,10 @@ import type { OperationsApi } from './operations-types';
 export type { OperationsApi };
 
 export function createOperations(runtime: CoreRuntime): OperationsApi {
-  // One request on a Deferred. The caller has already put its map entry in
-  // place, so the reply handlers can find it. The send starts at once on a
-  // child fiber, so the stanza goes out before the caller's first await: a
-  // failed send fails the Deferred (a no-op once a reply or an earlier
-  // failure completed it), and a send that never settles cannot hold the
-  // request back from its reply or its timeout. Then the request awaits the
-  // Deferred, which keeps a reply that arrived early, under the timeout.
-  // `release` drops the map entry on every exit, including interruption.
+  // One request on a Deferred; the caller has placed its map entry. The send starts at
+  // once on a child fiber, so a failed send fails the Deferred and a send that never
+  // settles cannot hold the reply back; then the request awaits the Deferred under the
+  // timeout. `release` drops the map entry on every exit.
   function request<A>(args: {
     deferred: Deferred.Deferred<A, XmppCoreError>;
     send: Effect.Effect<void, XmppCoreError>;
@@ -130,9 +126,7 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
     yield* runtime.sendQuietly(current, buildLeavePresence(roomJid, nick));
   });
 
-  // The send operations differ only in the stanza they build: each takes a
-  // fresh id and fails with `NotOnline`, or with the error the library's
-  // `send` rejected with.
+  // Each send takes a fresh id and fails with `NotOnline` or the library's error.
   const sendStanzaEffect = Effect.fnUntraced(function* (
     build: (id: string) => XmppElement,
     fixedId?: string,
@@ -309,9 +303,8 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
     return slot;
   });
 
-  // XEP-0357: enables or disables push for this session's push pair. The
-  // request goes over the user's own session (ejabberd requires it) and
-  // resolves when the server answers `result`, or rejects on `error`/timeout.
+  // XEP-0357: enables or disables push for this session's push pair over the user's own
+  // session (ejabberd requires it); resolves on `result`, rejects on `error`/timeout.
   const setPushEnabledEffect = Effect.fnUntraced(function* (pushOptions: {
     pushJid: string;
     node: string;

@@ -1,30 +1,19 @@
 import type { Effect } from 'effect';
 
-/**
- * What a `wake()` reported: the server still held the session (stream
- * management resumed it) or it bound a fresh one. A `rebound` means the
- * missed-message catch-up has to run (F3): nothing was replayed.
- */
+/** What `wake()` reported: the server still held the session (`resumed`) or bound a
+ * fresh one (`rebound`); nothing was replayed, so catch-up must run. */
 export type WakeOutcome = 'resumed' | 'rebound';
 
-/**
- * The background-lifecycle half of `XmppCore` (F1): `suspend()` parks the
- * session when the app leaves the foreground, `wake()` brings it back. Both
- * are optional, like `setPushEnabled`: callers feature-detect.
- */
+/** `suspend()` parks the session when the app leaves the foreground; `wake()` brings
+ * it back. Optional like `setPushEnabled`, so callers feature-detect. */
 export interface XmppSuspend {
   /**
-   * Parks the session: stops the reconnect driver, the watchdog and the
-   * keepalive, ends the socket without the framing `</stream>` so ejabberd
-   * moves the session to pending and pushes per stanza, and keeps the
-   * stream-management id so `wake()` can resume. Sets the status to
-   * `offline`, not an error.
+   * Stops the driver, watchdog and keepalive, ends the socket without the framing
+   * `</stream>` so ejabberd moves the session to pending, and keeps the SM id so
+   * `wake()` can resume. Sets the status to `offline`, not an error.
    */
   suspend?(): Promise<void>;
-  /**
-   * Brings the session back: starts the driver and reconnects. Resumes when
-   * ejabberd still holds the session, else binds a fresh one.
-   */
+  /** Reconnects, resuming when ejabberd still holds the session, else binds fresh. */
   wake?(): Promise<WakeOutcome>;
 }
 

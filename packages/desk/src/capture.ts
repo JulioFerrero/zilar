@@ -2,14 +2,11 @@ import { Effect } from 'effect';
 import { closeSync, openSync, readSync } from 'node:fs';
 import type { StreamName } from './protocol';
 
-/** A cap on the bytes a single request may return, split by stream. */
 export interface OutputCapture {
-  /** Returns true once the cap is reached; the caller then stops the process. */
   push(stream: StreamName, chunk: Buffer): boolean;
   finish(): { readonly stdout: string; readonly stderr: string; readonly truncated: boolean };
 }
 
-/** Collects at most `maxBytes` across stdout and stderr, in arrival order. */
 export function createCapture(maxBytes: number): OutputCapture {
   let remaining = maxBytes;
   let truncated = false;
@@ -44,11 +41,8 @@ export function createCapture(maxBytes: number): OutputCapture {
 }
 
 /**
- * Reads a file but never more than `maxBytes`: a plain `readFileSync` loads the
- * whole file, and a file grown after a caller's `stat` check (or `edit`, which
- * has no check) would load unbounded bytes into the daemon. `tooLarge` is set
- * when the file has more than `maxBytes`, so the caller can refuse it instead.
- * The `fs` calls are I/O, so they are wrapped in an Effect run sync here.
+ * Reads at most `maxBytes`: a file grown after a caller's `stat` check would
+ * otherwise load unbounded bytes. `tooLarge` lets the caller refuse it.
  */
 type FsFailure = { readonly code?: string };
 

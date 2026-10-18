@@ -9,15 +9,12 @@ export interface Classification {
 export interface PermissionRequest {
   id: string;
   action: string;
-  // One entry per element of the request's `resources`. OpenCode splits a
-  // piped command into one pattern per pipeline segment
-  // (e.g. ["npx expo run:ios --help", "grep -iE \"port|device\"", "head"]),
-  // so every element is classified on its own and the worst verdict wins.
+  // One entry per element of `resources`: OpenCode splits a piped command into one
+  // pattern per segment, each classified on its own.
   commands: string[];
 }
 
 export interface PolicyContext {
-  // Absolute path of the requesting worker's own worktree.
   worktree: string;
   // Absolute path of the task id, e.g. "T-0038", used to recognize own temp files.
   task: string;
@@ -30,9 +27,7 @@ export const JULIO_SIMULATOR_UDIDS = [
   'DB167CD4-BDCE-4E04-BC5E-85EE868A6AD8',
 ];
 
-// Only the shell tool's permission requests are classified by command. Any
-// other action (including `bash`, which never matches a rule) escalates:
-// when unsure, escalate, never allow by default.
+// Only the shell tool's requests are classified by command; any other action escalates.
 export const SHELL_ACTION = 'shell';
 
 export interface Rule {

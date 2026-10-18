@@ -80,10 +80,8 @@ function spawnAndCollect(
 }
 
 /**
- * Runs a command in its own process group so a timeout can kill the whole tree
- * (plan §3.2, `bash`). Output is capped; the tree is killed as soon as the cap
- * is reached. On abort the tree is killed too. The Promise is the module
- * boundary; the wait itself is an `Effect`.
+ * Runs in its own process group so a timeout kills the whole tree; output is
+ * capped and the tree dies when the cap is reached or the caller aborts.
  */
 export function runCommand(
   command: string,

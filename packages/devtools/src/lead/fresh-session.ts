@@ -9,10 +9,8 @@ import { freeSessionInUse, loadState, stateFilePath } from './state.js';
 import { splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
-// A new worker session starts without the old session's bookkeeping: it has
-// not been nudged, has seen no quota errors, and inherits no escalations.
-// Everything describing the task itself (round count, pre-review, model,
-// worktree, start time) is kept so the autopilot continues where it left off.
+// A new session starts without the old one's bookkeeping (nudges, quota errors,
+// escalations); everything about the task itself is kept.
 export function freshSessionRecord(
   record: TaskRecord,
   sessionId: string,
@@ -35,16 +33,12 @@ export interface FreshSessionDeps {
   client: OpenCodeClient;
   promptsDirPath: string;
   repoRoot: string;
-  // Injectable clock for tests of `model: auto` peak-hour resolution.
   now?: () => Date;
-  // The lead state file; defaults to the live one.
   statePath?: string;
 }
 
-// Opens a fresh worker session in the task's existing worktree and sends it
-// the given (already rendered) prompt. The old session is left alone —
-// callers only use this when it is idle or already interrupted. Never touches
-// git or the state file; the caller points the record at the new session.
+// Opens a fresh session in the task's existing worktree; the caller points the
+// record at it. Never touches git or the state file.
 export async function startFreshWorkerSession(
   deps: FreshSessionDeps,
   input: { task: string; record: TaskRecord; title: string; prompt: string },
@@ -53,17 +47,15 @@ export async function startFreshWorkerSession(
     input.record.worktree,
     input.task,
   );
-  // `model: auto` re-resolves when the fresh session starts: it always picks
-  // the free DeepSeek Flash (T-1718) unless the free listings are paused, when
-  // it starts on the paid step (T-1942). Other models keep the record's model
-  // (switch-model may have moved it onto the paid fallback).
+  // `model: auto` re-resolves when the fresh session starts, unless the free listings
+  // are paused; other models keep the record's model.
   const now = deps.now?.() ?? new Date();
   const goPaused = isGoPaused(now);
   const freePaused = isFreePaused(now);
   const resolved = resolveWorkerModel(frontMatterModel, now, goPaused, freePaused);
   let modelString = frontMatterModel === 'auto' ? resolved.model : input.record.model;
-  // T-1942: one tracked session on a free listing at a time; the task's own
-  // previous session is the one this call replaces, so it does not count.
+  // One tracked session on a free listing at a time; the session this call replaces
+  // does not count.
   if (
     isFreeListing(modelString) &&
     (freePaused ||

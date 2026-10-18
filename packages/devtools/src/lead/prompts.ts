@@ -37,8 +37,7 @@ export function loadRulesFile(file: string): PermissionRule[] {
   return validated.success;
 }
 
-// Fills {{PLACEHOLDERS}} in a prompt template. Unknown placeholders are left
-// alone; missing required ones are a caller bug, caught by tests.
+// Fills {{PLACEHOLDERS}}; unknown ones are left alone.
 export function renderPrompt(template: string, vars: Record<string, string>): string {
   let rendered = template;
   for (const [key, value] of Object.entries(vars)) {

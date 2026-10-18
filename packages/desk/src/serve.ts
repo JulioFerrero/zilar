@@ -163,10 +163,6 @@ async function handleLine(
   await runRequest(decoded.value, workspace, options, write);
 }
 
-/**
- * Reads newline-delimited JSON requests from `input` and writes response lines
- * to `output`. Requests overlap; each gets its own timeout and output cap.
- */
 export async function serve(
   options: ServeOptions,
   input: AsyncIterable<Buffer | string>,
@@ -203,7 +199,6 @@ export async function serve(
   }
 }
 
-/** `desk-tool serve`: the only command the image's entrypoint runs. */
 export async function main(argv: readonly string[]): Promise<number> {
   if (argv[2] !== 'serve') {
     process.stderr.write('usage: desk-tool serve\n');
@@ -213,7 +208,6 @@ export async function main(argv: readonly string[]): Promise<number> {
   return 0;
 }
 
-/** The CLI runs only when this file is the entry point, not on a test import. */
 const entryPoint = process.argv[1];
 if (entryPoint !== undefined && import.meta.url === pathToFileURL(entryPoint).href) {
   main(process.argv)

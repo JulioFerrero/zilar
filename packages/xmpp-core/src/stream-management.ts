@@ -1,25 +1,11 @@
 import type { XmppClient, XmppElement } from '@xmpp/client';
 
-// XEP-0198 stream management, as used by @xmpp/client 0.14.
-//
-// xmpp.js keeps its own inbound counter (`streamManagement.inbound`) and puts it
-// in every <a h="…"/> it sends. That counter has two problems over WebSocket:
-//
-//   1. it counts stanzas that arrive *before* <enabled/> (the middleware
-//      increments for every presence/message/iq from the very first element),
-//      and the correction only happens in `enabled()`, which is asynchronous;
-//   2. our client sends its initial <presence/> before xmpp.js sends <enable/>,
-//      so the server echoes a presence that it sent while stream management was
-//      still inactive (not counted by the server).
-//
-// When <enabled/>, a pre-enable stanza and the server's first <r/> can arrive
-// in the same parser batch: xmpp.js then acknowledges the pre-enable stanza
-// (`<a h="2"/>` while the server sent one) and ejabberd closes the session with
-// "Client acknowledged more stanzas than sent by server".
-//
-// This counter follows XEP-0198 §4 exactly: it starts at zero after <enabled/>
-// (and continues after <resumed/>), counts only message/presence/iq, and is the
-// value written into the outgoing <a/> and <resume/> elements.
+// XEP-0198, as used by @xmpp/client 0.14. xmpp.js's own inbound counter counts
+// stanzas that arrive before `<enabled/>` and corrects only asynchronously, while our
+// initial `<presence/>` goes out before `<enable/>`; in the same parser batch xmpp.js then
+// acks that pre-enable stanza and ejabberd closes the session with "Client acknowledged more
+// stanzas than sent by server". This counter follows the XEP: zero after `<enabled/>`,
+// continuing after `<resumed/>`, counting only message/presence/iq.
 export const STREAM_MANAGEMENT_NS = 'urn:xmpp:sm:3';
 
 const COUNTED_STANZAS = new Set(['message', 'presence', 'iq']);
@@ -27,9 +13,7 @@ const COUNTED_STANZAS = new Set(['message', 'presence', 'iq']);
 export type StreamManagementAck = {
   /** Stanzas handled since stream management was (re)enabled. */
   inbound(): number;
-  /** Whether <enabled/> or <resumed/> has been seen. */
   counting(): boolean;
-  /** Feeds one incoming element (stanza or nonza) into the counter. */
   observe(element: XmppElement): void;
   /** Stops counting new stanzas without losing the current value (disconnect). */
   stop(): void;
@@ -71,18 +55,15 @@ export function createStreamManagementAck(): StreamManagementAck {
   };
 }
 
-// Installs the corrected counter on a client created by @xmpp/client. It reads
-// every incoming element, patches the `h` of the outgoing <a/> and <resume/>
-// elements, and forwards the library's own delivery confirmations: when stream
-// management acks or loses an outgoing `<message/>` stanza it calls `onAcked`
-// / `onUnacked` with the stanza's `id` attribute. It does nothing when the
-// client has no stream management (unit tests use a small fake without it).
+// Installs the corrected counter: reads every incoming element, patches the `h` of
+// outgoing `<a/>`/`<resume/>`, and forwards the library's `ack`/`fail` for outgoing
+// `<message/>` stanzas. Nothing when the client has no stream management.
 export function installStreamManagementAck(
   client: XmppClient,
   handlers?: {
     onAcked?: (stanzaId: string) => void;
     onUnacked?: (stanzaId: string) => void;
-    /** <enabled/> or <resumed/>: this stream now tracks outgoing stanzas (T-1220). */
+    /** <enabled/> or <resumed/>: this stream now tracks outgoing stanzas. */
     onReady?: () => void;
   },
 ): void {
@@ -92,9 +73,7 @@ export function installStreamManagementAck(
   const ack = createStreamManagementAck();
   client.on('element', (element) => {
     ack.observe(element);
-    // A stream that is not (yet) stream-managed does not track an outgoing
-    // stanza, and the server's <a h/> never covers it. Callers that must write
-    // after <enable/> wait for this.
+    // A stream not (yet) managed tracks no outgoing stanza, so callers wait for this.
     if (
       element.is('enabled', STREAM_MANAGEMENT_NS) ||
       element.is('resumed', STREAM_MANAGEMENT_NS)
@@ -109,11 +88,8 @@ export function installStreamManagementAck(
     ack.stop();
   });
 
-  // The library's stream-management middleware (`@xmpp/stream-management`,
-  // `index.js` `ackQueue`/`failQueue`) emits `ack` with the confirmed stanza
-  // and `fail` with the lost one on its `streamManagement` object. Only
-  // `<message/>` stanzas with an `id` are reported: the `<a/>`, `<r/>`,
-  // `<enable/>` and presence/iq stanzas never carry one of our send ids.
+  // The library's middleware emits `ack` and `fail` with the stanza; only `<message/>`
+  // with an `id` is reported.
   const report = (event: 'ack' | 'fail', stanza: XmppElement): void => {
     if (!stanza.is('message')) return;
     const id = stanza.attrs['id'];

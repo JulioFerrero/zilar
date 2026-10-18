@@ -1,11 +1,6 @@
-// Smoke test for the local dev infrastructure (infra/docker-compose.dev.yml).
-//
-//   pnpm infra:smoke
-//
-// It fails with a non-zero exit code and one message per check when the stack
-// is not healthy. It talks to the stack the same way a developer would: docker
-// compose exec for Postgres and ejabberd, HTTP for the ejabberd admin API, and
-// a real XMPP WebSocket handshake for ejabberd.
+// Smoke test for the local dev stack (infra/docker-compose.dev.yml): it talks to
+// Postgres, ejabberd (admin API and a real XMPP WebSocket handshake) the way a
+// developer would, and exits non-zero with one message per failing check.
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

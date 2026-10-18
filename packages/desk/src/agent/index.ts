@@ -1,6 +1,5 @@
-// The host-side desk pieces a runner reuses in process (plan §2, §6.1): the
-// same jail lifecycle, Docker layer and workspace the cloud sidecar drives.
-// Everything here is effect-plain and has no Effect runtime of its own.
+// The host-side desk pieces a runner reuses in process (plan §2, §6.1): the same
+// jail lifecycle, Docker layer and workspace the cloud sidecar drives.
 export {
   Admission,
   readCgroupMemory,

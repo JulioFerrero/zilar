@@ -1,4 +1,3 @@
-// Members-only MUC room joins for the XMPP end-to-end spike.
 import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
 import { STEP_TIMEOUT_MS, withDeadline, xmppErrorCondition } from './harness';
 

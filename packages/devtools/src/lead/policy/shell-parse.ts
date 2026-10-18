@@ -2,10 +2,8 @@ export function normalize(command: string): string {
   return command.replace(/\s+/g, ' ').trim();
 }
 
-// Splits `a && b; c || d | e` into segments so one dangerous segment can't
-// hide behind a harmless one. Quote-aware: `grep -iE "port|device"` stays
-// whole. `$(…)` and backticks stay inside their segment, but the substring
-// rules below still see them, since substitution executes.
+// Splits `a && b; c || d | e` into segments so a dangerous one cannot hide behind a
+// harmless one. Quote-aware; `$(…)` stays in its segment but still counts as running.
 export function splitSegments(command: string): string[] {
   const parts: string[] = [];
   let current = '';
@@ -65,7 +63,6 @@ export function splitSegments(command: string): string[] {
   return parts;
 }
 
-// Strips a leading `VAR=x` / `VAR="x"` env assignments and `command`/`env`.
 export function stripEnvPrefix(segment: string): string {
   let rest = segment;
   for (;;) {
@@ -83,10 +80,8 @@ export function firstWord(segment: string): string {
   return stripEnvPrefix(segment).split(' ')[0] ?? '';
 }
 
-// The remainder of a git invocation after the `git` global flags
-// (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=…`, `--work-tree=…`),
-// so `git -C /elsewhere push` can't dodge the subcommand rules. Null when
-// the segment is not a git invocation at all.
+// The remainder of a git invocation after its global flags, so `git -C /elsewhere push`
+// can't dodge the subcommand rules; null when the segment is not git.
 export function gitRest(segment: string): string | null {
   const tokens = stripEnvPrefix(segment)
     .split(' ')
@@ -131,10 +126,9 @@ export function gitMatches(segment: string, pattern: RegExp): boolean {
   return rest !== null && pattern.test(rest);
 }
 
-// A bare shell or interpreter as the whole segment: the pipe-to-shell
-// pattern (`curl … | sh`, `… | xargs …`) or a wrapper hiding the real
-// command (`sh -c …`, `bash -s`, `eval …`, `source …`). Never allowed:
-// the lead cannot review code it never sees as text.
+// A bare shell or interpreter as the whole segment: the pipe-to-shell pattern
+// (`curl … | sh`, `… | xargs …`) or a wrapper hiding the real command (`sh -c …`,
+// `bash -s`, `eval …`). Never allowed: the lead cannot review code it never sees.
 export function isBareShell(segment: string): boolean {
   const head = firstWord(segment).toLowerCase();
   return (
@@ -151,9 +145,7 @@ export function isBareShell(segment: string): boolean {
   );
 }
 
-// Tokenizes a segment on whitespace the way the shell would split it:
-// single/double quotes group, backslash escapes. Needed so curl flag parsing
-// below sees `-H "Authorization: Bearer x"` as one value, not three tokens.
+// Tokenizes like the shell: quotes group and backslash escapes, so curl flags parse right.
 export function splitArgs(segment: string): string[] {
   const tokens: string[] = [];
   let current = '';

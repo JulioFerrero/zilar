@@ -9,8 +9,7 @@ function isRmRf(segment: string): boolean {
   );
 }
 
-// Targets of `rm -rf …`, with the flags removed. Stops at a segment
-// separator so `rm -rf dist && git push` yields just `dist`.
+// Targets of `rm -rf …`, flags removed; stops at a segment separator.
 function rmTargets(segment: string): string[] {
   const withoutEnv = stripEnvPrefix(segment);
   const withoutRm = withoutEnv.replace(/^rm\s+/, '');
@@ -106,10 +105,8 @@ export function classifyRmRf(segment: string, ctx: PolicyContext): Classificatio
     if (isOwnTemp(target, ctx.task)) {
       continue;
     }
-    // Anything absolute, or escaping with `..`, that is neither the worker's
-    // own checkout nor its own temp folder: the main checkout, another
-    // worktree, home, or anywhere else. Playbook §7 says rm outside the
-    // worktree is rejected, not merely escalated.
+    // Anything absolute, or escaping with `..`, that is neither its own checkout nor
+    // its own temp folder is rejected, not merely escalated (playbook §7).
     return {
       verdict: 'reject',
       message: `rm outside your own worktree (${target}) is blocked. Clean only inside ${ctx.worktree} or your own temp folder.`,

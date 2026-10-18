@@ -8,10 +8,8 @@ import type { StateFile } from './types.js';
 import { schemaIssues, taskFrontMatterSchema, type TaskFrontMatter } from './types.js';
 import { GO_MUSE } from './models.js';
 
-// The checkout a command should read a task's file from. A running task's spec
-// lives in its worktree once the task is tracked in `state.json` (a launch from
-// an uncommitted spec never commits it on main); a task still queued has its
-// spec on main. Callers pass the result to `findTaskFile`.
+// A running task's spec lives in its worktree; a queued one on main. Callers pass the
+// result to `findTaskFile`.
 export function taskFileDir(repoRoot: string, task: string, statePath: string): string {
   const record = loadState(statePath).tasks[task];
   if (record !== undefined && fs.existsSync(path.join(record.worktree, 'work'))) {
@@ -20,9 +18,8 @@ export function taskFileDir(repoRoot: string, task: string, statePath: string): 
   return repoRoot;
 }
 
-// The task files are markdown with a small YAML front matter block. There is
-// no YAML dependency allowed, so this parses only the flat `key: value` lines
-// the lead tools need. Anything fancier (nested maps) is left unread.
+// Front matter is flat `key: value`; there is no YAML dependency, so nested maps stay
+// unread.
 export function parseFrontMatter(text: string): Record<string, string> {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (match === null) {
@@ -49,7 +46,6 @@ export function parseTaskFrontMatter(text: string): TaskFrontMatter {
   return parsed.success;
 }
 
-// Splits "providerID/modelID" from the task's `model:` field.
 export function splitModel(model: string): { providerID: string; id: string } {
   const slash = model.indexOf('/');
   if (slash <= 0 || slash === model.length - 1) {
@@ -76,8 +72,6 @@ export function isCostlyMetaModel(model: string): boolean {
   return /^meta\//i.test(model) && !/-contributor$/i.test(model);
 }
 
-// The one gate every launch path goes through: banned or costly models never
-// reach a worker session.
 export function assertAllowedModel(model: string): void {
   assertNotV4Pro(model);
   if (isCostlyMetaModel(model)) {
@@ -87,15 +81,9 @@ export function assertAllowedModel(model: string): void {
   }
 }
 
-// The pre-review and the doctor use the free Muse listing by default, but
-// T-0215 lets the lead point them at the billed fallback through
-// ZILAR_REVIEW_MODEL when the free listing is rate-limited (the autopilot
-// restarts pick it up on the next call). Read at call time so a restart with
-// the env set is enough.
-//
-// T-1942: while the free listings are paused the default becomes the paid step
-// of the free Muse, the Go Muse; the caller's `withoutPausedGoModel` turns that
-// into the paid Muse while Go is paused too.
+// The pre-review and doctor use the free Muse by default; `ZILAR_REVIEW_MODEL` points
+// them at the billed fallback, read at call time. While free listings are paused the
+// default is the Go Muse, or the paid Muse while Go is paused too.
 export function reviewModel(
   env: NodeJS.ProcessEnv = process.env,
   freePaused = false,
@@ -111,11 +99,8 @@ export function reviewModel(
   return splitModel(freePaused ? GO_MUSE : 'opencode/muse-spark-1.3-contributor-free');
 }
 
-// T-1942: the model a pre-review or the doctor starts on. The free Muse while
-// the free listings are open and no other tracked session runs on one;
-// otherwise the paid step from its fallback chain (the Go Muse, or the paid
-// Muse while Go is paused too). `scope` keeps the caller from counting its own
-// session.
+// The model a pre-review or doctor starts on: free Muse while it is open and no other
+// tracked session holds it, else the paid step of its chain.
 export function reviewSessionModel(state: StateFile, scope: FreeSessionScope = {}): ModelRef {
   const goPaused = isGoPaused();
   const freePaused = isFreePaused();
@@ -130,8 +115,6 @@ export function reviewSessionModel(state: StateFile, scope: FreeSessionScope = {
   return model;
 }
 
-// Returns the text under the "Blocked / needs a decision" subsection of the
-// Report, or an empty string when there is none.
 export function extractBlockedText(text: string): string {
   const lines = text.split('\n');
   const start = lines.findIndex((line) => /^#+\s*blocked\s*\/\s*needs a decision/i.test(line));
@@ -152,10 +135,8 @@ export function extractBlockedText(text: string): string {
 // schema and migrations, auth, crypto, the XMPP server config.
 const RISKY_PATHS = /schema\.ts|drizzle|\/auth\/|crypto|ejabberd|authz/i;
 
-// Picks the reasoning effort for a worker from the task file. `effort:` in
-// the front matter always wins. Otherwise a task is `high` when its Allowed
-// files touch risky paths or its estimate is 3 days or more, and `low` when it
-// is a clear, contained job (measured 2026-10-01: same pass rate, 2-4x faster).
+// `effort:` wins; otherwise `high` when the Allowed files touch risky paths or the
+// estimate is 3 days or more, `low` for a clear, contained job.
 export function pickEffort(taskText: string, explicit: string | undefined): string {
   if (explicit !== undefined) {
     return explicit;

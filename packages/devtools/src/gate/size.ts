@@ -1,11 +1,6 @@
-// T-1427: CLAUDE.md caps a source file at 400 lines; tests, mocks, fixtures and
-// generated files are exempt. Nothing enforced it, so a branch could grow
-// `apps/mobile/src/app/ais/[id].tsx` from 372 to 439 and only a manual `wc -l`
-// caught it. This check looks at every changed `.ts`/`.tsx`/`.mjs`/`.js` file
-// under `apps/` and `packages/`: one over the limit fails unless the base branch
-// already had it over the limit and the branch did not make it longer, so the
-// files that are already there (apps/server/src/main.ts 569, …) may be edited but
-// never grow. Pure: the caller (cli.ts) reads the working tree and the base.
+// A source file is capped at 400 lines; tests, mocks, fixtures and generated files
+// are exempt. One over the limit fails unless the base was already over and the
+// branch did not grow it. Pure: the caller reads the working tree and the base.
 
 export const SIZE_LIMIT = 400;
 
@@ -13,10 +8,9 @@ const CODE_FILE = /\.(ts|tsx|mjs|js)$/;
 const TEST_OR_SPEC = /\.(test|spec)\.[^./]+$/;
 const GENERATED = /\.gen\.[^./]+$/;
 const DECLARATION = /\.d\.ts$/;
-// `test-harness.ts` and the dotted `gateway.test-harness.ts` form (T-1042).
+// `test-harness.ts` and the dotted `gateway.test-harness.ts` form.
 const TEST_HARNESS = /(^|\.)test-harness\./;
 
-// Folders whose contents are test or mock scaffolding, not production source.
 const EXEMPT_SEGMENTS: readonly string[] = [
   '/__mocks__/',
   '/fixtures/',
@@ -24,10 +18,8 @@ const EXEMPT_SEGMENTS: readonly string[] = [
   '/drizzle/meta/',
 ];
 
-// The mock backend is a test double for the whole app, never shipped.
 const MOCK_BACKEND = 'packages/mock-backend/';
 
-/** True for a changed source file the 400-line rule applies to. */
 export function isSizeChecked(file: string): boolean {
   if (!file.startsWith('apps/') && !file.startsWith('packages/')) return false;
   if (!CODE_FILE.test(file)) return false;
@@ -62,12 +54,6 @@ function violation(file: SizeFile): string | null {
   return `${file.path}: ${lines} lines (main ${baseLines ?? 0}); limit ${SIZE_LIMIT}`;
 }
 
-/**
- * One message per changed source file over the limit. `files` may hold any path:
- * the exemption rules ([isSizeChecked]) decide which matter, so a caller can
- * hand over every changed file. `cli.ts` still filters first so it can skip the
- * `git show` for files this check ignores.
- */
 export function sizeViolations(files: readonly SizeFile[]): string[] {
   const failures: string[] = [];
   for (const file of files) {

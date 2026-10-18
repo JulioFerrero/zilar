@@ -1,7 +1,3 @@
-// A point-in-time picture of every task in flight, for the dashboard: which
-// step it is in, since when, and what the lead has to do about it. Pure
-// derivation lives here (and is tested); the CLI gathers the inputs.
-
 export type PhaseId =
   | 'coding'
   | 'fixing'
@@ -26,7 +22,6 @@ export interface PhaseInput {
 export interface Phase {
   id: PhaseId;
   label: string;
-  /** True when the next move is the lead's, not a worker's. */
   needsLead: boolean;
 }
 
@@ -86,7 +81,6 @@ export interface SnapshotTask {
   title: string;
   model: string;
   phase: Phase;
-  /** ISO time the current phase began (best estimate), or empty. */
   phaseSince: string;
   phaseAge: string;
   startedAt: string;

@@ -157,7 +157,6 @@ export async function main(): Promise<void> {
     const reason = await expectLoginFails(runtime, passwordLocal, knownPassword, 'SQL password');
     console.log(`      password login answered: ${reason}`);
 
-    // The same account still logs in with a valid JWT.
     const jwt = await issueXmppToken(config, passwordJid);
     const xmpp = await connect(runtime, passwordLocal, jwt.token, 'password-jwt');
     await xmpp.stop().catch(() => {});

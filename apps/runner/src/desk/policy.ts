@@ -3,11 +3,9 @@ import { Exit, Schema } from 'effect';
 import type { DeskEgressPolicy, DeskLimits } from '@zilar/desk';
 
 /**
- * The owner's local policy for desks on their runner (plan §6.4). It can only
- * tighten what the server asks for: the effective value of every field is
- * `min(server request, local ceiling)`, and a networked desk is refused
- * entirely when `allowNetwork` is false. A missing file means the plan's
- * defaults; a corrupt file falls back to the same defaults (never looser).
+ * The owner's local policy (plan §6.4). It can only tighten the server's request:
+ * every field is `min(server, local)`, and `allowNetwork: false` refuses networking.
+ * A missing or corrupt file means the defaults, never something looser.
  */
 
 export interface LocalPolicy {
@@ -22,7 +20,6 @@ export interface LocalPolicy {
 
 export const GIB = 1024 * 1024 * 1024;
 
-/** The plan's defaults when `~/.zilar-runner/policy.json` is missing. */
 export const DEFAULT_POLICY: LocalPolicy = {
   allowNetwork: true,
   maxMemoryGb: 2,
@@ -69,7 +66,6 @@ export function parsePolicy(text: string): LocalPolicy {
   };
 }
 
-/** Reads the policy file; a missing or broken file means the defaults. */
 export async function loadPolicy(policyPath: string): Promise<LocalPolicy> {
   try {
     return parsePolicy(await readFile(policyPath, 'utf8'));
@@ -78,11 +74,7 @@ export async function loadPolicy(policyPath: string): Promise<LocalPolicy> {
   }
 }
 
-/**
- * `min(server request, local)` for every field the policy has a ceiling for.
- * The timeout fields have no local ceiling and pass through. A clamp is logged
- * with numbers only.
- */
+/** `min(server request, local)` per field; timeouts have no local ceiling and pass through. */
 export function clampLimits(
   requested: DeskLimits,
   policy: LocalPolicy,

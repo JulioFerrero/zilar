@@ -1,26 +1,18 @@
-// Worker model ids shared by the fallback and model-schedule logic. They live
-// here so fallback.ts and model-schedule.ts do not import each other.
 export const FREE_MUSE = 'opencode/muse-spark-1.3-contributor-free';
 export const PAID_MUSE = 'meta/muse-spark-1.3-contributor';
-// T-1718: OpenCode now offers DeepSeek V4.1 Flash and GLM 5.3 Flash for free.
-// The free listings start every chain, ahead of the flat-rate Go ones and the
-// metered ones, so a worker or a reviewer only pays after the free listings
-// run out.
+// The free listings start every chain, ahead of the flat-rate Go and the metered
+// ones, so a worker or reviewer only pays after the free listings run out.
 export const FREE_DEEPSEEK_FLASH = 'opencode/deepseek-v4.1-flash-free';
 export const FREE_GLM_FLASH = 'opencode/glm-5.3-flash-free';
-// The metered DeepSeek API listing of DeepSeek V4.1 Flash.
 export const DEEPSEEK_FLASH = 'deepseek/deepseek-flash';
-// T-1242: the same DeepSeek V4.1 Flash through the flat-rate OpenCode Go
-// subscription. Now the second step: the free listing above runs first, and
-// the metered API below is the step after this one (T-1718).
+// The same DeepSeek V4.1 Flash through the flat-rate OpenCode Go subscription, the
+// step after the free listing and before the metered API.
 export const GO_DEEPSEEK_FLASH = 'opencode-go/deepseek-v4.1-flash';
-// T-1362: the flat-rate OpenCode Go listing of Muse Spark 1.3 Contributor,
-// the step before the metered Meta listing.
+// The flat-rate OpenCode Go listing of Muse, the step before the metered Meta listing.
 export const GO_MUSE = 'opencode-go/muse-spark-1.3-contributor';
 
-// T-1942: a free listing is any of the three known free ones plus any other
-// `opencode/*-free` or `opencode-go/*-free` listing. It lives here so both
-// `free-pause.ts` and `fallback.ts` can use it without an import cycle.
+// A free listing is any of the three known ones plus any `opencode/*-free` or
+// `opencode-go/*-free` listing; here so free-pause and fallback avoid a cycle.
 const FREE_LISTING = /^opencode(-go)?\/.*-free$/;
 
 export function isFreeListing(model: string): boolean {
@@ -32,9 +24,7 @@ export function isFreeListing(model: string): boolean {
   );
 }
 
-// Human-readable labels for escalation lines. Shared so decide.ts and
-// doctor.ts name every model the same way (T-1718). An unknown id falls
-// through unchanged so a stray listing still names itself.
+// Human-readable labels for escalation lines; an unknown id falls through unchanged.
 export function modelLabel(model: string): string {
   if (model === FREE_DEEPSEEK_FLASH) {
     return 'free DeepSeek flash';

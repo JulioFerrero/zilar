@@ -39,17 +39,13 @@ import {
 import { conversationJid, fromNick, messageId, resolveSender } from './resolve-sender';
 import { CHAT_STATES } from './reactions';
 
-// `types.ts` has a 400-line cap (shared with another task), so this field
-// joins `ChatMessage` as a module augmentation, the way `types-ack.ts` and
-// `types-delivered.ts` add their own fields.
+// `types.ts` has a line cap, so this field joins `ChatMessage` as a module augmentation.
 declare module '../types' {
   interface ChatMessage {
     /**
-     * The MAM `<result id>` (T-1980): this user's own archive id for the
-     * message, present only when the stanza was fetched from the archive.
-     * Kept apart from `id` because `id` may resolve to a `<stanza-id>`
-     * instead (`resolve-sender.ts` `messageId`), which a pin stored under the
-     * archive id may not match later.
+     * The MAM `<result id>`: this user's archive id, present only when fetched from the
+     * archive. Kept apart from `id`, which may resolve to a `<stanza-id>` instead, which a
+     * pin stored under the archive id may not match later.
      */
     archiveId?: string;
   }
@@ -58,8 +54,6 @@ declare module '../types' {
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza, ctx);
   const inner = envelope.inner;
-  // A delivered notice is a bodiless headline, which has no chat kind; parse it
-  // before the kind guard so it is not dropped (T-1245).
   const deliveredMark = parseDeliveredMark(inner, ctx.me);
   const kind = messageKind(inner);
   const from = inner.attrs['from'];
@@ -87,14 +81,11 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
   const retraction = parseRetraction(inner);
 
   const bodyElement = inner.getChild('body');
-  // A retraction carries a fallback body for clients without XEP-0424 support:
-  // it is not this message's text, so it is dropped.
+  // A retraction's fallback body is for clients without XEP-0424; it is not this text.
   const wireBody =
     retraction !== undefined || bodyElement === undefined ? undefined : capBody(bodyElement.text());
-  // A XEP-0461 reply fallback quotes the replied-to text as a leading "> …"
-  // line; it belongs to the quote, not the message, so it leaves the decoded
-  // body. A reply whose body was only the quote (a voice or sticker reply)
-  // reads as a message with no body.
+  // A XEP-0461 reply fallback quotes the replied-to text as a leading "> …" line; it
+  // leaves the decoded body, so a reply carrying only the quote has no body.
   const strippedBody = wireBody === undefined ? undefined : stripReplyFallback(wireBody, inner);
   const body = strippedBody === '' ? undefined : strippedBody;
 
@@ -151,8 +142,8 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     }
     const replyTo = parseReply(inner);
     if (replyTo !== undefined) message.replyTo = replyTo;
-    // XEP-0372 offsets count from the wire body, so they are parsed against
-    // it, then moved past the stripped fallback prefix into the decoded body.
+    // XEP-0372 offsets count from the wire body, so they are parsed against it, then
+    // moved past the stripped fallback prefix into the decoded body.
     const wireMentions =
       wireBody === undefined || body === undefined ? undefined : parseMentions(inner, wireBody);
     const mentions = shiftMentionsPastReply(wireMentions, wireBody, body);
@@ -169,10 +160,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
   return decoded;
 }
 
-// A reply's fallback quote was stripped from `body`, so the parsed mention
-// offsets (relative to the wire body) shift back by the prefix's length. A
-// mention that pointed into the quote keeps its JID and loses its offsets,
-// like any other unusable range.
+// A mention that pointed into the stripped quote keeps its JID and loses its offsets.
 function shiftMentionsPastReply(
   mentions: Mention[] | undefined,
   wireBody: string | undefined,
@@ -203,8 +191,6 @@ function parseTyping(
     (candidate) => stanza.getChild(candidate, CHAT_STATES_NAMESPACE) !== undefined,
   );
   if (state === undefined) return undefined;
-  // T-1406: an old stanza carries no `<stage/>`; a status an old client sent
-  // without one is absent, and the clients then show the bare dots.
   const stage = stanza.getChild('stage', AGENT_NAMESPACE)?.text();
   const status =
     stage === undefined || stage === ''
@@ -237,10 +223,8 @@ function parseDisplayed(
   };
 }
 
-// The live delivered notice (T-1245): a bodiless headline the server sends
-// from my own bare JID to my own resource. It is trusted only when the `from`
-// bare JID is exactly mine; anything else (a spoofed or foreign stanza) is
-// ignored, so no one can move my ticks.
+// The live delivered notice: a bodiless headline from my own bare JID. Trusted only
+// when the `from` bare JID is exactly mine, so no one can move my ticks.
 function parseDeliveredMark(
   stanza: XmppElement,
   me: string | undefined,

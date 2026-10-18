@@ -1,20 +1,15 @@
-// The mobile background lifecycle (F1): `suspend()` parks the session when
-// the app leaves the foreground, `wake()` brings it back on resume.
-//
-// xmpp.js keeps the stream-management id across a `disconnect` and clears it
-// only on `offline` (`@xmpp/stream-management/index.js:57-63` vs `:117-123`),
-// and attempts a `<resume/>` when the id is still set (`stream-feature.js:18-27`).
-// So `suspend()` ends the socket below the stream layer, and `wake()` drives a
-// normal reconnect, which resumes when ejabberd still holds the session.
+// `suspend()` parks the session when the app leaves the foreground; `wake()` brings it
+// back. xmpp.js keeps the stream-management id across a `disconnect` and clears it only
+// on `offline`, so `suspend()` ends the socket below the stream layer and `wake()`
+// drives a normal reconnect, which resumes when ejabberd still holds the session.
 import { type XmppClient, type XmppStatus } from '@xmpp/client';
 import { Effect } from 'effect';
 import { attempt, type CoreRuntime } from './config';
 import type { LifecycleApi } from './lifecycle';
 import type { WakeOutcome } from '../types-suspend';
 
-// Only what `suspend.ts` reads of the library client: the ambient
-// `XmppClient` knows `start`/`stop`/`disconnect` but not the socket or the
-// stream-management state. Fakes in the tests keep the same shape.
+// Only what `suspend.ts` reads of the library client: the ambient client knows
+// start/stop/disconnect but not the socket or the SM state.
 type SuspendableClient = {
   status: XmppStatus;
   socket: { end(): void } | null;
@@ -35,10 +30,8 @@ function streamManagementId(current: XmppClient): string | undefined {
   return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
-// `start()` throws unless the library is offline, but after a `suspend()` the
-// socket just closed (`disconnect`): the stream underneath is the same one,
-// so stepping back to `offline` is the resume the library's own driver would
-// run, without losing the stream-management id an `offline` event would clear.
+// `start()` throws unless the library is offline, but after `suspend()` the socket just
+// closed, so stepping back to `offline` is the resume without clearing the SM id.
 function readyForRestart(current: XmppClient): void {
   const client = asSuspendable(current);
   if (client !== undefined && client.status === 'disconnect') {
@@ -52,15 +45,12 @@ export type SuspendApi = {
 };
 
 export function createSuspend(runtime: CoreRuntime, lifecycle: LifecycleApi): SuspendApi {
-  // Whether `suspend()` stopped the reconnect driver. `wake()` restarts it
-  // exactly once, so foregrounds without an earlier `suspend()` never stack
-  // extra `disconnect` listeners (one drop = one reconnect).
+  // Whether `suspend()` stopped the reconnect driver; `wake()` restarts it once, so a
+  // foreground without a suspend never stacks listeners.
   let suspended = false;
 
-  // Stops the library's reconnect driver, our watchdog and our keepalive,
-  // then ends the socket directly: no framing `</stream>`, no `close` hook,
-  // so ejabberd moves the session to pending (stream-management hibernation)
-  // and pushes per stanza while the SM id stays resumable.
+  // Stops the reconnect driver, watchdog and keepalive, then ends the socket directly:
+  // no framing close, so ejabberd moves the session to pending and keeps it resumable.
   const suspend = Effect.fnUntraced(function* (): Effect.fn.Return<void, Error> {
     const current = runtime.xmpp;
     runtime.desiredOnline = false;
@@ -82,12 +72,9 @@ export function createSuspend(runtime: CoreRuntime, lifecycle: LifecycleApi): Su
     lifecycle.setStatus('offline');
   });
 
-  // Reconnects, resuming when ejabberd still holds the session. The driver
-  // restarts only when `suspend()` stopped it: without a suspend it is
-  // already running, and another `start()` would stack a second `disconnect`
-  // listener. A successful stream-management resume keeps the SM id (see the
-  // `resumed` handler in `core-effect.ts`); a fresh bind replaces it, which
-  // reports `rebound` (a new session).
+  // Reconnects, resuming when ejabberd still holds the session. The driver restarts only
+  // when `suspend()` stopped it; another `start()` would stack a second listener. A resume
+  // keeps the SM id, a fresh bind reports `rebound`.
   const wake = Effect.fnUntraced(function* (): Effect.fn.Return<WakeOutcome, Error> {
     const wasSuspended = suspended;
     suspended = false;

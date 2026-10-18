@@ -12,10 +12,8 @@ import type {
 import './types-ack';
 import './types-delivered';
 
-/** The server removed me from the room: my own unavailable MUC presence
- * carried status 110 (self-presence) with 307 (kicked), 301 (banned) or
- * 321 (affiliation changed). The store refreshes the chat list at once, so
- * every device drops the group or topic instead of waiting for the poll. */
+/** The server removed me: my own unavailable MUC presence carried status 110 with 307
+ * (kicked), 301 (banned) or 321. The store refreshes the chat list at once. */
 export interface RemovedEvent {
   roomJid: string;
 }
@@ -40,8 +38,6 @@ export interface EventPayloadMap {
   removed: RemovedEvent;
   replaced: void;
 }
-// New events join the map through interface merging in their own module (see
-// `types-ack.ts`), so this file stays the only place the map is listed.
 export type EventPayload = EventPayloadMap;
 export type EventName = keyof EventPayload;
 export type StoredListener = (payload: never) => void;
@@ -49,7 +45,6 @@ export type StoredListener = (payload: never) => void;
 export type EventHub = {
   /** Calls the `on` listeners synchronously, in subscription order. */
   emit<K extends EventName>(event: K, payload: EventPayload[K]): void;
-  /** Callback form; the returned function unsubscribes. */
   on(event: EventName, listener: StoredListener): () => void;
 };
 

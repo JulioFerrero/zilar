@@ -1,11 +1,10 @@
-// effect-plain: moved unchanged from packages/runner-tunnel/src/runner.ts and server.ts (size split)
+// effect-plain: closes a WebSocket and swallows errors; no Effect runtime.
 import type { WebSocket } from 'ws';
 
 /**
  * Close a WebSocket and swallow every error: the peer is often already gone, and
- * every caller treats a failed close as "nothing left to do". With no code the
- * socket is terminated immediately (the hard close some teardown paths need);
- * with a code it is closed gracefully.
+ * callers treat a failed close as nothing to do. No code terminates immediately; with
+ * a code it closes gracefully.
  */
 export function closeQuietly(ws: WebSocket, code?: number, reason?: string): void {
   try {

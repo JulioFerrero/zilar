@@ -4,7 +4,6 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { classifyIp, isIpLiteral } from './ip-guard';
 
-/** Resolves a hostname to every address it names, in the resolver's order. */
 export type ResolveHost = (host: string) => Promise<readonly string[]>;
 
 /** The ports the proxy ever connects to: 443 to tunnel, 80 for plain HTTP. */
@@ -21,13 +20,9 @@ export type DenyReason =
   | 'blocked-address';
 
 export interface TargetCheck {
-  /** The hostname as sent by the client, without a port. */
   readonly host: string;
   readonly port: number;
-  /**
-   * `null` is the open web (any host the IP guard allows). A list — even an
-   * empty one — is the per-desk allowlist: only those exact hosts pass.
-   */
+  /** `null` is the open web; a list — even an empty one — is the per-desk allowlist. */
   readonly allowedHosts: readonly string[] | null;
 }
 
@@ -40,7 +35,6 @@ export interface PolicyOptions {
   readonly allowedPorts?: readonly number[] | undefined;
 }
 
-/** DNS over `node:dns`, all records; the production resolver. */
 export const resolveAll: ResolveHost = async (host) => {
   const records = await dnsLookup(host, { all: true });
   return records.map((record) => record.address);
@@ -51,7 +45,6 @@ export function normalizeHost(host: string): string {
   return host.trim().toLowerCase().replace(/\.$/, '');
 }
 
-/** Exact-host allowlist match, like `guarded-fetch.ts` on the read side. */
 export function isHostAllowed(host: string, allowedHosts: readonly string[]): boolean {
   const normalized = normalizeHost(host);
   return allowedHosts.some((entry) => normalizeHost(entry) === normalized);
@@ -60,10 +53,8 @@ export function isHostAllowed(host: string, allowedHosts: readonly string[]): bo
 const deny = (reason: DenyReason): TargetDecision => ({ allow: false, reason });
 
 /**
- * Decides one outbound connection. It refuses IP literals, ports other than
- * 443/80, hosts outside the allowlist, and any host that resolves to a blocked
- * address; it answers with the pinned public address to connect to. Every
- * address is checked, so a rebinding host with one private answer is refused.
+ * Refuses IP literals, other ports, hosts outside the allowlist and any host with
+ * a blocked address; every resolved address is checked, so rebinding fails.
  */
 export async function checkTarget(
   target: TargetCheck,

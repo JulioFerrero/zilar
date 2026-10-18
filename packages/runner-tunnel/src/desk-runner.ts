@@ -11,41 +11,35 @@ import {
 import { createLoopbackPair } from './http-agent.ts';
 import { attachSocketToStream, type StreamMux } from './mux.ts';
 
-/** The outcome of a runner-side provision, mapped by the runner's handler. */
 export type DeskProvisionOutcome =
   | { readonly kind: 'ready' }
   | { readonly kind: 'queued'; readonly position: number }
   | { readonly kind: 'error'; readonly code: DeskErrorCode; readonly message: string };
 
-/** The outcome of a runner-side stop. */
 export type DeskStopOutcome =
   | { readonly kind: 'stopped' }
   | { readonly kind: 'error'; readonly code: DeskErrorCode; readonly message: string };
 
 /**
- * The runner app implements this against `@zilar/desk`'s lifecycle and its own
- * isolation driver. The tunnel package injects it, so this layer never imports
- * Docker or the desk package (plan §2, §6.2).
+ * Implemented by the runner app against `@zilar/desk`'s lifecycle; the tunnel
+ * package injects it, so this layer never imports Docker or the desk package.
  */
 export interface DeskRunnerHandler {
   /** Idempotent per `desk_id`; a missing jail driver answers `jail_unavailable`. */
   provision(frame: DeskProvisionFrame): Promise<DeskProvisionOutcome>;
   stop(frame: DeskStopFrame): Promise<DeskStopOutcome>;
   /**
-   * Runs `docker exec -i … desk-tool serve` for the jail and bridges `stream`
-   * (the local end of a loopback pair) to the daemon's stdin/stdout. Rejects
+   * Runs the daemon in the jail and bridges `stream` to its stdin/stdout; rejects
    * when the jail is not provisioned or the daemon cannot start.
    */
   exec(frame: DeskExecFrame, stream: net.Socket): Promise<void>;
 }
 
-/** The frames this side handles: every server→runner `desk.*` frame. */
 export type DeskRunnerFrame = DeskProvisionFrame | DeskExecFrame | DeskStopFrame;
 
 /**
- * Answers every request when the runner supplied no handler: the runner still
- * pairs and serves its other features, but its desks are refused (plan §6.2,
- * "no unsandboxed mode").
+ * With no handler every request is refused: the runner still pairs and serves its
+ * other features, but its desks are refused (no unsandboxed mode).
  */
 const REFUSING_HANDLER: DeskRunnerHandler = {
   provision: () =>
@@ -64,9 +58,8 @@ const REFUSING_HANDLER: DeskRunnerHandler = {
 };
 
 /**
- * The runner side of the desk frames (plan §2, §6.1). It validates stream ids,
- * asks the injected handler, and answers with `desk.ready`/`desk.stopped`/
- * `desk.error`/`queued`. It never throws: a bad frame is answered on the wire.
+ * Validates stream ids, asks the injected handler and answers ready/stopped/error/
+ * queued; it never throws, a bad frame is answered on the wire.
  */
 export class DeskRunner {
   private readonly handler: DeskRunnerHandler;

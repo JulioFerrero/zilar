@@ -2,7 +2,6 @@ import { Effect, Schema } from 'effect';
 import type { DeskRunnerHandler } from '../desk-runner.ts';
 import type { RunnerKeypair } from '../keys.ts';
 
-/** A string that parses as a URL. Shared by the runner and the server options. */
 export const stringUrl: Schema.String = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
@@ -53,7 +52,6 @@ export const RunnerOptionsSchema = Schema.Struct({
   ).pipe(Schema.withDecodingDefault(Effect.succeed(1024 * 1024))),
 });
 
-/** The runner options after the schema applied its defaults. */
 export type RunnerOptionsDecoded = typeof RunnerOptionsSchema.Type;
 
 export interface RunnerOptions {
@@ -71,7 +69,6 @@ export interface RunnerOptions {
   highWaterMarkBytes?: number | undefined;
 }
 
-/** Capped exponential backoff: base, doubled per attempt, never above max. */
 export function computeBackoff(attempt: number, baseMs: number, maxMs: number): number {
   return Math.min(maxMs, baseMs * 2 ** Math.max(0, attempt));
 }

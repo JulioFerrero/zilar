@@ -7,22 +7,16 @@ import { GO_MUSE, PAID_MUSE, isFreeListing } from './models.js';
 
 export { isFreeListing } from './models.js';
 
-// T-1942: OpenCode's free gateway refuses traffic it reads as abuse ("Forbidden,
-// OpenCode Free Model Gateway Detect Abuse Traffic"). Every free listing shares
-// one pause: after a refusal the lead leaves the free listings alone for a few
-// hours and starts new sessions on the paid step. The setting lives in
-// config.json next to state.json, is read on every call, and keeps the other
-// keys `go-pause.ts` writes there.
+// Every free listing shares one pause: after a gateway abuse refusal the lead leaves
+// free listings alone for a few hours and starts new sessions on the paid step. The
+// setting lives in config.json next to state.json, read on every call.
 export const FREE_PAUSE_HOURS = 6;
 
-// Only `freePausedUntil` is read; other keys are ignored so the file can grow
-// later without this parser rejecting it.
 const freePauseConfigSchema = Schema.Struct({
   freePausedUntil: Schema.optional(Schema.String),
 });
 
-// A malformed value is reported once per process, then ignored: a typo must
-// never stop the lead, it just leaves the free listings available.
+// A malformed value is reported once, then ignored: a typo must never stop the lead.
 let warnedBadConfig = false;
 
 function warnBadConfig(configPath: string, detail: string): void {
@@ -63,8 +57,7 @@ function readConfig(configPath: string): Record<string, unknown> {
   return parseConfig(readRaw(configPath), configPath);
 }
 
-// The ISO timestamp the free listings stay paused until, or undefined when the
-// setting is absent or unusable.
+// The ISO timestamp the free listings stay paused until, or undefined when absent.
 export function freePause(
   now: Date = new Date(),
   configPath: string = goPauseConfigPath(),
@@ -126,9 +119,8 @@ function attemptFreePause(
   return !verify || readConfig(configPath)['freePausedUntil'] === until;
 }
 
-// Writes `freePausedUntil = now + hours` and keeps every other key, then says so
-// once. A refusal during a pause must not extend it on every poll: callers use
-// `pauseFreeOnRefusal`, which checks first.
+// Writes `freePausedUntil = now + hours`, keeping every other key; a refusal during a
+// pause must not extend it on every poll.
 export function pauseFree(
   now: Date,
   hours: number,
@@ -144,16 +136,12 @@ export function pauseFree(
       return until;
     }
   }
-  // Heavy contention: merge into the newest contents once more without the
-  // check. Pausing free is the safe direction even if the file is replaced
-  // again straight after.
   attemptFreePause(configPath, until, staging, false);
   console.log(`LEAD: FREE PAUSED until ${until} (${reason})`);
   return until;
 }
 
-// A free listing is any of the three we know (`FREE_MUSE`, the free DeepSeek
-// Flash, the free GLM Flash) plus any other `opencode/*-free` or
+// A free listing is any of the three known ones plus any `opencode/*-free` or
 // `opencode-go/*-free` listing.
 export function paidStep(model: string, goPaused: boolean): string | undefined {
   const next = fallbackModel(model, goPaused, true);
@@ -163,9 +151,8 @@ export function paidStep(model: string, goPaused: boolean): string | undefined {
   return isFreeListing(model) ? (goPaused ? PAID_MUSE : GO_MUSE) : undefined;
 }
 
-// Pauses the free listings for six hours when a session on a free listing hit a
-// gateway refusal. Returns true when this call wrote the pause, so the caller
-// can log or test it without printing the line twice.
+// Pauses free listings for six hours after a gateway refusal; true when this call
+// wrote the pause.
 export function pauseFreeOnRefusal(
   now: Date,
   model: string,

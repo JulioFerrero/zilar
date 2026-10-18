@@ -1,5 +1,4 @@
-// `lead/client.ts` is split under `client/` (T-1468). Every importer keeps
-// using `./client.js`; this barrel re-exports the same names it always did.
+// Barrel over `client/`: every importer keeps using `./client.js`.
 
 export type {
   CreateSessionOptions,

@@ -3,11 +3,10 @@
 import { readFile } from 'node:fs/promises';
 
 /**
- * Admission control (plan §4.3, design §2.3): a new jail starts only while fewer
- * than `maxRunning` run and the shared memory pool is under `memoryRatioLimit`.
- * Otherwise the request waits in a fair queue: FIFO within an owner, round-robin
- * across owners, so one owner's burst cannot starve another. The queue lives
- * here, next to the cap, so this object is its only serialiser.
+ * Admission control (plan §4.3): a jail starts only while fewer than `maxRunning`
+ * run and the shared memory pool is under `memoryRatioLimit`. Waiting requests are
+ * queued FIFO within an owner and round-robin across owners, so one owner's burst
+ * cannot starve another; this object is the queue's only serialiser.
  */
 
 export interface PoolMemory {
@@ -15,7 +14,6 @@ export interface PoolMemory {
   readonly maxBytes: number;
 }
 
-/** Reads the parent cgroup's memory; null when the files are unreadable. */
 export type PoolReader = () => Promise<PoolMemory | null>;
 
 export interface AdmissionOptions {
@@ -55,10 +53,7 @@ export async function readCgroupMemory(cgroupPath: string | null): Promise<PoolM
   }
 }
 
-/**
- * FIFO within each owner, then one id per owner per round, owners in the order
- * they first queued. Two owners always alternate.
- */
+/** FIFO within each owner, then one id per owner per round, owners in first-queued order. */
 function fairOrder(queues: Map<string, string[]>): string[] {
   const lists = [...queues.values()].map((queue) => [...queue]);
   const order: string[] = [];
@@ -97,7 +92,6 @@ export class Admission {
     return fairOrder(this.queues).length;
   }
 
-  /** Removes an id from a queue, returning nothing; `null` when it was not queued. */
   private unqueue(id: string): void {
     for (const [owner, queue] of this.queues) {
       const index = queue.indexOf(id);
@@ -116,10 +110,8 @@ export class Admission {
   }
 
   /**
-   * Idempotent per id. A granted id is admitted; a queued id keeps its place.
-   * Only the head of the fair order is admitted when a slot frees. The pool is
-   * read once, then every state check and change is synchronous, so two
-   * overlapping calls cannot both take the last slot.
+   * Idempotent per id. The pool is read once, then all checks and changes are
+   * synchronous, so two overlapping calls cannot both take the last slot.
    */
   async tryAcquire(ownerUserId: string, id: string): Promise<AdmissionResult> {
     if (this.admitted.has(id)) {
@@ -147,13 +139,11 @@ export class Admission {
     return { granted: false, position: fairOrder(this.queues).indexOf(id) };
   }
 
-  /** A jail stopped (or failed to start): free its slot and drop it from the queue. */
   release(id: string): void {
     this.admitted.delete(id);
     this.unqueue(id);
   }
 
-  /** `Stop all`: every slot is free again. */
   clear(): void {
     this.admitted.clear();
     this.queues.clear();

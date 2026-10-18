@@ -6,9 +6,8 @@ export interface SessionSummary {
   state: SessionState;
   outcome: string | undefined;
   quotaError: boolean;
-  // T-1942: short text of the newest active free-gateway refusal (403 or
-  // "abuse"/"forbidden"/"model unavailable"), or undefined. The autopilot uses
-  // it to pause the free listings for a while.
+  // Short text of the newest active free-gateway refusal, or undefined; the autopilot
+  // pauses the free listings on it.
   freeRefusal: string | undefined;
   questionRunning: boolean;
   questionText: string;
@@ -36,31 +35,20 @@ function createdMs(message: unknown): number {
   return 0;
 }
 
-// When the newest message of a session was created (ms since epoch; 0 when
-// unknown). The dashboard shows it as "last activity".
+// When the newest message was created (ms since epoch; 0 when unknown).
 export function newestMessageMs(messages: unknown[]): number {
   return messages.reduce<number>((newest, message) => Math.max(newest, createdMs(message)), 0);
 }
 
-// The text OpenCode's free gateway sends when it refuses traffic (T-1942):
-// "Forbidden, OpenCode Free Model Gateway Detect Abuse Traffic", or a listing
-// reported as "Model unavailable".
+// The text OpenCode's free gateway sends when it refuses traffic: an "abuse"
+// refusal, or a listing reported as "Model unavailable".
 const FREE_REFUSAL = /abuse|forbidden|model unavailable/i;
 
-// The provider error that counts as a quota failure. OpenCode classifies its
-// own provider errors, and `provider.quota` also covers OpenCode Go's
-// subscription limit: OpenCode maps `GoUsageLimitError` / a usage-limit message
-// to QuotaExceeded (see the `gousagelimiterror` code and the usage-limit message
-// patterns in the OpenCode 2.0.25 binary). T-1242 also treats a provider rate
-// limit (`provider.rate-limit`), a 429 status, and a `limit`/`quota` message on
-// a provider-typed error as quota, so a Go limit that surfaces one of those
-// ways still moves the worker onto the fallback chain. T-1264 adds an expired
-// or invalid provider credential (`provider.auth`, or a 401 status): that must
-// move work onto the fallback chain like a quota error, or the run stalls
-// silently with nothing to do. T-1942 adds a 403 and the free gateway's refusal
-// text: a refused free listing must move on like a 429 instead of stalling.
-// The text check only inspects provider-typed objects, so ordinary message or
-// tool text can never match.
+// The provider errors that count as a quota failure: `provider.quota` (which covers
+// OpenCode Go's subscription limit), a free-gateway 403 or refusal text, plus a rate
+// a 429, a `limit`/`quota` message and an expired credential (401), so a Go limit or a
+// dead key moves the worker onto the fallback chain instead of stalling. The text check
+// only inspects provider-typed objects, so ordinary message or tool text cannot match.
 function containsQuotaError(value: unknown, depth: number): boolean {
   if (depth > 8 || !isRecord(value) || Array.isArray(value)) {
     if (Array.isArray(value) && depth <= 8) {
@@ -88,7 +76,6 @@ function containsQuotaError(value: unknown, depth: number): boolean {
   return Object.values(value).some((entry) => containsQuotaError(entry, depth + 1));
 }
 
-// The refusal text of a provider-typed free-gateway failure, or undefined.
 function refusalText(value: unknown, depth: number): string | undefined {
   if (depth > 8 || !isRecord(value) || Array.isArray(value)) {
     return undefined;
@@ -118,8 +105,7 @@ function refusalText(value: unknown, depth: number): string | undefined {
   return undefined;
 }
 
-// The newest refusal that no later reply has cleared, mirroring isQuotaActive:
-// an old refusal followed by an assistant reply no longer pauses anything.
+// The newest refusal no later reply has cleared, mirroring isQuotaActive.
 function isFreeRefusalActive(sortedDesc: unknown[]): string | undefined {
   for (const message of sortedDesc) {
     const detail = refusalText(message, 0);
@@ -133,10 +119,8 @@ function isFreeRefusalActive(sortedDesc: unknown[]): string | undefined {
   return undefined;
 }
 
-// Quota counts as active only while no newer message proves recovery: walk
-// newest-first, and stop at the first assistant or error message that is not
-// itself a quota failure. An old 402 followed by a normal reply is cleared;
-// a run that ended on the quota error stays active.
+// Quota is active only while no newer message proves recovery: walk newest-first and
+// stop at the first non-quota assistant or error message.
 function isQuotaActive(sortedDesc: unknown[]): boolean {
   for (const message of sortedDesc) {
     if (containsQuotaError(message, 0)) {
@@ -184,9 +168,8 @@ function collectQuestions(value: unknown, found: { id: string; text: string }[])
   }
 }
 
-// Reads newest-first messages (as returned by session.message.list with
-// order=desc) into what the autopilot needs: is the run over, did quota
-// bite, and is a `question` tool call waiting on input.
+// Reads newest-first messages into what the autopilot needs: is the run over, did quota
+// bite, and is a `question` call waiting.
 export function summarizeSession(messages: unknown[]): SessionSummary {
   const sorted = [...messages].sort((a, b) => createdMs(b) - createdMs(a));
   const newest = sorted[0];
@@ -194,8 +177,7 @@ export function summarizeSession(messages: unknown[]): SessionSummary {
   let outcome: string | undefined;
   if (isRecord(newest)) {
     if (newest['type'] === 'idle') {
-      // An interrupt is usually the lead's own reply flow; the resumed run
-      // is still to come, so it counts as running, not as a stall.
+      // An interrupt is usually the lead's own reply flow; the resumed run still counts as running.
       if (newest['outcome'] === 'interrupted') {
         state = 'running';
       } else {
@@ -232,8 +214,7 @@ export function summarizeSession(messages: unknown[]): SessionSummary {
   };
 }
 
-// A pending permission request, read defensively: anything unshaped is
-// skipped by the caller rather than crashing the loop.
+// A pending permission request, read defensively: anything unshaped is skipped.
 export function parsePermission(entry: unknown): ParsedPermission | null {
   if (!isRecord(entry)) {
     return null;

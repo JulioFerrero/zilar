@@ -27,9 +27,8 @@ interface ExitRecord {
   error: Error | undefined;
 }
 
-// Talks to Julio's running OpenCode service through the `opencode2` CLI.
-// Quirk (playbook gotcha 2): output is truncated on pipes, so every call
-// writes stdout to a temp file and reads that back instead.
+// Talks to OpenCode through the `opencode2` CLI. Stdout is truncated on pipes, so
+// every call writes it to a temp file and reads that back.
 export class OpencodeCliClient implements OpenCodeClient {
   private readonly binary: string;
 
@@ -37,9 +36,8 @@ export class OpencodeCliClient implements OpenCodeClient {
     this.binary = binary;
   }
 
-  // Runs the CLI, writes stdout to a temp file (the playbook gotcha: stdout
-  // is truncated on pipes), and returns the full exit record so callers can
-  // branch on 404 / already-idle instead of parsing error messages.
+  // Runs the CLI, reading stdout back from a temp file, and returns the full exit
+  // record so callers can branch on 404 / already-idle.
   private spawnApi(operation: string, params: Record<string, string>, body?: unknown): ExitRecord {
     const args = ['api', operation];
     for (const [key, value] of Object.entries(params)) {
@@ -123,19 +121,14 @@ export class OpencodeCliClient implements OpenCodeClient {
     child.unref();
   }
 
-  // Throws on any non-zero exit. `lead reply` and the autopilot use this and
-  // must fail fast when a session is gone — they don't have a quota-fallback
-  // path that can tolerate a dead session. Only `lead switch-model` uses the
-  // lenient `tryInterrupt` below.
+  // Throws on any non-zero exit: `lead reply` and the autopilot must fail fast; only
+  // `switch-model` uses the lenient `tryInterrupt` below.
   async interrupt(sessionId: string): Promise<void> {
     this.call('session.interrupt', { sessionID: sessionId }, undefined, false);
   }
 
-  // Classifies the CLI's exit into a discriminated outcome so callers can
-  // keep going on expected "the session is already idle / unknown" failures.
-  // 404-style exits and any "not busy" / "no active session" message in the
-  // payload or stderr are treated as benign; everything else surfaces as
-  // `error` with the raw message so a real failure is never silently swallowed.
+  // Classifies the exit so callers can keep going on an already-idle or unknown
+  // session; anything else surfaces as `error` with the raw message.
   async tryInterrupt(
     sessionId: string,
   ): Promise<
@@ -153,9 +146,7 @@ export class OpencodeCliClient implements OpenCodeClient {
         message: `opencode2 session.interrupt failed to start: ${String(error)}`,
       };
     }
-    // A 0 exit with `"interrupted":false` is the API's way of saying "I
-    // accepted your request but the session was idle": treat it as benign
-    // so the switch can move on.
+    // A 0 exit with `"interrupted":false` means idle: treat it as benign.
     const haystack = `${stdout}\n${stderr}`;
     if (status === 0) {
       if (/"interrupted"\s*:\s*false/.test(haystack)) {

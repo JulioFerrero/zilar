@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from packages/runner-tunnel/src/server.ts (size split)
+// effect-plain: the heartbeat sweep runs on one Effect fiber in server.ts.
 import { closeQuietly } from '../ws-close.ts';
 import type { ServerRuntime } from './conn.ts';
 

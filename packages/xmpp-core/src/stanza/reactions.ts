@@ -4,12 +4,11 @@ export const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
   'active',
 ];
 
-// XEP-0372 references are capped so a hostile message cannot force unbounded
-// work or memory.
+// XEP-0372 references are capped so a hostile message cannot force unbounded work.
 export const MAX_MENTIONS = 20;
 
-// XEP-0444: a reaction is one emoji grapheme of at most eight code points, and
-// a reactor may hold at most six distinct reactions on one message.
+// XEP-0444: a reaction is one emoji grapheme of at most eight code points, and a
+// reactor may hold at most six distinct reactions on one message.
 const MAX_REACTIONS = 6;
 const MAX_REACTION_CODE_POINTS = 8;
 const EMOJI_GRAPHEME =
@@ -20,8 +19,7 @@ function isReactionEmoji(value: string): boolean {
   return codePoints >= 1 && codePoints <= MAX_REACTION_CODE_POINTS && EMOJI_GRAPHEME.test(value);
 }
 
-// Keeps only valid, distinct reactions in first-seen order, capped at six. Used
-// on both sides so a hostile or buggy peer cannot make us store or send junk.
+// Keeps only valid, distinct reactions in first-seen order, capped at six.
 export function sanitizeReactions(emojis: readonly string[]): string[] {
   const result: string[] = [];
   for (const emoji of emojis) {
@@ -34,9 +32,8 @@ export function sanitizeReactions(emojis: readonly string[]): string[] {
 
 export type ReplyRef = { id: string; to?: string };
 
-// XEP-0372 counts offsets in Unicode code points, while JS strings are UTF-16.
-// The helpers convert one unit into the other across a body. `Array.from` on a
-// string counts code points (a surrogate pair is one entry).
+// XEP-0372 counts offsets in Unicode code points, while JS strings are UTF-16;
+// `Array.from` counts code points (a surrogate pair is one entry).
 export function codePointLength(text: string): number {
   return Array.from(text).length;
 }

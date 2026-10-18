@@ -2,8 +2,7 @@ import { containsJulioUdid, mentionsSecretEnv } from './rm.js';
 import { gitMatches, isBareShell } from './shell-parse.js';
 import type { Rule } from './types.js';
 
-// Reject rules: things that are never safe for a worker. Order matters only
-// for which message the worker sees; the first match wins.
+// Reject rules: never safe for a worker; the first match wins.
 export const REJECT_RULES: Rule[] = [
   {
     test: (segment) => /(^|\s)--no-verify(\s|$)/.test(segment),
@@ -11,10 +10,8 @@ export const REJECT_RULES: Rule[] = [
     message: 'Never bypass git hooks with --no-verify. Fix the failing check instead.',
   },
   {
-    // The repo already has these tools; `npx` could download and run a
-    // different, unreviewed copy. The worker is told the exact replacement
-    // and carries on without waiting for the lead (found 2026-10-03: every
-    // worker asked for `npx prettier` and each ask needed a manual answer).
+    // The repo already has these tools; `npx` could download an unreviewed copy. The
+    // worker is told the exact replacement and carries on.
     test: (segment) => /^npx\s+(prettier|vitest|eslint|oxlint|jest|turbo)(\s|$)/.test(segment),
     verdict: 'reject',
     message:
@@ -167,10 +164,8 @@ export const REJECT_RULES: Rule[] = [
     message: 'Never touch ~/.ssh. If you need a GitHub operation, ask in your Report.',
   },
   {
-    // Anything a worker starts in the background or detaches outlives its
-    // session and cannot be stopped (found 2026-10-08: a worker ran its gate
-    // and tests as launchd jobs that relaunched on every kill for 45 min). A
-    // trailing `&` is a background run the same way `nohup …` is.
+    // Anything started in the background or detached outlives its session and cannot
+    // be stopped; a trailing `&` counts.
     test: (segment) =>
       /(^|\s)(launchctl|nohup|setsid|disown|crontab|at|osascript|screen|tmux)(\s|$)/.test(
         segment,
@@ -182,18 +177,15 @@ export const REJECT_RULES: Rule[] = [
 ];
 
 export const ALLOW_PATTERNS: RegExp[] = [
-  // Read-only observability.
   /^(ls|pwd|whoami|uptime|ps|pgrep|df|du|wc|file|which|command|node\s+--version|pnpm\s+--version)(\s|$)/,
-  // Reading and counting files (secret env files are rejected above).
   /^(cat|head|tail|less|more|wc|sort|uniq|tr|cut|jq)(\s|$)/,
   // Read-only docker inspection. No logs/inspect (they can print container env).
   /^docker\s+(ps|images|version|info)(\s+-{1,2}[\w-]+(=\S+|\s+('[^']*'|"[^"]*"|[^\s-]\S*))?)*(\s+2>(&1|\/dev\/null))?$/,
   /^docker\s+compose\s+(-\S+(\s+[^\s-]\S*)?\s+)*(ps|config|images|ls)(\s+-\S+)*$/,
-  // Listing volumes and networks changes nothing.
   /^docker\s+(volume|network)\s+ls(\s+--format\s+('[^']*'|"[^"]*"|\S+))?(\s+2>(&1|\/dev\/null))?$/,
-  // Typechecking writes nothing (`--noEmit`).
+  // Listing volumes and networks changes nothing.
   /^(npx|pnpm\s+exec)\s+tsc\s+--noEmit(\s+-p\s+[\w./-]+)?(\s+2>&1)?$/,
-  // Scaffolding inside the worker's own checkout is harmless.
+  // Typechecking writes nothing (`--noEmit`).
   /^mkdir(\s|$)/,
 ];
 

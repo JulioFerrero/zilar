@@ -3,26 +3,19 @@
 import { MAX_DISK_BYTES } from '../hands';
 import { DEFAULT_REGISTRY_SOCKET } from '../egress/registry';
 
-/** What `docker.ts` needs to build the fixed run call. */
 export interface DockerSettings {
   /** The runtime for `--runtime`, or null to leave the docker daemon's default. */
   readonly runtime: string | null;
-  /**
-   * The image source: the `DESK_IMAGE` override (a pinned digest), or the
-   * `ghcr.io/<owner>/zilar-desk:<tag>` ref the lifecycle resolves. The resolved
-   * pin lives in the lifecycle, not here.
-   */
+  /** `DESK_IMAGE` (a pinned digest) or the published ref; the pin lives in the lifecycle. */
   readonly image: string;
   readonly network: string;
   /** The parent cgroup every jail runs under (`zilar-desks.slice`), or null. */
   readonly cgroupParent: string | null;
 }
 
-/** The egress proxy the jail reaches the web through (plan §5.1). */
 export interface EgressSettings {
   /** The proxy's base URL as the jails dial it, e.g. `http://desk-egress:3128`. */
   readonly proxyUrl: string;
-  /** The unix socket where the proxy's registry listens. */
   readonly registrySocket: string;
 }
 
@@ -36,10 +29,8 @@ export interface AgentConfig {
   readonly idleMs: number;
   /** Pool memory use above this ratio blocks a new jail (plan §2.3, 75%). */
   readonly memoryRatioLimit: number;
-  /** The parent cgroup's memory.current/memory.max, or null when unreadable. */
   readonly poolCgroupPath: string | null;
   readonly docker: DockerSettings;
-  /** The egress proxy, or null when jails get no proxy (plan §5.1). */
   readonly egress: EgressSettings | null;
 }
 
@@ -52,9 +43,7 @@ export const MEMORY_RATIO_LIMIT = 0.75;
 export const DEFAULT_IMAGE_OWNER = 'julioferrero';
 export const DEFAULT_IMAGE_TAG = 'latest';
 
-/** The owner part of the jail image ref; a strict lowercase docker-safe set. */
 const IMAGE_OWNER_PATTERN = /^[a-z0-9._-]+$/;
-/** The tag of the jail image ref; docker-safe and bounded. */
 const IMAGE_TAG_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 function intFromEnv(value: string | undefined, fallback: number, max: number): number {
@@ -82,12 +71,8 @@ function workspaceModeFromEnv(value: string | undefined): 'image' | 'dir' {
   return value;
 }
 
-/**
- * The image source the lifecycle resolves: the `DESK_IMAGE` override when set
- * (still digest-checked unless `DESK_ALLOW_UNPINNED_IMAGE=true`), else the
- * published ref `ghcr.io/<owner>/zilar-desk:<tag>`. Both owner and tag are
- * validated here, because this text reaches a `docker` argument.
- */
+/** The `DESK_IMAGE` override (digest-checked unless `DESK_ALLOW_UNPINNED_IMAGE`), else the
+ * published ref; owner and tag are validated because this reaches a `docker` argument. */
 function imageFromEnv(env: NodeJS.ProcessEnv): string {
   const override = env.DESK_IMAGE;
   if (override !== undefined && override.length > 0) {
@@ -109,12 +94,8 @@ function imageFromEnv(env: NodeJS.ProcessEnv): string {
   return `ghcr.io/${owner}/zilar-desk:${tag}`;
 }
 
-/**
- * Reads the sidecar's settings from the environment. `DESK_IMAGE` is the
- * optional override and, unless `DESK_ALLOW_UNPINNED_IMAGE=true` (local
- * development only), must be pinned by digest. When it is absent the agent
- * resolves its own image from `DESK_IMAGE_OWNER`/`DESK_IMAGE_TAG` (plan §4.4).
- */
+/** `DESK_IMAGE` must be pinned by digest unless `DESK_ALLOW_UNPINNED_IMAGE` is set;
+ * otherwise the image is resolved from `DESK_IMAGE_OWNER`/`DESK_IMAGE_TAG`. */
 export function loadAgentConfig(env: NodeJS.ProcessEnv): AgentConfig {
   const image = imageFromEnv(env);
   const cgroupParent = textFromEnv(env.DESK_CGROUP_PARENT, DEFAULT_CGROUP_PARENT);

@@ -7,22 +7,17 @@ export type TokenAuthApi = {
   credentials: XmppCredentialsProvider;
 };
 
-// The token step of a connect: fetch a fresh token, then hand it to SASL. It
-// lives apart from `lifecycle.ts` (which is at its line budget) and adds the
-// one retry a fatal-looking token error gets.
+// The token step of a connect: fetch a fresh token, then hand it to SASL.
 export function createTokenAuth(runtime: CoreRuntime): TokenAuthApi {
-  // One call into `getToken`, keeping the thrown value as-is: the client's
-  // error handler compares it with `transientTokenError` by identity.
+  // Calls `getToken` keeping the thrown value as-is: the core compares it by identity.
   const fetchToken = (): Effect.Effect<{ jid: string; token: string }, unknown> =>
     Effect.tryPromise({
       try: () => runtime.options.getToken(),
       catch: (error) => error,
     });
 
-  // A non-fatal error behaves as before (transient: the client keeps
-  // reconnecting). A fatal-looking error (401/403) may still be transient — a
-  // session refresh racing a deploy, a stale session cache — so it asks once
-  // more after a short wait; only a second fatal error marks `authFailed`.
+  // A fatal-looking error (401/403) may still be transient, so it asks once more after a
+  // short wait; only a second one marks `authFailed`.
   const authenticateWithFreshToken = Effect.fnUntraced(function* (
     authenticate: Parameters<XmppCredentialsProvider>[0],
     mechanisms: string[],

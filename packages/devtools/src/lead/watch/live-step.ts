@@ -1,12 +1,7 @@
-// Pure live-step helpers for `lead watch`, moved unchanged from `lead/watch.ts`
-// (size split).
-
 import path from 'node:path';
 
-// The newest message of the session decides the step. Messages come back
-// newest-first from `session.message.list`. We read defensively: any shape
-// we don't understand falls through to the next branch and never breaks
-// the loop.
+// The newest message decides the step, newest-first; any shape we don't understand
+// falls through to the next branch and never breaks the loop.
 export function liveStep(messages: unknown[]): string | null {
   if (!Array.isArray(messages) || messages.length === 0) {
     return null;
@@ -48,8 +43,7 @@ function stepFromTool(tool: Record<string, unknown>): string | null {
     if (typeof filePath === 'string') {
       return `editing ${path.basename(filePath)}`;
     }
-    // The step is read while the tool call is still arriving and its
-    // `input.path` is not there yet: never show `<unknown>`.
+    // Read while the tool call is still arriving, its `input.path` not there yet: never `<unknown>`.
     return 'editing…';
   }
   if (name === 'read') {
@@ -81,8 +75,7 @@ function stepFromTool(tool: Record<string, unknown>): string | null {
   return null;
 }
 
-// The plan's dedup (`lead/is-record.ts`) is skipped because it crosses files;
-// this file keeps the one definition and exports it for `speed.ts`.
+// The plan's dedup is skipped because it crosses files; this is the one definition.
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

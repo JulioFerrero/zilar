@@ -18,43 +18,28 @@ import type {
 } from '../types';
 
 const CONNECT_TIMEOUT_MS = 15_000;
-// How long a fresh bind may wait for the server's <enabled/> (stream
-// management) before the core reports `online` anyway. A message written
-// before <enable/> is never tracked by the library and never covered by the
-// server's <a h/>, so the store's online flush must land after it; a server
-// that does not offer stream management (or a lost <enabled/>) falls back to
-// this wait so the app still comes online (T-1220).
+// How long a fresh bind waits for `<enabled/>` before going `online` anyway: a message
+// written before `<enable/>` is never tracked, so the store's flush must land after it;
+// a server without stream management falls back to this wait.
 const SM_ENABLE_TIMEOUT_MS = 5_000;
-// How long the client may stay in `connecting` / `reconnecting` before it is
-// torn down and replaced by a fresh one. A normal connect (socket, TLS, token
-// fetch, login) takes a second or two, so the first wait is short and each
-// replacement that also fails waits a little longer (5, 8, 12, then 20 s;
-// back to 5 s once online). That is at most about 20 token requests per ten
-// minutes, far under the route's limit. `XmppCoreOptions.reconnectWatchdogMs`
-// replaces the whole schedule with one fixed wait; 0 disables. xmpp.js only
-// schedules a retry when it sees a socket `disconnect`; an attempt that fails
-// without one (or a token fetch that never answers) leaves it waiting for
-// ever, which is what showed as "Connecting..." until the app was force closed.
+// How long the client may stay connecting before it is torn down and replaced. A normal
+// connect takes a second or two, so the wait grows (5, 8, 12, then 20 s; back to 5 once
+// online), at most ~20 token requests per ten minutes. `reconnectWatchdogMs` fixes one wait,
+// 0 disables; xmpp.js only retries on a socket disconnect, so a failed attempt waits forever.
 const WATCHDOG_SCHEDULE_MS = [5_000, 8_000, 12_000, 20_000];
 const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 15_000;
 const PUSH_TIMEOUT_MS = 15_000;
-// Idle time without any received stanza before the client pings the server
-// (XEP-0199), and the wait for the reply before the connection counts as
-// dead. Both are overridable per `XmppCoreOptions`; 0 disables the keepalive.
+// Idle time before the client pings the server (XEP-0199), and the wait for the reply
+// before the connection counts as dead; 0 disables the keepalive.
 const DEFAULT_KEEPALIVE_MS = 30_000;
 const DEFAULT_KEEPALIVE_TIMEOUT_MS = 15_000;
-// Waits between reconnect attempts after transient failures: 1 s, 2 s, 4 s,
-// 8 s, 15 s, then 30 s, reset to 1 s after a successful connect. Even at the
-// 30 s floor a client attempts about 20 tokens per 10 minutes, far under the
-// token route's rate limit (120 per 10 minutes).
+// Reconnect waits: 1, 2, 4, 8, 15, then 30 s, reset after a successful connect. Even at
+// the 30 s floor that is about 20 token requests per 10 minutes, under the route's 120.
 const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
-// The wait before the single retry of a token fetch that looked like bad
-// credentials (a 401 or 403). A session refresh that races a deploy, or a
-// stale session cache, can answer 401 once and then succeed, so one such
-// answer must not stop the client for good. `XmppCoreOptions.tokenRetryDelayMs`
-// overrides it (tests pass 0).
+// The wait before the single retry of a token fetch that looked like bad credentials
+// (401/403): a deploy race or stale cache can answer 401 once and then succeed.
 const TOKEN_RETRY_DELAY_MS = 2_000;
 
 export type ClientOptions = {
@@ -115,14 +100,11 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// A rejection of the library keeps its Error; anything else becomes one with
-// the same text.
 export function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(errorMessage(error));
 }
 
-// One call into the library's Promise API as an Effect. A throw before the
-// Promise exists fails the Effect like a rejection does.
+// One call into the library's Promise API as an Effect; a throw fails it like a rejection.
 export function attempt(call: () => Promise<unknown>): Effect.Effect<void, Error> {
   return Effect.tryPromise({ try: call, catch: toError }).pipe(Effect.asVoid);
 }
@@ -131,11 +113,9 @@ export function isSaslError(error: unknown): boolean {
   return error instanceof Error && error.name === 'SASLError';
 }
 
-// Only an error that proves the credentials are bad is a fatal token
-// failure: `getToken` rejecting with an error whose numeric `status` is 401
-// or 403 (what the web and mobile token calls carry for an HTTP error
-// response). A failed fetch (no response), a timeout, a 5xx or a 429 carry
-// no fatal status and stay transient: the client keeps reconnecting.
+// Only an error proving the credentials are bad is fatal: `getToken` rejecting with a
+// numeric `status` of 401 or 403. A failed fetch, a timeout, a 5xx or a 429 carries no
+// fatal status and stays transient, so the client keeps reconnecting.
 export function isFatalTokenError(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false;
   const status = (error as { status?: unknown }).status;
@@ -146,10 +126,8 @@ export function reconnectDelayFor(attempt: number): number {
   return RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)] ?? 30_000;
 }
 
-// A `conflict` stream error: another session logged in with the same full
-// JID and the server replaced this one. @xmpp/client reports it through the
-// `error` event as a StreamError whose `condition` is the stanza condition
-// name (`conflict - <text>` in the message).
+// A `conflict` stream error: another session logged in with the same full JID and the
+// server replaced this one; @xmpp/client reports it as a StreamError `condition`.
 export function isConflictError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -168,10 +146,8 @@ export function redact(text: string, secret: string): string {
   return secret === '' ? text : text.split(secret).join('[redacted]');
 }
 
-// The mutable core state and the functions the modules share. `createCoreEffect`
-// builds one of these and hands it to `presence`, `stanza-router`, `lifecycle`
-// and `operations`; the cross-module functions are wired after the factories
-// are built, so a module reads them at call time, never at construction.
+// The mutable core state and the functions the modules share. The factories are built
+// first and the cross-module functions wired after, so a module reads them at call time.
 export type CoreRuntime = {
   options: XmppCoreOptions;
   now: () => Date;
@@ -230,16 +206,11 @@ export {
   TOKEN_RETRY_DELAY_MS,
 };
 
-// The token step's one retry and the event a store listens for when it does not
-// help live here as module augmentations, the same way `types-ack.ts` adds the
-// stream-management events and the first-watchdog option, so `types.ts` keeps
-// its single re-export line.
 declare module '../events' {
   interface EventPayloadMap {
     /**
-     * The token fetch failed for good: both attempts answered 401/403, so the
-     * core stopped. A store can revive the connection with its own retry
-     * ladder instead of staying offline until the app restarts.
+     * The token fetch failed for good: both attempts answered 401/403, so the core
+     * stopped. A store can revive the connection with its own retry ladder.
      */
     authFailed: void;
   }
@@ -247,10 +218,7 @@ declare module '../events' {
 
 declare module '../types' {
   interface XmppCoreOptions {
-    /**
-     * The wait before the one retry of a token fetch that looked like bad
-     * credentials. Defaults to `TOKEN_RETRY_DELAY_MS` (2 000); tests pass 0.
-     */
+    /** The wait before the one retry of a token fetch that looked like bad credentials. */
     tokenRetryDelayMs?: number;
   }
   interface XmppCore {

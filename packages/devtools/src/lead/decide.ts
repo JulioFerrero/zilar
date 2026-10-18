@@ -7,9 +7,8 @@ import type { PrereviewRecord, TaskRecord } from './types.js';
 export const QUOTA_RETRY_MS = 10 * 60 * 1000;
 export const QUOTA_ESCALATE_MS = 60 * 60 * 1000;
 export const NUDGE_LIMIT = 2;
-// Automatic fix rounds per task: the autopilot sends the pre-review's must-fix
-// and should-fix findings back to the worker this many times, then hands the
-// packet to the lead.
+// Automatic fix rounds per task: send the pre-review's must-fix and should-fix back
+// this many times, then hand the packet to the lead.
 export const AUTOFIX_LIMIT = 2;
 
 export interface FindingCounts {
@@ -26,11 +25,9 @@ export interface DecideInput {
   record: TaskRecord;
   sessionState: SessionState;
   quotaError: boolean;
-  // T-1421: true while OpenCode Go is paused; fallbacks then skip every Go
-  // listing. Gathered by the tick so this function stays filesystem-free.
+  // True while OpenCode Go is paused; fallbacks then skip every Go listing.
   goPaused: boolean;
-  // T-1942: true while the free listings are paused after a gateway refusal;
-  // fallbacks then never step onto another free listing.
+  // True while the free listings are paused after a gateway refusal.
   freePaused?: boolean;
   questionRunning: boolean;
   questionText: string;
@@ -47,9 +44,8 @@ export interface DecideInput {
   prereviewCounts: FindingCounts | undefined;
   prereviewSessionState: SessionState | 'none';
   prereviewQuotaError: boolean;
-  // T-1778: the pre-review went idle with outcome `failed` and no PREREVIEW.md,
-  // i.e. it never produced anything. Treated like a quota error so it falls back
-  // to the next model instead of only escalating STALLED.
+  // The pre-review went idle with no PREREVIEW.md: treated like a quota error so it
+  // falls back instead of only escalating STALLED.
   prereviewFailed: boolean;
 }
 
@@ -81,9 +77,7 @@ export interface RecordPatch {
   lastEscalation?: string;
 }
 
-// The word the lead reads first on a PACKET READY line: clean means the
-// pre-review found nothing must-fix or should-fix, so the lead only checks the
-// gate and merges.
+// First word on a PACKET READY line: clean means nothing must-fix or should-fix.
 function packetTag(counts: FindingCounts | undefined, rounds: number): string {
   if (counts === undefined) {
     return '[no counts line, read it]';
@@ -101,11 +95,8 @@ function oneLine(text: string, max: number): string {
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }
 
-// The autopilot's brain as a pure function of (session state, messages,
-// permissions, task-file status, recorded state). It never touches the
-// network, the filesystem, or git: the tick in autopilot.ts gathers the
-// inputs and applies the returned actions. It never merges, pushes, or
-// edits a task file or the board; there is no action for any of those.
+// The autopilot's brain as a pure function: it never touches the network, filesystem
+// or git, and has no action for merging, pushing or editing a task.
 export function decide(input: DecideInput): Action[] {
   const actions: Action[] = [];
   const freePaused = input.freePaused ?? false;
@@ -116,10 +107,8 @@ export function decide(input: DecideInput): Action[] {
     actions.push({ kind: 'escalate', line });
     actions.push({ kind: 'record', patch: { lastEscalation: line } });
   };
-  // Push the in-place worker fallback (free DeepSeek -> Go DeepSeek -> the
-  // metered DeepSeek API -> Go Muse -> paid Muse) and its escalation. Used by
-  // both the planned-task branch (before the status gate) and the
-  // todo/in-progress quota branch below.
+  // The in-place worker fallback (free DeepSeek -> Go DeepSeek -> metered -> Go Muse ->
+  // paid Muse) and its escalation.
   const pushWorkerFallback = (from: string, to: string): void => {
     actions.push({ kind: 'fallback-model', session: 'worker', model: to });
     escalate(
@@ -127,9 +116,8 @@ export function decide(input: DecideInput): Action[] {
     );
   };
 
-  // 1. Permissions: answer what the policy settles, escalate the rest once.
-  // The pre-reviewer's requests go through the same policy; without this a
-  // blocked pre-reviewer would stall silently.
+  // Permissions: answer what the policy settles, escalate the rest once; the
+  // pre-reviewer goes through the same policy.
   const answerPermissions = (
     requests: PermissionRequest[],
     session: 'worker' | 'prereview',
@@ -166,9 +154,7 @@ export function decide(input: DecideInput): Action[] {
   answerPermissions(input.permissions, 'worker');
   answerPermissions(input.prereviewPermissions, 'prereview');
 
-  // 2. The question tool: a running call means the worker waits on input.
-  // There is no API to answer it directly; the lead replies with
-  // `lead reply <task> <file>`, which interrupts and re-prompts.
+  // A running question tool means the worker waits on input: `lead reply` interrupts.
   if (input.questionRunning) {
     const fresh = input.questionIds.filter((id) => !input.record.escalatedQuestionIds.includes(id));
     if (fresh.length > 0) {
@@ -187,12 +173,9 @@ export function decide(input: DecideInput): Action[] {
     return actions;
   }
 
-  // 4. Review: start one pre-review per HEAD, then report the packet once.
-  // A pre-review that goes idle without writing PREREVIEW.md failed; fall back
-  // to the next model first, then say so once when the chain is exhausted.
+  // One pre-review per HEAD, reported once; one that idles without PREREVIEW.md falls
+  // back, then escalates.
   if (input.taskStatus === 'review' && input.sessionState === 'idle') {
-    // Fix rounds: the worker stays on the task while status is review, so a
-    // quota error here must fall back in place just like todo/in-progress.
     if (input.quotaError) {
       const workerFallback = fallbackModel(input.record.model, input.goPaused, freePaused);
       if (workerFallback !== undefined) {

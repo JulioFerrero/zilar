@@ -13,8 +13,6 @@ export type PermissionRule = typeof permissionRuleSchema.Type;
 
 export const permissionRulesSchema = Schema.mutable(Schema.Array(permissionRuleSchema));
 
-// The front matter every task file carries. Only the fields the lead tools
-// need are parsed; the rest of the file is free-form markdown.
 export const taskFrontMatterSchema = Schema.Struct({
   id: Schema.String.pipe(
     Schema.check(Schema.isPattern(/^T-\d+$/, { message: 'task id must look like T-0038' })),
@@ -32,8 +30,7 @@ export const taskFrontMatterSchema = Schema.Struct({
 
 export type TaskFrontMatter = typeof taskFrontMatterSchema.Type;
 
-// Flattens Effect Schema's issue tree into the same `path`/`message` entries
-// the zod callers used to read, so error text keeps its exact format.
+// Flattens Effect Schema's issue tree into `path`/`message` entries.
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 
 export function schemaIssues(error: Schema.SchemaError): { path: string; message: string }[] {
@@ -43,9 +40,8 @@ export function schemaIssues(error: Schema.SchemaError): { path: string; message
   }));
 }
 
-// One entry in the lead state file. Bookkeeping fields let the autopilot act
-// at most once per event (one escalation per permission, one pre-review per
-// HEAD, two nudges) instead of repeating itself every 15 s poll.
+// Bookkeeping fields let the autopilot act at most once per event instead of every
+// 15 s poll.
 export interface PrereviewRecord {
   sessionId: string;
   head: string;
@@ -53,8 +49,6 @@ export interface PrereviewRecord {
   model?: string | undefined;
 }
 
-// The doctor's last audit of main. Bookkeeping fields keep the one-line
-// escalation per audited head instead of repeating it every 15 s poll.
 export interface DoctorRecord {
   sessionId: string;
   head: string;
@@ -135,8 +129,7 @@ const taskRecordSchema = Schema.Struct({
   lastEscalation: Schema.optional(Schema.String),
 });
 
-// Unknown keys are stripped, not rejected: Effect Schema ignores excess
-// properties by default, like zod's `z.object` did.
+// Unknown keys are stripped, not rejected.
 export const stateFileSchema = Schema.Struct({
   version: Schema.Literal(1),
   tasks: Schema.Record(Schema.String, taskRecordSchema),

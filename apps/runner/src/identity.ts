@@ -25,9 +25,7 @@ function isUrlString(value: string): boolean {
   }
 }
 
-// Effect Schema's `Schema.URL`/`Schema.URLFromString` decode to a `URL`
-// instance, while the identity stores and exposes plain strings. A string
-// filter keeps the same shape as zod's `z.string().url()`.
+// The identity stores URLs as plain strings, so a string filter keeps that shape.
 const serverUrlFilter = Schema.makeFilter(
   (value: string) => isUrlString(value) || 'must be a valid URL',
 );
@@ -84,8 +82,7 @@ export function identityPaths(homeDir: string): IdentityStorage {
   };
 }
 
-// Matches the server's `fingerprintOfPublicKey`. The argument is always the
-// public key: never pass the private key here.
+// Matches the server's `fingerprintOfPublicKey`; never pass the private key here.
 export function fingerprintOfPublicKey(publicKeyBase64: string): string {
   const bytes = Buffer.from(publicKeyBase64, 'base64');
   return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
@@ -139,8 +136,7 @@ function isNotFoundError(err: unknown): boolean {
   return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
-// Write through a temp file in the same directory so a crash never leaves a
-// half-written or world-readable key behind.
+// Write through a temp file in the same directory so a crash never leaves a half-written key.
 export async function saveIdentity(
   storage: IdentityStorage,
   identity: RunnerIdentity,

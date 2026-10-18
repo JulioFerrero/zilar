@@ -23,12 +23,10 @@ export function generateRunnerKeypair(): RunnerKeypair {
   };
 }
 
-/** 32 fresh random bytes for one authentication challenge. */
 export function randomNonce(): Buffer {
   return randomBytes(32);
 }
 
-/** Sign a challenge nonce. Returns the signature as base64. */
 export function signNonce(privateKey: string, nonce: Buffer): string {
   const key = createPrivateKey({
     key: Buffer.from(privateKey, 'base64'),
@@ -38,10 +36,6 @@ export function signNonce(privateKey: string, nonce: Buffer): string {
   return sign(null, nonce, key).toString('base64');
 }
 
-/**
- * Verify a challenge signature. Returns false (never throws) for garbage
- * input, a wrong key, or a signature over a different nonce.
- */
 export function verifyNonce(publicKey: string, nonce: Buffer, signatureBase64: string): boolean {
   return Effect.runSync(
     Effect.try(() => {
@@ -60,9 +54,8 @@ export function verifyNonce(publicKey: string, nonce: Buffer, signatureBase64: s
 }
 
 /**
- * Approved runner public keys. In-memory for the spike; M3 backs this with
- * Postgres. Revoking a key must also close its live connection, so the
- * server subscribes via onRevoke.
+ * Approved runner keys, in memory: revoking one must also close its live
+ * connection, so the server subscribes via `onRevoke`.
  */
 export interface KeyRegistry {
   getPublicKey(runnerId: string): string | null;

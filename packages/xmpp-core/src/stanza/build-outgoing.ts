@@ -34,13 +34,8 @@ export {
   buildRosterError,
 } from './build-control';
 
-// ---------------------------------------------------------------------------
-// Outgoing stanzas
-// ---------------------------------------------------------------------------
-
-// A Zilar forward origin (namespace `urn:zilar:forward:0`, distinct from
-// XEP-0297's `urn:xmpp:forward:0`). Long strings travel as child text, ids and
-// the time as attributes; `id` and `<chat>` only appear when present.
+// A Zilar forward origin (namespace `urn:zilar:forward:0`, distinct from XEP-0297's);
+// long strings travel as child text, ids and the time as attributes.
 function forwardElement(origin: ForwardOrigin): XmppElement {
   const attrs: Record<string, string> = {
     xmlns: ZILAR_FORWARD_NAMESPACE,
@@ -57,10 +52,8 @@ function forwardElement(origin: ForwardOrigin): XmppElement {
   return xml('forward', attrs, ...children);
 }
 
-// XEP-0461/XEP-0428: a reply quotes the replied-to message as a leading "> …"
-// line in the body when its text is known, so a client that cannot resolve the
-// `<reply/>` id still shows the quote. The fallback range names that line: the
-// "> " marker is two code points and the trailing newline is not part of it.
+// XEP-0461/XEP-0428: a reply quotes the replied-to message as a leading "> …" line when
+// its text is known, so a client that cannot resolve the id still shows the quote.
 function replyQuotePrefix(quote: string | undefined): string {
   if (quote === undefined || quote === '') {
     return '';
@@ -76,8 +69,7 @@ function replyFallbackElement(prefix: string): XmppElement {
   );
 }
 
-// The fallback quote sits at the head of the body, so mention offsets (UTF-16
-// code units into the text) shift by the prefix's own length.
+// The quote sits at the head of the body, so mention offsets shift by its length.
 function shiftMentions(
   mentions: MentionInput[] | undefined,
   shift: number,
@@ -110,10 +102,9 @@ export function buildMessage(options: {
 
   pushPayloadElement(children, options.payload);
 
-  // ejabberd's archive (mod_mam) only keeps a message that has text or an
-  // explicit store hint. A voice note has an empty body and its data in the
-  // payload, so without the hint it showed live but was gone after a reload
-  // (device test 2026-10-03). The hint also covers any other body-less payload.
+  // ejabberd's archive only keeps a message with text or an explicit store hint. A voice
+  // note has an empty body and its data in the payload, so without the hint it showed
+  // live but was gone after a reload. The hint also covers any body-less payload.
   if (options.payload === undefined && options.text === '') {
     children.push(xml('store', { xmlns: HINTS_NAMESPACE }));
   }
@@ -140,14 +131,14 @@ export function buildMessage(options: {
 
   pushMentionReferences(children, body, shiftMentions(options.mentions, replyPrefix.length));
 
-  // XEP-0359: the sender-generated id stays the same across resends, so a
-  // retried stanza dedupes on the receiver and in the archive.
+  // XEP-0359: the sender-generated id stays the same across resends, so a retried
+  // stanza dedupes on the receiver and in the archive.
   children.push(xml('origin-id', { xmlns: STANZA_ID_NAMESPACE, id: options.id }));
 
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
 }
 
-// XEP-0308: the new full body plus a `<replace/>` naming the original by the
+// XEP-0308: the new full body plus a `<replace/>` naming the original by its
 // sender-generated id. Mentions are rebuilt from the new text, as on a send.
 export function buildCorrection(options: {
   id: string;
@@ -165,12 +156,10 @@ export function buildCorrection(options: {
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
 }
 
-/** The fallback body a peer without XEP-0424 support sees on a retraction. */
 export const RETRACTION_FALLBACK_BODY =
   "This person attempted to retract a previous message, but it's unsupported by your client.";
 
-// XEP-0424: a `<retract/>` naming the target, a fallback, and the store hint so
-// the server archives it in MAM.
+// XEP-0424: a `<retract/>` naming the target, a fallback, and the store hint so MAM keeps it.
 export function buildRetraction(options: {
   id: string;
   to: string;
@@ -187,8 +176,7 @@ export function buildRetraction(options: {
   );
 }
 
-// Shared mention builder for a send and an edit: a range that does not
-// describe a real slice of the body is dropped rather than written broken.
+// Shared by a send and an edit: a range that is not a real slice of the body is dropped.
 function pushMentionReferences(
   children: XmppElement[],
   text: string,

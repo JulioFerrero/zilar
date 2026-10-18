@@ -1,7 +1,6 @@
 import { makeEventHub, type EventName, type EventPayload } from './events';
 import type { HistoryPage, XmppCore } from './types';
 
-/** The `XmppCore` methods a fake can record and fail; `on` is the event hub. */
 export type FakeCoreMethod = Exclude<
   keyof XmppCore,
   'on' | 'setPushEnabled' | 'status' | 'me' | 'occupants'
@@ -15,20 +14,13 @@ export interface FakeCall {
 export interface FakeXmppCore extends XmppCore {
   /** Every call to a core method, in order. */
   readonly calls: FakeCall[];
-  /** Calls the `on` listeners of `event` synchronously. */
   emit<K extends EventName>(event: K, payload: EventPayload[K]): void;
-  /**
-   * An error to throw (async methods reject) each time that method is called.
-   * Set or delete a key at any time.
-   */
+  /** An error to throw (async methods reject) each time that method is called. */
   readonly failures: Partial<Record<FakeCoreMethod, Error>>;
 }
 
-/**
- * An in-memory `XmppCore` for tests: online as `me@zilar.test`, every call
- * succeeds and is recorded. `overrides` replace single methods; they are not
- * recorded, and `on` stays the fake's own.
- */
+/** An in-memory `XmppCore`, online as `me@zilar.test`, every call succeeds and is
+ * recorded; `overrides` replace single methods and are not recorded. */
 export function createFakeXmppCore(overrides: Partial<Omit<XmppCore, 'on'>> = {}): FakeXmppCore {
   const hub = makeEventHub();
   const calls: FakeCall[] = [];

@@ -1,8 +1,6 @@
-// The Effect ratchet check of `pnpm gate` (task R6):
-//   tsx src/effect-map/ratchet-cli.ts --base <ref> <files...>
-// Reads each counted source file from disk and its base version with `git show`,
-// then prints one line per violation (see ratchet.ts) or one `ok` line. Exits 1
-// when there is a violation, 2 on bad arguments. It writes nothing.
+// The Effect ratchet check of `pnpm gate`: reads each changed source from disk and
+// its base version with `git show`, prints a line per violation or `ok`. Exits 1 on
+// a violation, 2 on bad arguments; writes nothing.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -32,9 +30,6 @@ function isCommit(root: string, ref: string): boolean {
   }
 }
 
-// The base version of a file, or null when the base does not have it. `git
-// show` exits with a status for a missing path; a call that was killed or could
-// not start has no status and is rethrown, so it is never read as a new file.
 function baseSource(root: string, base: string, file: string): string | null {
   try {
     return git(root, ['show', `${base}:${file}`]);

@@ -1,7 +1,3 @@
-// `lead/autopilot.ts` is split under `autopilot/` (T-1481): task info, worker
-// actions plus sweep, and the doctor tick moved out unchanged. This file keeps
-// the poll loop and re-exports the names it always exported.
-
 export { extractCounts, extractVerdict } from './autopilot/task-info.js';
 
 import { applyActions, maybeSweep } from './autopilot/actions.js';
@@ -42,9 +38,8 @@ export interface TickResult {
   errors: string[];
 }
 
-// One poll over every worker session in the state file. Read-only when
-// dryRun is set: it classifies and prints, but replies to nothing, prompts
-// nobody, starts no sessions, and saves no state.
+// One poll over every worker session in the state file. Read-only when dryRun is
+// set: it classifies and prints, but replies, prompts, starts and saves nothing.
 export async function tickOnce(
   deps: AutopilotDeps,
   options: { dryRun: boolean; now?: number },
@@ -86,8 +81,7 @@ export async function tickOnce(
       const summary = summarizeSession(
         await deps.client.listMessages(record.sessionId, MESSAGE_LIMIT),
       );
-      // T-1942: a free listing the gateway refused pauses all free listings, so
-      // the decisions below and every later launch skip them. A dry run never
+      // A free listing the gateway refused pauses all free listings; a dry run never
       // writes the config file.
       if (!options.dryRun) {
         pauseFreeOnRefusal(new Date(now), record.model, summary.freeRefusal);
@@ -194,11 +188,9 @@ export async function tickOnce(
     }
   }
   if (!options.dryRun) {
-    // Re-read the file so writes from other commands during the tick are
-    // kept. A record is written back only when the task is still there with
-    // the same session: a task merged or forgotten (gone) or relaunched (new
-    // session) during the tick keeps what the file says. A forgotten task is
-    // therefore never re-added, so the next tick neither resumes nor nudges it.
+    // Re-read the file so writes from other commands during the tick are kept. A record
+    // is written back only when the task is still there with the same session: a merged,
+    // forgotten or relaunched task keeps what the file says.
     updateState(deps.statePath, (fresh) => {
       for (const [task, record] of updated) {
         const current = fresh.tasks[task];
@@ -211,8 +203,7 @@ export async function tickOnce(
   try {
     await tickDoctor(deps, { dryRun: options.dryRun, now });
   } catch (error) {
-    // The doctor step must never break the task loop: a failure is logged
-    // (or printed in dry-run) and the task results still stand.
+    // The doctor step must never break the task loop: a failure is logged and the results stand.
     const line = `doctor: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
     if (options.dryRun) {
       console.error(`DRY: ${line}`);

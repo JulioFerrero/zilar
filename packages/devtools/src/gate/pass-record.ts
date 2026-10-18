@@ -1,9 +1,6 @@
-// Pass records: when the gate passes, an empty file named after the working
-// tree's hash is written to `~/.zilar-lead/gate-pass/`. `lead merge` skips its
-// gate re-run when the rebased tree already has a record, because the code is
-// then identical to a tree that passed. `work/` is left out of the hash: the
-// lead writes task files and the board there while workers run, and they are
-// not code.
+// When the gate passes, an empty file named after the working tree's hash is written
+// to `~/.zilar-lead/gate-pass/`; `lead merge` skips its re-run when the rebased tree
+// already has a record. `work/` is left out of the hash: it is not code.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,7 +10,6 @@ import path from 'node:path';
 /** Where every pass record lives: one empty file per passing tree. */
 export const gatePassDir = path.join(os.homedir(), '.zilar-lead', 'gate-pass');
 
-/** How many pass records are kept; the oldest are deleted first. */
 export const MAX_PASS_RECORDS = 500;
 
 function git(root: string, env: NodeJS.ProcessEnv, args: string[]): string | undefined {
@@ -21,9 +17,9 @@ function git(root: string, env: NodeJS.ProcessEnv, args: string[]): string | und
   return result.status === 0 ? result.stdout.trim() : undefined;
 }
 
-// Hashes the working tree, uncommitted changes included, with a temporary index
-// so the worktree's real index is never touched. Returns undefined when git
-// cannot hash the tree; the caller then just runs the gate.
+// Hashes the working tree, uncommitted changes included, with a temporary index so
+// the worktree's real index is never touched. Returns undefined when git cannot
+// hash the tree.
 export function treeKey(root: string): string | undefined {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'zilar-tree-key-'));
   try {
@@ -51,7 +47,6 @@ export function hasPassRecord(dir: string, key: string): boolean {
   return fs.existsSync(path.join(dir, key));
 }
 
-// Deletes every record past the `keep` newest, judged by modification time.
 export function pruneOldestRecords(dir: string, keep: number): void {
   const newestFirst = fs
     .readdirSync(dir)
@@ -69,9 +64,7 @@ export function writePassRecord(dir: string, key: string): void {
 }
 
 export interface PassRecordDeps {
-  /** The tree key of a worktree, or undefined when it cannot be computed. */
   treeKey: (root: string) => string | undefined;
-  /** Whether a pass record with this key exists. */
   hasRecord: (key: string) => boolean;
 }
 

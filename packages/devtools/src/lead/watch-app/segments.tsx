@@ -1,7 +1,5 @@
-// The card renderer's shared segment helpers: styled text runs, truncation,
-// the bordered box primitives and the one animated spinner hook. Moved
-// unchanged from `lead/watch-app.tsx` (size split), except the spinner-frame
-// expression, which `LiveStepLine` and `TaskCard` shared and is now `useSpinner`.
+// Shared segment helpers for the card renderer: styled runs, truncation, bordered box
+// primitives and `useSpinner`.
 
 import { Text, useAnimation } from 'ink';
 import type { ReactNode } from 'react';
@@ -23,7 +21,6 @@ export interface Border {
 // The header is a three-line bordered box; the footer takes one line.
 export const HEADER_ROWS = 3;
 
-// Groups entries into rows of `columnCount` cards (1 or 2).
 export function rowsOf(entries: WatchEntry[], columnCount: number): WatchEntry[][] {
   const rows: WatchEntry[][] = [];
   for (let index = 0; index < entries.length; index += columnCount) {
@@ -41,8 +38,7 @@ export function segLen(segs: Seg[]): number {
   return segs.reduce((sum, seg) => sum + Array.from(seg.text).length, 0);
 }
 
-// Cut segments to `width` on their plain concatenation. Styles past the cut
-// are dropped, so callers fit the parts they care about before joining.
+// Cut segments to `width` on their plain concatenation; styles past the cut are dropped.
 export function truncateSegs(segs: Seg[], width: number): Seg[] {
   const plain = segs.map((seg) => seg.text).join('');
   if (Array.from(plain).length <= width) {
@@ -139,7 +135,6 @@ export function bodyLine(content: Seg[], width: number, border: Border): Seg[] {
   return [borderSeg('│ ', border), ...cut, { text: pad }, borderSeg('│', border)];
 }
 
-// The animated braille glyph on the live step line and the running-card marker.
 export function useSpinner(): string {
   const { frame } = useAnimation({ interval: 80 });
   return SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0] ?? '';

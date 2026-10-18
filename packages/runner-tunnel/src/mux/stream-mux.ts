@@ -12,16 +12,11 @@ import { TunnelClosedError } from './errors.ts';
 import type { StreamMuxOptions, StreamSink } from './types.ts';
 
 /**
- * Multiplexes streams over one WebSocket. Both sides share this class; only
- * the stream-id parity differs (the server allocates even ids, the runner odd).
- *
- * Backpressure, end to end: a slow sink makes `onData` return false, which
- * sends `tunnel.pause`; the sender pauses its source socket. Separately, a
- * sender whose WebSocket buffer is full stops reading its own source. Either
- * way memory stays bounded and nothing is silently dropped.
+ * Multiplexes streams over one WebSocket; both sides share it, only stream-id parity
+ * differs. Backpressure end to end: a slow sink returns false from `onData`, which
+ * sends `tunnel.pause`; a full WebSocket buffer stops reading the source.
  */
 export class StreamMux {
-  /** Binary frames for streams nobody knows, dropped and counted (never fatal). */
   unknownStreamsDropped = 0;
   /** Highest `bufferedAmount` seen on this socket. Reported by the 50 MB test. */
   peakBufferedAmount = 0;
@@ -57,7 +52,6 @@ export class StreamMux {
     return this.streams.has(streamId);
   }
 
-  /** Returns false when the stream was already gone (teardown is idempotent). */
   unregisterStream(streamId: number): boolean {
     this.locallyPaused.delete(streamId);
     this.pausedByRemote.delete(streamId);
@@ -74,21 +68,15 @@ export class StreamMux {
   }
 
   /**
-   * Send bytes on a stream, chunked to the max frame size. Waits while the
-   * remote asked for pause and while the socket buffer is over the high-water
-   * mark, so the caller can stop reading its source. Sends on one stream are
-   * served FIFO: concurrent calls are queued behind each other, and a queued
-   * teardown always runs last, so a FIN can never overtake trailing data.
+   * Chunks to the max frame size and waits while the remote asked for a pause and while
+   * the socket buffer is over the high-water mark. Sends on one stream are FIFO: a queued
+   * teardown always runs last, so a FIN never overtakes trailing data.
    */
   sendStreamData(streamId: number, chunk: Buffer): Promise<void> {
     return Effect.runPromise(this.sendStreamDataEffect(streamId, chunk));
   }
 
-  /**
-   * `sendStreamData` as an Effect, for callers that already run on a fiber.
-   * The stream's queue slot is taken when the Effect starts running, so a
-   * teardown queued after it can never overtake it.
-   */
+  /** `sendStreamData` as an Effect; the queue slot is taken when it starts running. */
   sendStreamDataEffect(streamId: number, chunk: Buffer): Effect.Effect<void, Error> {
     return Effect.suspend(() => {
       const previous = this.tails.get(streamId);
@@ -108,9 +96,8 @@ export class StreamMux {
   }
 
   /**
-   * Tear a stream down after everything queued for it has gone out: a clean
-   * FIN, or a `tunnel.closed` with a reason. Only the first teardown per
-   * stream acts; the rest are no-ops. Never throws.
+   * Tear down after everything queued has gone out: a clean FIN or `tunnel.closed`. Only
+   * the first teardown acts; the rest are no-ops. Never throws.
    */
   enqueueTeardown(streamId: number, kind: 'fin' | { closed: string }): void {
     const previous = this.tails.get(streamId);
@@ -171,7 +158,6 @@ export class StreamMux {
     }
   }
 
-  /** Route one incoming binary frame. Never throws. */
   handleBinary(data: Buffer): void {
     let frame: ReturnType<typeof decodeBinaryFrame>;
     try {
@@ -242,11 +228,10 @@ export class StreamMux {
     try {
       this.sendControl({ type: 'tunnel.resume', stream_id: streamId });
     } catch {
-      // Same as above.
+      // The tunnel is dying; failAll below will clean the stream up.
     }
   }
 
-  /** Fail one stream now: unregisters it and tells its sink. Returns false when unknown. */
   failStream(streamId: number, err: Error): boolean {
     const sink = this.streams.get(streamId);
     if (sink === undefined) {
@@ -257,7 +242,6 @@ export class StreamMux {
     return true;
   }
 
-  /** The socket died: every live stream fails now with a clear error, none hang. */
   failAll(err: Error): void {
     if (this.failed !== null) {
       return;
@@ -349,7 +333,6 @@ export class StreamMux {
   }
 }
 
-// A sink that throws must never kill the mux; every path shares this guard.
 function notifyFailed(sink: StreamSink, err: Error): void {
   try {
     sink.onFailed(err);

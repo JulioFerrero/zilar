@@ -9,13 +9,9 @@ import {
 
 export { DEEPSEEK_FLASH, FREE_DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, PAID_MUSE };
 
-// T-0245, revised by T-1242 and T-1718: a task may say `model: auto` in its
-// front matter. The lead then runs the worker on the free DeepSeek V4.1 Flash
-// that OpenCode offers, whatever the hour: the free listing costs nothing, so
-// neither DeepSeek's peak-hour price nor the Go pause decides anything here.
-// When the free listing is rate-limited, fallback.ts moves the worker on.
-// `isDeepSeekPeak` stays exported for callers that still want the old window.
-// Pre-reviews and the doctor never use this; they stay on Muse.
+// `model: auto` runs the worker on the free DeepSeek V4.1 Flash whatever the hour;
+// when that listing is rate-limited, fallback.ts moves it on. `isDeepSeekPeak` stays
+// exported for callers that still want the old window.
 
 // DeepSeek peak hours: 01:00-04:00 and 06:00-10:00 UTC, Monday to Friday.
 // Every other hour, including the whole weekend, is off-peak.
@@ -28,14 +24,11 @@ export function isDeepSeekPeak(now: Date): boolean {
   return (hour >= 1 && hour < 4) || (hour >= 6 && hour < 10);
 }
 
-// Resolves `model: auto` for the given moment. Any other value comes back
-// unchanged so explicit models keep working exactly as before. The moment no
-// longer matters and neither does the Go pause: auto always picks the free
-// DeepSeek V4.1 Flash with `effort: default` (T-1718).
-//
-// T-1942: while the free listings are paused, auto starts on the free DeepSeek
-// Flash's paid step instead (the Go DeepSeek Flash, or the metered DeepSeek API
-// while Go is paused), so a paused lead never touches a free listing.
+/**
+ * Resolves `model: auto`; any other value comes back unchanged. Auto always picks
+ * the free DeepSeek V4.1 Flash with `effort: default`; while free listings are
+ * paused it starts on that listing's paid step instead.
+ */
 export function resolveWorkerModel(
   frontMatterModel: string,
   _now: Date,
@@ -51,11 +44,8 @@ export function resolveWorkerModel(
   return { model, effortOverride: 'default' };
 }
 
-// The reasoning effort a worker session runs at: the schedule's override when
-// it sets one (`model: auto` -> the free listing needs `default`), otherwise
-// the task's effort. Launch and every in-place model switch call this so a
-// fallback keeps the variant the session started with instead of dropping back
-// to the raw task effort (T-1242 finding 1).
+// A session's effort: the schedule's override when it sets one, else the task's, so
+// a fallback keeps the variant the session started with.
 export function resolveWorkerVariant(
   frontMatterModel: string,
   taskEffort: string,

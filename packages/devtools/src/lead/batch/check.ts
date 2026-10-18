@@ -178,8 +178,7 @@ async function runChecks(deps: BatchDeps, wave: string, waveDir: string): Promis
           'exec',
           'vitest',
           'run',
-          // Cap every package's worker count so the two packages running at
-          // once (runPool below) stay under ~8 GB together (T-0930).
+          // Cap every package's workers so the two running at once stay under ~8 GB.
           '--maxWorkers=2',
           '--reporter=json',
           `--outputFile=${jsonPath}`,

@@ -8,8 +8,6 @@ import { taskStatusOf } from './status.js';
 // to drop it even when it is named.
 const ACTIVE_STATUSES = new Set(['todo', 'in-progress', 'review']);
 
-// A task in one of these statuses is over. With an idle session, `--finished`
-// drops it (like it drops any task whose worktree is gone).
 const FINISHED_STATUSES = new Set(['merged', '(missing)', 'eval-done', 'eval-stopped', 'eval-dq']);
 
 export interface ForgetDeps {
@@ -33,8 +31,8 @@ async function sessionState(deps: ForgetDeps, sessionId: string): Promise<Sessio
   }
 }
 
-// Why a task may not be forgotten, or null when it is safe to drop. A running
-// session is busy; an unreadable one might be, so it is refused too.
+// Why a task may not be forgotten, or null when it is safe. A running session is busy;
+// an unreadable one might be, so it is refused too.
 function refusalReason(status: string, session: SessionState): string | null {
   if (ACTIVE_STATUSES.has(status)) {
     return `task status is ${status}`;
@@ -48,7 +46,6 @@ function refusalReason(status: string, session: SessionState): string | null {
   return null;
 }
 
-// Drops the requested ids from the state file, one line per refusal or removal.
 async function forgetNamed(deps: ForgetDeps, taskIds: string[], dryRun: boolean): Promise<void> {
   const state = loadState(deps.statePath);
   const removed: string[] = [];
@@ -84,8 +81,7 @@ async function forgetNamed(deps: ForgetDeps, taskIds: string[], dryRun: boolean)
   }
 }
 
-// Every entry whose worktree is gone, or whose task is over, and whose session
-// is idle. A session that is running, or that cannot be read, keeps its task.
+// Every entry whose worktree is gone or task is over and whose session is idle.
 async function selectFinished(deps: ForgetDeps, taskIds: string[]): Promise<string[]> {
   const state = loadState(deps.statePath);
   const selected: string[] = [];
@@ -138,7 +134,6 @@ export async function forgetTasks(deps: ForgetDeps, options: ForgetOptions): Pro
   await forgetNamed(deps, options.tasks, options.dryRun);
 }
 
-// The `lead forget` command wiring: cli.ts only dispatches here.
 export async function runForget(positional: string[], args: string[]): Promise<void> {
   await forgetTasks(
     { client: new OpencodeCliClient(), statePath: stateFilePath() },

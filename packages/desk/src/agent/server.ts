@@ -5,7 +5,6 @@ import type { AgentConfig } from './config';
 import type { Lifecycle } from './lifecycle';
 import { AgentRequestSchema, errorInfo, type AgentReply, type AgentRequest } from './wire';
 
-/** A unix-socket server that speaks the newline-JSON protocol in `wire.ts`. */
 export interface AgentServer {
   readonly socketPath: string;
   readonly server: Server;
@@ -163,10 +162,8 @@ export function createAgentServer(config: AgentConfig, lifecycle: Lifecycle): Ag
       return new Promise<void>((resolve, reject) => {
         server.once('error', reject);
         server.listen(config.socketPath, () => {
-          // The app reaches this socket from its own container as a non-root
-          // user, and connecting to a unix socket needs write permission on
-          // the file. The socket lives on a named volume shared only by the
-          // app and the sidecar, so 0666 widens nothing beyond those two.
+          // The app connects as non-root, and a unix socket needs write permission on the
+          // file; 0666 widens nothing beyond the two containers on the shared volume.
           chmodSync(config.socketPath, 0o666);
           resolve();
         });

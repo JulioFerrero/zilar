@@ -17,10 +17,7 @@ function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
-/**
- * Exact string replacement. Fails when `oldString` is not unique unless
- * `replaceAll` is set (plan §3.2).
- */
+/** Exact string replacement; fails when `oldString` is not unique unless `replaceAll`. */
 export async function runEdit(args: EditArgs, ctx: ToolContext): Promise<ToolOutcome> {
   if (args.oldString.length === 0) {
     return outcome({

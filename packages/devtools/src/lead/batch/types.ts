@@ -9,20 +9,16 @@ export class BatchError extends Error {
 
 export interface CommandResult {
   status: number;
-  /** stdout and stderr together. */
   output: string;
 }
 
 export interface BatchPackage {
   name: string;
-  /** Repo-relative folder, such as `apps/web`. */
   dir: string;
-  /** Arguments after `vitest run` in the package's test script; undefined when it has no tests. */
   testArgs: string[] | undefined;
 }
 
 export interface BatchDeps {
-  /** The main checkout. */
   root: string;
   git: GitRunner;
   runCommand: (
@@ -46,7 +42,6 @@ export interface BatchDeps {
 
 export interface Failure {
   kind: 'typecheck' | 'lint' | 'format' | 'test' | 'tool';
-  /** Repo-relative file, when the failure names one. */
   file?: string;
   /** The test's full name, the TS error code or the failing step. */
   name: string;

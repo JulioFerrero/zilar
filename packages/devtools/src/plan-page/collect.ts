@@ -1,7 +1,6 @@
-// Collects the data behind the Fix plan page: the audits, the findings and the
-// waves from docs/plan/plan.json, with every wave item resolved to the live
-// status in its work/ task file (falling back to its work/BOARD.md row while a
-// running task's file still says "todo").
+// Collects the data behind the Fix plan page: the audits, findings and waves from
+// docs/plan/plan.json, with every wave item resolved to the live status in its work/
+// task file (falling back to its BOARD.md row while a running task still says "todo").
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot } from '../effect-map/generate.js';
@@ -24,9 +23,7 @@ export interface PlanItem {
   task: string | null;
   ref: string | null;
   title: string;
-  /** The finding ids this item closes, empty when it closes none. */
   closes: string[];
-  /** The work/ file of the task, null when there is no task. */
   file: string | null;
 }
 
@@ -39,7 +36,6 @@ export interface PlanWave {
   total: number;
 }
 
-/** A parsed finding linked to the merged task that closes it, when there is one. */
 export interface PlanFinding extends Finding {
   fixed: boolean;
   fixedBy: { task: string; file: string } | null;
@@ -186,7 +182,6 @@ function parseWave(value: unknown, index: number): RawWave {
   };
 }
 
-/** Parses and validates docs/plan/plan.json; throws on a malformed plan. */
 export function parsePlan(source: string): RawPlan {
   const data = asObject(JSON.parse(source), 'the root');
   return {
@@ -211,7 +206,6 @@ function readStatus(path: string): ItemStatus | null {
   return (KNOWN_STATUSES as readonly string[]).includes(value) ? (value as ItemStatus) : null;
 }
 
-/** The status and file of every work/T-NNNN-*.md, keyed by task id. */
 export function taskStatuses(root: string): Map<string, TaskInfo> {
   const tasks = new Map<string, TaskInfo>();
   let names: string[];
@@ -230,9 +224,8 @@ export function taskStatuses(root: string): Map<string, TaskInfo> {
   return tasks;
 }
 
-/** The status of every task in work/BOARD.md, keyed by task id.
- * Rows whose status cell is not a known status (the "done" table's date
- * column, or a title that happens to contain a status word) are ignored. */
+/** The status of every task in work/BOARD.md, keyed by task id; a row whose cell
+ * is not a known status is ignored. */
 export function boardStatuses(root: string): Map<string, ItemStatus> {
   const board = new Map<string, ItemStatus>();
   let text: string;
@@ -254,8 +247,7 @@ export function boardStatuses(root: string): Map<string, ItemStatus> {
   return board;
 }
 
-/** The item's live status: a plan.json status wins, then the task file, then the
- * BOARD.md row while a running task's file still says "todo". */
+/** A plan.json status wins, then the task file, then the BOARD.md row. */
 function buildItem(
   raw: RawItem,
   tasks: Map<string, TaskInfo>,
@@ -281,7 +273,6 @@ function buildItem(
   };
 }
 
-/** Resolves every item and computes the per-wave and overall merged counts. */
 export function buildPlan(
   plan: RawPlan,
   tasks: Map<string, TaskInfo>,
@@ -311,7 +302,6 @@ export function buildPlan(
   };
 }
 
-/** Names the merged task that closes each finding, so the page can show its chip. */
 export function linkFindings(findings: Finding[], waves: PlanWave[]): PlanFinding[] {
   const fixedBy = new Map<string, { task: string; file: string }>();
   for (const wave of waves) {

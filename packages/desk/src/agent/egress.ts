@@ -1,13 +1,10 @@
-// effect-plain: the sidecar's egress registrar; on provision it mints a
-// per-desk proxy credential, registers it with the proxy and returns the URL
-// the jail gets; on stop it unregisters. A host daemon, no Effect runtime.
+// effect-plain: the sidecar's egress registrar; on provision it registers a per-desk
+// proxy credential, on stop it unregisters. A host daemon, no Effect runtime.
 import { randomBytes } from 'node:crypto';
 import { createRegistryClient, type RegistryClient } from '../egress/registry';
 import type { EgressSettings } from './config';
 
-/** The sidecar's view of the proxy registry plus the per-desk URL builder. */
 export interface EgressRegistrar {
-  /** Registers the desk and returns its per-desk proxy URL. */
   register(deskId: string, allowedHosts: readonly string[] | null): Promise<string>;
   unregister(deskId: string): Promise<void>;
 }
@@ -21,8 +18,8 @@ export function proxyUrlFor(base: string, deskId: string, secret: string): strin
 }
 
 /**
- * Keeps one secret per desk for this process's lifetime, so a re-provision of a
- * live desk re-registers with the same credential the jail already carries.
+ * One secret per desk for this process's lifetime, so a re-provision reuses the
+ * credential the jail already carries.
  */
 export function createEgressRegistrar(
   settings: EgressSettings,

@@ -1,8 +1,6 @@
-// The Effect ratchet (task R6, docs/audit/effect-100-plan.md §4): a changed
-// counted source file fails when it is needs-effect on the branch and was
-// absent on the base or was not needs-effect there. A file that is already
-// needs-effect on the base passes, because the map tracks it. Pure: the caller
-// reads both versions (see ratchet-cli.ts).
+// The Effect ratchet (docs/audit/effect-100-plan.md §4): a changed counted source
+// fails when it is needs-effect on the branch and absent or not on the base. Pure:
+// the caller reads both versions.
 import { isCountedSource, sourceFile, type Kind } from './generate.js';
 
 export interface RatchetFile {
@@ -19,7 +17,6 @@ export interface RatchetViolation {
   firstHit: { line: number; text: string } | null;
 }
 
-// The class of one file's source, with no open tasks (the ratchet ignores them).
 const kindOf = (path: string, source: string): Kind => sourceFile(path, source).kind;
 
 export function ratchetViolations(files: readonly RatchetFile[]): RatchetViolation[] {

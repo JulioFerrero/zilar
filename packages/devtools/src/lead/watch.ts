@@ -1,5 +1,4 @@
-// `lead watch` is split under `watch/` (T-0975). Every importer keeps using
-// `./watch.js`; this barrel re-exports the same names it always did.
+// Barrel over `watch/`: every importer keeps using `./watch.js`.
 
 export { REFRESH_INTERVAL_MS, fullClearOnResize, runWatch, runWatchData } from './watch/cli.js';
 export type { ChangedFile, FileKind } from './watch/changed-files.js';

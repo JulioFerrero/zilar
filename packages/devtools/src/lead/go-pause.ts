@@ -4,10 +4,8 @@ import path from 'node:path';
 import { Result, Schema } from 'effect';
 import { GO_MUSE, PAID_MUSE } from './models.js';
 
-// T-1421: OpenCode Go's monthly usage ran out, so the lead can pause every Go
-// call until a date. The setting lives in config.json next to state.json and is
-// read on every call, so setting or clearing it takes effect without restarting
-// the autopilot.
+// The lead can pause every Go call until a date. The setting lives in config.json
+// next to state.json and is read on every call, so it applies without a restart.
 export function goPauseConfigPath(): string {
   const override = process.env['ZILAR_LEAD_CONFIG'];
   if (override !== undefined && override.length > 0) {
@@ -16,16 +14,13 @@ export function goPauseConfigPath(): string {
   return path.join(os.homedir(), '.zilar-lead', 'config.json');
 }
 
-// Only the `goPausedUntil` field is read; other keys are ignored so the file can
-// grow later without this parser rejecting it.
 const goPauseConfigSchema = Schema.Struct({
   goPausedUntil: Schema.optional(
     Schema.String.pipe(Schema.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))),
   ),
 });
 
-// A malformed file is reported once per process, then ignored: a typo must never
-// stop the lead, it just leaves Go unpaused.
+// A malformed file is reported once, then ignored: a typo must never stop the lead.
 let warnedBadConfig = false;
 
 function warnBadConfig(configPath: string, detail: string): void {
@@ -40,9 +35,7 @@ function validIsoDate(value: string): boolean {
   return !Number.isNaN(Date.parse(value));
 }
 
-// The ISO date Go stays paused until, or undefined when the setting is absent or
-// unusable. Go is paused strictly before that date: on the date itself it is
-// back (the spec's "paused before it").
+// The ISO date Go stays paused until; paused strictly before it, back on the date.
 export function goPause(
   now: Date = new Date(),
   configPath: string = goPauseConfigPath(),
@@ -86,9 +79,7 @@ export interface ModelRef {
   id: string;
 }
 
-// While Go is paused a pre-review or the doctor must not start on a Go listing:
-// the next step after the Go Muse is the metered paid Muse, so that is what runs
-// instead.
+// While Go is paused a pre-review or doctor skips Go listings for the metered Muse.
 export function withoutPausedGoModel(model: ModelRef, goPaused: boolean): ModelRef {
   if (!goPaused || `${model.providerID}/${model.id}` !== GO_MUSE) {
     return model;

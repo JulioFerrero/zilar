@@ -55,7 +55,6 @@ function relativeTo(worktree: string, file: string): string {
 // oxlint --format=unix: `path:line:col: message [Error/plugin(rule)]`
 const LINT_LINE = /^(.+?):(\d+):(\d+): (.*) \[(Error|Warning)\/([^\]]+)\]$/;
 
-/** Lint errors from `oxlint --format=unix`; warnings are ignored. */
 export function parseLintErrors(output: string, worktree: string): Failure[] {
   const failures: Failure[] = [];
   for (const raw of stripAnsi(output).split('\n')) {
@@ -73,11 +72,9 @@ export function parseLintErrors(output: string, worktree: string): Failure[] {
   return failures;
 }
 
-// prettier --check: `[warn] <path>` per unformatted file; `[warn] Code style issues ...` is the summary.
 const PRETTIER_WARN = /^\[warn\] (.+)$/;
 const PRETTIER_SUMMARY = /^Code style issues found/;
 
-/** Unformatted files from `prettier --check`, one failure per file. */
 export function parsePrettierFiles(output: string, worktree: string): Failure[] {
   const failures: Failure[] = [];
   for (const raw of stripAnsi(output).split('\n')) {

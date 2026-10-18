@@ -1,11 +1,7 @@
-// effect-plain: the host log is a plain sink plus a small per-desk host list;
-// a host daemon, no Effect runtime (like the desk-agent).
-/**
- * One line per connection. It carries the time, the desk id, the host, the
- * decision (allowed or denied with a fixed reason code) and the bytes sent back
- * to the client — never a URL, path, header or body (AGENTS.md: audit entries
- * carry ids only; plan §5.3).
- */
+// effect-plain: the host log is a plain sink plus a small per-desk host list; a host
+// daemon, no Effect runtime.
+/** One line per connection: time, desk id, host, decision and bytes sent back;
+ * never a URL, path, header or body (audit entries carry ids only; plan §5.3). */
 export interface EgressLogEntry {
   readonly timestamp: string;
   readonly deskId: string;
@@ -16,11 +12,9 @@ export interface EgressLogEntry {
   readonly bytes: number;
 }
 
-/** How many recent distinct hosts `hostsFor` keeps per desk. */
 export const RECENT_HOSTS_LIMIT = 50;
 
 export interface EgressLogOptions {
-  /** Where the JSON lines go; defaults to stderr. */
   readonly write?: (line: string) => void;
   readonly now?: () => number;
   readonly recentLimit?: number;
@@ -42,7 +36,6 @@ export class EgressLog {
     this.recentLimit = options.recentLimit ?? RECENT_HOSTS_LIMIT;
   }
 
-  /** Writes one line and remembers the host for `hostsFor`. */
   record(entry: Omit<EgressLogEntry, 'timestamp'>): void {
     const line: EgressLogEntry = {
       timestamp: new Date(this.now()).toISOString(),
@@ -56,7 +49,6 @@ export class EgressLog {
     this.remember(entry.deskId, entry.host);
   }
 
-  /** The recent distinct hosts for one desk, most recent first. */
   hostsFor(deskId: string, limit: number = this.recentLimit): readonly string[] {
     return (this.recent.get(deskId) ?? []).slice(0, Math.max(0, limit));
   }

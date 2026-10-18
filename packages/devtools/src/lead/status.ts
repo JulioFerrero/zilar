@@ -88,8 +88,6 @@ export function formatStatus(rows: StatusRow[]): string {
   return lines.join('\n');
 }
 
-// The `lead status` command. It lives here, next to the collector it wraps, so
-// cli.ts stays a dispatcher.
 export async function runStatus(): Promise<void> {
   const rows = await collectStatus({
     client: new OpencodeCliClient(),

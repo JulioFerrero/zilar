@@ -1,4 +1,3 @@
-// Client login for the XMPP end-to-end spike.
 import { client, type XmppClient } from '@xmpp/client';
 import { errorMessage, STEP_TIMEOUT_MS, withDeadline, type Runtime } from './harness';
 
@@ -42,7 +41,6 @@ export function connect(
   return deadline.promise;
 }
 
-// Resolves with the rejection reason when the login fails, as expected.
 export async function expectLoginFails(
   runtime: Runtime,
   localpart: string,

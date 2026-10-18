@@ -17,7 +17,7 @@ export interface RunOptions {
   hubUrl: string;
   signal?: AbortSignal;
   logger?: (message: string) => void;
-  /** The identity directory; the desk policy and workspaces live beside it. */
+  /** Root identity directory; the desk policy and workspaces live beside it. */
   homeDir?: string | undefined;
 }
 
@@ -158,8 +158,6 @@ export function mapFailure(message: string): RunResult {
       message: 'the server speaks a different protocol version',
     };
   }
-  // Anything else (a network drop, the server going away) is not an auth
-  // failure: say the link was lost.
   return {
     status: 'disconnected',
     message: 'lost the connection to the server',
@@ -170,7 +168,6 @@ function waitForSignalOrFailure(
   signal: AbortSignal | undefined,
   failed: Deferred.Deferred<void>,
 ): Effect.Effect<void> {
-  // Lazy: the signal may abort while the client is still starting.
   return Effect.suspend(() => {
     if (signal === undefined) return Deferred.await(failed);
     if (signal.aborted) return Effect.void;

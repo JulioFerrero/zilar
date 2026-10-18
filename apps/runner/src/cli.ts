@@ -82,8 +82,6 @@ export interface CliResult {
   stderr: string;
 }
 
-// A rejected Promise from the identity, pairing or connect modules becomes a
-// typed failure that carries the original error, so describeError sees it as before.
 const attempt = <A>(thunk: () => Promise<A>): Effect.Effect<A, unknown> =>
   Effect.tryPromise({ try: thunk, catch: (err) => err });
 
@@ -103,7 +101,6 @@ export const runCliEffect = (argv: string[], io: CliIo = defaultIo): Effect.Effe
       env: io.env,
     };
 
-    // Failures and thrown values (parseArgs, a throwing io) both end here.
     const exitCode = yield* dispatch(argv, captured).pipe(
       Effect.matchCause({
         onSuccess: (code) => code,
@@ -321,10 +318,8 @@ function describeError(err: unknown): { exitCode: number; message: string } {
   return { exitCode: EXIT_RUNTIME, message: String(err) };
 }
 
-// Re-export the schema so tests can import it from one place.
 export { CapabilitiesSchema };
 
-// Force a tree-shake-friendly re-export of helpers used only by tests.
 export const __test_helpers = { hubUrlFromServer };
 
 const entry = process.argv[1];

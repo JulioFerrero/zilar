@@ -1,6 +1,3 @@
-// Pure helpers for the Ink `lead watch` app (`watch-app.tsx`). No Ink or
-// Node runtime imports here so the mapping rules stay easy to test.
-
 import type { WatchEntry } from './watch.js';
 
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -13,9 +10,8 @@ export const TWO_COLUMN_MIN_WIDTH = 100;
 
 export type TrackerStep = 1 | 2 | 3 | 4;
 
-// The dashboard's four steps are Coding, Review fixes, Pre-review, Lead.
-// Blocked, idle and quota keep the step they had; the view does not carry
-// history, so they fall back to step 1 (the current dot turns red there).
+// The dashboard's four steps are Coding, Review fixes, Pre-review, Lead. Blocked, idle
+// and quota keep their step; the view carries no history, so they fall back to step 1.
 export function trackerStep(phaseId: string): TrackerStep {
   if (phaseId === 'coding') {
     return 1;
@@ -34,8 +30,6 @@ export function trackerStep(phaseId: string): TrackerStep {
 
 export type PhaseColorName = 'cyan' | 'magenta' | 'yellow' | 'red';
 
-// Border and tracker colour by phase: coding and fixing cyan, pre-review
-// magenta, waiting for the lead yellow, everything stuck red.
 export function phaseColorName(phaseId: string): PhaseColorName {
   if (phaseId === 'coding' || phaseId === 'fixing') {
     return 'cyan';
@@ -56,12 +50,10 @@ export interface ModelBadge {
   color: 'magenta' | '#f2a65e' | '#7aa2f7' | undefined;
 }
 
-// Claude badge colour: a light blue that reads on a dark terminal and differs
-// from Muse (magenta) and MiniMax (orange).
+// A light blue that reads on a dark terminal and differs from Muse and MiniMax.
 const CLAUDE_BADGE_COLOR = '#7aa2f7';
 
-// `Claude Haiku 5.5` for `haiku-5.5` or `claude-haiku-5-5`; `Claude` alone when
-// no family name is in the id.
+// `Claude Haiku 5.5` for `haiku-5.5` or `claude-haiku-5-5`; `Claude` alone otherwise.
 function claudeName(lower: string): string {
   const match = /(haiku|sonnet|opus)[-_. ]?(\d+)?(?:[-_.](\d+))?/.exec(lower);
   if (match === null) {
@@ -74,9 +66,8 @@ function claudeName(lower: string): string {
   return `Claude ${family.charAt(0).toUpperCase()}${family.slice(1)}${version}`;
 }
 
-// `Muse` for any model id containing `muse`, `MiniMax` for `minimax`,
-// `Claude <family> <version>` for Claude ids (haiku, sonnet, opus, claude),
-// otherwise the bare model id. `free` is true when the id ends in `-free`.
+// `Muse`, `MiniMax`, `Claude <family> <version>`, else the bare id; `free` when it ends
+// in `-free`.
 export function modelBadge(model: string, effort: string | undefined): ModelBadge {
   const lower = model.toLowerCase();
   const stripped = model.includes('/') ? model.slice(model.indexOf('/') + 1) : model;
@@ -112,9 +103,7 @@ export type WatchIconName =
   | 'removed'
   | 'idle';
 
-// Nerd Font glyphs (Nerd Fonts v3) with plain fallbacks. `fallback: ''`
-// means no icon in `--no-icons` mode. Every rendered icon is followed by
-// one space (see `iconText`).
+// Nerd Font glyphs with plain fallbacks; `fallback: ''` means no icon in `--no-icons`.
 export const WATCH_ICONS: Record<WatchIconName, { glyph: string; fallback: string }> = {
   brand: { glyph: '\u{F01E7}', fallback: '\u{25C6}' },
   clock: { glyph: '\u{F43A}', fallback: '' },
@@ -136,14 +125,12 @@ export const WATCH_ICONS: Record<WatchIconName, { glyph: string; fallback: strin
 };
 
 // Glyph (icons on) or fallback (icons off), followed by one space.
-// Empty when the fallback is none and icons are off.
 export function iconText(name: WatchIconName, icons: boolean): string {
   const entry = WATCH_ICONS[name];
   const char = icons ? entry.glyph : entry.fallback;
   return char === '' ? '' : `${char} `;
 }
 
-// `lead watch --no-icons` or `ZILAR_WATCH_ICONS=0` renders the fallbacks.
 export function iconsEnabled(noIconsFlag: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
   if (noIconsFlag) {
     return false;
@@ -151,8 +138,6 @@ export function iconsEnabled(noIconsFlag: boolean, env: NodeJS.ProcessEnv = proc
   return env['ZILAR_WATCH_ICONS'] !== '0';
 }
 
-// The live-step icon follows the step: thinking, reading, editing, running
-// tests, running the gate, committing; other steps get no icon.
 export function liveStepIcon(step: string): WatchIconName | null {
   const lower = step.toLowerCase();
   if (lower === 'thinking') {
@@ -203,9 +188,8 @@ export function truncate(text: string, width: number): string {
   return `${chars.slice(0, width - 1).join('')}…`;
 }
 
-// The exact number of lines a `TaskCard` renders: the two borders, the title,
-// the tracker and the idle/speed line, plus the live or waiting line and the
-// files line when they are shown.
+// The exact number of lines a `TaskCard` renders: two borders, the title, the tracker
+// and the idle/speed line, plus the live or waiting and files lines when shown.
 export function cardHeight(entry: WatchEntry): number {
   let height = 5;
   if ((entry.running && entry.step !== null) || entry.needsLead) {
@@ -221,9 +205,6 @@ export function layoutColumns(width: number): number {
   return width >= TWO_COLUMN_MIN_WIDTH ? 2 : 1;
 }
 
-// The widths of `count` cards side by side within `width`: a one-column gap
-// sits between them, so the first is `floor((width - 1) / 2)` and the second
-// takes the rest.
 export function columnWidths(width: number, count: number): number[] {
   if (count <= 1) {
     return [width];
@@ -239,8 +220,6 @@ export interface VisibleSlice {
   hiddenBelow: number;
 }
 
-// Shows as many whole rows as fit from `offset` and always at least one row,
-// so a tiny terminal still shows something.
 export function visibleSlice(
   rowHeights: number[],
   offset: number,

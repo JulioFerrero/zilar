@@ -1,8 +1,6 @@
-// Collects the data behind the Code map page (T-0938): every file in scope with
-// its line count and class, the daily history of lines per class, the recent
-// T-NNNN commits with their diff sizes, and the per-package and biggest-file
-// tables. Pure git and filesystem reads; the page only reads the JSON written
-// beside it.
+// Collects the data behind the Code map page: every file in scope with its line
+// count and class, the daily history, the recent commits with their diff sizes, and
+// the per-package and biggest-file tables. Pure git and filesystem reads.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,7 +9,6 @@ import { repoRoot } from '../effect-map/generate.js';
 export type FileClass = 'source' | 'test' | 'mock' | 'generated';
 export type Band = 'green' | 'amber' | 'orange' | 'red';
 
-/** Julio's per-file limit: a source file over this is on the page in red. */
 export const LINE_LIMIT = 400;
 
 const DAY_MS = 86_400_000;
@@ -23,7 +20,6 @@ export interface CodeFile {
   cls: FileClass;
   /** The size band for source files, null for test, mock and generated files. */
   band: Band | null;
-  /** Lines added minus removed in the last 7 days; 0 when the file did not change. */
   delta7: number;
 }
 
@@ -65,7 +61,6 @@ export interface CodeMap {
   commitSubject: string;
   lineLimit: number;
   totals: { files: number; over400: number; byClass: Record<FileClass, ClassCount> };
-  /** Source lines now minus source lines seven days ago (negative is a cut). */
   week: { sourceDelta: number };
   files: CodeFile[];
   history: HistoryPoint[];
@@ -76,10 +71,9 @@ export interface CodeMap {
 
 const SCOPED = /^(?:apps\/[^/]+\/src\/|packages\/[^/]+\/src\/|packages\/mock-backend\/)/;
 const CODE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
-// A test file: `*.test.*`, anything under a `test/` folder, or a `test-support`
-// helper. A mock: a `mock/` folder, `mockStore`, `*-mock.ts`, the mobile chat
-// store, or the shared mock backend. A generated file: a `.d.ts`, a `generated/`
-// folder, or a `*.gen.*` / `*.generated.*` name.
+// Test: `*.test.*`, a `test/` folder or a `test-support` helper. Mock: a `mock/`
+// folder, `mockStore`, `*-mock.ts`, the mobile chat store, the shared mock backend.
+// Generated: a `.d.ts`, a `generated/` folder, `*.gen.*` or `*.generated.*`.
 const TEST = /\.test\.[tj]sx?$|(^|\/)test\/|test-support/;
 const MOCK =
   /(^|\/)mock\/|mockStore|-mock\.[tj]sx?$|^packages\/mock-backend\/|^apps\/mobile\/src\/store\/chat-store\.ts$/;
@@ -103,7 +97,6 @@ export function bandOf(lines: number): Band {
   return 'red';
 }
 
-/** The number of lines in a text file: a trailing newline does not add one. */
 export function countLines(source: string): number {
   if (source === '') return 0;
   const body = source.endsWith('\n') ? source.slice(0, -1) : source;
@@ -123,8 +116,7 @@ function git(root: string, args: string[]): string {
   });
 }
 
-// The dates as `YYYY-MM-DD`, offset from a day, at UTC midnight so the step is
-// exactly one day across any timezone.
+// Dates as `YYYY-MM-DD` at UTC midnight, so a step is exactly one day in any timezone.
 function shiftDate(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
@@ -139,9 +131,7 @@ function listDays(first: string, last: string): string[] {
 }
 
 interface GitNumbers {
-  /** Lines added minus removed per class and day, as [source, test, mock]. */
   nets: Map<string, [number, number, number]>;
-  /** Lines added minus removed per file over the last 7 days. */
   delta7: Map<string, number>;
   firstDate: string;
   lastDate: string;
@@ -149,10 +139,9 @@ interface GitNumbers {
 
 const CLASS_INDEX: Record<FileClass, number> = { source: 0, test: 1, mock: 2, generated: -1 };
 
-// One `git log --numstat` pass over the checked-out commit gives both the daily
-// nets for the history and the per-file 7-day deltas. `--no-renames` keeps a
-// rename two plain lines (a delete of the old path, an add of the new one), so
-// the sums stay right; binary files report `-` and are counted as zero.
+// One `git log --numstat` pass gives both the daily nets and the per-file 7-day
+// deltas. `--no-renames` keeps a rename as a delete plus an add; binary files
+// report `-` and count as zero.
 function readGitNumbers(root: string): GitNumbers {
   const lastDate = git(root, ['log', '-1', '--format=%cI']).slice(0, 10);
   const cutoff = shiftDate(lastDate, -WEEK_DAYS);
@@ -187,7 +176,7 @@ function readGitNumbers(root: string): GitNumbers {
 }
 
 // The current totals walked back one day at a time, so the last point is the
-// exact line counts on disk and the first is the day before the first commit.
+// exact counts on disk.
 function buildHistory(net: GitNumbers, current: [number, number, number]): HistoryPoint[] {
   const days = listDays(net.firstDate, net.lastDate);
   const values = new Map<string, [number, number, number]>();
@@ -203,7 +192,6 @@ function buildHistory(net: GitNumbers, current: [number, number, number]): Histo
   });
 }
 
-// `added\tremoved\tpath` lines for one commit; `-` is a binary file.
 function numstatFor(root: string, sha: string): { added: number; removed: number } {
   let added = 0;
   let removed = 0;

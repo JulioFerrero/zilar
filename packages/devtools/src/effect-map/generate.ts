@@ -1,10 +1,6 @@
-// Source classification shared by the Effect ratchet (`ratchet.ts`), the gate
-// (`gate/plan.ts`) and the lead watcher (`lead/watch.ts`).
-//
-// The Effect map page that used to read this was removed in T-0938; what stays
-// is the rule behind the ratchet (docs/audit/effect-100-plan.md §1.4) — which
-// counted source files still need Effect — plus the board parser the watcher
-// uses. Works in any checkout: the root comes from git, nothing lives in $HOME.
+// Source classification shared by the Effect ratchet, the gate and the lead watcher.
+// The `// effect-plain:` marker and the legacy rule follow
+// docs/audit/effect-100-plan.md §1.4; the root comes from git, nothing lives in $HOME.
 import { execFileSync } from 'node:child_process';
 
 export type Kind = 'effect' | 'needs-effect' | 'plain' | 'exempt' | 'legacy';
@@ -58,7 +54,6 @@ interface Signal {
   pattern: RegExp;
 }
 
-// Run on the code with strings and comments blanked, one line at a time.
 const LINE_SIGNALS: readonly Signal[] = [
   {
     id: 'H1',
@@ -77,7 +72,6 @@ const LINE_SIGNALS: readonly Signal[] = [
   { id: 'W7', pattern: /\bprocess\.env\b|\bimport\.meta\.env\b|\bEXPO_PUBLIC_\w+/ },
 ];
 
-// Run on the module specifier of each value import (type-only imports are erased).
 const IMPORT_SIGNALS: readonly Signal[] = [
   {
     id: 'H8',
@@ -91,9 +85,8 @@ const IMPORT_SIGNALS: readonly Signal[] = [
   },
 ];
 
-// Strings (kept as empty quotes), line comments and block comments (kept as
-// blank lines) are blanked in one left-to-right pass, so `'http://x'` is a string
-// and not a comment. Template literals are kept as they are, as §1.4 says.
+// Strings (kept as empty quotes) and comments (kept as blank lines) are blanked in
+// one left-to-right pass, so `'http://x'` is a string and not a comment.
 const NON_CODE =
   /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
 
@@ -118,7 +111,6 @@ export function isExemptPath(path: string): boolean {
   return EXEMPT_PATHS.some((pattern) => pattern.test(path));
 }
 
-// The reason of a `// effect-plain: <reason>` marker in the first 15 lines, or null.
 export function markerReason(source: string): string | null {
   for (const line of source.split('\n', MARKER_LINES)) {
     const reason = MARKER.exec(line)?.[1];
@@ -144,9 +136,8 @@ function importRefs(source: string): ImportRef[] {
   });
 }
 
-// Legacy wins over Effect: a file that still imports one legacy library is
-// not finished, even when it also imports Effect. Only value imports count,
-// so `import type { Effect }` is not Effect.
+// Legacy wins over Effect: one legacy import means unfinished, even with Effect;
+// only value imports count, so `import type { Effect }` is not Effect.
 export function classifySource(source: string): {
   kind: 'effect' | 'plain' | 'legacy';
   legacy: string[];
@@ -165,7 +156,6 @@ export function classifySource(source: string): {
   return { kind: effect ? 'effect' : 'plain', legacy: [] };
 }
 
-// Every signal hit with its line. Hits in comments and strings are blanked first.
 export function signalHits(source: string): SignalHit[] {
   const lines = source.split('\n');
   const code = blankNonCode(source).split('\n');
@@ -229,9 +219,8 @@ export interface BoardRow {
   status: string;
 }
 
-// A row of work/BOARD.md, e.g. `| [T-0752](T-0752-effect-map-pages.md) | title | in-progress | ... |`.
-// Only the four open statuses count. Merged rows keep a date in that column,
-// and the front matter of old task files is not trusted, so the board decides.
+// A row of work/BOARD.md; only the four open statuses count, and the front matter
+// of old task files is not trusted, so the board decides.
 export function parseBoard(text: string): BoardRow[] {
   return text.split('\n').flatMap((line) => {
     const cells = line.split('|').map((cell) => cell.trim());

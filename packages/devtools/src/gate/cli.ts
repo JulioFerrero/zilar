@@ -1,12 +1,7 @@
-// `pnpm gate` runs the checks a task must pass before it can go to review (and
-// that `lead merge` runs again after the rebase): install, format, lint,
-// typecheck, the nearest tests of every package the branch touched, and a scope
-// report of files changed outside the task's "Allowed files". Format checks only
-// the changed files unless `--full`. By default only the changed test files and
-// the tests next to each changed source file run; `--full` lets Vitest pull in
-// every test that imports the changes instead. It prints one summary line per
-// step and ends with `GATE PASS` or `GATE FAIL`. A pass writes a pass record
-// (see pass-record.ts) so `lead merge` can skip re-running it on the same tree.
+// `pnpm gate` runs install, format, lint, typecheck, the nearest tests of every
+// touched package and a scope report of files outside the task's "Allowed files".
+// It prints one summary line per step and ends with `GATE PASS` or `GATE FAIL`;
+// a pass writes a record so `lead merge` can skip re-running on the same tree.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -92,10 +87,8 @@ export function changedFiles(root: string, base: string): string[] {
   return [...new Set([...committed, ...uncommitted, ...untracked])].sort();
 }
 
-// Added and modified migration files in the diff against the base, so the
-// migration check (migrations.ts) can tell a new file from an edit. A plain
-// `--name-only` list loses that: `--name-status` keeps it, untracked files are
-// new, and a rename or copy lands at a new path, which counts as added.
+// Added and modified migrations in the diff against the base: `--name-status`
+// keeps the distinction and a rename lands at a new path, which counts as added.
 function migrationDiff(root: string, base: string): MigrationDiff {
   const committed = run(root, 'git', ['diff', '--name-status', `${base}...HEAD`]).output;
   const uncommitted = run(root, 'git', ['diff', '--name-status', 'HEAD']).output;
@@ -105,8 +98,7 @@ function migrationDiff(root: string, base: string): MigrationDiff {
   return parseMigrationDiff([committed, uncommitted, untracked].join('\n'));
 }
 
-// The highest migration number on the base branch: what an added file must
-// continue from.
+// The highest migration number on the base branch.
 function baseMigrationMax(root: string, base: string): number {
   const tree = run(root, 'git', [
     'ls-tree',
@@ -126,15 +118,13 @@ function baseMigrationMax(root: string, base: string): number {
   return max;
 }
 
-// The base version's line count, or null when the base has no such file. `git
-// show` exits non-zero for a missing path, which `run` reports as `ok: false`.
 function baseLineCount(root: string, base: string, file: string): number | null {
   const result = run(root, 'git', ['show', `${base}:${file}`]);
   return result.ok ? countLines(result.output) : null;
 }
 
-// The size check (T-1427): each changed source file must stay within 400 lines
-// unless the base already had it over the limit and the branch did not grow it.
+// Each changed source file must stay within 400 lines unless the base was already
+// over and the branch did not grow it.
 function sizeReport(root: string, base: string, files: string[]): string[] {
   const inputs: SizeFile[] = [];
   for (const file of files) {
@@ -192,8 +182,6 @@ function tail(text: string, count: number): string {
   return lines(text).slice(-count).join('\n');
 }
 
-// A synchronous sleep keeps `main` single-threaded: the gate holds the console
-// and simply parks the process until a slot frees up.
 const SLOT_POLL_MS = 5000;
 
 function sleepSync(ms: number): void {

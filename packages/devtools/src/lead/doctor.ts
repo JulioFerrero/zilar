@@ -46,9 +46,7 @@ export function renderDoctorPrompt(
   });
 }
 
-// Reads back DOCTOR.md so the autopilot can escalate its counts and verdict.
-// Reuses the pre-review Counts:/verdict parsers; undefined when the doctor
-// skipped the line.
+// Reads DOCTOR.md back so the autopilot can escalate its counts and verdict.
 export function doctorReportInfo(worktree: string): {
   present: boolean;
   verdict: string;
@@ -83,10 +81,8 @@ function isWorktreeOfRepo(runner: GitRunner, repoRoot: string, dir: string): boo
   return worktrees.some((entry) => sameDir(entry, dir));
 }
 
-// Prepares the detached doctor worktree at `head`, creating it on first use.
-// Refuses when the path exists but is not a git worktree of this repo, so a
-// stray directory (or another checkout) is never clobbered. Never touches
-// any other worktree.
+// Prepares the detached worktree at `head`, refusing a path that is not a git
+// worktree of this repo; never touches another worktree.
 export function ensureDoctorWorktree(deps: DoctorDeps, head: string): string {
   const worktree = doctorWorktreeFor(deps.repoRoot);
   if (!fs.existsSync(worktree)) {
@@ -116,9 +112,7 @@ export interface DoctorSession {
   model: string;
 }
 
-// Starts a Muse doctor session auditing `head` in the detached worktree.
-// The caller records the returned session id and the model it started on in
-// `state.doctor`.
+// Starts a Muse doctor session auditing `head`; the caller records the id and model.
 export async function startDoctorSession(
   deps: DoctorDeps,
   input: { head: string; since: string },
@@ -150,9 +144,7 @@ export interface DecideDoctorInput {
   mainHeadCommitMs: number;
   // The state record, or undefined when the doctor never ran.
   doctor: DoctorRecord | undefined;
-  // The fallback `since` for the very first audit (the first parent of the
-  // commit 30 commits back, or the root when shorter). The tick gathers it;
-  // decideDoctor stays pure.
+  // The fallback `since` for the first audit; the tick gathers it, decideDoctor stays pure.
   sinceFallback: string;
   sessionState: DoctorSessionState;
   reportFilePresent: boolean;
@@ -160,9 +152,8 @@ export interface DecideDoctorInput {
   counts: FindingCounts | undefined;
   verdict: string;
   quotaError: boolean;
-  // T-1421: true while OpenCode Go is paused; fallbacks then skip Go.
+  // True while OpenCode Go is paused.
   goPaused: boolean;
-  // T-1942: true while the free listings are paused; fallbacks then skip them.
   freePaused?: boolean;
 }
 
@@ -203,19 +194,16 @@ function oneLine(text: string, max: number): string {
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }
 
-// The doctor's brain as a pure function. It never touches the network, the
-// filesystem, or git: the tick in autopilot.ts gathers the inputs and
-// applies the returned actions.
+// The doctor's brain as a pure function: it never touches the network, filesystem
+// or git; the tick gathers the inputs and applies the returned actions.
 export function decideDoctor(input: DecideDoctorInput): DoctorAction[] {
   const actions: DoctorAction[] = [];
   const escalate = (line: string): void => {
     actions.push({ kind: 'escalate', line });
   };
   if (input.mainHead === input.doctor?.head) {
-    // A quota-hit free doctor moves to the free GLM Flash, then the Go Muse,
-    // then the paid Muse, in place, like workers and pre-reviews (T-1718).
-    // Once there is nothing to fall back to, the idle checks below run the
-    // normal STALLED path.
+    // A quota-hit free doctor moves to the free GLM Flash, then Go Muse, then paid Muse;
+    // with nothing left, the idle checks below run the normal STALLED path.
     if (input.quotaError) {
       const fallback = fallbackModel(
         input.doctor.model ?? FREE_MUSE,

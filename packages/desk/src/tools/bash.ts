@@ -12,9 +12,8 @@ export const bashArgs = Schema.Struct({
 export type BashArgs = typeof bashArgs.Type;
 
 /**
- * `/bin/bash -lc` in a fresh shell inside the workspace. `runCommand` puts the
- * shell in its own process group and kills the whole tree on timeout or when
- * the output cap is reached (plan §3.2).
+ * `/bin/bash -lc` in a fresh shell; `runCommand` puts it in its own process group
+ * and kills the tree on timeout or when the output cap is reached.
  */
 export async function runBash(args: BashArgs, ctx: ToolContext): Promise<ToolOutcome> {
   const cwd = resolveInside(ctx.workspace, args.cwd ?? '.');

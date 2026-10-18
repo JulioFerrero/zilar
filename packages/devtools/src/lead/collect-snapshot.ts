@@ -29,19 +29,15 @@ export interface SnapshotDeps {
   client: OpenCodeClient;
   runner: GitRunner;
   statePath: string;
-  /** The main checkout (work/ and the board live here). */
   root: string;
   now: number;
   /** Per-refresh `session.message.list` results, shared with `buildView`. */
   messages?: MessageCache | undefined;
-  /** Cross-refresh git results, keyed by worktree. */
   gitCache?: GitCache | undefined;
 }
 
-// A per-refresh cache of `session.message.list` results, keyed by session id.
-// `buildView` reuses what `collectSnapshot` already fetched instead of
-// spawning `opencode2` a second time for the same session. The stored limit
-// lets a later, larger request grow the entry.
+// A per-refresh cache of `session.message.list` results; `buildView` reuses them
+// instead of spawning `opencode2` again, and a larger request can grow an entry.
 export interface MessageCacheEntry {
   messages: unknown[];
   limit: number;
@@ -117,8 +113,7 @@ async function activeTasks(deps: SnapshotDeps): Promise<SnapshotTask[]> {
     let prereviewState = 'none';
     if (record.prereview !== undefined) {
       try {
-        // 20, not 5: the same list later serves `buildView`'s live step and
-        // speed line, so one fetch covers both call sites.
+        // 20, not 5: the same list later serves `buildView`'s live step and speed line.
         prereviewState = summarizeSession(
           await listSessionMessages(deps.client, deps.messages, record.prereview.sessionId, 20),
         ).state;
@@ -189,12 +184,9 @@ function queuedTasks(deps: SnapshotDeps, activeIds: Set<string>): QueuedTask[] {
   return queued;
 }
 
-// Parses lines of `<unix-seconds>|<subject>` from `git log --format=%ct|%s`
-// for the "merged today" list. Accepts both the old `board: T-XXXX merged`
-// form and the new squash-merge form `T-XXXX: <summary>`; everything else
-// (e.g. `work: ...`, `docs: ...`) is ignored. `git log` lists commits
-// newest first, so the first line per task id wins and later duplicates
-// are dropped.
+// Parses `<unix-seconds>|<subject>` from `git log --format=%ct|%s` for the "merged
+// today" list; accepts `board: T-XXXX merged` and `T-XXXX: <summary>`, newest first
+// so the first line per task id wins.
 export function parseMergedLog(stdout: string): { id: string; time: string }[] {
   const SQUASH = /^(\d+)\|T-(\d+):\s/;
   const BOARD = /^(\d+)\|board: T-(\d+) merged$/;

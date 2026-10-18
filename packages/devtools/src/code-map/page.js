@@ -97,8 +97,6 @@ function renderHistory() {
     VH = 240,
     padL = 54,
     padR = 14,
-    // Headroom above the top gridline so the "lines" title sits clear of the
-    // top y-axis tick value.
     padT = 28,
     padB = 30;
   const max = Math.max(
@@ -120,8 +118,6 @@ function renderHistory() {
     .join('');
   const first = H[0]?.date ?? '';
   const last = H[H.length - 1]?.date ?? '';
-  // A date tick about every 3-4 days: the two ends plus evenly spaced days, so
-  // no two labels end up next to each other on the narrow end of the axis.
   const tickCount = Math.max(2, Math.min(H.length, Math.round((H.length - 1) / 3.5) + 1));
   const tickIndex = (j) => Math.round((j * (H.length - 1)) / (tickCount - 1));
   const dateLabels = [...new Set(Array.from({ length: tickCount }, (_, j) => tickIndex(j)))]

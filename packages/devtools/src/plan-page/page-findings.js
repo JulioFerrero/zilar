@@ -1,6 +1,5 @@
-// Renders the Findings and Telegram parity sections of the Fix plan page. It
-// runs after page.js in the same inline script, so it shares PLAN, GITHUB and
-// the esc/$ helpers.
+// Renders the Findings and Telegram parity sections of the Fix plan page; it shares
+// PLAN, GITHUB and the esc/$ helpers with page.js.
 
 const SEVERITY_ORDER = ['P0', 'P1', 'P2', 'P3', 'Unrated'];
 const SEVERITY_CLASS = { P0: 'p0', P1: 'p1', P2: 'p2', P3: 'p3', Unrated: 'unrated' };

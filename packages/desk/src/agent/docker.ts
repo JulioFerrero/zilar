@@ -1,6 +1,5 @@
-// effect-plain: wraps the docker CLI with a fixed argument list built in code.
-// `execFile`/`spawn` only, never a shell; the sidecar never accepts a flag, an
-// image or a command from the caller (plan §4.4).
+// effect-plain: wraps the docker CLI with an argument list built in code. `execFile`/`spawn`
+// only, never a shell; the sidecar never accepts a flag, image or command from the caller.
 import { spawn } from 'node:child_process';
 import type net from 'node:net';
 import { Exit, Schema } from 'effect';
@@ -23,7 +22,6 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The only interface the lifecycle needs; tests swap in a fake. */
 export interface DockerLayer {
   create(
     name: string,
@@ -32,15 +30,11 @@ export interface DockerLayer {
     proxyUrl: string | null,
   ): Promise<void>;
   start(name: string): Promise<void>;
-  /** True when the named container exists and is running. */
   inspect(name: string): Promise<boolean>;
   run(name: string, call: DeskToolCall, signal?: AbortSignal): AsyncIterable<DeskChunk>;
   remove(name: string): Promise<void>;
-  /** Every live desk container, so `Stop all` can kill them across restarts. */
   listDeskNames(): Promise<readonly string[]>;
-  /** Removes labelled networks no live jail uses; returns how many. */
   cleanupNetworks?(): Promise<number>;
-  /** True when the configured runtime is registered with the docker daemon. */
   runtimeAvailable(): Promise<boolean>;
   /** Pulls `ref` and returns its repo digest, or null when either step fails. */
   pullAndResolveDigest(ref: string): Promise<string | null>;
@@ -48,14 +42,13 @@ export interface DockerLayer {
 
 export const DESK_LABEL = 'zilar.desk';
 
-// T-1993: one daemon frame is a JSON line; a process that sends a frame larger
-// than this, with or without a trailing newline, is killed rather than allowed
-// to grow our buffer.
+// One daemon frame is a JSON line; a process sending more than this is killed
+// rather than allowed to grow our buffer.
 const MAX_DAEMON_LINE_CHARS = 1024 * 1024;
 
 /**
  * The daemon request for one tool call. `timeout_ms` rides in `args` because
- * that is where the daemon reads it; the daemon re-validates `args` itself.
+ * the daemon re-validates `args` itself.
  */
 function daemonRequest(call: DeskToolCall): Request {
   const args =
@@ -160,7 +153,6 @@ function decodeDaemonLine(line: string): { readonly chunk: DeskChunk; readonly d
   };
 }
 
-/** The real Docker layer: one `docker` CLI per operation, no shell. */
 export function createDockerLayer(
   settings: DockerSettings,
   exec: Exec = execFile,
@@ -193,7 +185,6 @@ export function createDockerLayer(
           address = await proxyAddress(settings.network, host, exec);
         }
         if (address === null) {
-          // A computer with no web still beats no computer; say why it has none.
           log(
             `could not find ${host} on network ${network}; ` +
               `the jail for ${name} will have no web access`,
@@ -280,7 +271,6 @@ export function createDockerLayer(
           Object.prototype.hasOwnProperty.call(parsed, settings.runtime)
         );
       } catch {
-        // The daemon is unreachable or answered something unexpected; not ready.
         return false;
       }
     },
@@ -304,9 +294,8 @@ export function createDockerLayer(
 }
 
 /**
- * Bridges a duplex socket to `docker exec -i … desk-tool serve`. A runner uses
- * this instead of `readDaemon`: the daemon's request/response lines travel on
- * the socket (plan §2), and the runner never parses them.
+ * Bridges a duplex socket to `docker exec -i … desk-tool serve`; the daemon's
+ * request/response lines travel on the socket and the runner never parses them.
  */
 export function bridgeDaemon(name: string, socket: net.Socket): void {
   const child = spawn(

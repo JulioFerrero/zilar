@@ -1,6 +1,5 @@
-// `pnpm code:map`: writes dist/code-map/index.html (the page, every asset and the
-// data inlined) and dist/code-map/data.json at the repo root, and prints one
-// summary line.
+// `pnpm code:map`: writes dist/code-map/index.html and data.json at the repo root,
+// and prints one summary line.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot } from '../effect-map/generate.js';

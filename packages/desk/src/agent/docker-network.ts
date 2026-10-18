@@ -1,6 +1,5 @@
-// effect-plain: one private internal Docker network per jail, shared only with
-// the egress proxy. The name and the label are fixed in code; no caller input
-// reaches a docker argument (plan §4.4).
+// effect-plain: one private internal network per jail, shared only with the egress
+// proxy. Name and label are fixed in code; no caller input reaches a docker argument.
 import { DeskError } from '../protocol';
 import { DESK_LABEL } from './docker';
 import { containerAddress, egressContainerId, execFile, type Exec } from './docker-args';
@@ -18,10 +17,7 @@ function lines(output: string): readonly string[] {
     .filter((line) => line.length > 0);
 }
 
-/**
- * Creates the jail's own internal network, or reuses it when an earlier run
- * left it behind. A create failure is only fatal when the network is absent.
- */
+// Creates the jail's internal network, or reuses one a crash left behind.
 export async function ensureDeskNetwork(jailName: string, exec: Exec = execFile): Promise<string> {
   const network = deskNetworkName(jailName);
   try {
@@ -47,11 +43,7 @@ export async function ensureDeskNetwork(jailName: string, exec: Exec = execFile)
   }
 }
 
-/**
- * Joins the egress proxy to the jail's network and returns its address there.
- * Returns null when the proxy is missing or cannot be joined; the jail then
- * has no web access rather than failing to start.
- */
+// Joins the proxy to the jail network; on failure the jail starts without web access.
 export async function connectEgress(
   network: string,
   host: string,
@@ -88,18 +80,16 @@ async function networkContainerNames(network: string, exec: Exec): Promise<reado
   }
 }
 
-/** Detaches every container still on the network (the proxy, in practice). */
 export async function disconnectContainers(network: string, exec: Exec = execFile): Promise<void> {
   for (const name of await networkContainerNames(network, exec)) {
     try {
       await exec('docker', ['network', 'disconnect', network, name]);
     } catch {
-      // Already gone or already detached: removal stays idempotent.
+      // Already detached: removal stays idempotent.
     }
   }
 }
 
-/** Removes the network after detaching its containers; best effort. */
 export async function removeNetwork(network: string, exec: Exec = execFile): Promise<void> {
   await disconnectContainers(network, exec);
   try {
@@ -109,15 +99,12 @@ export async function removeNetwork(network: string, exec: Exec = execFile): Pro
   }
 }
 
-/** Removes the jail's own network; best effort and idempotent. */
 export async function removeDeskNetwork(jailName: string, exec: Exec = execFile): Promise<void> {
   await removeNetwork(deskNetworkName(jailName), exec);
 }
 
-/**
- * Startup sweep: removes every `zilar.desk`-labelled network whose jail no
- * longer exists. This catches networks left by a crash before a jail was made.
- */
+// Startup sweep: removes every `zilar.desk`-labelled network whose jail is gone,
+// catching networks left by a crash.
 export async function cleanupDeskNetworks(
   liveJailNames: readonly string[],
   exec: Exec = execFile,

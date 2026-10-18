@@ -33,11 +33,10 @@ import { GIB, clampEgress, clampLimits, type LocalPolicy } from './policy.ts';
 export interface RunnerDeskOptions {
   readonly driver: DeskDriver;
   readonly policy: LocalPolicy;
-  /** Where desk workspaces live, e.g. `~/.zilar-runner/desks`. */
   readonly workspaceRoot: string;
-  /** A local image pin; when absent the image is pinned from the first provision. */
+  /** A local image pin; without one the image is pinned from the first provision. */
   readonly image?: string | undefined;
-  /** The docker network jails join (the egress proxy is a later task). */
+  /** The docker network that jails join. */
   readonly network?: string | undefined;
   readonly log?: ((message: string) => void) | undefined;
 }
@@ -45,10 +44,9 @@ export interface RunnerDeskOptions {
 const DESK_NAME = /^desk-[A-Za-z0-9_-]{1,64}-[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * The runner's desk handler: it clamps the server's request with the local
- * policy, then drives `@zilar/desk`'s `Lifecycle` in process with this host's
- * driver (plan §2, §6.2, §6.4). With no jail driver it refuses every provision
- * with `jail_unavailable`; there is no unsandboxed mode.
+ * Clamps the server's desk request with the local policy, then drives `@zilar/desk`'s
+ * lifecycle with this host's driver. With no jail driver every provision is
+ * `jail_unavailable`; there is no unsandboxed mode.
  */
 export class RunnerDeskHandler implements DeskRunnerHandler {
   private readonly keys = new Map<string, DeskKey>();
@@ -115,7 +113,6 @@ export class RunnerDeskHandler implements DeskRunnerHandler {
     bridgeDaemon(frame.desk_id, stream);
   }
 
-  /** Builds the lifecycle lazily, pinning the image from the first provision. */
   private lifecycleFor(imageDigest: string): Lifecycle {
     if (this.lifecycle === null) {
       const image = this.image ?? imageDigest;

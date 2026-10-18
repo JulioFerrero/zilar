@@ -4,16 +4,13 @@ import type { FindingCounts } from '../decide.js';
 import { findTaskFile } from '../launch.js';
 import { extractBlockedText, parseFrontMatter } from '../task-file.js';
 
-// The first line carrying a verdict out of PREREVIEW.md, for the packet-ready
-// escalation. Falls back when the reviewer skipped it.
+// The first verdict line out of PREREVIEW.md, for the packet-ready escalation.
 export function extractVerdict(text: string): string {
   const line = text.split('\n').find((candidate) => /verdict/i.test(candidate));
   return line === undefined ? '(no verdict line)' : line.trim();
 }
 
-// The `Counts: must-fix=N, should-fix=N, nit=N, follow-up=N` line the pre-review
-// prompt asks for. Undefined when the reviewer skipped it, so the lead reads
-// the packet. Older reviews with only three numbers parse with followUp 0.
+// The `Counts: ...` line the pre-review prompt asks for; undefined when it is missing.
 export function extractCounts(text: string): FindingCounts | undefined {
   const match =
     /counts:[\s*]*must-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*should-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*nits?\s*[=:]?\s*(\d+)(?:\s*[,;]?\s*follow-?ups?\s*[=:]?\s*(\d+))?/i.exec(

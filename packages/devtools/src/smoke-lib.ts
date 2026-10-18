@@ -12,7 +12,6 @@ export function buildOpenFrame(domain: string): string {
   return `<open xmlns='${XMPP_FRAMING_NAMESPACE}' to='${domain}' version='1.0'/>`;
 }
 
-// Returns the server's <open/> reply, or null when the payload is not one.
 export function parseOpenFrame(payload: string): OpenFrameReply | null {
   const match = /^<open\b([^>]*?)\/?>/.exec(payload.trim());
   if (match === null) {

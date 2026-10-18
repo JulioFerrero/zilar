@@ -12,21 +12,16 @@ import { createWorkspaces } from './workspace';
 /** How often idle desks are checked (plan §4.2: stop after ~2 minutes idle). */
 export const IDLE_SWEEP_MS = 30_000;
 
-/**
- * The cap for stopping jails on shutdown. Docker's default stop grace period is
- * 10 s, so the sidecar must finish its cleanup well inside it.
- */
+// The cap for stopping jails on shutdown: Docker's stop grace period is 10 s.
 export const STOP_ALL_TIMEOUT_MS = 8_000;
 
-/** The egress registrar, or null when the jail gets no web access (plan §5.1). */
 function egressFor(config: AgentConfig): EgressRegistrar | null {
   return config.egress === null ? null : createEgressRegistrar(config.egress);
 }
 
 /**
- * Runs one idle sweep. A failing stop (e.g. a failing `umount`) must not become
- * an unhandled rejection that takes down the whole sidecar, so the failure is
- * logged and dropped.
+ * A failing stop (e.g. `umount`) must not become an unhandled rejection that
+ * takes down the sidecar, so it is logged and dropped.
  */
 export function runIdleSweep(lifecycle: Lifecycle, log: (message: string) => void): void {
   void lifecycle.sweepIdle().catch((error: unknown) => {
@@ -37,12 +32,10 @@ export function runIdleSweep(lifecycle: Lifecycle, log: (message: string) => voi
 export interface RunningAgent {
   readonly server: AgentServer;
   readonly lifecycle: Lifecycle;
-  /** The Docker layer, so shutdown and start can see jails left behind. */
   readonly docker: DockerLayer;
   readonly config: AgentConfig;
 }
 
-/** Builds the sidecar from the environment and starts listening. */
 export async function start(env: NodeJS.ProcessEnv = process.env): Promise<RunningAgent> {
   const config = loadAgentConfig(env);
   const admission = new Admission({
@@ -65,10 +58,8 @@ export async function start(env: NodeJS.ProcessEnv = process.env): Promise<Runni
 }
 
 /**
- * Removes every jail this process or an earlier one left behind (a crash, or an
- * old agent without a shutdown sweep). The workspaces (images and folders) stay;
- * only containers go. Bounded by `STOP_ALL_TIMEOUT_MS` so a stuck Docker call
- * cannot outlive the stop grace period, and never rejects.
+ * Removes every jail left by a crash or an old agent; workspaces stay. Bounded by
+ * `STOP_ALL_TIMEOUT_MS` and never rejects.
  */
 async function stopAllJails(
   running: RunningAgent,
@@ -104,17 +95,16 @@ async function stopAllJails(
   }
 }
 
-/** `desk-agent`: runs until SIGTERM/SIGINT, then closes the socket. */
 export async function main(): Promise<number> {
   const running = await start();
   const log = (message: string): void => {
     process.stderr.write(`desk-agent: ${message}\n`);
   };
-  // A crash or an old agent without a shutdown sweep can leave jails behind;
-  // they carry a dead proxy credential, so remove them before serving.
+  // A crash or an old agent can leave jails behind with a dead proxy credential;
+  // remove them before serving.
   await stopAllJails(running, log, false);
-  // With the jails gone, any network they still leave behind is unused. This
-  // also catches networks from a crash before a jail was ever created.
+  // With the jails gone, the networks they left are unused; this also catches a
+  // network from a crash before a jail was created.
   try {
     const removed = (await running.docker.cleanupNetworks?.()) ?? 0;
     if (removed > 0) {
@@ -154,8 +144,8 @@ export async function main(): Promise<number> {
     }, IDLE_SWEEP_MS);
     const shutdown = (): void => {
       clearInterval(timer);
-      // Remove this process's jails before the socket closes, bounded so Docker's
-      // stop grace period is never exceeded and no jail outlives the deploy.
+      // Remove this process's jails before the socket closes, bounded so Docker's stop
+      // grace period is never exceeded.
       void stopAllJails(running, log, true)
         .then(() => running.server.close())
         .then(() => resolve());

@@ -21,11 +21,8 @@ export interface SwitchModelDeps {
   statePath: string;
 }
 
-// Resets the per-session bookkeeping so the autopilot treats this session as a
-// fresh start: the new model has not seen this worker's nudges or quota
-// errors, and any stalled state from the previous model must not carry over.
-// `startedAt` is preserved (the task started on the same worktree), and we
-// record `switchedAt` so the audit trail shows when the handover happened.
+// Resets per-session bookkeeping so the new model starts clean; `startedAt` stays,
+// `switchedAt` records the handover.
 function resetRecordForSwitch(
   record: TaskRecord,
   sessionId: string,
@@ -60,11 +57,8 @@ export interface SwitchModelResult {
   model: string;
 }
 
-// Re-targets a tracked task's worker session onto a new model. The lead runs
-// this when the previous model hit a quota error: we open a fresh session in
-// the same worktree so the work so far (committed or not) is preserved, and
-// point the state record at the new session. We must not edit the task file
-// (the lead does that) and must not touch git.
+// Re-targets a task's worker onto a new model: a fresh session in the same worktree,
+// so work so far is kept. Never edits the task file or git.
 export async function switchModel(
   task: string,
   newModel: string,
@@ -82,8 +76,6 @@ export async function switchModel(
   if (previous.role !== 'worker') {
     throw new Error(`task ${task} is a ${previous.role} session, not a worker`);
   }
-  // The worktree path is the same in the main checkout and in the worker's
-  // worktree; the lead passes repoRoot.
   const worktree = worktreeFor(deps.repoRoot, task);
   if (!fs.existsSync(worktree)) {
     throw new Error(`worktree is missing for ${task}: ${worktree}`);
@@ -107,11 +99,8 @@ export async function switchModel(
     template: 'switch',
   });
 
-  // Interrupt the previous session. We only proceed past this point when the
-  // outcome is one of: ok, already-idle, not-found. Any other failure aborts
-  // the switch before we open the new session — two writers in one worktree
-  // is worse than no switch at all. The lead's logger is informed of what
-  // was ignored so the audit trail is honest.
+  // Proceed only on ok, already-idle or not-found; anything else aborts before the
+  // new session opens, since two writers in one worktree is worse than no switch.
   const outcome = await deps.client.tryInterrupt(previous.sessionId);
   if (outcome.kind === 'error') {
     throw new Error(
@@ -145,11 +134,8 @@ export async function switchModel(
   const now = new Date().toISOString();
   const previousSessionId = previous.sessionId;
   const previousStartedAt = previous.startedAt;
-  // Re-read right before writing so a tick's bookkeeping (or another
-  // command) recorded mid-switch is kept. Only this task's record is
-  // touched, and only when it still points at the session the switch
-  // started from: a merge (gone) or relaunch (new session) mid-switch
-  // keeps what the file says.
+  // Re-read right before writing so a mid-switch write is kept. Only this task's record
+  // is touched, and only while it still points at the session the switch started from.
   updateState(deps.statePath, (fresh) => {
     const current = fresh.tasks[task];
     if (current !== undefined && current.sessionId === previousSessionId) {
@@ -166,10 +152,7 @@ export async function switchModel(
   return { sessionId, model: newModel };
 }
 
-// Switches the existing worker session to a new model without opening a new
-// session or interrupting the worker: the session keeps its context, as the
-// autopilot's fallback-model branch does. Records the model in the state
-// file. A client error propagates before anything is written.
+// Switches in place: the session keeps its context, as the autopilot fallback does.
 export async function switchModelInPlace(
   task: string,
   newModel: string,
@@ -200,10 +183,8 @@ export async function switchModelInPlace(
   });
   const now = new Date().toISOString();
   const previousSessionId = previous.sessionId;
-  // Re-read right before writing so a tick's bookkeeping recorded
-  // mid-switch is kept. Only the model and the stamp change: the session
-  // (and its nudges and prereview) stays the same. Guarded on the session
-  // id like `switchModel`: a relaunch mid-switch wins.
+  // Re-read right before writing; only the model and stamp change, guarded on the
+  // session id like `switchModel`.
   updateState(deps.statePath, (fresh) => {
     const current = fresh.tasks[task];
     if (current !== undefined && current.sessionId === previousSessionId) {

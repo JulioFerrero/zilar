@@ -1,7 +1,5 @@
-// effect-plain: the egress proxy is a plain `node:http`/`node:net` server — a
-// host daemon, no Effect runtime. CONNECT tunnels and plain HTTP GET/HEAD are
-// pinned to the classified address, so the jail never dials the open web
-// directly (plan §5.1-5.3).
+// effect-plain: a plain `node:http`/`node:net` host daemon, no Effect runtime. CONNECT
+// tunnels and plain HTTP GET/HEAD are pinned to the classified address (plan §5.1-5.3).
 import {
   createServer,
   request as httpRequest,
@@ -17,10 +15,7 @@ import type { DeskRegistry, DeskRegistration } from './registry';
 
 const AUTHENTICATE = 'Basic realm="zilar-desk-egress"';
 
-/**
- * Task F's hook: returns extra headers for a forwarded request, host-scoped.
- * It returns none today (credential injection is a later task).
- */
+/** Returns extra headers for a forwarded request, host-scoped; none today. */
 export type BeforeForward = (deskId: string, host: string) => Readonly<Record<string, string>>;
 
 const noInjection: BeforeForward = () => ({});
@@ -59,7 +54,6 @@ function authenticate(
   return registry.authenticate(decoded.slice(0, colon), decoded.slice(colon + 1));
 }
 
-/** Host as the client spelled it, with any `[...]` IPv6 brackets removed. */
 function plainHost(hostname: string): string {
   return hostname.replace(/^\[/, '').replace(/\]$/, '');
 }
@@ -125,8 +119,7 @@ async function handleRequest(
   const port = url.port === '' ? 80 : Number(url.port);
   const decision = await checkTarget(
     { host, port, allowedHosts: registration.allowedHosts },
-    // A plain-HTTP forward is port 80 only: TLS on 443 goes through the
-    // CONNECT tunnel above, which keeps the method and header controls.
+    // Plain-HTTP forward is port 80 only; TLS on 443 goes through the CONNECT tunnel.
     { resolver: options.resolver, allowedPorts: [80] },
   );
   if (!decision.allow) {
@@ -184,7 +177,6 @@ async function handleRequest(
   req.pipe(upstream);
 }
 
-/** `CONNECT host:port` — a transparent tunnel pinned to the resolved address. */
 async function handleConnect(
   req: IncomingMessage,
   clientSocket: Duplex,
@@ -212,8 +204,7 @@ async function handleConnect(
   const port = target.port === '' ? 443 : Number(target.port);
   const decision = await checkTarget(
     { host, port, allowedHosts: registration.allowedHosts },
-    // A CONNECT tunnel is TLS only: 443. Plain HTTP on 80 goes through the
-    // GET/HEAD forward above, which keeps the header and method controls.
+    // A CONNECT tunnel is TLS only: 443. Plain HTTP on 80 uses the forward above.
     { resolver: options.resolver, allowedPorts: [443] },
   );
   if (!decision.allow) {
@@ -255,7 +246,6 @@ async function handleConnect(
   });
 }
 
-/** Builds the proxy server; `listen` binds the TCP port the jails dial. */
 export function createEgressProxy(options: EgressProxyOptions): EgressProxy {
   const sockets = new Set<Duplex>();
   const server = createServer((req, res) => {

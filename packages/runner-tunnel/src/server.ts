@@ -37,11 +37,8 @@ export class TunnelServer {
     });
     const wsServer = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD_BYTES });
 
-    // The heartbeat sweep is one Effect program: `checkHeartbeats` repeated
-    // with a fixed spacing, the first run after one interval (as `setInterval`
-    // did, `repeat` runs once immediately otherwise). `catchDefect` keeps the
-    // sweep alive if one bad connection throws; `close` interrupts the fiber in
-    // place of the old unref'd timer, so the process can still exit.
+    // One Effect program: `checkHeartbeats` repeated at a fixed spacing, first run after
+    // one interval; `catchDefect` keeps the sweep alive and `close` interrupts the fiber.
     const heartbeatFiber = Effect.runFork(
       Effect.repeat(
         Effect.sync(() => {
@@ -159,18 +156,14 @@ export class TunnelServer {
   }
 
   /**
-   * Mint a preview token for one runner port. The 16 random bytes are
-   * 128 bits, base64url-encoded; the token is the capability (room-member
-   * authorization is M3 work, see the task Report).
+   * Mint a preview token for one runner port: 16 random bytes (128 bits),
+   * base64url; the token itself is the capability.
    */
   createPreviewToken(runnerId: string, port: number): string {
     return createPreviewToken(this.rt, runnerId, port);
   }
 
-  /**
-   * Open a stream to a runner port and return the local end as a connected
-   * TCP socket. Refusals and drops destroy the socket with a TunnelClosedError.
-   */
+  /** Opens a stream to a runner port and returns a connected TCP socket. */
   openEngineStream(runnerId: string, port: number): Promise<Socket> {
     return openEngineStream(this.rt, runnerId, port);
   }

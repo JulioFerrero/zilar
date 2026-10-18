@@ -1,6 +1,4 @@
-// The shape `createOperations` returns. Split out of `operations.ts` (T-1458) so
-// that file stays under the 400-line cap; `operations.ts` re-exports the type, so
-// every importer keeps working.
+// The shape `createOperations` returns; split out so `operations.ts` stays under the cap.
 import type { Effect } from 'effect';
 import { type NotOnline, type XmppCoreError } from '../errors';
 import type {

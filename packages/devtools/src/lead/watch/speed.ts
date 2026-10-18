@@ -1,6 +1,3 @@
-// Session speed analysis for `lead watch`, moved unchanged from
-// `lead/watch.ts` (size split).
-
 import { isRecord } from './live-step.js';
 
 export interface SessionSpeed {
@@ -10,14 +7,8 @@ export interface SessionSpeed {
   spark: number[];
 }
 
-// Median output speed, gap between steps, latest context size, and a 10-bar
-// sparkline of the per-step tok/s of the last 10 steps. Messages come back
-// newest-first; the analysis is built from the most recent 20 assistant
-// steps, then narrowed to the last 10 for the sparkline. The shown speed is
-// the median of those same per-step values, so one step that waited on a hung
-// tool never drags it down. Fewer than 2 usable completed steps (with
-// `time.completed` set and a non-zero gap) returns `null`. Defensive on
-// unknown shapes: never throws.
+// Median output speed, step gap, latest context and a 10-bar sparkline of the last 10
+// steps. Under 2 usable completed steps returns null; unknown shapes never throw.
 export function sessionSpeed(messages: unknown[]): SessionSpeed | null {
   if (!Array.isArray(messages) || messages.length === 0) {
     return null;

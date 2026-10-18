@@ -14,7 +14,6 @@ import type { RunnerRuntime } from './lifecycle.ts';
 /** How often a ready connection sends a liveness heartbeat. */
 const HEARTBEAT_INTERVAL_MS = 10000;
 
-/** Turn a finished handshake into the live, muxed connection. */
 export function installReadyConnection(rt: RunnerRuntime, ws: WebSocket): void {
   const mux = new StreamMux(ws, 1, { highWaterMarkBytes: rt.highWaterMarkBytes });
   rt.mux = mux;
@@ -40,9 +39,8 @@ export function installReadyConnection(rt: RunnerRuntime, ws: WebSocket): void {
 }
 
 export function startHeartbeat(rt: RunnerRuntime, mux: StreamMux): void {
-  // Replace a previous connection's heartbeat if one is still running: an
-  // orphaned fiber would keep pinging a dead mux and, since Effect timers are
-  // not unref'd, keep the process alive.
+  // Replace a previous heartbeat: an orphaned fiber would ping a dead mux and, since
+  // Effect timers are not unref'd, keep the process alive.
   void interruptHeartbeat(rt);
   const heartbeat = Effect.repeat(
     Effect.sync(() => {

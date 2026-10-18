@@ -14,12 +14,9 @@ export type { RunnerOptions } from './runner/options.ts';
 type RunnerEvent = 'ready' | 'failed';
 
 /**
- * The runner side: dials out to the server (never the reverse, so it works
- * behind home routers), authenticates with its ed25519 key, and serves engine
- * streams from its allowlisted ports.
- *
- * The shell keeps the public surface, the constructor and the mutable runtime;
- * the connection, handshake and lifecycle modules hold the work.
+ * The runner dials out to the server (never the reverse, so it works behind home
+ * routers), authenticates with its ed25519 key, and serves engine streams from its
+ * allowlisted ports.
  */
 export class RunnerClient {
   readonly runnerId: string;
@@ -42,12 +39,10 @@ export class RunnerClient {
     this.rt = createRunnerRuntime(validated, options);
   }
 
-  /** Successful authentications since start (reconnects re-authenticate). */
   get readyCount(): number {
     return this.rt.readyCountValue;
   }
 
-  /** Reconnect waits scheduled since start. */
   get reconnectAttempts(): number {
     return this.rt.reconnectAttemptsValue;
   }

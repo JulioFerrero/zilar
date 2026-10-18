@@ -13,8 +13,7 @@ async function statfsBytesAvailable(path: string): Promise<{ bsize: number; bava
 }
 
 // Kept in sync with the server's capability schema
-// (apps/server/src/machines/api.ts). The runner is the source of truth
-// here: anything this rejects will also be rejected by the server.
+// (apps/server/src/machines/api.ts): anything this rejects the server rejects too.
 const MAX_DRIVERS = 32;
 const MAX_LABELS = 32;
 const MAX_STRING = 64;
@@ -25,15 +24,12 @@ function trimCapped(value: string, max: number): string {
   return value.trim().slice(0, max);
 }
 
-// `Schema.Trim` trims on decode like zod's `.trim()`, then the length checks
-// run against the trimmed value.
+// `Schema.Trim` trims on decode, then the length checks run on the trimmed value.
 function trimmedString(max: number) {
   return Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max));
 }
 
-// Effect's `Schema.Record` does not run checks on its key schema, so the
-// key bounds that zod's `z.record(z.string().min(1).max(128), ...)` enforced
-// are checked here alongside the entry cap.
+// `Schema.Record` does not check its keys, so the key bounds are checked here.
 const toolsFilter = Schema.makeFilter((tools: Readonly<Record<string, unknown>>) => {
   const keys = Object.keys(tools);
   if (keys.length > MAX_TOOLS) return 'tools must have at most 64 entries';
@@ -101,8 +97,7 @@ function detectPower(platform: NodeJS.Platform): string {
   return 'unknown';
 }
 
-// A failing probe becomes an empty list, never an error: a missing docker
-// must not stop the rest of the capability report.
+// A failing probe becomes an empty list: a missing docker must not stop the report.
 async function detectDrivers(deps: CapabilityDeps): Promise<string[]> {
   const driver = await detectDriver({ platform: deps.os.platform(), execFile: deps.execFile });
   return [...driver.labels].slice(0, MAX_DRIVERS);

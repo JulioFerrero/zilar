@@ -34,8 +34,7 @@ export function createStanzaRouter(runtime: CoreRuntime): StanzaRouterApi {
   function handleIq(stanza: XmppElement): void {
     const id = stanza.attrs['id'];
     if (id !== undefined) {
-      // Our own keepalive ping answered (a result or an error both prove
-      // the connection is alive).
+      // Our own keepalive ping answered (result or error both prove alive).
       if (runtime.handleKeepaliveReply(id)) return;
       const pending = runtime.pendingIqs.get(id);
       if (pending !== undefined) {

@@ -15,10 +15,8 @@ export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// The checks every merge must pass, run in the rebased worktree. The output
-// tail is kept so the lead sees the failing step without rerunning it. A tree
-// that already passed the gate (a pass record exists for its hash) is not run
-// again: the code is identical to what passed.
+// The checks every merge must pass, run in the rebased worktree; the output tail is
+// kept so the lead sees the failing step without rerunning. A pass record skips it.
 export function runGate(worktree: string): { ok: boolean; output: string } {
   const passedKey = alreadyPassedKey(worktree, {
     treeKey,

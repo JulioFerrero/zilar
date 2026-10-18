@@ -1,6 +1,5 @@
-// effect-plain: loop-mounting an ext4 image on a host folder needs root
-// (`mount`/`losetup` are process calls, not domain logic); ids are validated so
-// no path can escape the configured root.
+// effect-plain: loop-mounting an ext4 image needs root (`mount`/`losetup` are process
+// calls); ids are validated so no path can escape the configured root.
 import { execFile as execFileCallback } from 'node:child_process';
 import { copyFile, cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,7 +12,6 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** The jail's user id; must match `useradd -u 10001` in `packages/desk/Dockerfile`. */
 export const JAIL_UID = 10001;
 
-/** Refuses any id that is not a single safe path segment. */
 export function assertSafeId(value: string): void {
   if (!SAFE_ID.test(value)) {
     throw new DeskError('path_escape', 'invalid desk id');
@@ -27,7 +25,6 @@ export function deskName(key: DeskKey): string {
   return `desk-${key.aiId}-${key.projectId}`;
 }
 
-/** The folder a desk is mounted from, inside the configured root. */
 export function deskDirectory(root: string, key: DeskKey): string {
   assertSafeId(key.aiId);
   assertSafeId(key.projectId);
@@ -73,13 +70,10 @@ async function directoryBytes(target: string): Promise<number> {
 }
 
 export interface Workspaces {
-  /** Creates the image and mounts it, then returns the folder to bind into the jail. */
   ensure(key: DeskKey, diskBytes: number): Promise<string>;
-  /** Unmounts the workspace; the image survives. */
   release(key: DeskKey): Promise<void>;
   /** Copies the workspace image to `<root>/snapshots/<aiId>/<projectId>/<label>.img`. */
   snapshot(key: DeskKey, label: string): Promise<number>;
-  /** Deletes the image and its folder; used by `stop` with `keepWorkspace: false`. */
   remove(key: DeskKey): Promise<void>;
 }
 
@@ -93,8 +87,8 @@ async function ensureImage(image: string, mountDir: string, diskBytes: number): 
   if (!(await isMounted(mountDir))) {
     await execFile('mount', ['-o', 'loop,rw', image, mountDir]);
   }
-  // The disk's root folder belongs to root when mkfs made it; give it to the
-  // jail user. Only the root, not recursively, so old images are fixed too.
+  // The disk's root folder belongs to root when mkfs made it; give it to the jail
+  // user, only the root so old images are fixed too.
   await execFile('chown', [`${JAIL_UID}:${JAIL_UID}`, mountDir]);
 }
 
@@ -107,7 +101,6 @@ async function isMounted(mountDir: string): Promise<boolean> {
   }
 }
 
-/** The disk-image workspace: an ext4 file loop-mounted into a host folder. */
 function imageWorkspaces(config: AgentConfig): Workspaces {
   const imageOf = (key: DeskKey): string => `${deskDirectory(config.workspaceRoot, key)}.img`;
   const release = async (key: DeskKey): Promise<void> => {
@@ -146,8 +139,8 @@ export function snapshotPath(root: string, key: DeskKey, label: string): string 
 }
 
 /**
- * A plain folder workspace for hosts without loop devices (macOS dev). Same
- * layout, no image file, no root: a bind mount of the folder.
+ * A plain folder workspace for hosts without loop devices (macOS dev): same layout,
+ * no image file, no root.
  */
 function directoryWorkspaces(config: AgentConfig): Workspaces {
   return {

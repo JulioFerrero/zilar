@@ -1,6 +1,5 @@
 // Shared fakes and a per-test sidecar harness for the desk-agent tests. Only
-// the Docker layer is fake; admission, lifecycle and the socket server are the
-// real code.
+// the Docker layer is fake; admission, lifecycle and the socket server are real.
 import { mkdtempSync, rmSync } from 'node:fs';
 import net, { type Socket } from 'node:net';
 import os from 'node:os';
@@ -140,7 +139,6 @@ export function open(socket: string): Promise<Socket> {
   });
 }
 
-/** Writes one request and reads reply lines until `done` says to stop. */
 export async function send(
   socket: string,
   payload: unknown,
@@ -184,8 +182,7 @@ export interface AgentHarness {
   lifecycle: Lifecycle;
 }
 
-/** Registers the per-test hooks and returns a handle whose fields each test
- * sees filled in. */
+/** Registers the per-test hooks and returns a handle whose fields each test sees filled in. */
 export function setupAgent(): AgentHarness {
   const harness = {} as AgentHarness;
   beforeEach(async () => {
@@ -206,8 +203,6 @@ export function setupAgent(): AgentHarness {
     });
     harness.server = createAgentServer(harness.config, harness.lifecycle);
     await harness.server.listen();
-    // The pinned override resolves without a pull, so the harness agent starts
-    // ready; tests that need the not-ready path build their own lifecycle.
     await harness.lifecycle.checkReadiness();
   });
   afterEach(async () => {

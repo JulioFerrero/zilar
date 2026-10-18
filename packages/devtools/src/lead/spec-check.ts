@@ -1,7 +1,5 @@
-// `lead spec-check T-XXXX` reads a task's Spec before a worker starts and
-// reports claims that are not true of the code, the mistake that cost whole
-// rounds (a spec that invents a feature, names a file that does not exist, or
-// calls a route the server does not have).
+// `lead spec-check T-XXXX` reads a task's Spec before a worker starts and reports
+// claims that are not true of the code: invented features, missing files, absent routes.
 
 import path from 'node:path';
 
@@ -11,9 +9,7 @@ export interface SpecProblem {
 }
 
 export interface SpecCheckDeps {
-  /** True when a repo-relative path exists (file or folder). */
   exists: (relativePath: string) => boolean;
-  /** Source text of the server routes and route tests, to look routes up in. */
   serverText: () => string;
 }
 

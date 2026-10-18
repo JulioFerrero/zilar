@@ -1,6 +1,5 @@
-// Pure BOARD.md edits for `lead merge`. The board has an Active table whose
-// rows look like `| [T-0038](T-0038-lead-autopilot.md) | Title | status | … |`
-// and a Done table whose rows look like `| [T-0038](file) | summary | date |`.
+// Pure BOARD.md edits for `lead merge`: an Active table of `| [T-0038](file) | Title |
+// status | … |` rows and a Done table of `| [T-0038](file) | summary | date |` rows.
 
 const ACTIVE_ROW = /^\|\s*\[([A-Z]+-\d+)\]\(([^)]+)\)\s*\|/;
 const DONE_HEADING = /^##\s+Done\s*$/;
@@ -10,11 +9,8 @@ export interface MovedBoard {
   removedActive: boolean;
 }
 
-// Moves the task's row out of the Active table and appends it to the end of
-// the Done table as `| [T-XXXX](file) | <summary> | <today> |`. A task launched
-// from an uncommitted spec skips the board commit, so the Active table may have
-// no row for it: the Done row is appended then, and the Active row is removed
-// when it does exist.
+// Moves the task's row out of Active and appends it to Done. A task launched from an
+// uncommitted spec may have no Active row, so only a present row is removed.
 export function moveBoardRow(
   board: string,
   task: string,

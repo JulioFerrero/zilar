@@ -6,9 +6,7 @@ export interface CandidateProcess {
 }
 
 export interface FindProcsDeps {
-  // macOS: `lsof -a -d cwd -Fpn` prints lines like `p123\nn/worktree/path`.
   lsof: (cwd: string) => string;
-  // macOS: `ps -Ao pid=,command=`.
   ps: (cwd: string) => string;
   // pid of the lead process and its parent. Both are excluded so the lead
   // never accidentally kills itself while stopping worktree processes.
@@ -19,11 +17,9 @@ export interface FindProcsDeps {
 const EXIT_WAIT_MS = 5_000;
 const EXIT_POLL_MS = 50;
 
-// True only when `candidate` lives inside `worktree`. Matches the exact
-// worktree path, or a path that starts with the worktree plus a separator, so
-// `zilar-T-0047` never matches `zilar-T-00470`. Comparison is case-sensitive
-// on purpose: macOS filesystems are case-insensitive but case-preserving, and
-// process cwd strings come from the kernel unchanged.
+// True only when `candidate` is inside `worktree`: the exact path or a prefix with a
+// separator, so `zilar-T-0047` never matches `zilar-T-00470`. Case-sensitive on
+// purpose: macOS is case-insensitive but the kernel's cwd strings come unchanged.
 function isInsideWorktree(worktree: string, candidate: string): boolean {
   if (candidate === worktree) {
     return true;
@@ -32,9 +28,7 @@ function isInsideWorktree(worktree: string, candidate: string): boolean {
   return candidate.startsWith(prefix);
 }
 
-// Reads `lsof -a -d cwd -Fpn` output. Each block has `p<pid>` followed by
-// one or more `n<cwd>` lines. The cwd always uses a leading slash, so the
-// match is exact-prefixed.
+// Reads `lsof -a -d cwd -Fpn`: each block has `p<pid>` then one or more `n<cwd>` lines.
 function parseLsof(output: string, worktree: string): Map<number, string> {
   const map = new Map<number, string>();
   let currentPid: number | undefined;
@@ -51,8 +45,7 @@ function parseLsof(output: string, worktree: string): Map<number, string> {
     if (head === 'n' && currentPid !== undefined) {
       const cwd = raw.slice(1);
       if (isInsideWorktree(worktree, cwd)) {
-        // `lsof` may list multiple `n` lines per pid (cwd + text files); only
-        // the cwd one (the first) is the worktree cwd. Keep the first hit.
+        // `lsof` may list several `n` lines per pid (cwd and text files); keep the first cwd.
         if (!map.has(currentPid)) {
           map.set(currentPid, cwd);
         }
@@ -62,9 +55,6 @@ function parseLsof(output: string, worktree: string): Map<number, string> {
   return map;
 }
 
-// Strips `FOO=bar ` env assignments from the start of a command line, the
-// way the shell does before exec. Returns the rest so the caller can split
-// off the executable name without env-leak noise.
 function stripEnvAssignments(command: string): string {
   let rest = command;
   for (;;) {
@@ -76,31 +66,23 @@ function stripEnvAssignments(command: string): string {
   }
 }
 
-// Returns the basename of the executable in a `ps` line: the first whitespace-
-// delimited token after env assignments, with any leading path stripped. We
-// never print the rest of the command line — arguments often carry secrets
-// (`--token=…`, `-e PASSWORD=…`, etc.) and there's no safe way to scrub them.
-// `node` running `/…/zilar-T-0047/apps/server/src/index.ts` becomes `node`;
-// `…/zilar-T-0047/node_modules/.bin/vite` becomes `vite`.
+// The executable's basename: the first token after env assignments, path stripped. The
+// rest of the line is never printed — arguments often carry secrets — so `node
+// …/src/index.ts` becomes `node`.
 export function executableBasename(command: string): string {
   const cleaned = stripEnvAssignments(command).trim();
   if (cleaned.length === 0) {
     return '';
   }
-  // The first token is the executable. Quote-aware split isn't needed: a
-  // basename with whitespace would already be unusable in the print line, and
-  // none of the worktree processes we care about use quoted paths.
+  // The first token is the executable; quoted basenames are not used by these processes.
   const firstToken = cleaned.split(/\s+/)[0] ?? '';
   const slash = firstToken.lastIndexOf('/');
   return slash === -1 ? firstToken : firstToken.slice(slash + 1);
 }
 
-// Reads `ps -Ao pid=,command=` output. Each line is `<pid> <command>`. A pid
-// counts as "inside" when the command line contains the worktree path with a
-// trailing separator (`<worktree>/…`) anywhere in it. Exact-prefix matters:
-// `zilar-T-0047` never matches `zilar-T-00470`. This catches interpreter-
-// first commands (`node /…/zilar-T-0047/apps/server/src/index.ts`) which
-// have no worktree path as their leading token.
+// Reads `ps -Ao pid=,command=`: a pid is inside when the line contains `<worktree>/`
+// anywhere, which catches interpreter-first commands, and `zilar-T-0047` never matches
+// `zilar-T-00470`.
 function parsePs(output: string, worktree: string): Map<number, string> {
   const map = new Map<number, string>();
   const needle = worktree.endsWith('/') ? worktree : `${worktree}/`;
@@ -145,9 +127,8 @@ export function findProcessesInWorktree(worktree: string, deps: FindProcsDeps): 
   return result;
 }
 
-// One entry in the result. `command` is the basename of the executable; we
-// never include argv. `survived` is true for the few cases where SIGKILL did
-// not end the process — the lead logs these as `could not stop`.
+// `command` is the executable's basename, never argv; `survived` means SIGKILL did not
+// end the process.
 export interface StoppedProcess {
   pid: number;
   command: string;
@@ -155,18 +136,13 @@ export interface StoppedProcess {
 }
 
 export interface StopProcessesDeps {
-  // Injectable so tests can avoid touching the real OS. Defaults to
-  // `process.kill`. The signature matches `process.kill`: signal may be a
-  // string (e.g. 'SIGTERM') or a number.
+  // Injectable so tests avoid the real OS; defaults to `process.kill`.
   kill?: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
-  // Clock seam: returns the current time in ms. Defaults to `Date.now`.
   now?: () => number;
-  // Sleep seam: resolves after the given ms. Defaults to a setTimeout-based
-  // sleep. Must NOT be used to keep waiting beyond the deadline; the deadline
-  // is checked after each wait.
+  // Sleep seam: resolves after the given ms. Must NOT wait beyond the deadline;
+  // the deadline is checked after each wait.
   sleep?: (ms: number) => Promise<void>;
-  // Probe seam: true when the process has exited. Defaults to kill(pid, 0)
-  // which throws ESRCH when the pid is gone.
+  // Probe seam: true when the process has exited; defaults to kill(pid, 0).
   exited?: (pid: number) => boolean;
 }
 
@@ -187,11 +163,9 @@ function defaultExited(pid: number): boolean {
   }
 }
 
-// Stops every candidate with SIGTERM, waits up to EXIT_WAIT_MS for each, and
-// SIGKILLs the survivors. A pid is reported only when we observed it gone
-// afterwards: pids that were already gone before TERM (race) and pids that
-// survived SIGKILL are both filtered out. Survivors are returned with
-// `survived: true` so the caller can log `could not stop` separately.
+// SIGTERM every candidate, wait up to `EXIT_WAIT_MS`, then SIGKILL survivors. A pid
+// is reported only when observed gone afterwards; survivors come back `survived: true`
+// so the caller logs `could not stop`.
 export async function stopWorktreeProcesses(
   candidates: CandidateProcess[],
   deps: StopProcessesDeps = {},
@@ -203,17 +177,13 @@ export async function stopWorktreeProcesses(
   const stopped: StoppedProcess[] = [];
   for (const candidate of candidates) {
     const command = executableBasename(candidate.command);
-    // Probe before signaling: a pid that is already gone is not something we
-    // stopped. Report nothing rather than `stop <pid>` for a corpse.
+    // Probe before signaling: a pid already gone is not something we stopped.
     if (exited(candidate.pid)) {
       continue;
     }
     try {
       kill(candidate.pid, 'SIGTERM');
     } catch {
-      // The kill itself failed (ESRCH race or permission). If the pid is
-      // truly gone now, fall through to the post-probe below; if not, we
-      // count it as survived so the lead knows.
       if (exited(candidate.pid)) {
         continue;
       }
@@ -231,12 +201,10 @@ export async function stopWorktreeProcesses(
       try {
         kill(candidate.pid, 'SIGKILL');
       } catch {
-        // Race: the process died between the probe and SIGKILL. Nothing to do.
+        // The kill failed; a post-probe below decides.
       }
     }
-    // Re-probe after SIGKILL: if the pid is still alive (a kernel-protected
-    // pid we can't kill, a process in uninterruptible sleep, etc.), report
-    // it as survived rather than as a clean stop.
+    // Re-probe after SIGKILL: still alive means `survived`, not a clean stop.
     if (exited(candidate.pid)) {
       stopped.push({ pid: candidate.pid, command, survived: false });
     } else {
@@ -246,11 +214,8 @@ export async function stopWorktreeProcesses(
   return stopped;
 }
 
-// Runs `lsof -a -d cwd -Fpn` and returns its stdout. The cwd is the worktree
-// because `lsof` reports the cwd of every process on the system and we read
-// it back from the output, not from where we ran the command. On macOS this
-// is the supported way; on Linux `ls /proc/<pid>/cwd` would also work but
-// we only target macOS today.
+// `lsof` reports the cwd of every process; we read it from the output, not from where
+// the command ran. macOS only.
 export function defaultLsof(_cwd: string): string {
   const result = spawnSync('lsof', ['-a', '-d', 'cwd', '-F', 'pn'], {
     encoding: 'utf8',
@@ -265,7 +230,6 @@ export function defaultLsof(_cwd: string): string {
   return result.stdout;
 }
 
-// Runs `ps -Ao pid=,command=` and returns its stdout.
 export function defaultPs(_cwd: string): string {
   const result = spawnSync('ps', ['-Ao', 'pid=,command='], {
     encoding: 'utf8',
@@ -280,7 +244,6 @@ export function defaultPs(_cwd: string): string {
   return result.stdout;
 }
 
-// Used in cli.ts to satisfy the FindProcsDeps.currentPid/parentPid fields.
 export function leadProcessIds(): { currentPid: number; parentPid: number } {
   return { currentPid: process.pid, parentPid: process.ppid };
 }

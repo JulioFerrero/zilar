@@ -1,7 +1,5 @@
-// `pnpm plan:page`: writes dist/code-map/plan/index.html (the page, every asset
-// and the plan data inlined) and prints one summary line with the per-audit
-// finding counts. The page lives below the Code map so the Code map can link to
-// it at `plan/`.
+// `pnpm plan:page`: writes dist/code-map/plan/index.html with the plan data inlined
+// and prints one summary line with the per-audit finding counts.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -74,7 +72,6 @@ export function main(): void {
   console.log(summaryLine(plan));
 }
 
-// Run only when invoked as the script, so a test can import renderHtml.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

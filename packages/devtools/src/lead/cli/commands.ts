@@ -195,8 +195,6 @@ export function runSpecCheck(positional: string[]): void {
   }
 }
 
-// `lead snapshot` prints the JSON the dashboard shows; `lead dashboard <out>`
-// writes it into the page template. Claude publishes that page as an Artifact.
 export async function runSnapshot(positional: string[], page: boolean): Promise<void> {
   const root = findRepoRoot();
   const snapshot = await collectSnapshot({

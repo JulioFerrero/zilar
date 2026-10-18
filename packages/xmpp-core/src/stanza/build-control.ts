@@ -15,14 +15,7 @@ import {
 import type { ChatKind, UploadSlot } from '../types';
 import { sanitizeReactions } from './reactions';
 
-// ---------------------------------------------------------------------------
-// Control stanzas
-// ---------------------------------------------------------------------------
-
-// T-1406: the AI's chat state may carry one short fixed status text (a stage
-// like "Running tests"). It is capped so a caller can never send a paragraph,
-// and it stays inside the body-less, non-stored chat-state message, so it
-// leaves no trace in history.
+// A capped fixed status text inside the body-less chat-state message; it leaves no history.
 export const MAX_STATUS_CHARS = 80;
 
 function capStatus(status: string | undefined): string | undefined {
@@ -75,8 +68,7 @@ export function buildPingResult(id: string, to?: string): XmppElement {
   return xml('iq', attrs);
 }
 
-// XEP-0444: a body-less message carrying my complete reaction set for a target,
-// with the store hint so the server archives it in MAM without a body.
+// XEP-0444: a body-less message with the store hint so MAM archives it without a body.
 export function buildReactions(options: {
   id: string;
   to: string;
@@ -122,10 +114,8 @@ export function buildCarbonsEnable(id: string): XmppElement {
   return xml('iq', { type: 'set', id }, xml('enable', { xmlns: CARBONS_NAMESPACE }));
 }
 
-// XEP-0357: registers (enable) or removes (disable) this session's push pair
-// with the app server. The browser must send it over its own XMPP session:
-// ejabberd's `enable()` looks up the sender's session and answers
-// `item-not-found` without one, so there is no admin-API shortcut.
+// XEP-0357 push pair over the user's own session: ejabberd looks the sender up and
+// answers item-not-found without one, so there is no admin-API shortcut.
 export function buildPushEnable(options: {
   id: string;
   pushJid: string;

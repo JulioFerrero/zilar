@@ -1,6 +1,4 @@
-// The `lead watch` chrome: the three-line header, a task card, the empty
-// placeholder and the footer. Moved unchanged from `lead/watch-app.tsx`
-// (size split), except the spinner-frame expression, now `useSpinner`.
+// The `lead watch` chrome: header, task card, empty placeholder and footer.
 
 import { Text } from 'ink';
 import type { ReactNode } from 'react';

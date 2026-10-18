@@ -1,6 +1,4 @@
-// The `lead watch` card lines: the model badge, the four-step tracker, the
-// live step line, the speed line and the changed-files line. Moved unchanged
-// from `lead/watch-app.tsx` (size split).
+// The card lines: model badge, four-step tracker, live step, speed and changed files.
 
 import path from 'node:path';
 import type { ReactNode } from 'react';

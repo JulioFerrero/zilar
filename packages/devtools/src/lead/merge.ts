@@ -20,7 +20,6 @@ export class MergeError extends Error {
 }
 
 export interface MergeOptions {
-  // The main checkout (BOARD.md and the task file live here).
   root: string;
   task: string;
   file: string;
@@ -57,20 +56,16 @@ function taskStatus(options: MergeOptions): string {
   return parseFrontMatter(text)['status'] ?? '';
 }
 
-// The path after `git status --porcelain`'s status columns and the space.
-// `porcelainLines` trims each line, and an unstaged change (` M work/NOW.md`)
-// already has a leading space, so the trim collapses it to `M work/NOW.md`:
-// slicing a fixed 3 characters would cut into the path (`ork/NOW.md`). The
-// first space ends the columns — one column when the trim ate the leading
-// space, two otherwise (`?? work/...`, `M  work/...`).
+// The path after `git status --porcelain`'s status columns. `porcelainLines` trims the
+// line, so an unstaged-change line already lost a column: slicing 3 characters would
+// cut into the path, so take the first space instead.
 function porcelainPath(line: string): string {
   const oneColumn = line[1] === ' ' && line[2] !== ' ';
   return line.slice(oneColumn ? 2 : 3);
 }
 
-// Main's dirty check ignores the lead's own bookkeeping: `work/NOW.md` rides
-// along into the next squash, and untracked specs of other tasks launch in
-// parallel. This task's own untracked spec stays an error: a launch removes it.
+// Main's dirty check ignores the lead's bookkeeping: `work/NOW.md` and other tasks'
+// untracked specs. This task's own untracked spec stays an error.
 function isIgnorableMainChange(line: string, task: string): boolean {
   const path = porcelainPath(line);
   if (path === 'work/NOW.md') {
@@ -83,10 +78,8 @@ function isIgnorableMainChange(line: string, task: string): boolean {
   );
 }
 
-// Default production seams: reach for the real lsof/ps, identify ourselves
-// with the actual lead pid/parent so we never kill the lead by accident, and
-// print to stdout so the line shows up in the same stream the user invokes
-// `lead merge` from.
+// Production seams: the real lsof/ps, our own pid so the lead is never killed, and
+// stdout for the invoking terminal.
 function defaultFindProcsDeps(): FindProcsDeps {
   return { lsof: defaultLsof, ps: defaultPs, ...leadProcessIds() };
 }
@@ -95,11 +88,8 @@ function defaultPrint(line: string): void {
   console.log(line);
 }
 
-// Prints the outcome of stopping one process: `stop <pid> <exe>` for clean
-// stops, `could not stop <pid> <exe>` for survivors. Executable name only;
-// argv is never printed (it often carries `--token=…`, `-e PASSWORD=…`, etc.).
-// When the executable name is empty (ps truncated it or it was a kernel
-// thread) we print `?` rather than a trailing space.
+// `stop <pid> <exe>` or `could not stop ...`; executable name only, never argv (it
+// often carries a token or password), and `?` when ps truncated the name.
 function printStop(
   outcome: { pid: number; command: string; survived: boolean },
   print: (line: string) => void,
@@ -112,13 +102,8 @@ function printStop(
   }
 }
 
-// Stops processes left in the worktree. Called only on the success path,
-// immediately before `git worktree remove`: a failed merge must not kill
-// the worker's dev servers (the spec calls this out). Survivors are reported
-// via `print` so the lead sees them. A failure of the lsof/ps probe (e.g.
-// the binary missing on this host) is reported as one line and we move on:
-// leaving a stale dev server behind is recoverable by re-running
-// `lead merge`, but a hard throw here would leave the merge half-applied.
+// Stops processes left in the worktree, only on the success path right before the
+// worktree is removed: a failed merge must not kill the worker's dev servers.
 async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<void> {
   const find = options.findProcs ?? findProcessesInWorktree;
   const stop = options.stopProcs ?? stopWorktreeProcesses;
@@ -140,9 +125,8 @@ async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<voi
   }
 }
 
-// Everything `lead merge` does after the lead approves. All mechanical, no
-// judgment: on a rebase conflict it aborts and reports the conflicted files,
-// and it never resolves anything automatically.
+// Everything after the lead approves, all mechanical: a rebase conflict aborts and
+// reports the files, nothing is resolved automatically.
 export async function mergeTask(options: MergeOptions): Promise<void> {
   const subject = `${options.task}: ${options.summary}`;
   if (subject.length > 72) {
@@ -203,9 +187,8 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  // Compute the new board text BEFORE the squash stages anything into
-  // main's index: a board throw (e.g. a board with no Done section) must
-  // leave main untouched so the merge stays re-runnable.
+  // Compute the board text before the squash stages anything, so a board throw leaves
+  // main untouched and the merge re-runnable.
   const boardFile = path.join(options.root, 'work', 'BOARD.md');
   const boardText = moveBoardRow(
     options.readText(boardFile),
@@ -223,7 +206,6 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
   if (!staged.ok) {
     throw new MergeError('board stage failed');
   }
-  // The lead's live notes ride along into the task's single commit.
   if (nowModified) {
     const stagedNow = options.runner.run(options.root, ['add', 'work/NOW.md']);
     if (!stagedNow.ok) {
@@ -261,9 +243,8 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
       throw new MergeError('push of main failed; the merge is local only');
     }
   }
-  // Stop worktree processes right before the worktree is removed. Anything
-  // earlier (before the rebase, before the board commit) would risk killing
-  // the worker's dev servers on a failed merge — the spec calls this out.
+  // Stop worktree processes right before the worktree is removed; anything earlier
+  // risks killing dev servers on a failed merge.
   await stopWorktreeProcessesForMerge(options);
   const removed = options.runner.run(options.root, ['worktree', 'remove', options.worktree]);
   if (!removed.ok) {

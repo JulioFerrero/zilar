@@ -1,9 +1,6 @@
-// Parses the audit docs under docs/audit/ into one entry per finding. The docs
-// use three shapes: a summary bullet ("- MP-13 P2 mobile: ..."), a bold
-// paragraph ("**MP-1 P0 mobile, confirmed.** ...", "**SG-1 (P0, both) — ...**")
-// and a summary table ("| SEC-1 | P1 | Area | text |"). A table or a bullet
-// list covers only part of its doc, so every PREFIX-N token is collected; a
-// finding that carries no severity anywhere becomes "Unrated", never dropped.
+// Parses the audit docs under docs/audit/ into one finding per PREFIX-N token. The
+// docs use a bullet, a bold paragraph and a summary table; a table or bullet list
+// covers only part of its doc, and a finding with no severity becomes "Unrated".
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -71,13 +68,11 @@ function titleOf(text: string): string {
   return `${sentence.slice(0, MAX_TITLE - 1).trimEnd()}…`;
 }
 
-/** The end of the metadata prefix ("P1, mobile, confirmed by code") of an entry. */
 function metaEnd(text: string): number {
   const match = /\.\s+|\)\s*[:—–]\s*|\)\s+/.exec(text);
   return match === null ? text.length : match.index + match[0].length;
 }
 
-/** Summary bullets: "- MP-13 P2 mobile: <text>", continued on indented lines. */
 function parseBullets(lines: string[], prefix: string): Entry[] {
   const out: Entry[] = [];
   const start = new RegExp(`^-\\s+(${prefix}-\\d+)\\s+(P[0-3])\\b(.*)$`);
@@ -107,7 +102,6 @@ function parseBullets(lines: string[], prefix: string): Entry[] {
   return out;
 }
 
-/** Bold paragraphs: "**MP-1 P0 mobile, confirmed.** <text>" and the SG, OPS variants. */
 function parseBold(lines: string[], prefix: string): Entry[] {
   const out: Entry[] = [];
   const start = new RegExp(`^\\*\\*(${prefix}-\\d+)\\b(.*)$`);
@@ -150,7 +144,6 @@ function splitRow(line: string): string[] {
   return body.split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, '|').trim());
 }
 
-/** Summary tables: "| SEC-1 | P1 | Area | text |", with optional Platform and Status columns. */
 function parseTables(lines: string[], prefix: string): Entry[] {
   const out: Entry[] = [];
   const isId = new RegExp(`^${prefix}-\\d+$`);
@@ -191,7 +184,6 @@ function parseTables(lines: string[], prefix: string): Entry[] {
   return out;
 }
 
-/** Any other mention of an id, so a finding only named in prose is not dropped. */
 function parseInline(lines: string[], prefix: string): Entry[] {
   const out: Entry[] = [];
   const seen = new Set<string>();
@@ -251,7 +243,6 @@ function merge(entries: Entry[]): Finding[] {
   return findings.sort((a, b) => suffix(a.id) - suffix(b.id));
 }
 
-/** Parses one audit doc, keyed by the finding prefix of its audit (e.g. "MP"). */
 export function parseAuditDoc(audit: string, source: string): Finding[] {
   const lines = source.split('\n');
   return merge([
@@ -262,7 +253,6 @@ export function parseAuditDoc(audit: string, source: string): Finding[] {
   ]);
 }
 
-/** Parses every audit doc of a plan; a doc with no findings of its prefix is empty. */
 export function collectFindings(root: string, audits: readonly AuditSource[]): Finding[] {
   const out: Finding[] = [];
   for (const audit of audits) {
