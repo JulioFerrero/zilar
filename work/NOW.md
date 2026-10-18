@@ -985,7 +985,30 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - **Seen on web mock 10-18:** message-search snippets show raw Markdown (`## Review summary … **both**`).
                         - **Where:** server `ts_headline` snippets carry highlight offsets, so stripping on the client would shift the marks.
                         - **Fix needed:** a server-side task that strips Markdown before the headline and remaps the marks. Not urgent.
-                      - **Merged after 18:30:** T-2046 (AI gate on the routine header) and T-2045 (people prefix search, −80).
+                      - **Merged after 18:30:**
+
+                        | Task | What | Lines |
+                        | --- | --- | ---: |
+                        | T-2046 | AI gate on the routine header | — |
+                        | T-2045 | people prefix search | −80 |
+                        | T-2022 | phone row gesture, emulator-checked | — |
+                        | T-2047 | `fromApi` re-exports | −34 |
+                        | T-2044 | topic rules (+32, with tests) | +32 |
+                        | T-2049 | `useDelayed` | −27 |
+
+                        Live: `a56052b9a`, 18:43, 0 server errors.
+                      - **Running at 18:55:**
+                        - T-2048: topics API;
+                        - T-2050: web `@handle` exact lookup (Julio's Q4);
+                        - T-2051: format shims and the badge sum;
+                        - T-2052: person-link resolver, best of both;
+                        - T-2053: search helpers;
+                        - T-2054: send minted id and one cancel path;
+                        - T-2055: plain-text search snippets (server).
+                      - **Next:**
+                        - W3-b: the groups API, after T-2048;
+                        - W3-f: locals and `finishDraftTurn`;
+                        - the phone member-handle fallback for person links.
                       - **Also merged:**
                         - T-2036: channel owners and admins see full topic members;
                         - T-2001: AI-only cards;

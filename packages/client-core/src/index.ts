@@ -21,6 +21,14 @@ export {
 } from './foreground-hooks';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
+  makeTopicsApi,
+  type CreateTopicInput,
+  type PatchTopicInput,
+  type SetTopicRolesInput,
+  type Topic,
+  type TopicTool,
+} from './topics-api';
+export {
   isLocalPreviewUrl,
   useMediaRetry,
   MEDIA_RETRY_DELAYS_MS,
