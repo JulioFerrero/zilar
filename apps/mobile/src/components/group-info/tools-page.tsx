@@ -1,6 +1,5 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { ChevronLeft } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,9 +12,7 @@ import {
 import { ToolsSectionContent, sectionStateOf } from '@/components/ais/tools-section';
 import { useRoutineActions } from '@/components/ais/use-routine-actions';
 import { useToolsApi } from '@/components/ais/use-tools-api';
-import { IconButton } from '@/components/ui/icon-button';
-import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { useQuery } from '@/lib/effect/use-query';
 import { mayManageRoles } from '@/lib/roles';
 import { ToolsApiError, type Routine, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
@@ -106,14 +103,7 @@ export function ToolsPage({
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="h-14 flex-row items-center gap-2 px-3">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={18} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          Tools and routines
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" title="Tools and routines" onBack={onBack} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="gap-3 px-4 pt-1">

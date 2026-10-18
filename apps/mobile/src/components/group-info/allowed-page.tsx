@@ -1,5 +1,4 @@
 import { Effect } from 'effect';
-import { ChevronLeft } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,11 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AlwaysAllowedRow, RevokeConfirmDialog } from '@/components/approvals/always-allowed-row';
 import { useApprovalsApi } from '@/components/chat/use-approvals-api';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ApprovalsApiError, type ApprovalRule } from '@/lib/approvals-api';
-import { ICON } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
@@ -150,14 +148,7 @@ export function useGroupRules(groupId: string, enabled = true): GroupRulesHandle
 export function AllowedPage({ handle, onBack }: { handle: GroupRulesHandle; onBack: () => void }) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="h-14 flex-row items-center gap-2 px-3">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={18} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          Always allowed
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" title="Always allowed" onBack={onBack} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="px-2 pt-1">

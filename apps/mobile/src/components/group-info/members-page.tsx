@@ -1,13 +1,5 @@
 import { Effect } from 'effect';
-import {
-  ChevronLeft,
-  Crown,
-  Link2,
-  ShieldCheck,
-  ShieldOff,
-  UserMinus,
-  UserPlus,
-} from 'lucide-react-native';
+import { Crown, Link2, ShieldCheck, ShieldOff, UserMinus, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,12 +11,12 @@ import { MembersList } from '@/components/group-info/members-list';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
-import { ICON } from '@/lib/colors';
 import type { Contact } from '@/lib/contacts-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import type { CustomGroupRole } from '@/lib/roles-api';
@@ -146,14 +138,7 @@ export function MembersPage({
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="h-14 flex-row items-center gap-2 px-3">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={18} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          People and AIs
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" title="People and AIs" onBack={onBack} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="pb-3">
@@ -161,8 +146,8 @@ export function MembersPage({
         </View>
 
         <View className="gap-2 px-4 pb-3">
-          <View className="flex-row items-center justify-between px-1">
-            <Text className="text-[13px] font-semibold text-muted-foreground">People</Text>
+          <View className="flex-row items-center justify-between">
+            <SectionLabel>People</SectionLabel>
             <Text className="font-mono text-[13px] text-muted-foreground">{members.length}</Text>
           </View>
           <SearchField

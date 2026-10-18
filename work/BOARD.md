@@ -1964,3 +1964,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1960](T-1960-phone-settings-headers.md) | phone settings screens use ScreenHeader | 2026-10-18 |
 | [T-1942](T-1942-free-model-guard.md) | free-model guard: pause on refusal, one free session | 2026-10-18 |
 | [T-1961](T-1961-phone-action-tiles.md) | phone ActionTiles on profile, group and channel info | 2026-10-18 |
+| [T-1963](T-1963-phone-group-info-subpages.md) | phone group info sub-pages use ScreenHeader | 2026-10-18 |

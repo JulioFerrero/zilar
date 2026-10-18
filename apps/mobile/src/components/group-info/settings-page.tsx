@@ -1,18 +1,18 @@
 import type { ListenerEagerness, PatchGroupPayload } from '@zilar/api-contract';
 import { Effect } from 'effect';
-import { ChevronLeft, Eye, Lock } from 'lucide-react-native';
+import { Eye, Lock } from 'lucide-react-native';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { useGroupPicture } from '@/components/group-info/use-group-picture';
 import { AvatarControl } from '@/components/settings/avatar-control';
-import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import type { GroupDetail } from '@/lib/chat-api';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -78,14 +78,7 @@ export function SettingsPage({
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="h-14 flex-row items-center gap-2 px-3">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={18} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          Settings
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" title="Settings" onBack={onBack} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="gap-3 px-4 pt-1">
