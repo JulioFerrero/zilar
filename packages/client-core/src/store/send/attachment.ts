@@ -8,6 +8,7 @@ import {
   queueOutgoing,
   rememberMyAuthor,
   setUploadProgress,
+  wireReply,
 } from './context';
 import type { SendAttachmentOptions, SendCtx } from './context';
 import { fromPromise } from '../ctx';
@@ -64,12 +65,9 @@ function runAttachmentUpload(
     ctx.k.markSendFailed(chat.id, localId, 'network');
     return;
   }
-  // The shared wire id (origin id in a DM, room stanza-id in a group), so the
-  // peer can resolve the quote; the local id only exists on this device.
-  const wireReply =
-    replyTo === undefined
-      ? undefined
-      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
+  // The peer can resolve the quote only by the shared wire id; the local id
+  // only exists on this device.
+  const quote = wireReply(ctx, replyTo);
   const run = newRun();
   armSendTimeout(ctx, chat.id, localId, run);
   ctx.rt.fork(
@@ -101,12 +99,12 @@ function runAttachmentUpload(
       const sent = yield* fromPromise(() =>
         current.sendMessage(chat.id, coreKind(chat), caption, {
           payload: { v: 0, type: 'attachment', data },
-          ...(wireReply === undefined
+          ...(quote === undefined
             ? {}
             : {
                 replyTo: {
-                  id: wireReply.id,
-                  ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+                  id: quote.id,
+                  ...(quote.text === undefined ? {} : { text: quote.text }),
                 },
               }),
           ...(album === undefined ? {} : { album }),
@@ -170,17 +168,7 @@ export function sendAttachment(
     ...(album === undefined ? {} : { album }),
   };
   clearActionError(ctx, chatId);
-  queueOutgoing(
-    ctx,
-    ctx.k.signatureFor(
-      chatId,
-      caption,
-      replyTo === undefined
-        ? undefined
-        : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id },
-    ),
-    localId,
-  );
+  queueOutgoing(ctx, ctx.k.signatureFor(chatId, caption, wireReply(ctx, replyTo)), localId);
   ctx.k.setChatMessage(chatId, message, true);
   ctx.pendingAttachments.set(localId, file);
   rememberMyAuthor(ctx, localId);

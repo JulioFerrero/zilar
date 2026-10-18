@@ -103,10 +103,16 @@ export function archiveIdOf(ctx: CoreCtx, message: UiMessage): string | undefine
 
 /**
  * Moves my own messages of `chatId` whose archive id is at or below the server
- * mark to `delivered`, through `advanceStatus`: a `read` message stays `read`
- * and a later message stays `sent`. A non-numeric mark is ignored.
+ * mark to `status`, through `advanceStatus`: a message further along the ladder
+ * keeps its status and a later message stays `sent`. A non-numeric mark is
+ * ignored.
  */
-export function applyDeliveredUntil(ctx: CoreCtx, chatId: string, until: string): void {
+export function applyStatusUntil(
+  ctx: CoreCtx,
+  chatId: string,
+  until: string,
+  status: 'delivered' | 'read',
+): void {
   if (!isArchiveId(until)) {
     return;
   }
@@ -125,17 +131,26 @@ export function applyDeliveredUntil(ctx: CoreCtx, chatId: string, until: string)
     if (archiveId === undefined || compareArchiveIds(archiveId, until) > 0) {
       return message;
     }
-    const status = advanceStatus(message.status, 'delivered');
-    if (status === message.status) {
+    const advanced = advanceStatus(message.status, status);
+    if (advanced === message.status) {
       return message;
     }
     changed = true;
-    return { ...message, status };
+    return { ...message, status: advanced };
   });
   if (!changed) {
     return;
   }
   ctx.set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
+}
+
+/**
+ * Moves my own messages of `chatId` whose archive id is at or below the server
+ * mark to `delivered`, through `advanceStatus`: a `read` message stays `read`
+ * and a later message stays `sent`. A non-numeric mark is ignored.
+ */
+export function applyDeliveredUntil(ctx: CoreCtx, chatId: string, until: string): void {
+  applyStatusUntil(ctx, chatId, until, 'delivered');
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   nextLocalId,
   queueOutgoing,
   rememberMyAuthor,
+  wireReply,
 } from './context';
 import type { SendCtx, SendStickerInput, SendTextOptions } from './context';
 import { fromPromise } from '../ctx';
@@ -28,20 +29,17 @@ function runStickerSend(
     return;
   }
   // The shared wire id (origin id in a DM, room stanza-id in a group).
-  const wireReply =
-    replyTo === undefined
-      ? undefined
-      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
+  const quote = wireReply(ctx, replyTo);
   ctx.rt.fork(
     fromPromise(() =>
       current.sendMessage(chat.id, coreKind(chat), body, {
         payload,
-        ...(wireReply === undefined
+        ...(quote === undefined
           ? {}
           : {
               replyTo: {
-                id: wireReply.id,
-                ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+                id: quote.id,
+                ...(quote.text === undefined ? {} : { text: quote.text }),
               },
             }),
       }),
@@ -102,14 +100,7 @@ export function sendSticker(
   clearActionError(ctx, chatId);
   queueOutgoing(
     ctx,
-    ctx.k.stickerSignatureFor(
-      chatId,
-      body,
-      sticker.stickerId,
-      replyTo === undefined
-        ? undefined
-        : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id },
-    ),
+    ctx.k.stickerSignatureFor(chatId, body, sticker.stickerId, wireReply(ctx, replyTo)),
     localId,
   );
   ctx.k.setChatMessage(chatId, message, true);

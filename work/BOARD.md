@@ -2060,3 +2060,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2059](T-2059-web-small-dedupes.md) | web: shownFailure once, one step icon, one info Content nav | 2026-10-18 |
 | [T-2057](T-2057-phone-settings-list-hook.md) | phone settings lists share one focus-reload hook | 2026-10-18 |
 | [T-2061](T-2061-web-clones-two.md) | web: one response reader, field wrapper, menu pair, preview line | 2026-10-18 |
+| [T-2064](T-2064-core-status-and-wire-reply.md) | core: one status-mark walk, one wire-reply helper | 2026-10-18 |

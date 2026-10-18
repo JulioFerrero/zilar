@@ -9,8 +9,7 @@
 // the gate's scope step only allows the listed files.
 import { Effect } from 'effect';
 import type { CoreCtx } from './ctx';
-import { archiveIdOf, compareArchiveIds } from './delivered';
-import { advanceStatus } from './rows';
+import { applyStatusUntil } from './delivered';
 
 /** The storage key prefix of a user's last-read map. */
 export const LAST_READ_PREFIX = 'zilar:lastRead:';
@@ -80,35 +79,7 @@ export function recordRead(ctx: CoreCtx, chatId: string, messageId: string | und
  * and a `read` one is not moved down. A non-numeric mark is ignored.
  */
 export function applyReadUntil(ctx: CoreCtx, chatId: string, until: string): void {
-  if (!isArchiveId(until)) {
-    return;
-  }
-  const state = ctx.get();
-  const messages = state.messagesByChat[chatId];
-  if (messages === undefined || messages.length === 0) {
-    return;
-  }
-  const me = state.currentUserId;
-  let changed = false;
-  const next = messages.map((message) => {
-    if (message.senderId !== me) {
-      return message;
-    }
-    const archiveId = archiveIdOf(ctx, message);
-    if (archiveId === undefined || compareArchiveIds(archiveId, until) > 0) {
-      return message;
-    }
-    const status = advanceStatus(message.status, 'read');
-    if (status === message.status) {
-      return message;
-    }
-    changed = true;
-    return { ...message, status };
-  });
-  if (!changed) {
-    return;
-  }
-  ctx.set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
+  applyStatusUntil(ctx, chatId, until, 'read');
 }
 
 /**

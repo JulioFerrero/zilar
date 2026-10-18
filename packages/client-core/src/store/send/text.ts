@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { mentionsForTrimmedText, type UiMessage } from '@zilar/chat-core';
-import { linkSent, nextLocalId, queueOutgoing, rememberMyAuthor } from './context';
+import { linkSent, nextLocalId, queueOutgoing, rememberMyAuthor, wireReply } from './context';
 import type { SendCtx, SendTextOptions } from './context';
 import { fromPromise } from '../ctx';
 import { coreKind } from '../rows';
@@ -20,14 +20,8 @@ export function sendText(
   const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
   const localId = nextLocalId(ctx);
   const replyTo = options?.replyTo;
-  // A reply names the id both sides share: the wire id the reactions path
-  // already computes (the origin id in a DM, the room stanza-id in a group),
-  // falling back to the local id when it is not known yet. The echo carries
-  // this same id, so the signature below is keyed on it too.
-  const wireReply =
-    replyTo === undefined
-      ? undefined
-      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
+  // The echo carries this same wire id, so the signature below is keyed on it too.
+  const quote = wireReply(ctx, replyTo);
   const message: UiMessage = {
     id: localId,
     chatId,
@@ -39,7 +33,7 @@ export function sendText(
     ...(mentions.length === 0 ? {} : { mentions }),
     ...(replyTo === undefined ? {} : { replyTo }),
   };
-  queueOutgoing(ctx, ctx.k.signatureFor(chatId, trimmed, wireReply), localId);
+  queueOutgoing(ctx, ctx.k.signatureFor(chatId, trimmed, quote), localId);
   ctx.k.setChatMessage(chatId, message, true);
   rememberMyAuthor(ctx, localId);
   ctx.k.rememberBaseText(localId, trimmed);
@@ -55,8 +49,8 @@ export function sendText(
         chatId,
         localId,
         trimmed,
-        wireReply?.id,
-        wireReply?.text,
+        quote?.id,
+        quote?.text,
         mentions,
         undefined,
         ctx.ports.now().getTime(),
@@ -70,12 +64,12 @@ export function sendText(
     replyTo === undefined && mentions.length === 0 && ctx.omitEmptyTextOptions === true
       ? undefined
       : {
-          ...(wireReply === undefined
+          ...(quote === undefined
             ? {}
             : {
                 replyTo: {
-                  id: wireReply.id,
-                  ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+                  id: quote.id,
+                  ...(quote.text === undefined ? {} : { text: quote.text }),
                 },
               }),
           ...(mentions.length === 0
@@ -105,8 +99,8 @@ export function sendText(
               chatId,
               localId,
               trimmed,
-              wireReply?.id,
-              wireReply?.text,
+              quote?.id,
+              quote?.text,
               mentions,
               sent.id,
               ctx.ports.now().getTime(),
@@ -124,8 +118,8 @@ export function sendText(
               chatId,
               localId,
               trimmed,
-              wireReply?.id,
-              wireReply?.text,
+              quote?.id,
+              quote?.text,
               mentions,
               undefined,
               ctx.ports.now().getTime(),

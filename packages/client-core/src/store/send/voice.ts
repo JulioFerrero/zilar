@@ -8,6 +8,7 @@ import {
   queueOutgoing,
   rememberMyAuthor,
   setUploadProgress,
+  wireReply,
 } from './context';
 import type { SendCtx, SendTextOptions } from './context';
 import { fromPromise } from '../ctx';
@@ -43,10 +44,7 @@ function runVoiceSend(
     return;
   }
   // The shared wire id (origin id in a DM, room stanza-id in a group).
-  const wireReply =
-    replyTo === undefined
-      ? undefined
-      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
+  const quote = wireReply(ctx, replyTo);
   const run = newRun();
   armSendTimeout(ctx, chat.id, localId, run);
   ctx.rt.fork(
@@ -79,12 +77,12 @@ function runVoiceSend(
       const sent = yield* fromPromise(() =>
         current.sendMessage(chat.id, coreKind(chat), '', {
           payload: { v: 0, type: 'voice', data: voice },
-          ...(wireReply === undefined
+          ...(quote === undefined
             ? {}
             : {
                 replyTo: {
-                  id: wireReply.id,
-                  ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+                  id: quote.id,
+                  ...(quote.text === undefined ? {} : { text: quote.text }),
                 },
               }),
         }),
@@ -142,17 +140,7 @@ export function sendVoice(
     ...(replyTo === undefined ? {} : { replyTo }),
   };
   clearActionError(ctx, chatId);
-  queueOutgoing(
-    ctx,
-    ctx.k.signatureFor(
-      chatId,
-      '',
-      replyTo === undefined
-        ? undefined
-        : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id },
-    ),
-    localId,
-  );
+  queueOutgoing(ctx, ctx.k.signatureFor(chatId, '', wireReply(ctx, replyTo)), localId);
   ctx.k.setChatMessage(chatId, message, true);
   ctx.pendingVoices.set(localId, recording.bytes);
   rememberMyAuthor(ctx, localId);

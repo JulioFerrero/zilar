@@ -56,6 +56,15 @@ const nextLocalId = (ctx: SendCtx): string => {
   return `local-${ctx.sequence}`;
 };
 
+// A reply names the id both sides share: the wire id the reactions path already
+// computes (the origin id in a DM, the room stanza-id in a group), falling back
+// to the local id when it is not known yet.
+function wireReply(ctx: SendCtx, replyTo: ReplyRef | undefined): ReplyRef | undefined {
+  return replyTo === undefined
+    ? undefined
+    : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
+}
+
 // Queues the optimistic id under the signature the server echo will carry.
 const queueOutgoing = (ctx: SendCtx, signature: string, localId: string): void => {
   const queue = ctx.pendingOutgoing.get(signature) ?? [];
@@ -140,4 +149,5 @@ export {
   queueOutgoing,
   rememberMyAuthor,
   setUploadProgress,
+  wireReply,
 };
