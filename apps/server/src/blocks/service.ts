@@ -120,9 +120,9 @@ export async function pairHasBlock(
 }
 
 // Blocks `targetId` for `userId`. Idempotent: blocking twice keeps one row.
-// Unknown users answer 404, yourself answers 400. Every pending contact
-// request between the two (either direction) becomes `cancelled`, and both
-// `contacts` rows of the pair are deleted, in the same transaction,
+// Unknown users answer 404, yourself answers 400. Every pending or accepted
+// contact request between the two (either direction) becomes `cancelled`, and
+// both `contacts` rows of the pair are deleted, in the same transaction,
 // serialized against contact-request creates through the advisory locks
 // taken below. Unblocking leaves the pair gone: re-adding goes through a
 // contact request.
@@ -162,9 +162,11 @@ export async function blockUser(
           VALUES (${userId}, ${targetId}, ${now.toISOString()})
           ON CONFLICT DO NOTHING
           RETURNING user_id`;
+        // T-1992: accepted rows go too. A block deletes the pair, and leaving
+        // the old accepted request alive let a re-accept repair it back.
         yield* sql`UPDATE contact_requests
           SET status = 'cancelled', decided_at = ${now.toISOString()}
-          WHERE status = 'pending'
+          WHERE status IN ('pending', 'accepted')
             AND ((from_user_id = ${userId} AND to_user_id = ${targetId})
               OR (from_user_id = ${targetId} AND to_user_id = ${userId}))`;
         // The pair is gone in both directions, even when the block row

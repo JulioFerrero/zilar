@@ -8,54 +8,10 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRoleRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { rolesOfTopic, topicRoleHolderIds } from '../roles/service';
+import { rolesOfTopic } from '../roles/service';
 import type { TopicAiView, TopicOwnerView, TopicView } from './access';
 
-export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Promise<number> {
-  // T-1757: only General is "the whole group — its people and its AIs" (Julio's
-  // rule, 2026-10-16). Every other topic counts its `topic_members` plus role
-  // holders and its `topic_ais` rows.
-  if (topic.isGeneral) {
-    const [row] = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ total: number }>`SELECT (
-          (SELECT count(*) FROM group_members WHERE group_id = ${topic.groupId})
-          + (SELECT count(*) FROM group_ais WHERE group_id = ${topic.groupId})
-        )::int AS total`;
-      }),
-    );
-    return row?.total ?? 0;
-  }
-  // T-0116: `topic_members` plus the holders of its roles (still group
-  // members). A holder who is also a direct member counts once.
-  // T-1757: every non-General topic adds the AIs it lists in `topic_ais`.
-  const [direct, holders, ais] = await Promise.all([
-    runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
-          WHERE topic_id = ${topic.id}`;
-      }),
-    ),
-    topicRoleHolderIds(db, topic.id, topic.groupId),
-    runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM topic_ais
-          WHERE topic_id = ${topic.id}`;
-      }),
-    ),
-  ]);
-  const ids = new Set(direct.map((row) => row.userId));
-  for (const id of holders) {
-    ids.add(id);
-  }
-  return ids.size + (ais[0]?.total ?? 0);
-}
+export { countTopicMembers } from './queries';
 
 export async function resolveOwnerName(
   db: ServerDatabase,
@@ -224,6 +180,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     aiOwnerRows,
     aiRows,
     groupAiRows,
+    groupKindRows,
     approverRows,
   ] = await runSql(
     db,
@@ -232,8 +189,8 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
       return yield* Effect.all([
         sql<{ topicId: string; roleId: string }>`SELECT topic_id, role_id FROM topic_role_access
             WHERE topic_id IN ${sql.in(topicIds)}`,
-        sql<{ groupId: string; userId: string }>`SELECT group_id, user_id FROM group_members
-            WHERE group_id IN ${sql.in(groupIds)}`,
+        sql<{ groupId: string; userId: string; role: string }>`SELECT group_id, user_id, role
+            FROM group_members WHERE group_id IN ${sql.in(groupIds)}`,
         sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id IN ${sql.in(groupIds)}`,
         directMemberTopicIds.length === 0
           ? Effect.succeed([] as Array<{ topicId: string; userId: string }>)
@@ -262,6 +219,8 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
           total: number;
         }>`SELECT group_id, count(*)::int AS total FROM group_ais
             WHERE group_id IN ${sql.in(groupIds)} GROUP BY group_id`,
+        sql<{ id: string; kind: 'group' | 'channel' }>`SELECT id, kind FROM groups
+            WHERE id IN ${sql.in(groupIds)}`,
         sql<{ id: string; approverRoleId: string | null }>`SELECT id, approver_role_id FROM topics
             WHERE id IN ${sql.in(topicIds)}`,
       ]);
@@ -272,6 +231,30 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     [...groupBy(memberRows, (row) => row.groupId)].map(
       ([groupId, list]) => [groupId, new Set(list.map((row) => row.userId))] as const,
     ),
+  );
+  // T-1992: a channel keeps its audience off topic views, the same rule as the
+  // group members route. Topic views carry no viewer, so owners and admins get
+  // the same narrowed list here; the group route still returns everyone to them.
+  const channelGroupIds = new Set(
+    groupKindRows.filter((row) => row.kind === 'channel').map((row) => row.id),
+  );
+  const managerIdsByGroup = new Map(
+    [...groupBy(memberRows, (row) => row.groupId)].map(
+      ([groupId, list]) =>
+        [
+          groupId,
+          new Set(list.filter((row) => row.role !== 'member').map((row) => row.userId)),
+        ] as const,
+    ),
+  );
+  const generalAudienceByGroup = new Map(
+    [...membersByGroup].map(([groupId, ids]) => {
+      const managers = managerIdsByGroup.get(groupId) ?? new Set<string>();
+      const audience = channelGroupIds.has(groupId)
+        ? [...ids].filter((id) => managers.has(id))
+        : [...ids];
+      return [groupId, audience] as const;
+    }),
   );
   const rolesByGroup = groupBy(roleRows, (row) => row.groupId);
   const roleIdsByTopic = groupBy(accessRows, (row) => row.topicId);
@@ -329,7 +312,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     });
 
     if (topic.isGeneral) {
-      parts.memberIds.set(topic.id, [...groupMembers].sort());
+      parts.memberIds.set(topic.id, [...(generalAudienceByGroup.get(topic.groupId) ?? [])].sort());
     } else {
       const ids = new Set((directByTopic.get(topic.id) ?? []).map((row) => row.userId));
       for (const role of attached) {

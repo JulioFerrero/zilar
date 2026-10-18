@@ -8,10 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addGroupMembers } from '../groups/members';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
+import { getTopic } from './access';
 import { patchTopic } from './patch';
 import * as publicCompat from './public-compat';
 import { initialPublicMemberIds } from './public-compat';
+import { listTopicMembers } from './queries';
 import { createTopic } from './service';
+import { toTopicViews } from './views';
 import type { TopicServiceDeps } from './schemas';
 
 function depsFor(context: TestContext): TopicServiceDeps {
@@ -213,5 +216,40 @@ describe('public topic members (T-1754)', () => {
     });
 
     expect(await memberIdsOf(context, topic.id)).toEqual([member, owner].sort());
+  });
+
+  it('shows a channel subscriber only owners and admins in General (T-1992)', async () => {
+    const owner = await seedUser(context, { name: 'Owner' });
+    const admin = await seedUser(context, { name: 'Admin' });
+    const subscriber = await seedUser(context, { name: 'Subscriber' });
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      owner,
+      [
+        { userId: owner, role: 'owner' },
+        { userId: admin, role: 'admin' },
+        { userId: subscriber, role: 'member' },
+      ],
+      [],
+    );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE groups SET kind = 'channel' WHERE id = ${groupId}`;
+      }),
+    );
+
+    const asSubscriber = await listTopicMembers({ db: context.db }, generalTopicId, subscriber);
+    expect(asSubscriber.map((entry) => entry.userId).sort()).toEqual([owner, admin].sort());
+    // An owner still gets the full audience from the members route.
+    const asOwner = await listTopicMembers({ db: context.db }, generalTopicId, owner);
+    expect(asOwner.map((entry) => entry.userId).sort()).toEqual([owner, admin, subscriber].sort());
+
+    // The topic views carry no audience either (they have no viewer to narrow by).
+    const topic = await getTopic(context.db, generalTopicId);
+    expect(topic).not.toBeNull();
+    const [view] = await toTopicViews(context.db, [topic!], context.config.xmpp.domain);
+    expect([...(view?.memberIds ?? [])].sort()).toEqual([owner, admin].sort());
+    expect(view?.memberCount).toBe(2);
   });
 });

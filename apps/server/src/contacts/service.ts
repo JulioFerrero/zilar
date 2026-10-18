@@ -1,9 +1,8 @@
 // Contacts and the XMPP roster sync. Every query runs on the `effect/sql`
-// client registered for this database (see `../effect/sql`). The exported
-// functions stay `async` so routes and tests keep their shape.
+// client registered for this database; the exported functions stay `async`.
 
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
@@ -40,8 +39,24 @@ export interface AddContactPairInput {
   source: ContactSource;
 }
 
-// Creates both directions of a contact relationship. Idempotent, so calling it
-// again for an existing pair changes nothing.
+// The pair insert on a caller's connection, so a caller that holds a
+// transaction can run it under its own locks (the accept repair, T-1992).
+export function addContactPairEffect(
+  sql: SqlClient.SqlClient,
+  input: AddContactPairInput,
+): Effect.Effect<void, SqlError.SqlError> {
+  if (input.userId === input.contactUserId) {
+    return Effect.void;
+  }
+  return Effect.gen(function* () {
+    yield* sql`INSERT INTO contacts (user_id, contact_user_id, source)
+      VALUES (${input.userId}, ${input.contactUserId}, ${input.source}),
+             (${input.contactUserId}, ${input.userId}, ${input.source})
+      ON CONFLICT DO NOTHING`;
+  });
+}
+
+// Creates both directions of a contact relationship, idempotently.
 export async function addContactPair(
   db: ServerDatabase,
   input: AddContactPairInput,
@@ -53,10 +68,7 @@ export async function addContactPair(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO contacts (user_id, contact_user_id, source)
-        VALUES (${input.userId}, ${input.contactUserId}, ${input.source}),
-               (${input.contactUserId}, ${input.userId}, ${input.source})
-        ON CONFLICT DO NOTHING`;
+      yield* addContactPairEffect(sql, input);
     }),
   );
 }
@@ -76,11 +88,9 @@ export interface RemoveContactDeps {
   logger?: RosterLogger | undefined;
 }
 
-// Removes a contact in both directions: the pair rows go in one statement,
-// exactly the shape of a block (`blocks/service.ts`, `blockUser`). A target
-// that is not a contact answers 404 before anything else runs. After the delete
-// commits, both roster items of the pair are removed, best effort, so a `both`
-// subscription is not left behind.
+// Removes a contact in both directions; an unknown target answers 404 first.
+// The accepted request is cancelled in the same transaction under the pair
+// locks, and both roster items are removed after the commit, best effort.
 export async function removeContact(
   deps: RemoveContactDeps,
   userId: string,
@@ -90,10 +100,30 @@ export async function removeContact(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ userId: string }>`DELETE FROM contacts
-        WHERE (user_id = ${userId} AND contact_user_id = ${targetId})
-          OR (user_id = ${targetId} AND contact_user_id = ${userId})
-        RETURNING user_id`;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          // T-1992: the same sorted pair keys as the accept repair, so a
+          // re-accept cannot insert the pair after this delete commits.
+          const [lockLow, lockHigh] = [userId, targetId].sort();
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockLow}))`;
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockHigh}))`;
+          const rows = yield* sql<{ userId: string }>`DELETE FROM contacts
+            WHERE (user_id = ${userId} AND contact_user_id = ${targetId})
+              OR (user_id = ${targetId} AND contact_user_id = ${userId})
+            RETURNING user_id`;
+          if (rows.length === 0) {
+            return rows;
+          }
+          // T-1992: an accepted request left behind could be re-accepted,
+          // and the repair would re-add the pair this call just removed.
+          yield* sql`UPDATE contact_requests
+            SET status = 'cancelled', decided_at = ${new Date().toISOString()}
+            WHERE status = 'accepted'
+              AND ((from_user_id = ${userId} AND to_user_id = ${targetId})
+                OR (from_user_id = ${targetId} AND to_user_id = ${userId}))`;
+          return rows;
+        }),
+      );
     }),
   );
   if (deleted.length === 0) {

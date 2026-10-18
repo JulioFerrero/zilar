@@ -2,7 +2,9 @@
 // `./service`): the accept, decline and cancel decisions.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { addContactPair, syncRoster } from '../contacts/service';
+import { removePairRosterItems } from '../blocks/roster';
+import { pairHasBlock } from '../blocks/service';
+import { addContactPairEffect, syncRoster } from '../contacts/service';
 import { runSql } from '../effect/sql';
 import { notFound } from './errors';
 import {
@@ -82,16 +84,79 @@ export async function acceptContactRequest(
     }),
   );
 
-  // Idempotent repair: re-runs on every accept of an accepted row, so a
-  // half-finished first accept (pair missing, roster unsynced) heals.
-  await addContactPair(deps.db, {
-    userId: settled.fromUserId,
-    contactUserId: settled.toUserId,
-    source: 'manual',
-  });
-  if (deps.adminClient && deps.domain) {
+  // T-1992: while either side blocks the other the pair must stay gone, even
+  // for a legacy accepted row a block did not cancel. The block read and the
+  // pair insert run in one transaction under both sides' `user-block:` locks
+  // (the keys `blockUser` takes in its own transaction), so a block that
+  // commits between the check and the repair waits for this transaction and
+  // then deletes the pair, and a block that won is seen by the check.
+  const [lockLow, lockHigh] = [settled.fromUserId, settled.toUserId].sort();
+  const repaired = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          // Sorted keys: two accepts of opposite-direction requests between
+          // the same pair take the locks in the same order, so they cannot
+          // deadlock.
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockLow}))`;
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + lockHigh}))`;
+          const [block] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
+            WHERE (user_id = ${settled.fromUserId} AND blocked_user_id = ${settled.toUserId})
+               OR (user_id = ${settled.toUserId} AND blocked_user_id = ${settled.fromUserId})
+            LIMIT 1`;
+          if (block !== undefined) {
+            return false;
+          }
+          // T-1992: a removal cancels the accepted row and deletes the pair in
+          // one transaction under these same pair locks. Re-read the row here,
+          // inside the lock, so a removal that committed after the settle read
+          // above is seen and the repair does not re-add the pair.
+          const [current] = yield* sql<{ status: string }>`SELECT status FROM contact_requests
+            WHERE id = ${settled.id} LIMIT 1`;
+          if (current?.status !== 'accepted') {
+            return false;
+          }
+          yield* addContactPairEffect(sql, {
+            userId: settled.fromUserId,
+            contactUserId: settled.toUserId,
+            source: 'manual',
+          });
+          return true;
+        }),
+      );
+    }),
+  );
+  if (repaired && deps.adminClient && deps.domain) {
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.fromUserId);
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.toUserId);
+  }
+  // T-1992: a block can commit between the pair insert and the roster sync,
+  // after the sync read the pair but before it wrote the roster item. Re-check
+  // now that every roster write is done, and undo both the pair and the roster
+  // items, so a blocked pair cannot keep the `both` subscription. When the
+  // block commits after this check, its own transaction deletes the pair and
+  // removes the roster items.
+  if (repaired && (await pairHasBlock(deps.db, settled.fromUserId, settled.toUserId))) {
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM contacts
+          WHERE (user_id = ${settled.fromUserId} AND contact_user_id = ${settled.toUserId})
+             OR (user_id = ${settled.toUserId} AND contact_user_id = ${settled.fromUserId})`;
+      }),
+    );
+    if (deps.adminClient && deps.domain) {
+      await removePairRosterItems({
+        db: deps.db,
+        adminClient: deps.adminClient,
+        domain: deps.domain,
+        userId: settled.fromUserId,
+        targetId: settled.toUserId,
+      });
+    }
   }
   // Audited once, after the commit and the pair write, by the call that
   // actually flipped the row; an idempotent re-accept adds nothing.
