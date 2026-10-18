@@ -1,17 +1,13 @@
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Effect } from 'effect';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { CHAT_BACKGROUND } from '@/lib/colors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
+import { AuthCard } from './AuthCard';
 import { safeTarget } from './guard';
 import { useAuthStore } from './session';
 
@@ -53,65 +49,36 @@ export function NameForm() {
   };
 
   return (
-    <View className="flex-1">
-      <LinearGradient
-        colors={CHAT_BACKGROUND}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+    <AuthCard title="What should we call you?">
+      <Text className="mt-1 text-center text-[15px] text-muted-foreground">
+        Your friends will see this name.
+      </Text>
+      <Text className="mt-6 text-[14px] font-medium text-foreground">Name</Text>
+      <TextField
+        accessibilityLabel="Name"
+        autoFocus
+        maxLength={64}
+        editable={!busy}
+        value={name}
+        onChangeText={setNameInput}
+        placeholder="Your name"
+        className="mt-1"
       />
-      <SafeAreaView className="flex-1">
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <ScrollView
-            className="flex-1"
-            contentContainerStyle={{
-              flexGrow: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 16,
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
-              <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
-                What should we call you?
-              </Text>
-              <Text className="mt-1 text-center text-[15px] text-muted-foreground">
-                Your friends will see this name.
-              </Text>
-              <Text className="mt-6 text-[14px] font-medium text-foreground">Name</Text>
-              <TextField
-                accessibilityLabel="Name"
-                autoFocus
-                maxLength={64}
-                editable={!busy}
-                value={name}
-                onChangeText={setNameInput}
-                placeholder="Your name"
-                className="mt-1"
-              />
-              {error !== undefined && (
-                <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-                  {error}
-                </Text>
-              )}
-              <Button
-                accessibilityLabel="Continue"
-                disabled={busy}
-                onPress={submit}
-                variant="default"
-                size="lg"
-                className="mt-4"
-              >
-                <Text>Continue</Text>
-              </Button>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
+      {error !== undefined && (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {error}
+        </Text>
+      )}
+      <Button
+        accessibilityLabel="Continue"
+        disabled={busy}
+        onPress={submit}
+        variant="default"
+        size="lg"
+        className="mt-4"
+      >
+        <Text>Continue</Text>
+      </Button>
+    </AuthCard>
   );
 }
