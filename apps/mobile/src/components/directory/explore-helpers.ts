@@ -1,4 +1,5 @@
-import { DirectoryApiError, type DirectoryEntry } from '@/lib/directory-api';
+import { ApiError } from '@zilar/api-contract';
+import type { DirectoryEntry } from '@/lib/directory-api';
 
 /**
  * Friendly lines for the explore list: raw server text never renders. A stranger
@@ -7,7 +8,7 @@ import { DirectoryApiError, type DirectoryEntry } from '@/lib/directory-api';
  */
 
 export function describeDirectoryError(error: unknown, fallback: string): string {
-  if (error instanceof DirectoryApiError) {
+  if (error instanceof ApiError) {
     if (error.status === 429 || error.code === 'rate_limited') {
       return 'Too many searches, try again in a few minutes';
     }
@@ -21,7 +22,7 @@ export function describeDirectoryError(error: unknown, fallback: string): string
 }
 
 export function describeJoinError(error: unknown): string {
-  if (error instanceof DirectoryApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'group_full':
         return 'That group is full right now.';

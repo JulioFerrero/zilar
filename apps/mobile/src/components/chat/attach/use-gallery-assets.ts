@@ -1,13 +1,13 @@
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { createGalleryReader } from '@/lib/attachment-native';
+import { createGalleryReader } from '@/lib/attachment-picker';
 import type {
   GalleryAsset,
   GalleryPage,
   GalleryPickResult,
   GalleryReader,
-} from '@/lib/attachment-native';
+} from '@/lib/attachment-picker';
 import type { PickedFile } from '@/lib/attachment-ports';
 
 /** Assets fetched per page, about one comfortable screen of the 3-column grid. */

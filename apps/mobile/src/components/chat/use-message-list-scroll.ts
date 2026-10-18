@@ -4,7 +4,7 @@ import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-na
 
 import { startJumpScroll } from '@/components/chat/jump-scroll';
 import type { ListEntry } from '@/components/chat/message-list-row';
-import { interruptFiber, runLater } from '@/lib/effect/timers';
+import { interruptFiber, runLater } from '@zilar/client-core';
 
 type JumpTarget = { chatId: string; messageId: string };
 

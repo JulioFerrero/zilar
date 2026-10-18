@@ -22,7 +22,7 @@ import { ToolsSection } from '@/components/ais/tools-section';
 import { useToolsApi } from '@/components/ais/use-tools-api';
 import { useAuditApi } from '@/components/ais/use-audit-api';
 import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
-import { defaultModelFor } from '@/components/ais/models';
+import { defaultModelFor } from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';

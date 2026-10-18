@@ -6,7 +6,7 @@ import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { UnreadDivider } from '@/components/chat/unread-divider';
 import type { MessageHandler, ReactHandler } from '@/components/chat/use-stable-handlers';
-import type { VoicePlayerHost } from '@/components/chat/voice-player';
+import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
 
 export type ListEntry =
   | { type: 'divider'; key: string }

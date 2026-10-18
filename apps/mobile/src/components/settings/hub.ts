@@ -3,7 +3,7 @@ import {
   SETTINGS_ITEMS,
   type SettingsGroup,
   type SettingsIconId,
-} from '@/lib/settings-items';
+} from '@zilar/chat-core';
 
 /**
  * The hub row content: the title, the subtitle, the icon test id and the group

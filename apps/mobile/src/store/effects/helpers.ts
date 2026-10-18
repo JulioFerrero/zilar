@@ -3,8 +3,8 @@ import { clearFailure, createMessageLedger } from '@zilar/client-core/store';
 
 import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type { Topic } from '../../lib/topics-api';
-import type { VoiceFailureReason } from '../../lib/voice-native';
-import type { SetState } from '../atomStore';
+import type { VoiceFailureReason } from '../../lib/voice-failure';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../types';
 import { summariesFor } from './chat-rows';
 import type { StoreLocals } from './locals';

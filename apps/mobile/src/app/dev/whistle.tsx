@@ -11,7 +11,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
-import { createVoiceRecorder } from '@/lib/voice-native';
+import { createVoiceRecorder } from '@/lib/voice-recorder';
 import { lastVoiceNoteOf } from '@/lib/whistle-last-note';
 import { createWhistlePort, type WhistlePort, type WhistleStatus } from '@/lib/whistle-port';
 import type { WhistleTranscript } from '@/lib/whistle-port-types';

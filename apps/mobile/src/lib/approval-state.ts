@@ -1,10 +1,6 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
-import {
-  ApprovalsApiError,
-  type ApprovalDecision,
-  type ApprovalsApi,
-  type PublicApproval,
-} from './approvals-api';
+import type { ApprovalDecision, ApprovalsApi, PublicApproval } from './approvals-api';
 
 export type ApprovalCardState =
   | { kind: 'loading' }
@@ -21,7 +17,7 @@ const loadCardStateEffect = (
     Effect.map((approval): ApprovalCardState => ({ kind: 'ready', approval })),
     Effect.catch((error) =>
       Effect.succeed<ApprovalCardState>(
-        error instanceof ApprovalsApiError && error.status === 404
+        error instanceof ApiError && error.status === 404
           ? { kind: 'notDecidable' }
           : { kind: 'error' },
       ),
@@ -61,10 +57,7 @@ const applyDecisionEffect = (
   }).pipe(
     Effect.map((approval): DecisionOutcome => ({ kind: 'ready', approval })),
     Effect.catch((error): Effect.Effect<DecisionOutcome> => {
-      if (
-        error instanceof ApprovalsApiError &&
-        (error.code === 'not_pending' || error.code === 'expired')
-      ) {
+      if (error instanceof ApiError && (error.code === 'not_pending' || error.code === 'expired')) {
         return reloadApprovalEffect(api, approvalId).pipe(
           Effect.map((refreshed): DecisionOutcome => ({ kind: 'reloaded', approval: refreshed })),
         );

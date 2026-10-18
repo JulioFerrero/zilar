@@ -66,9 +66,6 @@ export interface ChatApi {
   clearChatHistory?(jid: string): Promise<void>;
 }
 
-export const ChatApiError = ApiError;
-export type ChatApiError = ApiError;
-
 // The `Promise` edge maps each internal failure back to the same error, status, code and message.
 class ChatNetworkError extends Data.TaggedError('ChatNetworkError') {}
 class ChatRequestError extends Data.TaggedError('ChatRequestError')<{
@@ -150,14 +147,14 @@ export function createChatApi(
     Effect.runPromise(
       withTokenEffect(path, init, parse).pipe(
         Effect.catchTags({
-          ChatUnauthorized: () => Effect.fail(new ChatApiError(401, 'unauthorized', 'No session')),
+          ChatUnauthorized: () => Effect.fail(new ApiError(401, 'unauthorized', 'No session')),
           ChatNetworkError: () =>
-            Effect.fail(new ChatApiError(0, 'network_error', 'Could not reach the server')),
+            Effect.fail(new ApiError(0, 'network_error', 'Could not reach the server')),
           ChatRequestError: (error) =>
-            Effect.fail(new ChatApiError(error.status, error.code, error.message)),
+            Effect.fail(new ApiError(error.status, error.code, error.message)),
           ChatInvalidResponse: () =>
             Effect.fail(
-              new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+              new ApiError(200, 'invalid_response', 'The server sent an unexpected response'),
             ),
         }),
       ),
@@ -172,7 +169,7 @@ export function createChatApi(
       const body = await runApi(client.chats.list());
       const chats = parseChatsList(body);
       if (chats === null) {
-        throw new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response');
+        throw new ApiError(200, 'invalid_response', 'The server sent an unexpected response');
       }
       return chats;
     },

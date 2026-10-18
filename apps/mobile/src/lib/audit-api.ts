@@ -1,10 +1,10 @@
-import { ApiError, runApi, type PublicAuditEntry as ContractAuditEntry } from '@zilar/api-contract';
+import { runApi, type PublicAuditEntry as ContractAuditEntry } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `AuditApiError` is the shared `ApiError`, so the section shows fixed sentences, never server text.
+ * Errors are the shared `ApiError`, so the section shows fixed sentences, never server text.
  */
 
 export type PublicAuditEntry = ContractAuditEntry;
@@ -20,9 +20,6 @@ export interface AuditApi {
   listAiAudit(aiId: string, before?: string): Promise<AuditPage>;
   listGroupAudit(groupId: string, before?: string): Promise<AuditPage>;
 }
-
-export const AuditApiError = ApiError;
-export type AuditApiError = ApiError;
 
 export const AUDIT_PAGE_LIMIT = 20;
 

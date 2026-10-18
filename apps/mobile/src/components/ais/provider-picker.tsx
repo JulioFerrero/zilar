@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/text';
 
 import type { Connection } from '../../lib/ais-api';
 import { OptionGlyph, OptionRow } from './option-row';
-import { providerLabel } from './providers';
+import { providerLabel } from '@zilar/chat-core';
 
 /** A connection whose provider is not an LLM one (GitHub) is dropped: it cannot run an AI. */
 export function ProviderPicker({

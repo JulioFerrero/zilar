@@ -1,6 +1,7 @@
+import { ApiError } from '@zilar/api-contract';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AuthApiError, checkInvite, fetchMe, updateMe } from './auth-api';
+import { checkInvite, fetchMe, updateMe } from './auth-api';
 import { jsonResponse } from '@/test/wait';
 
 const ME = { id: 'u1', email: 'you@example.com', name: 'Ada', jid: 'you@zilar.localhost' };
@@ -46,7 +47,7 @@ describe('fetchMe', () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ nope: true })) as unknown as typeof fetch;
 
     await expect(fetchMe('http://server.test', 'token-1', fetchImpl)).rejects.toBeInstanceOf(
-      AuthApiError,
+      ApiError,
     );
   });
 });

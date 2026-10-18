@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { handleSaveMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
@@ -7,8 +8,8 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
-import { interruptFiber } from '@/lib/effect/timers';
+import type { GroupVisibility } from '@/lib/directory-api';
+import { interruptFiber } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
 // The same rules as web's `VisibilitySection`: only the owner may change visibility; everyone else never sees the sheet.
@@ -32,7 +33,7 @@ export function visibilityReasonText(reason: string | undefined): string {
 }
 
 export function visibilitySaveError(error: unknown): string {
-  if (error instanceof DirectoryApiError) {
+  if (error instanceof ApiError) {
     if (error.code === 'not_found') {
       return 'That group is no longer available.';
     }

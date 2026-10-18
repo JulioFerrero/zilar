@@ -23,7 +23,7 @@ import { renderProgressBlock, PROGRESS_KINDS } from '@/components/chat/blocks/pr
 import { StatusBlock } from '@/components/chat/blocks/status-block';
 import { Text, TextClassContext } from '@/components/ui/text';
 import { respondToBlock } from '@/lib/blocks-api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 
 // The kinds this wave draws; anything else is skipped, so a payload from a newer

@@ -15,7 +15,7 @@ import {
   TopicActionsSheet,
   type TopicPrefAction,
   type TopicSheetAction,
-} from '@/components/chat/topic-sheets';
+} from '@/components/chat/topic-actions-sheet';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';

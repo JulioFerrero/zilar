@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
@@ -15,11 +16,11 @@ import { useToolsApi } from '@/components/ais/use-tools-api';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { useQuery } from '@/lib/effect/use-query';
 import { mayManageRoles } from '@/lib/roles';
-import { ToolsApiError, type Routine, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+import type { Routine, ToolListItem, ToolsApi } from '@/lib/tools-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
 const isEmptyListError = (error: unknown): boolean =>
-  error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
+  error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response');
 
 const loadTools = (api: ToolsApi, groupId: string, topicId?: string) =>
   Effect.tryPromise({

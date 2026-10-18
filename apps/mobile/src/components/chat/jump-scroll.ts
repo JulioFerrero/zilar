@@ -3,7 +3,7 @@
 
 import { Effect, Fiber } from 'effect';
 
-import { interruptFiber } from '../../lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 
 export const JUMP_SCROLL_RETRY_MS: readonly number[] = [80, 200, 400];
 

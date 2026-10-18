@@ -1,12 +1,13 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { DirectoryApiError, type HandleCheck } from '@/lib/directory-api';
-import { interruptFiber } from '@/lib/effect/timers';
-import { GroupsApiError } from '@/lib/groups-api';
+import type { HandleCheck } from '@/lib/directory-api';
+import { interruptFiber } from '@zilar/client-core';
+
 import { visibilityReasonText } from '@/components/chat/visibility-sheet';
 
 export type CreateVisibility = 'private' | 'public';
@@ -141,7 +142,7 @@ export function useHandleCheck(
             Effect.matchEffect({
               onFailure: (error) =>
                 Effect.sync(() => {
-                  if (error instanceof DirectoryApiError && error.code === 'rate_limited') {
+                  if (error instanceof ApiError && error.code === 'rate_limited') {
                     setResult({ available: false, reason: 'rate_limited' });
                   } else {
                     setResult(null);
@@ -287,7 +288,7 @@ export function createErrorText(error: unknown, kind: 'group' | 'channel'): stri
     kind === 'group'
       ? 'Could not create the group. Try again.'
       : 'Could not create the channel. Try again.';
-  if (error instanceof GroupsApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'handle_invalid':
         return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';

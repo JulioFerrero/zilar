@@ -29,8 +29,8 @@ import {
 } from '@/components/chat/voice-player-registry';
 import { isApiOriginUrl, mediaUrl } from '@/lib/attachment-common';
 import { getSessionToken } from '@/lib/session-token';
-import { createVoicePlayback, VOICE_SPEEDS } from '@/lib/voice-native';
-import type { VoicePlayback } from '@/lib/voice-native';
+import { createVoicePlayback, VOICE_SPEEDS } from '@/lib/voice-playback';
+import type { VoicePlayback } from '@/lib/voice-playback';
 
 export interface VoicePlayerControls {
   play(

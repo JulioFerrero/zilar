@@ -1,11 +1,11 @@
 import { bareJid } from '@zilar/protocol';
-import { ApiError, runApi, type Contact } from '@zilar/api-contract';
+import { runApi, type Contact } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `ContactsApiError` is the shared `ApiError`, so screens branch on `code` and `status` without parsing the message (404 = unknown handle, 429 = rate limited).
+ * Errors are the shared `ApiError`, so screens branch on `code` and `status` without parsing the message (404 = unknown handle, 429 = rate limited).
  */
 
 export type ContactRelation =
@@ -78,9 +78,6 @@ export interface ContactsApi {
   listContacts(): Promise<Contact[]>;
   removeContact(userId: string): Promise<void>;
 }
-
-export const ContactsApiError = ApiError;
-export type ContactsApiError = ApiError;
 
 /**
  * The server compares case-insensitively, so the lookup sends the trimmed, lowercased form without a leading @.

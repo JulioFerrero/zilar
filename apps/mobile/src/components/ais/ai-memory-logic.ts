@@ -1,6 +1,7 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 
-import { AiMemoryApiError, type AiMemory, type AiMemoryApi } from '@/lib/ai-memory-api';
+import type { AiMemory, AiMemoryApi } from '@/lib/ai-memory-api';
 
 export const MEMORY_LOAD_FAILED_MESSAGE = 'Could not load the memory';
 
@@ -46,7 +47,7 @@ export const requestForgetFactEffect = (
     catch: (cause) => cause,
   }).pipe(
     Effect.catch((error) =>
-      error instanceof AiMemoryApiError && error.status === 404 ? Effect.void : Effect.fail(error),
+      error instanceof ApiError && error.status === 404 ? Effect.void : Effect.fail(error),
     ),
   );
 

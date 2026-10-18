@@ -1,10 +1,5 @@
 import { Exit, Schema } from 'effect';
-import {
-  ApiError,
-  ChatFolder as ChatFolderSchema,
-  omitUndefined,
-  runApi,
-} from '@zilar/api-contract';
+import { ChatFolder as ChatFolderSchema, omitUndefined, runApi } from '@zilar/api-contract';
 import type { ChatFolder, FolderChatType, FolderIcon } from '@zilar/chat-core';
 
 import { createApiClient } from './effect/api-client';
@@ -33,9 +28,6 @@ export interface ChatFoldersApi {
   reorderChatFolders(ids: string[]): Promise<ChatFolder[]>;
   deleteChatFolder(id: string): Promise<void>;
 }
-
-export const ChatFoldersApiError = ApiError;
-export type ChatFoldersApiError = ApiError;
 
 export function parseChatFolder(value: unknown): ChatFolder | null {
   const decoded = Schema.decodeUnknownExit(ChatFolderSchema)(value);

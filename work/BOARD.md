@@ -2092,3 +2092,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2086](T-2086-comments-server-mid.md) | comments: server web-tools, ais, xmpp, machines, more (-1,366) | 2026-10-18 |
 | [T-2084](T-2084-comments-server-push-groups-topics-stickers.md) | comments: server push, groups, topics, stickers (-1,113) | 2026-10-18 |
 | [T-2095](T-2095-gate-comment-merge-base.md) | gate: comment check diffs from the merge base | 2026-10-18 |
+| [T-2090](T-2090-phone-aliases-shims.md) | phone: drop error aliases, re-export shims, TextDecoder fallback | 2026-10-18 |

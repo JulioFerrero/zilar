@@ -1,7 +1,8 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 
 import { gifsAvailability, setGifsAvailability } from '@/lib/gifs';
-import { createGifsApi, GifsApiError, type GifPage, type GifsApi } from '@/lib/gifs-api';
+import { createGifsApi, type GifPage, type GifsApi } from '@/lib/gifs-api';
 
 export const fetchGifPage = (input: {
   query: string;
@@ -47,7 +48,7 @@ function probeGifsAvailabilityEffect(api?: GifsApi): Effect.Effect<boolean> {
       }),
     ),
     Effect.catch((error) =>
-      error instanceof GifsApiError && error.code === 'gifs_unavailable'
+      error instanceof ApiError && error.code === 'gifs_unavailable'
         ? Effect.sync(() => {
             setGifsAvailability(false);
             return false;

@@ -1,7 +1,7 @@
 import type { MessageLedger } from '@zilar/client-core/store';
 
 import { CURRENT_USER_ID } from '../../lib/types';
-import type { SetState } from '../atomStore';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../types';
 import type { Events } from './events';
 import type { StoreLocals } from './locals';

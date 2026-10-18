@@ -1,7 +1,7 @@
 import { Effect, type Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 

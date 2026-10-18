@@ -36,9 +36,6 @@ export interface ConnectionsApi {
   deleteConnection(id: string): Promise<void>;
 }
 
-export const ConnectionsApiError = ApiError;
-export type ConnectionsApiError = ApiError;
-
 export function buildCreateConnectionBody(input: CreateConnectionInput): Record<string, unknown> {
   return {
     provider: input.provider,

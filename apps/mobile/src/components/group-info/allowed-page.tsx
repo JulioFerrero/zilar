@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -9,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ApprovalsApiError, type ApprovalRule } from '@/lib/approvals-api';
-import { interruptFiber } from '@/lib/effect/timers';
+import type { ApprovalRule } from '@/lib/approvals-api';
+import { interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 export const RULES_LOAD_FAILED_MESSAGE = 'Could not load the rules.';
@@ -39,7 +40,7 @@ export interface GroupRulesHandle {
 
 /** A 404 on revoke means the rule is already gone; the row drops quietly. */
 const isAlreadyGone = (error: unknown): boolean =>
-  error instanceof ApprovalsApiError && error.status === 404;
+  error instanceof ApiError && error.status === 404;
 
 export function useGroupRules(groupId: string, enabled = true): GroupRulesHandle {
   const { api } = useApprovalsApi();

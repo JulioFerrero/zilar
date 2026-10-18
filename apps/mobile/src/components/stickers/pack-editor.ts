@@ -1,5 +1,5 @@
+import { ApiError } from '@zilar/api-contract';
 import { Data, Effect, type Effect as EffectType } from 'effect';
-import { StickersApiError } from '../../lib/stickers-api';
 
 /**
  * Pure helpers for the sticker pack editor, kept dependency-free so the screen
@@ -53,7 +53,7 @@ export function takeFittingImages<T>(
  * upload is a row error, not the form error.
  */
 export function rowErrorFor(error: unknown): string {
-  if (error instanceof StickersApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'sticker_too_large':
         return 'This image is too big. A sticker can be up to 512 KB and 512 px.';
@@ -75,7 +75,7 @@ export function rowErrorFor(error: unknown): string {
  * errors: the failed rows show their own sentences instead.
  */
 export function formErrorFor(error: unknown): string {
-  if (error instanceof StickersApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'pack_limit':
         return 'You have reached the limit of 100 packs.';
@@ -95,7 +95,7 @@ export function formErrorFor(error: unknown): string {
  * own: those show the fixed sentences instead of the load error.
  */
 export function lookupFailureKind(error: unknown): 'not-found' | 'forbidden' | 'other' {
-  if (error instanceof StickersApiError) {
+  if (error instanceof ApiError) {
     if (error.status === 404 || error.code === 'not_found') {
       return 'not-found';
     }

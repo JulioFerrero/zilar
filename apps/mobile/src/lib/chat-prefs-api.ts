@@ -1,5 +1,5 @@
 import { Exit, Schema } from 'effect';
-import { ApiError, ChatPref as ChatPrefSchema, omitUndefined, runApi } from '@zilar/api-contract';
+import { ChatPref as ChatPrefSchema, omitUndefined, runApi } from '@zilar/api-contract';
 
 import { createApiClient } from './effect/api-client';
 import { API_URL } from './auth';
@@ -28,9 +28,6 @@ export interface ChatPrefsApi {
   listChatPrefs(): Promise<ChatPref[]>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
 }
-
-export const ChatPrefsApiError = ApiError;
-export type ChatPrefsApiError = ApiError;
 
 export function parseChatPref(value: unknown): ChatPref | null {
   const decoded = Schema.decodeUnknownExit(ChatPrefSchema)(value);

@@ -1,7 +1,8 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 
-import { ToolsApiError, type AiToolsApi, type Routine } from '@/lib/tools-api';
+import type { AiToolsApi, Routine } from '@/lib/tools-api';
 
 export const ROUTINE_NEEDS_APPROVAL_MESSAGE =
   'This routine needs re-approval. Ask the AI to schedule it again.';
@@ -19,10 +20,10 @@ export type RoutineAction = 'pause' | 'resume' | 'delete';
 
 /** A `needs_approval` answer is a hint, 403/404 is the forbidden line, anything else the generic line; never the server text. */
 export function routineActionMessage(error: unknown): RoutineActionMessage {
-  if (error instanceof ToolsApiError && error.code === 'needs_approval') {
+  if (error instanceof ApiError && error.code === 'needs_approval') {
     return { kind: 'hint', text: ROUTINE_NEEDS_APPROVAL_MESSAGE };
   }
-  if (error instanceof ToolsApiError && (error.status === 403 || error.status === 404)) {
+  if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
     return { kind: 'error', text: ROUTINE_FORBIDDEN_MESSAGE };
   }
   return { kind: 'error', text: ROUTINE_UPDATE_FAILED_MESSAGE };

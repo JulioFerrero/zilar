@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { Repeat } from 'lucide-react-native';
@@ -18,9 +19,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { ToolsApiError, type AiToolsApi, type MyRoutine } from '@/lib/tools-api';
+import type { AiToolsApi, MyRoutine } from '@/lib/tools-api';
 
 /** A fixed sentence, never server text. */
 const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';
@@ -29,7 +30,7 @@ const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';
 function loadMyRoutinesEffect(api: AiToolsApi): Effect.Effect<MyRoutine[], unknown> {
   return Effect.tryPromise({ try: () => api.listMyRoutines(), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
-      error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response')
+      error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response')
         ? Effect.succeed<MyRoutine[]>([])
         : Effect.fail(error),
     ),

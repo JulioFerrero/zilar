@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { ApiError, runApi } from '@zilar/api-contract';
+import { runApi } from '@zilar/api-contract';
 import type { Machine, MachineStatus, PairingCode } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
@@ -23,9 +23,6 @@ export interface MachinesApi {
   deleteMachine(id: string): Promise<void>;
   setAiMachine(aiId: string, machineId: string | null): Promise<string | null>;
 }
-
-export const MachinesApiError = ApiError;
-export type MachinesApiError = ApiError;
 
 const MachineIdSchema = struct({
   machineId: Schema.NullOr(Schema.String),

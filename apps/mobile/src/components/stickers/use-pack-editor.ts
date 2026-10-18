@@ -16,7 +16,7 @@ import {
 } from '@/components/stickers/sticker-native';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
 import { usePackItems, type PackVisibility } from '@/components/stickers/use-pack-items';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem } from '@/lib/stickers';
 
@@ -137,7 +137,7 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     // shown paints the loading state.
     setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
     // The raw error is kept (no ApiFailure mapping): lookupFailureKind checks
-    // StickersApiError by class.
+    // ApiError by class.
     Effect.runFork(
       Effect.tryPromise({
         try: () => api.listStickerPacks(),

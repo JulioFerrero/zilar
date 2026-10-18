@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { ApiError, EnabledStatus, runApi, type IntegrationsStatus } from '@zilar/api-contract';
+import { EnabledStatus, runApi, type IntegrationsStatus } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
 import { API_URL } from './auth';
@@ -39,9 +39,6 @@ export interface IntegrationsApi {
   saveVoiceTranscriptionSettings(input: SaveVoiceTranscriptionInput): Promise<void>;
   removeVoiceTranscriptionSettings(): Promise<void>;
 }
-
-export const IntegrationsApiError = ApiError;
-export type IntegrationsApiError = ApiError;
 
 export function buildSaveEmailBody(input: SaveEmailSettingsInput): Record<string, unknown> {
   return input.resendApiKey === undefined

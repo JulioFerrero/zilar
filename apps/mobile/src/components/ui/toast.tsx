@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { interruptFiber, runLater } from '@/lib/effect/timers';
+import { interruptFiber, runLater } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 
 /** How long one transient message stays on screen. */

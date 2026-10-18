@@ -4,8 +4,8 @@ import { useWindowDimensions } from 'react-native';
 import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
-import { fromApi } from '@/lib/effect/api-effect';
-import { interruptFiber } from '@/lib/effect/timers';
+import { fromApi } from '@zilar/client-core';
+import { interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
 import type { PanelPack } from '@/lib/stickers-api';

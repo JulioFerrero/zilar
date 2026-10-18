@@ -1,5 +1,5 @@
 import { Effect, Exit, Schema } from 'effect';
-import { ApiError, GifResult, toApiError } from '@zilar/api-contract';
+import { GifResult, toApiError } from '@zilar/api-contract';
 import { runApiAbortable } from '@zilar/client-core';
 
 import { API_URL } from './auth';
@@ -10,9 +10,6 @@ import type { GifItem } from './gifs';
 /**
  * Results carry opaque `mediaToken`s, never provider URLs, and previews load through the same-origin proxy. Queries are never logged.
  */
-
-export const GifsApiError = ApiError;
-export type GifsApiError = ApiError;
 
 const MAX_DIMENSION = 4096;
 

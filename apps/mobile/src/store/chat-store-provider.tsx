@@ -23,12 +23,13 @@ import { createChatPrefsApi } from '../lib/chat-prefs-api';
 import { createChatFoldersApi } from '../lib/chat-folders-api';
 import { createPinsApi } from '../lib/pins-api';
 import { ensurePushPair, registerNativePush, watchPushTokenRolls } from '../lib/push/native';
-import { createAttachmentUploader, createSizeReader } from '../lib/attachment-native';
+import { createAttachmentUploader } from '../lib/attachment-uploader';
+import { createSizeReader } from '../lib/attachment-picker';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
 import { clearTranscripts } from '../lib/voice-transcripts';
 import type { ChatStoreState } from './types';
-import type { StoreApi } from './atomStore';
+import type { StoreApi } from '@zilar/client-core';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 

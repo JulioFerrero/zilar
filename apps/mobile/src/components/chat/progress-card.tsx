@@ -11,7 +11,7 @@ import { useAisApi } from '@/components/ais/use-ais-api';
 import { StepsSheet } from '@/components/chat/steps-sheet';
 import { Text } from '@/components/ui/text';
 import { ACCENT, DANGER, MUTED_FOREGROUND } from '@/lib/colors';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
 

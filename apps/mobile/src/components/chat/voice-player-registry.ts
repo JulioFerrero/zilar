@@ -2,8 +2,8 @@
 
 import { Effect } from 'effect';
 
-import type { VoicePlayback, VoiceSpeed } from '@/lib/voice-native';
-import { VOICE_SPEEDS } from '@/lib/voice-native';
+import type { VoicePlayback, VoiceSpeed } from '@/lib/voice-playback';
+import { VOICE_SPEEDS } from '@/lib/voice-playback';
 import type {
   HostPlayer,
   NativePlayer,

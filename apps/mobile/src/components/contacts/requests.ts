@@ -1,5 +1,6 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
-import { ContactsApiError, type ContactsApi } from '@/lib/contacts-api';
+import type { ContactsApi } from '@/lib/contacts-api';
 
 /**
  * The requests-screen states, mirroring the web `RequestsPage`: UI-free so the
@@ -9,7 +10,7 @@ import { ContactsApiError, type ContactsApi } from '@/lib/contacts-api';
 export type RequestAction = 'accept' | 'decline' | 'cancel';
 
 export function requestsLoadFailure(error: unknown): string {
-  if (error instanceof ContactsApiError) {
+  if (error instanceof ApiError) {
     if (error.status === 429 || error.code === 'rate_limited') {
       return 'Too many tries — wait a little and try again.';
     }
@@ -22,7 +23,7 @@ export function requestsLoadFailure(error: unknown): string {
 }
 
 export function requestsActionFailure(error: unknown): string {
-  if (error instanceof ContactsApiError && error.status === 404) {
+  if (error instanceof ApiError && error.status === 404) {
     return 'That request is no longer here.';
   }
   return requestsLoadFailure(error);

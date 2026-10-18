@@ -30,8 +30,8 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { fromApi } from '@/lib/effect/api-effect';
-import { interruptFiber } from '@/lib/effect/timers';
+import { fromApi } from '@zilar/client-core';
+import { interruptFiber } from '@zilar/client-core';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
@@ -39,7 +39,7 @@ import { AppVersionRow } from '@/components/settings/app-version-row';
 import { settingsHubGroups, type SettingsHubGroup } from '@/components/settings/hub';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useProfileApi } from '@/components/settings/use-profile-api';
-import type { SettingsIconId } from '@/lib/settings-items';
+import type { SettingsIconId } from '@zilar/chat-core';
 
 export default function SettingsScreen() {
   return (

@@ -1,4 +1,4 @@
-import { ApiError, runApi, type GroupRole as CustomGroupRole } from '@zilar/api-contract';
+import { runApi, type GroupRole as CustomGroupRole } from '@zilar/api-contract';
 import { makeGroupsApi } from '@zilar/client-core';
 
 import { createApiClient } from './effect/api-client';
@@ -14,9 +14,6 @@ export interface RolesApi {
   deleteGroupRole(groupId: string, roleId: string): Promise<void>;
   setGroupRoleMembers(groupId: string, roleId: string, userIds: string[]): Promise<CustomGroupRole>;
 }
-
-export const RolesApiError = ApiError;
-export type RolesApiError = ApiError;
 
 export function createRolesApi(
   getToken: () => Promise<string | undefined>,

@@ -17,7 +17,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { ICON } from '@/lib/colors';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import type { StickerPack } from '@/lib/stickers';
 
 export { favoriteTileSize } from '@/components/stickers/tile-size';

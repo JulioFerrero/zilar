@@ -1,5 +1,4 @@
 import {
-  ApiError,
   runApi,
   type AiCatalog,
   type AiComputerOptions,
@@ -10,7 +9,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `AisApiError` is the shared `ApiError`, so screens branch on `status` without parsing the message.
+ * Errors are the shared `ApiError`, so screens branch on `status` without parsing the message.
  */
 
 export type AiTemplate = 'dev' | 'marketing' | 'fun' | 'custom';
@@ -88,9 +87,6 @@ export interface AisApi {
   resumeAi(id: string): Promise<PublicAi>;
   stopAiTurn(id: string, chatJid: string): Promise<{ stopped: boolean }>;
 }
-
-export const AisApiError = ApiError;
-export type AisApiError = ApiError;
 
 export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   return {

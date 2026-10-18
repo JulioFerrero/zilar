@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Animated, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 
 // Quiet loading placeholders shaped like the content they replace. `SKELETON_DELAY_MS` hides a load that finishes quickly: one skeleton frame is worse than a beat of blank.

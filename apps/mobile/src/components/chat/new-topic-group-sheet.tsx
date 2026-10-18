@@ -5,7 +5,7 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { interruptFiber, runLater } from '@/lib/effect/timers';
+import { interruptFiber, runLater } from '@zilar/client-core';
 import { mayCreateTopic } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 

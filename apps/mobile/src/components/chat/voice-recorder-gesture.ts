@@ -1,7 +1,7 @@
 import { Effect, Fiber } from 'effect';
 import { PanResponder } from 'react-native';
 
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 
 /** Sliding the finger this far left (negative dx, in px) while holding cancels. */
 const CANCEL_SLIDE_PX = -90;

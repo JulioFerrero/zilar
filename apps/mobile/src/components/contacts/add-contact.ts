@@ -1,7 +1,7 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect, type Effect as EffectType } from 'effect';
 import {
   contactChatId,
-  ContactsApiError,
   normalizeHandleInput,
   type ContactsApi,
   type HandleProfile,
@@ -27,7 +27,7 @@ export function addContactHandle(raw: string): string | null {
 }
 
 export function addContactLookupFailure(error: unknown): AddContactState {
-  if (error instanceof ContactsApiError) {
+  if (error instanceof ApiError) {
     if (error.status === 404) {
       return { state: 'missing' };
     }
@@ -43,7 +43,7 @@ export function addContactLookupFailure(error: unknown): AddContactState {
 }
 
 export function addContactSendFailure(error: unknown): string {
-  if (error instanceof ContactsApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'already_contact':
         return 'You are already contacts.';

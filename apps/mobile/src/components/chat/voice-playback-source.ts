@@ -1,7 +1,7 @@
 import type { VoiceMeta } from '@zilar/protocol';
 import { Effect } from 'effect';
 
-import { voiceAudioSource } from '@/lib/voice-native';
+import { voiceAudioSource } from '@/lib/voice-playback';
 
 export const BAR_COUNT = 24;
 // The bubble is at least this wide so the waveform can stretch to its end.

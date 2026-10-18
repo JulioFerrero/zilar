@@ -4,7 +4,11 @@ import { View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import type { ContactRelation, ContactsApi } from '@/lib/contacts-api';
 
-import { NO_PERSON_MESSAGE, PEOPLE_RATE_LIMITED_MESSAGE, peopleHandleFor } from './people-search';
+import {
+  NO_PERSON_MESSAGE,
+  PEOPLE_RATE_LIMITED_MESSAGE,
+  peopleHandleFor,
+} from '@zilar/client-core';
 import { PersonRow } from './person-row';
 import { usePeopleSearch } from './use-people-search';
 

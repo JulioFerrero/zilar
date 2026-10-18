@@ -8,7 +8,7 @@ import type { ViewStyle } from 'react-native';
 
 import { TABULAR } from '@/components/chat/blocks/figure-block';
 import { Text } from '@/components/ui/text';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 
 // The board's recessed tile (`PhoneProgress.dc.html:36`): the D24 well recipe at
 // the board's 12 px radius and 8 px vertical padding.

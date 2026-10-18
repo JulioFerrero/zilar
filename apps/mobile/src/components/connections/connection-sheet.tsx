@@ -3,7 +3,7 @@ import { Check, KeyRound, Trash2, Zap } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { providerLabel } from '@/components/ais/providers';
+import { providerLabel } from '@zilar/chat-core';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';

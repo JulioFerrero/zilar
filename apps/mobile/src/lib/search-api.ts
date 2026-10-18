@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { ApiError, toApiError } from '@zilar/api-contract';
+import { toApiError } from '@zilar/api-contract';
 import { runApiAbortable } from '@zilar/client-core';
 
 import { API_URL } from './auth';
@@ -36,9 +36,6 @@ export interface SearchMessagesInput {
 export interface SearchApi {
   searchMessages(input: SearchMessagesInput): Promise<SearchPage>;
 }
-
-export const SearchApiError = ApiError;
-export type SearchApiError = ApiError;
 
 export function createSearchApi(
   getToken: () => Promise<string | undefined>,

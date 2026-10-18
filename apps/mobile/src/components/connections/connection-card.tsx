@@ -1,7 +1,7 @@
 import { MoreHorizontal } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
-import { providerLabel } from '@/components/ais/providers';
+import { providerLabel } from '@zilar/chat-core';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';

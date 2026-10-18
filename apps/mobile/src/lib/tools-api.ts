@@ -1,10 +1,10 @@
-import { ApiError, runApi, type MyRoutine } from '@zilar/api-contract';
+import { runApi, type MyRoutine } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `ToolsApiError` is the shared `ApiError`, so the sections branch on `status` (404 = empty list, like web).
+ * Errors are the shared `ApiError`, so the sections branch on `status` (404 = empty list, like web).
  */
 
 export type ToolLastRunStatus = 'ok' | 'error';
@@ -147,9 +147,6 @@ export type AiToolsApi = ToolsApi &
   ToolDetailsApi &
   ToolActionsApi &
   MyRoutinesApi;
-
-export const ToolsApiError = ApiError;
-export type ToolsApiError = ApiError;
 
 export function createToolsApi(
   getToken: () => Promise<string | undefined>,

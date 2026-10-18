@@ -1,6 +1,5 @@
 import { Exit, Schema } from 'effect';
 import {
-  ApiError,
   Pin as PinSchema,
   lenientLiterals,
   PIN_KINDS,
@@ -32,9 +31,6 @@ export interface PinsApi {
   pinMessage(input: PinMessageInput): Promise<Pin>;
   unpinMessage(id: string): Promise<Pin>;
 }
-
-export const PinsApiError = ApiError;
-export type PinsApiError = ApiError;
 
 const LenientPinKind = lenientLiterals(PIN_KINDS, 'text');
 

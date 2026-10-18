@@ -4,7 +4,8 @@ import { Data, Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { AttachmentChoice } from '@/components/chat/attach-sheet';
-import { createAttachmentPicker, createGifDownloader } from '@/lib/attachment-native';
+import { createAttachmentPicker } from '@/lib/attachment-picker';
+import { createGifDownloader } from '@/lib/gif-downloader';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { classifyMobileFile } from '@/lib/attachments';
 import { isWaiting, useAction } from '@/lib/effect/use-action';

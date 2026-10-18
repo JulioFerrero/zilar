@@ -8,7 +8,7 @@ import type { AttachmentChoice } from '@/components/chat/attach-sheet';
 import { GalleryGrid } from '@/components/chat/attach/gallery-grid';
 import type { GalleryAssets } from '@/components/chat/attach/use-gallery-assets';
 import { Text } from '@/components/ui/text';
-import type { GalleryAsset } from '@/lib/attachment-native';
+import type { GalleryAsset } from '@/lib/attachment-picker';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { ICON } from '@/lib/colors';
 import { primaryKey } from '@/lib/depth';

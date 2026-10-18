@@ -2,7 +2,7 @@ import type { AiTemplateId } from '@zilar/chat-core';
 import { Pencil } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
-import { AI_TEMPLATE_OPTIONS } from '@/components/ais/templates';
+import { AI_TEMPLATE_OPTIONS } from '@zilar/chat-core';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { SelectSheet } from '@/components/ui/select-sheet';
 import { Text } from '@/components/ui/text';

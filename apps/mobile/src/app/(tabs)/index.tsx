@@ -9,13 +9,13 @@ import { ChatPeopleResults, ChatSearchResults } from '@/components/chat/chat-sea
 import { NewChatButton } from '@/components/chat/new-chat-button';
 import { SearchHeader } from '@/components/chat/search-header';
 import { useChatActions } from '@/components/chat/use-chat-actions';
-import { peopleHandleFor } from '@/components/contacts/people-search';
+import { peopleHandleFor } from '@zilar/client-core';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { connectionLabel } from '@/lib/connection';
 import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
-import { useDelayed } from '@/lib/use-delayed';
+import { useDelayed } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatsScreen() {

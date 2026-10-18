@@ -23,9 +23,6 @@ export interface Me {
   timeZone?: string | undefined;
 }
 
-export const AuthApiError = ApiError;
-export type AuthApiError = ApiError;
-
 function toMe(
   profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio' | 'avatarUrl' | 'timeZone'>,
 ): Me {

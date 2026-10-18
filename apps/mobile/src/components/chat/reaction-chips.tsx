@@ -4,7 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { raisedPill } from '@/lib/depth';
-import { interruptFiber, runLater } from '@/lib/effect/timers';
+import { interruptFiber, runLater } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 
 /** How long the "who reacted" line stays under the chips. */

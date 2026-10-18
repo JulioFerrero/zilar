@@ -12,7 +12,7 @@ import { friendlyAvatarError } from '@/components/settings/profile-logic';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import { getSessionToken } from '@/lib/session-token';

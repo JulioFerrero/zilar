@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect, Fiber } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -5,14 +6,14 @@ import { ScrollView, View } from 'react-native';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import {
   GIF_ATTRIBUTION,
   GIF_SEARCH_DEBOUNCE_MS,
   setGifsAvailability,
   type GifItem,
 } from '@/lib/gifs';
-import { createGifsApi, GifsApiError, type GifsApi } from '@/lib/gifs-api';
+import { createGifsApi, type GifsApi } from '@/lib/gifs-api';
 import { getSessionToken } from '@/lib/session-token';
 
 import { GifCell } from './gif-cells';
@@ -99,19 +100,13 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
               if (requestError instanceof DOMException && requestError.name === 'AbortError') {
                 return;
               }
-              if (
-                requestError instanceof GifsApiError &&
-                requestError.code === 'gifs_unavailable'
-              ) {
+              if (requestError instanceof ApiError && requestError.code === 'gifs_unavailable') {
                 setGifsAvailability(false);
-              } else if (
-                requestError instanceof GifsApiError &&
-                requestError.code === 'rate_limited'
-              ) {
+              } else if (requestError instanceof ApiError && requestError.code === 'rate_limited') {
                 setRateLimited(true);
               }
               setError(
-                requestError instanceof GifsApiError && requestError.code === 'rate_limited'
+                requestError instanceof ApiError && requestError.code === 'rate_limited'
                   ? 'Too many GIF searches. Try again in a moment.'
                   : 'Could not load GIFs. Try again.',
               );

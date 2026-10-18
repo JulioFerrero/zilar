@@ -18,12 +18,12 @@ import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { Contact } from '@/lib/chat-api';
-import { chatSubtitle } from '@/lib/chat';
+import { chatSubtitle } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import type { ChatSummary } from '@/lib/types';
-import { useDelayed } from '@/lib/use-delayed';
+import { useDelayed } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type TypingStatus = { status?: string };

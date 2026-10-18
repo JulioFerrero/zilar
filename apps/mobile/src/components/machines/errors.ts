@@ -1,4 +1,4 @@
-import { MachinesApiError } from '../../lib/machines-api';
+import { ApiError } from '@zilar/api-contract';
 
 export interface MachinesErrorInfo {
   message: string;
@@ -8,7 +8,7 @@ export interface MachinesErrorInfo {
 // `components/machines/errors.ts`. Unknown codes answer `fallback`, because
 // user-facing text is never the server's raw message.
 export function describeMachinesError(error: unknown, fallback: string): MachinesErrorInfo {
-  if (error instanceof MachinesApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'pairing_code_limit':
         return {

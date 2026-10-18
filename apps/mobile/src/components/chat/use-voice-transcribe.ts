@@ -3,8 +3,8 @@ import { Effect } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { isPromiseLike } from './voice-playback-source';
-import { voiceAudioSource } from '@/lib/voice-native';
-import { interruptFiber } from '@/lib/effect/timers';
+import { voiceAudioSource } from '@/lib/voice-playback';
+import { interruptFiber } from '@zilar/client-core';
 import {
   readTranscripts,
   saveTranscript,

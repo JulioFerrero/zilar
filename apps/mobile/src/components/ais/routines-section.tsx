@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Effect } from 'effect';
@@ -17,8 +18,8 @@ import {
   routineLastText,
   routineStatusText,
 } from '@/lib/routines-format';
-import { interruptFiber } from '@/lib/effect/timers';
-import { ToolsApiError, type AiToolsApi, type Routine, type ToolsApi } from '@/lib/tools-api';
+import { interruptFiber } from '@zilar/client-core';
+import type { AiToolsApi, Routine, ToolsApi } from '@/lib/tools-api';
 
 export {
   routineActionMessage,
@@ -41,7 +42,7 @@ export type RoutinesSectionState = {
 export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
   Effect.tryPromise({ try: () => api.listAiRoutines(aiId), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
-      error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response')
+      error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response')
         ? Effect.succeed<Routine[]>([])
         : Effect.fail(error),
     ),

@@ -1,7 +1,8 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect, Fiber } from 'effect';
 
-import { SearchApiError, type SearchApi } from '../../lib/search-api';
-import { interruptFiber } from '../../lib/effect/timers';
+import type { SearchApi } from '../../lib/search-api';
+import { interruptFiber } from '@zilar/client-core';
 
 import {
   activeQuery,
@@ -279,11 +280,11 @@ export class MessageSearchController {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
-        if (error instanceof SearchApiError && error.status === 501) {
+        if (error instanceof ApiError && error.status === 501) {
           this.set({ status: 'unavailable' });
           return;
         }
-        if (error instanceof SearchApiError && error.status === 429) {
+        if (error instanceof ApiError && error.status === 429) {
           this.set({
             status: 'error',
             message: 'Too many searches. Try again in a moment.',

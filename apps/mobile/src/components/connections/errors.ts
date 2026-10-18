@@ -1,4 +1,4 @@
-import { ConnectionsApiError } from '../../lib/connections-api';
+import { ApiError } from '@zilar/api-contract';
 
 export interface ConnectionsErrorInfo {
   message: string;
@@ -8,7 +8,7 @@ export interface ConnectionsErrorInfo {
 // answer the `fallback` the call site passes: user-facing text is never the
 // server's raw message.
 export function describeConnectionsError(error: unknown, fallback: string): ConnectionsErrorInfo {
-  if (error instanceof ConnectionsApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'connection_in_use':
         return { message: 'An AI still uses this connection. Switch the AI first.' };

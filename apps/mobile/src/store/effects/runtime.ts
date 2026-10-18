@@ -14,12 +14,12 @@ import type { PickedFile } from '../../lib/attachment-ports';
 import type { OfflineCacheSync } from '../offline-cache-sync';
 import type { MediaTokenShape } from '../../lib/attachments';
 import type { RecordedVoice } from '../../lib/voice';
-import type { VoiceFailureReason } from '../../lib/voice-native';
+import type { VoiceFailureReason } from '../../lib/voice-failure';
 import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import type { CustomGroupRole } from '../../lib/roles-api';
 import type { ApproverRole, Topic, TopicRole } from '../../lib/topics-api';
-import type { SetState } from '../atomStore';
+import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../types';
 import { Ports, type PortsShape } from './ports';
 

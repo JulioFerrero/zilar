@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { Text } from '@/components/ui/text';
 import { runMobile } from '@/lib/effect/runtime';
 import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
-import { ToolsApiError, type AiToolsApi, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+import type { AiToolsApi, ToolListItem, ToolsApi } from '@/lib/tools-api';
 
 import { ToolDetailSheet } from './tool-detail-sheet';
 
@@ -26,7 +27,7 @@ export type ToolsSectionState = {
 
 /** A 404 or an unparseable response: the list reads as empty, not as an error. */
 const isEmptyListError = (error: unknown): boolean =>
-  error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
+  error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response');
 
 export const loadAiToolsEffect = (
   api: ToolsApi,

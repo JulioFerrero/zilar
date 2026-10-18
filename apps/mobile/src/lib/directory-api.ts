@@ -8,7 +8,7 @@ import type { TokenProvider } from './chat-api';
 import { createApiClient } from './effect/api-client';
 
 /**
- * Public groups and channels only, never users or private groups; reads are rate limited 30 per 10 minutes. `DirectoryApiError` is the shared `ApiError` (404 = unknown or private, 409 = full / handle taken, 429 = rate limited).
+ * Public groups and channels only, never users or private groups; reads are rate limited 30 per 10 minutes. Errors are the shared `ApiError` (404 = unknown or private, 409 = full / handle taken, 429 = rate limited).
  */
 
 export type DirectoryKind = 'group' | 'channel';
@@ -70,9 +70,6 @@ export interface DirectoryApi {
   setGroupVisibility(groupId: string, input: SetGroupVisibilityInput): Promise<void>;
   checkGroupHandle(handle: string): Promise<HandleCheck>;
 }
-
-export const DirectoryApiError = ApiError;
-export type DirectoryApiError = ApiError;
 
 const PublicJoinResultSchema = struct({
   groupId: Schema.String,
@@ -194,21 +191,14 @@ export function createDirectoryApi(
     Effect.runPromise(
       withTokenEffect(path, init, parse).pipe(
         Effect.catchTags({
-          DirectoryUnauthorized: () =>
-            Effect.fail(new DirectoryApiError(401, 'unauthorized', 'No session')),
+          DirectoryUnauthorized: () => Effect.fail(new ApiError(401, 'unauthorized', 'No session')),
           DirectoryNetworkError: () =>
-            Effect.fail(new DirectoryApiError(0, 'network_error', 'Could not reach the server')),
+            Effect.fail(new ApiError(0, 'network_error', 'Could not reach the server')),
           DirectoryRequestError: (error) =>
-            Effect.fail(
-              new DirectoryApiError(error.status, error.code, error.message, error.detail),
-            ),
+            Effect.fail(new ApiError(error.status, error.code, error.message, error.detail)),
           DirectoryInvalidResponse: () =>
             Effect.fail(
-              new DirectoryApiError(
-                200,
-                'invalid_response',
-                'The server sent an unexpected response',
-              ),
+              new ApiError(200, 'invalid_response', 'The server sent an unexpected response'),
             ),
         }),
       ),

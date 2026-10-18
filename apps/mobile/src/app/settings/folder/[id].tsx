@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import {
   FOLDER_ICONS,
   FOLDERS_MAX,
@@ -23,7 +24,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
-import { ChatFoldersApiError } from '@/lib/chat-folders-api';
+
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { iconKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
@@ -285,7 +286,7 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
 }
 
 function folderSaveError(error: unknown): string {
-  if (error instanceof ChatFoldersApiError) {
+  if (error instanceof ApiError) {
     if (error.code === 'folder_limit') {
       return `You can have up to ${FOLDERS_MAX} folders.`;
     }

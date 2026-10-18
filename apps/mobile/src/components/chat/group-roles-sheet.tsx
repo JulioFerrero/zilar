@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import type { GroupRole } from '@/lib/chat-api';
 import { deleteRoleConfirmText } from '@/lib/roles';

@@ -3,7 +3,7 @@ import { Camera } from 'lucide-react-native';
 import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import type { GalleryAsset } from '@/lib/attachment-native';
+import type { GalleryAsset } from '@/lib/attachment-picker';
 import { ICON } from '@/lib/colors';
 import { primaryKey } from '@/lib/depth';
 

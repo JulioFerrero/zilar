@@ -1,10 +1,10 @@
-import { ApiError, runApi } from '@zilar/api-contract';
+import { runApi } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `AiMemoryApiError` is the shared `ApiError`, so the section shows fixed sentences, never server text.
+ * Errors are the shared `ApiError`, so the section shows fixed sentences, never server text.
  */
 
 export interface AiMemoryFact {
@@ -23,9 +23,6 @@ export interface AiMemoryApi {
   forgetFact(chat: string, aiId: string, factId: string): Promise<void>;
   clear(chat: string, aiId: string): Promise<void>;
 }
-
-export const AiMemoryApiError = ApiError;
-export type AiMemoryApiError = ApiError;
 
 export function createAiMemoryApi(
   getToken: () => Promise<string | undefined>,

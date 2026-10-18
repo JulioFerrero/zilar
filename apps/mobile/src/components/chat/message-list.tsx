@@ -16,10 +16,10 @@ import { MessageMenuHost } from '@/components/chat/message-menu-host';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { useMessageListScroll } from '@/components/chat/use-message-list-scroll';
 import { useStableHandler, useStableReact } from '@/components/chat/use-stable-handlers';
-import type { VoicePlayerHost } from '@/components/chat/voice-player';
+import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
-import { runLater } from '@/lib/effect/timers';
+import { runLater } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
 

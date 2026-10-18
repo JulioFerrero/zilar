@@ -1,4 +1,4 @@
-import { chatSubtitle } from '@/lib/chat';
+import { chatSubtitle } from '@zilar/chat-core';
 import type { Contact } from '@/lib/contacts-api';
 import type { ChatSummary } from '@/lib/types';
 

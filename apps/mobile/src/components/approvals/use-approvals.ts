@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { useApprovalsApi } from '@/components/chat/use-approvals-api';
 import type { ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 import {

@@ -8,8 +8,8 @@ import { TextField } from '@/components/ui/text-field';
 import { ACCENT } from '@/lib/colors';
 
 import { OptionRow } from './option-row';
-import { formatContextTokens, formatModelPrices, modelSuggestionsFor } from './models';
-import { providerLabel } from './providers';
+import { formatContextTokens, formatModelPrices, modelSuggestionsFor } from '@zilar/chat-core';
+import { providerLabel } from '@zilar/chat-core';
 
 export function ModelPicker({
   provider,

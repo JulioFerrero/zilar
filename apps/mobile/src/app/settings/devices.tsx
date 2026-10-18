@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import type { AuthSession, AuthSessions } from '@zilar/api-contract';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
 import { Effect } from 'effect';
@@ -15,9 +16,9 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
-import { AuthApiError, listSessions, revokeSession } from '@/lib/auth-api';
+import { listSessions, revokeSession } from '@/lib/auth-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
@@ -43,7 +44,7 @@ function createRealDevicesApi(): DevicesApi {
 async function bearerToken(): Promise<string> {
   const token = await getSessionToken();
   if (token === undefined) {
-    throw new AuthApiError(401, 'unauthorized', 'No session');
+    throw new ApiError(401, 'unauthorized', 'No session');
   }
   return token;
 }

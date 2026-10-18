@@ -1,5 +1,4 @@
 import {
-  ApiError,
   runApi,
   type ApprovalRule as ContractApprovalRule,
   type PublicApproval as ContractApproval,
@@ -9,7 +8,7 @@ import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
 /**
- * `ApprovalsApiError` is the shared `ApiError`, so the card branches on `status` without parsing the message (404 = not decidable, 409 = race / expired).
+ * Errors are the shared `ApiError`, so the card branches on `status` without parsing the message (404 = not decidable, 409 = race / expired).
  */
 
 export type ApprovalStatus =
@@ -63,9 +62,6 @@ export interface ApprovalRule {
   createdAt: string;
   createdBy: string;
 }
-
-export const ApprovalsApiError = ApiError;
-export type ApprovalsApiError = ApiError;
 
 export function buildDecisionBody(
   decision: ApprovalDecision,

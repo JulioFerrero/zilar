@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { type AiMemory, type AiMemoryApi } from '@/lib/ai-memory-api';
-import { interruptFiber } from '@/lib/effect/timers';
+import type { AiMemory, AiMemoryApi } from '@/lib/ai-memory-api';
+import { interruptFiber } from '@zilar/client-core';
 
 import {
   clearAiMemoryEffect,

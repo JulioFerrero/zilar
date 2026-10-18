@@ -1,6 +1,5 @@
 import { Exit, Schema } from 'effect';
 import {
-  ApiError,
   runApi,
   Topic as TopicSchema,
   type Topic as ContractTopic,
@@ -46,9 +45,6 @@ export interface TopicsApi {
   setTopicRoles(id: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<boolean>;
 }
-
-export const TopicsApiError = ApiError;
-export type TopicsApiError = ApiError;
 
 function toTopic(value: ContractTopic): Topic {
   return {

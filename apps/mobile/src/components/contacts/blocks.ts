@@ -1,6 +1,7 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect, type Effect as EffectType } from 'effect';
 import { reloadBlockedJids } from '../../lib/blocked-users';
-import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
+import type { ContactsApi } from '../../lib/contacts-api';
 
 /**
  * The block / unblock states, mirroring the web `ContactProfileRow` and
@@ -11,9 +12,7 @@ import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
 const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
 
 function rateLimited(error: unknown): boolean {
-  return (
-    error instanceof ContactsApiError && (error.status === 429 || error.code === 'rate_limited')
-  );
+  return error instanceof ApiError && (error.status === 429 || error.code === 'rate_limited');
 }
 
 export function blockFailure(error: unknown): string {

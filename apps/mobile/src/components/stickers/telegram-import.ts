@@ -1,4 +1,4 @@
-import { StickersApiError } from '../../lib/stickers-api';
+import { ApiError } from '@zilar/api-contract';
 
 /**
  * The pure parts of the Telegram import sheet: the error-to-state mapping and
@@ -19,7 +19,7 @@ export type TelegramImportSheetState =
 
 /** Maps an import failure to its sheet state (never server text). */
 export function telegramImportFailure(error: unknown): TelegramImportSheetState {
-  if (error instanceof StickersApiError) {
+  if (error instanceof ApiError) {
     if (error.status === 501 || error.code === 'import_unavailable') {
       return { kind: 'not-set-up' };
     }

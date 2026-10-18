@@ -1,4 +1,4 @@
-import type { StoreApi } from './atomStore';
+import type { StoreApi } from '@zilar/client-core';
 import { getActiveChatId } from '../lib/push/active-chat';
 import {
   createOfflineCache,

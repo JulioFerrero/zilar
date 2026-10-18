@@ -11,7 +11,7 @@ import { Text } from '@/components/ui/text';
 import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import {
   isSameOriginStickerUrl,
   recentChoiceFor,

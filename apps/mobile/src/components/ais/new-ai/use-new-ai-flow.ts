@@ -1,4 +1,5 @@
 // effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs.
+import { ApiError } from '@zilar/api-contract';
 import {
   clampOrbLight,
   defaultCatalogModelId,
@@ -20,7 +21,7 @@ import { useKeyCheck } from '@/components/connections/use-key-check';
 import { applyMachineChange } from '@/components/machines/machine-change';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 import type { SelectSheetOption } from '@/components/ui/select-sheet';
-import { AisApiError, type PublicAi } from '@/lib/ais-api';
+import type { PublicAi } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 
 import { saveOrbAvatar } from './orb-upload';
@@ -138,7 +139,7 @@ export function useNewAiFlow({
       } catch (cause) {
         setCreating(false);
         const fixed = 'Could not create the AI.';
-        setError(cause instanceof AisApiError ? describeAisError(cause, fixed).message : fixed);
+        setError(cause instanceof ApiError ? describeAisError(cause, fixed).message : fixed);
         // A close during the POST left the key to this create: it failed, so drop it.
         keys.finishCreate(false);
         return;

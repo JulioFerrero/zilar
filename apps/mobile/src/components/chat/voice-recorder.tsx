@@ -6,14 +6,14 @@ import { Pressable, View, type GestureResponderHandlers } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { ACCENT_FOREGROUND, primaryKey } from '@/lib/depth';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
 import {
   createVoiceRecorder,
   MIC_FAILED_MESSAGE,
   type VoiceRecorderPort,
-} from '@/lib/voice-native';
+} from '@/lib/voice-recorder';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 

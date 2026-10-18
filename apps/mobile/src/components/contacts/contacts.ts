@@ -1,5 +1,6 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect, type Effect as EffectType } from 'effect';
-import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
+import type { ContactsApi } from '../../lib/contacts-api';
 
 /**
  * The contacts page's remove flow, mirroring the web `ContactsPage`: every error
@@ -9,9 +10,7 @@ import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
 const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
 
 function rateLimited(error: unknown): boolean {
-  return (
-    error instanceof ContactsApiError && (error.status === 429 || error.code === 'rate_limited')
-  );
+  return error instanceof ApiError && (error.status === 429 || error.code === 'rate_limited');
 }
 
 export function contactsLoadFailure(error: unknown): string {
@@ -25,7 +24,7 @@ export function removeContactFailure(error: unknown): string {
   if (rateLimited(error)) {
     return RATE_LIMIT_MESSAGE;
   }
-  if (error instanceof ContactsApiError && error.status === 404) {
+  if (error instanceof ApiError && error.status === 404) {
     return 'That person is no longer a contact.';
   }
   return 'Could not remove contact. Try again.';

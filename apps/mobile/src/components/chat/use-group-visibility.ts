@@ -1,10 +1,11 @@
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useState } from 'react';
 
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import { visibilitySaveError } from '@/components/chat/visibility-sheet';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
-import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
+import type { GroupVisibility } from '@/lib/directory-api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -80,7 +81,7 @@ export function useGroupVisibility(groupId: string) {
           ),
           Effect.catch(({ cause }) =>
             Effect.sync(() => {
-              if (cause instanceof DirectoryApiError && cause.code === 'rate_limited') {
+              if (cause instanceof ApiError && cause.code === 'rate_limited') {
                 setCheck({ available: false, reason: 'rate_limited' });
               } else {
                 setCheck(null);

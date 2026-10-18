@@ -1,6 +1,5 @@
+import { ApiError } from '@zilar/api-contract';
 import { Option, Schema } from 'effect';
-
-import { ToolsApiError } from '@/lib/tools-api';
 
 const RunInputJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
@@ -45,13 +44,13 @@ export function parseRunInput(text: string): RunInputParse {
 
 /** The tool's own failed result (`ok: false`) is data, not an error, and passes through. */
 export function runErrorMessage(error: unknown): string {
-  if (error instanceof ToolsApiError && error.status === 429) {
+  if (error instanceof ApiError && error.status === 429) {
     return RUN_RATE_LIMITED_MESSAGE;
   }
-  if (error instanceof ToolsApiError && (error.status === 403 || error.status === 404)) {
+  if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
     return RUN_FORBIDDEN_MESSAGE;
   }
-  if (error instanceof ToolsApiError && error.status === 501) {
+  if (error instanceof ApiError && error.status === 501) {
     return RUN_UNAVAILABLE_MESSAGE;
   }
   return RUN_FAILED_MESSAGE;
@@ -59,7 +58,7 @@ export function runErrorMessage(error: unknown): string {
 
 /** 403/404 is the forbidden line, anything else (including network errors) is the fallback. Never the server text. */
 export function changeErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ToolsApiError && (error.status === 403 || error.status === 404)) {
+  if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
     return CHANGE_FORBIDDEN_MESSAGE;
   }
   return fallback;

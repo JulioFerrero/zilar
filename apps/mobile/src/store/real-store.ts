@@ -14,7 +14,7 @@ import {
   type JoinGroupsHooks,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
-import { createAtomStore, type StoreApi } from './atomStore';
+import { createAtomStore, type StoreApi } from '@zilar/client-core';
 
 import type { ChatEntry } from '../lib/chat-api';
 import { dismissChatNotifications, syncBadge } from '../lib/push/badge';
@@ -41,7 +41,7 @@ export {
   DRAFT_IDLE_MS,
   PINS_REFRESH_INTERVAL_MS,
   TOPIC_REFRESH_INTERVAL_MS,
-} from './effects/polling';
+} from '@zilar/client-core/store';
 export { isUpdateStanza, summariesFor };
 
 export type { AppStateLike, RealStoreDeps } from './effects/ports';

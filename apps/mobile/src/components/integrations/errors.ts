@@ -1,4 +1,4 @@
-import { IntegrationsApiError } from '../../lib/integrations-api';
+import { ApiError } from '@zilar/api-contract';
 
 /**
  * Maps the integrations error codes to fixed plain sentences, mirroring web's
@@ -6,7 +6,7 @@ import { IntegrationsApiError } from '../../lib/integrations-api';
  * `fallback` the call site passes answers anything unknown.
  */
 export function describeIntegrationsError(error: unknown, fallback: string): string {
-  if (error instanceof IntegrationsApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'invalid_token':
         return 'Telegram rejected the bot token. Check it and try again.';

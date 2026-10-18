@@ -1,7 +1,8 @@
 // effect-plain: promise-edge adapters beside the ports.
+import { ApiError } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import type { SessionCheck } from '@zilar/client-core/store';
-import { ChatApiError, type TokenProvider } from '../../lib/chat-api';
+import type { TokenProvider } from '../../lib/chat-api';
 import { getSessionToken } from '../../lib/session-token';
 
 /** A missing token and a 401 read as gone, anything else as `unknown`, so it never signs anyone out. */
@@ -28,7 +29,7 @@ export const checkSession = (
                 {
                   onFailure: (error: unknown) =>
                     Effect.succeed(
-                      error instanceof ChatApiError && error.status === 401
+                      error instanceof ApiError && error.status === 401
                         ? ('gone' as SessionCheck)
                         : ('unknown' as SessionCheck),
                     ),

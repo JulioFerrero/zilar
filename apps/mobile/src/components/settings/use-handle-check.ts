@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useEffect } from 'react';
 
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 import { type ProfileApi } from '@/lib/profile-api';
 
 import {

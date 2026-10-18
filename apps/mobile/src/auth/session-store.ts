@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { runMobile } from '@/lib/effect/runtime';
 import { markStartup } from '@/lib/startup-timing';
 
-import { createBoundStore, type UseBoundStore } from '../store/atomStore';
+import { createBoundStore, type UseBoundStore } from '@zilar/client-core';
 
 import type { Me } from '../lib/auth-api';
 import type { SessionStorage } from './session-storage';

@@ -1,3 +1,4 @@
+import { ApiError } from '@zilar/api-contract';
 import type { ChatSummary } from '@zilar/chat-core';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
@@ -20,7 +21,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON } from '@/lib/colors';
 import { ACCENT_FOREGROUND } from '@/lib/depth';
-import { AisApiError, type PublicAi } from '@/lib/ais-api';
+import type { PublicAi } from '@/lib/ais-api';
 import { useChatStoreApi } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -35,7 +36,7 @@ function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlyS
   return next;
 }
 
-// These keep their own error class: describeAisError and the 409 check read AisApiError.
+// These keep their own error class: describeAisError and the 409 check read ApiError.
 const apiCall = <A,>(call: () => Promise<A>) =>
   Effect.tryPromise({ try: call, catch: (cause: unknown) => cause });
 
@@ -133,7 +134,7 @@ function AisList() {
       ),
       Effect.catch((error: unknown) =>
         Effect.sync(() => {
-          if (error instanceof AisApiError && error.status === 409) {
+          if (error instanceof ApiError && error.status === 409) {
             setActionAi((current) => (current?.id === ai.id ? null : current));
             reload();
             return;

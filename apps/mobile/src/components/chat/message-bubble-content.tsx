@@ -25,7 +25,7 @@ import { ReplyQuote } from '@/components/chat/reply-quote';
 import { RoutineHeader } from '@/components/chat/routine-header';
 import { StickerMessage } from '@/components/chat/sticker-message';
 import { VoiceMessage } from '@/components/chat/voice-message';
-import type { VoicePlayerHost } from '@/components/chat/voice-player';
+import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 

@@ -18,7 +18,7 @@ import { createAgentTasksApi, type AgentTasksApi } from '@/lib/agent-tasks-api';
 import { API_URL } from '@/lib/auth';
 import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import { fromApi } from '@/lib/effect/api-effect';
+import { fromApi } from '@zilar/client-core';
 import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { getSessionToken } from '@/lib/session-token';

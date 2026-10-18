@@ -1,4 +1,5 @@
-import { DirectoryApiError, type DirectoryEntry } from '@/lib/directory-api';
+import { ApiError } from '@zilar/api-contract';
+import type { DirectoryEntry } from '@/lib/directory-api';
 import { describeDirectoryError } from './explore-helpers';
 
 /**
@@ -15,7 +16,7 @@ export type HandleView =
   | { state: 'error'; message: string };
 
 export function handleRouteViewFor(error: unknown): HandleView {
-  if (error instanceof DirectoryApiError && error.status === 404) {
+  if (error instanceof ApiError && error.status === 404) {
     return { state: 'not-found' };
   }
   return {

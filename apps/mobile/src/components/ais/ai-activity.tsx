@@ -10,7 +10,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { ICON } from '@/lib/colors';
-import { interruptFiber } from '@/lib/effect/timers';
+import { interruptFiber } from '@zilar/client-core';
 
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';
 

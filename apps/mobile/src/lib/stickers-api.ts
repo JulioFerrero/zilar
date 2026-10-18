@@ -18,9 +18,6 @@ import type { StickerItem, StickerPack, StickerPackDetail } from './stickers';
  * The list schemas drop a malformed pack or sticker row; only the raw byte upload stays outside the derived client.
  */
 
-export const StickersApiError = ApiError;
-export type StickersApiError = ApiError;
-
 const MAX_STICKER_DIMENSION = 512;
 
 function isStickerDimension(value: number): boolean {

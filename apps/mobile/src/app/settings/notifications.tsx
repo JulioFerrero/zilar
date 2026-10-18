@@ -17,8 +17,8 @@ import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { API_URL } from '@/lib/auth';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { createApiClient } from '@/lib/effect/api-client';
-import { fromApi } from '@/lib/effect/api-effect';
-import { interruptFiber } from '@/lib/effect/timers';
+import { fromApi } from '@zilar/client-core';
+import { interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { readLastPushReceived } from '@/lib/push/last-received';
 import {

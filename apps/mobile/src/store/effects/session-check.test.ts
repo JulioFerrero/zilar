@@ -1,5 +1,6 @@
+import { ApiError } from '@zilar/api-contract';
 import { describe, expect, it, vi } from 'vitest';
-import { ChatApiError } from '../../lib/chat-api';
+
 import { checkSession, sessionGone } from './session-check';
 
 describe('checkSession (T-1223)', () => {
@@ -16,7 +17,7 @@ describe('checkSession (T-1223)', () => {
 
   it('a 401 reads as the session gone', async () => {
     const getMe = vi.fn(async () => {
-      throw new ChatApiError(401, 'unauthorized', 'No session');
+      throw new ApiError(401, 'unauthorized', 'No session');
     });
 
     await expect(checkSession(async () => 'token-1', getMe)).resolves.toBe('gone');
@@ -24,10 +25,10 @@ describe('checkSession (T-1223)', () => {
 
   it('any other failure reads as unknown, never a sign-out', async () => {
     const network = vi.fn(async () => {
-      throw new ChatApiError(0, 'network_error', 'Could not reach the server');
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
     });
     const forbidden = vi.fn(async () => {
-      throw new ChatApiError(403, 'forbidden', 'Forbidden');
+      throw new ApiError(403, 'forbidden', 'Forbidden');
     });
 
     await expect(checkSession(async () => 'token-1', network)).resolves.toBe('unknown');

@@ -1,4 +1,4 @@
-import { ApiError, omitUndefined, runApi, type PatchGroupPayload } from '@zilar/api-contract';
+import { omitUndefined, runApi, type PatchGroupPayload } from '@zilar/api-contract';
 import { makeGroupsApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
@@ -61,9 +61,6 @@ export interface GroupsApi {
    */
   patchGroupSettings(groupId: string, patch: PatchGroupPayload): Promise<void>;
 }
-
-export const GroupsApiError = ApiError;
-export type GroupsApiError = ApiError;
 
 export function createGroupsApi(
   getToken: TokenProvider,

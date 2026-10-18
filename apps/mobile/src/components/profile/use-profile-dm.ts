@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
 import type { ProfilePerson } from '@/components/profile/profile-person';
 import type { ToastMessage } from '@/components/ui/toast';
-import { chatSubtitle } from '@/lib/chat';
+import { chatSubtitle } from '@zilar/chat-core';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { useChatStore } from '@/store/chat-store-provider';
 

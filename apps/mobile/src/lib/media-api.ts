@@ -1,5 +1,5 @@
 import { Exit, Schema } from 'effect';
-import { ApiError, MediaItem as ContractMediaItem, runApi } from '@zilar/api-contract';
+import { MediaItem as ContractMediaItem, runApi } from '@zilar/api-contract';
 
 import { createApiClient } from './effect/api-client';
 
@@ -44,9 +44,6 @@ export interface ListChatMediaInput {
 export interface MediaApi {
   listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
 }
-
-export const MediaApiError = ApiError;
-export type MediaApiError = ApiError;
 
 function toMediaItem(row: ContractMediaItem): MediaItem | null {
   if (Number.isNaN(Date.parse(row.at))) {

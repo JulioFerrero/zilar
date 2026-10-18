@@ -5,7 +5,7 @@ import {
   RECORD_TOO_LONG_MESSAGE,
   type FinishedRecording,
   type VoiceRecorderPort as RecorderPort,
-} from '@/lib/voice-native';
+} from '@/lib/voice-recorder';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 

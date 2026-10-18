@@ -1,5 +1,4 @@
 import {
-  ApiError,
   runApi,
   type CreatedInviteLink,
   type InviteLink as GroupInviteLink,
@@ -35,8 +34,6 @@ export interface InviteLinksApi {
   previewJoinLink(token: string): Promise<JoinPreview>;
   joinByLink(token: string): Promise<JoinResult>;
 }
-export const InviteLinksApiError = ApiError;
-export type InviteLinksApiError = ApiError;
 
 export function createInviteLinksApi(
   getToken: TokenProvider,

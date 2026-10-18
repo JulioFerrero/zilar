@@ -1,9 +1,9 @@
-import {
-  ApprovalsApiError,
-  type ApprovalDecision,
-  type ApprovalRule,
-  type ApprovalsApi,
-  type PublicApproval,
+import { ApiError } from '@zilar/api-contract';
+import type {
+  ApprovalDecision,
+  ApprovalRule,
+  ApprovalsApi,
+  PublicApproval,
 } from '@/lib/approvals-api';
 import { Effect } from 'effect';
 import { applyDecision } from '@/lib/approval-state';
@@ -146,7 +146,7 @@ export function claimDecision(inFlight: Set<string>, id: string): boolean {
  * row drops quietly like a success.
  */
 export function revokeFailedOutcome(error: unknown): { dropped: boolean; message: string } {
-  if (error instanceof ApprovalsApiError && error.status === 404) {
+  if (error instanceof ApiError && error.status === 404) {
     return { dropped: true, message: '' };
   }
   return { dropped: false, message: revokeFailedMessage(error) };

@@ -5,7 +5,7 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { providerLabel } from '@/components/ais/providers';
+import { providerLabel } from '@zilar/chat-core';
 import { AddKeySheet } from '@/components/connections/add-key-sheet';
 import { ConnectionRow } from '@/components/connections/connection-card';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';

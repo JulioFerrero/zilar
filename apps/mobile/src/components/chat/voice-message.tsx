@@ -15,14 +15,14 @@ import {
   subscribeVoicePlayError,
   subscribeVoiceProgress,
   subscribeVoiceState,
-  type VoicePlayerControls,
-} from './voice-player';
+} from './voice-player-registry';
+import type { VoicePlayerControls } from './voice-player-host';
 import { VoiceTranscribeConfirm } from './voice-transcribe-confirm';
 import { useVoiceTranscribe } from './use-voice-transcribe';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { mobileUploadOf, type UiMessage } from '@/lib/types';
-import { isPlayableVoiceUrl, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-native';
+import { isPlayableVoiceUrl, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-playback';
 import { type StoredTranscript, type TranscriptMap } from '@/lib/voice-transcripts';
 import type { WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';

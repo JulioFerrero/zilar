@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
 import { LeaveTopicSheet } from '@/components/chat/leave-topic-sheet';
 import { TopicAddSheet } from '@/components/chat/topic-add-sheet';
-import { TopicInfoSheet } from '@/components/chat/topic-sheets';
+import { TopicInfoSheet } from '@/components/chat/topic-info-sheet';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { runInBackground } from '@/lib/effect/run-in-background';
