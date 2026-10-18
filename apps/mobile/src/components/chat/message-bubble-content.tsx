@@ -1,4 +1,5 @@
 import { senderColor, type UiMessage } from '@zilar/chat-core';
+import { isCardAllowedFrom } from '@zilar/client-core';
 import type { Sticker } from '@zilar/protocol';
 import { useMemo } from 'react';
 import { Pressable, View } from 'react-native';
@@ -174,7 +175,7 @@ export function MessageBubbleContent({
           <ReplyQuote message={message} />
         </View>
       ) : null}
-      {message.card?.type === 'routine' ? (
+      {message.card?.type === 'routine' && isCardAllowedFrom(message.card, message.senderId) ? (
         <View className={cn(mediaFirst && 'px-3 pt-2')}>
           <RoutineHeader routine={message.card.data} />
         </View>

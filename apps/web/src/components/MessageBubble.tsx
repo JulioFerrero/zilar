@@ -1,4 +1,5 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { isCardAllowedFrom } from '@zilar/client-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
@@ -329,11 +330,12 @@ export const MessageBubble = memo(function MessageBubble({
               </div>
             )}
 
-            {message.card?.type === 'routine' && (
-              <div className="px-3 pt-2">
-                <RoutineHeader routine={message.card.data} />
-              </div>
-            )}
+            {message.card?.type === 'routine' &&
+              isCardAllowedFrom(message.card, message.senderId) && (
+                <div className="px-3 pt-2">
+                  <RoutineHeader routine={message.card.data} />
+                </div>
+              )}
 
             {bigEmoji ? (
               <BigEmoji message={message} text={text} own={own} generating={generating} />

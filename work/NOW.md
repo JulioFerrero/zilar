@@ -956,12 +956,32 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       | T-2034 | version and requests | −61 |
                       | T-2033 | Markdown AST | added; it pays off in T-2037 |
 
+                      - **Merged later on 10-18:**
+
+                        | Task | What | Lines |
+                        | --- | --- | ---: |
+                        | T-2035 | history merge; web keeps prefs; phone prunes (emulator-checked) | — |
+                        | T-2037 | phone Markdown on the shared parser (Hermes-checked) | −500 |
+                        | T-2038 | sweep loop | −66 |
+                        | T-2039 | web clones (Playwright-checked) | −62 |
+                        | T-2040 | hosts and entities | −59 |
+                        | T-2042 | byte readers | −37 |
+                        | T-2043 | schema walker | −79 |
+                        | T-2041 | phone last-seat leave fix and helpers | — |
+
+                        The 10-18 total is about −1,650 product lines.
                       - **Running:**
-                        - T-2035: history merge, web keeps prefs on failure, phone prunes;
-                        - T-2037: phone Markdown on the shared AST, about −400;
-                        - T-2038: server sweep loop;
-                        - T-2039: web clones;
-                        - T-2040: server hosts and entities.
+                        - T-2022: the phone gesture. The lead overruled pre-review finding 2, so double tap goes back to the bubble only.
+                        - T-2044: topic rules;
+                        - T-2045: people prefix search.
+                      - **Next:**
+                        - W2-d part 2: the topics API;
+                        - W2-a: debounce and `useDelayed`;
+                        - web `@handle` exact lookup (Julio's Q4);
+                        - W3 slices;
+                        - the T-2031 follow-ups (gifs `runApiAbortable`, `api-effect` re-exports);
+                        - the routine-header AI gate (T-2001 follow-up).
+                      - **Skipped:** server clone #30, because the server doesn't depend on chat-core.
                       - **Also merged:**
                         - T-2036: channel owners and admins see full topic members;
                         - T-2001: AI-only cards;
