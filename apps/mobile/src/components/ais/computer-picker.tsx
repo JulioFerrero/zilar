@@ -1,62 +1,21 @@
 import { View } from 'react-native';
 import { Cloud, Laptop, PowerOff, Sparkles, type LucideIcon } from 'lucide-react-native';
 
+import { computerChoices, type ComputerMode } from '@zilar/chat-core';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ACCENT_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 import { OptionRow } from './option-row';
 
-export type ComputerMode = 'off' | 'cloud' | 'runner' | 'auto';
+export type { ComputerMode } from '@zilar/chat-core';
 
-interface ComputerChoice {
-  mode: ComputerMode;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  disabled: boolean;
-}
-
-/**
- * T-1425: the four computer choices, each with its one-line description. Off
- * is always offered; Zilar cloud needs the cloud desk client wired; My machine
- * and Auto need a home machine. A disabled choice shows why in place of its
- * description.
- */
-function computerChoices(cloud: boolean, hasMachine: boolean): ComputerChoice[] {
-  return [
-    {
-      mode: 'off',
-      label: 'Off',
-      description: 'No computer',
-      icon: PowerOff,
-      disabled: false,
-    },
-    {
-      mode: 'cloud',
-      label: 'Zilar',
-      description: cloud ? 'Runs on a Zilar cloud computer' : 'Needs setup on your server',
-      icon: Cloud,
-      disabled: !cloud,
-    },
-    {
-      mode: 'runner',
-      label: 'Machine',
-      description: hasMachine ? 'Runs on your home machine' : 'Pick a machine first',
-      icon: Laptop,
-      disabled: !hasMachine,
-    },
-    {
-      mode: 'auto',
-      label: 'Auto',
-      description: hasMachine
-        ? "My machine when it's online, otherwise Zilar cloud"
-        : 'Pick a machine first',
-      icon: Sparkles,
-      disabled: !hasMachine,
-    },
-  ];
-}
+const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
+  off: PowerOff,
+  cloud: Cloud,
+  runner: Laptop,
+  auto: Sparkles,
+};
 
 function ChoiceGlyph({ icon: Icon, selected }: { icon: LucideIcon; selected: boolean }) {
   return (
@@ -112,7 +71,7 @@ export function ComputerPicker({
             accessibilityLabel={choice.label}
             onPress={() => onChange(choice.mode)}
           >
-            <ChoiceGlyph icon={choice.icon} selected={selected} />
+            <ChoiceGlyph icon={COMPUTER_ICONS[choice.mode]} selected={selected} />
             <View className="min-w-0 flex-1">
               <Text className="text-[15px] font-medium text-foreground">{choice.label}</Text>
               <Text numberOfLines={1} className="text-[13px] text-muted-foreground">

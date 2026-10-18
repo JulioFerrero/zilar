@@ -1012,13 +1012,30 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - **jscpd at 18:50:** 3,786 duplicated lines (1.38%), down from 4,558 (1.66%) in the T-2013 scan.
                         - Same-app clones: phone about 1,050, server about 880, web about 540.
                         - Results are in `$CLAUDE_JOB_DIR/tmp/jscpd/`.
-                      - **Running at 19:10:**
-                        - T-2050: web `@handle` lookup. The StrictMode fix is in, and re-review is running.
-                        - T-2056: groups API;
-                        - T-2057: phone settings list hook (emulator smoke running);
-                        - T-2058: four server helpers;
-                        - T-2059: web small dedupes (`shownFailure` ×13);
-                        - T-2060: server in-file copies.
+                      - **Merged 19:10–19:35:**
+
+                        | Task | What | Lines |
+                        | --- | --- | ---: |
+                        | T-2050 | web `@handle` exact lookup (Julio's Q4; StrictMode fix round) | +112 |
+                        | T-2059 | `shownFailure` ×13 and more | −92 |
+                        | T-2057 | phone settings lists (emulator-checked) | −26 |
+                        | T-2061 | web clones 2 | −40 |
+                        | T-2064 | core status walk and wire reply | −43 |
+                        | T-2056 | groups API | −45 |
+                        | T-2063 | phone clones 1 (emulator-checked) | −99 |
+                        | T-2060 | server in-file copies | −50 |
+                        | T-2062 | server clones 3; target waived | −8 |
+
+                        Live: `10ac0deaf`, 19:33, 0 server errors.
+                      - **jscpd at 19:30:** 3,083 duplicated lines (1.13%), fixtures excluded.
+                      - **Found:** `files/routes.test.ts`'s "404 for a retracted row" fails on main.
+                        - **Cause:** the fixture's retract has no `from` (since T-1994).
+                        - **Fix:** T-2058's fix round, which adds a foreign-retract case. The merge gate refuses T-2058 until then.
+                      - **Running at 19:36:**
+                        - T-2058: the fixture fix round;
+                        - T-2066: twin logic (steps, invite code, computer choices);
+                        - T-2067: one handle-error wording. It fixes phone and `HandlePage` drift.
+                        - T-2068: server clones 4.
                       - **Next:**
                         - W3-f: locals and `finishDraftTurn`;
                         - the phone member-handle fallback for person links;

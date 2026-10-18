@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Cloud, Laptop, PowerOff, Sparkles, type LucideIcon } from 'lucide-react';
 import type { AiComputerMode } from '@zilar/api-contract';
+import { computerChoices, type ComputerMode } from '@zilar/chat-core';
 import { getComputerOptions, updateAi, type PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -10,54 +11,12 @@ import { useQuery } from '@/lib/effect/use-query';
 import { FieldError, SelectOption } from './AiPageShell';
 import { describeFailure, refetchAi } from './aiPanelOps';
 
-interface ComputerChoice {
-  mode: AiComputerMode;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  disabled: boolean;
-}
-
-/**
- * T-1425: the four computer choices, each with its one-line description. Off
- * is always offered; Zilar cloud needs the cloud desk client wired; My machine
- * and Auto need a home machine. A disabled choice shows why in place of its
- * description.
- */
-function computerChoices(cloud: boolean, hasMachine: boolean): ComputerChoice[] {
-  return [
-    {
-      mode: 'off',
-      label: 'Off',
-      description: 'No computer',
-      icon: PowerOff,
-      disabled: false,
-    },
-    {
-      mode: 'cloud',
-      label: 'Zilar',
-      description: cloud ? 'Runs on a Zilar cloud computer' : 'Needs setup on your server',
-      icon: Cloud,
-      disabled: !cloud,
-    },
-    {
-      mode: 'runner',
-      label: 'Machine',
-      description: hasMachine ? 'Runs on your home machine' : 'Pick a machine first',
-      icon: Laptop,
-      disabled: !hasMachine,
-    },
-    {
-      mode: 'auto',
-      label: 'Auto',
-      description: hasMachine
-        ? "My machine when it's online, otherwise Zilar cloud"
-        : 'Pick a machine first',
-      icon: Sparkles,
-      disabled: !hasMachine,
-    },
-  ];
-}
+const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
+  off: PowerOff,
+  cloud: Cloud,
+  runner: Laptop,
+  auto: Sparkles,
+};
 
 /** T-1425: where the AI's computer runs, next to the home-machine picker. One
  *  choice; saving patches `computerMode` right away like the machine picker,
@@ -112,7 +71,7 @@ export function AiComputerSection({
       <h3 className="text-[14px] font-medium">Computer</h3>
       <div role="radiogroup" aria-label="Computer" className="flex flex-col gap-2">
         {computerChoices(cloud, hasMachine).map((choice) => {
-          const Icon = choice.icon;
+          const Icon = COMPUTER_ICONS[choice.mode];
           const selected = choice.mode === currentMode;
           return (
             <SelectOption

@@ -1,14 +1,7 @@
+import { parseInviteCode } from '@zilar/chat-core';
 import { TextInput } from '@/components/ui/text-input';
 
-/**
- * A pasted invite link `…/invite/<code>` is reduced to its code; anything else
- * (a bare code, with any surrounding whitespace) is kept as typed.
- */
-export function parseInviteCode(raw: string): string {
-  const trimmed = raw.trim();
-  const match = /\/invite\/([^/?#\s]+)/.exec(trimmed);
-  return match?.[1] ?? trimmed;
-}
+export { parseInviteCode };
 
 /** The sign-up invite code: accepts a bare code or a pasted invite link. */
 export function InviteCodeField({

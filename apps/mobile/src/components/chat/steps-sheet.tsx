@@ -1,5 +1,5 @@
-import type { TaskStep, TaskStepAction } from '@zilar/api-contract';
 import { formatClock, type AvatarPersonInput } from '@zilar/chat-core';
+import { defaultOpenStepId, stepsView, type DisplayStep } from '@zilar/client-core';
 import type { Progress } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
@@ -51,40 +51,6 @@ function stepsMockActive(
     return false;
   }
   return requested !== 'false';
-}
-
-/** One rendered row: the server's step, or a card step when the log is gone. */
-interface DisplayStep {
-  id: string;
-  label: string;
-  state: TaskStep['state'];
-  /** Absent on a card-only fallback step, which carries no duration. */
-  durationMs: number | null;
-  approved: boolean;
-  actions: readonly TaskStepAction[];
-}
-
-function toDisplayStep(step: TaskStep): DisplayStep {
-  return {
-    id: step.id,
-    label: step.label,
-    state: step.state,
-    durationMs: step.durationMs,
-    approved: step.approved,
-    actions: step.actions,
-  };
-}
-
-/** The card's own steps, with no actions, when the log is empty or gone. */
-function fallbackSteps(card: Progress): DisplayStep[] {
-  return (card.steps ?? []).map((step) => ({
-    id: step.id,
-    label: step.label,
-    state: step.state === 'planned' || step.state === 'doing' ? 'stopped' : step.state,
-    durationMs: null,
-    approved: false,
-    actions: [],
-  }));
 }
 
 /** The state icon of one step row; a status is never a word. */
@@ -233,19 +199,11 @@ export function StepsSheet({
   );
   const failure = AsyncResult.isFailure(result) ? failureOf(result) : undefined;
   const loaded = AsyncResult.isSuccess(result) ? result.value.steps : undefined;
-  const gone = loaded === undefined ? failure?.status === 404 : loaded.length === 0;
-  const steps: DisplayStep[] =
-    loaded !== undefined && loaded.length > 0
-      ? loaded.map(toDisplayStep)
-      : gone
-        ? fallbackSteps(card)
-        : [];
-  const loading = loaded === undefined && failure === undefined;
-  const errored = failure !== undefined && failure.status !== 404;
+  const { steps, loading, errored } = stepsView(loaded, failure?.status, card);
 
   // The step holding the first failed action starts open; the reader's choice
   // resets when the sheet closes, so it re-defaults the next time.
-  const defaultOpen = steps.find((step) => step.actions.some((action) => !action.ok))?.id ?? null;
+  const defaultOpen = defaultOpenStepId(steps);
   const [chosenOpen, setChosenOpen] = useState<string | null>();
   const openId = chosenOpen === undefined ? defaultOpen : chosenOpen;
   const toggle = (id: string): void => setChosenOpen(openId === id ? null : id);
