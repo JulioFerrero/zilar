@@ -6,13 +6,16 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 
 import { Text } from '@/components/ui/text';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
-import { segment } from '@/lib/depth';
+import { segment, well } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
 import { folderIcon } from './folder-icon';
 
 /** How far the chip row is inset, used to keep the active chip in view. */
 const ROW_INSET = 16;
+
+/** The well track's inner padding, as in the kit segmented control. */
+const TRACK_PADDING = 3;
 
 type FolderChip = {
   id: string;
@@ -41,12 +44,12 @@ function chipGlyph(folder: ChatFolder | undefined, color: string) {
 }
 
 /**
- * The chat folders as scrollable chips (T-0248): "All chats" first, then one
- * chip per server folder. The selected chip is raised (the `segment` look) and
- * the rest sit on the surface; a chip shows its unread count only when it is
- * above zero. T-1310: the raised look is two layers that cross-fade with the
- * pager's `progress`, so the indicator follows a swipe, and the row scrolls to
- * keep the active chip in view as the pager turns.
+ * The chat folders as a scrollable segmented track (T-0248, T-1965): "All
+ * chats" first, then one chip per server folder, on the kit's recessed `well`
+ * track. The selected chip is raised (the `segment` look); a chip shows its
+ * unread count only when it is above zero. T-1310: the raised layer cross-fades
+ * with the pager's `progress`, so the indicator follows a swipe, and the row
+ * scrolls to keep the active chip in view as the pager turns.
  */
 export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }: FolderTabsProps) {
   const chips: FolderChip[] = [
@@ -59,7 +62,10 @@ export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }
   const scrollToActive = useCallback((id: string) => {
     const position = positions.current[id];
     if (position !== undefined) {
-      scrollRef.current?.scrollTo({ x: Math.max(0, position.x - ROW_INSET), animated: true });
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, position.x - TRACK_PADDING),
+        animated: true,
+      });
     }
   }, []);
 
@@ -85,23 +91,27 @@ export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }
       style={{ flexGrow: 0 }}
       contentContainerStyle={{
         flexDirection: 'row',
-        gap: 8,
         paddingHorizontal: ROW_INSET,
         paddingBottom: 8,
       }}
     >
-      {chips.map((chip, index) => (
-        <FolderChipView
-          key={chip.id}
-          chip={chip}
-          index={index}
-          selected={chip.id === activeFolder}
-          count={counts[chip.id] ?? 0}
-          progress={progress}
-          onSelect={() => onSelect(chip.id)}
-          onLayout={(event) => recordLayout(chip, event)}
-        />
-      ))}
+      <View
+        className="flex-row gap-0.5 rounded-[10px] p-[3px]"
+        style={[well, { borderColor: '#1a1a1a' }]}
+      >
+        {chips.map((chip, index) => (
+          <FolderChipView
+            key={chip.id}
+            chip={chip}
+            index={index}
+            selected={chip.id === activeFolder}
+            count={counts[chip.id] ?? 0}
+            progress={progress}
+            onSelect={() => onSelect(chip.id)}
+            onLayout={(event) => recordLayout(chip, event)}
+          />
+        ))}
+      </View>
     </ScrollView>
   );
 }
@@ -116,7 +126,7 @@ type FolderChipViewProps = {
   onLayout: (event: LayoutChangeEvent) => void;
 };
 
-/** One chip: a surface layer under the raised `segment` layer, cross-faded. */
+/** One chip: the raised `segment` layer sits on the well track and cross-fades. */
 function FolderChipView({
   chip,
   index,
@@ -129,9 +139,6 @@ function FolderChipView({
   const raisedStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, 1 - Math.abs(progress.value - index)),
   }));
-  const surfaceStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, Math.abs(progress.value - index)),
-  }));
   const iconColor = selected ? FOREGROUND : MUTED_FOREGROUND;
   return (
     <Pressable
@@ -140,15 +147,10 @@ function FolderChipView({
       accessibilityLabel={chip.name}
       onPress={onSelect}
       onLayout={onLayout}
-      className="h-[34px] flex-row items-center gap-1.5 overflow-hidden rounded-full px-3"
+      className="h-[34px] flex-row items-center gap-1.5 overflow-hidden rounded-[7px] px-3"
     >
       <Animated.View
-        className="absolute inset-0 rounded-full bg-surface"
-        style={surfaceStyle}
-        pointerEvents="none"
-      />
-      <Animated.View
-        className="absolute inset-0 rounded-full"
+        className="absolute inset-0 rounded-[7px]"
         style={[segment, raisedStyle]}
         pointerEvents="none"
       />

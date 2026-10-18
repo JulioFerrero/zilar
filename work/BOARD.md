@@ -1967,3 +1967,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1963](T-1963-phone-group-info-subpages.md) | phone group info sub-pages use ScreenHeader | 2026-10-18 |
 | [T-1967](T-1967-web-info-labels.md) | web info labels use SectionLabel; ScreenHeader backLabel | 2026-10-18 |
 | [T-1964](T-1964-phone-channel-info-labels.md) | phone channel info headers, info labels SectionLabel | 2026-10-18 |
+| [T-1965](T-1965-phone-folders-explore-requests.md) | phone folder track, Explore segmented, 52 dp requests | 2026-10-18 |

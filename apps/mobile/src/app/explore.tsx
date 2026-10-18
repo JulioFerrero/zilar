@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Compass } from 'lucide-react-native';
 
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -18,6 +18,7 @@ import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { DirectoryEntry, DirectoryKind, SearchDirectoryInput } from '@/lib/directory-api';
@@ -224,32 +225,14 @@ function ExploreList() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <View
-          accessibilityRole="radiogroup"
+        <SegmentedControl
+          mode="radio"
           accessibilityLabel="Kind filter"
-          className="mt-2 flex-row gap-2"
-        >
-          {KIND_OPTIONS.map((option) => (
-            <Pressable
-              key={option.value}
-              accessibilityRole="radio"
-              accessibilityLabel={option.label}
-              accessibilityState={{ checked: kind === option.value }}
-              onPress={() => setKind(option.value)}
-              className={`rounded-full border px-3 py-1 active:opacity-80 ${
-                kind === option.value ? 'border-accent bg-accent/10' : 'border-border-strong'
-              }`}
-            >
-              <Text
-                className={`text-[14px] ${
-                  kind === option.value ? 'font-medium text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+          className="mt-2"
+          options={[...KIND_OPTIONS]}
+          value={kind}
+          onChange={(value) => setKind(value as KindFilter)}
+        />
       </View>
 
       {status === 'loading' && <StateMessage kind="loading" title="Searching…" />}

@@ -225,9 +225,9 @@ function RequestRow({
   const { name, handle, userId } = request.other;
   const body = (
     <>
-      <EntityAvatar person={{ userId, name }} size={44} />
+      <EntityAvatar person={{ userId, name }} size={52} />
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
+        <Text numberOfLines={1} className="text-[16px] font-semibold text-foreground">
           {name}
         </Text>
         <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
