@@ -1,6 +1,7 @@
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { SectionLabel } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { ApprovalRule } from '@/lib/approvals-api';
@@ -26,7 +27,7 @@ export function RulesSection({
   const count = sections.reduce((total, section) => total + section.rules.length, 0);
   return (
     <View className="mt-6 gap-2 border-t border-divider pt-4">
-      <Text className="text-[16px] font-semibold">Always allowed</Text>
+      <SectionLabel>Always allowed</SectionLabel>
       {status === 'loading' ? <StateMessage kind="loading" size="inline" title="Loading…" /> : null}
       {status === 'error' ? (
         <View className="gap-2">

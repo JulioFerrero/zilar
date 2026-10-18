@@ -1976,3 +1976,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1974](T-1974-web-open-joined-channel.md) | web Open on a joined channel opens it | 2026-10-18 |
 | [T-1975](T-1975-web-request-row-avatars.md) | web request rows get 36 px avatars | 2026-10-18 |
 | [T-1976](T-1976-mock-my-routines.md) | mock GET /routines for Settings › Routines | 2026-10-18 |
+| [T-1977](T-1977-phone-requests-header.md) | phone requests header and Always allowed label | 2026-10-18 |
