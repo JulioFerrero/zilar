@@ -7,7 +7,7 @@ import { folderUnreadTotal } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-/** Folder chips for narrow screens: "All chats" plus one chip per folder. */
+/** The folder track for narrow screens: "All chats" plus one tab per folder. */
 export function FolderTabs() {
   const folders = useChatSelector((s) => s.folders);
   const chats = useChatSelector((s) => s.chats);
@@ -50,45 +50,47 @@ export function FolderTabs() {
   };
 
   return (
-    <div
-      role="tablist"
-      aria-label="Chat folders"
-      className="scrollbar-thin flex shrink-0 gap-1.5 overflow-x-auto px-3 pt-1 pb-2"
-    >
-      {tabs.map((tab, index) => {
-        const active = activeFolder === tab.id;
-        const Icon = tab.icon;
-        return (
-          <button
-            key={tab.id}
-            ref={(element) => {
-              tabRefs.current[index] = element;
-            }}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
-            onClick={() => setActiveFolder(tab.id)}
-            onKeyDown={(event) => moveFocus(event, index)}
-            className={cn(
-              'flex h-[30px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',
-              active
-                ? 'segment-raised border-edge text-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {Icon !== null && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
-            {tab.label}
-            {tab.unread > 0 && (
-              <Badge
-                count={tab.unread}
-                muted={!active}
-                className="h-4 min-w-4 px-1 text-[10px] leading-4"
-              />
-            )}
-          </button>
-        );
-      })}
+    <div className="shrink-0 px-3 pt-1 pb-2">
+      <div
+        role="tablist"
+        aria-label="Chat folders"
+        className="scrollbar-thin well-surface flex gap-1 overflow-x-auto rounded-[10px] p-[3px]"
+      >
+        {tabs.map((tab, index) => {
+          const active = activeFolder === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() => setActiveFolder(tab.id)}
+              onKeyDown={(event) => moveFocus(event, index)}
+              className={cn(
+                'flex h-[30px] shrink-0 items-center gap-1.5 rounded-[7px] px-3 text-[13px] font-medium transition-colors',
+                active
+                  ? 'segment-raised text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {Icon !== null && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
+              {tab.label}
+              {tab.unread > 0 && (
+                <Badge
+                  count={tab.unread}
+                  muted={!active}
+                  className="h-4 min-w-4 px-1 text-[10px] leading-4"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

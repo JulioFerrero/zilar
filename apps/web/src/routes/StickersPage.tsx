@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
+import { SectionLabel } from '@/components/ui/card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SearchField } from '@/components/ui/search-field';
@@ -233,9 +234,7 @@ export function StickersPage() {
 
               {addedPacks.length > 0 && (
                 <section aria-label="Added packs" className="flex flex-col gap-2">
-                  <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.06em] text-subtle-foreground">
-                    Added
-                  </h2>
+                  <SectionLabel>Added</SectionLabel>
                   <ul className="overflow-hidden rounded-xl border border-border bg-surface">
                     {addedPacks.map((pack) => (
                       <AddedPackRow key={pack.id} pack={pack} setters={setters} />

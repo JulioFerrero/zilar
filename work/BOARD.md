@@ -1960,3 +1960,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1949](T-1949-web-screen-header.md) | web ScreenHeader in SettingsShell; SectionLabel 11/500 | 2026-10-18 |
 | [T-1958](T-1958-phone-section-labels.md) | phone section labels one style (12/500 uppercase) | 2026-10-18 |
 | [T-1959](T-1959-phone-one-tap-headers.md) | phone one-tap screens use ScreenHeader | 2026-10-18 |
+| [T-1962](T-1962-web-consistency-leftovers.md) | web info sub-pages, folder track, stickers label | 2026-10-18 |
