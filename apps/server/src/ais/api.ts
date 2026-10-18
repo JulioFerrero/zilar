@@ -2,10 +2,16 @@ import { Layer } from 'effect';
 import { HttpApiBuilder } from 'effect/http-api';
 import { AisSchemaErrors, type PublicAi as WireAi } from '@zilar/api-contract';
 import { getAiCatalog } from '../ai/catalog';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import { assignMachine, resumeAi, stopAi } from './status';
+import { createAi, updateAi } from './provisioning';
+import { deleteAi } from './provisioning-xmpp';
+import { getOwnedAi, listAis } from './queries';
+import type { AiLogger, PublicAi } from './persona';
 import type { Auth } from '../auth/auth';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
-import type { ServerConfig } from '../config';
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
@@ -16,23 +22,10 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { TurnStopper } from '../agents/gateway/stop-types';
 import { AisApi, configuredLayer, renderSchemaError } from './api-layers';
 import { toLogger } from './http-logger';
 import { stopTurn } from './stop-turn';
-import {
-  assignMachine,
-  createAi,
-  deleteAi,
-  getOwnedAi,
-  listAis,
-  resumeAi,
-  stopAi,
-  updateAi,
-  type AiLogger,
-  type PublicAi,
-} from './service';
 import { withLastFailures } from './health';
 import { getAiUsage } from './usage';
 

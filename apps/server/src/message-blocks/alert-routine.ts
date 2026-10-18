@@ -5,7 +5,7 @@
 // a linked alert; anyone else gets the card's usual 404. Pause and resume are
 // audited.
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { BlockCardRow } from '../db/rows';
 import { errorName } from '../effect/error-utils';

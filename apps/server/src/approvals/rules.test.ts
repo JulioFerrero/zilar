@@ -19,7 +19,7 @@ import {
 import { sqlRuntimeFor } from '../effect/sql';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
 import { createActionGateway } from '../actions/gateway';
-import { createAuditRecorder } from '../audit/service';
+import { createAuditRecorder } from '../audit/recorder';
 
 interface RuleIdRow {
   id: string;

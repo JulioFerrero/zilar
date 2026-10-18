@@ -1,11 +1,11 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { recordAudit } from '../audit/service';
+import { recordAudit } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { roomAffiliationFor } from '../topics/room-members';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { assertChannelKeepsAnAdmin, getGroupDetail, getMembership, requireGroup } from './queries';

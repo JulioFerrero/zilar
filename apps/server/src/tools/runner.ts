@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import {

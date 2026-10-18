@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { aiLocalpart } from '../ais/service';
+import { aiLocalpart } from '../ais/provisioning-xmpp';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
 import { DIRECTORY_RATE_LIMIT_MAX } from '../directory/api';

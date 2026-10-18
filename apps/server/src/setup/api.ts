@@ -6,10 +6,10 @@ import type { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
 import type { Auth } from '../auth/auth';
 import { createResendMailer, type CurrentMailer, type Mailer } from '../auth/mailer';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import {

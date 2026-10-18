@@ -1,5 +1,5 @@
 import type { ServerDatabase } from '../db/client';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { InviteLogger } from '../groups/service';
 
 export interface TopicRoomDeps {

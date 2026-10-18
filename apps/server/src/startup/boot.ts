@@ -8,7 +8,8 @@ import {
   CurrentMailer,
   MailerConfigurationError,
 } from '../auth/mailer';
-import { loadServerConfigOrExit, type ServerConfig } from '../config';
+import { loadServerConfigOrExit, type ServerConfig } from '../config/load';
+import { resolveStorageDir } from '../stickers/storage';
 import { createDb, type ServerDatabase } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import { registerSqlRuntime } from '../effect/sql';
@@ -20,7 +21,6 @@ import {
   warnOnEmptyStorageDir,
   warnOnGifConfig,
 } from '../startup';
-import { resolveStorageDir } from '../stickers/service';
 import type { RunningServer } from './lifecycle';
 
 export interface BootedServer {

@@ -1,5 +1,5 @@
 import { Effect, type Fiber } from 'effect';
-import { listActiveAisForGateway, onAiLifecycle, type ActiveAiForGateway } from '../../ais/service';
+import { listActiveAisForGateway, onAiLifecycle, type ActiveAiForGateway } from '../../ais/queries';
 import { onGroupAi, onTopicAi } from '../../groups/events';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import {

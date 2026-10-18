@@ -7,7 +7,7 @@ import type { HttpServerRequest } from 'effect/http';
 import { AddStickerFavoritePayload } from '@zilar/api-contract';
 import type { SchemaErrorRender } from '../effect/http-core';
 import { HttpError } from '../errors';
-import { STICKER_PANEL_MAX, STICKERS_MAX_PER_PACK } from './service';
+import { STICKER_PANEL_MAX, STICKERS_MAX_PER_PACK } from './schemas';
 
 // Optional `q` <= 60, `cursor` <= 128. The query is decoded manually because
 // the contract types the keys as `RawQueryValue`; an invalid query answers

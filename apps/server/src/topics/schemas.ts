@@ -1,7 +1,7 @@
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import type { InviteLogger } from '../groups/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { TopicKind, TopicRow, TopicStatus, TopicVisibility } from './access';
 
 // The request bodies are validated at the Effect HTTP boundary in `api.ts`;

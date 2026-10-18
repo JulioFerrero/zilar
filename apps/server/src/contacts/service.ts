@@ -1,10 +1,10 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { findInviteByCode } from '../auth/invites';

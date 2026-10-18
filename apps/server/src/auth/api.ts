@@ -10,8 +10,9 @@ import {
   UpdateMePayload,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import { createAuditRecorder } from '../audit/service';
-import type { ServerConfig } from '../config';
+import { createAuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
@@ -27,7 +28,6 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 import { meView } from './me-view';

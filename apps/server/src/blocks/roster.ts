@@ -6,7 +6,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 
 export interface RosterLogger {

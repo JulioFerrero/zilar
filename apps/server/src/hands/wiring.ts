@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import { createCloudHands, type Hands } from './cloud-hands';
 import { createDeskProbe, type DeskProbe } from './desk-status';
 

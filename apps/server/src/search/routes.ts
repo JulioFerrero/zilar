@@ -1,5 +1,5 @@
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { bareJid, ownBareJid } from '../jid';

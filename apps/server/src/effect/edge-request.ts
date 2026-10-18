@@ -2,7 +2,7 @@
 // for the edge. This file must not import `./edge.ts` (no cycle).
 
 import { HttpServerResponse } from 'effect/http';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import { HttpError } from '../errors';
 import { REQUEST_ID_HEADER, SOCKET_ADDRESS_HEADER } from './http-core';
 

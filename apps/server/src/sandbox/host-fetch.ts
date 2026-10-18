@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect } from 'effect';
-import { classifyIp, isIpLiteral } from './ip-guard';
+import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
 
 // Every network rule lives here so it can be tested with fakes; the VM layer
 // only passes the validated address through.

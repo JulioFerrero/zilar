@@ -1,12 +1,13 @@
 import type { Logger } from 'pino';
 import type { ActionGateway } from '../actions/gateway';
 import type { TurnStopper } from '../agents/gateway/stop-types';
-import type { AiLogger } from '../ais/service';
+import type { AiLogger } from '../ais/persona';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { AlwaysEligiblePredicate } from '../approvals/service';
-import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { CurrentMailer } from '../auth/mailer';
-import type { ServerConfig } from '../config';
 import type { ConnectionsLogger } from '../connections/api';
 import type { KeyCipher } from '../connections/crypto';
 import type { ProviderProbe } from '../connections/probe';
@@ -18,7 +19,6 @@ import type { SearchRoutesDependencies } from '../search/api';
 import type { SetupApiDependencies } from '../setup/api';
 import type { ToolRunner } from '../tools/types';
 import type { VoiceEngine } from '../voice/engine';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export interface AppDependencies {
   db: ServerDatabase;
@@ -63,7 +63,7 @@ export interface AppDependencies {
   cardMediaStorageDir?: string;
   stickerNow?: () => number;
   uploadLimiter?: { allow: (key: string) => boolean };
-  telegramClient?: import('../stickers/telegram-import').TelegramClient;
+  telegramClient?: import('../stickers/telegram/set').TelegramClient;
   telegramImportNow?: () => number;
   voiceTranscription?:
     | Partial<

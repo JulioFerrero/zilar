@@ -3,8 +3,8 @@
 // name, the outcome and the fixed reason only, never the URL.
 import { Effect } from 'effect';
 import { fetchCardMedia, type FetchCardMediaResult } from '../../card-media/fetch';
-import { FETCH_MEDIA_TOOL } from '../tools';
-import type { ToolExecution } from '../reply';
+import { FETCH_MEDIA_TOOL } from '../tools/schemas';
+import type { ToolExecution } from '../tool-loop';
 import { type AgentGatewayDeps, type AiSession } from './contracts';
 
 export interface FetchMediaCall {

@@ -15,7 +15,7 @@ import {
   type TestContext,
 } from '../test-support';
 import type { ArchivePool, ArchiveRow } from '../search/service';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import { createFilesApi } from './api';
 import type { InternalFetch } from './internal-fetch';
 

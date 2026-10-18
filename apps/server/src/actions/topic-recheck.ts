@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { createAuditRecorder } from '../audit/service';
+import { createAuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { PendingActionRow } from '../db/rows';
 import { runSql } from '../effect/sql';

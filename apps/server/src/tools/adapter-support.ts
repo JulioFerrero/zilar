@@ -3,11 +3,12 @@ import { Effect, type Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import { listRoutinesForAi } from '../routines/queries';
+import type { RoutineServiceError } from '../routines/schemas';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { listRoutinesForAi, type RoutineServiceError } from '../routines/service';
 import { ToolServiceError, approveToolHosts, getTool, listTools, revokeToolHosts } from './service';
 import {
   toolApproveHostsArgsSchema,

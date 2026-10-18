@@ -3,8 +3,8 @@
 import { Data, Effect, type Effect as EffectType } from 'effect';
 import { CardMediaQuotaError, storeCardMedia } from '../../card-media/service';
 import type { CardMediaRow } from '../../db/rows-agents';
-import { SAVE_TEXT_MEDIA_TOOL, type SaveTextMediaFormat } from '../tools';
-import type { ToolExecution } from '../reply';
+import { SAVE_TEXT_MEDIA_TOOL, type SaveTextMediaFormat } from '../tools/schemas';
+import type { ToolExecution } from '../tool-loop';
 import type { AgentGatewayDeps, AiSession } from './contracts';
 import type { FetchMediaChat } from './fetch-media';
 

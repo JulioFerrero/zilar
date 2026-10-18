@@ -2,7 +2,7 @@ import { request as httpsRequest } from 'node:https';
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { GifProvider } from './provider';
 
 export const GIF_RATE_LIMIT_MAX = 30;

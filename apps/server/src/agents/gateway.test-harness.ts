@@ -15,7 +15,7 @@ import type { ArchivePool } from '../search/service';
 import type { GatewayLogger } from './gateway';
 import { TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
-import { aiLocalpart } from '../ais/service';
+import { aiLocalpart } from '../ais/provisioning-xmpp';
 import { createAgentGateway, type AgentGateway, type AgentGatewayDeps } from './gateway';
 import { type DraftHub } from '../drafts/hub';
 

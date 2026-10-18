@@ -7,7 +7,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';

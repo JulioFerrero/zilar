@@ -8,7 +8,7 @@
 import { Cause, Effect, Layer, Option } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
 import type { Logger } from 'pino';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import { HttpError } from '../errors';
 import { CLIENT_IP_HEADER, clientIpFrom } from '../http/client-ip';
 import {

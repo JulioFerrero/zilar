@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   ASK_PEOPLE_TOOL_DEF,
-  FETCH_MEDIA_TOOL_DEF,
   MEMORY_TOOLS,
   PERSONA_TOOLS,
-  POST_BLOCKS_TOOL_DEF,
-  SAVE_TEXT_MEDIA_TOOL_DEF,
   TASK_STATUS_TOOL_DEF,
   buildDelegateTool,
   buildRequestActionTool,
-  deskToolDefinitions,
-} from '../tools';
+} from './definitions';
+import { FETCH_MEDIA_TOOL_DEF, SAVE_TEXT_MEDIA_TOOL_DEF } from './media-tool';
+import { POST_BLOCKS_TOOL_DEF } from './blocks-tool';
+import { deskToolDefinitions } from './desk-definitions';
 
 const TOOLS = [
   ...PERSONA_TOOLS,

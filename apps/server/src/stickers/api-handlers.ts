@@ -7,30 +7,16 @@ import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { createRateLimiter } from '../rate-limit';
 import { TELEGRAM_IMPORT_RATE_LIMIT_MAX, TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS } from './routes';
-import {
-  addFavorite,
-  addPanelPack,
-  createPack,
-  deletePack,
-  deleteSticker,
-  discoverPacks,
-  importTelegramPack,
-  listFavorites,
-  listPanelPacks,
-  patchPack,
-  readStickerFile,
-  removeFavorite,
-  removePanelPack,
-  reorderPanelPacks,
-  type StickersServiceDeps,
-  type TelegramImportDeps,
-} from './service';
-import {
-  createTelegramClient,
-  parseTelegramPackInput,
-  TelegramImportError,
-  type TelegramClient,
-} from './telegram-import';
+import { addFavorite, listFavorites, removeFavorite } from './favorites';
+import { addPanelPack, removePanelPack, reorderPanelPacks } from './panel';
+import { createPack, deletePack, discoverPacks, listPanelPacks, patchPack } from './packs';
+import { deleteSticker, readStickerFile } from './storage';
+import { importTelegramPack, type TelegramImportDeps } from './telegram';
+import type { StickersServiceDeps } from './schemas';
+import { createTelegramClient } from './telegram/client';
+import { parseTelegramPackInput } from './telegram/pack-input';
+import { TelegramImportError } from './telegram/errors';
+import type { TelegramClient } from './telegram/set';
 import {
   DiscoverQuery,
   FavoriteBody,

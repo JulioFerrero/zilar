@@ -4,7 +4,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { XmppAccountRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import type { EjabberdAdminClient } from './admin-client';
+import type { EjabberdAdminClient } from './admin/types';
 
 // XMPP localparts must be `[a-z0-9._-]`. The user id lowercased fits normally;
 // anything else falls back to a derived one.

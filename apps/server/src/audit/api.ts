@@ -14,7 +14,7 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { listAuditForAi, listAuditForGroup, type ListAuditPage } from './service';
+import { listAuditForAi, listAuditForGroup, type ListAuditPage } from './list';
 
 // The service marks a malformed `before` with `Invalid cursor`, answered 400; every
 // other rejection is an unhandled 500, so both travel as defects.

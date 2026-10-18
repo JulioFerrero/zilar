@@ -1,16 +1,17 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import { syncPublicTopicsByLink } from '../invite-links/join';
+import type { InviteLinkServiceDeps } from '../invite-links/tokens';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { pairHasBlock } from '../blocks/service';
 import { isBanned, isBannedIn } from './bans';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { syncPublicTopicsByLink, type InviteLinkServiceDeps } from '../invite-links/service';
 import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
 import { groupOwnerId } from './queries';
 

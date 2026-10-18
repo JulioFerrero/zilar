@@ -3,7 +3,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { requireChatAccess } from '../chat-prefs/access';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';

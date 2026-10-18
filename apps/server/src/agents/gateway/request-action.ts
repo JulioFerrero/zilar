@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { ActionGateway, RequestOutcome } from '../../actions/gateway';
-import { REQUEST_ACTION_TOOL } from '../tools';
-import type { ToolExecution, ValidToolCall } from '../reply';
+import { REQUEST_ACTION_TOOL } from '../tools/schemas';
+import type { ToolExecution, ValidToolCall } from '../tool-loop';
 import {
   denialReasonForModel,
   errorName,

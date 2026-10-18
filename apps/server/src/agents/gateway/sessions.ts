@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import type { ChatMessage, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
-import type { ActiveAiForGateway } from '../../ais/service';
+import type { ActiveAiForGateway } from '../../ais/queries';
 import { issueXmppToken } from '../../xmpp/token';
 import {
   GATEWAY_RESOURCE,

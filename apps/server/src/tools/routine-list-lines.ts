@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ActionContext } from '../actions/registry';
 import { runSql } from '../effect/sql';
-import type { PublicRoutine } from '../routines/service';
+import type { PublicRoutine } from '../routines/schemas';
 import type { AdapterState } from './adapter-support';
 import { describeSchedule } from './routine-adapters';
 

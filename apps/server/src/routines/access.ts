@@ -3,7 +3,7 @@ import type { ServerDatabase } from '../db/client';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
 import { findAiOwner, findRoutineById, findTopicById } from './reads';
-import { getRoutine } from './service';
+import { getRoutine } from './queries';
 
 export interface RoutineAccess {
   routine: { id: string; aiId: string; groupId: string | null; topicId: string | null };

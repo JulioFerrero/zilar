@@ -1,6 +1,6 @@
 import { Effect, Schema, SchemaGetter } from 'effect';
 import { pathToFileURL } from 'node:url';
-import { loadServerConfigOrExit } from '../config';
+import { loadServerConfigOrExit } from '../config/load';
 import { createDb } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';

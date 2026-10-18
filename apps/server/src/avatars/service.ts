@@ -3,12 +3,12 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import { resolveStorageDir } from '../stickers/storage';
 import type { ServerDatabase } from '../db/client';
 import type { AvatarOwnerKind } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { resolveStorageDir } from '../stickers/service';
 import { checkAvatarBytes, toAvatarHttpError } from './check';
 
 export { AVATAR_MAX_BYTES, AVATAR_MIN_SIDE, AVATAR_MAX_SIDE, checkAvatarBytes } from './check';

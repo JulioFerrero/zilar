@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import postgres from 'postgres';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';

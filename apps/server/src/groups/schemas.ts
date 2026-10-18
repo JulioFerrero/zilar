@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { GROUP_MEMBERS_MAX } from '@zilar/api-contract';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';

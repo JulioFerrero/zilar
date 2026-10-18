@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadServerConfig, type ServerConfig } from '../config';
+import { loadServerConfig, type ServerConfig } from '../config/load';
 import { CLIENT_IP_HEADER } from '../http/client-ip';
 import { createLogger } from '../logger';
 import {

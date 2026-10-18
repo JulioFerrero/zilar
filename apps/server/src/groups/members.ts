@@ -1,11 +1,11 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { recordAudit } from '../audit/service';
+import { recordAudit } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { dropMemberRoles } from '../roles/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
   archiveDrainedPrivateTopics,

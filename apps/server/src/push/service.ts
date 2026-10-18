@@ -1,5 +1,5 @@
 import { Data } from 'effect';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import type { ArchivePool } from '../search/service';
 import type { PushCipher } from './crypto';

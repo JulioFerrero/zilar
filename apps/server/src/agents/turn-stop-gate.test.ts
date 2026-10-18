@@ -5,7 +5,7 @@ import type { ModelTarget } from '../ai/model-client';
 import { runDmTurn } from './dm-turn';
 import { runGroupTurn } from './group-turn';
 import type { ExecuteToolCall } from './tool-loop';
-import type { ChatToolDefinition } from './tools';
+import type { ChatToolDefinition } from './tools/definitions';
 
 const RECALL_TOOL: ChatToolDefinition = {
   type: 'function',

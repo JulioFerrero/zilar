@@ -3,7 +3,7 @@ import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RevertToolPayload, RunToolPayload, ToolsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {

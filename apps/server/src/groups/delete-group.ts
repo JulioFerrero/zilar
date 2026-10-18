@@ -5,11 +5,11 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { recordAudit, type AuditRecorder } from '../audit/service';
+import { recordAudit, type AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { destroyQuietly, requireGroup } from './queries';
 import type { GroupRole, InviteLogger } from './schemas';
 

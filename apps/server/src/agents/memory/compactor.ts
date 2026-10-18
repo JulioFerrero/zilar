@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { ServerDatabase } from '../../db/client';
 import { looksLikeSecret } from './secrets';
-import { buildCompactionPrompt, compactionInput, pendingNodes, putNode } from './store';
+import { buildCompactionPrompt, compactionInput, pendingNodes, putNode } from './compaction';
 import { formatBlockId } from './tree';
 
 export interface CompactMemoryInput {

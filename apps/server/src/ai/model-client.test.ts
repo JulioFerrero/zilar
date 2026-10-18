@@ -1,6 +1,6 @@
 import { AiError } from 'effect/ai';
 import { describe, expect, it } from 'vitest';
-import { mapFailureToReply } from '../agents/reply';
+import { mapFailureToReply } from '../agents/tool-exec';
 import {
   PROVIDER_KEY_REJECTED_REPLY,
   RATE_LIMITED_REPLY,

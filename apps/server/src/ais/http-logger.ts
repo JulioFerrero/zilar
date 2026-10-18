@@ -1,7 +1,7 @@
 // The AI logger has `{ warn }`; the shared error envelope logs defects with `error`.
 
 import type { Logger } from 'pino';
-import type { AiLogger } from './service';
+import type { AiLogger } from './persona';
 
 export function toLogger(logger: AiLogger): Logger {
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import type { SearchOwner } from '../search/service';
 import { createArchivesCache } from './archives-cache';

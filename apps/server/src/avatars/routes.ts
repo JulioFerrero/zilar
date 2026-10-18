@@ -1,7 +1,7 @@
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { AuditRecorder } from '../audit/service';
 
 export interface AvatarsRoutesDependencies {
   auth: Auth;

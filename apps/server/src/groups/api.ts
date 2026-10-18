@@ -7,9 +7,10 @@ import {
   GroupsJoinRateLimit,
   GroupsRoleRateLimit,
 } from '@zilar/api-contract';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -21,7 +22,6 @@ import {
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   addGroupAi,
   addGroupMembers,

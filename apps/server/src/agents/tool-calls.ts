@@ -14,11 +14,10 @@ import {
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   isDeskToolName,
-  parseToolArguments,
-  safeToolName,
   type DeskToolName,
   type ParsedToolArguments,
-} from './tools';
+} from './tools/schemas';
+import { parseToolArguments, safeToolName } from './tools/parse';
 import type {
   ChatToolCall,
   ExecuteToolCall,

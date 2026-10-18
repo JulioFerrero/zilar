@@ -6,7 +6,7 @@ import type { GroupMemberRow, GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { roleHoldersByGroup } from '../roles/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { handleForGroup } from './visibility';
 import { isGroupManagerRole } from './access';
 import {

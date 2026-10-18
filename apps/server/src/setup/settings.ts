@@ -7,7 +7,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { createSettingsCipher } from './crypto';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 
 export const RESEND_API_KEY_SETTING = 'mail.resend_api_key';
 export const MAIL_FROM_SETTING = 'mail.from';

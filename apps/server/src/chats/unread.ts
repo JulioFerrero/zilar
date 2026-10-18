@@ -2,7 +2,7 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import type { ChatReadRow } from '../db/rows';
 import { runSql } from '../effect/sql';

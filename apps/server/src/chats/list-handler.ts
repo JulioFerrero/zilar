@@ -1,7 +1,7 @@
 // Builds the caller's chat list from contacts, groups, AIs, avatars, topics and marks.
 
 import { Effect } from 'effect';
-import { listAis } from '../ais/service';
+import { listAis } from '../ais/queries';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { listContacts } from '../contacts/service';
 import type { SessionUser } from '../effect/http-core';

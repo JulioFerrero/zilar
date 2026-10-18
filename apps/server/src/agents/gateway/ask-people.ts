@@ -4,8 +4,8 @@ import type { ServerDatabase } from '../../db/client';
 import type { AiQuestionRow } from '../../db/rows';
 import { HttpError } from '../../errors';
 import { createQuestion, expireQuestion, setQuestionMessageId } from '../../questions/service';
-import { ASK_PEOPLE_TOOL } from '../tools';
-import type { ToolExecution } from '../reply';
+import { ASK_PEOPLE_TOOL } from '../tools/schemas';
+import type { ToolExecution } from '../tool-loop';
 import { errorName, type AiSession, type GatewayLogger } from './contracts';
 import type { createLiveSession } from './live';
 

@@ -3,7 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { ApprovalRule, PublicApproval } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { runSql } from '../effect/sql';

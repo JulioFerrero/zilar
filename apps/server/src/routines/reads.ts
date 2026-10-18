@@ -5,8 +5,7 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import { listRoutinesForTopic, toPublicRoutines } from './queries';
-import type { PublicRoutine } from './schemas';
-import type { RoutineRow } from './service';
+import type { PublicRoutine, RoutineRow } from './schemas';
 
 // `SELECT *` returns camelCased columns, so rows keep the shapes the access helpers expect.
 export async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {

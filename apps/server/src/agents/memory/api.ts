@@ -4,7 +4,10 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AiMemoryGroup, AiMemoryWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../../auth/auth';
-import type { ServerConfig } from '../../config';
+import type { ServerConfig } from '../../config/load';
+import { clearMemory } from './state';
+import { deleteFact, listFacts } from './facts';
+import { renderMemoryBlock } from './render';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { HttpError } from '../../errors';
@@ -20,7 +23,6 @@ import {
   type EffectApiMount,
 } from '../../effect/http-core';
 import { rateLimitLayer } from '../../effect/rate-limit-middleware';
-import { clearMemory, deleteFact, listFacts, renderMemoryBlock } from './store';
 
 export const AI_MEMORY_WRITE_RATE_LIMIT_MAX = 60;
 export const AI_MEMORY_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;

@@ -25,10 +25,10 @@ import {
   SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
-  type ChatToolDefinition,
   type DeskToolName,
   type SaveTextMediaFormat,
-} from './tools';
+} from './tools/schemas';
+import type { ChatToolDefinition } from './tools/definitions';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
 export const REPLY_MAX_TOKENS = 4096;

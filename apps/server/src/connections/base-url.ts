@@ -3,7 +3,7 @@
 // (in `pinned-fetch.ts`), so a name that later resolves private is refused.
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { classifyIp, isIpLiteral } from '../sandbox/ip-guard';
+import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
 
 /** Resolves a hostname to every address it names, in the resolver's order. */
 export type ResolveHost = (host: string) => Promise<readonly string[]>;

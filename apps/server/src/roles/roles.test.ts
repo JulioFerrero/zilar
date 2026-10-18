@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { aiLocalpart } from '../ais/service';
+import { aiLocalpart } from '../ais/provisioning-xmpp';
 import {
   bootstrapUser,
   contactOf,

@@ -3,9 +3,20 @@ import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { InviteLinksGroup, InviteLinksPreviewRateLimit } from '@zilar/api-contract';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import { createInviteLink, listInviteLinks, revokeInviteLink } from './queries';
+import {
+  JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
+  JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
+  JOIN_RATE_LIMIT_MAX_PER_IP,
+  JOIN_RATE_LIMIT_MAX_PER_USER,
+  JOIN_RATE_LIMIT_WINDOW_MS,
+  toInvalidLink,
+} from './tokens';
+import { joinByInviteLink, previewInviteLink } from './join';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -19,20 +30,6 @@ import {
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import {
-  createInviteLink,
-  JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
-  JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
-  JOIN_RATE_LIMIT_MAX_PER_IP,
-  JOIN_RATE_LIMIT_MAX_PER_USER,
-  JOIN_RATE_LIMIT_WINDOW_MS,
-  joinByInviteLink,
-  listInviteLinks,
-  previewInviteLink,
-  revokeInviteLink,
-  toInvalidLink,
-} from './service';
 
 export interface InviteLinksApiDependencies {
   auth: Auth;

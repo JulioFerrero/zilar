@@ -1,7 +1,7 @@
 // A timer (default 30 s) claims due routines exactly once and runs them through `executeRoutine`.
 import { Cause, Effect, Schedule, type Fiber } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { errorName } from '../effect/error-utils';

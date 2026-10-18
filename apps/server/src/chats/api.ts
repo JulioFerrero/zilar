@@ -4,7 +4,8 @@ import { ChatsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { type ArchivePool } from '../search/service';
 import {
@@ -15,7 +16,6 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { deleteOwnHandlers } from './delete-own';
 import { listChatsFor } from './list-handler';
 import { markDeliveredFor, markReadFor } from './mark-handlers';

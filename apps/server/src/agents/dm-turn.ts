@@ -16,7 +16,7 @@ import {
   type ExecuteToolCall,
   type TurnCaps,
 } from './tool-loop';
-import { PERSONA_TOOLS, type ChatToolDefinition } from './tools';
+import { PERSONA_TOOLS, type ChatToolDefinition } from './tools/definitions';
 
 // The daily-limit notice is fixed except for the formatted per-day cap, so it
 // is a function rather than a constant. It goes out at most once per AI per

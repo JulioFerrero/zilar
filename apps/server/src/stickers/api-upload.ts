@@ -9,7 +9,8 @@ import { requestIdOf } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { STICKER_MAX_UPLOAD_BYTES } from './image';
-import { uploadSticker, type StickersServiceDeps } from './service';
+import { uploadSticker } from './storage';
+import type { StickersServiceDeps } from './schemas';
 import { decodePathId } from './api-decode';
 
 // The upload request: the raw request plus the `:id` path param, since the

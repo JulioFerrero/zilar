@@ -4,7 +4,7 @@ import { SqlClient } from 'effect/sql';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { canCreateTopic, getGroupMembership, getTopic, type TopicRow } from './access';
 import { assertLink, assertMembersAreGroupMembers, assertNameFree, assertOwner } from './members';
 import { deleteTopicRows, uniqueRoomLocalpart } from './queries';

@@ -1,18 +1,18 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { findOwnedAi } from '../ais/service';
+import { findOwnedAi } from '../ais/queries';
+import { deleteRoomMemoryEffect } from '../agents/memory/state';
+import { deleteRoutinesForAiInGroupEffect } from '../routines/deletes';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { cancelPendingActionsForAi } from '../actions/topic-recheck';
 import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
-import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { deleteRoutinesForAiInGroupEffect } from '../routines/service';
 import { deleteToolsForAiInGroupEffect } from '../tools/service';
 import type { TopicRow } from '../topics/access';
 import { syncTopicRoom } from '../topics/rooms';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { emitGroupAi } from './events';
 import { getGroupDetail, getMembership, requireGroup } from './queries';
 import {

@@ -6,7 +6,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { normalizeHandle } from '../handles/rules';
+import { normalizeHandle } from '@zilar/protocol';
 import { relationFor, relationsFor, type OtherUserProfile } from './reads';
 
 export const USER_SEARCH_MIN_LENGTH = 3;

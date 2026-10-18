@@ -8,7 +8,7 @@ import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';

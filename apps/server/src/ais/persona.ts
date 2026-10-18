@@ -5,7 +5,7 @@ import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
 export interface AiLogger {

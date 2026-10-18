@@ -4,7 +4,7 @@ import { aiRoutes } from './app/routes-ai';
 import { healthRoutes } from './app/routes-health';
 import { mediaRoutes } from './app/routes-media';
 import { messagingRoutes } from './app/routes-messaging';
-import { createAuditRecorder } from './audit/service';
+import { createAuditRecorder } from './audit/recorder';
 import { CurrentMailer, createMailer } from './auth/mailer';
 import { createEdge, type EdgeHealth, type ZilarEdge } from './effect/edge';
 import type { EffectApiMount } from './effect/http-core';

@@ -5,7 +5,7 @@
 import type { TurnStopper } from '../agents/gateway/stop-types';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { getOwnedAi } from './service';
+import { getOwnedAi } from './queries';
 
 export interface StopTurnDeps {
   db: ServerDatabase;

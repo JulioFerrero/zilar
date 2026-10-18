@@ -3,9 +3,9 @@ import { HttpServer, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { PinsGroup, PinsWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {

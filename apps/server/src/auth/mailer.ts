@@ -3,7 +3,7 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Data, Duration, Effect } from 'effect';
 import type { Logger } from 'pino';
 import { OTP_EXPIRES_IN_SECONDS } from './auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 
 export type OtpPurpose = 'sign-in' | 'email-verification' | 'forget-password' | 'change-email';
 

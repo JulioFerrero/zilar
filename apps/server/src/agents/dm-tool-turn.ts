@@ -10,7 +10,7 @@ import { failureLogFields, mapFailureToReply, redactError, actionOfCall } from '
 import { TRANSIENT_FAILURE_REPLY, requestCompletion, type ModelRequestMessage } from './tool-loop';
 import { runToolLoop } from './tool-rounds';
 import { remainingTurnBudgetMs } from './turn-budget';
-import type { ChatToolDefinition } from './tools';
+import type { ChatToolDefinition } from './tools/definitions';
 import type { TurnLog } from './log/append';
 
 export { runToolLoop } from './tool-rounds';

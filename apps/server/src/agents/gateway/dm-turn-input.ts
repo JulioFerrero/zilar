@@ -1,12 +1,11 @@
 import { Effect } from 'effect';
-import { type ActiveAiForGateway } from '../../ais/service';
+import type { ActiveAiForGateway } from '../../ais/queries';
+import { buildTools } from '../tools/definitions';
 import { recordUsage } from '../../ais/usage-store';
 import type { ModelTarget } from '../../ai/providers';
 import type { ChatCompletionMessage } from '../context';
-import { type DmTurnOutcome } from '../dm-turn';
-import { runDmTurn } from '../reply';
+import { type DmTurnOutcome, runDmTurn } from '../dm-turn';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
-import { buildTools } from '../tools';
 import type { AiSession } from './contracts';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
 import { type DmTurnContext } from './dm-turn';

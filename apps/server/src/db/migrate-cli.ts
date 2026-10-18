@@ -1,6 +1,6 @@
 import { NodeRuntime } from '@effect/platform-node';
 import { Effect } from 'effect';
-import { loadServerConfigOrExit } from '../config';
+import { loadServerConfigOrExit } from '../config/load';
 import { createLogger } from '../logger';
 import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import { createDb } from './client';

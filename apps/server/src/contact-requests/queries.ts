@@ -1,10 +1,10 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import { normalizeHandle } from '@zilar/protocol';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { normalizeHandle } from '../handles/rules';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export const MAX_PENDING_OUTGOING = 20;
 export const RE_REQUEST_COOLDOWN_DAYS = 7;

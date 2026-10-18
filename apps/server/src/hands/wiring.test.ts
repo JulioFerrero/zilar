@@ -3,7 +3,7 @@
 // stays an optional override for an old agent.
 
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadServerConfig } from '../config';
+import { ConfigError, loadServerConfig } from '../config/load';
 import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
 import { buildDeskProbe } from './wiring';

@@ -11,7 +11,7 @@ import {
   RenameMachinePayload,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { Auth } from '../auth/auth';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import type { ServerDatabase } from '../db/client';

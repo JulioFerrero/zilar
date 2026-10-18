@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { type AlertBlock, BlocksDataSchema, type BlocksData } from '@zilar/protocol';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { RoutineRow } from '../db/rows';
 import { findCard, recordCard } from '../message-blocks/cards';
 import type { CorrectCardInput } from '../message-blocks/respond';

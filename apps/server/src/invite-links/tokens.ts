@@ -1,11 +1,11 @@
 // effect-plain: token primitives are plain crypto; no Effect in this module.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import type { GroupInviteLinkRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { InviteLogger } from '../groups/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
 export {

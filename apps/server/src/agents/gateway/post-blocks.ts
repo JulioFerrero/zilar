@@ -4,8 +4,8 @@ import type { CardMediaRow } from '../../db/rows-agents';
 import { buildBlocksPayload } from '../../message-blocks/build';
 import type { RecordCardInput } from '../../message-blocks/cards';
 import { mediaIdsOf } from '../../message-blocks/media-ids';
-import { POST_BLOCKS_TOOL } from '../tools';
-import type { ToolExecution } from '../reply';
+import { POST_BLOCKS_TOOL } from '../tools/schemas';
+import type { ToolExecution } from '../tool-loop';
 import { errorName, type AiSession, type GatewayLogger } from './contracts';
 import type { createLiveSession } from './live';
 

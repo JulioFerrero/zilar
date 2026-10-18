@@ -5,7 +5,9 @@ import { SqlClient } from 'effect/sql';
 import { MAX_GROUP_MEMBERS, addGroupMembers, removeGroupMember } from '../groups/service';
 import { createApp } from '../app';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { createAuditRecorder } from '../audit/service';
+import { createAuditRecorder } from '../audit/recorder';
+import { joinByInviteLink } from './join';
+import type { InviteLinkServiceDeps } from './tokens';
 import { localpartFor } from '../xmpp/provisioning';
 import {
   bootstrapUser,
@@ -21,7 +23,6 @@ import {
 } from '../test-support';
 import { setTestAppInviteLinks } from '../app';
 import { trustedClientIp } from '../http/client-ip';
-import { joinByInviteLink, type InviteLinkServiceDeps } from './service';
 
 interface CreatedLinkBody {
   id: string;

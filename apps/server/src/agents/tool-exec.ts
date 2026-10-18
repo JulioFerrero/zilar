@@ -1,6 +1,6 @@
 // effect-plain: this module's public edge stays Promise-shaped.
 import { classifyFailure } from './failure-class';
-import { REQUEST_ACTION_TOOL } from './tools';
+import { REQUEST_ACTION_TOOL } from './tools/schemas';
 import { stripTaskTitle } from './tools/parse';
 import { QUIET_TOOLS, stageForToolCall } from './tool-guide';
 import {

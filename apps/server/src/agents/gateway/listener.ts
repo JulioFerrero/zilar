@@ -1,7 +1,7 @@
 import { Cause, Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { normBareJid } from '../context';
-import { completeChat } from '../reply';
+import { completeChat } from '../dm-turn';
 import {
   LISTENER_WINDOW_MAX,
   loadRoster,

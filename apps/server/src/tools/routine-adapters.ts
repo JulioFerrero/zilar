@@ -6,12 +6,8 @@ import type { ActionAdapter, ActionContext } from '../actions/registry';
 import { findCard } from '../message-blocks/cards';
 import { createPromptRoutine } from '../routines/prompt-routines';
 import { nextRunAfter, type RoutineSchedule } from '../routines/schedule';
-import {
-  RoutineServiceError,
-  createRoutine,
-  deleteRoutine,
-  pauseRoutine,
-} from '../routines/service';
+import { RoutineServiceError } from '../routines/schemas';
+import { createRoutine, deleteRoutine, pauseRoutine } from '../routines/support';
 import {
   activeRoutineWithTitleExists,
   findRoutineTarget,

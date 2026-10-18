@@ -1,5 +1,5 @@
 import { pino, type DestinationStream, type Logger, type LoggerOptions } from 'pino';
-import type { ServerConfig } from './config';
+import type { ServerConfig } from './config/load';
 
 const SENSITIVE_KEYS = [
   'password',

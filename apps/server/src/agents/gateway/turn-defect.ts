@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import type { TurnLog } from '../log/append';
-import { failureLogFields, mapFailureToReply } from '../reply';
+import { failureLogFields, mapFailureToReply } from '../tool-exec';
 import type { AiSession, GatewayLogger } from './contracts';
 import type { createLiveSession } from './live';
 

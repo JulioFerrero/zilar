@@ -9,7 +9,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { classifyIp, isIpLiteral } from '../sandbox/ip-guard';
+import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
 import {
   badUrlSummary,
   decodeCapped,

@@ -8,7 +8,7 @@ import { LinkPreviewGroup, MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
 import { runSql } from '../effect/sql';

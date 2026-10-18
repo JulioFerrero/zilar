@@ -12,7 +12,7 @@ import {
 } from '../context';
 import { promptNow } from '../prompt-time';
 import { timeZoneFor } from '../../auth/profile-time-zone';
-import { TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../reply';
+import { TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../tool-loop';
 import type { createBudgetGate } from './budget';
 import {
   isAiSender,

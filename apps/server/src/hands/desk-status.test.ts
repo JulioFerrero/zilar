@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DeskChunk, Hands } from '@zilar/desk';
 import type { Logger } from 'pino';
-import { loadServerConfig } from '../config';
+import { loadServerConfig } from '../config/load';
 import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
 import { createDeskProbe } from './desk-status';

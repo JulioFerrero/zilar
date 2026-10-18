@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { HttpError } from '../errors';
-import { RoutineServiceError } from './service';
+import { RoutineServiceError } from './schemas';
 
 function mapServiceError(error: unknown): unknown {
   if (error instanceof RoutineServiceError) {

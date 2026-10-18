@@ -4,11 +4,11 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { removePairRosterItems, type RosterLogger } from './roster';
 
 // The list endpoint caps server-side so the response stays bounded.

@@ -4,10 +4,10 @@
 
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import type { ArchivePool } from '../search/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { putDeliveredMark } from './deliveries';
 
 export const DELIVERED_NAMESPACE = 'urn:zilar:delivered:0';

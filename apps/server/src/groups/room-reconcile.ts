@@ -5,7 +5,7 @@ import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import type { TopicRow } from '../topics/access';
 import { syncTopicRoom } from '../topics/rooms';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { InviteLogger } from './schemas';
 
 export interface RoomReconcileLogger extends InviteLogger {

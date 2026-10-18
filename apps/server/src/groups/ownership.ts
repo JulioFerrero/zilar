@@ -4,12 +4,13 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { recordAudit, type AuditRecorder } from '../audit/service';
+import { recordAudit, type AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { roomAffiliationFor } from '../topics/room-members';
-import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { syncGroupTopicRooms } from './ais';
 import { syncChannelVoice } from './member-roles';

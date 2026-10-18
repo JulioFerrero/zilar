@@ -1,8 +1,11 @@
 import { Schema } from 'effect';
 import { IdSchema, struct } from '@zilar/protocol';
 import { routineScheduleSchema } from '../routines/schedule';
-import { MAX_ROUTINE_PROMPT_CHARS } from '../routines/schemas';
-import { MAX_ROUTINE_INPUT_BYTES, MAX_ROUTINE_TITLE_CHARS } from '../routines/service';
+import {
+  MAX_ROUTINE_PROMPT_CHARS,
+  MAX_ROUTINE_INPUT_BYTES,
+  MAX_ROUTINE_TITLE_CHARS,
+} from '../routines/schemas';
 import { toolHostsSchema, toolNameSchema, toolVersionInputSchema } from './schemas';
 
 // `tool.run` and the tools route refuse an `input` that serialises past 16 KiB.

@@ -3,8 +3,8 @@ import { SqlClient } from 'effect/sql';
 import type { ModelTarget } from '../../ai/providers';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
-import type { CompleteChatInput, ModelRequestMessage } from '../reply';
-import { PERSONA_SUMMARY_MAX_LENGTH } from '../tools';
+import type { CompleteChatInput, ModelRequestMessage } from '../tool-loop';
+import { PERSONA_SUMMARY_MAX_LENGTH } from '../tools/schemas';
 
 // Eagerness maps to the score an AI must reach to be woken (plan §2.3). Lower
 // means readier to speak; `normal` is the product default (decision 2).

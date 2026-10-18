@@ -1,7 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/topics/rooms.ts (size split)
 import { errorClassName } from '../effect/error-utils';
 import { HttpError, xmppUnavailable } from '../errors';
-import type { RoomAffiliation } from '../xmpp/admin-client';
+import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import type { TopicRow } from './access';
 import type { TopicRoomDeps } from './rooms';
 import { desiredMembers } from './room-members';

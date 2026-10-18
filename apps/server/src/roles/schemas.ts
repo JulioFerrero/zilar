@@ -1,9 +1,9 @@
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRoleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { InviteLogger } from '../groups/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export const MAX_ROLES_PER_GROUP = 20;
 

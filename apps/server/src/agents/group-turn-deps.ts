@@ -4,7 +4,7 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import type { ExecuteToolCall, TurnCaps } from './tool-loop';
-import type { ChatToolDefinition } from './tools';
+import type { ChatToolDefinition } from './tools/definitions';
 import type { TurnLog } from './log/append';
 
 export interface GroupTurnDeps {

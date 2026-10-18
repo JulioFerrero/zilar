@@ -3,7 +3,7 @@ import { SqlClient } from 'effect/sql';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSql } from '../effect/sql';
-import type { RoomAffiliation } from '../xmpp/admin-client';
+import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import {
   createTestContext,
   expectedJid,

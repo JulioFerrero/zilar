@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AvatarRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { resolveStorageDir } from '../stickers/service';
+import { resolveStorageDir } from '../stickers/storage';
 import type { AvatarsServiceDeps } from './service';
 
 export interface AvatarFile {

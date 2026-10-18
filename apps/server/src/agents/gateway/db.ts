@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { ActiveAiForGateway } from '../../ais/service';
+import type { ActiveAiForGateway } from '../../ais/queries';
 import type { ServerDatabase } from '../../db/client';
 import type { TopicMemberRow } from '../../db/rows';
 import { runSql } from '../../effect/sql';

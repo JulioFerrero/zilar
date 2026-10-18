@@ -6,7 +6,7 @@ import { removeGroupAi } from '../groups/ais';
 import { removeTopicAi } from '../topics/ais';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { createAuditRecorder } from '../audit/service';
+import { createAuditRecorder } from '../audit/recorder';
 import type { ActionAnnouncer } from './announce';
 import { createActionGateway } from './gateway';
 import { runOnApprovalDecided } from './queries';

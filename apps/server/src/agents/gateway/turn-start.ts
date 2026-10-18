@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { ActiveAiForGateway } from '../../ais/service';
+import type { ActiveAiForGateway } from '../../ais/queries';
 import type { ServerDatabase } from '../../db/client';
 import type { AiSession, ScheduledTurnOutcome } from './contracts';
 import { loadActiveAi } from './db';

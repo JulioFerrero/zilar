@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { createDelegation, getDelegationForAi } from '../delegation/service';
-import { type ToolExecution, type ValidToolCall } from '../reply';
-import { DELEGATE_TOOL, TASK_STATUS_TOOL } from '../tools';
+import type { ToolExecution, ValidToolCall } from '../tool-loop';
+import { DELEGATE_TOOL, TASK_STATUS_TOOL } from '../tools/schemas';
 import {
   ROUND_MAX_HOPS,
   errorName,

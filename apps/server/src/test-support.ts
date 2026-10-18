@@ -5,21 +5,20 @@ import type { Effect } from 'effect';
 import type { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import { createApp } from './app';
-import { loadServerConfig, type ServerConfig } from './config';
+import { loadServerConfig, type ServerConfig } from './config/load';
+import type {
+  EjabberdAdminClient,
+  AddRosterItemOptions,
+  CreateRoomOptions,
+  SendDirectInvitationOptions,
+  UserResource,
+} from './xmpp/admin/types';
+import type { RoomAffiliation, RosterEntry } from './xmpp/admin/schemas';
 import { disposeSqlRuntime, migratePglite, registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import { createAuth, INVITE_HEADER, type Auth } from './auth/auth';
 import { createInvite } from './auth/invites';
 import type { OtpPurpose } from './auth/mailer';
 import { createLogger } from './logger';
-import type { EjabberdAdminClient } from './xmpp/admin-client';
-import type {
-  AddRosterItemOptions,
-  CreateRoomOptions,
-  RoomAffiliation,
-  RosterEntry,
-  SendDirectInvitationOptions,
-  UserResource,
-} from './xmpp/admin-client';
 import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
 

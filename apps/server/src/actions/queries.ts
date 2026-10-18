@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { verifyApproval } from '../approvals/service';
-import type { AuditEntry } from '../audit/service';
+import type { AuditEntry } from '../audit/schema';
 import type { ServerDatabase } from '../db/client';
 import type { AisRow, ApprovalRow, GroupAiRow, PendingActionRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';

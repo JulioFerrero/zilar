@@ -4,7 +4,10 @@ import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RoutinesGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import { deleteRoutine, pauseRoutine, resumeRoutine } from './support';
+import { getRoutine, listRoutinesForAi, listRoutinesForTopic } from './queries';
+import type { PublicRoutine } from './schemas';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
@@ -26,15 +29,6 @@ import {
   listVisibleTopicRoutines,
   type MyRoutineView,
 } from './reads';
-import {
-  deleteRoutine,
-  getRoutine,
-  listRoutinesForAi,
-  listRoutinesForTopic,
-  pauseRoutine,
-  resumeRoutine,
-  type PublicRoutine,
-} from './service';
 import { withServiceErrors } from './status-errors';
 import { toDetailWire, toListWire } from './wire';
 

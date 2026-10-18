@@ -5,11 +5,11 @@
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import { markDeliveredAndNotify } from '../chats/delivered-notice';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
 import type { ArchivePool } from '../search/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 /** The push deps one forked mark needs; a subset of `PushApiDependencies`. */
 export interface PreviewDeliveredDeps {

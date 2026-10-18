@@ -2,12 +2,12 @@ import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BlocksGroup, BlocksReadRateLimit, BlocksWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   handler,
   mountApi,

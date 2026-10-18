@@ -9,7 +9,7 @@ import type { BlocksRespondPayload, BlocksRespondValue } from '@zilar/api-contra
 import { BlocksDataSchema, type Block, type BlocksData, type Payload } from '@zilar/protocol';
 import type { Logger } from 'pino';
 import { loadAiOwnerId } from '../agents/gateway/db';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';

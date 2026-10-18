@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { AuditEntry } from '../audit/service';
+import type { AuditEntry } from '../audit/schema';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { createApproval } from './service';

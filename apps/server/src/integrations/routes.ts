@@ -5,16 +5,16 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { TelegramClient } from '../stickers/telegram/set';
 import type { Auth } from '../auth/auth';
 import type { CurrentMailer, Mailer } from '../auth/mailer';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { getMailSettings, settingsCipherFor } from '../setup/settings';
-import type { TelegramClient } from '../stickers/telegram-import';
 import {
   deleteStoredTelegramToken,
   saveStoredTelegramToken,

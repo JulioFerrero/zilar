@@ -4,7 +4,7 @@
 import type { AuthDeletionStatus } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { createAuditRecorder, type AuditLogger, type AuditRecorder } from '../audit/service';
+import { createAuditRecorder, type AuditLogger, type AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';

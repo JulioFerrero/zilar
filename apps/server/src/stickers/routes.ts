@@ -1,6 +1,6 @@
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { StickerConverter } from './convert';
 
@@ -18,7 +18,7 @@ export interface StickersRoutesDependencies {
   now?: () => number;
   uploadLimiter?: { allow: (key: string) => boolean };
   importLimiter?: { allow: (key: string) => boolean };
-  telegramClient?: import('./telegram-import').TelegramClient;
+  telegramClient?: import('./telegram/set').TelegramClient;
   converter?: StickerConverter;
   /**
    * Resolves the bot token per request: the env value wins when set, else

@@ -8,7 +8,7 @@ import type { ServerDatabase } from '../db/client';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { classifyHandle, normalizeHandle } from './rules';
+import { classifyHandle, normalizeHandle } from '@zilar/protocol';
 
 export const HANDLE_CHANGE_INTERVAL_DAYS = 14;
 export const HANDLE_RESERVATION_DAYS = 30;

@@ -5,7 +5,7 @@ import {
   STICKER_PANEL_MAX,
   STICKERS_MAX_PER_PACK,
 } from '@zilar/api-contract';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { StickerPackRow, StickerRow } from '../db/rows';
 import { HttpError, xmppUnavailable } from '../errors';

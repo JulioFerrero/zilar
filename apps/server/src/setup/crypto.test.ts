@@ -3,7 +3,7 @@
 // throwaway sentinel value, never a real key.
 
 import { describe, expect, it } from 'vitest';
-import { loadServerConfig } from '../config';
+import { loadServerConfig } from '../config/load';
 import { TEST_SECRET } from '../test-support';
 import { createSettingsCipher, SettingsDecryptionError } from './crypto';
 import { settingsCipherFor } from './settings';

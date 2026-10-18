@@ -5,8 +5,9 @@ import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import type { MemoryContext } from '../context';
 import { compactMemoryEffect } from '../memory/compactor';
 import { indexMemory, type MemoryScope } from '../memory/indexer';
-import { listFacts, renderMemoryBlock } from '../memory/store';
-import { completeChat } from '../reply';
+import { listFacts } from '../memory/facts';
+import { renderMemoryBlock } from '../memory/render';
+import { completeChat } from '../dm-turn';
 
 export interface MemoryRunnerContext {
   deps: Pick<AgentGatewayDeps, 'db' | 'archive' | 'fetchImpl'>;

@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import type { RoomAffiliation } from '../xmpp/admin-client';
+import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { topicRoleHolderIds } from '../roles/service';
 import { allowedTopicAiIds, type TopicRow } from './access';

@@ -1,5 +1,5 @@
 // effect-plain: a small in-memory TTL cache; the Effect read it wraps stays in search/service.
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { allowedArchives, type SearchOwner } from '../search/service';
 

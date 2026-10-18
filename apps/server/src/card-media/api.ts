@@ -10,7 +10,7 @@ import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import { isDmBlocked } from '../blocks/service';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';

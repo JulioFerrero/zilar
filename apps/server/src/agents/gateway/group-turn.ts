@@ -1,12 +1,8 @@
 import { Effect } from 'effect';
 import { displayNameOf, normBareJid, type ChatCompletionMessage } from '../context';
 import { finishDelegation } from '../delegation/service';
-import {
-  GROUP_FAILURE_REPLY,
-  failureLogFields,
-  mapFailureToReply,
-  type ExecuteToolCall,
-} from '../reply';
+import { GROUP_FAILURE_REPLY, type ExecuteToolCall } from '../tool-loop';
+import { failureLogFields, mapFailureToReply } from '../tool-exec';
 import {
   errorName,
   isAiSender,

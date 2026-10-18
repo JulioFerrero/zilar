@@ -10,7 +10,7 @@ import {
   dailyWarningReply,
   monthlyLimitReply,
   monthlyWarningReply,
-} from '../reply';
+} from '../dm-turn';
 import { loadAiOwnerId } from './db';
 import {
   toRedactedError,

@@ -3,7 +3,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { ChatFoldersGroup } from '@zilar/api-contract';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';

@@ -8,7 +8,7 @@ import {
   HANDLE_RESERVATION_DAYS,
   isUniqueViolation,
 } from '../handles/store';
-import { classifyHandle, normalizeHandle } from '../handles/rules';
+import { classifyHandle, normalizeHandle } from '@zilar/protocol';
 
 export type GroupVisibility = 'private' | 'public';
 

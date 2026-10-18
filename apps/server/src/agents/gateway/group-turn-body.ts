@@ -1,6 +1,8 @@
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
-import { type ActiveAiForGateway } from '../../ais/service';
+import type { ActiveAiForGateway } from '../../ais/queries';
+import { runGroupTurn } from '../group-turn';
+import { buildGroupTools } from '../tools/definitions';
 import type { AiUsage } from '../../ais/usage';
 import { recordUsage } from '../../ais/usage-store';
 import type { KeyCipher } from '../../connections/crypto';
@@ -13,9 +15,7 @@ import {
 import { promptNow } from '../prompt-time';
 import { timeZoneForJid } from '../../auth/profile-time-zone';
 import { finishDelegation } from '../delegation/service';
-import { runGroupTurn } from '../reply';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
-import { buildGroupTools } from '../tools';
 import {
   errorName,
   rememberRoomSentId,

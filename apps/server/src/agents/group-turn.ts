@@ -27,7 +27,7 @@ import {
   type ModelRequestMessage,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
-import { TASK_STATUS_TOOL } from './tools';
+import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
 import type { GroupTurnDeps } from './group-turn-deps';
 

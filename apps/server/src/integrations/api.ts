@@ -13,7 +13,8 @@ import {
   IntegrationsTelegramRateLimit,
 } from '@zilar/api-contract';
 import { createResendMailer } from '../auth/mailer';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import { createTelegramClient } from '../stickers/telegram/client';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -29,7 +30,6 @@ import { runSql } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { isInstanceOwner } from '../setup/instance-owner';
 import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';
-import { createTelegramClient } from '../stickers/telegram-import';
 import { voiceTranscriptionStatusFor } from '../voice-transcription/routes';
 import {
   INTEGRATIONS_EMAIL_RATE_LIMIT_MAX,

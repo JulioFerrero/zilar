@@ -7,7 +7,7 @@ import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
-import { createAuditRecorder } from '../audit/service';
+import { createAuditRecorder } from '../audit/recorder';
 import type { ActionAnnouncer } from './announce';
 import { createActionGateway } from './gateway';
 import { buildRegistry, type ActionAdapter } from './registry';

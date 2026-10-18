@@ -13,11 +13,10 @@ import {
 } from '@zilar/desk';
 import type { ServerDatabase } from '../../db/client';
 import { machineUsableFor, resolveDeskForAi, type RunnerDeskSource } from '../../hands/resolve';
-import type { ToolExecution, ValidToolCall } from '../reply';
-import { TOOL_RESULT_MAX_CHARS } from '../tool-loop';
+import { isDeskToolName, type DeskToolName } from '../tools/schemas';
+import { TOOL_RESULT_MAX_CHARS, type ToolExecution, type ValidToolCall } from '../tool-loop';
 import { TOOL_STAGE_WAITING_FOR_COMPUTER } from '../tool-guide';
 import { formatModelText, type GatewayLogger } from './contracts';
-import { isDeskToolName, type DeskToolName } from '../tools';
 
 // Runs one desk tool call against the cloud `Hands` client. The plan's per-jail
 // ceilings are sent on the first `provision` of a turn (`packages/desk`

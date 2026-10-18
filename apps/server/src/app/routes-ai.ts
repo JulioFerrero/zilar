@@ -9,7 +9,7 @@ import { createKeyCipher } from '../connections/crypto';
 import { createGifsApi } from '../gifs/api';
 import { createIntegrationsApi } from '../integrations/api';
 import { createRoutinesApi } from '../routines/api';
-import { createToolsApi, type ToolsApiDependencies } from '../tools/api';
+import { createToolsApi, type ToolsApiDependencies } from '../tools/routes';
 import { createVoiceTranscriptionApi } from '../voice-transcription/api';
 import { createVoiceApi } from '../voice/api';
 import { createXmppApi } from '../xmpp/api';

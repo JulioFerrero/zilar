@@ -4,11 +4,9 @@ import { SqlClient } from 'effect/sql';
 import { STICKER_PACK_TITLE_MAX } from '@zilar/api-contract';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import {
-  parseTelegramPackInput,
-  TelegramImportError,
-  type TelegramClient,
-} from './telegram-import';
+import { parseTelegramPackInput } from './telegram/pack-input';
+import { TelegramImportError } from './telegram/errors';
+import type { TelegramClient } from './telegram/set';
 import {
   STICKER_PACKS_MAX_PER_USER,
   type StickerPackRow,

@@ -9,7 +9,7 @@ import { xmppUnavailable } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import type { EjabberdAdminClient } from './admin-client';
+import type { EjabberdAdminClient } from './admin/types';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
 import { issueXmppToken } from './token';

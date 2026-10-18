@@ -3,7 +3,7 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { bareJid, ownBareJid } from '../jid';

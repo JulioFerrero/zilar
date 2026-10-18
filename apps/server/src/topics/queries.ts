@@ -7,7 +7,7 @@ import { runSql } from '../effect/sql';
 import { isGroupManagerRole } from '../groups/access';
 import { randomRoomLocalpart } from '../groups/service';
 import { topicRoleHolderIds } from '../roles/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { getGroupMembership, requireVisibleTopic } from './access';
 import type { TopicServiceDeps } from './schemas';
 

@@ -1,7 +1,7 @@
 // The end-to-end run: our server registers users and a room through the admin
 // API, Alice and Bob talk over XMPP, and Bob reads the history back through MAM.
 import { type XmppClient } from '@xmpp/client';
-import { createEjabberdAdminClient } from '../../../../apps/server/src/xmpp/admin-client';
+import { createEjabberdAdminClient } from '../../../../apps/server/src/xmpp/admin/client';
 import { issueXmppToken } from '../../../../apps/server/src/xmpp/token';
 import { type XmppConfig } from '../../../../apps/server/src/xmpp/config';
 import { connect, expectLoginFails } from './connect';

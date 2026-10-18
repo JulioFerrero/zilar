@@ -8,9 +8,10 @@ import {
   TopicsPreviewRateLimit,
 } from '@zilar/api-contract';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -23,7 +24,6 @@ import {
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { createRateLimiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   listTopicAis,
   requireVisibleTopic,

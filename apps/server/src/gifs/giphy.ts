@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, Schema, type Effect as EffectType } from 'effect';
-import { classifyIp } from '../sandbox/ip-guard';
+import { classifyIp } from '@zilar/desk/egress/ip-guard';
 import { GIPHY_MEDIA_HOSTS, parseGiphyResponse } from './giphy-parse';
 import type { GifPage, GifProvider, GifSearchOptions } from './provider';
 import { gifPageSchema } from './provider';

@@ -1,18 +1,14 @@
 import { Effect } from 'effect';
 import type { ChatCompletionMessage } from '../context';
-import { revertPersonaFromChat, setPersonaFromChat } from '../../ais/service';
-import { TOOL_GUIDE } from '../tool-guide';
-import { looksLikeSecret } from '../memory/secrets';
-import { addFact, recallMemory, zoomMemory } from '../memory/store';
-import { type ExecuteToolCall, type ToolExecution, type ValidToolCall } from '../reply';
+import { revertPersonaFromChat, setPersonaFromChat } from '../../ais/persona';
+import { addFact } from '../memory/facts';
+import { recallMemory, zoomMemory } from '../memory/recall';
+import type { ExecuteToolCall, ToolExecution, ValidToolCall } from '../tool-loop';
 import {
   ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   FETCH_MEDIA_TOOL,
-  formatPersonaUpdatedLine,
-  formatRememberedLine,
   MEMORY_ZOOM_TOOL,
-  PERSONA_RESTORED_LINE,
   POST_BLOCKS_TOOL,
   RECALL_TOOL,
   REMEMBER_TOOL,
@@ -20,7 +16,14 @@ import {
   SAVE_TEXT_MEDIA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
-} from '../tools';
+} from '../tools/schemas';
+import {
+  formatPersonaUpdatedLine,
+  formatRememberedLine,
+  PERSONA_RESTORED_LINE,
+} from '../tools/reply-lines';
+import { TOOL_GUIDE } from '../tool-guide';
+import { looksLikeSecret } from '../memory/secrets';
 import {
   createTurnDeskRunner,
   isDeskToolCall,

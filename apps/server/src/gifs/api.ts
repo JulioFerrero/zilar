@@ -9,7 +9,8 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { GifsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
+import type { ServerConfig } from '../config/load';
+import { classifyIp } from '@zilar/desk/egress/ip-guard';
 import {
   REQUEST_ID_HEADER,
   handler,
@@ -21,7 +22,6 @@ import {
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { createRateLimiter } from '../rate-limit';
-import { classifyIp } from '../sandbox/ip-guard';
 import { GIPHY_MEDIA_HOSTS, createGiphyProvider } from './giphy';
 import type { GifItem, GifPage, GifProvider } from './provider';
 import {

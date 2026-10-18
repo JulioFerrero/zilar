@@ -1,6 +1,6 @@
 // Production wiring: the scheduler starts only when `ROUTINES_ENABLED=true` and a tool runner is configured; otherwise one warning and off.
 import type { Payload } from '@zilar/protocol';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { ToolRunner } from '../tools/types';
 import type { ExecuteRoutinePorts } from './execute';

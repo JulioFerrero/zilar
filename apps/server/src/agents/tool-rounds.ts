@@ -14,7 +14,7 @@ import {
   type TurnCaps,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
-import type { ChatToolDefinition } from './tools';
+import type { ChatToolDefinition } from './tools/definitions';
 import type { TurnLog } from './log/append';
 
 // The one shared multi-round tool loop for DM and group turns; the two differ

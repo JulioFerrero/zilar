@@ -1,6 +1,6 @@
 // effect-plain: the tick stays a Promise over expireStale; the loop lives in effect/sweep-loop.ts
 import type { ServerDatabase } from '../db/client';
-import type { AuditEntry } from '../audit/service';
+import type { AuditEntry } from '../audit/schema';
 import { startSweepLoop } from '../effect/sweep-loop';
 import { expireStale } from './service';
 

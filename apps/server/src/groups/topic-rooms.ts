@@ -5,7 +5,7 @@ import { runSql } from '../effect/sql';
 import { topicRoleHolderIds } from '../roles/service';
 import { aiMayBeInTopic, type TopicRow } from '../topics/access';
 import { syncTopicRoom } from '../topics/rooms';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { emitTopicAi } from './events';
 import { notePendingGroupSync } from './room-sync-retry';
 import type { InviteLogger } from './schemas';

@@ -2,9 +2,10 @@ import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { RolesGroup } from '@zilar/api-contract';
-import type { AuditRecorder } from '../audit/service';
+import type { AuditRecorder } from '../audit/recorder';
+import type { ServerConfig } from '../config/load';
+import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import {
   handler,
@@ -13,7 +14,6 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   createRole,
   deleteRole,

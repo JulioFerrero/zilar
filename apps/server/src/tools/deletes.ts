@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { deleteRoutinesForTool } from '../routines/service';
+import { deleteRoutinesForTool } from '../routines/deletes';
 import type { ToolRow } from './queries';
 
 // Soft-deletes one tool and its routines; a missing or already deleted id returns `deleted: false` and writes nothing.

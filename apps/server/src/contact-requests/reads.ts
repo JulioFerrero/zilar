@@ -3,7 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { normalizeHandle } from '../handles/rules';
+import { normalizeHandle } from '@zilar/protocol';
 import {
   isContactEffect,
   MAX_LIST_ROWS,

@@ -1,4 +1,4 @@
-import type { PublicRoutine } from './service';
+import type { PublicRoutine } from './schemas';
 
 export function toListWire(routine: PublicRoutine) {
   return {

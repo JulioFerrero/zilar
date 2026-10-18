@@ -4,7 +4,7 @@
 
 import type { DestinationStream } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { loadServerConfig } from './config';
+import { loadServerConfig } from './config/load';
 import { createLogger } from './logger';
 import { TEST_SECRET } from './test-support';
 
