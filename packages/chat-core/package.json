@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./markdown-ast": "./src/markdown-ast.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -13,7 +14,10 @@
   },
   "dependencies": {
     "@zilar/protocol": "workspace:*",
-    "@zilar/ball-avatar": "workspace:*"
+    "@zilar/ball-avatar": "workspace:*",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0"
   },
   "devDependencies": {
     "unicode-emoji-json": "0.9.0"
