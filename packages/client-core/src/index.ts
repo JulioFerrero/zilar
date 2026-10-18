@@ -18,6 +18,7 @@ export {
   useContactRequestsPoll,
   type OnForeground,
 } from './foreground-hooks';
+export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
   isLocalPreviewUrl,
   useMediaRetry,
