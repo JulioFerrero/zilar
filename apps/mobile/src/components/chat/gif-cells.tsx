@@ -7,16 +7,12 @@ import { isLoadableGifPreviewUrl, type GifItem } from '@/lib/gifs';
 
 const CELL_ASPECT = 4 / 3;
 
-/**
- * Whether the panel may show a preview inline: same-origin proxy URLs
- * only. Anything else (a hostile URL, mock `data:` art handled below, ...)
- * shows a placeholder tile, so the device never fetches it.
- */
+/** Only same-origin proxy URLs preview inline; anything else shows a
+ *  placeholder tile, so the device never fetches it. */
 export function isPanelGifUrl(url: string, apiUrl: string): boolean {
   return isLoadableGifPreviewUrl(url, apiUrl);
 }
 
-/** One GIF cell: the preview image with a play badge for videos. */
 export function GifCell({
   item,
   token,

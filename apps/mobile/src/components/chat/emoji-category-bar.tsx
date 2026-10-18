@@ -18,7 +18,6 @@ import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { EMOJI_CATEGORIES, type EmojiCategoryId } from '@/lib/emoji-data';
 import { cn } from '@/lib/utils';
 
-/** The bar's height, the row the Search field swaps into. */
 const EMOJI_CATEGORY_BAR_HEIGHT = 36;
 
 const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
@@ -35,18 +34,11 @@ const CATEGORY_ICONS: Record<EmojiCategoryId, LucideIcon> = {
 
 type EmojiCategoryBarProps = {
   active: EmojiCategoryId | 'recent';
-  /** Recent is shown only when the device has remembered emoji. */
   hasRecents: boolean;
   onSelect: (category: EmojiCategoryId | 'recent') => void;
   onOpenSearch: () => void;
 };
 
-/**
- * T-1946: one row of equal category buttons under the panel tabs, Search
- * first then Recent and the nine categories. The active button is raised, the
- * others draw muted; the bar stays put while the grid scrolls under it, as
- * Telegram and WhatsApp do.
- */
 export function EmojiCategoryBar({
   active,
   hasRecents,

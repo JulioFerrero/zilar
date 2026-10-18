@@ -28,7 +28,6 @@ import {
 
 import type { FolderIcon } from '@zilar/chat-core';
 
-/** Maps every server folder icon name to its lucide component (T-0248). */
 const FOLDER_ICON_COMPONENTS: Record<FolderIcon, LucideIcon> = {
   folder: Folder,
   'message-circle': MessageCircle,

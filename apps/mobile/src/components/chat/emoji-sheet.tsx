@@ -10,17 +10,10 @@ import { EmojiTab } from '@/components/chat/emoji-tab';
 import { GifPanel } from '@/components/chat/gif-panel';
 import { StickerGrid, type StickerPanelState } from '@/components/chat/sticker-panel';
 
-/** The inline panel's height, about what Telegram docks under the input. */
 const PANEL_HEIGHT = 320;
 
-/** The sheet tabs, in display order (Emoji first, selected by default). */
 export type EmojiSheetTab = 'emoji' | 'stickers' | 'gifs';
 
-/**
- * Which tab the sheet shows: the remembered one while it is still visible,
- * else the first visible one — so the sheet never shows an empty body when
- * the GIFs tab disappears under the active tab.
- */
 export function resolveSheetTab(
   remembered: EmojiSheetTab | undefined,
   gifsVisible: boolean,
@@ -33,17 +26,13 @@ export function resolveSheetTab(
 
 type EmojiSheetProps = {
   open: boolean;
-  /** The session-remembered tab; the composer owns it. */
   tab: EmojiSheetTab | undefined;
   onSelectTab: (tab: EmojiSheetTab) => void;
-  /** GIFs tab hidden when the provider is off (the composer probes). */
   gifsVisible: boolean;
-  /** Emoji tab. */
   emojiRecents: readonly string[];
   emojiCategory: EmojiCategoryId | 'recent' | undefined;
   onSelectEmojiCategory: (category: EmojiCategoryId | 'recent' | undefined) => void;
   onPickEmoji: (emoji: string) => void;
-  /** Stickers tab (the same packs/recents state the composer owns). */
   packs: StickerPack[] | undefined;
   panelState: StickerPanelState;
   stickerRecents: RecentStickerEntry[];
@@ -51,20 +40,10 @@ type EmojiSheetProps = {
   onSelectPack: (packId: string | undefined) => void;
   onPickSticker: (sticker: StickerChoice) => void;
   onRetryStickers: () => void;
-  /** GIFs tab. */
   gifsApi?: GifsApi | undefined;
   onPickGif: (gif: GifItem) => void;
 };
 
-/**
- * The one emoji panel (T-0175): tabs Emoji | Stickers | GIFs above the
- * bodies the separate sheets showed before. T-1927 docks it under the
- * composer instead of over it, as Telegram does: the composer dismisses the
- * keyboard when it opens, and the panel takes `PANEL_HEIGHT` below the input,
- * so the field and each picked emoji stay visible. The keyboard key under the
- * field, a tap on the field and Back close it. Lucide icons for the tabs;
- * emoji characters only as emoji content.
- */
 export function EmojiSheet({ open, ...props }: EmojiSheetProps) {
   if (!open) {
     return null;
@@ -72,7 +51,6 @@ export function EmojiSheet({ open, ...props }: EmojiSheetProps) {
   return <EmojiSheetBody open={open} {...props} />;
 }
 
-/** The open panel's body. */
 function EmojiSheetBody({
   open,
   tab,

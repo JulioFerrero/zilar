@@ -1,10 +1,4 @@
-// effect-plain: presentational card; `chat-api` owns the transport
-// T-1241: the mobile twin of the web `LinkPreviewCard` (T-1234). It unfurls a
-// message's first https link through `chat-api` (the server caps what it
-// returns), shows nothing while loading or when the page has nothing (204),
-// and opens the link on tap. A module-level cache plus in-flight dedupe keeps a
-// list re-render from refetching the same URL, the same rule as web's
-// `linkPreview` in `apps/web/src/lib/api/media.ts`.
+// effect-plain: presentational card
 import { Image } from 'expo-image';
 import { useGlobalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -20,9 +14,8 @@ import { safeLinkTarget } from '@/lib/links';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
-/** Builds the mock-mode `ChatApi` on the shared mock backend, behind a literal
- * build-time condition: Metro folds it to `false` in a release build, so the
- * mock module stays out of the bundle (the recipe of `use-contacts-api`). */
+/** Builds the mock `ChatApi` behind a literal build-time condition: Metro folds
+ *  it to `false`, so the mock stays out of a release bundle. */
 function createMockChatApi(): ChatApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -35,8 +28,6 @@ function createMockChatApi(): ChatApi {
 type PreviewState =
   { kind: 'loading' } | { kind: 'none' } | { kind: 'ready'; preview: LinkPreview };
 
-// A hit is kept for the session and a miss shares one in-flight call, so a list
-// re-render or a repeated link never refetches.
 const previewCache = new Map<string, LinkPreview | null>();
 const previewInFlight = new Map<string, Promise<LinkPreview | null>>();
 
@@ -56,7 +47,7 @@ function loadPreview(api: ChatApi, url: string): Promise<LinkPreview | null> {
       previewCache.set(url, value);
       return value;
     })
-    // A failed call shows no card; it is not cached, so a later mount retries.
+    // A failed call shows no card and is not cached, so a later mount retries.
     .catch(() => null)
     .finally(() => {
       previewInFlight.delete(url);
@@ -74,10 +65,8 @@ export function LinkPreviewCard({ url }: { url: string }) {
   );
   const api = useMemo(() => (mock ? createMockChatApi() : createChatApi(getSessionToken)), [mock]);
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
-  // T-1253: resolve the preview image path to a bearer source. Called before the
-  // early return so the hook order is stable while the preview is loading.
+  // Called before the early return so the hook order stays stable.
   const imageSource = useLinkPreviewImage(state.kind === 'ready' ? state.preview.image : undefined);
-  // The image path that failed to load, so a broken thumbnail hides (like web).
   const [brokenImage, setBrokenImage] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -97,8 +86,6 @@ export function LinkPreviewCard({ url }: { url: string }) {
   }
 
   const { title, description, siteName, image } = state.preview;
-  // The thumbnail only renders once the hook resolved a source; a path that
-  // failed to load is dropped, so a broken image hides without breaking the card.
   const thumbnail = image !== undefined && image !== brokenImage ? imageSource : undefined;
   const body = (
     <>

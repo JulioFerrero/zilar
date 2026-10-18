@@ -22,28 +22,21 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { EMOJI_BY_CATEGORY, type EmojiCategoryId } from '@/lib/emoji-data';
 
-/** Every glyph of every category, in category order; the search corpus. */
 const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 
 type EmojiTabProps = {
-  /** The sheet must be open for the body to render (tests hand `true`). */
   open: boolean;
-  /** The last 24 used emoji (the composer loads them from device storage). */
   recents: readonly string[];
-  /** The active category strip tab; the composer owns it for the session. */
   activeCategory: EmojiCategoryId | 'recent' | undefined;
   onSelectCategory: (category: EmojiCategoryId | 'recent' | undefined) => void;
-  /** Tapping an emoji inserts it at the caret; the sheet stays open. */
   onPick: (emoji: string) => void;
 };
 
-/** How many emoji cells fit one row inside the sheet. */
 export const EMOJI_GRID_COLUMNS = 8;
 
-/** A category header's fixed height, so `getItemLayout` stays exact. */
+/** Fixed header height, so `getItemLayout` stays exact. */
 const HEADER_HEIGHT = 28;
 
-/** The section the panel opens on: the remembered one, else the first filled. */
 function resolveInitialCategory(
   category: EmojiCategoryId | 'recent' | undefined,
   recents: readonly string[],
@@ -57,13 +50,6 @@ function resolveInitialCategory(
   return category;
 }
 
-/**
- * The Emoji tab (T-0175, reworked by T-1946): one continuous list of every
- * emoji with a header per category, a bar that follows the scroll and jumps to
- * a category when tapped. Search swaps the bar for a field in place. Tapping
- * inserts at the caret and never closes the sheet; Lucide icons for chrome,
- * emoji characters only as emoji content.
- */
 export function EmojiTab({ open, ...props }: EmojiTabProps) {
   if (!open) {
     return null;
@@ -78,9 +64,8 @@ function EmojiTabBody({ recents, activeCategory, onSelectCategory, onPick }: Emo
   const [searchOpen, setSearchOpen] = useState(false);
   const [width, setWidth] = useState(0);
 
-  // A pick records a recent in the composer, but the open list must not
-  // reorder under the finger: it freezes the recents it opened with and the
-  // next open rebuilds from the stored ones.
+  // The open list freezes the recents it opened with, so a pick never reorders
+  // under the finger; the next open rebuilds from storage.
   const [initialRecents] = useState(recents);
   const initialCategory = resolveInitialCategory(activeCategory, initialRecents);
   const [active, setActive] = useState<EmojiSectionCategory>(initialCategory);
@@ -115,8 +100,7 @@ function EmojiTabBody({ recents, activeCategory, onSelectCategory, onPick }: Emo
     onSelectCategoryRef.current = onSelectCategory;
   }, [onSelectCategory]);
 
-  // The bar follows the first viewable item. The handler must keep one
-  // identity for the list's lifetime, so it reads the live callback from a ref.
+  // The handler keeps one identity for the list's lifetime, so it reads the live callback from a ref.
   const handleViewableItemsChanged = useCallback(
     (info: { viewableItems: { item: EmojiListItem }[] }) => {
       const category = info.viewableItems[0]?.item.category;

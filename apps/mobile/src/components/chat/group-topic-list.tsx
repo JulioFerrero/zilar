@@ -21,12 +21,6 @@ type GroupTopicListProps = {
   onNewTopic: () => void;
 };
 
-/**
- * The group topics list: the search field, the active rows plus the shared
- * Archived toggle, and the create FAB. Per-user archived topics hide like
- * manager-archived ones (web parity) behind one Archived toggle at the bottom,
- * never two sections.
- */
 export function GroupTopicList({
   activeTopics,
   archivedTopics,
@@ -43,12 +37,6 @@ export function GroupTopicList({
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Pull-to-refresh the topic rows the same way the chat list does
-  // (`chat-list.tsx:96-102`). The rows come from `state.chats`, so `reloadChats`
-  // (`store/effects/history.ts:355-363`) repaints them, while
-  // `refreshGroupDetail` (`store/effects/group-actions.ts:69-71`) reloads the
-  // members/AIs behind the header. The spinner clears when the list reload
-  // settles, adjusted during render as the chat list screen does.
   const groupId = (activeTopics[0] ?? archivedTopics[0])?.groupId;
   const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
   if (chatsLoad !== lastChatsLoad) {

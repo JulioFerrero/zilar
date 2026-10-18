@@ -22,13 +22,6 @@ type ChatThreadProps = {
   chat: ChatSummary;
 };
 
-/**
- * The message list and one transient toast for its failures (T-1289/MUX-32).
- * The toast replaces the stacked `DismissBanner`s: a new message replaces the
- * current one and clears itself, so the list never gets pushed up. One copy
- * replaces the three identical `MessageList` + banner blocks the screen
- * repeated.
- */
 export function ChatThread({ screen, chat }: ChatThreadProps) {
   const react = useChatStore((state) => state.react);
   const startEdit = useChatStore((state) => state.startEdit);
@@ -46,27 +39,18 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
   const dismissActionError = useChatStore((state) => state.dismissActionError);
   const storeApi = useChatStoreApi();
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // A new id on every show restarts the toast timer even for identical text.
   const toastSeq = useRef(0);
   const [openingId, setOpeningId] = useState<string | undefined>(undefined);
-  // One transient message at a time: a new one replaces the current.
   const showToast = (text: string, tone: 'error' | 'notice' = 'error') => {
     toastSeq.current += 1;
     setToast({ id: toastSeq.current, text, tone });
   };
   const dismissToast = useCallback(() => setToast(null), []);
-  // The native attachment seams (T-0150): the opener for the system
-  // share/open sheet lives here. The uploader is wired by the store
-  // provider: the mock store settles instantly, the real store uploads
-  // through the injected expo-file-system seam. The screen owns the opener
-  // so taps stay local to the chat.
   const opener: AttachmentOpener = useMemo(
     () => createAttachmentOpener({ apiUrl: API_URL, getToken: getSessionToken }),
     [],
   );
-  // The shared voice playback host (T-0154): one expo-audio player for all
-  // bubbles, so only one voice plays at a time. Leaving the chat unmounts
-  // the screen and stops playback.
+  // One shared player for all bubbles, so only one voice plays at a time.
   const voiceHost = useVoicePlayerHost(chat.id);
 
   const openAttachment = (message: UiMessage) => {
@@ -74,11 +58,9 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     if (attachment === undefined) {
       return;
     }
-    // Untrusted or non-http(s) addresses never open: only the server-served
-    // upload URL (under the 50 MiB cap, like any attachment) goes to the
-    // system sheet. The upload URL is routed through `GET /api/files` (T-1185)
-    // so the download carries the session bearer; the opener's own origin
-    // guard keeps that bearer off any other host.
+    // Untrusted or non-http(s) addresses never open: only the server-served URL
+    // (under the 50 MiB cap) goes to the system sheet, through `GET /api/files` so
+    // the download carries the bearer; the origin guard keeps it off other hosts.
     if (safeHttpUrl(attachment.url) === undefined) {
       showToast('That file cannot be opened here.');
       return;
@@ -112,9 +94,6 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     });
   };
 
-  // T-1274: forwarding an album bubble forwards the whole album (its photos,
-  // in `index` order, like web's `forwardOne`), so it arrives in the target as
-  // one grid. A lone photo, as before, forwards just itself.
   const forward = (message: UiMessage) => {
     const album = message.album;
     if (album === undefined) {
@@ -130,8 +109,6 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     );
   };
 
-  // A store action failure (a failed edit, delete or reaction) arrives once:
-  // copy it into the toast and clear the store so it cannot stack.
   useEffect(() => {
     if (actionError !== undefined) {
       showToast(actionError.message);
@@ -139,7 +116,6 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     }
   }, [actionError, dismissActionError]);
 
-  // A search jump that found no message: a quiet notice, not an error.
   useEffect(() => {
     if (screen.jumpMissed) {
       showToast('Message not found', 'notice');
@@ -147,8 +123,6 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     }
   }, [screen]);
 
-  // A partial AI create lands here with `?notice=partial`: a quiet notice shown
-  // once, mirroring the search-jump miss above.
   const partialNotice = screen.partialNotice;
   const clearPartialNotice = screen.setPartialNotice;
   useEffect(() => {
@@ -158,9 +132,6 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     }
   }, [partialNotice, clearPartialNotice]);
 
-  // A copy is silent on the phone; the tiles ask for the app's short notice
-  // through the context below (T-1693), shown once and cleared like the
-  // search-jump miss.
   const notice = screen.notice;
   const clearNotice = screen.setNotice;
   useEffect(() => {

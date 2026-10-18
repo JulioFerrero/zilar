@@ -25,7 +25,6 @@ export function inviteLinkState(link: GroupInviteLink, now: number): InviteLinkS
   return 'active';
 }
 
-/** "Friends — 2/10 uses, expires …" for one link row (mirrors the web list). */
 export function describeInviteLink(link: GroupInviteLink, now: number): string {
   const state = inviteLinkState(link, now);
   const used = link.maxUses === null ? `${link.uses} uses` : `${link.uses}/${link.maxUses} uses`;
@@ -39,11 +38,6 @@ export function describeInviteLink(link: GroupInviteLink, now: number): string {
     : `${name} — ${used}, ${expiry}, ${state}`;
 }
 
-/**
- * The clipboard/share bridge the screen injects: `expo-clipboard` and React
- * Native's `Share` cannot run in Node tests, so the pure views below take
- * callbacks and the sheet wires the real modules at the edge.
- */
 export interface InviteLinkShareBridge {
   copyText: (text: string) => Promise<void>;
   shareText: (text: string) => Promise<void>;
@@ -55,11 +49,6 @@ export type CreateInviteLinkForm = {
   maxUses?: number;
 };
 
-/**
- * Validates the create form (web `InviteLinksSection` rules): label ≤ 60,
- * expiry 1..8760 hours, max uses 1..10000. Returns the error text or the
- * parsed input.
- */
 export function validateInviteLinkForm(input: {
   label: string;
   expiry: string;
@@ -89,13 +78,8 @@ export function validateInviteLinkForm(input: {
   };
 }
 
-/**
- * The invite-links sheet (T-0136): owners and admins create a link (label,
- * expiry, max uses), see the URL once with Copy and the system Share sheet
- * plus a warning that anyone with the link can join, and list/revoke links.
- * Thin view: the screen loads the list and performs the actions. The token
- * is shown only in `createdUrl` and never stored — dismissing it drops it.
- */
+/** The token is shown only in `createdUrl` and never stored; dismissing it
+ *  drops it. Rows show only the last-4 hint. */
 export function InviteLinksSheet({
   visible,
   links,
@@ -116,9 +100,8 @@ export function InviteLinksSheet({
   error: string;
   createdUrl: string | undefined;
   revokingId: string | undefined;
-  /** Fixed by the screen each time the sheet opens: the expired/exhausted
-   *  labels render against it. A mount-time stamp would go stale (the Modal
-   *  stays mounted while hidden). */
+  /** Fixed by the screen on every open: a mount-time stamp would go stale while
+   *  the `Modal` stays mounted. */
   now: number;
   share: InviteLinkShareBridge;
   onCreate: (input: CreateInviteLinkForm) => void;
@@ -132,8 +115,6 @@ export function InviteLinksSheet({
   const [copied, setCopied] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // The bridge calls are not API calls, so a rejection stays a plain failure
-  // state here (nothing renders it, as before the Effect version).
   const [, copyUrl] = useAction(
     (url: string) =>
       Effect.tryPromise({ try: () => share.copyText(url), catch: (cause) => cause }).pipe(
@@ -174,8 +155,6 @@ export function InviteLinksSheet({
   };
 
   const shownError = formError !== '' ? formError : error;
-  // The expired/exhausted labels render against `now`, which the screen
-  // fixes on every open (see `openLinks`), so they never go stale.
 
   return (
     <BottomSheet
@@ -304,12 +283,7 @@ function InviteLinkRowView({
   );
 }
 
-/**
- * One invite-link row (pure, no hooks): the name (label or last-4 hint) with
- * its uses/expiry line and a Revoke button, or a "revoked" label. The full
- * token never appears here — only the hint. `now` is injected (the screen
- * fixes it once per list load) so the render stays pure.
- */
+/** The full token never appears here, only the hint. */
 export function InviteLinkRow({
   link,
   now,
@@ -324,11 +298,6 @@ export function InviteLinkRow({
   return <InviteLinkRowView link={link} now={now} revoking={revoking} onRevoke={onRevoke} />;
 }
 
-/**
- * The shown-once block (pure, no hooks): the full URL with Copy and the
- * system Share sheet plus the anyone-with-the-link warning. The caller drops
- * `url` on Done, so the token is never stored.
- */
 export function CreatedInviteLinkView({
   url,
   copied,

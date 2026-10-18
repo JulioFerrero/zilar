@@ -20,31 +20,17 @@ const VIDEO_HEIGHT = 180;
 
 type AttachmentVideoProps = {
   attachment: Attachment;
-  /** The message's chat, for the `GET /api/files` proxy URL (T-1185). */
   chatId: string;
-  /** The store's trusted media hosts (service host, domain, upload.domain). */
   trustedHosts: ReadonlySet<string>;
-  /** The local preview URI while the bytes are still uploading. */
   localUri?: string | undefined;
-  /** True while the bytes are still uploading. */
   uploading?: boolean | undefined;
-  /** 0..1 upload progress, when known. */
   progress?: number | undefined;
-  /** True when the upload failed; the card shows a Retry instead. */
   failed?: boolean | undefined;
   onRetry?: (() => void) | undefined;
 };
 
-/**
- * A video attachment bubble (T-0150): inline `expo-video` with native
- * controls, tap-to-fullscreen. A trusted URL (or the local preview while
- * uploading) auto-loads; an untrusted URL never fetches — the bubble keeps
- * a file row with the "Not loaded" line and the open control stays hidden
- * until fullscreen is requested from a trusted source. GIF-origin videos
- * (`gif-<id>.mp4`) loop muted; regular videos play with sound on tap.
- * Respect "reduce motion" (T-0148): a GIF-origin video starts paused with a
- * tap-to-play badge instead of auto-playing.
- */
+/** An untrusted URL never fetches; GIF-origin videos loop muted, and start
+ *  paused under reduce motion. */
 export function AttachmentVideo({
   attachment,
   chatId,
@@ -57,15 +43,12 @@ export function AttachmentVideo({
 }: AttachmentVideoProps) {
   const reduceMotion = useReducedMotion();
   const [view, setView] = useState(false);
-  // The media-first inner `Pressable` swallows the outer bubble's `onLongPress`
-  // (`message-menu-context.tsx`): forward the menu open so a long hold still
-  // opens the message menu, while a short tap keeps playing/opening the video.
   const openMenu = useOpenMessageMenu();
   const longPress =
     openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
-  // A trusted `/upload/` file on our API origin goes through `GET /api/files`
-  // with the bearer (T-1185); a local preview or another origin loads directly.
+  // Our own `/upload/` file goes through `GET /api/files` so the request carries
+  // the bearer; a local preview or another origin loads directly.
   const uri = localUri ?? (trusted ? mediaUrl(chatId, attachment.url) : undefined);
   // Auth headers go only to the API origin: the upload host serves public URLs,
   // and a header there would leak the session token cross-origin.
@@ -76,7 +59,6 @@ export function AttachmentVideo({
       return;
     }
     // A cleanup interrupts the read, so a late token never reaches a stale source.
-    // A failed read leaves the token unset, as before: the player stays unloaded.
     const fiber = Effect.runFork(
       Effect.tryPromise(() => getSessionToken()).pipe(
         Effect.match({
@@ -92,11 +74,9 @@ export function AttachmentVideo({
     };
   }, [needsToken, uri]);
   const gif = isGifOrigin(attachment);
-  // `useVideoPlayer` owns the player: loop/mute are set in the setup
-  // callback below, never by mutating the returned player in an effect.
   const player = useVideoPlayer(
-    // The native player is built once per source: an API-origin URL waits for
-    // the session token so the first request already carries the bearer.
+    // The native player is built once per source; an API-origin URL waits for the
+    // token so the first request already carries the bearer.
     uri === undefined || (needsToken && token === undefined)
       ? null
       : {
@@ -111,11 +91,8 @@ export function AttachmentVideo({
     },
   );
   const viewRef = useRef<{ enterFullscreen: () => Promise<void> } | null>(null);
-  // GIF-origin videos auto-play once the source is ready — unless the
-  // viewer asked for reduced motion, in which case the still frame waits
-  // for an explicit tap. Regular videos never auto-play. The state update
-  // waits one scheduler yield (like the token read below): the effect only
-  // synchronizes with the external player, never cascading a render.
+  // GIF-origin videos auto-play, except under reduce motion. The state update
+  // waits one yield so the effect never cascades a render.
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (!gif || reduceMotion || uri === undefined) {
@@ -232,7 +209,6 @@ export function AttachmentVideo({
   );
 }
 
-/** Whether the attachment came from the GIF path: loops muted inline. */
 function isGifOrigin(attachment: Attachment): boolean {
   if (attachment.kind !== 'file') {
     return false;
@@ -259,7 +235,6 @@ function VideoFullscreen({
     if (view === null) {
       return;
     }
-    // A refused fullscreen keeps the inline player.
     Effect.runFork(Effect.tryPromise(() => view.enterFullscreen()).pipe(Effect.ignore));
   }, [viewRef]);
   return (

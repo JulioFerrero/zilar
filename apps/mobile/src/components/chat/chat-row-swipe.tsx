@@ -9,9 +9,7 @@ import type { PutChatPrefInput } from '@/lib/chat-prefs-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ChatSummary } from '@/lib/types';
 
-// The swipe's mute uses the longest offered duration (the "forever" entry
-// when the durations define one, as they do today); the mute sheet keeps
-// offering the full choice.
+// The swipe's mute uses the longest offered duration; the sheet offers the full choice.
 const SWIPE_MUTE_ID = MUTE_DURATIONS.find((entry) => entry.id === 'forever')?.id ?? 'week';
 
 type SwipeActionProps = {
@@ -21,7 +19,6 @@ type SwipeActionProps = {
   onPress: () => void;
 };
 
-/** One icon-over-label button of a chat row's right actions. */
 function SwipeAction({ label, accessibilityLabel, icon: Icon, onPress }: SwipeActionProps) {
   return (
     <Pressable
@@ -37,24 +34,15 @@ function SwipeAction({ label, accessibilityLabel, icon: Icon, onPress }: SwipeAc
 }
 
 type ChatRowSwipeProps = {
-  /** The pref-bearing chat behind the row (a group row passes its General topic). */
   chat: ChatSummary;
   onPref: (chatId: string, input: PutChatPrefInput) => void;
-  /** The list's shared open row: opening one closes the previous. */
   openRef: RefObject<SwipeableMethods | null>;
   children: ReactNode;
 };
 
-/**
- * Wraps a chat list row so swiping it left reveals Pin/Unpin, Mute/Unmute
- * and Archive/Unarchive (T-1204). The buttons call the same pref writes the
- * long-press sheet uses; the sheet itself stays on long-press, and the
- * swipeable's default threshold keeps vertical scrolling working.
- */
 export function ChatRowSwipe({ chat, onPref, openRef, children }: ChatRowSwipeProps) {
   const ownRef = useRef<SwipeableMethods>(null);
 
-  // The swipe closes first so the row is back in place when the write lands.
   const act = (input: PutChatPrefInput) => {
     ownRef.current?.close();
     onPref(chat.id, input);

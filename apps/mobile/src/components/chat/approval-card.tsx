@@ -21,31 +21,28 @@ import { DANGER, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
-/** A decision the viewer made, kept with the api and request it was made for. */
 interface DecidedCard {
   readonly api: ApprovalsApi;
   readonly id: string;
   readonly approval: PublicApproval;
 }
 
-/** "<AI> asks", the summary, Deny/Approve, and a quiet "Always allow" when eligible. */
 export function ApprovalCard({
   data,
   senderId,
 }: {
   data: ApprovalRequest;
-  /** T-2001: the message sender; the record's `aiId` must belong to it. */
+  /** The message sender: the record's `aiId` must belong to it. */
   senderId?: string | undefined;
 }) {
   const { api } = useApprovalsApi();
-  // The read runs on mount and when the api or the request changes.
   const [loaded] = useQuery(
     () => Effect.promise(() => loadApprovalCardState(api, data.id)),
     [api, data.id],
   );
   const [decided, setDecided] = useState<DecidedCard | null>(null);
   const [inFlight, setInFlight] = useState<null | 'approve' | 'deny' | 'always'>(null);
-  // T-0100's two-step confirm, kept: the first tap arms, the second decides.
+  // Two-step confirm: the first tap arms, the second decides.
   const [confirmingAlways, setConfirmingAlways] = useState(false);
   const [decision, decide] = useAction((next: ApprovalDecision) =>
     Effect.promise(() => applyDecision(api, data.id, next)).pipe(
@@ -63,16 +60,13 @@ export function ApprovalCard({
     ),
   );
 
-  // A read that is still running (first load) shows the placeholder.
   const loadedState: ApprovalCardState =
     AsyncResult.isSuccess(loaded) && !isWaiting(loaded) ? loaded.value : { kind: 'loading' };
-  // A decision made on this request wins over the read.
   const state: ApprovalCardState =
     decided !== null && decided.api === api && decided.id === data.id
       ? { kind: 'ready', approval: decided.approval }
       : loadedState;
   const busy = inFlight !== null;
-  // The last decision's inline failure, hidden while a new decision runs.
   const outcome =
     !isWaiting(decision) && AsyncResult.isSuccess(decision) ? decision.value : undefined;
   const actionError = outcome?.kind === 'error' ? outcome.message : '';
@@ -82,10 +76,8 @@ export function ApprovalCard({
     decide(next);
   };
 
-  // T-2001: the summary, action and AI come from the server's record, never
-  // from the message. Without a loaded record there is no card to act on: the
-  // loading state shows a placeholder, and a failed or missing read shows the
-  // fixed sentence with no buttons.
+  // The summary, action and AI come from the server's record, never from the
+  // message; without a loaded record there is no card to act on.
   if (state.kind !== 'ready') {
     return (
       <View className="min-w-[230px] py-0.5">
@@ -103,23 +95,18 @@ export function ApprovalCard({
     );
   }
   const approval = state.approval;
-  // The server turns a past-due `pending` row into `expired` in its read model
-  // (see `toPublicApproval`), so a `pending` status is already "pending and
-  // not expired" from the user's perspective.
+  // The read model turns a past-due `pending` row into `expired`, so `pending`
+  // already means "not expired".
   const isPending = approval.status === 'pending';
-  // T-2001: a forged card can name a real approval but must not decide it with
-  // its own buttons. The server's `aiId` has to belong to the message sender.
+  // A forged card can name a real approval but must not decide it: the server's
+  // `aiId` has to belong to the message sender.
   const senderMatches = senderId !== undefined && approvalSentBy(approval.aiId, senderId);
   const showAlways = isPending && approval.alwaysEligible && senderMatches;
 
-  // The one-line label: the AI's name when the read carries one, "Approval" otherwise.
   const label = approval.aiName !== '' ? `${approval.aiName} asks` : 'Approval';
 
-  // T-1723: a routine card's summary holds the title and the schedule; draw
-  // them apart, null for every other card.
   const routine = routineCardTitle(approval.action, approval.summary);
 
-  // A decided request shrinks to one line: a status icon and the summary.
   if (!isPending) {
     return (
       <View className="min-w-[230px] py-0.5">
@@ -213,7 +200,6 @@ export function ApprovalCard({
   );
 }
 
-/** The decided status as one icon: a green check, or a red cross when not approved. */
 function DecidedIcon({ status }: { status: ApprovalStatus }) {
   if (status === 'denied' || status === 'expired') {
     return <X size={14} color={DANGER} aria-hidden />;

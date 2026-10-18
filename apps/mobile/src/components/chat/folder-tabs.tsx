@@ -11,10 +11,8 @@ import { cn } from '@/lib/utils';
 
 import { folderIcon } from './folder-icon';
 
-/** How far the chip row is inset, used to keep the active chip in view. */
 const ROW_INSET = 16;
 
-/** The well track's inner padding, as in the kit segmented control. */
 const TRACK_PADDING = 3;
 
 type FolderChip = {
@@ -24,17 +22,13 @@ type FolderChip = {
 };
 
 type FolderTabsProps = {
-  /** 'all' or a folder id. */
   activeFolder: string;
   folders: ChatFolder[];
-  /** Unread totals keyed by 'all' or a folder id. */
   counts: Record<string, number>;
-  /** The pager's continuous page position; drives the raised chip. */
   progress: SharedValue<number>;
   onSelect: (folder: string) => void;
 };
 
-/** The chip's glyph: the folder's icon, or the all-chats square for "all". */
 function chipGlyph(folder: ChatFolder | undefined, color: string) {
   if (folder === undefined) {
     return <MessagesSquare size={14} color={color} />;
@@ -43,14 +37,6 @@ function chipGlyph(folder: ChatFolder | undefined, color: string) {
   return <Icon size={14} color={color} />;
 }
 
-/**
- * The chat folders as a scrollable segmented track (T-0248, T-1965): "All
- * chats" first, then one chip per server folder, on the kit's recessed `well`
- * track. The selected chip is raised (the `segment` look); a chip shows its
- * unread count only when it is above zero. T-1310: the raised layer cross-fades
- * with the pager's `progress`, so the indicator follows a swipe, and the row
- * scrolls to keep the active chip in view as the pager turns.
- */
 export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }: FolderTabsProps) {
   const chips: FolderChip[] = [
     { id: 'all', name: 'All chats', folder: undefined },
@@ -86,8 +72,8 @@ export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }
       ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
-      // A horizontal ScrollView grows to fill the free height; without this it
-      // floats in a big empty gap above the list.
+      // A horizontal ScrollView grows to fill the free height; without
+      // `flex-y-0` it eats the screen.
       style={{ flexGrow: 0 }}
       contentContainerStyle={{
         flexDirection: 'row',
@@ -126,7 +112,6 @@ type FolderChipViewProps = {
   onLayout: (event: LayoutChangeEvent) => void;
 };
 
-/** One chip: the raised `segment` layer sits on the well track and cross-fades. */
 function FolderChipView({
   chip,
   index,

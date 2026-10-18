@@ -13,21 +13,6 @@ import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import type { InvitesApi } from '@/lib/invites-api';
 
-/**
- * The invite box (T-0190): creates a personal invite link when it opens (a new
- * link each time, like web's `InviteDialog`), shows it with Copy and the
- * system Share sheet, and reads a fixed failure sentence with Try again.
- *
- * On the kit bottom sheet (T-1451): `title="Invite a friend"`, the header's
- * close key is the way out, and the state's primary (Copy, or Try again after
- * a failure) is the sticky footer. `visible` gates the request, so the link is
- * only created while the sheet is open.
- *
- * The clipboard/share bridge the caller injects: `expo-clipboard` and React
- * Native's `Share` cannot run in Node tests, so this sheet takes callbacks
- * and `new-chat-button.tsx` wires the real modules at the edge (the
- * `group/[id].tsx` pattern).
- */
 export function InviteSheet({
   visible,
   api,
@@ -44,17 +29,14 @@ export function InviteSheet({
   const [copied, setCopied] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  // A new attempt (Try again), a new `api` or a reopen starts a new request;
-  // the old one is interrupted, so a result that arrives after close or after
-  // a newer request is never rendered. While the sheet is closed nothing is
-  // requested (`Effect.never`).
+  // A new request interrupts the old one, so a result arriving after close or
+  // after a newer request is never rendered.
   const [invite] = useQuery(
     () => (visible ? fromApi(() => api.createInvite()) : Effect.never),
     [api, attempt, visible],
   );
   const url = AsyncResult.isSuccess(invite) ? invite.value.url : undefined;
-  // A retry shows the loading line at once, so a failure only counts while
-  // no request is running.
+  // A retry shows the loading line at once.
   const failed = AsyncResult.isFailure(invite) && !AsyncResult.isWaiting(invite);
 
   const [, copyUrl] = useAction(
@@ -93,8 +75,6 @@ export function InviteSheet({
     shareUrl(url);
   };
 
-  // The sheet is now always mounted, so a fresh open must not carry the
-  // previous open's Copied state or retry count.
   const close = (): void => {
     setCopied(false);
     setAttempt(0);
@@ -129,18 +109,11 @@ export function InviteSheet({
   );
 }
 
-/**
- * The hook-free invite box body (the `join-link.tsx` `JoinLinkBody` pattern):
- * Node tests call it as a plain function with `react-native` stubbed. The
- * stateful `InviteSheet` above owns the request and the footer's primary; this
- * view renders the sentence, the link well and the secondary Share key.
- */
 export function InviteSheetBody({
   url,
   failed,
   onShare,
 }: {
-  /** The created link; `undefined` while it loads (`Creating link…`). */
   url: string | undefined;
   failed: boolean;
   onShare: () => void;

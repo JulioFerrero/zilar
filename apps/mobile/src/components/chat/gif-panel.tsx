@@ -21,10 +21,6 @@ import { fetchGifPageEffect } from './gif-paging';
 export { GifCell, isPanelGifUrl } from './gif-cells';
 export { fetchGifPage, probeGifsAvailability } from './gif-paging';
 
-/**
- * Runs an Effect for as long as the component's effect lasts: the returned
- * cleanup interrupts it (the old `cancelled` flag).
- */
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);
   return () => {
@@ -32,25 +28,16 @@ function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   };
 }
 
-/** Interrupts a debounce wait that is still pending (the old `clearTimeout`). */
 function cancelWait(fiber: Fiber.Fiber<void> | undefined): void {
   interruptFiber(fiber);
 }
 
 export type GifPanelProps = {
   open: boolean;
-  /** Injected API client; tests hand a fake, production builds the real one. */
   api?: GifsApi | undefined;
   onPick: (gif: GifItem) => void;
 };
 
-/**
- * The GIFs tab content (T-0148): a search field (debounced 300 ms,
- * cancelling the in-flight request), trending when the query is empty, a
- * 2-column grid of proxy-loaded previews, infinite scroll with the returned
- * `pos` cursor, and the provider attribution. Empty, error-with-retry and
- * rate-limited states included.
- */
 export function GifPanel({ open, api, onPick }: GifPanelProps) {
   const [token, setToken] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState('');
@@ -63,30 +50,22 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
   const [client] = useState<GifsApi>(() => api ?? createGifsApi());
   const inflight = useRef<AbortController | undefined>(undefined);
   const debounceWait = useRef<Fiber.Fiber<void> | undefined>(undefined);
-  // The synchronous in-flight guard for infinite scroll (T-0157): a ref set
-  // before the fetch starts, so a second scroll event while a page is in
-  // flight cannot fire an overlapping page load. `loadingMore` state only
-  // mirrors it for the spinner; state sets are async and would race.
+  // A ref set before the fetch starts, so a second scroll event cannot fire an
+  // overlapping page load; state sets are async and would race.
   const loadingMoreRef = useRef(false);
-  // The latest query for the Retry button and the scroll pager: written in
-  // the change handler (an event, never during render) alongside `setQuery`.
   const queryRef = useRef('');
 
   const load = useCallback(
     (search: string, pos: string | undefined, append: boolean): void => {
-      // A new query supersedes the in-flight one: abort it so its late
-      // answer never lands (the guard below drops it anyway).
+      // A new query aborts the in-flight one, so its late answer never lands.
       inflight.current?.abort();
       const controller = new AbortController();
       inflight.current = controller;
       if (append) {
-        // Guarded synchronously by `loadingMoreRef`: an append never starts
-        // while one is in flight (the scroll handler checks the ref).
         loadingMoreRef.current = true;
         setLoadingMore(true);
       } else {
-        // A fresh query owns the list now: an append it aborted must not
-        // leave the guard stuck, or infinite scroll would never fire again.
+        // A fresh query must release an aborted append's guard, or infinite scroll stops.
         loadingMoreRef.current = false;
         setLoadingMore(false);
         setLoading(true);
@@ -120,8 +99,6 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
               if (requestError instanceof DOMException && requestError.name === 'AbortError') {
                 return;
               }
-              // The provider is off: remember it for the session so the tab
-              // hides (the composer probes this cache), and show Retry here.
               if (
                 requestError instanceof GifsApiError &&
                 requestError.code === 'gifs_unavailable'
@@ -149,9 +126,8 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
     [client],
   );
 
-  // Trending on open, then debounced search: opening the sheet fires the
-  // load from a microtask (never synchronously in the effect, per the
-  // `set-state-in-effect` rule); keystrokes debounce through the timer.
+  // The first load fires from a later tick, never synchronously in the effect
+  // body (the `set-state-in-effect` rule); keystrokes debounce through the timer.
   useEffect(() => {
     if (!open) {
       return;
@@ -166,8 +142,6 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
         ),
       ),
     ];
-    // The first page fires from a later tick, never synchronously in the
-    // effect body (the `set-state-in-effect` rule).
     stops.push(
       runUntilCleanup(
         Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => load('', undefined, false)))),
@@ -250,8 +224,6 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
             onScroll={(event) => {
               const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
               const distance = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-              // The ref guard is synchronous: a second scroll event while a
-              // page is in flight never fires an overlapping page load.
               if (
                 distance < 300 &&
                 nextPos !== undefined &&

@@ -7,7 +7,6 @@ import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-
 
 import { useRowPan } from '@/components/chat/row-gesture';
 
-// A failed haptic is ignored: the reaction itself still toggles without it.
 function lightHaptic(): void {
   Effect.runFork(
     Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
@@ -18,27 +17,13 @@ function lightHaptic(): void {
 
 type BubbleGestureProps = {
   message: UiMessage;
-  /** The bubble's react handler; absent disables the double-tap. */
   onReact?: ((message: UiMessage, emoji: string) => void) | undefined;
-  /** False for a message that cannot be reacted to yet, or in select mode. */
   enabled?: boolean;
   className?: string;
   children: ReactNode;
 };
 
-/**
- * Wraps a bubble with the T-1302 double-tap-to-react (MUX-21): two quick taps
- * add the first quick reaction, or remove it when I already reacted with it
- * (the core's `react` toggles), with a Light haptic. A plain `Tap` beside the
- * bubble's own long-press, so the long-press still opens the menu; the
- * gesture is disabled while the bubble has no wire id (a draft, or still
- * sending/failed) and in select mode. A single tap or a long press never
- * triggers it.
- *
- * The bubble's tap is linked to the row's swipe pan (T-2022) so the two run
- * simultaneously: a swipe that starts on the bubble still replies, and the tap
- * never covers the avatar, the reaction chips or the handoff line.
- */
+/** The tap is linked to the row's swipe pan so both run; a swipe still replies. */
 export function BubbleGesture({
   message,
   onReact,

@@ -3,11 +3,6 @@ import { mutedUntilFor } from '@/lib/chat-prefs';
 import { ChatActionsSheet } from './chat-actions-sheet';
 import type { ChatActions } from './use-chat-actions';
 
-/**
- * The long-press action sheet wired to the chats screen's action state
- * (T-0135). The hook holds the state and the pref writes; this host maps it
- * to the sheet's handlers.
- */
 export function ChatActionsHost({
   actions,
   onOpenGroup,

@@ -16,26 +16,15 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 interface AiEmptyInfo {
   template: string;
-  /** The mono model line: `<model>` or `<model> · <provider>`. */
   model: string;
 }
 
-/**
- * The empty chat (T-1520), the phone twin of web's `EmptyChat.tsx` (T-1511). A
- * DM shows only the person's picture, name and `@handle`; an AI chat adds the
- * model line and the three suggestion chips from its template, and a chip
- * sends. Any other chat keeps the "No messages yet" state.
- */
 export function EmptyChat({ chat }: { chat: ChatSummary }) {
   const { api: aisApi } = useAisApi();
   const { api: connectionsApi } = useConnectionsApi();
   const contacts = useChatStore((state) => state.contacts);
   const sendText = useChatStore((state) => state.sendText);
 
-  // The AI's template and model line: found by jid, the provider named from its
-  // connection. Left out while loading, for a chat that is not a known AI and
-  // for someone else's AI (which is not in the list). A failed connections read
-  // just drops the provider name.
   const [aiResult] = useQuery(
     () =>
       chat.isAI

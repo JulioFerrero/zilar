@@ -8,9 +8,7 @@ import { DANGER } from '@/lib/colors';
 import type { ChatSummary } from '@/lib/types';
 
 type LeaveTopicSheetProps = {
-  /** The topic to leave, or null while the sheet is closed. */
   chat: ChatSummary | null;
-  /** The group behind the topic, named in the public message. */
   groupTitle: string;
   busy: boolean;
   error: string;
@@ -18,11 +16,6 @@ type LeaveTopicSheetProps = {
   onLeave: () => void;
 };
 
-/**
- * The Leave confirm from `PhoneLeave.dc.html` (T-1798): the board's question
- * and its per-visibility line, then a red Leave key and Cancel. Both public
- * and private topics open it; the host keeps the real `onLeave`.
- */
 export function LeaveTopicSheet({
   chat,
   groupTitle,

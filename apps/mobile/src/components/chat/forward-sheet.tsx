@@ -11,17 +11,10 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 export { forwardTargets } from '@/components/chat/chat-picker-list';
 
-/** `Send`, or `Send to N chats` once more than one target is picked. */
 export function forwardSendLabel(count: number): string {
   return count > 1 ? `Send to ${count} chats` : 'Send';
 }
 
-/**
- * Picks one or more target chats for a forward (T-F part 2, T-0435): the same
- * flow as web's `ForwardPicker`, on a mobile bottom sheet. Several targets are
- * allowed; the optional comment rides along as a separate message per target
- * (the store action already splits it).
- */
 export function ForwardSheet({
   messages,
   onClose,

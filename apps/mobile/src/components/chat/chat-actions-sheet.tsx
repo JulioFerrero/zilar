@@ -16,20 +16,8 @@ import { ActionSheet, ActionSheetItem } from '../ui/action-sheet';
 import { MUTE_DURATIONS, type MuteDurationId } from '../../lib/chat-prefs';
 import type { ChatSummary } from '../../lib/types';
 
-/**
- * The long-press action sheet on a chat or group row (T-0135): Pin/Unpin,
- * Mute (1 hour, 8 hours, 1 day, 1 week, Forever, Unmute), Archive/Unarchive,
- * Mark as unread / Mark as read (T-1248), Clear history for a DM (T-1247),
- * plus "Open group" for a group row (T-0139: the way to the group screen with
- * invite links, roles and members). Pure view (no hooks) so it stays
- * render-testable like `ReactionChips`: the screen owns the mute submenu
- * and performs the pref writes. For a group row the caller passes the
- * General topic row (plus the group title and id for the header and the
- * "Open group" row), so a group mute sits on the General JID and applies
- * to every topic of the group. Without a General row the pref rows stay
- * disabled — a group pref on a non-General JID would hit one topic, not
- * the group — while "Open group" stays enabled.
- */
+/** Pure view: the screen owns the mute submenu and the pref writes. Group
+ *  prefs sit on the General JID, so a mute covers every topic. */
 export function ChatActionsSheet({
   chat,
   groupTitle,
@@ -52,14 +40,11 @@ export function ChatActionsSheet({
   onClose,
 }: {
   chat: ChatSummary | null;
-  /** Set for a group row: the sheet titles itself from the group. */
   groupTitle?: string | undefined;
-  /** Set for a group row: shows "Open group" to reach the group screen. */
   groupId?: string | undefined;
   busy: boolean;
   error: string;
   muteOpen: boolean;
-  /** T-1247: the Clear history in-sheet confirm is showing. */
   clearOpen: boolean;
   onOpenMute: () => void;
   onMute: (duration: MuteDurationId) => void;
@@ -77,12 +62,10 @@ export function ChatActionsSheet({
   const pinned = chat?.pinnedAt !== undefined;
   const archived = chat?.archived === true;
   const muted = chat?.muted === true;
-  // T-1248: a hand-set mark, or unread messages, offer "Mark as read".
   const marked = chat?.unreadMark === true;
   const showMarkRead = (chat?.unread ?? 0) > 0 || marked;
   const title = groupTitle ?? chat?.title ?? '';
   const ready = chat !== null;
-  // T-1247: Clear history only for a DM the caller can act on.
   const isDm = chat?.kind === 'dm' && chat.isAI !== true;
 
   if (clearOpen) {

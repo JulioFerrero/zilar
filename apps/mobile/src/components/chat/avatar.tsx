@@ -11,32 +11,17 @@ import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';
 
 type AvatarProps = {
-  /** The orb seed, already normalized by `avatarIdentity`. */
   seed: string;
-  /** The display name, for the picture's accessibility label. */
   name: string;
   size?: number;
   online?: boolean;
-  /**
-   * T-1192 (MUX-12): the person's or group's picture. Absent (or failed to
-   * load) shows the ball avatar instead.
-   */
   avatarUrl?: string;
-  /** Kept for callers; the ball avatar no longer changes for AIs. */
   ai?: boolean;
   className?: string;
 };
 
-/**
- * The avatar circle and the online dot.
- *
- * T-1192 (MUX-12): when `avatarUrl` is set the picture renders on top of the
- * ball avatar, which stays behind as the placeholder and comes back on load
- * error. The bearer rides only to the API origin (`avatarImageSource`). The
- * token is read the way the profile avatar does (`use-profile-avatar.ts`
- * loads `getSessionToken()` into state), here with the fiber the chat media
- * loaders use so a late token or an unmount never reaches a stale avatar.
- */
+/** The picture renders over the ball avatar, which returns on load error. The
+ *  bearer rides only to the API origin, and a late token never reaches it. */
 export function Avatar({
   seed,
   name,
@@ -48,7 +33,6 @@ export function Avatar({
   const dotSize = Math.max(10, Math.round(size * 0.22));
   const hasUrl = avatarUrl !== undefined && avatarUrl !== '';
   const [token, setToken] = useState<string | undefined>(undefined);
-  // The failed url, not a flag: a fresh `avatarUrl` clears it (profile-view.tsx).
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!hasUrl) {
@@ -70,8 +54,7 @@ export function Avatar({
     };
   }, [hasUrl]);
   const imageFailed = failedUrl !== undefined && failedUrl === avatarUrl;
-  // A relative server path (`/api/avatars/<id>`) needs the bearer, so the
-  // picture waits for the token; the ball shows until then.
+  // A relative server path needs the bearer, so the picture waits for the token.
   const source =
     hasUrl && !imageFailed && token !== undefined
       ? avatarImageSource(avatarUrl, API_URL, token)

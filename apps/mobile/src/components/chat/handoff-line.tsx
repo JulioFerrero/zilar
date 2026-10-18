@@ -15,11 +15,8 @@ interface PersonSources {
   chats: readonly ChatSummary[];
 }
 
-/**
- * The person behind one handoff JID (T-1575): the chat's own members first, then
- * the contacts / AI list, then the AI chat rows, and the JID's localpart as the
- * last resort so a line always names something.
- */
+/** Resolves from the chat's members, then contacts and AIs, then the JID
+ *  localpart, so a line always names something. */
 function personFor(jid: string, sources: PersonSources, fallbackName = ''): AvatarPersonInput {
   const member = sources.members.find((entry) => entry.jid === jid);
   const contact = sources.contacts.find((entry) => entry.jid === jid);
@@ -35,25 +32,16 @@ function personFor(jid: string, sources: PersonSources, fallbackName = ''): Avat
 
 export interface HandoffLineProps {
   card: HandoffLineData;
-  /** The chat row whose members name the target AIs. */
   chatId: string;
-  /** The card message's resolved sender, the `from` orb's fallback name. */
   senderName: string;
-  /** Toggles the full reply bubble under the line. */
   onToggle: () => void;
 }
 
-/**
- * The board's small centred handoff line (T-1575): the sender's 16 px orb, a
- * muted arrow, the targets' 16 px orbs, then the one-line task. A press toggles
- * the full bubble of the reply it belongs to.
- */
 export function HandoffLine({ card, chatId, senderName, onToggle }: HandoffLineProps) {
   const contacts = useChatStore((state) => state.contacts);
   const chats = useChatStore((state) => state.chats);
   const groupMembers = useChatStore((state) => state.groupMembers);
-  // Re-resolves when an async group detail lands: `groupMembers` reads a plain
-  // closure cache and would otherwise keep returning the value from first render.
+  // Reads `groupMembers` to re-resolve when an async group detail lands.
   useChatStore((state) => state.groupDetailsRevision);
   const sources: PersonSources = { members: groupMembers(chatId), contacts, chats };
   const from = personFor(card.from, sources, senderName);

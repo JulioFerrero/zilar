@@ -34,34 +34,22 @@ export { fieldHeightFor } from '@/components/chat/composer-input-row';
 type ComposerProps = {
   onSend: (text: string, mentions?: UiMention[]) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
-  /** Sends a picked file with the composer text as the caption (T-0150). */
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
-  /** Sends a finished voice recording (T-0154). */
   onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
-  /** The sticker panel's API client; mock mode injects the shared backend. */
   stickersApi?: StickersApi | undefined;
-  /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
-  /** The GIF panel's API client; mock mode injects the shared backend. */
   gifsApi?: GifsApi | undefined;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
-  /** Called when the text empties or a send clears it (T-1149). */
   onStopTyping?: () => void;
-  /** Group members (and AIs) for the `@` picker; absent in DMs (T-0227). */
   mentionMembers?: MentionMember[] | undefined;
-  /** Used for the `Message <title>` placeholder, like the web composer. */
   title?: string;
-  /** The native pickers; tests inject a fake. */
   picker?: AttachmentPicker | undefined;
-  /** The GIF media downloader; tests inject a fake. */
   gifDownloader?: GifDownloader | undefined;
-  /** The chat behind this composer; a switch resets mention state (T-0227). */
   chatKey?: string | undefined;
 };
 
-/** Bottom composer: a well with attach, auto-growing input, emoji and mic/send. */
 export function Composer({
   onSend,
   onSendSticker,
@@ -84,36 +72,19 @@ export function Composer({
   const editTarget = useChatStore((state) => state.editTarget);
   const cancelEdit = useChatStore((state) => state.cancelEdit);
   const editMessage = useChatStore((state) => state.editMessage);
-  // The target message's text is the initial value; the store keeps the live
-  // message under the same id, so the bar never goes stale while editing.
-  // An attachment target edits its caption through the same path (T-0157).
   const targetText = useChatStore((state) => {
     const target = state.editTarget;
     if (target === undefined) return undefined;
     return state.messages(target.chatId).find((message) => message.id === target.messageId)?.text;
   });
-  // The text is the chat's stored draft (T-1181): leaving the chat and coming
-  // back keeps it, and the chat row can show it. Editing a message shows that
-  // message's text in its place and leaves the draft stored, so cancelling the
-  // edit brings the draft back untouched.
   const editing = editTarget !== undefined;
   const [draftText, setDraftText] = useDraftText(chatKey);
   const [editText, setEditText] = useState('');
   const text = editing ? editText : draftText;
   const setText = editing ? setEditText : setDraftText;
-  // Whether a composing event was sent for the current text: the emptiness
-  // effect below only stops a line we actually started (T-1149).
   const typingActiveRef = useRef(false);
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
-  // The caret for emoji insertion: tracked from the TextInput's
-  // `onSelectionChange`; `undefined` until the first selection event (an
-  // emoji pick then appends at the end).
   const [selection, setSelection] = useState<CaretSelection | undefined>(undefined);
-  // Entering edit mode prefills the input with the message's text; leaving it
-  // drops the edit text so the stored draft shows again. The seeding runs while
-  // rendering, keyed on the message id (a string), instead of in an effect: a
-  // later inbound correction (which only changes `targetText`) does not clobber
-  // the user's typing, and no state is set from an effect.
   const editingId =
     editTarget === undefined ? undefined : `${editTarget.chatId}:${editTarget.messageId}`;
   const [seededFor, setSeededFor] = useState<string | undefined>(undefined);
@@ -121,12 +92,9 @@ export function Composer({
     setSeededFor(editingId);
     const seed = editingId === undefined ? '' : (targetText ?? '');
     setEditText(seed);
-    // The caret goes to the end of the seeded text, as in Telegram (T-1482).
     setSelection(editingId === undefined ? undefined : { start: seed.length, end: seed.length });
   }
 
-  // Reply and Edit focus the composer, as in Telegram (T-1482): the effect is
-  // keyed on the reply's message id and the edit key.
   const inputRef = useRef<TextInput>(null);
   const replyId = replyTo?.id;
   useEffect(() => {
@@ -153,8 +121,6 @@ export function Composer({
           },
   });
 
-  // The line stops as soon as the text empties, whether the last keystroke
-  // removed it or a send cleared the composer (T-1149).
   useEffect(() => {
     if (text.trim().length > 0 || !typingActiveRef.current) {
       return;
@@ -174,9 +140,6 @@ export function Composer({
     trackEmojiChange: mentions.trackEmojiChange,
   });
 
-  // The shared clear after an attachment send (web clears the same way): the
-  // caption path in `handleSend` and the GIF path in `useComposerMedia` both
-  // use it.
   const clearDraft = () => {
     setText('');
     setInputHeight(MIN_INPUT_HEIGHT);
@@ -193,11 +156,7 @@ export function Composer({
     onCloseSheet: sheet.closeSheet,
   });
 
-  // With staged files the input takes the caption (T-1536); the chat's own
-  // placeholder shows otherwise.
   const placeholder = media.picks.length > 0 ? 'Add a caption' : composerPlaceholder(title);
-  // The staged files as the strip renders them: a thumbnail, the name, the
-  // size and the MIME type, in the order the user picked them (T-1246).
   const pickedPreviews = media.picks.map((file) => ({
     uri: file.uri,
     name: file.name,
@@ -206,9 +165,6 @@ export function Composer({
   }));
 
   const handleSend = () => {
-    // The staged files send one message each, the text as the first item's
-    // caption (web sends the same way): the store uploads the bytes, then
-    // the attachment message. The strip clears and the composer clears.
     if (media.sendPicked()) {
       return;
     }
@@ -216,17 +172,15 @@ export function Composer({
       return;
     }
     if (editTarget !== undefined) {
-      // XEP-0308: replacing the message with a new body sends a correction.
-      // The sender id check and the no-op guard live in the store. The draft is
-      // left stored, so leaving edit mode brings it back.
+      // XEP-0308: replacing the body sends a correction. The draft stays stored, so
+      // leaving edit mode brings it back.
       editMessage(editTarget.chatId, editTarget.messageId, text);
       cancelEdit();
       setInputHeight(MIN_INPUT_HEIGHT);
       return;
     }
     onSend(text, mentions.mentions.length === 0 ? undefined : [...mentions.mentions]);
-    // The dock already sent the paused stanza with the message; drop the flag
-    // so the emptiness effect does not send a second one.
+    // The dock already sent the paused stanza; drop the flag so the effect sends no second one.
     typingActiveRef.current = false;
     setText('');
     mentions.clearMentions();

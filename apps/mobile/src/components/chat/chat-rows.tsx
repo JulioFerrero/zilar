@@ -9,19 +9,10 @@ import type { PutChatPrefInput } from '@/lib/chat-prefs-api';
 import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** The stable list key of one row (chat id, or `group:<groupId>`). */
 export function chatRowKey(row: ChatListRow): string {
   return row.kind === 'chat' ? row.chat.id : `group:${row.groupId}`;
 }
 
-/**
- * The one Chat/Group row switch (T-0135, deduped in T-1020): a chat row or a
- * group row, wired to the caller's navigation and long-press handlers. The
- * list, the search results and the archived section all render through it.
- * T-1204: when `onPref` is set the row is wrapped in the swipe actions; a
- * group row's prefs sit on its General topic row (the same resolution the
- * long-press sheet uses), and a group with no General topic stays unwrapped.
- */
 export function ChatRow({
   row,
   onPressChat,
@@ -65,11 +56,6 @@ export function ChatRow({
   );
 }
 
-/**
- * A group row's pref wrapper (T-1204): the pref chat is the group's General
- * topic, exactly like the long-press sheet resolves it. Without `onPref`,
- * or with no General topic, the row renders bare.
- */
 function GroupRow({
   groupId,
   onPressGroup,

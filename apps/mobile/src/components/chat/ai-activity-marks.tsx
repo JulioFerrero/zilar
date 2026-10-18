@@ -10,17 +10,14 @@ import { Text } from '@/components/ui/text';
 import { FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-/** How many AI pictures a mark group shows before the "+N". */
 const MAX_MARKS = 3;
 /** The gap between the picture and its ring: a 20 px picture gets a 26 px ring. */
 const RING_GAP = 6;
-/** One slow full turn of a working AI's ring. */
 const SPIN_MS = 2400;
 const AMBER = '#f59e0b';
 const GREEN = '#22c55e';
 const TICK = '#0a0a0a';
 
-/** The `EntityAvatar` person one activity entry is drawn from. */
 function personOf(entry: TopicAiActivity) {
   return {
     id: entry.aiId,
@@ -29,7 +26,6 @@ function personOf(entry: TopicAiActivity) {
   };
 }
 
-/** The dashed ring a working AI wears, turning unless reduce-motion is on. */
 function WorkingRing({ size }: { size: number }) {
   const reduceMotion = useReducedMotion();
   const [spin] = useState(() => new Animated.Value(0));
@@ -86,7 +82,6 @@ function WorkingRing({ size }: { size: number }) {
   );
 }
 
-/** The 16 px green check a finished AI or a done topic shows. */
 export function DoneCheck({ size = 16 }: { size?: number }) {
   return (
     <View accessibilityRole="image" accessibilityLabel="Done">
@@ -104,7 +99,6 @@ export function DoneCheck({ size = 16 }: { size?: number }) {
   );
 }
 
-/** One AI's picture with its state mark: a turning ring, an amber dot or a check. */
 export function AiActivityMark({
   entry,
   size = 20,
@@ -112,7 +106,6 @@ export function AiActivityMark({
 }: {
   entry: TopicAiActivity;
   size?: number;
-  /** The colour the marks ring themselves in: the surface behind the picture. */
   ringColor?: string;
 }) {
   return (
@@ -147,12 +140,7 @@ export function AiActivityMark({
   );
 }
 
-/**
- * A topic's AIs at work (T-1539), shared by the topic row and the "AIs here"
- * key: up to three overlapping pictures, working (turning ring) before waiting
- * (amber dot), then "+N". A finished topic shows the green check instead; an
- * idle topic shows nothing. General never reads as finished (T-1843).
- */
+/** Working AIs first, then waiting, then "+N"; General never reads as finished. */
 export function AiActivityMarks({
   activity,
   doneAt,
@@ -163,7 +151,6 @@ export function AiActivityMarks({
   activity: readonly TopicAiActivity[];
   doneAt: string | null;
   isGeneral?: boolean;
-  /** The colour the marks ring themselves in; match the surface behind them. */
   ringColor?: string;
   className?: string;
 }) {

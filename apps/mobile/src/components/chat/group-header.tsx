@@ -8,19 +8,12 @@ import { ICON } from '@/lib/colors';
 
 type GroupHeaderProps = {
   title: string;
-  /** The General topic's chat id: the avatar resolves through it. */
   avatarId: string;
   subtitle: string;
   onBack: () => void;
-  /** Tapping the picture or the title opens the group info root (T-1552). */
   onOpenInfo: () => void;
 };
 
-/**
- * The group topics screen's top bar: back, then the tappable group avatar and
- * title, which open Group info. T4 (T-1574) dropped the three old keys
- * (Invite links, Visibility, Members and roles): Group info now holds them.
- */
 export function GroupHeader({ title, avatarId, subtitle, onBack, onOpenInfo }: GroupHeaderProps) {
   return (
     <View className="flex-row items-center gap-1 border-b border-divider bg-surface px-1 py-1">

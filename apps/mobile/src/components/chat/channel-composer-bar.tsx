@@ -29,38 +29,21 @@ const MUTE_ERROR_TEXT = 'Could not change the mute. Try again.';
 
 type ChannelComposerProps = {
   chat: ChatSummary;
-  /** The group id behind the feed row, for the detail-backed role. */
   groupId: string | undefined;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
   onSend: (text: string) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
-  /** Sends a picked file with the composer text as the caption (T-0150). */
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
-  /** Sends a finished voice recording (T-0154, forwarded to the composer). */
   onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
-  /** The sticker panel's API client (forwarded to the composer). */
   stickersApi?: StickersApi | undefined;
-  /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
-  /** The GIF panel's API client (forwarded to the composer). */
   gifsApi?: GifsApi | undefined;
 };
 
-/**
- * The channel feed's bottom bar (T-0144), the mobile twin of web's
- * `ChannelComposerBar`: owners/admins see the normal composer — they post.
- * Subscribers see a recessed bar instead: "Only admins can post here" with
- * a Mute / Unmute button (the T-0135 chat pref on the feed row). Posting
- * itself is enforced by the moderated room, not by this bar: a
- * subscriber's send would be refused by ejabberd.
- *
- * The role rides the feed row (`myRole`); the group detail backs it up once
- * loaded. Unknown reads as a subscriber (read-only) until proven otherwise
- * — the safe default. The decision re-reads on every render, so a promoted
- * subscriber gets the composer without a restart.
- */
+// Subscribers are read-only here; the moderated room, not this bar, enforces
+// posting. An unknown role reads as a subscriber until proven otherwise.
 export function ChannelComposerBar({
   chat,
   groupId,
@@ -81,8 +64,6 @@ export function ChannelComposerBar({
     groupId === undefined ? undefined : state.groupDetail(groupId),
   );
   const setChatPref = useChatStore((state) => state.setChatPref);
-  // A second tap while a change is running is dropped (mode 'ignore'), and
-  // the previous failure clears as soon as the next try starts.
   const [muteState, changeMute] = useAction((mutedUntil: string | null) =>
     Effect.tryPromise({
       try: () => setChatPref(chat.id, { mutedUntil }),
@@ -114,8 +95,6 @@ export function ChannelComposerBar({
     );
   }
 
-  // Muted = mute forever; unmuted = clear. The durations live in the chat
-  // menu; this bar is the quick toggle.
   const toggleMute = () => {
     changeMute(chat.muted ? null : mutedUntilFor('forever', new Date()));
   };

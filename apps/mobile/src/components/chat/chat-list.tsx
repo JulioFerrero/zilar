@@ -10,15 +10,6 @@ import { Text } from '@/components/ui/text';
 import type { ToastMessage } from '@/components/ui/toast';
 import type { LoadState } from '@/store/types';
 
-/**
- * The chats list body (T-0112, T-0135): the folder tabs over a horizontal
- * pager, the connection pill floating over the pager, the error banners, and
- * the Archived entry inside each page. The screen owns the load, search and refresh state. T-1310: the
- * pager (gesture-handler + reanimated) slides between the folders and the tabs
- * follow it; only the visible page and its neighbours render. The rows inside
- * the pager are plain: while the folder tabs are up the pager owns horizontal
- * drags, and Pin/Mute/Archive stay on the long-press sheet.
- */
 export function ChatList({
   activeFolder,
   folders,
@@ -58,16 +49,12 @@ export function ChatList({
   onPressChat: (chatId: string) => void;
   onPressGroup: (groupId: string) => void;
   onLongPress: (id: string) => void;
-  /** T-1218: a failed swipe's message; empty unless a swipe just failed. */
   swipeError: string;
-  /** T-1289: opens the new-chat flow from the empty state. */
   onStartChat?: (() => void) | undefined;
-  /** T-1336: shows the request rows' transient messages on the screen toast. */
   onRequestsToast: (toast: ToastMessage) => void;
 }) {
   const chipIds = ['all', ...folders.map((folder) => folder.id)];
   const index = Math.max(0, chipIds.indexOf(activeFolder));
-  // The continuous page position, owned by the pager and read by the tabs.
   const progress = useSharedValue(index);
 
   const renderPage = (page: number) => (

@@ -14,12 +14,6 @@ import { useBlockedJids } from '@/lib/blocked-users';
 import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * One group row on the chat list (T-0112): title, "N topics", the aggregated
- * unread, the newest message time and the last topic's preview
- * ("Dev AI: Preview ready"). Tapping opens the topics screen. A group
- * without topics from an older server keeps its `ChatListItem` row as today.
- */
 export function GroupListItem({
   groupId,
   onPress,
@@ -49,7 +43,6 @@ export function GroupListItem({
   }
   const previewed =
     newest === undefined ? undefined : previewMessage(newest, messages, blockedJids, currentUserId);
-  // The preview names the topic's last sender ("Dev AI: Preview ready").
   const preview = previewParts(previewed?.deleted === true ? undefined : previewed, {
     isGroup: true,
     currentUserId,
@@ -63,8 +56,6 @@ export function GroupListItem({
       ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)
       : topicCountLabel(row.topicCount);
   const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
-  // T-1334: the ball's colour and light come from the group name; the General
-  // topic's row carries the group picture when set.
   const generalTopic = topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0];
   return (
     <Pressable

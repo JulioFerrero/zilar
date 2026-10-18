@@ -16,27 +16,9 @@ const CHIP_INCOMING = 'rgba(255,255,255,0.08)';
 const CHIP_OUTGOING = 'rgba(0,0,0,0.08)';
 const CHIP_ME = 'rgba(255,255,255,0.18)';
 
-/**
- * Renders message text: http/https URLs become safe external links and
- * XEP-0372 mention ranges become chips. A mention of the current user gets a
- * stronger background on incoming bubbles. Chips are flat backgrounds only:
- * nested RN `Text` cannot take a gradient.
- *
- * With `formatted`, the light Markdown subset also applies (`**bold**`,
- * `*italics*`, `` `inline code` ``; fenced blocks are split by the caller),
- * mirroring web `LinkText`. The body, bold, italic and inline-code looks come
- * from `markdown-text.tsx` (`BODY`, `CODE`, `INLINE_CODE_BACKGROUND`,
- * `:14-20`): the root text spreads `BODY`, bold/italic match its
- * `renderInline`, and inline code uses its font, background and radius with
- * a light text colour (`FOREGROUND` from `@/lib/colors`): the code background
- * is dark in both bubble types, so the bubble's text colour would be
- * unreadable on it. Fenced blocks render with the shared `CodeBlock`
- * (imported by the caller, passed the same light colour).
- *
- * The color, family and size are passed as inline styles on a plain RN `Text`
- * rather than through the shared `Text` component: its class-based default
- * color wins over a color passed across a component boundary on this setup.
- */
+/** Chips are flat backgrounds only: nested RN `Text` cannot take a gradient.
+ *  Inline code keeps a light text colour, since its background is dark in both
+ *  bubble types; the colour is an inline style because the shared `Text` class wins. */
 export function LinkText({
   text,
   color,

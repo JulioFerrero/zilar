@@ -30,9 +30,6 @@ type ChatListItemProps = {
 export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) {
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
-  // T-1181 (MUX-4): a chat the user typed in but did not send shows its
-  // composer draft instead of the last message, as Telegram does. `hasDraft`
-  // above is the AI reply draft, a different thing.
   const composerDraft = useComposerDraft(chat.id);
   const draftLine = composerDraft.trimStart().split('\n')[0] ?? '';
   const showDraft = composerDraft.trim().length > 0;
@@ -49,8 +46,6 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
     currentUserId,
   });
   const deletedPreview = previewed?.deleted === true ? 'Message deleted' : undefined;
-  // An incoming AI reply (a DM AI or a group AI reply) previews as plain text; a
-  // human message or your own stays literal.
   const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
   const showTicks = chat.unread === 0 && last?.senderId === currentUserId;
   return (
@@ -78,9 +73,6 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
               </Text>
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
               {chat.chatKind === 'channel' ? (
-                // T-1355: a channel is one row (its General feed), so the row
-                // paints the megaphone marker and "N subscribers" like the
-                // group row's channel look and the header.
                 <View className="ml-1.5 shrink-0 flex-row items-center gap-1">
                   <View accessibilityRole="image" accessibilityLabel="Channel">
                     <Megaphone size={14} color={MUTED_FOREGROUND} />
@@ -138,9 +130,6 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
             {chat.unread > 0 ? (
               <UnreadBadge count={chat.unread} muted={chat.muted} />
             ) : chat.unreadMark === true ? (
-              // T-1248: a hand-set unread mark shows a plain dot (no count), in
-              // the unread badge's spot and colours. A fresh view per look, like
-              // the badge, so a live view never swaps gradients (see above).
               <View
                 key={chat.muted ? 'muted' : 'live'}
                 accessibilityRole="image"

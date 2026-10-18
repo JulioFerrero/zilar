@@ -22,20 +22,14 @@ import { SHARE_FAILED_MESSAGE, sharePhoto } from '@/lib/share-photo';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type ShareState = 'idle' | 'sharing' | 'error';
 
-/** A downward pull past this many pixels closes the viewer on release. */
 const CLOSE_DISTANCE = 120;
-/** A downward flick faster than this closes the viewer even under the distance. */
 const CLOSE_VELOCITY = 800;
-/** The pull distance over which the backdrop fades from opaque to its floor. */
 const PULL_FADE = 500;
 const MIN_BACKDROP_OPACITY = 0.4;
 
 type AttachmentViewerProps = {
-  /** The message's chat, for the `GET /api/files` proxy URL (T-1185). */
   chatId: string;
-  /** The chat's photos, in message order; a swipe steps through them. */
   photos: ViewerPhoto[];
-  /** The index of the photo this viewer opens on. */
   startIndex: number;
   /** The store's trusted media hosts; a photo off them is shown blank. */
   trustedHosts: ReadonlySet<string>;
@@ -54,18 +48,11 @@ function viewableUrl(url: string, hosts: ReadonlySet<string>): string | undefine
   return hosts.has(parsed.hostname.toLowerCase()) ? url : undefined;
 }
 
-/** The shared values the Gallery's vertical-pull callbacks read and write. */
 type ViewerMotion = {
   pullY: SharedValue<number>;
   closing: SharedValue<boolean>;
 };
 
-/**
- * Handles the Gallery's vertical pull on the UI thread: it nudges the backdrop
- * to follow the finger and closes the viewer once the finger is released past
- * the distance or flick threshold. `closing` makes `onClose` fire a single time
- * while the pulled photo animates back.
- */
 function applyVerticalPull(
   motion: ViewerMotion,
   options: VerticalPullOptions,
@@ -93,11 +80,7 @@ type ViewerImageProps = {
   height: number;
 };
 
-/**
- * One Gallery item: the photo at the screen size with `contain`. Its bytes go
- * through `GET /api/files` (with the bearer) when this is our own `/upload/`
- * file; an untrusted or non-http(s) URL stays undefined and renders blank.
- */
+/** Our own `/upload/` file goes through `GET /api/files` so it carries the bearer. */
 function ViewerImage({ chatId, photo, trustedHosts, width, height }: ViewerImageProps) {
   const url = viewableUrl(photo.url, trustedHosts);
   const source = useMediaSource(chatId, url ?? '', url !== undefined);
@@ -112,16 +95,8 @@ function ViewerImage({ chatId, photo, trustedHosts, width, height }: ViewerImage
   );
 }
 
-/**
- * The full-screen photo viewer (T-1341) on `react-native-zoom-toolkit`'s
- * `Gallery`: a swipe carousel with per-photo pinch, pan and double-tap zoom,
- * a "3 / 12" counter, a Save button that stores the photo on screen in the
- * phone's gallery, a Share button that opens the system share sheet with it,
- * and a pull-down to dismiss. A single tap toggles the
- * overlay. The modal content has its own `GestureHandlerRootView`: gestures
- * don't fire inside an RN `Modal` on Android without one. A photo off the
- * trusted hosts is shown blank: its bytes are never fetched.
- */
+/** The modal content needs its own `GestureHandlerRootView`: gestures do not
+ *  fire inside an RN `Modal` on Android without one. */
 export function AttachmentViewer({
   chatId,
   photos,
@@ -145,24 +120,16 @@ export function AttachmentViewer({
   });
   const pullY = useSharedValue(0);
   const closing = useSharedValue(false);
-  // A plain object so the worklets read and write the shared values through it;
-  // its members are stable across renders.
   const motion = useMemo<ViewerMotion>(() => ({ pullY, closing }), [pullY, closing]);
   const photo = photos[index];
-  // The bytes go through `GET /api/files` (with the bearer) when this is our
-  // own `/upload/` file; an untrusted or non-http(s) URL stays undefined and
-  // the Save button stays disabled.
   const url = photo === undefined ? undefined : viewableUrl(photo.url, trustedHosts);
   const source = useMediaSource(chatId, url ?? '', url !== undefined);
-  // A save or share line belongs to the photo it was started on, so stepping to
-  // the next photo hides it without an effect.
   const saveState = save.index === index ? save.state : 'idle';
   const shareState = share.index === index ? share.state : 'idle';
 
   const handleIndexChange = useCallback((next: number) => setIndex(next), []);
   const handleTap = useCallback(() => setChrome((visible) => !visible), []);
 
-  // A worklet: the Gallery reports the pull on the UI thread.
   const handleVerticalPull = useCallback(
     (options: VerticalPullOptions) => {
       'worklet';

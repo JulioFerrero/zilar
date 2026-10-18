@@ -11,36 +11,21 @@ import { TextField } from '@/components/ui/text-field';
 import { goBackOrHome } from '@/lib/navigation';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** One member the owner may hand the group to. */
 export interface ManageMember {
   userId: string;
   name: string;
 }
 
-/** The owner/non-owner controls the screen performs (T-1251). */
 export interface GroupManageProps {
-  /** Whether the viewer owns the group: owners cannot leave, and only they
-   *  hand it over or delete it. */
+  /** Owners cannot leave, and only they hand the group over or delete it. */
   isOwner: boolean;
-  /** True while a manage write runs: every control disables. */
   busy: boolean;
-  /** The last manage failure, shown as one line; empty when none. */
   error: string;
-  /** Leaves the group: the screen runs `leaveChannel` and navigates away. */
   onLeave: () => void;
-  /** Hands the group to one member: the screen runs `transferGroupOwner`. */
   onTransferOwner: (userId: string) => void;
-  /** Deletes the group for everyone: the screen runs `deleteGroup`. */
   onDelete: () => void;
 }
 
-/**
- * The screen's manage wiring (T-1251): owns the busy/error flags and runs the
- * store actions. Leave and delete leave the screen with `goBackOrHome`; handing
- * the group over reloads the detail in the store, so the caller repaints as an
- * admin and `Leave group` appears. A failure shows one fixed sentence, never
- * the raw server text.
- */
 export function useGroupManage(input: {
   groupId: string;
   groupChatId: string;
@@ -92,13 +77,6 @@ export function useGroupManage(input: {
   };
 }
 
-/**
- * The group's manage section (T-1251), appended to the members-and-roles
- * sheet: Leave group for a non-owner, and Make owner (a member picker) plus
- * Delete group (a typed-name confirm) for the owner. Thin view: local confirm
- * state only, the screen runs the store actions and the navigation. Never
- * `Alert.alert`.
- */
 export function GroupManageSection({
   groupTitle,
   isOwner,
@@ -110,7 +88,6 @@ export function GroupManageSection({
   onDelete,
 }: GroupManageProps & {
   groupTitle: string;
-  /** The members the owner may hand the group to (never the owner themself). */
   members: ManageMember[];
 }) {
   const [leaveConfirming, setLeaveConfirming] = useState(false);

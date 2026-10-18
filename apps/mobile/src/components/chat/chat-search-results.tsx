@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/mobile/src/app/(tabs)/index.tsx (size split)
+// effect-plain: no effects
 import { X } from 'lucide-react-native';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -18,12 +18,6 @@ import { getSessionToken } from '@/lib/session-token';
 import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
 
-/**
- * The chats screen's full-screen search results (T-0138, T-0193): the People
- * section when the query is a `@handle`, the matching chat rows, and the
- * message hits below them. The screen owns the search state and shows this
- * instead of the list while a search is open.
- */
 export function ChatSearchResults({
   searchHeader,
   searchChat,
@@ -61,10 +55,8 @@ export function ChatSearchResults({
   onNotFound: () => void;
   searchMiss: string | null;
 }) {
-  // The message-search API, real or mock like the store itself: tests run on
-  // the mock store (`NODE_ENV=test`), UI work on `EXPO_PUBLIC_ZILAR_MOCK`. The
-  // mock branch talks to the shared mock backend through `mockFetch`, behind a
-  // literal build-time condition, so a release build leaves the mock out.
+  // The mock branch sits behind a literal build-time condition, so a release
+  // build leaves the mock out.
   const searchApi = useMemo(() => {
     if (process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -136,11 +128,6 @@ export function ChatSearchResults({
   );
 }
 
-/**
- * The chats screen's People-only search results (T-0193): a valid `@handle`
- * shows only the People section, since chat names rarely contain `@` and the
- * normal list stays reachable by removing the `@`.
- */
 export function ChatPeopleResults({
   searchHeader,
   contactsApi,

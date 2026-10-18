@@ -21,25 +21,13 @@ type AttachSheetProps = {
   open: boolean;
   busy: boolean;
   error?: string | undefined;
-  /** Demo attachments listed in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
   onPick: (choice: AttachmentChoice) => void;
-  /** Stages a demo attachment (mock mode only). */
   onPickDemo?: ((attachment: Attachment) => void) | undefined;
-  /** Sends the gallery's picked files right away (T-1320, T-1925). */
   onSendFiles: (files: PickedFile[]) => void;
   onClose: () => void;
 };
 
-/**
- * The paperclip bottom sheet (T-0150, T-1320): a bottom tab bar Gallery | File.
- * The Gallery tab is the phone's recent photos and videos in a 3-column grid
- * with a live camera tile and multi-select ("Send N"), reading
- * `expo-media-library`; the File tab keeps today's document picker. Picking
- * stages the files in the composer's strip (T-1246), which sends them; the
- * gallery's "Send N" sends its selection at once (T-1925). The composer owns the
- * picking.
- */
 export function AttachSheet({ open, onClose, ...props }: AttachSheetProps) {
   if (!open) {
     return null;
@@ -47,11 +35,7 @@ export function AttachSheet({ open, onClose, ...props }: AttachSheetProps) {
   return <AttachSheetBody onClose={onClose} {...props} />;
 }
 
-/**
- * The open sheet's body. Split out so closing unmounts it and clears the tab,
- * the selection and the loaded gallery page (the `open` early return above
- * cannot run hooks).
- */
+/** Split out so closing unmounts it and clears the tab, selection and gallery page. */
 function AttachSheetBody({
   busy,
   error,

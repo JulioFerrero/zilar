@@ -9,17 +9,14 @@ import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { FOREGROUND } from '@/lib/colors';
 
-/** A topic row reads `Group › Topic`; everything else is just its title. */
 function targetLabel(chat: ChatSummary): string {
   return chat.topic !== undefined && chat.groupTitle !== undefined
     ? `${chat.groupTitle} › ${chat.title}`
     : chat.title;
 }
 
-/**
- * A channel row is offered only where the caller may post; a plain member (or
- * an unknown role) has no voice in the feed room.
- */
+/** A channel row is offered only where the caller may post; a plain member or
+ *  an unknown role has no voice in the feed room. */
 function canPostTo(chat: ChatSummary): boolean {
   if (chat.chatKind !== 'channel') {
     return true;
@@ -27,11 +24,6 @@ function canPostTo(chat: ChatSummary): boolean {
   return chat.myRole === 'owner' || chat.myRole === 'admin';
 }
 
-/**
- * The chats a picker may target, in list order (T-0435, the same rules as
- * web's `ForwardPicker`): archived chats and non-postable channels are never
- * offered, and the query matches `title` and `groupTitle`.
- */
 export function forwardTargets(chats: ChatSummary[], query: string): ChatSummary[] {
   const search = query.trim().toLowerCase();
   return chats.filter((chat) => {
@@ -50,12 +42,6 @@ export function forwardTargets(chats: ChatSummary[], query: string): ChatSummary
 
 type ChatPickerMode = 'multi' | 'single';
 
-/**
- * The search field and chat rows shared by Forward (many targets) and the
- * `/share` screen (one target). It owns the query; the caller owns the pick.
- * `multi` rows carry a checkbox, `single` rows a trailing check on the picked
- * one, and both report every tap through `onToggle`.
- */
 export function ChatPickerList({
   chats,
   selected,

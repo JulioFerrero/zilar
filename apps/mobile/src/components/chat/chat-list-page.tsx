@@ -17,7 +17,6 @@ import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText, type LoadState } from '@/store/types';
 
 type ChatListPageProps = {
-  /** The folder this page shows; undefined is "All chats". */
   folder: ChatFolder | undefined;
   chats: ChatSummary[];
   search: string;
@@ -31,21 +30,11 @@ type ChatListPageProps = {
   onPressChat: (chatId: string) => void;
   onPressGroup: (groupId: string) => void;
   onLongPress: (id: string) => void;
-  /** T-1289: opens the new-chat flow from the empty state. */
   onStartChat?: (() => void) | undefined;
-  /** T-1336: shows the request rows' transient messages on the screen toast. */
   onRequestsToast: (toast: ToastMessage) => void;
 };
 
-/**
- * One folder's chat list inside the pager (T-1310): the FlatList of chat/group
- * rows with its skeleton, empty and error states, plus the Archived entry. The
- * screen owns the load, search and refresh state; the page derives its own row
- * model so the pager's neighbours show the right folder. Rows render plain, not
- * wrapped in the T-1204 swipe actions: while the folder tabs are up the pager
- * owns horizontal drags (Telegram for Android), and the same Pin/Mute/Archive
- * actions stay on the long-press sheet.
- */
+// Rows stay plain while the tabs are up: the pager owns horizontal drags.
 export function ChatListPage({
   folder,
   chats,
@@ -65,8 +54,6 @@ export function ChatListPage({
 }: ChatListPageProps) {
   const myUserId = useChatStore((state) => state.currentUserId);
   const listRef = useRef<FlatList<ChatListRow>>(null);
-  // T-1969: every folder page listens; the bar only shows on the Chats tab, so
-  // a re-tap scrolls whichever page is on screen (the others are harmless).
   useScrollToTopOnReselect('index', () => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   });
@@ -75,8 +62,6 @@ export function ChatListPage({
     [chats, folder, search, myUserId],
   );
   const listView = chatsListView(chatsLoad, chatsCount);
-  // Requests are DMs, so they show in All chats and the Personal (dm) folder,
-  // never in the AIs folder.
   const showRequests = folder === undefined || folder.includeTypes.includes('dm');
   return (
     <FlatList

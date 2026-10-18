@@ -44,23 +44,10 @@ type ChannelScreenProps = {
   title: string;
 };
 
-/** The channel screen's pages: the root, the subpages and the Settings page. */
 type ChannelPage = 'root' | 'people' | 'ais' | 'activity' | 'allowed' | 'settings';
 
-/**
- * The channel screen (T-0144, T-1581, T-1587), the mobile twin of web's
- * `ChannelInfoRoot`: the channel root — picture, name, `@handle` and
- * subscriber count, description, the Mute/Search/Share/More keys, the Feed row,
- * the People group (Admins and subscribers, AIs, Invite links), the Content
- * group (Shared media, Pinned messages, Activity and Always allowed) and the
- * owner's Settings row and Delete channel menu — plus the Subscribers, AIs,
- * Activity, Always allowed and Settings pages. This component owns the data,
- * the pages and the sheets; the pages are thin views.
- *
- * The subscriber audience is visible to managers only — the detail carries
- * the full list for them (the server strips `members` for subscribers), and
- * subscribers load the admins slice through `listChannelMembers`.
- */
+/** The subscriber audience is visible to managers only: the server strips
+ *  `members` for subscribers, who load the admins slice instead. */
 export function ChannelScreen({ groupId, feedId, title }: ChannelScreenProps) {
   return (
     <RequireAuth>
@@ -80,15 +67,11 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const changeChannelRole = useChatStore((state) => state.changeChannelRole);
   const leaveChannel = useChatStore((state) => state.leaveChannel);
   const links = useChannelInvites(groupId);
-  // T-1587: the channel's Content rows reuse the group's chat-scoped media/pins
-  // state for the feed chat, and Settings reuses the group visibility sheet.
   const content = useGroupContent(feedId);
   const visibility = useGroupVisibility(groupId);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  // A role change ignores a second press while one is waiting (the old
-  // `roleBusy` guard). The message is cleared while a new attempt runs.
-  // Uninterruptible: the change must land even if the screen unmounts first.
+  // Uninterruptible: the role change must land even if the screen unmounts first.
   const [roleState, changeRole] = useAction(
     ({ userId, role }: { userId: string; role: 'admin' | 'member' }) =>
       callStore(() => changeChannelRole(feedId, userId, role)).pipe(Effect.uninterruptible),
@@ -103,10 +86,8 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         ? 'The channel needs at least one admin.'
         : 'Could not change the role. Try again.';
 
-  // Leaving navigates home on success; the button stays "Leaving…" after it.
   const [leaveState, leaveAction] = useAction(() =>
-    // Uninterruptible: leaving navigates away, so the screen may unmount
-    // before the store call resolves; the navigation must still happen.
+    // Uninterruptible: leaving navigates away, so the screen may unmount first.
     callStore(() => leaveChannel(feedId)).pipe(
       Effect.andThen(
         Effect.try({
@@ -120,16 +101,12 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const leaving = isWaiting(leaveState) || AsyncResult.isSuccess(leaveState);
   const leaveFailed = !isWaiting(leaveState) && failureOf(leaveState) !== undefined;
 
-  // The admins slice of a subscriber: the last loaded value is kept while a
-  // new load runs, and a failed load keeps it too (the old `slice` state).
   const [sliceState, loadSlice] = useAction(() => callStore(() => listChannelMembers(groupId)), {
     mode: 'replace',
   });
   const slice = Option.getOrUndefined(AsyncResult.value(sliceState));
   const sliceFailed = failureOf(sliceState) !== undefined;
 
-  // `Share.share` sends the same `https://<host>/@handle` link the web channel
-  // root copies; a cancelled share is ignored.
   const [, share] = useAction(
     (url: string) =>
       Effect.tryPromise({ try: () => Share.share({ message: url }), catch: (cause) => cause }).pipe(
@@ -159,16 +136,11 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   );
   const isManager = mayManageChannel(myRole);
   const isOwner = myRole === 'owner';
-  // T-1587: the Content group's Always allowed rows (manager-only) and the
-  // owner's More menu, which deletes the channel like the group flow does.
   const groupRules = useGroupRules(groupId, isManager);
   const manage = useGroupManage({ groupId, groupChatId: feedId, isOwner, noun: 'channel' });
 
-  // Non-managers never see the audience: the admins slice (owner/admins —
-  // who posts is public, every admin post carries its name) loads once the
-  // detail settles. Managers read the full list from the detail they
-  // already hold, so no second request. The load is an action, so a state
-  // change never runs inside the effect body.
+  // Non-managers never see the audience: the admins slice loads once the detail
+  // settles, while managers read the full list from the detail they already hold.
   useEffect(() => {
     if (isManager || groupDetail === undefined) {
       return;
@@ -222,8 +194,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
     );
   }
 
-  // T-1587: the Content group's Activity and Always allowed reuse the group
-  // pages for the channel's group; Settings is the owner's visibility control.
   if (page === 'activity') {
     return <ActivityPage groupId={groupId} onBack={closePage} />;
   }

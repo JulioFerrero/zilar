@@ -8,17 +8,10 @@ import { ICON } from '@/lib/colors';
 type JumpToBottomProps = {
   /** Whether the list is scrolled to (or within 40 px of) the bottom. */
   atBottom: boolean;
-  /** New messages that arrived while the user was scrolled up. */
   count: number;
   onPress: () => void;
 };
 
-/**
- * The round "jump to latest" key (MUX-8): it sits over the list, bottom-right
- * above the composer, as soon as the user scrolls away from the end. The badge
- * counts the messages that arrived while they were reading; a tap scrolls to
- * the end.
- */
 export function JumpToBottom({ atBottom, count, onPress }: JumpToBottomProps) {
   if (atBottom) {
     return null;

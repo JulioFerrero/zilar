@@ -24,14 +24,8 @@ import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 export const MIN_INPUT_HEIGHT = 36;
 const MAX_INPUT_HEIGHT = 132;
 
-/**
- * The text field height for a reported content height (T-0175): on Android
- * the reported content height already includes the field's `py-2` padding,
- * so adding padding again counted it twice and the composer well grew to
- * about twice its height. An empty one-line field is exactly
- * `MIN_INPUT_HEIGHT` (a 36 px field plus 8 px padding top and bottom makes
- * one empty line about 52 px); the cap holds 8 lines.
- */
+/** On Android the reported content height already includes the `py-2` padding,
+ *  so adding it again doubled the well. The cap holds 8 lines. */
 export function fieldHeightFor(contentHeight: number): number {
   if (!Number.isFinite(contentHeight)) {
     return MIN_INPUT_HEIGHT;
@@ -82,12 +76,10 @@ type ComposerInputRowProps = {
   onInputHeightChange: (height: number) => void;
   canSend: boolean;
   editing: boolean;
-  /** The staged file count, so the send key names several files (T-1536). */
   stagedCount: number;
   onSend: () => void;
   onOpenAttach: () => void;
   onOpenSheet: () => void;
-  /** The inline emoji panel is under the input (T-1927). */
   sheetOpen: boolean;
   onCloseSheet: () => void;
   voiceRecording: boolean;
@@ -95,11 +87,9 @@ type ComposerInputRowProps = {
   replyTo: ReplyRef | undefined;
   onCancelReply: () => void;
   onSendVoice: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
-  /** The input's ref, so Reply and Edit can focus it (T-1482). */
   inputRef?: RefObject<TextInput | null> | undefined;
 };
 
-/** The composer's input row: attach, auto-growing input, emoji and mic/send. */
 export function ComposerInputRow({
   placeholder,
   text,
@@ -125,14 +115,11 @@ export function ComposerInputRow({
 }: ComposerInputRowProps) {
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const iconColor = ICON;
-  // The send key names several staged files (T-1536); one file or none keeps
-  // today's "Send message"/"Save edit" label.
   const sendLabel = editing
     ? 'Save edit'
     : stagedCount >= 2
       ? `Send ${stagedCount} files`
       : 'Send message';
-  // The key under the panel brings the keyboard back (T-1927).
   const showKeyboard = () => {
     onCloseSheet();
     inputRef?.current?.focus();

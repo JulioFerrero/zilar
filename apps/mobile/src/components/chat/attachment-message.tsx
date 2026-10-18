@@ -17,12 +17,8 @@ export { AttachmentViewer } from './image-viewer';
 const IMAGE_WIDTH = 240;
 const MAX_IMAGE_HEIGHT = 320;
 
-/**
- * A trusted-host gate shared by image and GIF-video rendering: the URL must
- * be http(s) and on one of the store's media hosts (`mediaTrustedHosts`).
- * Anything else — a hostile absolute URL, `javascript:`, `data:`, relative
- * paths, garbage — never loads.
- */
+/** Trusted-host gate: http(s) on one of the store's media hosts, so a hostile
+ *  URL, `javascript:`, `data:` or garbage never loads. */
 export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
   if (safeHttpUrl(url) === undefined) {
     return false;
@@ -32,33 +28,17 @@ export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string
 
 type AttachmentImageProps = {
   attachment: Attachment;
-  /** The message's chat, for the `GET /api/files` proxy URL (T-1185). */
   chatId: string;
-  /** True when this is the sender's own bubble, for the fallback file row. */
   outgoing?: boolean | undefined;
-  /** The store's trusted media hosts (service host, domain, upload.domain). */
   trustedHosts: ReadonlySet<string>;
-  /** The local preview URI while the bytes are still uploading. */
   localUri?: string | undefined;
-  /** True while the bytes are still uploading. */
   uploading?: boolean | undefined;
-  /** 0..1 upload progress, when known. */
   progress?: number | undefined;
-  /** True when the upload failed; the card shows a Retry instead. */
   failed?: boolean | undefined;
   onRetry?: (() => void) | undefined;
-  /** Opens the full-screen viewer (images) or fullscreen video. */
   onOpen?: (() => void) | undefined;
 };
 
-/**
- * An image attachment bubble. A trusted URL auto-loads through `expo-image`
- * (animated GIF/WebP included); a local URI shows while the upload runs; an
- * untrusted URL never fetches and falls back to the file row with a
- * "Not loaded: untrusted address" line; a trusted URL whose fetch failed shows
- * a "Couldn't load" row with a retry. No URL is ever opened without a tap:
- * the viewer opens from `onOpen`.
- */
 export function AttachmentImage({
   attachment,
   chatId,
@@ -76,9 +56,6 @@ export function AttachmentImage({
   const longPress =
     openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
-  // A `gradient:` URL is a mock-mode demo placeholder (never fetched): it
-  // renders the gradient tile below, like `ImageMessage` does for legacy
-  // `image` messages.
   const demoGradient = imageGradient(attachment.url);
   const render = imageAttachmentRender({
     trusted,
@@ -86,8 +63,8 @@ export function AttachmentImage({
     hasLocalUri: localUri !== undefined,
   });
   const remote = trusted && !broken;
-  // The bytes go through `GET /api/files` (with the bearer) when this is our
-  // own `/upload/` file; a local preview or another origin loads directly.
+  // Our own `/upload/` file goes through `GET /api/files` so the request carries
+  // the bearer; a local preview or another origin loads directly.
   const loaded = useMediaSource(chatId, attachment.url, remote && localUri === undefined);
   const source = localUri === undefined ? loaded : { uri: localUri };
   const alt = attachment.name;
@@ -100,9 +77,6 @@ export function AttachmentImage({
     return <UploadFailed onRetry={onRetry} />;
   }
 
-  // Mock-mode demo placeholder: a visible gradient tile with the file name,
-  // exactly like `ImageMessage` renders legacy `gradient:` images. Never a
-  // fetch, never the "Not loaded" row.
   if (demoGradient !== undefined && localUri === undefined) {
     return (
       <View>
@@ -151,9 +125,7 @@ export function AttachmentImage({
     );
   }
 
-  // A trusted image whose fetch failed is a load problem, not a trust problem:
-  // "Couldn't load" with a retry that re-attempts the fetch, never the
-  // "untrusted address" line and the dead card.
+  // A trusted image that failed to fetch is a load problem, not a trust problem.
   if (render === 'load-failed') {
     return (
       <View>
@@ -211,7 +183,6 @@ export function AttachmentImage({
   );
 }
 
-/** The failed-upload row under an image bubble: message plus Retry. */
 function UploadFailed({ onRetry }: { onRetry?: (() => void) | undefined }) {
   return (
     <View className="flex-row items-center gap-2 px-0.5">

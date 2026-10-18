@@ -24,11 +24,6 @@ import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stick
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import type { SendStickerChoice } from '@/store/types';
 
-/**
- * The composer's emoji/sticker/GIF sheet wiring (T-0175): the sheet open tab,
- * the sticker packs and recents, the GIF availability probe and the pick
- * handlers. The `Composer` renders the `EmojiSheet` from this state.
- */
 export function useComposerSheet({
   text,
   setText,
@@ -48,24 +43,18 @@ export function useComposerSheet({
   onSendSticker: (sticker: SendStickerChoice) => void;
   trackEmojiChange: (previousText: string, nextText: string, caret: number) => void;
 }) {
-  // The sticker panel: the user's packs from the server (the shared mock
-  // backend in mock mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
-  // the "create on web" empty state live in `StickerGrid` (shown inside the
-  // emoji sheet's Stickers tab).
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [panelState, setPanelState] = useState<StickerPanelState>('loading');
   const [recents, setRecents] = useState<RecentStickerEntry[]>([]);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
 
-  // The latest load wins: a Retry while an older load runs replaces it.
+  // The latest load wins: a Retry replaces an older load.
   const [, loadPacks] = useAction<void, StickerPack[] | void, never>(
     () =>
       step(() => loadStickerPacks(stickersApi)).pipe(
         Effect.tap((loaded) =>
           Effect.sync(() => {
             setPacks(loaded);
-            // A pack deleted on the web leaves a stale tab: reset it so the
-            // panel resolves back to Recent or the first pack.
             setActivePackId((current) =>
               current !== undefined && loaded.some((pack) => pack.id === current)
                 ? current
@@ -84,15 +73,11 @@ export function useComposerSheet({
     loadPacks();
   }, [loadPacks]);
 
-  // The GIF tab: hidden once the server answers 501 (provider off), probed
-  // once per session. Mock mode probes the shared backend the same way.
+  // The GIF tab hides once the server answers 501; probed once per session.
   const [gifAvailable, setGifAvailable] = useState<boolean | undefined>(() => gifsAvailability());
 
-  // The one emoji sheet (T-0175): tabs Emoji | Stickers | GIFs. Emoji first
-  // and selected by default; the last tab is remembered for the session.
-  // The GIFs tab hides when the provider is off (the probe above), and a
-  // tab that disappears under the active tab falls back to the first
-  // visible one (in `EmojiSheet`), so the sheet never vanishes.
+  // A tab that disappears under the active tab falls back to the first visible
+  // one, so the sheet never shows an empty body.
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetTab, setSheetTab] = useState<EmojiSheetTab | undefined>(undefined);
   const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
@@ -100,9 +85,6 @@ export function useComposerSheet({
     undefined,
   );
 
-  // Opening the sheet reads both recents and, once per session, probes the
-  // GIF provider. A failed read leaves the row empty; the reads run side by
-  // side and a reopen replaces a run that is still going.
   const [, hydrateSheet] = useAction(
     (probeGifs: boolean) =>
       Effect.all(
@@ -128,8 +110,6 @@ export function useComposerSheet({
   );
 
   const openSheet = () => {
-    // The panel docks under the input: dismiss the keyboard so it has room,
-    // and a tap on the field brings the keyboard back (T-1927).
     Keyboard.dismiss();
     setSheetOpen(true);
     loadPanel();
@@ -138,7 +118,7 @@ export function useComposerSheet({
 
   const closeSheet = () => setSheetOpen(false);
 
-  // Android Back closes the panel before it leaves the chat (T-1927).
+  // Android Back closes the panel before it leaves the chat.
   useEffect(() => {
     if (!sheetOpen) {
       return;
@@ -150,8 +130,6 @@ export function useComposerSheet({
     return () => subscription.remove();
   }, [sheetOpen]);
 
-  // Remembering a picked emoji or sticker never blocks typing or sending: a
-  // failing store leaves the row as it was.
   const [, rememberEmoji] = useAction(
     (input: { recents: readonly string[]; emoji: string }) =>
       step(() => persistEmojiRecent(EMOJI_RECENTS_STORAGE, input.recents, input.emoji)).pipe(
@@ -169,9 +147,6 @@ export function useComposerSheet({
     { mode: 'replace' },
   );
 
-  // Tapping an emoji inserts it at the caret and keeps the panel open, so
-  // several can be added; it closes with the keyboard key, a tap on the
-  // field, Back, or a picked sticker or GIF.
   const pickEmoji = (emoji: string) => {
     const { text: next, caret } = insertEmojiAtCaret(text, emoji, selection);
     setText(next);
@@ -182,8 +157,7 @@ export function useComposerSheet({
 
   const pickSticker = (sticker: StickerChoice) => {
     setSheetOpen(false);
-    // Validate before persisting: a hostile or drifted choice shows the
-    // store's error and is never written to Recents.
+    // Validate before persisting: a hostile or drifted choice never reaches Recents.
     const data = {
       pack_id: sticker.packId,
       sticker_id: sticker.stickerId,

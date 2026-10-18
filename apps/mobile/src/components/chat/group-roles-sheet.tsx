@@ -24,13 +24,6 @@ export interface RolesSheetMember {
   chips: { id: string; name: string }[];
 }
 
-/**
- * The group members + roles sheet (T-0137): every member sees the people
- * with their role chips and the roles with holder counts; owners/admins get
- * the CRUD section (create, rename, delete with a confirm that says what it
- * removes, assign with a member multi-select). Thin view: local input state
- * only, the screen performs the store actions.
- */
 export function GroupRolesSheet({
   visible,
   groupTitle,
@@ -62,7 +55,6 @@ export function GroupRolesSheet({
   onDeleteRole: (roleId: string) => Promise<void>;
   onToggleMember: (role: CustomGroupRole, userId: string) => Promise<void>;
   onClose: () => void;
-  /** T-1251: the manage section's owner/non-owner controls. */
   manage: GroupManageProps;
 }) {
   const [newName, setNewName] = useState('');
@@ -71,9 +63,6 @@ export function GroupRolesSheet({
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
 
-  // Each action keeps its own post-step (the clear or close after the store
-  // call succeeds). `replace` lets a second tap start at once; a superseded
-  // store call still finishes, only its post-step is skipped.
   const [, createRole] = useAction(
     (name: string) =>
       fromApi(() => onCreateRole(name)).pipe(Effect.tap(() => Effect.sync(() => setNewName('')))),

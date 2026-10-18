@@ -2077,3 +2077,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2079](T-2079-comments-web-components-folders.md) | comments: web component folders (-1,938) | 2026-10-18 |
 | [T-2082](T-2082-comments-devtools-desk-tunnel-xmpp.md) | comments: devtools, desk, tunnel, xmpp-core, runner (-1,500) | 2026-10-18 |
 | [T-2087](T-2087-comments-server-rest.md) | comments: server remaining folders (-1,877) | 2026-10-18 |
+| [T-2072](T-2072-comments-phone-chat-a-l.md) | comments: phone chat components a-l (-1,264) | 2026-10-18 |

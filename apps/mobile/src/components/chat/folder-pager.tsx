@@ -9,42 +9,25 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-/** A drag past this many pixels commits to the next/previous page. */
 const COMMIT_DISTANCE = 60;
-/** A flick faster than this commits even under the distance. */
 const COMMIT_VELOCITY = 500;
-/** How far the track follows a drag past the first/last page. */
 const EDGE_RESISTANCE = 0.35;
-/** The settle animation of one page step. */
 const SETTLE_MS = 240;
 
-/** The shared values the pager reads and writes, held in one plain object. */
 export type PagerMotion = {
   translateX: SharedValue<number>;
   startX: SharedValue<number>;
-  /** The continuous page position, shared with the tabs. */
   progress: SharedValue<number>;
 };
 
-/**
- * Animates the track and the tabs' indicator to a page. A worklet: the pan
- * callbacks run on the UI thread and call it there; it is also called from the
- * JS-side effect, which runs the worklet on the JS thread.
- */
 export function animateToPage(motion: PagerMotion, page: number, width: number): void {
   'worklet';
   motion.translateX.value = withTiming(-page * width, { duration: SETTLE_MS });
   motion.progress.value = withTiming(page, { duration: SETTLE_MS });
 }
 
-/**
- * The pan that pages: a clean horizontal drag moves the track (with resistance
- * past the first/last page); on release past a distance or flick it settles on
- * the next/previous page and reports it. A cancelled or failed drag settles on
- * the nearest page instead (see `onFinalize`), so the track never stays stranded
- * between pages. A vertical drag fails the pan so the list keeps its scroll, and
- * a still touch leaves taps and long-presses alone.
- */
+/** On release past the distance or flick it settles on the next page and
+ *  reports it; a cancelled drag snaps to the nearest page, never stranded. */
 function makePan(
   motion: PagerMotion,
   count: number,
@@ -71,7 +54,6 @@ function makePan(
     })
     .onEnd((event, success) => {
       if (!success) {
-        // A cancelled or failed drag is settled by `onFinalize`.
         return;
       }
       const base = Math.round(-motion.startX.value / width);
@@ -91,21 +73,14 @@ function makePan(
       if (success) {
         return;
       }
-      // The drag was cancelled or failed mid-way (for example a system
-      // interruption) without `onEnd` settling it, so snap to the nearest page:
-      // the track and the tabs must never stay stranded between pages. No page is
-      // reported, a cancel never changes the settled folder.
+      // A cancelled or failed drag snaps to the nearest page: the track and the tabs
+      // must never stay stranded between pages.
       const target = Math.max(0, Math.min(count - 1, Math.round(-motion.translateX.value / width)));
       animateToPage(motion, target, width);
     });
 }
 
-/**
- * Keeps a callback's identity stable while it always calls the latest closure:
- * the screen hands a fresh `onIndexChange` each render, and the pager must not
- * rebuild its pan for it. The same pattern as `useStableHandler` in
- * `use-stable-handlers.ts`.
- */
+/** Keeps a callback's identity stable while it always calls the latest closure. */
 function useStableIndexChange(onIndexChange: (index: number) => void): (index: number) => void {
   const latest = useRef(onIndexChange);
   useEffect(() => {
@@ -115,25 +90,14 @@ function useStableIndexChange(onIndexChange: (index: number) => void): (index: n
 }
 
 type FolderPagerProps = {
-  /** How many pages (the folders, "All chats" included). */
   count: number;
-  /** The settled page; the pager animates to it when it changes from outside. */
   index: number;
-  /** The continuous page position, shared with the tabs so the indicator follows. */
   progress: SharedValue<number>;
-  /** Called with the new page once a swipe settles on another one. */
   onIndexChange: (index: number) => void;
-  /** Renders one page; only the visible page and its neighbours are asked. */
   renderPage: (index: number) => ReactNode;
 };
 
-/**
- * The horizontal folder pager (T-1310) on `react-native-gesture-handler` plus
- * `react-native-reanimated`, both already in `apps/mobile/package.json` (no new
- * dependency). One page per folder slides under the tabs; only the visible page
- * and its immediate neighbours render their lists. The `progress` shared value
- * carries the continuous page position to the tabs on the UI thread.
- */
+/** Only the visible page and its immediate neighbours render their lists. */
 export function FolderPager({
   count,
   index,
@@ -144,8 +108,7 @@ export function FolderPager({
   const { width } = useWindowDimensions();
   const translateX = useSharedValue(-index * width);
   const startX = useSharedValue(-index * width);
-  // A plain object so the worklets and the settle effect read and write the
-  // shared values through it; its members are stable across renders.
+  // A plain object so worklets read and write the shared values through it.
   const motion = useMemo<PagerMotion>(
     () => ({ translateX, startX, progress }),
     [translateX, startX, progress],
@@ -153,14 +116,10 @@ export function FolderPager({
 
   useEffect(() => {
     animateToPage(motion, index, width);
-    // `motion` holds the shared values, which keep their identity; only the
-    // settled index moves the pager from the outside.
+    // Rebuilding the pan mid-drag would drop the gesture, so it reads the latest
+    // `onIndexChange` through a stable callback.
   }, [index, width, motion]);
 
-  // The pager keeps one pan across renders: rebuilding it mid-drag would drop
-  // the in-flight gesture and strand the track between pages. `onIndexChange`
-  // comes in fresh each render (it closes over the screen's state), so the pan
-  // reads the latest one through a stable callback instead of depending on it.
   const handleIndexChange = useStableIndexChange(onIndexChange);
 
   const pan = useMemo(

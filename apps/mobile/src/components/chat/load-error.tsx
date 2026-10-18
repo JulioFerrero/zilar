@@ -11,10 +11,6 @@ type RetryButtonProps = {
   className?: string;
 };
 
-/**
- * The Retry key: the raised dark key from `depth.ts` (§4), not the glossy
- * primary button, so a quiet failure stays quiet. Every key is announced.
- */
 function RetryButton({ onPress, label = 'Retry', className }: RetryButtonProps) {
   const { pressed, reduceMotion, setPressed } = useKeyPress();
 
@@ -40,7 +36,6 @@ type LoadErrorProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** A centered failure with a Retry, for a list or a chat with nothing to show. */
 export function LoadError({ message, onRetry, className, style }: LoadErrorProps) {
   return (
     <View className={cn('flex-1 items-center justify-center gap-3 p-8', className)} style={style}>
@@ -50,7 +45,6 @@ export function LoadError({ message, onRetry, className, style }: LoadErrorProps
   );
 }
 
-/** A thin inline bar over data that is still on screen, with a small Retry. */
 export function LoadErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <View className="flex-row items-center gap-2 rounded-full border border-divider bg-surface-raised py-1 pr-1 pl-3">

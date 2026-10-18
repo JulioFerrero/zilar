@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/mobile/src/app/chat/[id].tsx (size split)
+// effect-plain: no effects
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
@@ -27,15 +27,11 @@ import type { SendAttachmentOptions, SendTextOptions, SendVoiceRecording } from 
 type ChatComposerDockProps = {
   screen: ChatScreen;
   chat: ChatSummary;
-  /** `composer` is the full composer with the `@` picker; `channel` the feed bar. */
   variant: 'composer' | 'channel';
 };
 
-/**
- * Builds the mock-mode `GifsApi` on the shared mock backend, behind a literal
- * build-time condition: Metro folds it to `false` in a release build, so the
- * mock module stays out of the bundle.
- */
+/** Builds the mock `GifsApi` behind a literal build-time condition: Metro folds
+ *  it to `false`, so the mock module stays out of a release bundle. */
 function createMockGifs(): GifsApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -45,17 +41,11 @@ function createMockGifs(): GifsApi {
   throw new Error('The mock API is not part of this build');
 }
 
-/** The localpart of a jid, lowercased (`Ana@x` → `ana`). */
 function jidLocalpart(jid: string): string {
   const at = jid.indexOf('@');
   return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
 }
 
-/**
- * The bottom bar: the selection bar while forwarding, otherwise the full
- * composer or the channel feed bar. One copy replaces the three composer
- * wrappers the screen repeated.
- */
 export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProps) {
   const { replyTo, cancelReply } = screen;
   const sendText = useChatStore((state) => state.sendText);
@@ -66,23 +56,15 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
   const stopTyping = useChatStore((state) => state.stopTyping);
   const addTopicAi = useChatStore((state) => state.addTopicAi);
   const addTopicMember = useChatStore((state) => state.addTopicMember);
-  // The `@` picker members (T-0227, like web): group and topic chats read
-  // the group's members and AIs, minus me; DMs pass nothing (no picker).
-  // Scalar deps only — `chat` itself is still loading above this line.
   const groupMembers = useChatStore((state) => state.groupMembers);
-  // The group id behind this row, including legacy rows that carry no
-  // `groupId` (T-0227): the store resolves them through the remembered
-  // `/api/chats` entries, so the detail subscription below re-fires when a
-  // cold-open load lands — `chat?.groupId` alone stays `''` forever there.
+  // Legacy rows without `groupId` resolve through the remembered `/api/chats`
+  // entries, so a cold-open load re-fires the detail subscription.
   const groupIdForChat = useChatStore((state) => state.groupIdForChat);
   const me = useChatStore((state) => state.me);
   const mentionChatKind = chat.kind;
   const mentionChatId = chat.id;
   const mentionGroupId = mentionChatKind === 'group' ? groupIdForChat(mentionChatId) : undefined;
-  // Subscribes the memo below to async detail loads: `groupMembers` is a
-  // stable function over a closure cache filled by `ensureGroupDetail`, so
-  // reading the detail value here re-runs the memo when it arrives — without
-  // it a cold open keeps returning `[]` forever.
+  // Reads the detail value so this memo re-runs when an async detail load lands.
   const groupDetailForMentions = useChatStore((state) =>
     mentionGroupId === undefined ? undefined : state.groupDetail(mentionGroupId),
   );
@@ -96,8 +78,6 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     const members = groupMembers(mentionChatId).filter(
       (member) => !isMentionOfMe(member.jid, meJid),
     );
-    // T-1788: in a topic, `@` offers only its people and AIs (the phone twin
-    // of web's T-1783 filter). Other chats stay unfiltered.
     if (chatTopic === undefined) {
       return members;
     }
@@ -106,16 +86,10 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
       aiIdByJid.set(ai.jid, ai.aiId);
     }
     return members.filter((member) => mentionInTopic(chatTopic, member.jid, aiIdByJid));
-    // The memo reads the detail value above only to subscribe to its async
-    // loads: `groupMembers` resolves from the same cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mentionChatKind, mentionChatId, groupMembers, groupDetailForMentions, meJid, chatTopic]);
-  // Stickers: `useStickersApi` returns the mock-backed adapter in mock mode
-  // and the real one otherwise, so the panel loads the same way in both.
   const { api: stickersApi, mock: mockActive } = useStickersApi();
-  // This `useMemo` sits above the `!chat` early return, like the API hooks:
-  // every hook runs on every render (enforced by the oxlint
-  // `react/rules-of-hooks` rule on `src/app`).
+  // Above the `!chat` early return like the API hooks: every hook runs on every render.
   const demoAttachments = useMemo(
     () =>
       process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
@@ -123,22 +97,13 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
         : undefined,
     [],
   );
-  // GIFs: the shared mock backend serves trending and search, so mock mode
-  // gets the mock-backed client; real mode falls back to the panel's own.
   const gifsApi = useMemo(() => (mockActive ? createMockGifs() : undefined), [mockActive]);
 
-  // T-1788: the mentions of people outside the open topic that the last send
-  // put on screen (the phone twin of web's T-1783 list). Cleared on a chat
-  // switch and replaced on the next send.
   const [notInTopic, setNotInTopic] = useState<TopicNotIn[]>([]);
   useEffect(() => {
     setNotInTopic([]);
   }, [chat.id]);
 
-  // T-1788: after a send in a topic, collect the mentions of people and AIs
-  // who are not in it, deduped by jid, with the name and picture from the
-  // group detail. A General topic, a non-topic chat and an older server whose
-  // `memberIds` is missing produce no rows.
   const surfaceNotInTopic = (sent: readonly UiMention[]): void => {
     if (chatTopic === undefined || sent.length === 0) {
       setNotInTopic([]);
@@ -181,8 +146,6 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     setNotInTopic(missing);
   };
 
-  // T-1788: the Add key's call for one entry; its group half is added first on
-  // the server (T-1769). The row drops itself through `onAdded` on success.
   const addToTopic = (entry: TopicNotIn): Promise<void> =>
     entry.kind === 'ai' ? addTopicAi(chat.id, entry.id) : addTopicMember(chat.id, entry.id);
 
@@ -195,9 +158,6 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     cancelReply();
   };
 
-  // Sending carries the composer's tracked mentions (T-0227, like web):
-  // the message text is unchanged, the ranges ride along. The channel bar
-  // takes a text-only send, so its wrapper below drops the mentions.
   const sendTextNow = (text: string, mentions?: UiMention[]) => {
     sendText(
       chat.id,
@@ -210,8 +170,7 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           },
     );
     surfaceNotInTopic(mentions ?? []);
-    // The receiver clears the line on the message itself; the paused stanza is
-    // the backstop for a slow echo or another device.
+    // The paused stanza is a backstop for a slow echo or another device.
     stopTyping(chat.id);
     cancelReply();
   };

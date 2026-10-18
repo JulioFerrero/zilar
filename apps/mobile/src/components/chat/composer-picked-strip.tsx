@@ -8,18 +8,14 @@ import { classifyMobileFile, formatFileSize } from '@/lib/attachments';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 
-/** One staged file as the strip renders it: a thumbnail plus its name and size. */
 export type PickedPreview = {
   uri: string;
   name: string;
   size?: number | undefined;
-  /** The picker MIME type, so the strip tells a photo from any other file. */
   mimeType?: string | undefined;
 };
 
-/** The single-file row's thumbnail (T-1246). */
 const THUMB_SIZE = 64;
-/** A several-file strip tile (T-1536). */
 const TILE_SIZE = 72;
 
 function PreviewThumb({ preview, iconColor }: { preview: PickedPreview; iconColor: string }) {
@@ -44,7 +40,6 @@ function PreviewThumb({ preview, iconColor }: { preview: PickedPreview; iconColo
   );
 }
 
-/** One photo tile of the several-file strip: the image, cover-cropped (T-1536). */
 function PhotoTile({ preview }: { preview: PickedPreview }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -66,7 +61,6 @@ function PhotoTile({ preview }: { preview: PickedPreview }) {
   );
 }
 
-/** One other-file tile: the icon, the upper-case extension and the size. */
 function FileTile({ preview }: { preview: PickedPreview }) {
   const extension = fileExtension(preview.name);
   const size = preview.size === undefined ? '' : formatFileSize(preview.size);
@@ -87,7 +81,6 @@ function FileTile({ preview }: { preview: PickedPreview }) {
   );
 }
 
-/** The single-file row: the exact look the attach sheet showed before T-1246. */
 function PickedPreviewRow({
   preview,
   onRemove,
@@ -124,11 +117,6 @@ function PickedPreviewRow({
   );
 }
 
-/**
- * The several-file strip (T-1536): one 72 px tile per staged file, a photo
- * shown as the image and any other file as its icon, extension and size, each
- * with an x to drop it.
- */
 function PickedStripRow({
   previews,
   onRemove,
@@ -166,11 +154,6 @@ function PickedStripRow({
   );
 }
 
-/**
- * The composer's staged attachment strip (T-1246, T-1536): one file keeps the
- * earlier single-preview row exactly; several show as 72 px tiles, each
- * removable. Pure view: the composer owns the picking.
- */
 export function PickedStrip({
   previews,
   onRemove,
@@ -214,16 +197,11 @@ function formatPreviewSize(bytes: number): string {
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif']);
 
-/** Whether a file name looks like an image, for the preview fallback icon. */
 export function isImageName(name: string): boolean {
   const extension = name.split('.').pop()?.toLowerCase() ?? '';
   return IMAGE_EXTENSIONS.has(extension);
 }
 
-/**
- * The icon shown instead of the staged-file thumbnail when it fails to
- * load: `Image` for image names, `FileText` for everything else.
- */
 export function PreviewFallbackIcon({ name, iconColor }: { name: string; iconColor: string }) {
   const Icon = isImageName(name) ? ImageIcon : FileText;
   return <Icon size={20} color={iconColor} />;

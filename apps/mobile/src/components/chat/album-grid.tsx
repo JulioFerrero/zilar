@@ -15,13 +15,11 @@ import { mobileUploadOf } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** One rendered album tile: its message, id, URL and label. */
 interface AlbumPhoto {
   message: UiMessage;
   messageId: string;
   url: string;
   alt: string;
-  /** Pixel size, when known: a single-photo tile reserves the aspect ratio. */
   width?: number | undefined;
   height?: number | undefined;
 }
@@ -32,17 +30,11 @@ const HALF = (GRID_WIDTH - GAP) / 2;
 const THIRD = (GRID_WIDTH - 2 * GAP) / 3;
 const LARGE_WIDTH = GRID_WIDTH - GAP - THIRD;
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
-/** The single-photo tile's shape when the photo's pixel size is unknown. */
 const FALLBACK_ASPECT_RATIO = 4 / 3;
-/** The tallest a single-photo tile may be, matching a single image (T-1335). */
 const MAX_IMAGE_HEIGHT = 320;
 
-/**
- * The members' renderable photos, in `index` order, mirroring `photosOf`: a
- * message with an `image`, or with an attachment whose `kind` is `image`. The
- * store's sanitizer downgrades an untrusted host to `kind: 'file'`, so a tile
- * here never loads bytes from a peer's arbitrary host.
- */
+/** The members' renderable photos in `index` order; the store downgrades an
+ *  untrusted host to a file, so no tile loads bytes from a peer's host. */
 export function albumPhotosOf(messages: readonly UiMessage[]): AlbumPhoto[] {
   return messages
     .filter((message) => message.album !== undefined)
@@ -78,11 +70,6 @@ export function albumPhotosOf(messages: readonly UiMessage[]): AlbumPhoto[] {
     });
 }
 
-/**
- * A single-photo album's aspect ratio: the photo's own pixel size, or 4:3 when
- * it is unknown, so the tile keeps its shape and fills the media width like a
- * single attachment image.
- */
 function albumAspectRatio(photo: AlbumPhoto): number {
   if (
     photo.width === undefined ||
@@ -110,7 +97,6 @@ function AlbumTile({
   onRetry: ((message: UiMessage) => void) | undefined;
   style: StyleProp<ViewStyle>;
   hidden?: number | undefined;
-  /** A one-photo album fills the bubble: no inner border or radius of its own. */
   edgeToEdge?: boolean | undefined;
 }) {
   const upload = mobileUploadOf(photo.message);
@@ -122,9 +108,8 @@ function AlbumTile({
   const failed = photo.message.failed === true || photo.message.status === 'failed';
   const gradient = imageGradient(photo.url);
   const trusted = isLoadableMediaUrl(photo.url, hosts);
-  // A `gradient:` URL is the mock-mode placeholder and is never fetched;
-  // otherwise a trusted URL loads directly, while the local `file://` preview
-  // stays on top until the remote image loads (T-1337).
+  // A `gradient:` URL is a mock placeholder and is never fetched; a trusted URL
+  // loads directly, with the local preview on top until it does.
   const remote = trusted && gradient === undefined && !media.failed;
   const loadedSource = useMediaSource(chatId, photo.url, remote);
   const source =
@@ -212,14 +197,6 @@ function AlbumTile({
   );
 }
 
-/**
- * One album rendered as a Telegram-style grid (T-1271): 2 two columns, 3 one
- * large tile and two stacked, 4 a 2×2, 5+ a 2×2 whose last tile shows `+N` for
- * the hidden remainder. The list row hands the item's grouped members down; a
- * head drawn without them (a lone marker outside the list) renders as an album
- * of one. A tile opens the viewer scoped to the album. The caption is the head
- * message's body, drawn by the bubble under this grid.
- */
 export function AlbumGrid({
   message,
   onOpen,

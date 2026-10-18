@@ -14,7 +14,6 @@ type ChatOverlaysProps = {
   chat: ChatSummary;
 };
 
-/** The pins sheet, forward sheet and media sheet, shared by every branch. */
 export function ChatOverlays({ screen, chat }: ChatOverlaysProps) {
   const canPinChat = useChatStore((state) => state.canPin(chat.id));
   const unpinMessage = useChatStore((state) => state.unpinMessage);

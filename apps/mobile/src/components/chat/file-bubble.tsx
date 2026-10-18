@@ -16,39 +16,19 @@ import {
 
 type AttachmentFileProps = {
   attachment: Attachment;
-  /** True when this is the sender's own bubble: it is light, so text is dark. */
   outgoing?: boolean | undefined;
-  /** False when the host is untrusted: the row shows the untrusted line. */
   trusted?: boolean | undefined;
-  /** True while the bytes are still uploading. */
   uploading?: boolean | undefined;
-  /** 0..1 upload progress, when known. */
   progress?: number | undefined;
-  /** True when the upload failed; the row shows a Retry instead. */
   failed?: boolean | undefined;
-  /** True when a trusted inline fetch failed; the row shows a load Retry. */
   loadFailed?: boolean | undefined;
   onRetry?: (() => void) | undefined;
-  /** Opens the file with the app for its type (tap only). */
   onOpen?: (() => void) | undefined;
-  /** True while the file is being downloaded to hand to the type's app. */
   opening?: boolean | undefined;
 };
 
-/**
- * A file attachment bubble, Telegram-style (T-1319): a round accent circle
- * (a download arrow before the first open, a spinner while loading), next to
- * it the file name and "3.9 KB PDF" below. No inner card: the bubble's own
- * surface is the card. The bytes are never fetched automatically: `onOpen`
- * (the app for the file's type) runs only on tap. An untrusted address shows
- * the "Not loaded: untrusted address" line instead of size and type; a
- * trusted address whose inline fetch failed shows "Couldn't load" with a
- * retry, and a failed upload shows "Upload failed" with a retry.
- *
- * An own (outgoing) bubble is light, so its text uses the dark bubble
- * shades and the circle uses the dark incoming surface instead of the
- * near-white accent, which would vanish on the light bubble.
- */
+/** The bytes are never fetched automatically: `onOpen` runs only on tap. An
+ *  untrusted address shows the untrusted line, never size and type. */
 export function AttachmentFileRow({
   attachment,
   outgoing = false,
@@ -131,13 +111,11 @@ export function AttachmentFileRow({
   );
 }
 
-/** "3.9 KB PDF": the size plus the upper-case extension, Telegram-style. */
 function sizeTypeOf(attachment: Attachment): string {
   const extension = extensionOf(attachment.name);
   return [formatFileSize(attachment.size), extension].filter((part) => part !== '').join(' ');
 }
 
-/** The upper-case extension of a file name, or '' when it has none. */
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf('.');
   if (dot <= 0 || dot === name.length - 1) {

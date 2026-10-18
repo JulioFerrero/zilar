@@ -5,11 +5,8 @@ import { Avatar } from '@/components/chat/avatar';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type EntityAvatarProps = {
-  /** A person, contact, member or AI. */
   person?: AvatarPersonInput | null | undefined;
-  /** A chat row: DM peer, group, channel, topic or AI chat. */
   chat?: AvatarChatInput | null | undefined;
-  /** The signed-in user (resolved from the auth session). */
   me?: boolean | undefined;
   size?: number | undefined;
   online?: boolean | undefined;
@@ -17,14 +14,6 @@ type EntityAvatarProps = {
   className?: string | undefined;
 };
 
-/**
- * The one avatar call the screens use (T-1334): it hands the entity to
- * `avatarIdentity` and fills a missing picture from the stores the app
- * already holds — the auth session for the own row (`apps/mobile/src/auth/session.ts`),
- * the contacts store for a person (keyed by `userId`) and the chat rows for a
- * chat (keyed by `id`, both in `apps/mobile/src/store/real-store.ts`). No call
- * site decides the seed or picks a URL.
- */
 export function EntityAvatar({
   person,
   chat,

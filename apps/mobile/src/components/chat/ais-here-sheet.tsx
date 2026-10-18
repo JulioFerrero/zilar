@@ -16,7 +16,6 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** One AI in the "AIs here" sheet: its picture with its mark, name and line, plus Stop. */
 function AisHereRow({
   entry,
   chatId,
@@ -63,8 +62,6 @@ function AisHereRow({
   );
 
   const waiting = entry.state === 'waiting';
-  // T-1586: a waiting AI with an open question opens that card in this chat;
-  // one waiting for an approval still goes to Approvals.
   const questionId = entry.questionId;
   const onPress =
     waiting && questionId !== undefined ? () => onOpenQuestion(questionId) : onOpenApprovals;
@@ -100,13 +97,6 @@ function AisHereRow({
   );
 }
 
-/**
- * The topic header's "AIs here" sheet (T-1539), the mobile twin of the web
- * popover: every AI at work in the topic with what it is doing, Stop for a
- * working AI the viewer owns, and a row that opens the question card for one
- * waiting on a question (T-1586) or goes to Approvals for one waiting on an
- * approval.
- */
 export function AisHereSheet({
   visible,
   onClose,
@@ -118,8 +108,7 @@ export function AisHereSheet({
 }) {
   const router = useRouter();
   const { api } = useAisApi();
-  // Only an AI the viewer owns can be stopped, like the task card (T-1422).
-  // Until the list loads, or when it fails, no entry shows Stop.
+  // Only an AI the viewer owns can be stopped.
   const [aisResult] = useQuery(() => Effect.promise(() => api.listAis()), [api]);
   const ownIds = AsyncResult.isSuccess(aisResult)
     ? new Set(aisResult.value.map((ai) => ai.id))
@@ -132,9 +121,6 @@ export function AisHereSheet({
     router.push('/settings/approvals');
   };
 
-  // T-1586: the sheet is open inside this chat, so the jump only has to set the
-  // store's `jumpTarget`; the message list scrolls to the card the way a search
-  // hit does (`search-jump.ts`).
   const openQuestion = (messageId: string): void => {
     onClose();
     void openAtMessage(chat.id, messageId).catch(() => undefined);

@@ -14,10 +14,6 @@ import { Ticks } from '@/components/chat/ticks';
 import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The outgoing bubble's text colour, the same literal `MessageBubble` uses
- * (`message-bubble.tsx:164`): an outgoing bubble is light, so its text is dark.
- */
 const OUTGOING_TEXT_COLOR = '#0a0a0a';
 
 type AttachmentBodyProps = {
@@ -29,14 +25,6 @@ type AttachmentBodyProps = {
   opening?: boolean | undefined;
 };
 
-/**
- * An attachment message body (T-0150): image, GIF-video, or file, plus the
- * caption as plain text underneath. Mirrors web's `MessageBubble` branches:
- * images render inline (trusted hosts only), GIF-origin videos (`gif-` name
- * + video mime) play inline, everything else is a file row whose bytes are
- * only fetched on tap. A failed upload shows Retry; an in-flight upload
- * shows progress with Cancel.
- */
 export function AttachmentBody({
   message,
   outgoing,
@@ -53,9 +41,6 @@ export function AttachmentBody({
   const trustedHosts = useChatStore((state) => state.mediaTrustedHosts);
   const messages = useChatStore((state) => state.messagesByChat[message.chatId]);
   const photos = useMemo(() => photosOf(messages ?? []), [messages]);
-  // Opening a tile scopes the viewer to the album (§4.5): the album's photos
-  // first, in `index` order, then the rest of the chat. A single-photo open
-  // keeps the chat's photo order unchanged.
   const viewerPhotos = useMemo<ViewerPhoto[]>(() => {
     if (viewer === null || viewer.albumIds === undefined) {
       return photos;
@@ -77,10 +62,6 @@ export function AttachmentBody({
   if (attachment === undefined) {
     return null;
   }
-  // The bubble's own text colours, mirroring `MessageBubble`
-  // (`message-bubble.tsx:150` for the meta shade, `:164` for the text): an
-  // outgoing bubble is light, so the caption and the meta line need the dark
-  // shades the plain text bubble uses, not the app's near-white foreground.
   const textColor = outgoing ? OUTGOING_TEXT_COLOR : FOREGROUND;
   const metaColor = outgoing ? BUBBLE_COLORS.outgoingMeta : MUTED_FOREGROUND;
   const upload = mobileUploadOf(message);
@@ -179,13 +160,8 @@ export function AttachmentBody({
   );
 }
 
-/**
- * Whether a file row may offer the open control: files never auto-load, and
- * the open sheet itself is the tap-gated fetch. The button shows for every
- * file regardless of host (the tap IS the trust decision for files); the
- * "Not loaded" line marks untrusted addresses. `javascript:`/`data:` URLs
- * never open: the handler treats them as unopenable.
- */
+/** Files never auto-load: the open sheet is the tap-gated fetch, and the tap is
+ *  the trust decision. `javascript:` and `data:` URLs never open. */
 function isFileTrusted(url: string, hosts: ReadonlySet<string>): boolean {
   const parsed = parseUrl(url);
   if (parsed === undefined) {

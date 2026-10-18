@@ -11,12 +11,6 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * T-1551: the quiet line above a topic's composer, the phone twin of web's
- * `AiStatusLine` (T-1537). It shows the first AI at work with its picture and
- * what it does, then "+N" for the others. It renders nothing when the chat is
- * not a topic or no AI is working or waiting.
- */
 export function AiStatusLine({ chat }: { chat: ChatSummary }) {
   const messages = useChatStore((state) => state.messagesByChat[chat.id]);
   const openAtMessage = useChatStore((state) => state.openAtMessage);
@@ -32,9 +26,6 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
       ? `· ${stage}`
       : topicActivityLine(first.state);
   const extra = entries.length - 1;
-  // T-1586: a waiting AI with an open question opens its card in this chat,
-  // the way a search hit jumps; the line's text is unchanged. A failed jump is
-  // best effort and ignored.
   const openQuestion = (messageId: string): void => {
     Effect.runFork(
       Effect.tryPromise({

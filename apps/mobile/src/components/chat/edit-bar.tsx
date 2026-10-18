@@ -6,11 +6,6 @@ import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 
-/**
- * The composer's edit bar (T-0085): names the action, shows the original
- * message text and closes with the × button. Mirrors the web `EditBar.tsx`.
- * Android back cancels the edit while it's shown.
- */
 export function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
   useBackCancel(onCancel);
 

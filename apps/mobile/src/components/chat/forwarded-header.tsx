@@ -5,7 +5,6 @@ import { View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 
-/** "Forwarded from X" header shown at the top of a forwarded bubble (T-0427). */
 export function ForwardedHeader({ origin }: { origin: ForwardOrigin }) {
   const label =
     origin.chat_name === undefined
