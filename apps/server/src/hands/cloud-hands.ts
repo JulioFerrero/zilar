@@ -4,6 +4,7 @@ import {
   DeskError,
   DeskQueued,
   ErrorInfoSchema,
+  MAX_COMMAND_TIMEOUT_MS,
   type DeskChunk,
   type DeskRef,
   type DeskToolCall,
@@ -77,6 +78,14 @@ const executeLineSchema = Schema.Union([
   Schema.Struct({ id: requestIdSchema, chunk: chunkSchema }),
 ]);
 
+// A daemon line is one JSON frame; anything past this is a peer trying to grow
+// our buffer, whether the frame ends in a newline or not, so the socket is
+// dropped.
+const MAX_LINE_CHARS = 1024 * 1024;
+// T-1993: the server's own ceiling for one execute, past the desk's command
+// timeout so the daemon's own timeout is seen first.
+const EXECUTE_DEADLINE_MS = MAX_COMMAND_TIMEOUT_MS + 15_000;
+
 function openSocket(socketPath: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = connect(socketPath);
@@ -91,12 +100,21 @@ export async function* socketLines(socket: Socket): AsyncIterable<string> {
     buffer += String(data);
     let newline = buffer.indexOf('\n');
     while (newline !== -1) {
-      const line = buffer.slice(0, newline).trim();
+      const raw = buffer.slice(0, newline);
       buffer = buffer.slice(newline + 1);
+      if (raw.length > MAX_LINE_CHARS) {
+        socket.destroy();
+        throw new DeskError('output_too_large', 'desk output line too long');
+      }
+      const line = raw.trim();
       if (line.length > 0) {
         yield line;
       }
       newline = buffer.indexOf('\n');
+    }
+    if (buffer.length > MAX_LINE_CHARS) {
+      socket.destroy();
+      throw new DeskError('output_too_large', 'desk output line too long');
     }
   }
 }
@@ -194,10 +212,14 @@ export async function* runExecuteOverSocket(
   call: DeskToolCall,
   signal?: AbortSignal,
 ): AsyncIterable<DeskChunk> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), EXECUTE_DEADLINE_MS);
+  timer.unref();
+  const abort = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
   const onAbort = (): void => {
     socket.destroy();
   };
-  signal?.addEventListener('abort', onAbort, { once: true });
+  abort.addEventListener('abort', onAbort, { once: true });
   try {
     socket.write(`${JSON.stringify({ id: 1, method: 'execute', params: { ref, call } })}\n`);
     for await (const line of socketLines(socket)) {
@@ -210,9 +232,18 @@ export async function* runExecuteOverSocket(
       }
       yield decoded.chunk;
     }
+    if (deadline.signal.aborted) {
+      throw new DeskError('timeout', 'the command timed out');
+    }
     throw new DeskError('tool_failed', 'the desk agent closed the stream');
+  } catch (error) {
+    if (deadline.signal.aborted) {
+      throw new DeskError('timeout', 'the command timed out');
+    }
+    throw error;
   } finally {
-    signal?.removeEventListener('abort', onAbort);
+    clearTimeout(timer);
+    abort.removeEventListener('abort', onAbort);
     socket.destroy();
   }
 }

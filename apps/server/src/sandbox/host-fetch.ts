@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { Data, Effect } from 'effect';
+import { Data, Duration, Effect } from 'effect';
 import { classifyIp, isIpLiteral } from './ip-guard';
 
 // The narrow bridge between the sandbox and the network. Every rule lives
@@ -24,7 +24,10 @@ export interface FetchResponse {
   body: Uint8Array;
 }
 
-export type HostFetcher = (request: ValidatedFetchRequest) => Promise<FetchResponse>;
+export type HostFetcher = (
+  request: ValidatedFetchRequest,
+  signal?: AbortSignal,
+) => Promise<FetchResponse>;
 
 export type DnsResolver = (host: string) => Promise<string[]>;
 
@@ -137,8 +140,8 @@ export function createDefaultFetcher(options: {
   fetchTimeoutMs: number;
   maxResponseBytes: number;
 }): HostFetcher {
-  return (request: ValidatedFetchRequest) =>
-    fetchPinnedHttps(request.url, request.address, options);
+  return (request: ValidatedFetchRequest, signal?: AbortSignal) =>
+    fetchPinnedHttps(request.url, request.address, options, signal);
 }
 
 // The request is an `Effect.callback`: the first outcome wins, and an
@@ -212,13 +215,24 @@ export function fetchPinnedHttpsEffect(
       settled = true;
       req.destroy();
     });
-  });
+  }).pipe(
+    // T-1993: `req.setTimeout` is only an idle timeout, so a host that drips one
+    // byte at a time could hold the socket for ever. This is the hard overall
+    // deadline; on expiry the fiber is interrupted and the finalizer destroys
+    // the request.
+    Effect.timeoutOrElse({
+      duration: Duration.millis(options.fetchTimeoutMs),
+      orElse: () => Effect.fail(new Error('fetch timeout')),
+    }),
+  );
 }
 
 export function fetchPinnedHttps(
   url: URL,
   address: string,
   options: { fetchTimeoutMs: number; maxResponseBytes: number; port?: number },
+  signal?: AbortSignal,
 ): Promise<FetchResponse> {
-  return Effect.runPromise(fetchPinnedHttpsEffect(url, address, options));
+  const effect = fetchPinnedHttpsEffect(url, address, options);
+  return signal === undefined ? Effect.runPromise(effect) : Effect.runPromise(effect, { signal });
 }

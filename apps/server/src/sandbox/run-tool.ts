@@ -153,6 +153,9 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
   // old handling: validated here, then answered asynchronously.
   const runWorker = (worker: Worker): Effect.Effect<RunToolResult> => {
     let fetchCount = 0;
+    // T-1993: one run owns its in-flight fetch. When the run settles, times out
+    // or the worker is terminated, the signal destroys any open request.
+    const inFlight = new AbortController();
     return Effect.callback<RunToolResult>((resume) => {
       const settle = (result: RunToolResult): void => {
         resume(Effect.succeed(result));
@@ -192,6 +195,9 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
                 resolver: params.resolver,
               },
             );
+            if (inFlight.signal.aborted) {
+              return;
+            }
             if (!check.ok) {
               fetchFailed(check.message);
               return;
@@ -202,9 +208,15 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
             // the sandbox, so there is nothing to forward or merge here.
             let response;
             try {
-              response = await fetcher(check.request);
+              response = await fetcher(check.request, inFlight.signal);
             } catch (error) {
+              if (inFlight.signal.aborted) {
+                return;
+              }
               fetchFailed(error instanceof Error ? error.message : 'fetch failed');
+              return;
+            }
+            if (inFlight.signal.aborted) {
               return;
             }
             if (response.body.length > limits.maxResponseBytes) {
@@ -305,6 +317,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       worker.on('error', onError);
       worker.on('exit', onExit);
       return Effect.sync(() => {
+        inFlight.abort();
         worker.off('message', onMessage);
         worker.off('error', onError);
         worker.off('exit', onExit);

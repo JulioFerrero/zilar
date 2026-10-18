@@ -48,6 +48,11 @@ export interface DockerLayer {
 
 export const DESK_LABEL = 'zilar.desk';
 
+// T-1993: one daemon frame is a JSON line; a process that sends a frame larger
+// than this, with or without a trailing newline, is killed rather than allowed
+// to grow our buffer.
+const MAX_DAEMON_LINE_CHARS = 1024 * 1024;
+
 /**
  * The daemon request for one tool call. `timeout_ms` rides in `args` because
  * that is where the daemon reads it; the daemon re-validates `args` itself.
@@ -94,14 +99,23 @@ async function* readDaemon(
       buffer += String(data);
       let newline = buffer.indexOf('\n');
       while (newline !== -1) {
-        const line = buffer.slice(0, newline).trim();
+        const raw = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
+        if (raw.length > MAX_DAEMON_LINE_CHARS) {
+          child.kill('SIGKILL');
+          throw new DeskError('output_too_large', 'desk output line too long');
+        }
+        const line = raw.trim();
         if (line.length > 0) {
           const decoded = decodeDaemonLine(line);
           finished = finished || decoded.done;
           yield decoded.chunk;
         }
         newline = buffer.indexOf('\n');
+      }
+      if (buffer.length > MAX_DAEMON_LINE_CHARS) {
+        child.kill('SIGKILL');
+        throw new DeskError('output_too_large', 'desk output line too long');
       }
     }
   } finally {

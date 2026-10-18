@@ -914,7 +914,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - T-1998 desk networks (`docker network ls --filter label=zilar.desk`);
                         - Julio posts in a channel he admins.
                     - **Chat scroll perf** (from `docs/audit/chat-scroll-perf.md`):
-                      - running: W1 T-2008 (Sonnet 5.5, client-core), W2 T-2009 (phone) and W5 T-2011 (web);
+                      - W1 T-2008 merged and held at 15:40;
+                      - running: W2 T-2009 (phone) and W5 T-2011 (web);
+                    - **Also merged and held:** T-2005 (media caps). T-2012 (sticker ffmpeg whitelist, required question room) is running.
+                    - **T-2004 corrected mid-task.** Live archive check: room rows carry the real sender in `bare_peer`, while the stored XML has no muc#user `<x>` and the nick is a display name.
+                      - The server's old "own message = nick equals localpart" checks never matched live data. After the deploy, check whether your own group messages ever showed as unread or pushed. I haven't verified it either way.
+                      - The client is safe: ejabberd prepends the real `<x>`, and `getChild` reads the first one (private note in the audits folder).
                       - W3 (one menu, one gesture) and W4 (row leaves) wait for T-2009, since they share files;
                       - measure with `dumpsys gfxinfo` before and after.
                     - **T-1980 (pin jump):** fix round sent. Its pre-review caught two real regressions: pins stored the archive id, and the alias direction would have hidden DM reactions from the other person.

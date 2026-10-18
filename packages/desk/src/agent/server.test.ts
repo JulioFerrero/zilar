@@ -1,8 +1,9 @@
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { DeskToolCall } from '../hands';
 import { Admission } from './admission';
-import { createArgs, DESK_LABEL } from './docker';
+import { createArgs, createDockerLayer, DESK_LABEL } from './docker';
 import { Lifecycle } from './lifecycle';
 import { PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
 
@@ -292,5 +293,39 @@ describe('desk-agent server', () => {
     expect(released).toEqual(['ai1', 'ai2']);
     expect(admission.running).toBe(0);
     expect(local.status().running).toHaveLength(0);
+  });
+});
+
+describe('desk daemon output cap', () => {
+  it('kills the daemon and rejects a newline-terminated line over 1 MiB', async () => {
+    const bin = path.join(agent.directory, 'bin');
+    mkdirSync(bin, { recursive: true });
+    const docker = path.join(bin, 'docker');
+    writeFileSync(
+      docker,
+      [
+        '#!/usr/bin/env node',
+        "process.stdout.write('x'.repeat(1024 * 1024));",
+        "process.stdout.write('y'.repeat(100) + '\\n');",
+        '',
+      ].join('\n'),
+    );
+    chmodSync(docker, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ''}`;
+    try {
+      const layer = createDockerLayer(agent.config.docker);
+      const consume = async (): Promise<void> => {
+        for await (const chunk of layer.run('desk-ai1-p1', {
+          tool: 'bash',
+          args: { command: 'echo ok' },
+        })) {
+          void chunk;
+        }
+      };
+      await expect(consume()).rejects.toThrow('desk output line too long');
+    } finally {
+      process.env.PATH = originalPath;
+    }
   });
 });

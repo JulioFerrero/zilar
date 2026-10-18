@@ -384,6 +384,29 @@ describe('fetchPinnedHttpsEffect', () => {
     );
   });
 
+  it('ends a slow-drip response at the overall deadline', async () => {
+    await withTlsServer(
+      (_req, res) => {
+        // One byte every 20 ms keeps the idle timeout from ever firing.
+        res.writeHead(200);
+        res.write('a');
+        const timer = setInterval(() => res.write('a'), 20);
+        res.on('close', () => clearInterval(timer));
+      },
+      async (port) => {
+        const started = Date.now();
+        await expect(
+          fetchPinnedHttps(new URL('https://tooltest.local/drip'), '127.0.0.1', {
+            fetchTimeoutMs: 150,
+            maxResponseBytes: 65536,
+            port,
+          }),
+        ).rejects.toThrow('fetch timeout');
+        expect(Date.now() - started).toBeLessThan(5_000);
+      },
+    );
+  });
+
   it('keeps the size cap text', async () => {
     await withTlsServer(
       (_req, res) => {

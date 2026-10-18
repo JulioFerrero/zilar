@@ -227,13 +227,36 @@ async function runExecute(
   let output = '';
   let exitCode = 0;
   let truncated = false;
-  for await (const chunk of hands.execute(ref, { tool: call.tool, args: call.args }, signal)) {
-    if (chunk.type === 'exit') {
-      exitCode = chunk.code;
-      truncated = chunk.truncated;
-    } else {
-      output += chunk.data;
+  const capAbort = new AbortController();
+  const streamSignal =
+    signal === undefined ? capAbort.signal : AbortSignal.any([signal, capAbort.signal]);
+  try {
+    for await (const chunk of hands.execute(
+      ref,
+      { tool: call.tool, args: call.args },
+      streamSignal,
+    )) {
+      if (chunk.type === 'exit') {
+        exitCode = chunk.code;
+        truncated = chunk.truncated;
+        continue;
+      }
+      // T-1993: keep at most one char past the cap, then stop reading and cut
+      // the stream. An endless producer can no longer grow the result.
+      const room = TOOL_RESULT_MAX_CHARS + 1 - output.length;
+      output += chunk.data.length > room ? chunk.data.slice(0, room) : chunk.data;
+      if (output.length > TOOL_RESULT_MAX_CHARS) {
+        truncated = true;
+        capAbort.abort();
+        break;
+      }
     }
+  } catch (error) {
+    if (!capAbort.signal.aborted) {
+      throw error;
+    }
+  } finally {
+    capAbort.abort();
   }
   const capped =
     output.length > TOOL_RESULT_MAX_CHARS

@@ -175,6 +175,12 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
         unapproved.length === 0
           ? ''
           : ` Unapproved hosts (no network for them yet): ${hostsLine(unapproved)}. Ask for tool.approve_hosts to allow them.`;
+      // T-1993: the save's test run spends from the same budget as `tool.run`.
+      // The save lands either way; only the test run is skipped.
+      const runKey = `${actionCtx.aiId}\n${actionCtx.groupId ?? ''}\n${actionCtx.topicId ?? ''}`;
+      if (!state.runLimiter.allow(runKey)) {
+        return { summary: `${head}; test run skipped: run limit reached${approvalHint}` };
+      }
       // The save itself is never rolled back when the test run fails: the
       // model fixes the code in the next call.
       let testSummary: string;
