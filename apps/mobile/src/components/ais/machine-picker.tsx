@@ -6,10 +6,7 @@ import type { Machine } from '../../lib/machines-api';
 import { OptionGlyph, OptionRow } from './option-row';
 
 /**
- * The AI edit screen's home-machine picker (mirrors web `AiPanel`'s machine
- * select): the owner's approved machines plus "The platform (no machine)".
- * The current value always shows, even when the machine is gone, so the
- * picker never silently switches the AI to the platform.
+ * The owner's approved machines plus "The platform (no machine)". The current value always shows, even when the machine is gone, so the picker never silently switches the AI to the platform.
  */
 export function MachinePicker({
   machines,
@@ -19,9 +16,7 @@ export function MachinePicker({
   onChange,
 }: {
   machines: readonly Machine[];
-  /** False while the list is still loading: the picker shows the current value only. */
   loaded: boolean;
-  /** The AI's current home machine id, or null for the platform. */
   value: string | null;
   disabled?: boolean;
   onChange: (id: string | null) => void;

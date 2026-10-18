@@ -22,14 +22,9 @@ import {
   type AiMemoryStatus,
 } from './ai-memory-logic';
 
-// The cover lines carry a leading block reference (`#16` or `#0-15`) that is
-// only meaningful to the server; the section strips it before showing a line.
+// The cover lines carry a leading block reference (`#16` or `#0-15`) that is only meaningful to the server; the section strips it.
 const LINE_PREFIX = /^#\d+(?:-\d+)? /;
 
-/**
- * The open/closed body of the memory section, split out so tests can render
- * each state without mounting the loading effect.
- */
 export function AiMemorySectionContent({
   state,
   aiName,
@@ -39,8 +34,6 @@ export function AiMemorySectionContent({
   state: AiMemorySectionState;
   aiName: string;
   actions: AiMemorySectionActions;
-  /** When true the section mounts already open (the rooms sheet), so the
-   * Show and Hide buttons are hidden. */
   initiallyOpen?: boolean;
 }) {
   const { open, status, memory, forgetError, forgettingId, clearError, confirmingClear } = state;
@@ -182,9 +175,7 @@ export function AiMemorySectionContent({
 }
 
 /**
- * T-0449: the AI's memory in this DM. It stays collapsed, and makes no
- * request, until the owner opens it; then it lists the pinned facts and the
- * cover lines, and lets the owner forget a fact or clear the whole memory.
+ * The AI's memory in this DM: it makes no request until the owner opens it.
  */
 export function AiMemorySection({
   api,
@@ -197,10 +188,6 @@ export function AiMemorySection({
   chat: string;
   aiId: string;
   aiName: string;
-  /**
-   * Mounts the section already open (the rooms sheet): it loads at once
-   * and shows neither the Show nor the Hide button.
-   */
   initiallyOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -216,7 +203,6 @@ export function AiMemorySection({
     if (!open) {
       return;
     }
-    // Closing the section or a new chat interrupts the load in flight.
     const load = Effect.tryPromise({
       try: () => api.getMemory(chat, aiId),
       catch: (cause) => cause,
@@ -236,12 +222,9 @@ export function AiMemorySection({
     };
   }, [open, chat, aiId, api, reloadTick]);
 
-  // Guards against a second Forget landing before React re-renders the
-  // disabled button, so one fact can never be forgotten twice.
+  // Guards a second Forget landing before React re-renders the disabled button, so one fact is never forgotten twice.
   const forgettingRef = useRef<string | null>(null);
 
-  // The loading status is set from the event that starts a load (Show, Retry
-  // or a reload), not synchronously inside the effect.
   const startLoad = (): void => {
     setStatus('loading');
     setForgetError('');

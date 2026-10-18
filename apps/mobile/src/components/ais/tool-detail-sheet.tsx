@@ -14,11 +14,6 @@ export {
   TOOL_VERSION_LOAD_FAILED_MESSAGE,
 } from './tool-detail-loader';
 
-/**
- * A full-height sheet with one tool's source, version history and recent
- * runs (read only). Tapping a history row shows that version's source;
- * `toolId` null hides the sheet.
- */
 export function ToolDetailSheet({
   api,
   toolId,

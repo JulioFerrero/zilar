@@ -21,14 +21,12 @@ import { useProfileApi } from '@/components/settings/use-profile-api';
 
 type ProfileStatus = 'loading' | 'ready' | 'error';
 
-// The photo actions share one run at a time (the old shared guard): a tap
-// while one is waiting is dropped.
+// One photo run at a time: a tap while one is waiting is dropped.
 type PhotoJob =
   | { kind: 'pick' }
   | { kind: 'save'; profile: MyProfile; picked: PickedPicture }
   | { kind: 'remove'; profile: MyProfile };
 
-// The session token as an Effect: a failed read fails the profile load.
 const sessionTokenEffect = Effect.tryPromise({
   try: () => getSessionToken(),
   catch: (cause) => cause,
@@ -42,15 +40,6 @@ export default function OwnProfileScreen() {
   );
 }
 
-/**
- * The own profile screen, opened from the Settings profile card and from the
- * `/profile` link (which redirects here). The picture, name, presence, action
- * keys and info card (`ProfileView`), with the same loading and error states as
- * `settings/profile.tsx`. "Set photo" runs the existing avatar picker flow
- * from `avatar-control.tsx` (pick, transcode, upload); "Edit info" opens
- * `/settings/profile`; "Settings" opens `/settings`, which also covers the
- * cold-open case (a notification link lands here with no history to go back to).
- */
 function OwnProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -59,12 +48,9 @@ function OwnProfile() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [token, setToken] = useState<string | undefined>(undefined);
   const [photoError, setPhotoError] = useState('');
-  // Staged pick: Set photo opens the library and stages the preview; only
-  // the explicit Save uploads (the settings/profile.tsx pattern).
+  // Staged pick: only the explicit Save uploads.
   const [staged, setStaged] = useState<PickedPicture | null>(null);
 
-  // A focus reload with the profile on screen refreshes it in place; only a
-  // load with nothing to show takes the loading state or the error view.
   const load = useCallback(() => {
     setStatus((current) => (current === 'ready' ? current : 'loading'));
     Effect.runFork(
@@ -91,8 +77,6 @@ function OwnProfile() {
     }, [load]),
   );
 
-  // The upload reads the session token like the old uploader: the one the
-  // screen loaded, or a fresh read when there is none.
   const uploadEffect = (url: string, picked: PickedPicture): Effect.Effect<unknown, unknown> =>
     (token === undefined ? sessionTokenEffect : Effect.succeed(token)).pipe(
       Effect.flatMap((sessionToken): Effect.Effect<unknown, unknown> =>
@@ -198,7 +182,6 @@ function OwnProfile() {
     runPhoto({ kind: 'remove', profile });
   };
 
-  // Copies "@handle". The clipboard module loads on first use, as before.
   const copyUsername = (current: MyProfile): void => {
     Effect.runFork(
       Effect.tryPromise({ try: () => import('expo-clipboard'), catch: (cause) => cause }).pipe(

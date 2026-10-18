@@ -14,25 +14,14 @@ function rawCall<A>(call: () => Promise<A>) {
 }
 
 export interface ComputerModeControls {
-  /** The AI's computer mode to show. */
   mode: ComputerMode;
-  /** Whether Zilar cloud desks are wired; false until the server says otherwise. */
   cloud: boolean;
-  /** A fixed user-facing sentence, or empty. */
   error: string;
   busy: boolean;
-  /** Adopts the mode of a freshly loaded AI. */
   adopt: (ai: PublicAi) => void;
-  /** Patches the AI's computer mode right away; the choice reverts on failure. */
   change: (mode: ComputerMode) => void;
 }
 
-/**
- * T-1425: the AI's computer mode behind the edit screen's picker. It owns the
- * cloud-availability read and the immediate save-and-revert, so the screen
- * stays thin. The server's fresh AI is the source of truth on success; on
- * failure the previous value comes back with a fixed error sentence.
- */
 export function useComputerMode(api: AisApi, aiId: string | null): ComputerModeControls {
   const [mode, setMode] = useState<ComputerMode>('off');
   const [error, setError] = useState('');

@@ -20,12 +20,6 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { useChatStore } from '@/store/chat-store-provider';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
-/**
- * Settings → Chat folders (T-0255, mirrors the web `FoldersPage`): the list of
- * folders with per-row up/down reordering and a New folder row. Tapping a row
- * opens the editor. The chips on the Chats tab follow the store after every
- * write.
- */
 export default function FoldersSettingsScreen() {
   return (
     <RequireAuth>
@@ -34,7 +28,6 @@ export default function FoldersSettingsScreen() {
   );
 }
 
-/** The lucide component for a folder icon; lowercase so it is not a component. */
 function folderGlyph(icon: FolderIcon, color: string) {
   const Icon = folderIcon(icon);
   return <Icon size={18} color={color} />;

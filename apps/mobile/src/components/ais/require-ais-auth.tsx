@@ -5,9 +5,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { useAisApi } from './use-ais-api';
 
 /**
- * The AI screens need a session against the real API. In mock mode the data is
- * local, so there is nothing to authenticate against and the auth guard would
- * only redirect a screenshot session to the login screen.
+ * The AI screens need a session against the real API; in mock mode the data is local, and the auth guard would only redirect a screenshot session to login.
  */
 export function RequireAisAuth({ children }: { children: ReactNode }) {
   const { mock } = useAisApi();

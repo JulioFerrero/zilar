@@ -21,12 +21,6 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/**
- * Settings → Blocked people (T-0244, mirrors the web `BlockedPage`): who you
- * blocked, with an Unblock per row. Blocking is silent, so the subtitle says
- * so. Unblocking drops the row; a failure shows one fixed sentence and keeps
- * the row so the user can retry.
- */
 export default function BlockedScreen() {
   return (
     <RequireAuth>
@@ -49,8 +43,7 @@ function BlockedList() {
   const people = list.data ?? [];
   const { setData, error, setError, refreshing, refresh } = list;
 
-  // One Unblock: the row drops on success, a failure keeps it and shows the
-  // fixed sentence. The row's own action stops a double tap.
+  // A failure keeps the row and shows the fixed sentence; the row's own action stops a double tap.
   const unblock = (userId: string): Effect.Effect<void> =>
     Effect.sync(() => setError('')).pipe(
       Effect.andThen(

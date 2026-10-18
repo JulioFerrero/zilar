@@ -18,10 +18,7 @@ import { SetupStep } from './setup-step';
 import { useNewAiFlow } from './use-new-ai-flow';
 
 /**
- * T-1445: the New AI sheet (the approved phone boards). One hugging `BottomSheet`
- * holds the Provider → Key → Model → Setup steps, the orb sub-view and the
- * footer. The close key, the grabber and Android back are the only ways out;
- * closing before Create abandons a half-made key check.
+ * The close key, the grabber and Android back are the only ways out; closing before Create abandons a half-made key check.
  */
 export function NewAiSheet({
   visible,

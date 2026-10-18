@@ -20,15 +20,12 @@ import {
 import { interruptFiber } from '@/lib/effect/timers';
 import { ToolsApiError, type AiToolsApi, type Routine, type ToolsApi } from '@/lib/tools-api';
 
-// T-1740: the action logic moved to `use-routine-actions.ts`; re-exported for
-// `settings/routines.tsx`, which maps failures through the same fixed lines.
 export {
   routineActionMessage,
   type RoutineAction,
   type RoutineActionMessage,
 } from '@/components/ais/use-routine-actions';
 
-/** Fixed user-facing line when the routines list fails to load. */
 export const ROUTINES_LOAD_FAILED_MESSAGE = 'Could not load the routines. Try again.';
 
 export const ROUTINES_EMPTY_MESSAGE =
@@ -40,11 +37,7 @@ export type RoutinesSectionState = {
   message: string;
 };
 
-/**
- * Loads one AI's routines. A 404 or an unparseable response reads as an
- * empty list, not an error (web does the same); any other failure fails the
- * Effect with the api's own error.
- */
+/** A 404 or an unparseable response reads as an empty list, not an error (web does the same) */
 export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
   Effect.tryPromise({ try: () => api.listAiRoutines(aiId), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
@@ -54,7 +47,6 @@ export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
     ),
   );
 
-/** Promise form of `loadAiRoutinesEffect`: any other failure throws. */
 export const loadAiRoutines = (api: ToolsApi, aiId: string): Promise<Routine[]> =>
   Effect.runPromise(loadAiRoutinesEffect(api, aiId));
 
@@ -134,10 +126,6 @@ function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineR
   );
 }
 
-/**
- * The ready/loading/error body of the routines list, split out so tests can
- * render each state without mounting the loading effect.
- */
 export function RoutinesSectionContent({
   state,
   onRetry,
@@ -186,11 +174,7 @@ export function RoutinesSectionContent({
 }
 
 /**
- * The Routines section of the AI edit screen (T-0189 list, T-0212 actions):
- * every routine with title, schedule in plain words, next run, last status,
- * the paused reason with its explanation line, and Pause/Resume/Delete.
- * While an action runs every action button is disabled; failures show one
- * fixed line under the list (never server text).
+ * While an action runs every action button is disabled; failures show one fixed line under the list, never server text.
  */
 export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
   const [state, setState] = useState<RoutinesSectionState>({

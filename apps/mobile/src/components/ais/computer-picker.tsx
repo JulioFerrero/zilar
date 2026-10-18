@@ -30,11 +30,6 @@ function ChoiceGlyph({ icon: Icon, selected }: { icon: LucideIcon; selected: boo
   );
 }
 
-/**
- * T-1425: where the AI's computer runs, next to the home-machine picker. A
- * single choice; the screen patches `computerMode` right away and reverts it
- * when the server refuses.
- */
 export function ComputerPicker({
   label,
   value,
@@ -44,15 +39,11 @@ export function ComputerPicker({
   error,
   onChange,
 }: {
-  /** Section heading; omitted when the caller renders its own. */
   label?: string;
   value: ComputerMode;
-  /** Whether Zilar cloud desks are wired; false keeps that option disabled. */
   cloud: boolean;
-  /** Whether the AI has a home machine; without one, My machine and Auto are off. */
   hasMachine: boolean;
   disabled?: boolean;
-  /** A fixed error sentence shown under the options, or empty. */
   error?: string;
   onChange: (mode: ComputerMode) => void;
 }) {

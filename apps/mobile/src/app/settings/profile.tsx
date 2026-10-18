@@ -55,7 +55,6 @@ function ProfileSettings() {
       title="Profile"
       subtitle="Your picture and username, seen by your contacts."
       onBack={() => router.back()}
-      // T-1329: one Save for name, username and bio, like web and Telegram.
       right={
         ready ? (
           <Button

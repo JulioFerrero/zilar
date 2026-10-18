@@ -9,12 +9,6 @@ export interface PushPair {
   readonly actions: PushPairActions;
 }
 
-/**
- * Toggles the XEP-0357 push pair over the user's own session (T-1139), the
- * mobile twin of the web `setPushPair` (`apps/web/src/store/effects/pins.ts`).
- * Fails when the chat connection is missing or cannot send raw IQs, so the
- * caller can roll back.
- */
 export function makePushPair(ctx: StoreCtx): PushPair {
   return {
     actions: {

@@ -5,13 +5,6 @@ import { FloatingTabBar, FLOATING_TABS } from '@/components/nav/floating-tab-bar
 import { unreadCount } from '@/lib/filter';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The three phone tabs (Chats, AIs, Settings). Each `TabTrigger` names the
- * route file inside this group (`index`, `ais`, `settings`); the `href` is the
- * public URL, so `/`, `/ais` and `/settings` stay exactly as today. Sub-screens
- * (`ais/[id]`, `settings/*`, `chat/*`, the own profile at `/me`) live outside
- * the group and open above the bar on the root stack.
- */
 export default function TabsLayout() {
   const chats = useChatStore((state) => state.chats);
 

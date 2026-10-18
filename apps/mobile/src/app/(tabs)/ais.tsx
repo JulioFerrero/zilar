@@ -25,7 +25,6 @@ import { useChatStoreApi } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-// Returns a copy of `keys` with `key` added (on) or removed (off).
 function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
   const next = new Set(keys);
   if (on) {
@@ -36,8 +35,7 @@ function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlyS
   return next;
 }
 
-// The AI api calls keep their own error class: describeAisError and the 409
-// check read AisApiError, so these are not mapped to ApiFailure (fromApi).
+// These keep their own error class: describeAisError and the 409 check read AisApiError.
 const apiCall = <A,>(call: () => Promise<A>) =>
   Effect.tryPromise({ try: call, catch: (cause: unknown) => cause });
 
@@ -61,26 +59,18 @@ function AisList() {
   const [actionAi, setActionAi] = useState<PublicAi | null>(null);
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  // T-1445: the New AI sheet. A partial save is reported by the chat screen it
-  // opens, so the notice is not lost behind the sheet.
+  // A partial save is reported by the chat screen it opens, so the notice is not lost behind the sheet.
   const [newAiOpen, setNewAiOpen] = useState(false);
-  // T-1445: a fresh session on each open, so a closed sheet never reopens on an
-  // old provider's name or key (the sheet stays mounted to animate its close).
+  // A fresh session on each open, so a closed sheet never reopens on an old provider's name or key.
   const [newAiSession, setNewAiSession] = useState(0);
   const openNewAi = (): void => {
     setNewAiSession((session) => session + 1);
     setNewAiOpen(true);
   };
-  // T-0095: the kill switch state. `runError` renders inline in the sheet on
-  // failure (the sheet stays open so the owner can retry), and a 409 also
-  // reloads the list because the AI changed under them. The action runs one
-  // call at a time: a second tap while one waits is dropped.
+  // `runError` renders inline on failure (the sheet stays open to retry); a 409 also reloads the list. One call at a time: a second tap while one waits is dropped.
   const [runError, setRunError] = useState('');
 
-  // The list load. A focus reload, a retry and a 409 reload all come here;
-  // leaving the screen does not cancel it (as before). A reload with the list
-  // on screen refreshes it in place: only a load with nothing to show takes
-  // the loading state or the error view.
+  // A reload with the list on screen refreshes it in place: only a load with nothing to show takes the loading state or the error view.
   const reload = useCallback(() => {
     setStatus((current) => (current === 'ready' ? current : 'loading'));
     Effect.runFork(
@@ -112,14 +102,7 @@ function AisList() {
     setRunError('');
   };
 
-  // T-0095: stop or resume the AI the sheet is open for. The server's answer
-  // is the source of truth, so the list swaps to it on success. On a 409 the
-  // AI is not in a state this action applies to; the sheet closes and the list
-  // is reloaded so the row matches the server. Any other failure keeps the
-  // sheet open so the inline error is visible and the owner can retry.
-  // One call per key at a time (one action per row): a second tap on the same
-  // AI's action is dropped; other AIs are not blocked. The ref is read only in
-  // handlers; the state drives the busy display.
+  // On a 409 the AI is not in a state this action applies to: the sheet closes and the list reloads so the row matches the server. One call per AI at a time; other AIs are not blocked.
   const inFlight = useRef(new Set<string>());
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(() => new Set());
   const runKeyed = (key: string, call: Effect.Effect<void>): void => {
@@ -151,9 +134,6 @@ function AisList() {
       Effect.catch((error: unknown) =>
         Effect.sync(() => {
           if (error instanceof AisApiError && error.status === 409) {
-            // The AI is not in a state this action applies to (still being set
-            // up, or changed elsewhere). Reload so the row says so, and close
-            // the sheet: its Stop / Resume button would otherwise be stale.
             setActionAi((current) => (current?.id === ai.id ? null : current));
             reload();
             return;
@@ -177,10 +157,7 @@ function AisList() {
     router.push({ pathname: '/ais/[id]', params: { id: ai.id } });
   };
 
-  // T-1445: the New AI sheet finished. The AI's chat is not in the roster yet,
-  // so add it before opening it, as web does; the roster refresh reconciles the
-  // row later. A partial save rides a `notice` param into the chat, which shows
-  // one notice and clears it so it never reappears.
+  // The AI's chat is not in the roster yet, so add it before opening it; a partial save rides a `notice` param that the chat shows once.
   const handleCreated = (ai: PublicAi, partialFailure: boolean): void => {
     setNewAiOpen(false);
     const summary: ChatSummary = {
@@ -192,8 +169,7 @@ function AisList() {
       unread: 0,
       muted: false,
       online: false,
-      // T-1474: an empty new AI chat sorts by the AI's creation time, so it
-      // leads the list until a message lands.
+      // An empty new AI chat sorts by the AI's creation time, so it leads the list until a message lands.
       createdAt: new Date(ai.createdAt),
     };
     store.setState((state) => ({
@@ -229,8 +205,6 @@ function AisList() {
     );
   const deleting = confirmAi !== null && busyKeys.has(`delete:${confirmAi.id}`);
 
-  // One confirm per AI at a time: a second confirm on the same AI while its
-  // DELETE is in flight is dropped.
   const confirmDelete = (): void => {
     if (confirmAi === null) {
       return;

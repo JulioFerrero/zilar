@@ -6,12 +6,6 @@ import { TextField } from '@/components/ui/text-field';
 
 import type { KeyCheck } from '@/components/connections/use-key-check';
 
-/**
- * Step 1 (Mobile.dc.html and PhoneCompatible.dc.html): the provider list, with
- * a green dot on a provider that already has a key. OpenAI-compatible is pinned
- * under the list; picking it reveals Base URL (with a green dot once the key
- * checks out) and Name. Shared by the New AI flow and the Add key sheet.
- */
 export function ProviderStep({ keys }: { keys: KeyCheck }) {
   const options: SelectSheetOption[] = keys.providerChoices
     .filter((choice) => choice.id !== 'openai-compatible')

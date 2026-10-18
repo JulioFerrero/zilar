@@ -49,8 +49,7 @@ export default function SettingsScreen() {
   );
 }
 
-// One entry per settings row icon; the type makes a missing entry a compile
-// error. Append one line per new row.
+// The type makes a missing entry a compile error. Append one line per new row.
 const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   profile: UserRound,
   requests: UserPlus,
@@ -72,8 +71,7 @@ function hubIcon(icon: SettingsIconId) {
   return <Icon size={18} color={ICON} />;
 }
 
-// T-1899: the hub keeps the last profile it loaded, so opening Settings shows
-// the card at once instead of a spinner while `GET /me` answers.
+// Keeps the last loaded profile, so opening Settings shows the card at once instead of a spinner.
 let lastProfile: MyProfile | null = null;
 
 function ProfileHeaderCard({
@@ -85,14 +83,8 @@ function ProfileHeaderCard({
 }) {
   const me = useAuthStore((state) => state.me);
   const name = profile?.name ?? me?.name ?? '';
-  // T-1329/T-1334: the ball is seeded by the display name; the picture shows
-  // from the session's cached profile while `GET /me` loads, then from the
-  // profile. The email is the profile's, the same source the own profile
-  // screen shows, so the line is never blank while the session loads.
   const email = profile?.email ?? me?.email ?? '';
   if (name === '') {
-    // T-1899: the placeholder keeps the card's height, so the menu below stays
-    // where it is until the name arrives.
     return (
       <Pressable
         accessibilityRole="button"
@@ -163,9 +155,7 @@ function SettingsHub() {
   const { api } = useProfileApi();
   const { api: contactsApi } = useContactsApi();
   const me = useAuthStore((state) => state.me);
-  // T-1899: the cached profile belongs to the account that loaded it, so a
-  // different account signing in on this phone (after a sign-out or an expired
-  // session) never sees it while `GET /me` is still in flight.
+  // The cached profile belongs to the account that loaded it, so a different account signing in on this phone never sees it while `GET /me` is in flight.
   const [profile, setProfile] = useState<MyProfile | null>(() =>
     lastProfile !== null && lastProfile.id === me?.id ? lastProfile : null,
   );
@@ -177,9 +167,6 @@ function SettingsHub() {
 
   useFocusEffect(
     useCallback(() => {
-      // Leaving the tab interrupts a load still in flight, so a late answer
-      // never lands on a hub that is no longer shown. The card already shows
-      // the last profile or the session's name, so this only refreshes it.
       const load = Effect.runFork(
         fromApi(() => api.getMe()).pipe(
           Effect.tap((me) =>
@@ -188,8 +175,6 @@ function SettingsHub() {
               setProfile(me);
             }),
           ),
-          // The name still comes from the session and the card keeps the last
-          // profile it showed, so a failure changes nothing on screen.
           Effect.catch(() => Effect.void),
         ),
       );
@@ -201,7 +186,6 @@ function SettingsHub() {
 
   useFocusEffect(
     useCallback(() => {
-      // The same source the requests screen counts: incoming plus outgoing.
       const count = Effect.runFork(
         fromApi(() => contactsApi.listContactRequests()).pipe(
           Effect.tap((list) =>
@@ -218,16 +202,10 @@ function SettingsHub() {
     }, [contactsApi]),
   );
 
-  // Signing out flips the session to `guest`; the chat store provider watches
-  // that status and calls `store.stop()`, which ends the XMPP session
-  // (`chat-store-provider.tsx`:124-130 → `coreStopStore` → `closeStore`).
-  // Nothing else has to end it here; the login screen is the last step either way.
   const confirmSignOut = useCallback(() => {
     setSigningOut(true);
     void signOut().finally(() => {
-      // T-1899: the cached profile survives visits to this tab, so it must not
-      // survive a sign-out: the next account to sign in on this phone would
-      // otherwise see the previous one's name and email on first open.
+      // It must not survive a sign-out: the next account would otherwise see the previous one's name and email.
       lastProfile = null;
       setProfile(null);
       router.replace('/login');

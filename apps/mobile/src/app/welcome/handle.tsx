@@ -22,10 +22,7 @@ import {
   type HandleAvailability,
 } from '@/components/settings/profile-logic';
 
-/**
- * Lifts a *-api.ts call into an Effect that fails with the thrown error
- * itself: the handle helpers read its class and code.
- */
+/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the handle helpers read its class and code. */
 function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
@@ -38,7 +35,6 @@ export default function HandleRoute() {
   );
 }
 
-/** The post-sign-up handle step: pick a unique `@username`, or skip. */
 function HandleStep() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
@@ -54,8 +50,7 @@ function HandleStep() {
   const [busy, setBusy] = useState(false);
 
   const trimmed = handle.trim();
-  // The suggestion fills when the profile arrives after mount while the
-  // input is untouched; typing wins forever after.
+  // The suggestion fills when the profile arrives after mount while the input is untouched; typing wins forever after.
   if (!typed && handle === '' && me !== null) {
     const suggestion = suggestHandleFor(me.name, me.email);
     if (suggestion !== '') {
@@ -63,9 +58,7 @@ function HandleStep() {
     }
   }
 
-  // Debounced live availability for the typed handle. The check waits before
-  // it applies the result once; a newer check, an emptied field or an
-  // unmount interrupts it, so a stale answer never replaces the line.
+  // Debounced live availability: a newer check, an emptied field or an unmount interrupts it, so a stale answer never replaces the line.
   const [, checkAvailability, checkControls] = useAction(
     (value: string) =>
       Effect.sleep(300).pipe(

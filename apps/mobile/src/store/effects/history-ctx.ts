@@ -1,7 +1,3 @@
-// The bridge between the mobile store and the core history modules: it maps the
-// mobile state names (`historyLoad`/`'loaded'`) to the core's
-// (`historyState`/`'ready'`) and hands the core the same ports, runtime and
-// bookkeeping objects the rest of the core uses.
 import type {
   HistoryCtx,
   HistoryLoad,
@@ -16,15 +12,9 @@ import type { StoreCtx } from './runtime';
 const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
 const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
 
-/**
- * Builds the core `HistoryCtx` over the mobile store: every read adapts the
- * mobile state to the core's `HistoryState` names, and every patch maps back.
- */
 export function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
   const { get, set, s } = ctx;
 
-  // The core's `HistoryState` over the mobile state: only the load-map name
-  // and its `'ready'`/`'loaded'` value differ.
   const asHistoryState = (state: ChatStoreState): HistoryState => ({
     ...state,
     historyState: Object.fromEntries(
@@ -32,8 +22,6 @@ export function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
     ),
   });
 
-  // A core patch back to the mobile names: `historyState` becomes
-  // `historyLoad`, everything else passes through.
   const asMobilePatch = (patch: HistoryPatch): Partial<ChatStoreState> => {
     if (patch.historyState === undefined) {
       return patch;
@@ -51,8 +39,7 @@ export function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
     set((state) => {
       const previous = asHistoryState(state);
       const patch = typeof update === 'function' ? update(previous) : update;
-      // `clearSupersededMarker` returns the state it was given to skip the
-      // write; keep the store's "same object" convention.
+      // `clearSupersededMarker` returns the state it was given to skip the write; keep the store's "same object" convention.
       if (patch === previous) {
         return state;
       }
@@ -60,10 +47,7 @@ export function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
     });
   };
 
-  // The view of this store the core history modules run on. `rt`, `k`, `fx`,
-  // the ports, `lastRead` and the mutable bookkeeping are the same objects the
-  // rest of the core uses, so a read mark or a cursor written here is visible
-  // everywhere.
+  // `rt`, `k`, `fx`, the ports, `lastRead` and the bookkeeping are the same objects the rest of the core uses, so a read mark or cursor written here is visible everywhere.
   const historyCtx: HistoryCtx = {
     get: () => asHistoryState(get()),
     set: historySet,

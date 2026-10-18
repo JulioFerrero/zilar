@@ -6,10 +6,6 @@ import type { CustomGroupRole } from '../../lib/roles-api';
 import type { ChatStoreState } from '../types';
 import { lift, type StoreCtx } from './runtime';
 
-/**
- * The closure helpers of `makeGroups` the role actions read: the role caches
- * plus the shared loaders and the topic-row store the shared repaint uses.
- */
 export interface GroupRolesHelpers {
   readonly groupRolesById: Map<string, CustomGroupRole[]>;
   readonly topicRolesById: Map<string, { roles: TopicRole[]; approverRole: ApproverRole | null }>;
@@ -19,11 +15,7 @@ export interface GroupRolesHelpers {
   actionStore(): GroupActionStore;
 }
 
-/**
- * The custom group-role and topic-role actions of the phone store (T-1684),
- * located here because `group-actions.ts` is at its file-size limit. Permissions
- * are enforced by the server; these actions never decide them.
- */
+/** Permissions are enforced by the server; these actions never decide them. */
 export type GroupRolesActions = Pick<
   ChatStoreState,
   | 'groupRoles'
@@ -54,8 +46,7 @@ export function makeGroupRolesActions(
 
   return {
     groupRoles: (groupId) => {
-      // Reading the revision subscribes the selector to roles loads, like
-      // `groupDetail`.
+      // Reading the revision subscribes the selector to role loads, like `groupDetail`.
       void get().groupDetailsRevision;
       return groupRolesById.get(groupId);
     },
@@ -118,14 +109,11 @@ export function makeGroupRolesActions(
           actionStore(),
           chatId,
           (topicId) => topics.setTopicRoles(topicId, input as SetTopicRolesInput),
-          // The refreshed row carries the server truth: going public cleared
-          // the roles there, so no stale roles stay in the store.
+          // The refreshed row is server truth: a public flip cleared the roles there.
           (topic) => h.rememberTopicRoles(topic),
         ),
       ),
     topicRoles: (chatId) => {
-      // Reading the revision subscribes the selector to topic-roles loads,
-      // like `groupDetail`.
       void get().groupDetailsRevision;
       const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
       if (topicId === undefined) {

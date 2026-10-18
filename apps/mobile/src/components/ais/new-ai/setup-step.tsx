@@ -16,11 +16,6 @@ const COMPUTER_OPTIONS: SegmentedOption[] = [
   { value: 'auto', label: 'Auto', icon: Sparkles },
 ];
 
-/**
- * Step 4 (PhoneSetup.dc.html): where the AI's computer runs and the spending
- * caps. Zilar is inert until the server says cloud desks are wired; Machine and
- * Auto reveal the machine picker.
- */
 export function SetupStep({ flow }: { flow: NewAiFlow }) {
   const machineOptions = flow.machines.map((machine) => ({
     value: machine.id,

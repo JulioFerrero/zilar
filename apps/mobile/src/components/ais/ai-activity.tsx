@@ -12,7 +12,6 @@ import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { ICON } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
 
-/** Fixed user-facing line when the first activity page fails to load. */
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';
 
 /** Fixed user-facing line when a later page fails; the rows stay visible. */
@@ -28,14 +27,9 @@ export type AiActivityState = {
   loadingMore: boolean;
 };
 
-/**
- * What the activity list is about: one AI or one group. The audit endpoint
- * takes exactly one of `aiId` / `groupId` (contract `audit.ts`), so the list
- * and its paging read the same shape for both scopes (web's `AuditScope`).
- */
+/** Exactly one of `aiId` / `groupId` is set: the audit endpoint takes one scope. */
 export type AuditScope = { aiId: string } | { groupId: string };
 
-/** Reads one page of the scope's activity, whichever scope it is. */
 function listScopeActivity(
   api: AuditApi,
   scope: AuditScope,
@@ -46,26 +40,18 @@ function listScopeActivity(
     : api.listGroupAudit(scope.groupId, before);
 }
 
-/**
- * Loads the first activity page for one scope. Any failure is the api's own
- * error, passed through unchanged, so a caller sees the same class.
- */
 export const loadActivityEffect = (api: AuditApi, scope: AuditScope) =>
   Effect.tryPromise({ try: () => listScopeActivity(api, scope), catch: (cause) => cause }).pipe(
     Effect.map((page) => ({ entries: page.entries, next: page.next })),
   );
 
-/** Promise form of `loadActivityEffect`: any failure throws. */
 export const loadActivity = (
   api: AuditApi,
   scope: AuditScope,
 ): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
   Effect.runPromise(loadActivityEffect(api, scope));
 
-/**
- * Appends the next activity page, de-duplicated by id (the server cursor is
- * inclusive on retries). Any failure fails the Effect; the caller keeps the rows.
- */
+/** The server cursor is inclusive on retries, so rows are de-duplicated by id. */
 export const appendActivityEffect = (
   api: AuditApi,
   scope: AuditScope,
@@ -89,7 +75,6 @@ export const appendActivityEffect = (
     }),
   );
 
-/** Promise form of `appendActivityEffect`: any failure throws. */
 export const appendActivity = (
   api: AuditApi,
   scope: AuditScope,
@@ -120,10 +105,6 @@ function ActivitySkeleton() {
   );
 }
 
-/**
- * The ready/loading/error body of the activity list, split out so tests can
- * render each state without mounting the loading effect.
- */
 export function AiActivityContent({
   state,
   now = new Date(),
@@ -177,10 +158,6 @@ export function AiActivityContent({
   );
 }
 
-/**
- * The section heading with the refresh button, shown once the list loaded.
- * Split out so tests can render it without mounting the loading effect.
- */
 export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefresh: () => void }) {
   return (
     <View className="flex-row items-center justify-between">
@@ -199,27 +176,15 @@ export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefre
     </View>
   );
 }
-/**
- * `AiActivity` reads one scope (T-0213, T-1573): the AI edit screen passes
- * `aiId`, the Group info Activity page passes `groupId`. Exactly one of them
- * is set. `showHeader` lets the group page use the page's own title instead of
- * the section's small heading (the board's "no headings" rule); the AI screen
- * keeps the default.
- */
+/** Exactly one of `aiId` / `groupId` is set; `showHeader` lets the group page use the page's own title instead of the section heading. */
 type AiActivityProps = { api: AuditApi; showHeader?: boolean } & (
   { aiId: string; groupId?: never } | { groupId: string; aiId?: never }
 );
 
-/** The one scope the props hold; both never-set is impossible by construction. */
 function scopeOf(aiId: string | undefined, groupId: string | undefined): AuditScope {
   return aiId !== undefined ? { aiId } : { groupId: groupId ?? '' };
 }
 
-/**
- * The Activity section of the AI edit screen (T-0213, read only): what the AI
- * did, with web's descriptions and relative times, Refresh, and Load more.
- * T-1573 lets it read a group's activity too, for the Group info page.
- */
 export function AiActivity(props: AiActivityProps) {
   const { api, showHeader = true } = props;
   const { aiId, groupId } = props;
@@ -231,13 +196,11 @@ export function AiActivity(props: AiActivityProps) {
     loadingMore: false,
   });
   const [reloadTick, setReloadTick] = useState(0);
-  // Guarded synchronously so a double tap landing before React re-renders
-  // the disabled button can never fire two page loads.
+  // Guarded synchronously so a double tap landing before React re-renders the disabled button cannot fire two page loads.
   const loadingMoreRef = useRef(false);
 
   useEffect(() => {
-    // Unmount, a new scope or a reload interrupts the load, so a late answer
-    // never lands.
+    // Unmount, a new scope or a reload interrupts the load, so a late answer never lands.
     const load = loadActivityEffect(api, scopeOf(aiId, groupId)).pipe(
       Effect.matchEffect({
         onFailure: () =>

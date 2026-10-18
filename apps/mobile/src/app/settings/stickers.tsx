@@ -35,14 +35,6 @@ const LOAD_ERROR = 'Could not load your stickers.';
 const VISIBILITY_ERROR = 'Could not change who can find this pack. Try again.';
 const DELETE_ERROR = 'Could not delete the pack. Try again.';
 
-/**
- * Settings → Stickers (T-0187, the mobile twin of web's `StickersPage`):
- * the panel packs in a lean list that opens the pack sheet, the shared
- * Discover packs with search and Add, and the starred Favorites grid.
- * The pack editor lives at `/settings/sticker-pack` (T-0191), the Telegram
- * importer in `TelegramImportSheet` (T-0207) and the New pack key in the
- * header (T-1533).
- */
 export default function StickersScreen() {
   return (
     <RequireStickersAuth>

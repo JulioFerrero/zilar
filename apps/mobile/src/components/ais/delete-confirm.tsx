@@ -1,9 +1,7 @@
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /**
- * The two-step delete confirmation. A centered `Modal` dialog, not
- * `Alert.alert`: the app has no `Alert` anywhere, and its other confirmations
- * (`NewChatButton`, message actions) are Modals too.
+ * A `Modal`, not `Alert.alert`: the app has no `Alert` anywhere, and its other confirmations are Modals too.
  */
 export function DeleteConfirmDialog({
   aiName,

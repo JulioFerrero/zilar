@@ -26,13 +26,11 @@ type PageStatus = 'loading' | 'ready' | 'error';
 const LOAD_ERROR = 'Could not load your devices. Try again.';
 const SIGN_OUT_ERROR = 'Could not sign out. Try again.';
 
-/** The two calls the screen needs, whatever the mode behind them (T-1250). */
 interface DevicesApi {
   list(): Promise<AuthSessions>;
   revoke(id: string): Promise<void>;
 }
 
-/** The production calls: bearer auth, `fetch`, and the build-time API URL. */
 function createRealDevicesApi(): DevicesApi {
   return {
     list: async () => listSessions(API_URL, await bearerToken()),
@@ -50,9 +48,7 @@ async function bearerToken(): Promise<string> {
   return token;
 }
 
-/** Builds the mock-mode calls on the shared mock backend, behind a literal
- * build-time condition: Metro folds it to `false` in a release build, so the
- * mock module stays out of the bundle (the recipe of `use-profile-api`). */
+/** Built on the shared mock backend behind a literal build-time condition: Metro folds it to `false` in a release build, so the mock module stays out of the bundle. */
 function createMockDevicesApi(): DevicesApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -69,11 +65,9 @@ function createMockDevicesApi(): DevicesApi {
 
 interface DevicesApiHandle {
   api: DevicesApi;
-  /** True when the mock is active (used to label the screen). */
   mock: boolean;
 }
 
-/** Picks the real API or the mock one from the route's `?mock=` param or the env. */
 function useDevicesApi(): DevicesApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
@@ -85,9 +79,7 @@ function useDevicesApi(): DevicesApiHandle {
 type Confirm = { kind: 'one'; session: AuthSession } | { kind: 'all' } | null;
 
 /**
- * Settings → Devices (T-1250, mirrors the web `DevicesPage`): every signed-in
- * session, this app first with a "This device" label, and a Sign out per other
- * one behind an in-screen confirm. No IP address and no token are shown.
+ * Every signed-in session, this app first, with a Sign out per other one behind an in-screen confirm. No IP address and no token are shown.
  */
 export default function DevicesScreen() {
   return (
@@ -108,9 +100,7 @@ function DevicesList() {
   const [signingOut, setSigningOut] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // The load callback keeps its identity between focuses, so it reads the
-  // status from a ref: a refresh with the devices on screen keeps them and
-  // only a screen with nothing to show yet gets the spinner (T-1906).
+  // The load callback keeps its identity between focuses, so it reads the status from a ref: a refresh with devices on screen keeps them, and only an empty screen gets the spinner.
   const statusRef = useRef<PageStatus>('loading');
   useEffect(() => {
     statusRef.current = status;
@@ -132,7 +122,6 @@ function DevicesList() {
         Effect.catch(() =>
           Effect.sync(() => {
             setRefreshing(false);
-            // A failed background refresh keeps the devices; the next focus retries.
             if (keepContent) {
               return;
             }
@@ -152,8 +141,7 @@ function DevicesList() {
   const current = sessions.find((session) => session.current);
   const others = sessions.filter((session) => !session.current);
 
-  // One other device: drop the row on success, a failure keeps it and shows the
-  // fixed sentence. The confirm closes either way.
+  // Drop the row on success; a failure keeps it and shows the fixed sentence. The confirm closes either way.
   const signOutOne = async (session: AuthSession): Promise<void> => {
     setSigningOut(true);
     setError('');
@@ -168,8 +156,6 @@ function DevicesList() {
     }
   };
 
-  // "Sign out all other devices": one call per row, then reload the list so the
-  // rows that did sign out drop and a partial failure keeps the rest.
   const signOutAll = async (ids: string[]): Promise<void> => {
     setSigningOut(true);
     setError('');
@@ -314,7 +300,6 @@ function DevicesList() {
   );
 }
 
-/** The device line every row shows, from the shared parser and date helpers. */
 function DeviceSummary({ session }: { session: AuthSession }) {
   const now = new Date();
   return (
@@ -329,7 +314,6 @@ function DeviceSummary({ session }: { session: AuthSession }) {
   );
 }
 
-/** This app's own session: labelled, with no Sign out. */
 function CurrentDeviceRow({ session }: { session: AuthSession }) {
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
@@ -341,7 +325,6 @@ function CurrentDeviceRow({ session }: { session: AuthSession }) {
   );
 }
 
-/** One other device with its own Sign out, behind the screen's confirm. */
 function OtherDeviceRow({ session, onAsk }: { session: AuthSession; onAsk: () => void }) {
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">

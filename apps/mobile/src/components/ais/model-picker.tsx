@@ -11,11 +11,6 @@ import { OptionRow } from './option-row';
 import { formatContextTokens, formatModelPrices, modelSuggestionsFor } from './models';
 import { providerLabel } from './providers';
 
-/**
- * The wizard's model picker (T-1395): the chosen provider's models.dev catalog,
- * searchable, with context size and prices. The free-text field is always
- * editable, and an empty catalog falls back to the static suggestions.
- */
 export function ModelPicker({
   provider,
   value,
@@ -25,7 +20,6 @@ export function ModelPicker({
   provider: string;
   value: string;
   onChange: (model: string) => void;
-  /** The chosen provider's catalog models; empty uses the static suggestions. */
   models?: readonly AiCatalogModel[];
 }) {
   const [query, setQuery] = useState('');

@@ -14,12 +14,10 @@ export interface UserStateDeps {
   readonly ownedAis: { id: string; name: string }[] | undefined;
   readonly ledger: MessageLedger;
   readonly events: Events;
-  /** Drops the session's pins on teardown (T-1916). */
   readonly clearPins?: () => void;
 }
 
 export interface UserState {
-  /** The user scoped fields and their values before any user signed in. */
   initialUserState(): Pick<
     ChatStoreState,
     | 'currentUserId'
@@ -43,15 +41,10 @@ export interface UserState {
     | 'pinsError'
     | 'ownedAis'
   >;
-  /** What `stop()` clears besides the scopes: timers, caches, per-session maps. */
   teardown(): void;
 }
 
-/**
- * The state that belongs to one signed-in user. The store starts from
- * `initialUserState` and `stop()` returns to it, so the next user never sees
- * the previous user's chats, contacts or messages.
- */
+/** `stop()` returns to this state, so the next user never sees the previous user's chats, contacts or messages. */
 export function makeUserState(deps: UserStateDeps): UserState {
   const { locals, s, set, ownedAis, ledger, events, clearPins } = deps;
 
@@ -78,8 +71,6 @@ export function makeUserState(deps: UserStateDeps): UserState {
     ownedAis: ownedAis ?? [],
   });
 
-  // What `stop()` clears besides the scopes: timers, caches, per-session maps,
-  // and every user scoped field of the state.
   function teardown(): void {
     events.clearTimers();
     locals.pinsPollEnabled = false;

@@ -53,11 +53,7 @@ export type ToolDetailBodyActions = {
   onConfirmDelete: () => void;
 };
 
-/**
- * The ready/loading/error body of the tool detail sheet, split out so
- * tests can render each state without mounting the loading effect. Read
- * only: source, version history and recent runs, no Run now or Revert.
- */
+/** Read only: source, version history and recent runs, no Run now or Revert. */
 export function ToolDetailBody({
   state,
   actions,

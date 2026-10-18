@@ -3,11 +3,7 @@ import type { AiMemoryApi } from '@/lib/ai-memory-api';
 
 import { AiMemorySection } from './ai-memory-section';
 
-/**
- * T-0451: "What <AI> remembers" for a room. Opened from an AI row in the
- * topic info sheet; the section mounts already open for that room's JID,
- * and Forget and Clear follow the server's `canChange`.
- */
+/** Forget and Clear follow the server's `canChange`. */
 export function AiMemorySheet({
   api,
   chat,

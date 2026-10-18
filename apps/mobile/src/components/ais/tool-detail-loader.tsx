@@ -29,16 +29,12 @@ import {
   runErrorMessage,
 } from './tool-actions';
 
-/** Fixed user-facing line when the tool fails to load. */
 export const TOOL_DETAIL_LOAD_FAILED_MESSAGE = 'Could not load the tool.';
 
-/** Fixed user-facing line when one version's source fails to load. */
 export const TOOL_VERSION_LOAD_FAILED_MESSAGE = 'Could not load that version.';
 
 /**
- * The vertical sheet ScrollView keeps Run taps while the run-input keyboard
- * is open (T-0230): a tap on Run runs at once instead of only dismissing
- * the keyboard. Pure so tests can cover it without mounting the sheet.
+ * The vertical sheet ScrollView keeps Run taps while the run-input keyboard is open: a tap on Run runs at once instead of only dismissing the keyboard.
  */
 export const SHEET_SCROLL_TAPS_PERSIST = 'handled' as const;
 
@@ -48,21 +44,14 @@ type LoadedDetail = {
   runs: ToolRun[];
 };
 
-/**
- * A revert, run or delete that failed. `source` is the original error, which
- * changeErrorMessage and runErrorMessage read (a status and an instance check).
- */
+/** `source` is the original error, which `changeErrorMessage` and `runErrorMessage` read (a status and an instance check). */
 class ToolCallFailed extends Data.TaggedError('ToolCallFailed')<{ readonly source: unknown }> {}
 
-/** One tool call as an Effect; a rejection becomes a ToolCallFailed with the same error. */
 function toolCall<A>(call: () => Promise<A>): Effect.Effect<A, ToolCallFailed> {
   return Effect.tryPromise({ try: call, catch: (source) => new ToolCallFailed({ source }) });
 }
 
-/**
- * The message of a failed call, or '' when there is none. A call that runs
- * again shows no old error: the state keeps the last failure while it waits.
- */
+/** A call that runs again shows no old error: the state keeps the last failure while it waits. */
 function failureText<A, E>(state: ActionState<A, E>, text: (failure: E) => string): string {
   if (isWaiting(state)) return '';
   const failure = failureOf(state);
@@ -92,7 +81,6 @@ export function ToolDetailLoader({
   const [expandedResult, setExpandedResult] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const actionRef = useRef(false);
-  // Frees the one-action-at-a-time guard when a revert, run or delete ends.
   const releaseAction = (): Effect.Effect<void> =>
     Effect.sync(() => {
       actionRef.current = false;
@@ -104,8 +92,7 @@ export function ToolDetailLoader({
     );
   };
 
-  // The three reads run together. A retry or a revert calls reloadDetail;
-  // the rows stay on screen while that reload runs.
+  // A retry or a revert calls reloadDetail; the rows stay on screen while that reload runs.
   const [loadState, reloadDetail] = useQuery(
     () =>
       Effect.all(
@@ -138,8 +125,7 @@ export function ToolDetailLoader({
     ),
   );
 
-  // One action at a time: a revert, run or delete in flight blocks the
-  // others, like `runningRef` in `use-routine-actions.ts`.
+  // One action at a time: a revert, run or delete in flight blocks the others.
   const [revertState, startRevert, revertControls] = useAction((version: number) =>
     toolCall(() => api.revertTool(toolId, version)).pipe(
       Effect.tap(() =>
@@ -158,8 +144,7 @@ export function ToolDetailLoader({
       input === undefined ? api.runToolNow(toolId) : api.runToolNow(toolId, input),
     ).pipe(
       Effect.tap((result) => Effect.sync(() => setRunResult(result))),
-      // The run itself succeeded: a failed history refresh must not turn it
-      // into an error, the old list simply stays.
+      // The run itself succeeded: a failed history refresh must not turn it into an error; the old list simply stays.
       Effect.tap(() =>
         fromApi(() => api.listToolRuns(toolId)).pipe(
           Effect.tap((runs) => Effect.sync(() => setRunsOnly(runs))),
@@ -170,8 +155,7 @@ export function ToolDetailLoader({
     ),
   );
 
-  // Uninterruptible: closing the sheet mid-delete unmounts it, and the list
-  // must still drop the tool once the delete has gone through.
+  // Uninterruptible: closing the sheet mid-delete unmounts it, and the list must still drop the tool once the delete has gone through.
   const [deleteState, startDelete, deleteControls] = useAction((id: string) =>
     Effect.uninterruptible(
       toolCall(() => api.deleteTool(id)).pipe(

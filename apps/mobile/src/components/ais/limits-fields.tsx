@@ -41,7 +41,6 @@ function AmountField({
   );
 }
 
-/** Wizard step 5: the optional USD daily and monthly caps, with the server's rules. */
 export function LimitsFields({
   day,
   month,

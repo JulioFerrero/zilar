@@ -22,12 +22,6 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
 
-/**
- * Settings → Machines (T-1526, the phone twin of web's `MachinesPage` T-1518):
- * the pending machines as amber cards with Deny / Approve, the other machines
- * as one rounded list whose rows open a sheet with Rename and Revoke, and a
- * Revoked row that toggles the old machines under the card. No status words.
- */
 export default function MachinesScreen() {
   return (
     <RequireAuth>
@@ -74,8 +68,6 @@ function MachinesList() {
     toggleRevoked,
   } = useMachinesList();
 
-  // The owner's AIs, loaded once for the row pictures and the sheet's names.
-  // A failed read groups nothing, so the list simply shows no pictures.
   const [aiResult] = useQuery(() => Effect.promise(() => aisApi.listAis()), [aisApi]);
   const ais = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
   const aisByMachine = useMemo(() => groupAisByMachine(ais), [ais]);

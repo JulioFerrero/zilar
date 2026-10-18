@@ -37,12 +37,7 @@ const ADD_ERROR = 'Could not add the pack. Try again.';
 const REMOVE_ERROR = 'Could not remove the pack. Try again.';
 
 /**
- * The pack link page (T-1524): `/stickers/<packId>`, the mobile twin of web's
- * `StickerPackPage`. Anyone signed in who has the link may open and add the
- * pack, so an unknown or someone else's imported pack answers the same
- * "not available". It follows `PhonePack.dc.html`: a Back key and Share in the
- * top row, the title, the count and owner with a globe when shared, the
- * copyable link and the sticker grid, then the Add/Remove key at the bottom.
+ * Anyone signed in who has the link may open and add the pack, so an unknown pack and someone else's imported pack answer the same "not available".
  */
 export default function StickerPackLinkScreen() {
   return (
@@ -65,8 +60,7 @@ function StickerPackLinkBody() {
     () => fromApi(() => api.getStickerPack(packId)),
     [api, packId],
   );
-  // The in-panel state the Add/Remove key switches locally before the refetch.
-  // It records the pack it applies to, so a link to another pack ignores it.
+  // The in-panel state the Add/Remove key switches locally before the refetch; it records the pack it applies to, so a link to another pack ignores it.
   const [panelOverride, setPanelOverride] = useState<
     { packId: string; inPanel: boolean } | undefined
   >(undefined);
@@ -120,7 +114,6 @@ function StickerPackLinkBody() {
     }).pipe(Effect.ignore),
   );
 
-  // The clipboard module loads on first use, as elsewhere (`me.tsx`).
   const copyLink = (): void => {
     Effect.runFork(
       Effect.tryPromise({

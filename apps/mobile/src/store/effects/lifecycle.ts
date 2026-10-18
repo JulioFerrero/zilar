@@ -1,8 +1,3 @@
-// The mobile bindings of the store lifecycle. `start`, `stop`, the chat list
-// retry and the resume now live in `@zilar/client-core/store` (T-0918); this
-// file builds the `LifecycleCtx` the core functions run on, maps the mobile
-// `historyLoad`/`'loaded'` names to the core's `historyState`/`'ready'`, and
-// keeps the mobile-only app hooks (the AppState resume, the mobile caches).
 import type { XmppCore } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import {
@@ -37,29 +32,19 @@ import type { StoreCtx } from './runtime';
 export interface Lifecycle {
   start(): void;
   stop(): void;
-  /** `reloadChats` while no core exists: ends the session and boots again. */
   restartBoot(): void;
-  /** The AI's final message arrived: remember its turn, stop the chat's timer. */
   finishDraftTurn(chatId: string, turnId: string): void;
 }
 
 const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
 const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
 
-// How long the app may sit in `background` before the session suspends (F1):
-// brief switches away keep the socket, longer ones let ejabberd push.
+// Background longer than 10 s suspends the session so ejabberd pushes; brief switches keep the socket.
 export const BACKGROUND_SUSPEND_GRACE_MS = 10_000;
 
-/**
- * Runs the mobile store on the core lifecycle. The core owns the store and
- * session scopes (`life.lifetime`) and the connect retry; the adapter supplies
- * the mobile state, the app hooks and the resume listener (AppState focus).
- */
 export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   const { get, set, s, life, h, coreCtx, offline } = ctx;
 
-  // The core's `HistoryState` over the mobile state: only the load-map name
-  // and its `'ready'`/`'loaded'` value differ (as `effects/history.ts`).
   const asHistoryState = (state: ChatStoreState): HistoryState => ({
     ...state,
     historyState: Object.fromEntries(
@@ -80,19 +65,11 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     };
   };
 
-  // The core's own handle on the XMPP core, separate from `s.core`. `s.core`
-  // keeps the last handle for the history previews and the adoption path
-  // (`effects/history.ts`), but a closed attempt clears this one, so a resume
-  // after a failed connect boots a fresh core instead of reconnecting one whose
-  // listeners are gone (PREREVIEW finding 1).
+  // Separate from `s.core`: a closed attempt clears this one, so a resume after a failed connect boots a fresh core.
   let lifecycleCore: XmppCore | undefined;
 
-  // Late-bound: the app hooks below call back into the context that holds them.
   let lifecycleCtx!: LifecycleCtx;
 
-  // Saves the painted list for the next cold start (PERF-12); only a fully
-  // loaded list is worth keeping. Called after a connect (by the core) and when
-  // the app leaves the foreground, like web's `pagehide`.
   const saveChatListNow = (): void => {
     const state = get();
     if (state.chatsLoad === 'loaded') {
@@ -100,11 +77,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     }
   };
 
-  // T-1313: load the cached messages of the recent chats before the boot, so a
-  // cold start (online or offline) opens an open chat at once. The chat list
-  // stays the existing chat-list cache's job (PERF-12). The owner id is the
-  // signed-in user's; a file left by another user is ignored here and the next
-  // save (after the boot) replaces it.
+  // Loads cached messages before the boot so an open chat paints at once; a file left by another user is ignored, and the next save replaces it.
   const hydrateOfflineCache = async (): Promise<void> => {
     const userId = await offline.sessionUserId();
     if (userId === undefined || userId === '') {
@@ -122,8 +95,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       }
     }
     set({ currentUserId: userId, messagesByChat });
-    // T-1914: the cached pins paint the open chat's banner before the pins
-    // answer, so the thread does not drop; the normal load replaces them.
+    // The cached pins paint the banner before the pins answer, so the thread does not drop.
     get().seedCachedPins(cached.pins ?? {});
   };
 
@@ -148,9 +120,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     prepareStart: () => {
       if (get().chats.length === 0) {
         set({ chatsLoad: 'loading' });
-        // PERF-12: paint the saved list before `/api/chats` answers. The read
-        // is async (a file), so this lands as a first paint and the boot
-        // replaces it with fresh data right after.
+        // Paint the saved list before `/api/chats` answers; the boot replaces it right after.
         const paintChatList = readChatListCache().then((cached) => {
           if (cached === null || get().chats.length > 0) {
             return;
@@ -158,19 +128,13 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
           lifecycleCtx.cachedUserId = cached.userId;
           set({ chats: cached.chats, chatsLoad: 'loaded' });
         });
-        // T-1915: the splash stays up until both reads have landed (or their
-        // cap), so the first frame after it is content, not a skeleton.
+        // The splash stays up until both reads land, so the first frame is content, not a skeleton.
         void Promise.allSettled([paintChatList, hydrateOfflineCache()]).then(() => {
           markCachePainted();
         });
       } else {
-        // A non-cold start already has the painted state in memory.
         markCachePainted();
       }
-      // F1: `background` starts a 10 s grace that suspends the session, so
-      // ejabberd pushes while the app is away; `active` cancels the grace
-      // and the existing resume below wakes the session. `inactive` (an iOS
-      // transition) does nothing: `onBackground` never fires for it.
       let suspendTimer: ReturnType<typeof setTimeout> | undefined;
       const clearSuspendTimer = (): void => {
         if (suspendTimer !== undefined) {
@@ -184,9 +148,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       });
       const unsubscribeBackground = ctx.ports.onBackground(() => {
         clearSuspendTimer();
-        // The app is leaving the foreground: save the list now (web's
-        // `pagehide`), so the next cold start paints the latest. The offline
-        // cache flushes its debounced write at the same point (T-1313).
+        // Leaving the foreground (web's `pagehide`): save the list now so the next cold start paints the latest.
         saveChatListNow();
         offline.cache.flush();
         suspendTimer = setTimeout(() => {
@@ -232,8 +194,6 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     saveChatList: saveChatListNow,
     refreshDefaultBackground: () => {},
     loadFolders: () => {
-      // The folders load beside the chat list, as they did before the move to
-      // the core lifecycle; a failure keeps the last list.
       ctx.forkSession(ctx.fx.loadFolders);
     },
     setMediaTrustedHosts: (hosts) => {
@@ -251,8 +211,6 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       set((state) => {
         const previous = asHistoryState(state);
         const patch = typeof update === 'function' ? update(previous) : update;
-        // `clearSupersededMarker` returns the state it was given to skip the
-        // write; keep the store's "same object" convention.
         if (patch === previous) {
           return state;
         }
@@ -263,11 +221,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     rt: life.lifetime,
     k: coreCtx.k,
     fx: appHooks,
-    // Shares the text outbox (F4) with the send context: `sendCtx` and the
-    // lifecycle flush/ack listeners write the same map. Set here rather than
-    // constructed here: the send binding creates it with the store, and
-    // `reset()` clears it on sign-out, so one user's queue never goes out
-    // as another user.
+    // Shares the text outbox with `sendCtx`; `reset()` clears it on sign-out, so one user's queue never goes out as another user's.
     get outbox() {
       return coreCtx.outbox;
     },
@@ -278,9 +232,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       return lifecycleCore;
     },
     set core(value) {
-      // The core sees every assignment, including the `undefined` a closed
-      // attempt writes. `s.core` keeps the last handle (its adoption path and
-      // history previews use it best-effort); `teardown()` clears it on sign-out.
+      // The core sees every assignment, including the `undefined` a closed attempt writes; `teardown()` clears it on sign-out.
       lifecycleCore = value;
       if (value !== undefined) {
         s.core = value;
@@ -336,8 +288,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       reset(lifecycleCtx);
       // Sign-out forgets the cached list so the next user never paints this one.
       clearChatListCache();
-      // And the offline cache, so the next user starts clean (T-1313). The
-      // removal runs after any in-flight write; no late write recreates it.
+      // And the offline cache, so the next user starts clean; no late write recreates it.
       void offline.cache.clear();
     },
     restartBoot: () => {

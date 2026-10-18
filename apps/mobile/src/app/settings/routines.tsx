@@ -22,13 +22,10 @@ import { interruptFiber } from '@/lib/effect/timers';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { ToolsApiError, type AiToolsApi, type MyRoutine } from '@/lib/tools-api';
 
-/** The list failed to load: a fixed sentence, never server text. */
+/** A fixed sentence, never server text. */
 const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';
 
-/**
- * Loads every routine the viewer owns. A 404 or an unparseable response reads
- * as an empty list, not an error, like the per-AI routines section.
- */
+/** A 404 or an unparseable response reads as an empty list, not an error, like the per-AI routines section. */
 function loadMyRoutinesEffect(api: AiToolsApi): Effect.Effect<MyRoutine[], unknown> {
   return Effect.tryPromise({ try: () => api.listMyRoutines(), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
@@ -41,13 +38,6 @@ function loadMyRoutinesEffect(api: AiToolsApi): Effect.Effect<MyRoutine[], unkno
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
-/**
- * Settings → Routines (T-1720, the phone twin of web's `RoutinesPage`): every
- * routine of every AI the viewer owns, in Running and Paused groups. Each row
- * carries the AI's ball, its title with a status dot, the schedule · AI line,
- * an Ask key that opens the chat and a Pause or Resume key; tapping a row
- * reveals its Delete key behind a confirm.
- */
 export default function RoutinesScreen() {
   return (
     <RequireAuth>
@@ -68,7 +58,6 @@ function RoutinesBody() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Unmount or a new load interrupts the fiber, so a late answer never lands.
     const fiber = Effect.runFork(
       loadMyRoutinesEffect(api).pipe(
         Effect.matchEffect({
@@ -237,7 +226,6 @@ function RoutinesBody() {
   );
 }
 
-/** One labelled group of routines, keeping the server's order. */
 function RoutineGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View accessibilityLabel={label} className="gap-2">

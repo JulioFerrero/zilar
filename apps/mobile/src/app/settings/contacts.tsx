@@ -25,13 +25,6 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/**
- * Settings → Contacts (T-1237, T-1314 Telegram-style): the people you can chat
- * with. Each row shows the name plus the presence the chat header uses, a tap
- * opens the DM, and a "⋯" menu offers View profile and Remove contact (with the
- * inline confirm). The Share button sends the same `/@handle` link the web
- * shares.
- */
 export default function ContactsScreen() {
   return (
     <RequireAuth>
@@ -61,8 +54,6 @@ function ContactsList() {
   const [handle, setHandle] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
-  // The share link needs the caller's handle, which the session does not carry
-  // (`Me` has no handle); the profile lookup failing only hides the button.
   useFocusEffect(
     useCallback(() => {
       const load = Effect.runFork(
@@ -77,9 +68,7 @@ function ContactsList() {
     }, [profileApi]),
   );
 
-  // The profile's Message button uses the same helper (T-1288): a contact's row
-  // carries the peer's real JID, so the DM resolves without guessing. The chat
-  // screen's skeleton covers the wait when the list has not caught up yet.
+  // A contact's row carries the peer's real JID, so the DM resolves without guessing.
   const openChat = (person: Contact): void => {
     setActionError('');
     const domain = domainOfJid(meJid);
@@ -103,7 +92,6 @@ function ContactsList() {
       setData((rows) => rows?.filter((row) => row.userId !== userId));
     });
 
-  // `Share.share` sends the same `https://<host>/@handle` link the web page does.
   const [, share] = useAction(
     (url: string) =>
       Effect.tryPromise({ try: () => Share.share({ message: url }), catch: (cause) => cause }).pipe(

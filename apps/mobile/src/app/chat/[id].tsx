@@ -75,10 +75,7 @@ function Chat() {
     openGroup,
   } = screen;
 
-  // T-1798: a public topic the caller has not joined shows its recent messages
-  // read-only with one Join key instead of the thread and the composer. An
-  // unknown caller id or member list keeps the normal thread (never a wrong
-  // Join key).
+  // A public topic the caller has not joined shows its recent messages read-only with one Join key; an unknown caller id or member list keeps the normal thread.
   const joinPreview =
     chat.topic !== undefined &&
     chat.topic.visibility === 'public' &&
@@ -111,11 +108,6 @@ function Chat() {
     />
   );
 
-  // T-0144: a channel feed opens like any topic row (the feed IS the General
-  // topic); only the bottom bar differs (read-only for subscribers). A legacy
-  // group row (older server, no topics) uses the full composer with the `@`
-  // picker (T-0227 S1), like the topic path; channels keep their feed bar, DMs
-  // keep today's text-only send.
   if (!isTopic || chat.chatKind === 'channel') {
     const legacyComposer = composerBarFor(chat) === 'composer';
     const variant =

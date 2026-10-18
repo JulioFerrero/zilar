@@ -42,18 +42,11 @@ export type EventActions = Pick<
 
 export interface Events {
   readonly actions: EventActions;
-  /** Refetches the chat list once the roster or invitation pushes go quiet. */
   scheduleChatsRefresh(): void;
-  /** Ends the typing and refresh timers (`stop()`). */
   clearTimers(): void;
 }
 
-/**
- * T-1248: opening a chat clears its manual unread mark at once, the same way
- * the web store does (`apps/web/src/store/effects/history.ts`); the pref write
- * keeps the server (and the mock) in step even when no numeric read mark can be
- * sent (a fresh device holds no last-read id).
- */
+/** Also writes the pref, so the server stays in step when no numeric read mark can be sent (a fresh device holds no last-read id). */
 export function clearUnreadMarkOnOpen(ctx: StoreCtx, chatId: string): void {
   const { get, set } = ctx;
   const opening = get().chats.find((entry) => entry.id === chatId);
@@ -71,17 +64,10 @@ export function clearUnreadMarkOnOpen(ctx: StoreCtx, chatId: string): void {
   );
 }
 
-/**
- * The debounced chat-list refresh, chat prefs and folders. The typing lines
- * and the reaction, edit and delete sends are the core's
- * (`@zilar/client-core/store`); the actions here call them.
- */
 export function makeEvents(ctx: StoreCtx): Events {
   const { ports, get, set, s, life } = ctx;
   const { now } = ports;
 
-  // The key of a chat's clear-the-typing-line fiber in the store scope, the
-  // one the core's `handleTyping` forks (`incoming.ts`).
   const typingKey = (chatId: string): string => `typing:${chatId}`;
   const REFRESH_KEY = 'chats-refresh';
 
@@ -91,8 +77,7 @@ export function makeEvents(ctx: StoreCtx): Events {
       Effect.sleep(CHAT_REFRESH_DEBOUNCE_MS).pipe(
         Effect.andThen(
           Effect.sync(() => {
-            // The refresh is its own fiber: a newer push re-arms the debounce
-            // without cancelling a refresh already in flight.
+            // The refresh is its own fiber: a newer push re-arms the debounce without cancelling a refresh already in flight.
             ctx.forkSession(ctx.fx.refreshChats);
           }),
         ),
@@ -107,7 +92,6 @@ export function makeEvents(ctx: StoreCtx): Events {
     }
   }
 
-  /** The injected folders client; writes have no local fallback. */
   function foldersApi(): ChatFoldersApi {
     const api = ports.chatFolders;
     if (api === undefined) {
@@ -116,8 +100,6 @@ export function makeEvents(ctx: StoreCtx): Events {
     return api;
   }
 
-  // The core pref write bound to the phone: `s.chatPrefRows` is the saved
-  // truth, the chat summaries carry the optimistic paint (R11).
   const prefsStore: PrefsStore<PutChatPrefInput, ChatPref> = {
     savedRows: () => s.chatPrefRows,
     setSavedRows: (rows) => {
@@ -139,8 +121,6 @@ export function makeEvents(ctx: StoreCtx): Events {
     },
     editMessage: (chatId, messageId, text) => editMessage(ctx.coreCtx, chatId, messageId, text),
     deleteForEveryone: (chatId, messageId) => deleteForEveryone(ctx.coreCtx, chatId, messageId),
-    // T-1247: delete-for-me and clear-history run the shared core effects on
-    // the core ctx and resolve the outcome at the Promise edge.
     deleteForMe: (chatId, messageId) => ctx.run(deleteForMeCore(ctx.coreCtx, chatId, messageId)),
     clearHistory: (chatId) => ctx.run(clearHistoryCore(ctx.coreCtx, chatId)),
     dismissActionError: () => {
@@ -156,8 +136,6 @@ export function makeEvents(ctx: StoreCtx): Events {
           yield* updatePrefCore(ctx.coreCtx, api, prefsStore, chatId, input as PutChatPrefInput);
         }),
       ),
-    // T-1248: "Mark as read" clears the count and sends the read mark through
-    // the shared `recordRead` (T-1207), then clears the manual unread pref.
     markChatRead: (chatId) =>
       ctx.run(
         Effect.gen(function* () {

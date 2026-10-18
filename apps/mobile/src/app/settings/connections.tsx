@@ -20,11 +20,7 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 /**
- * Settings → Connections (T-1516, the phone twin of web's T-1503): one list of
- * keys, each row a status dot, the provider name, a muted line and a ⋯ that
- * opens the key's action sheet (Test, Replace, Delete). The key is write-only:
- * it travels only inside the key check and the replace call, and is never
- * rendered, logged or stored anywhere else.
+ * The key is write-only: it travels only inside the key check and the replace call, and is never rendered, logged or stored anywhere else.
  */
 export default function ConnectionsScreen() {
   return (
@@ -37,11 +33,9 @@ export default function ConnectionsScreen() {
 function ConnectionsList() {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
-  // Remounts the sheet (and so its key state) on every open, like New AI does.
   const [addSession, setAddSession] = useState(0);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetSession, setSheetSession] = useState(0);
-  // The connection whose delete confirm opens once its sheet has closed.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -65,7 +59,6 @@ function ConnectionsList() {
     askRemove,
     cancelRemove,
   } = useConnections({
-    // A failed test closes the sheet, so the row shows the red reason.
     onTestFailed: () => setSheetId(null),
     onReplaced: () => {
       setSheetId(null);
@@ -81,8 +74,6 @@ function ConnectionsList() {
   };
 
   const openSheet = (id: string): void => {
-    // A fresh sheet must never show the previous key's failure, so the error
-    // state is dropped before the sheet opens (the sheet itself is remounted).
     clearReplaceError();
     setSheetSession((session) => session + 1);
     setSheetId(id);
@@ -188,7 +179,6 @@ function ConnectionsList() {
         replacing={replacing}
         replaceError={replaceError}
         onClose={() => {
-          // A user dismissal ends the Replace flow too, so its failure goes away.
           clearReplaceError();
           setSheetId(null);
         }}

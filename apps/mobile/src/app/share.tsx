@@ -14,10 +14,8 @@ import { sendShare } from '@/lib/share-send';
 import { type ShareDraft, toShareDraft } from '@/lib/share-intent';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** Shown when a send ends in a defect rather than a typed result. */
 const SEND_FAILED_MESSAGE = 'Could not send. Try again.';
 
-/** The header and frame shared by the draft, error and empty states. */
 function ShareFrame({ onBack, children }: { onBack: () => void; children: ReactNode }) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -37,11 +35,6 @@ function fileSummary(draft: ShareDraft): string | undefined {
   return first.name.length > 0 ? `${count} · ${first.name}` : count;
 }
 
-/**
- * The `/share` screen (share plan tasks 4 + 6): a share from another app is
- * previewed here, one chat is picked, and only Send sends it. Back or Close
- * resets the share intent and sends nothing.
- */
 export default function ShareScreen() {
   return (
     <RequireAuth>
@@ -65,10 +58,7 @@ function ShareToChat() {
     [hasShareIntent, shareIntent],
   );
 
-  // A new share arriving while this screen is open starts fresh: the previous
-  // pick and error belong to the old draft. Adjusted during render, as the
-  // screens do, not in an effect. `sending` is left alone; an in-flight send
-  // re-enables Send itself.
+  // A new share starts fresh: the previous pick and error belong to the old draft. Adjusted during render, not in an effect.
   const [lastShareIntent, setLastShareIntent] = useState(shareIntent);
   if (!Object.is(lastShareIntent, shareIntent)) {
     setLastShareIntent(shareIntent);
@@ -93,8 +83,7 @@ function ShareToChat() {
     setFailure(undefined);
     void Effect.runPromise(
       sendShare(chatId, draft, { sendText, sendAttachment }).pipe(
-        // A defect (a thrown path outside the Effect's typed errors) must not
-        // leave Send disabled: show the fixed sentence and keep the screen.
+        // A defect must not leave Send disabled: show the fixed sentence and keep the screen.
         Effect.catchCause(() =>
           Effect.succeed({ ok: false as const, message: SEND_FAILED_MESSAGE }),
         ),

@@ -20,21 +20,13 @@ import type { DirectoryEntry } from '@/lib/directory-api';
 import { useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * Lifts a *-api.ts call into an Effect that fails with the thrown error
- * itself: the describe helpers read its class, status and code.
- */
+/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the describe helpers read its class, status and code. */
 function attempt<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
 
 /**
- * The `@handle` share entry (T-0183): `zilar://at/<handle>` (custom scheme,
- * registered in `app.json`) opens this route with the handle as the
- * `handle` param. A public group shows a card with title, description,
- * member count and Join (or Open when already joined); an unknown handle
- * and a private group answer the same 404, so both read the same neutral
- * not-found line. Any other lookup failure shows an error state with Retry.
+ * `zilar://at/<handle>`: an unknown handle and a private group answer the same 404, so both read the same neutral not-found line.
  */
 export default function GroupHandleRoute() {
   const { status } = useSession();
@@ -62,9 +54,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
   const [joinError, setJoinError] = useState('');
   const [retries, setRetries] = useState(0);
 
-  // The lookup waits one tick before it applies the checking state (the lint
-  // rule flags synchronous setState inside effects), and a newer lookup or an
-  // unmount interrupts it, so a stale answer never replaces the card.
+  // The lint rule flags synchronous setState inside effects, so the checking state waits one tick; a newer lookup or an unmount interrupts it, so a stale answer never replaces the card.
   const [, lookup, lookupControls] = useAction(
     (value: string) =>
       Effect.sleep(0).pipe(
@@ -92,10 +82,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
     setRetries((count) => count + 1);
   };
 
-  // After a join the store refreshes the list, but the refresh has not
-  // landed when the join resolves — so the group screen opens from the id
-  // the server answered (or the entry), never from a synchronous list read
-  // that would fall through to the chats list on every success.
+  // The store refresh has not landed when the join resolves, so the group screen opens from the id the server answered, never from a synchronous list read.
   const [, joinPublic] = useAction((entry: DirectoryEntry) =>
     attempt(() => api.joinPublicGroup(entry.id)).pipe(
       Effect.tap((result) =>

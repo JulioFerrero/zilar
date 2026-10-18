@@ -17,12 +17,6 @@ export interface StoreHelpersDeps {
   readonly appState: AppStateLike;
 }
 
-/**
- * The plain helpers the closure and the effect modules call: the message
- * ledger, the chat-row and group caches, the voice failure marker and the
- * sender nickname. They read the closure's mutable locals through
- * `deps.locals`, so the closure keeps one owner of its state.
- */
 export function makeStoreHelpers(deps: StoreHelpersDeps) {
   const { locals, get, set, appState } = deps;
 
@@ -30,8 +24,6 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     return appState.current() === 'active';
   }
 
-  // Message ids and aliases, edits, reactions, mentions, sender names and
-  // the message mutators (`@zilar/client-core/store`).
   const ledger = createMessageLedger({
     get,
     set,
@@ -55,12 +47,7 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     }));
   }
 
-  // A failed voice send (T-0154, review round 1): the bubble keeps its
-  // local recording and shows a Retry with the plain reason, never a
-  // silent "sending". The reason rides the message in a subset of the
-  // shared `SendFailureReason` buckets plus `other` (a subset so the
-  // message keeps exactly the shared type); the bubble renders the
-  // matching copy.
+  // Keeps its local recording and shows a Retry: the reason is a subset of the shared `SendFailureReason` buckets plus `other`, so the bubble renders the matching copy.
   function markVoiceFailed(
     chatId: string,
     messageId: string,
@@ -76,10 +63,6 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     }));
   }
 
-  // The room identity of a forward and the origin header live in the core
-  // (`forwardOriginFor` in `@zilar/client-core/store`), so the mobile store no
-  // longer keeps its own copy.
-
   function rememberGroupIds(entries: ChatEntry[]): void {
     for (const entry of entries) {
       if (entry.kind === 'group') {
@@ -91,17 +74,12 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     }
   }
 
-  // The group id behind one chat row: topic rows carry it directly
-  // (T-0139: the live row first, so a deep-linked topic works before any
-  // entry flowed through `rememberGroupIds`), legacy group rows resolve it
-  // through the remembered `/api/chats` entries.
+  // The live row first, so a deep-linked topic works before any entry flowed through `rememberGroupIds`.
   function groupIdForChat(chatId: string): string | undefined {
     return get().chats.find((entry) => entry.id === chatId)?.groupId ?? locals.groupIds.get(chatId);
   }
 
-  // Remembers the roles of one full topic response (create/patch/roles),
-  // replacing whatever was cached. The response is the server truth, so a
-  // private-to-public flip clears the entry instead of leaving it stale.
+  // The response is server truth, so a private-to-public flip clears the entry instead of leaving it stale.
   function rememberTopicRoles(topic: Topic): void {
     locals.topicRolesById.set(topic.id, {
       roles: topic.roles,
@@ -110,8 +88,6 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
   }
 
-  // Remembers the member names of a group for one chat row (the loader is
-  // `ensureGroupMembers` in `effects/groups.ts`).
   function rememberMembers(chatId: string, detail: GroupDetail): void {
     const members = new Map<string, string>();
     for (const member of detail.members) {
@@ -120,14 +96,7 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     locals.groupMembers.set(chatId, members);
   }
 
-  // The mention members behind one chat row (T-0227, built like web's
-  // `applyGroupDetail`): people as `{ jid: localpart@domain, name, handle?
-  // }` plus the group's AIs as `{ jid, name }`, never yourself. Self is
-  // excluded by `userId` against `currentUserId` (T-0227 S2): `me?.jid`
-  // is undefined before boot and in the mock store, while `currentUserId`
-  // is always set (`me.id` after boot). The sender-name map above keeps
-  // working from the same detail. Reads the shared detail cache (so
-  // every topic row of a group agrees) and never fetches on its own.
+  // Self is excluded by `userId` against `currentUserId`: `me?.jid` is undefined before boot and in the mock store, while `currentUserId` is always set.
   function mentionMembersFor(chatId: string): MentionMember[] {
     const groupId = groupIdForChat(chatId);
     if (groupId === undefined) {
@@ -158,9 +127,7 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     return members;
   }
 
-  // An optimistic bubble also records its text as the base text, which the
-  // ledger restores when an edit is reverted (the web send pipeline does the
-  // same). Without it a revert would strip the text of an unechoed message.
+  // Also records the text as the base text, which the ledger restores when an edit is reverted.
   function setChatMessage(chatId: string, message: UiMessage, clearUnread: boolean): void {
     ledger.setChatMessage(chatId, message, clearUnread);
     if (message.text !== undefined) {

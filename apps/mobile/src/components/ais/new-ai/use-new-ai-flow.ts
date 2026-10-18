@@ -1,4 +1,4 @@
-// effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs, the same promise-edge adapter shape the AI screens already use.
+// effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs.
 import {
   clampOrbLight,
   defaultCatalogModelId,
@@ -29,7 +29,6 @@ export type NewAiStep = 'provider' | 'key' | 'model' | 'setup';
 
 export type OrbParams = ReturnType<typeof orbParamsFor>;
 
-/** T-1445: the flow's state and actions; the sheet and its steps stay thin. */
 export function useNewAiFlow({
   onCreated,
 }: {
@@ -55,8 +54,7 @@ export function useNewAiFlow({
   const [cloud, setCloud] = useState(false);
   const createRef = useRef(false);
 
-  // The provider, the compatible fields and the key check are shared with the
-  // Connections page's Add key sheet, so the steps read `flow.keys`.
+  // The provider, the compatible fields and the key check are shared with the Connections page's Add key sheet, so the steps read `flow.keys`.
   const keys = useKeyCheck({
     onProviderChange: () => setModel(''),
     onVerified: () => goToModel(),

@@ -1,7 +1,3 @@
-// The send pipeline lives in `@zilar/client-core/store` (T10). This file is the
-// mobile binding: it keeps mobile's inline input validation (R19) and its
-// cancel actions, maps the mobile `StoreCtx` onto the core `SendCtx`, and keeps
-// the mobile-only optimistic fields (`localUri`).
 import { Effect } from 'effect';
 import {
   deleteFailedMessage as deleteFailedMessageCore,
@@ -43,22 +39,10 @@ export type Send = Pick<
   | 'cancelVoice'
 >;
 
-/**
- * Everything the user sends: text, stickers, forwards, attachments and voice
- * messages, and the Retry and cancel of the ones that fail. The pipeline, the
- * 60 s deadline, the failed shape and the sticker-retry rule are the core's;
- * this binding keeps the inline validation (R19) and the mobile cancel.
- */
 export function makeSend(ctx: StoreCtx): Send {
   const { get, set, s, h, ports } = ctx;
 
-  // The same store as the core modules see it, plus the send bookkeeping. The
-  // sequence and the open runs live on the shared `StoreState`; the kept bytes
-  // are the maps mobile already tears down on `stop()`. The text outbox (F4,
-  // honest ticks) is one per store instance on the shared `coreCtx`: texts
-  // stay `sending` until the server's ack and the core lifecycle's online
-  // flush resends failures. `teardown()` clears it on sign-out, so one
-  // user's queue never goes out as another user.
+  // The text outbox is one per store instance on the shared `coreCtx`: texts stay `sending` until the server's ack, and `teardown()` clears it on sign-out, so one user's queue never goes out as another user's.
   const sendCtx: SendCtx = {
     get,
     set,
@@ -87,13 +71,10 @@ export function makeSend(ctx: StoreCtx): Send {
     get outbox() {
       return ctx.coreCtx.outbox;
     },
-    // Mobile sends `undefined` options for a plain text; web pins `{}`.
     omitEmptyTextOptions: true,
   };
 
-  // The local `file://` preview a mobile bubble shows while the bytes upload.
-  // The core inserts the optimistic message and returns its id; no id means
-  // the send was refused, so there is no bubble to key.
+  // The local `file://` preview a mobile bubble shows while the bytes upload; no id means the send was refused, so there is no bubble to key.
   const markLocalUri = (chatId: string, messageId: string | undefined, uri: string): void => {
     if (messageId === undefined) {
       return;
@@ -117,11 +98,7 @@ export function makeSend(ctx: StoreCtx): Send {
     }));
   };
 
-  // Cancelling aborts this message's in-flight PUT, removes the optimistic
-  // bubble, and disarms the core run and its 60 s deadline so a pipeline
-  // still awaiting its slot request or PUT sends nothing. The bytes are
-  // dropped, so a later Retry is a no-op. The uploader keys controllers per
-  // message id.
+  // Aborts this message's in-flight PUT, removes the optimistic bubble and disarms the core run and its 60 s deadline, so the bytes are dropped and a later Retry is a no-op.
   const cancelSend = (chatId: string, messageId: string, pending: Map<string, unknown>): void => {
     ports.uploader?.cancel(h.aliasRoot(messageId));
     ports.uploader?.cancel(messageId);
@@ -142,9 +119,7 @@ export function makeSend(ctx: StoreCtx): Send {
     retryText: (chatId, messageId) => retryTextCore(sendCtx, chatId, messageId),
     deleteFailedMessage: (chatId, messageId) => deleteFailedMessageCore(sendCtx, chatId, messageId),
     sendAttachment: (chatId, file, options) => {
-      // R19: an empty or oversized file is refused inline, before any request,
-      // exactly like web's composer. Only a REAL zero says "That file is
-      // empty": an unknown size is never refused as empty — the upload decides.
+      // An empty or oversized file is refused inline, before any request. Only a REAL zero says "That file is empty": an unknown size is never refused as empty.
       if (file.size !== undefined && file.size === 0) {
         set({ actionError: { chatId, message: 'That file is empty.' } });
         return;
@@ -159,9 +134,7 @@ export function makeSend(ctx: StoreCtx): Send {
     retryAttachment: (chatId, messageId) => retryAttachmentCore(sendCtx, chatId, messageId),
     cancelAttachment: (chatId, messageId) => cancelSend(chatId, messageId, s.pendingUploads),
     sendVoice: (chatId, recording, options) => {
-      // R19 (finding 1, review round 2): refuse an over-limit recording here,
-      // before any optimistic bubble, slot request or PUT — the composer is
-      // not the only caller. The banner names the actual refusal.
+      // Refuse an over-limit recording before any optimistic bubble, slot request or PUT: the composer is not the only caller.
       const refusal = Effect.runSync(
         Effect.try({ try: () => validateRecording(recording), catch: (error) => error }).pipe(
           Effect.as(undefined),

@@ -23,7 +23,6 @@ import {
   sessionGone as sessionGoneAdapter,
 } from './session-check';
 
-/** The slice of React Native's `AppState` the store listens to. */
 export interface AppStateLike {
   current(): string;
   subscribe(handler: (state: string) => void): () => void;
@@ -32,45 +31,28 @@ export interface AppStateLike {
 export interface RealStoreDeps {
   api?: ChatApi;
   topicsApi?: TopicsApi;
-  /** The group invite-links API (T-0136); tests inject a fake. */
   inviteLinksApi?: InviteLinksApi;
   rolesApi?: RolesApi;
-  /** The channel management API (T-0144); tests inject a fake. */
   groupsApi?: GroupsApi;
   chatPrefsApi?: ChatPrefsApi;
-  /** The chat-folders API (T-0248); tests inject a fake. */
   chatFoldersApi?: ChatFoldersApi;
   pinsApi?: PinsApi;
-  /** The chat media gallery API (T-0436); tests inject a fake. */
   mediaApi?: MediaApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
-  /** Uploads picked bytes to a XEP-0363 slot (T-0150); tests inject a fake. */
   uploader?: AttachmentUploader;
-  /**
-   * Resolves the real byte size of a local file (T-0157): the store re-stats
-   * an unknown-size pick right before the slot request, since the slot API
-   * needs an exact count. Tests inject a fake; the app injects the
-   * `expo-file-system` stat.
-   */
+  /** The slot API needs an exact byte count, so unknown sizes are re-statted right before the request. */
   statSize?: (uri: string) => Promise<number | undefined>;
-  /** Converts + uploads voice recordings (T-0154); tests inject a fake. */
   voice?: VoicePort;
   now?: () => Date;
   appState?: AppStateLike;
-  /** The AI draft SSE stream; tests inject a fake. */
   openDrafts?: OpenDraftStream;
-  /** Asks `GET /api/me` whether the session still exists (T-1223); tests inject a fake. */
   checkSession?: () => Promise<SessionCheck>;
-  /** Signs out after `checkSession` answered `gone`; tests inject a fake. */
   sessionGone?: () => void;
-  /** The offline cache file seam (T-1313); tests inject an in-memory fake. */
   offlineCache?: OfflineCachePort;
-  /** Reads the signed-in user id for the offline cache owner check (T-1313). */
   sessionUserId?: () => Promise<string | undefined>;
 }
 
-/** Everything the store talks to outside itself, resolved from `RealStoreDeps`. */
 export interface PortsShape {
   readonly api: ChatApi;
   readonly topics: TopicsApi;
@@ -85,43 +67,26 @@ export interface PortsShape {
   readonly createXmpp: (options: XmppCoreOptions) => XmppCore;
   readonly uploader: AttachmentUploader | undefined;
   readonly statSize: ((uri: string) => Promise<number | undefined>) | undefined;
-  /** The core send pipeline's file port (T10): classify, measure, upload. */
   readonly bytes: OutgoingBytes;
-  /** The core send pipeline's voice port (T10): convert, then upload. */
   readonly voice: VoiceOut;
   readonly now: () => Date;
   readonly appState: AppStateLike;
   readonly openDrafts: OpenDraftStream;
-  /** The core lifecycle's visibility port (T-0918): built from `AppState`. */
   readonly isVisible: () => boolean;
   readonly visibility: Visibility;
-  /**
-   * The AppState background subscription (F1): `handler` runs on `background`
-   * only (`inactive` is an iOS transition and does nothing). Returns the
-   * unsubscribe. Built from `appState`, beside `visibility`.
-   */
+  /** Runs on `background` only: `inactive` is an iOS transition. */
   readonly onBackground: (handler: () => void) => () => void;
-  /** Asks `GET /api/me` whether the session still exists after `authFailed` (T-1223). */
   readonly checkSession: () => Promise<SessionCheck>;
-  /**
-   * Signs out after `checkSession` answered `gone`, so the user lands on
-   * login. Defaults to the session store's `signOut` (T-1223); tests
-   * inject it through deps.
-   */
   sessionGone: () => void;
 }
 
 export class Ports extends Context.Service<Ports, PortsShape>()('zilar/mobile/store/Ports') {}
 
-// The default `AppState` seam: always foreground and never changes. The app
-// injects React Native's real `AppState` so a real device reconnects on resume.
 const alwaysActive: AppStateLike = {
   current: () => 'active',
   subscribe: () => () => {},
 };
 
-// The core visibility port over React Native's `AppState` (T-0918): a focus is
-// `AppState` becoming `active`, which is what a resume is on the phone.
 function visibilityFor(appState: AppStateLike): Visibility {
   return {
     isVisible: () => appState.current() === 'active',
@@ -134,10 +99,6 @@ function visibilityFor(appState: AppStateLike): Visibility {
   };
 }
 
-// The AppState background subscription beside `visibilityFor` (F1): the store
-// suspends the XMPP session after a 10 s grace in `background`; the resume
-// runs through the existing `onFocus` path. `inactive` (an iOS transition)
-// does nothing.
 function onBackground(appState: AppStateLike, handler: () => void): () => void {
   return appState.subscribe((state) => {
     if (state === 'background') {
@@ -146,15 +107,7 @@ function onBackground(appState: AppStateLike, handler: () => void): () => void {
   });
 }
 
-// The phone's XMPP core (F4, closes MP-11): the reconnect watchdog gets a 15 s
-// first step, so a slow network gets one long chance before a stuck client is
-// replaced, and the resource is stable per install (`zilar-<install id>`), so
-// a replacement kicks the ghost session instead of doubling it. The install
-// id is generated once and kept in SecureStore under `zilar.xmpp.resource`
-// (see `auth/secure-session-storage.ts`); the `expo-secure-store` import is
-// dynamic so this module can be loaded under Vitest (Node), which cannot
-// import the native module. Tests inject `createXmpp` and never touch this
-// path. Web builds no options here, so it is unchanged.
+// Resource is stable per install (`zilar-<install id>`), so a replacement kicks the ghost session instead of doubling it. The reconnect watchdog gives a slow network one 15 s first chance. The `expo-secure-store` import is dynamic so this module loads under Vitest.
 const XMPP_RESOURCE_KEY = 'zilar.xmpp.resource';
 
 const MOBILE_WATCHDOG_FIRST_MS = 15_000;
@@ -172,9 +125,7 @@ async function readInstallId(): Promise<string | undefined> {
 
 function createMobileXmpp(options: XmppCoreOptions): XmppCore {
   if (cachedResource === undefined) {
-    // The install id read is async while `createXmpp` is sync: start it now
-    // and fall back to a per-process random resource for this one core. Every
-    // later core (including the watchdog's replacements) binds the stable id.
+    // The install id read is async while `createXmpp` is sync: open a random resource now and bind the stable id afterwards.
     cachedResource = `zilar-${Math.random().toString(36).slice(2, 10)}`;
     void readInstallId().then(async (existing) => {
       if (existing !== undefined) {
@@ -195,7 +146,6 @@ function createMobileXmpp(options: XmppCoreOptions): XmppCore {
   });
 }
 
-/** The ports a store gets: each injected dependency, else the real client. */
 export function resolvePorts(deps: RealStoreDeps): PortsShape {
   const appState = deps.appState ?? alwaysActive;
   const api = deps.api ?? createChatApi(getSessionToken);
@@ -228,21 +178,15 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
           getToken: getSessionToken,
           appState,
         })),
-    // `checkSession` asks `GET /api/me` whether the session still exists; the
-    // adapter lives in `./session-check` (T-1223).
     checkSession:
       deps.checkSession ?? (() => checkSessionAdapter(getSessionToken, () => api.getMe())),
-    // The revoked session lands on the sign-in screen through the session
-    // store's `signOut`; the adapter lives in `./session-check` (T-1223).
     sessionGone: deps.sessionGone ?? (() => void sessionGoneAdapter()),
   };
 }
 
-/** The live layer: the injected dependencies, else the real clients. */
 export const PortsLive = (deps: RealStoreDeps = {}): Layer.Layer<Ports> =>
   Layer.sync(Ports, () => resolvePorts(deps));
 
-// A port nobody injected: any call fails loudly, like a missing server.
 const unavailable = <T extends object>(label: string): T =>
   new Proxy({} as T, {
     get: (_target, property) => () => {
@@ -250,7 +194,6 @@ const unavailable = <T extends object>(label: string): T =>
     },
   });
 
-/** A test layer: every port fails loudly unless `overrides` replaces it. */
 export const PortsTest = (overrides: Partial<PortsShape> = {}): Layer.Layer<Ports> =>
   Layer.succeed(Ports, {
     api: unavailable<ChatApi>('api'),

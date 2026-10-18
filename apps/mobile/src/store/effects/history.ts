@@ -1,9 +1,3 @@
-// The chat list refresh, the prefs and folders, `reloadChats` and the mobile
-// `openChat` side effects. History itself (the first page, older pages,
-// previews, the pending open and opening at a message) is in
-// `@zilar/client-core/store`; it runs here through a `HistoryCtx` that maps the
-// mobile state names (`historyLoad`/`'loaded'`) to the core's
-// (`historyState`/`'ready'`), so the screens keep reading `historyLoad`.
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
@@ -27,19 +21,13 @@ import { makeHistoryCtx } from './history-ctx';
 import { Ports } from './ports';
 import { detached, isClosed, lift, orElse, recover, type StoreCtx } from './runtime';
 
-// The search-jump caps live in the core; re-exported for `real-store.ts` and
-// the timer tests, which still import them from this module.
 export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from '@zilar/client-core/store';
 
 export interface History {
-  /** The prefs rows: server truth when injected, empty otherwise. */
   readonly loadPrefRows: Effect.Effect<ChatPref[], never, Ports>;
-  /** The user's chat folders (T-0248); a failed load keeps the last list. */
   readonly loadFolders: Effect.Effect<void, never, Ports>;
-  /** The periodic and foreground refresh; failures are silent. */
   readonly refreshChats: Effect.Effect<void, never, Ports>;
   loadPreview(current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports>;
-  /** Runs the pending open once the core is online and the chat is known. */
   flushPending(): void;
   openChat(chatId: string): void;
   reloadChats(): void;
@@ -48,11 +36,6 @@ export interface History {
   openAtMessage(chatId: string, messageId: string): Promise<UiMessage>;
 }
 
-/**
- * First-page history, older pages, previews, the chat list refresh and
- * `openChat`. Every load is a fiber of the session, so `stop()` interrupts
- * it; the chat list refresh also ends with its generation.
- */
 export function makeHistory(ctx: StoreCtx): History {
   const { ports, get, set, s, life, h, fx } = ctx;
   const { groupIds } = s;
@@ -75,7 +58,6 @@ export function makeHistory(ctx: StoreCtx): History {
     if (chatFolders === undefined) {
       return;
     }
-    // Keep the last list on a failure; a retry happens on the next refresh.
     yield* orElse(
       lift(() => chatFolders.listChatFolders()).pipe(
         Effect.flatMap((folders) => Effect.sync(() => get().setFolders(folders))),
@@ -84,23 +66,13 @@ export function makeHistory(ctx: StoreCtx): History {
     );
   });
 
-  // Merges a fresh chat list through the shared `mergeChatRows`: a server row
-  // at least as new as memory takes the server's `unread` and `lastMessage` (a
-  // read on another device clears here), while a newer in-memory preview wins;
-  // presence and prefs apply as before.
-  // Topic entries (T-0112) expand to one row per visible topic; rows that
-  // disappeared (made private, archived, or I was removed) vanish here, and
-  // the open topic moves to the topics screen with a short, name-free notice.
-  // Chat prefs (T-0135) are applied after the merge so server rows pin,
-  // mute and archive the summaries; a pref whose chat is gone is ignored.
-  // Returns the previous chats so the caller can tell which rows are new.
+  // A server row at least as new as memory wins (a read on another device clears here); a newer in-memory preview wins. Topic rows that disappeared vanish; chat prefs apply after the merge. Returns the previous chats so the caller can tell which rows are new.
   function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
     const previous = get().chats;
     const known = new Map(previous.map((chat) => [chat.id, chat]));
     const activeChatId = get().activeChatId;
     const rows = entries.flatMap((entry) => h.summariesFor(entry));
-    // T-1238: confirm the newest preview of every row and apply the delivered
-    // mark the server reports to our own loaded messages.
+    // Confirms the newest preview of every row and applies the delivered mark the server reports to our own loaded messages.
     for (const row of rows) {
       applyChatDelivery(historyCtx, row);
     }
@@ -109,8 +81,7 @@ export function makeHistory(ctx: StoreCtx): History {
       chats: mergeChatRows(previous, rows, activeChatId, s.chatPrefRows, ports.now().getTime()),
     });
     h.rememberGroupIds(entries);
-    // A topic that disappeared while open navigates back to its group's
-    // topics screen with a short notice that never names the topic.
+    // A topic that disappeared while open goes back to its group's topics screen with a notice that never names the topic.
     const openId = get().activeChatId;
     if (openId !== null && !wanted.has(openId)) {
       const was = previous.find((chat) => chat.id === openId);
@@ -129,8 +100,6 @@ export function makeHistory(ctx: StoreCtx): History {
   const loadPreview = (current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports> =>
     loadPreviewCore(historyCtx, current, chat);
 
-  // Joins the rooms of the new groups and loads their preview, best-effort.
-  // Topic rows (T-0112) each join their own room, like group rows today.
   const adoptChatEntries = (
     entries: ChatEntry[],
     known: Map<string, ChatSummary>,
@@ -141,9 +110,7 @@ export function makeHistory(ctx: StoreCtx): History {
       if (current === undefined || me === undefined) {
         return;
       }
-      // Dedupe the roster path per group id (T-0147): every topic row of one
-      // group joins its own room, but the member names come from one shared
-      // detail GET per group, not one per row.
+      // Dedupe per group id: every topic row joins its own room, but names come from one shared detail GET.
       const detailStarted = new Set<string>();
       const freshRows = entries
         .flatMap((entry) => h.summariesFor(entry))
@@ -171,8 +138,7 @@ export function makeHistory(ctx: StoreCtx): History {
       }
     });
 
-  // The chats, prefs and folders load together; prefs and folders never fail,
-  // and a failing chat list does not cancel them.
+  // Prefs and folders never fail, and a failing chat list does not cancel them.
   const fetchChatList = Effect.gen(function* () {
     const { api } = yield* Ports;
     return yield* Effect.all(
@@ -181,9 +147,7 @@ export function makeHistory(ctx: StoreCtx): History {
     ).pipe(Effect.option);
   });
 
-  // A background refresh failure stays silent; the manual reload reports it.
-  // The generation is checked after the fetch: a refresh run by an action,
-  // outside the generation's fibers, must not land after a stop.
+  // The generation is checked after the fetch: a refresh run by an action, outside the generation's fibers, must not land after a stop.
   const refreshChats: Effect.Effect<void, never, Ports> = Effect.gen(function* () {
     const generation = life.generation();
     const fetched = yield* fetchChatList;
@@ -197,9 +161,6 @@ export function makeHistory(ctx: StoreCtx): History {
     yield* adoptChatEntries(entries, known);
   });
 
-  // Pull-to-refresh and the list's Retry key. Unlike a background refresh it
-  // reports a failure in `chatsLoad`, and it only re-runs boot when the first
-  // boot never got as far as a core (e.g. the first `/api/chats` failed).
   const reloadChatsList: Effect.Effect<void, never, Ports> = Effect.gen(function* () {
     const generation = life.generation();
     const fetched = yield* fetchChatList;
@@ -220,8 +181,6 @@ export function makeHistory(ctx: StoreCtx): History {
     yield* adoptChatEntries(entries, known);
   });
 
-  // The core's `openAtMessage` opens the chat and pages back to the message;
-  // mobile also flags it as the jump target for the chat screen to scroll to.
   const openAtMessage = (
     chatId: string,
     messageId: string,
@@ -249,8 +208,6 @@ export function makeHistory(ctx: StoreCtx): History {
     },
     reloadChats: () => {
       set({ chatsLoad: 'loading' });
-      // A first boot that never reached a core (e.g. `/api/chats` failed) is
-      // retried whole; a running session just refetches the list.
       if (s.core === undefined) {
         fx.restartBoot();
         return;
@@ -268,21 +225,16 @@ export function makeHistory(ctx: StoreCtx): History {
           topicNotice: keepNotice ? state.topicNotice : undefined,
         };
       });
-      // PERF-3: the chat just opened is now the active one, so every other chat
-      // drops to its newest KEEP_INACTIVE messages, like web's `openChat`. The
-      // next open pages the archive again.
+      // The chat just opened is now active, so every other chat drops to its newest KEEP_INACTIVE messages.
       pruneInactiveChats(historyCtx, chatId);
       h.recordRead(chatId, s.lastRead[chatId]);
       clearUnreadMarkOnOpen(ctx, chatId);
-      // The detail first: it fills the cache, so the member-name fallback
-      // shares the same GET on a cold open (T-0147 ordering).
+      // The detail first: it fills the cache, so the member-name fallback shares the same GET on a cold open.
       const groupId = h.groupIdForChat(chatId);
       if (groupId !== undefined) {
         ctx.forkSession(fx.ensureGroupDetail(groupId));
       }
       ctx.forkSession(fx.ensureGroupMembers(chatId));
-      // Pins load when the chat opens and refresh on focus + 60 s while
-      // it is open, like the web store (no realtime channel yet).
       ctx.forkSession(fx.loadPins(chatId, true));
       fx.startPinsPolling(chatId);
       if (s.pendingOpenChatId !== undefined && s.pendingOpenChatId !== chatId) {

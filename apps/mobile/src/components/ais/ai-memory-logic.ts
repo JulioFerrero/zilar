@@ -2,13 +2,10 @@ import { Effect } from 'effect';
 
 import { AiMemoryApiError, type AiMemory, type AiMemoryApi } from '@/lib/ai-memory-api';
 
-/** Fixed user-facing line when the memory fails to load. */
 export const MEMORY_LOAD_FAILED_MESSAGE = 'Could not load the memory';
 
-/** Fixed user-facing line when forgetting a fact fails. */
 export const MEMORY_FORGET_FAILED_MESSAGE = 'Could not forget that fact';
 
-/** Fixed user-facing line when clearing the memory fails. */
 export const MEMORY_CLEAR_FAILED_MESSAGE = 'Could not clear the memory';
 
 export type AiMemoryStatus = 'loading' | 'ready' | 'error';
@@ -33,16 +30,11 @@ export interface AiMemorySectionActions {
   onConfirmClear: () => void;
 }
 
-/** The memory without one fact, for the optimistic row removal after Forget. */
 export function removeFact(memory: AiMemory, factId: string): AiMemory {
   return { ...memory, facts: memory.facts.filter((fact) => fact.id !== factId) };
 }
 
-/**
- * Forgets one fact on the server. A 404 means the fact is already gone, which
- * the caller treats as success; any other failure fails the Effect with the
- * api's own error.
- */
+/** A 404 means the fact is already gone, which the caller treats as success. */
 export const requestForgetFactEffect = (
   api: AiMemoryApi,
   chat: string,
@@ -58,7 +50,6 @@ export const requestForgetFactEffect = (
     ),
   );
 
-/** Promise form of `requestForgetFactEffect`: any other failure throws. */
 export const requestForgetFact = (
   api: AiMemoryApi,
   chat: string,
@@ -66,7 +57,6 @@ export const requestForgetFact = (
   factId: string,
 ): Promise<void> => Effect.runPromise(requestForgetFactEffect(api, chat, aiId, factId));
 
-/** Clears the memory on the server, then reloads and returns the empty one. */
 export const clearAiMemoryEffect = (api: AiMemoryApi, chat: string, aiId: string) =>
   Effect.tryPromise({ try: () => api.clear(chat, aiId), catch: (cause) => cause }).pipe(
     Effect.flatMap(() =>
@@ -74,6 +64,5 @@ export const clearAiMemoryEffect = (api: AiMemoryApi, chat: string, aiId: string
     ),
   );
 
-/** Promise form of `clearAiMemoryEffect`. */
 export const clearAiMemory = (api: AiMemoryApi, chat: string, aiId: string): Promise<AiMemory> =>
   Effect.runPromise(clearAiMemoryEffect(api, chat, aiId));

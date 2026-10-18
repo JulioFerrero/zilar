@@ -13,18 +13,10 @@ import { iconKey } from '@/lib/depth';
 import { OrbImage } from './orb-view';
 import type { NewAiFlow } from './use-new-ai-flow';
 
-/** The three stock templates the step offers; Custom is not part of this flow. */
 const TEMPLATE_OPTIONS: SegmentedOption[] = AI_TEMPLATE_OPTIONS.filter(
   (option) => option.id !== 'custom',
 ).map((option) => ({ value: option.id, label: option.label }));
 
-/**
- * Step 3 (PhoneModel.dc.html): the orb with an edit badge, the AI's Name, the
- * model from the provider's catalog — or a well field for its id when the
- * provider has no catalog models (OpenAI-compatible) — and the Template
- * choice. The orb follows the name until the owner edits it in the orb
- * sub-view.
- */
 export function ModelStep({ flow }: { flow: NewAiFlow }) {
   return (
     <View className="gap-5">

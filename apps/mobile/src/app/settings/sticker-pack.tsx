@@ -17,11 +17,7 @@ import { TextField } from '@/components/ui/text-field';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { favoriteTileSize } from './stickers';
 
-/**
- * Settings → sticker pack editor (T-0191): create mode without `id`, edit
- * mode with `?id=`. Edit order on Save: patch title/visibility, then
- * deletions, then uploads one by one (web order).
- */
+/** Edit order on Save: patch title/visibility, then deletions, then uploads one by one (web order). */
 export default function StickerPackScreen() {
   return (
     <RequireStickersAuth>

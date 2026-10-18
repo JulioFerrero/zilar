@@ -37,8 +37,7 @@ import type { Machine } from '@/lib/machines-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
-// The raw rejection is kept, not mapped, so describeAisError and the machine
-// helper still see their own error classes.
+// The raw rejection is kept, not mapped, so describeAisError and the machine helper see their own error classes.
 function rawCall<A>(call: () => Promise<A>) {
   return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
 }
@@ -70,25 +69,17 @@ function EditAi() {
   const [persona, setPersona] = useState('');
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
-  // The connection and machine pickers (mirror web `AiPanel`): the active
-  // connections and the owner's machines, loaded beside the AI so a failure
-  // here never blocks the rest of the screen.
   const [connections, setConnections] = useState<AisConnection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [modelDraft, setModelDraft] = useState('');
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machinesLoaded, setMachinesLoaded] = useState(false);
-  // The AI's home machine, kept in local state so a successful change shows
-  // at once and a failed one restores the previous value. Set from the
-  // loaded AI, then from each PUT answer (the server is the source of truth).
+  // The PUT answer is the source of truth; a failed change restores the previous value.
   const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
   const [machineError, setMachineError] = useState('');
 
-  // T-1425: computer mode, cloud availability and save-and-revert behind the picker.
   const computer = useComputerMode(api, loaded?.id ?? null);
 
-  // Shows the AI the list answered with; an AI missing from the list is a
-  // load error. The form fills from it once per load.
   const showAi = (list: PublicAi[]): void => {
     const ai = list.find((item) => item.id === id) ?? null;
     if (ai === null) {
@@ -108,7 +99,6 @@ function EditAi() {
     setStatus('ready');
   };
 
-  // The AI loads on mount and again on Retry, through the same query.
   const [, reloadAi] = useQuery(
     () =>
       rawCall(() => api.listAis()).pipe(
@@ -164,10 +154,6 @@ function EditAi() {
     reloadAi();
   };
 
-  // Sets or clears the AI's home machine through the separate machine route,
-  // exactly like web `AiPanel`. The helper never rejects: on failure it hands
-  // back the previous value and a fixed error sentence, and the PUT answer is
-  // the source of truth on success.
   const [machineChange, runMachineChange] = useAction(
     (change: { aiId: string; next: string | null; previous: string | null }) =>
       Effect.promise(() =>
@@ -200,7 +186,6 @@ function EditAi() {
         Effect.tap(() => Effect.sync(() => router.back())),
       ),
   );
-  // The button stays on "Saving…" after a success, until the route leaves.
   const saving = isWaiting(saveState) || AsyncResult.isSuccess(saveState);
   const saveFailure = isWaiting(saveState) ? undefined : failureOf(saveState);
   const error =
@@ -211,8 +196,7 @@ function EditAi() {
   const limits = validateLimits(day, month);
   const canSave = loaded !== null && name.trim() !== '' && limits.limits !== null && !saving;
 
-  // Switching provider re-prefills that provider's default model, as in the
-  // create wizard: the old model name rarely fits the new provider.
+  // Switching provider re-prefills that provider's default model: the old model name rarely fits the new provider.
   const chooseConnection = (connectionId: string): void => {
     setSelectedConnectionId(connectionId);
     const next = connections.find((connection) => connection.id === connectionId) ?? null;
@@ -233,11 +217,7 @@ function EditAi() {
       limits: limits.limits,
       originalLimits: loaded.limits,
     });
-    // The model and connection diffs ride the same patch, like web
-    // `AiPanel`: the server needs the model whenever the connection
-    // changes, so a connection change always carries both, while a
-    // model-only change carries just the model. `UpdateAiInput` predates
-    // those two fields, so they ride an extension the PATCH body keeps.
+    // A connection change always carries both fields because the server needs the model whenever the connection changes; a model-only change carries just the model.
     const modelTrimmed = modelDraft.trim();
     const modelChanged = modelTrimmed !== '' && modelTrimmed !== loaded.model;
     const connectionChanged =

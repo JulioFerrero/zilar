@@ -14,15 +14,10 @@ import type { ChatStoreState } from '../types';
 import { Ports } from './ports';
 import { lift, type StoreCtx } from './runtime';
 
-// One shared empty list: a selector must return the same reference while
-// nothing changed, or React re-renders forever ("Maximum update depth").
+// One shared empty list: a selector must return the same reference while nothing changed, or React re-renders forever ("Maximum update depth").
 const EMPTY_PINS: Pin[] = [];
 
-/**
- * Resolves a server-relative media URL (`/api/media/<id>`) against the API
- * origin, like the attachments store does (AGENTS pitfall: server URLs may
- * be relative on native). An absolute URL is left untouched.
- */
+/** Resolves a server-relative media URL (`/api/media/<id>`) against the API origin; an absolute URL is left untouched. */
 function resolveMediaUrl(url: string, apiUrl: string): string {
   if (!url.startsWith('/') || url.startsWith('//')) {
     return url;
@@ -45,30 +40,22 @@ export type PinActions = Pick<
 
 export interface Pins {
   readonly actions: PinActions;
-  /** Loads the pins of a chat; a failure shows `pinsError` only when `loud`. */
   loadPins(chatId: string, loud: boolean): Effect.Effect<void, never, Ports>;
-  /** Drops every pin of the session, so the next user starts empty (T-1916). */
+  /** Drops every pin of the session, so the next user starts empty. */
   clear(): void;
 }
 
-/** Pins (T-0135) and the media panel (T-0436); the pin logic is the core's. */
 export function makePins(ctx: StoreCtx): Pins {
   const { ports, get, set, s } = ctx;
   const { pins: pinsApi, media: mediaApi } = ports;
 
-  // Pins by chat id (T-0135), newest first. Each publish bumps the chat's
-  // revision once, so `pins(chatId)` selectors re-fire exactly once.
+  // Pins by chat id, newest first. Each publish bumps the chat's revision once, so `pins(chatId)` selectors re-fire exactly once.
   const pinsByChat = new Map<string, Pin[]>();
   const pinsRevisionByChat = new Map<string, number>();
   let pinsRevision = 0;
-  // T-1916: bumped by `clear()`. User loads run detached from the session
-  // scope, so a response that lands after sign-out would republish the previous
-  // user's pins; a load carries the epoch it started in and drops its result
-  // when the epoch moved on.
+  // Bumped by `clear()`: user loads run detached from the session scope, so a response landing after sign-out would republish the previous user's pins. A load drops its result when the epoch moved on.
   let pinsEpoch = 0;
 
-  // Publishes one chat's pins and bumps its revision. A successful load or
-  // pin/unpin clears the chat's inline error; the core sets the errors.
   function publishPins(chatId: string, pins: readonly Pin[]): void {
     pinsByChat.set(chatId, [...pins]);
     pinsRevision += 1;
@@ -86,14 +73,10 @@ export function makePins(ctx: StoreCtx): Pins {
     currentUserId: () => get().me?.id ?? get().currentUserId,
   };
 
-  // A failure surfaces as `pinsError` for an explicit load and stays silent
-  // on the background tick (the next tick retries). The store pins the epoch
-  // of the call, so a stale answer writes nothing after `clear()`.
   const loadPins = (chatId: string, loud: boolean): Effect.Effect<void, never, Ports> =>
     loadPinsCore(ctx.coreCtx, pinsApi, storeAt(pinsEpoch), chatId, loud);
 
-  // The pins core reads and writes through this store; `publish` and `setError`
-  // are dropped when the call belongs to a session that has since signed out.
+  // `publish` and `setError` are dropped when the call belongs to a session that has since signed out.
   function storeAt(atEpoch: number): PinsStore {
     return {
       ...store,
@@ -110,9 +93,7 @@ export function makePins(ctx: StoreCtx): Pins {
     };
   }
 
-  // Whether the viewer may pin in a chat: either side of a DM; for topics
-  // a group owner/admin whose detail has loaded (roles ride `getGroup`).
-  // The topic-creator edge is server-enforced only, like on web.
+  // Either side of a DM; for topics a group owner/admin whose detail has loaded. The topic-creator edge is server-enforced only, like on web.
   function canPinIn(chatId: string): boolean {
     const state = get();
     const chat = state.chats.find((entry) => entry.id === chatId);
@@ -133,14 +114,11 @@ export function makePins(ctx: StoreCtx): Pins {
 
   const actions: PinActions = {
     pins: (chatId) => {
-      // Reading the revision subscribes the selector to pin publishes
-      // for this chat, like `groupDetail` does with its own revision.
       void (pinsRevisionByChat.get(chatId) ?? 0);
       return pinsByChat.get(chatId) ?? EMPTY_PINS;
     },
     refreshPins: (chatId) => ctx.run(loadPins(chatId, true)),
-    // T-1914: paint the cached pins of a cold start before the pins answer.
-    // A chat that already has pins keeps them; the normal load replaces both.
+    // Paint the cached pins of a cold start before the pins answer; a chat that already has pins keeps them.
     seedCachedPins: (cached) => {
       for (const [chatId, list] of Object.entries(cached)) {
         if (list.length === 0 || pinsByChat.has(chatId)) {
@@ -188,11 +166,7 @@ export function makePins(ctx: StoreCtx): Pins {
       ),
   };
 
-  // T-1916: sign-out drops the per-chat pins, so the next user on the same
-  // install never sees the previous user's pins (a DM's chat id is the peer's
-  // JID). The bump also invalidates a load or pin call still in flight. This
-  // writes no state: the caller must follow with a `set()` for selectors to
-  // re-fire (teardown resets the user state right after).
+  // Sign-out drops the per-chat pins, so the next user on the same install never sees the previous user's pins (a DM's chat id is the peer's JID). The bump also invalidates a load still in flight. This writes no state: the caller must follow with a `set()` for selectors to re-fire.
   function clear(): void {
     pinsEpoch += 1;
     pinsByChat.clear();

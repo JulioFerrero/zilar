@@ -1039,11 +1039,29 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - T-2067: handle wording; the phone now shows the next-change date.
                         - T-2068: server clones 4 (−32).
                       - **Live:** `1aae88a44`, 0 errors.
-                      - **Running at 19:58:**
-                        - T-2058: the fixture fix round;
-                        - T-2069: web mute toggle ×5;
-                        - T-2070: phone mock gate ×16 and the mockable-API hook ×12 (target −250);
-                        - T-2071: phone `AuthCard` shell ×3.
+                      - **Merged 19:58–20:12:**
+
+                        | Task | What | Lines |
+                        | --- | --- | ---: |
+                        | T-2069 | web mute toggle | −43 |
+                        | T-2070 | phone mock gate and hook (emulator-checked) | −441 |
+                        | T-2071 | phone `AuthCard` (emulator-checked) | −56 |
+                        | T-2058 | server helpers and the fixture fix | — |
+
+                        Pushed.
+                      - **Julio, ~20:15, angry:** "you just find a 2000 line feature … the bare minimum needs to change".
+                        - Whistle stays. NEVER propose removing a feature.
+                        - Account deletion: "Finish it" (design canvas first).
+                      - **New plan:** `docs/audit/big-cut-plan.md`, target about −35k with no feature removed.
+                        1. Comments: 35.8k lines; 16 tasks T-2072–T-2087 following `docs/COMMENTS.md`. The diff must change comment lines only; check it with `tmp/cc/onlycomments.py <worktree>`.
+                        2. One API layer in client-core (−4k).
+                        3. Twin screen logic into client-core (−10k).
+                        4. Wave A deletions (−3k).
+                        5. The devtools prune.
+                        6. T-2088 (not written yet): an AGENTS.md comment rule and a gate check against task IDs in new comments. It launches after T-2082 merges (both touch `gate/cli.ts`).
+                      - **Running at 20:20:** T-2073, T-2074, T-2075, T-2076, T-2079, T-2082, T-2083, T-2087.
+                      - **Queued:** T-2072, T-2077, T-2078, T-2080, T-2081, T-2084, T-2085, T-2086.
+                      - **Code map total:** 274,479 at 19:35. Re-measure after the comment wave.
                       - **Next:**
                         - W3-f: locals and `finishDraftTurn`;
                         - the phone member-handle fallback for person links;

@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils';
 type OptionRowProps = {
   selected: boolean;
   disabled?: boolean;
-  /** `radio` for pickers, `button` for a plain action. */
   role?: 'radio' | 'button';
   accessibilityLabel?: string;
   onPress: () => void;
@@ -15,7 +14,6 @@ type OptionRowProps = {
   className?: string;
 };
 
-/** A tappable bordered row, shared by the provider, template and model pickers. */
 export function OptionRow({
   selected,
   disabled = false,
@@ -44,7 +42,6 @@ export function OptionRow({
   );
 }
 
-/** The small circle with a provider or template initial used inside pickers. */
 export function OptionGlyph({ label, selected }: { label: string; selected: boolean }) {
   return (
     <View

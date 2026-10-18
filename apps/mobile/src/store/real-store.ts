@@ -50,25 +50,14 @@ export type { AppStateLike, RealStoreDeps } from './effects/ports';
 // nothing changed, or React re-renders forever ("Maximum update depth").
 const EMPTY_MESSAGES: UiMessage[] = [];
 
-/**
- * The real store: the same behaviour as the web (`apps/web/src/store/realStore.ts`)
- * with mobile storage/AppState seams. It loads chats and contacts over HTTP,
- * connects `xmpp-core`, and turns its events into store updates.
- */
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
-  // Every outside dependency comes from the `Ports` layer (injected or live).
   const ports = Effect.runSync(Ports.use(Effect.succeed).pipe(Effect.provide(PortsLive(deps))));
   const { appState } = ports;
-  // T-1313: the offline message cache and the store watcher that saves it.
   const offline = createOfflineCacheSync(deps);
 
   const store = createAtomStore<ChatStoreState>((set, get) => {
-    // The closure's mutable locals (the handles, caches and per-session maps),
-    // owned by one object so the helpers below share them.
     const locals = createStoreLocals();
 
-    // The state the effect modules share. The members that code in this
-    // closure still reads by their old names are bridged to those names.
     const life = makeLife();
     const s: StoreState = {
       get core() {
@@ -136,20 +125,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
     };
 
-    // The plain helpers (the ledger, the row and group caches, the failure
-    // markers), built from the locals and the set/get pair.
     const helpers = makeStoreHelpers({ locals, get, set, appState });
 
-    // Late-bound: the effect modules are built from the context below, and the
-    // teardown they call needs them, so it is assigned once they exist.
     let userState!: UserState;
 
-    // The core's view of this store (`@zilar/client-core/store`): the incoming
-    // handlers, the message actions, the reads and history run on it. Mobile
-    // saves no last-read map and has no app badge or push notifications to
-    // sync. History and the lifecycle live in adapters (`effects/history.ts`,
-    // `effects/lifecycle.ts`), which map the mobile `historyLoad` names to the
-    // core `historyState` names.
     const coreApi: CoreApi = {
       getMe: () => ports.api.getMe(),
       getChats: () => ports.api.getChats(),
@@ -171,13 +150,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ports.api.clearChatHistory === undefined
           ? undefined
           : (jid) => ports.api.clearChatHistory?.(jid) as Promise<unknown>,
-      // The chat prefs ride the boot (T-0135); a missing client reads none.
       listChatPrefs: () => ports.chatPrefs?.listChatPrefs() ?? Promise.resolve([]),
     };
     const corePorts: CorePorts = {
       now: ports.now,
       isVisible: helpers.isVisible,
-      // Mobile keeps no last-read map on disk (T-0915): in memory only.
       storage: null,
       api: coreApi,
       rows: { summariesFor: (entry) => summariesFor(entry as ChatEntry) },
@@ -192,12 +169,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           Effect.runFork(dismissChatNotifications(chatId));
         },
       },
-      // Q3 (R7) is yes: mobile retries the connection like web, and a resume
-      // reconnects (R8). Both are mobile-only switches.
       flags: { connectRetry: true, reconnectOnResume: true },
-      // T-1223: a session revoked on the server answers 401 on `GET
-      // /api/me`, so `authFailed` signs out to login instead of retrying
-      // for ever. The adapters live on the app ports (`effects/ports.ts`).
+      // A session revoked on the server answers 401 on `GET /api/me`, so `authFailed` signs out to login instead of retrying for ever.
       checkSession: () => ports.checkSession(),
       sessionGone: () => ports.sessionGone(),
     };
@@ -224,7 +197,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           locals.pendingUploads.delete(messageId);
           locals.pendingVoices.delete(messageId);
         },
-        // T-1902: `history-ctx.ts` rebuilds the ctx; it reads the same set here.
         joinedRooms: locals.joinedRooms,
       },
       get core() {
@@ -241,16 +213,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       lastReadUserId: undefined,
       pendingOutgoing: locals.pendingOutgoing,
-      // The text outbox (F4, honest ticks): one per store instance. Texts
-      // stay `sending` until the server's stream-management ack marks them
-      // `sent`; the core lifecycle flushes it on online and `teardown()` (via
-      // the core `reset()`) clears it on sign-out, so one user's queue never
-      // goes out as another user.
+      // Texts stay `sending` until the server's stream-management ack marks them `sent`; `teardown()` clears the outbox on sign-out, so one user's queue never goes out as another user.
       outbox: createTextOutbox(),
     };
 
-    // The effect modules, built once the closure's helpers exist. `fx` bridges
-    // the concerns that still live in this closure as Promise functions.
     const ctx: StoreCtx = {
       ports,
       get,
@@ -285,8 +251,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ensureGroupDetail: (groupId, force) => groups.ensureGroupDetail(groupId, force),
         ensureGroupMembers: (chatId) => groups.ensureGroupMembers(chatId),
         scheduleChatsRefresh: () => events.scheduleChatsRefresh(),
-        // The core's own pins poll (started at boot) refreshes the active chat;
-        // `openChat` starts it for the chat it opens, `stopPinsPoll` stops it.
         startPinsPolling: () => {
           locals.pinsPollEnabled = true;
         },
@@ -337,11 +301,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (get().activeChatId === chatId) {
           set({ activeChatId: null });
         }
-        // A deferred open must not fire later for a chat that was left: drop
-        // the pending open and its `loading` marker (UI-2). `real-store.ts`
-        // may only touch `closeChat` in this file (T-1153 owns the XMPP
-        // options), so the marker is dropped the same way `openHistory` sets
-        // it, over the mobile `historyLoad` names.
+        // A deferred open must not fire later for a chat that was left: drop the pending open and its `loading` marker.
         if (locals.pendingOpenChatId === chatId) {
           locals.pendingOpenChatId = undefined;
           if (!locals.loadingHistory.has(chatId) && get().historyLoad[chatId] === 'loading') {
@@ -363,7 +323,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       ...groups.actions,
       ...pins.actions,
       ...pushPair.actions,
-      // Stop the open chat's pins poll (the core's poll reads this switch).
       stopPinsPoll: () => {
         locals.pinsPollEnabled = false;
       },
@@ -374,13 +333,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     };
   });
 
-  // T-1313: save the recent messages debounced; the lifecycle flushes it on
-  // background and clears it on sign-out.
   offline.watch(store);
 
-  // Dev-only cold-start marks (T-1312): the first paint with the chat rows and
-  // the first XMPP `online`. `startupTimingEnabled()` is false in a release
-  // build, so the subscription is not created there.
+  // Dev-only cold-start marks; `startupTimingEnabled()` is false in a release build, so the subscription is not created there.
   if (startupTimingEnabled()) {
     store.subscribe((state, previous) => {
       if (state.chatsLoad === 'loaded' && previous.chatsLoad !== 'loaded') {

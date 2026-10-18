@@ -15,7 +15,6 @@ import { cn } from '@/lib/utils';
 
 import type { PublicAi } from '../../lib/ais-api';
 
-// The health dot's look and words, by state, from the shared `aiHealth` helper.
 const HEALTH: Record<AiHealthState, { label: string; colour: string }> = {
   working: { label: 'Working', colour: 'bg-online' },
   failing: { label: 'Failing', colour: 'bg-danger' },
@@ -23,18 +22,11 @@ const HEALTH: Record<AiHealthState, { label: string; colour: string }> = {
   stopped: { label: 'Stopped', colour: 'bg-subtle-foreground' },
 };
 
-// The fix a failing AI offers (T-1517), the only two the owner can do here.
 const FIX_LABELS: Record<string, string> = {
   replace_key: 'Replace key',
   change_model: 'Change model',
 };
 
-/**
- * One row of the My AIs list (T-1517): the AI's picture with a health dot (the
- * status, no status words), the name and the "AI" badge, one muted line (the
- * model, a failure reason with its fix, or the daily-limit pause), and today's
- * spend with its limit bar. The row opens the actions sheet.
- */
 export function AiRow({ ai, last, onPress }: { ai: PublicAi; last: boolean; onPress: () => void }) {
   const router = useRouter();
   const health = aiHealth(ai);

@@ -32,20 +32,11 @@ import { goBackOrHome } from '@/lib/navigation';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * Lifts a *-api.ts call into an Effect that fails with the thrown error
- * itself: the failure helpers read its class, status and code.
- */
+/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the failure helpers read its class, status and code. */
 function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
 
-/**
- * The `@handle` profile screen (T-0182, rebuilt Telegram-style in T-1308): a
- * large centred photo with the name and status, the action row, the info
- * card and Block at the bottom. States: loading, the profile, one plain
- * "No user with that username" for a bad handle, and an error with Retry.
- */
 export default function HandleScreen() {
   return (
     <RequireAuth>
@@ -69,13 +60,9 @@ function HandleProfileView() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // The handle whose profile is on screen. A focus reload of that profile
-  // refreshes it in place; a new handle has nothing to show yet, so it still
-  // takes the loading state and never shows the previous person.
+  // A focus reload refreshes the profile in place; a new handle takes the loading state and never shows the previous person.
   const loadedHandle = useRef<string | null>(null);
 
-  // A newer load interrupts the one in flight, so a stale answer never
-  // replaces the card.
   const [, fetchProfile] = useAction(
     (value: string) =>
       fromThrown(() => api.lookupByHandle(value)).pipe(
@@ -89,8 +76,6 @@ function HandleProfileView() {
         ),
         Effect.tapError((loadError) =>
           Effect.sync(() => {
-            // A failed refresh of the profile already on screen keeps it, so
-            // only a load with nothing to show takes the error or empty view.
             if (loadedHandle.current === value) {
               return;
             }
@@ -118,7 +103,6 @@ function HandleProfileView() {
       setMissing(true);
       return;
     }
-    // The loader only appears when this handle has no profile on screen yet.
     setLoading(loadedHandle.current !== handle);
     setMissing(false);
     setError('');
@@ -131,8 +115,7 @@ function HandleProfileView() {
     }, [load]),
   );
 
-  // One profile action at a time: a press while one runs is dropped, and the
-  // card is busy for as long as it runs.
+  // One profile action at a time: a press while one runs is dropped, and the card is busy for as long as it runs.
   const [actionState, runWork] = useAction((work: Effect.Effect<unknown, unknown>) =>
     Effect.sync(() => setActionError(null)).pipe(
       Effect.andThen(work),
@@ -141,8 +124,6 @@ function HandleProfileView() {
       ),
     ),
   );
-  // The mute write has its own failure line (the contact-request one above
-  // would be wrong).
   const [prefState, runPref] = useAction((work: Effect.Effect<unknown, unknown>) =>
     Effect.sync(() => setActionError(null)).pipe(
       Effect.andThen(work),
@@ -151,8 +132,6 @@ function HandleProfileView() {
   );
   const actionBusy = isWaiting(actionState) || isWaiting(prefState);
 
-  // `performBlock` and `performUnblock` answer with the inline failure text
-  // (or null) instead of rejecting.
   const showFailure = (failure: string | null) =>
     Effect.sync(() => {
       if (failure !== null) {

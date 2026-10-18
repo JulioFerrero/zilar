@@ -1,12 +1,8 @@
-// effect-plain: a presentational route that picks a catalog or a redirect; the env read is a build-time literal Metro folds, with no I/O or ports.
+// effect-plain: a presentational route that picks a catalog or a redirect; the env read is a build-time literal Metro folds.
 import { Redirect } from 'expo-router';
 
 /**
- * The route for the hidden kit catalog. The catalog itself lives in
- * `mock/dev-kit-screen.tsx` and is loaded behind `__DEV__` or
- * `EXPO_PUBLIC_ZILAR_MOCK`, a literal condition Metro folds to `false` in a
- * normal release build, so the catalog stays out of that bundle and the route
- * redirects home.
+ * The catalog loads behind a literal condition Metro folds to `false` in a release build, so it stays out of that bundle.
  */
 export default function KitDevRoute() {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {

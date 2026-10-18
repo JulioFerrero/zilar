@@ -28,10 +28,7 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 type KindFilter = 'all' | DirectoryKind;
 
-/**
- * Lifts a *-api.ts call into an Effect that fails with the thrown error
- * itself: the describe helpers read its class, status and code.
- */
+/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the describe helpers read its class, status and code. */
 function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
@@ -43,11 +40,7 @@ const KIND_OPTIONS: readonly { value: KindFilter; label: string }[] = [
 ];
 
 /**
- * Explore (T-0183): the public directory. Searches public groups and
- * channels only (by handle or title prefix; empty lists the newest), filters
- * by kind, and pages by cursor. Each row shows the title, `@handle`,
- * description, member count and a Join button (or Open when already
- * joined). Guarded by `RequireAuth` (every route needs a session).
+ * The public directory: searches public groups and channels by handle or title prefix (empty lists the newest); every route needs a session.
  */
 export default function ExploreScreen() {
   return (
@@ -76,13 +69,7 @@ function ExploreList() {
 
   const trimmed = query.trim();
 
-  // Debounced search: under 2 characters (but not empty) waits for more
-  // typing instead of erroring, like the web Explore page. The search waits
-  // before it applies the loading state (the lint rule flags synchronous
-  // setState inside effects); a newer search, a change of the inputs or an
-  // unmount interrupts it, so a stale page never replaces the rows. A search
-  // with results on screen (a focus reload) replaces them in place instead of
-  // blanking the list.
+  // Under 2 characters (but not empty) waits for more typing, like web. The loading state waits one tick (the lint rule flags synchronous setState); a newer search, an input change or an unmount interrupts it, so a stale page never replaces the rows.
   const [, search, searchControls] = useAction(
     (input: SearchDirectoryInput) =>
       Effect.sleep(300).pipe(
@@ -123,8 +110,6 @@ function ExploreList() {
     return searchControls.interrupt;
   }, [api, trimmed, kind, attempt, search, searchControls]);
 
-  // A focus reload refreshes the rows in place; the loading state is only
-  // for a screen with nothing to show yet (the first load or an error).
   const reload = useCallback(() => {
     setStatus((current) => (current === 'ready' ? current : 'loading'));
     setAttempt((value) => value + 1);
@@ -162,10 +147,7 @@ function ExploreList() {
     });
   };
 
-  // After a join the store refreshes the list, but the refresh has not
-  // landed when the join resolves — so the group screen opens from the id
-  // the server answered (or the entry), never from a synchronous list read
-  // that would fall through to the chats list on every success.
+  // The store refresh has not landed when the join resolves, so the group screen opens from the id the server answered, never from a synchronous list read.
   const openEntry = (entry: DirectoryEntry) => {
     reloadChats();
     router.replace(postJoinTarget(entry.id));

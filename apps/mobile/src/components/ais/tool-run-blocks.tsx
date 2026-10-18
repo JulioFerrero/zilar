@@ -8,7 +8,6 @@ import type { ToolRun, ToolRunResult } from '@/lib/tools-api';
 import { runStatusText } from './tool-detail-format';
 import { fetchCountText } from './tool-actions';
 
-/** The "Show all" / "Show less" ghost button every run block shares. */
 function ShowMoreButton({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {
   return (
     <Button
@@ -54,11 +53,7 @@ export function RunRow({
   );
 }
 
-/**
- * A failed run (`ok: false`) block plus the ok-run block, like web's
- * `RunResultBlock`: the error kind/message and logs are the tool's own
- * output, not the server envelope, so they may show.
- */
+/** The error kind/message and logs are the tool's own output, not the server envelope, so they may show. */
 export function RunResultBlock({
   result,
   expanded,

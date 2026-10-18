@@ -25,7 +25,6 @@ function backPoint(params: OrbParams): { x: number; y: number } {
   return { x: 50 - Math.cos(params.angle) * 28, y: 50 - Math.sin(params.angle) * 28 };
 }
 
-/** The glossy orb, drawn with the same gradients as `ballSvg` in chat-core. */
 function OrbSvg({ params, size, svgRef }: { params: OrbParams; size: number; svgRef?: Ref<Svg> }) {
   const id = useId().replace(/[^a-zA-Z0-9]/gu, '');
   const light = lightPoint(params);
@@ -56,7 +55,6 @@ function OrbSvg({ params, size, svgRef }: { params: OrbParams; size: number; svg
   );
 }
 
-/** The orb for a box on a step (the model step's preview). */
 export function OrbImage({
   params,
   size = ORB_PREVIEW_SIZE,
@@ -68,13 +66,11 @@ export function OrbImage({
 }
 
 export interface OrbCaptureHandle {
-  /** The orb as a 256×256 base64 PNG, or null when the view is not mounted. */
   capture(): Promise<string | null>;
 }
 
 /**
- * The hidden orb used for the create upload: the same `OrbSvg` the flow shows,
- * off-screen, with `react-native-svg`'s `toDataURL` handing back the base64 PNG.
+ * The hidden orb used for the create upload: `react-native-svg`'s `toDataURL` hands back the base64 PNG.
  */
 export const OrbCapture = forwardRef<OrbCaptureHandle, { params: OrbParams }>(function OrbCapture(
   { params },
@@ -126,7 +122,6 @@ function Swatch({
   );
 }
 
-/** The orb sub-view (PhoneOrb.dc.html): swatches and the draggable light. */
 export function OrbView({ flow }: { flow: NewAiFlow }) {
   const size = ORB_BIG_SIZE;
   const place = (x: number, y: number): void => {
@@ -134,7 +129,6 @@ export function OrbView({ flow }: { flow: NewAiFlow }) {
     const dy = y - size / 2;
     flow.setOrbLight(Math.atan2(dy, dx), Math.min(MAX_LIGHT, Math.hypot(dx, dy) / (size / 2)));
   };
-  // Rebuilt each render so the live callbacks always read the current orb.
   const pan = Gesture.Pan()
     .runOnJS(true)
     .onBegin((event) => place(event.x, event.y))

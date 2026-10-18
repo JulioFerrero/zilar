@@ -31,13 +31,6 @@ type Requests = { incoming: ContactRequestView[]; outgoing: ContactRequestView[]
 
 const EMPTY_REQUESTS: Requests = { incoming: [], outgoing: [] };
 
-/**
- * Settings → Contact requests (T-0182, mirrors the web `RequestsPage`):
- * incoming requests with Accept / Decline, outgoing with Cancel, the pending
- * count in the subtitle, empty and error states. Accepting surfaces the new
- * contact's DM in the chats list (the server lists every contact's DM), so
- * the accepted row links back to chats.
- */
 export default function RequestsScreen() {
   return (
     <RequireAuth>
@@ -71,8 +64,7 @@ function RequestsList() {
     );
   };
 
-  // One Accept, Decline or Cancel: the row drops on success, a failure keeps it
-  // and shows the fixed sentence. The row's own action stops a double tap.
+  // The row drops on success; a failure keeps it and shows the fixed sentence. The row's own action stops a double tap.
   const act = (id: string, action: RequestAction): Effect.Effect<void> =>
     Effect.sync(() => setError('')).pipe(
       Effect.andThen(Effect.promise(() => performRequestAction(api, id, action, remove))),

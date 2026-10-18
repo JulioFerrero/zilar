@@ -21,28 +21,13 @@ import { useAction } from '@/lib/effect/use-action';
 import { extractJoinToken, type JoinPreview } from '@/lib/invite-links-api';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 
-/**
- * Lifts a store call into an Effect that fails with the thrown error itself:
- * the join helpers read its status and code.
- */
+/** Lifts a store call into an Effect that fails with the thrown error itself: the join helpers read its status and code. */
 function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
   return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
 
 /**
- * Join-by-link screen (T-0136): `zilar://join/<token>` (custom scheme,
- * registered in `app.json`) and the web URL shape `/join/<token>` open this
- * route with the token as the `token` param. Shows the preview (group name,
- * member count) with Join and Cancel; Join calls `POST /api/join/:token`
- * and opens the group.
- *
- * Signed-out users go through the existing sign-in and return here (the
- * login `from` carries the join path); signed-in users without a display
- * name see the name gate inline (like the web `JoinPage`) and join only
- * after choosing a name. Failure kinds (invalid, expired, revoked, full)
- * all show the same neutral message; rate limits show a retry text. The
- * token never appears in any message — only status codes travel from the
- * store errors to the view.
+ * `zilar://join/<token>` and `/join/<token>`: signed-out users sign in and return here. Invalid, expired, revoked and full links all show the same neutral message, and the token never appears in any message.
  */
 export default function JoinRoute() {
   const { status, me } = useSession();
@@ -54,10 +39,7 @@ export default function JoinRoute() {
     return <LoadingScreen />;
   }
   if (status === 'guest') {
-    // Keep the raw param (not the parsed token): a pasted junk token must
-    // survive the sign-in and land on the invalid-link state, never on a
-    // route that does not exist. `/join` alone matches no route, so a
-    // missing param falls back to the chats list.
+    // Keep the raw param (not the parsed token): a pasted junk token must survive the sign-in and land on the invalid-link state, never on a route that does not exist.
     const from = raw === undefined ? '/' : `/join/${raw}`;
     return <Redirect href={`/login?from=${encodeURIComponent(from)}`} />;
   }
@@ -67,13 +49,8 @@ export default function JoinRoute() {
   return <Join token={token} />;
 }
 
-/** The inline name gate: choose a name first, then return to the join. */
 function NameGate({ raw }: { raw: string | undefined }) {
   const router = useRouter();
-  // The raw param rides through: a junk token still matches this route's
-  // `[token]` segment, so the join screen shows its invalid-link state
-  // instead of landing on a route that does not exist. `/join` alone matches
-  // no route, so a missing param falls back to the chats list.
   const from = raw === undefined ? '/' : `/join/${raw}`;
   return (
     <JoinBackground>
@@ -103,9 +80,7 @@ function Join({ token }: { token: string | undefined }) {
   const previewJoinLink = useChatStore((state) => state.previewJoinLink);
   const joinByLink = useChatStore((state) => state.joinByLink);
   const store = useChatStoreApi();
-  // A missing token is invalid from the first render — no effect needed.
-  // Junk reads the neutral dead-link message, never the offline retry: the
-  // request was never worth making, and the route still matches `[token]`.
+  // A missing token is invalid from the first render, with no effect needed; junk reads the neutral dead-link message, never the offline retry.
   const [view, setView] = useState<JoinLinkView>(
     token === undefined
       ? joinLinkViewFor({ failed: true, rateLimited: false })
@@ -114,16 +89,11 @@ function Join({ token }: { token: string | undefined }) {
   const [busy, setBusy] = useState(false);
   const [retries, setRetries] = useState(0);
 
-  // The load resolves the next view and applies it once; a newer load, a
-  // change of the token or an unmount interrupts it, so a stale answer never
-  // replaces the view.
+  // A newer load, a change of the token or an unmount interrupts it, so a stale answer never replaces the view.
   const [, loadPreview, loadControls] = useAction(
     (value: string) =>
       fromThrown(() => previewJoinLink(value)).pipe(
-        // An unreachable server is a retryable connection error, not a dead
-        // link (nit 6): only invalid, expired, revoked and full links read
-        // the same neutral message. The mapping takes status/code only, so
-        // the token never enters the view.
+        // Only invalid, expired, revoked and full read the same neutral message; an unreachable server stays retryable. The mapping takes status/code only, so the token never enters the view.
         Effect.match({
           onSuccess: (preview) => joinLinkViewFor({ preview, failed: false, rateLimited: false }),
           onFailure: (error) => joinLinkViewFor({ failed: true, ...joinPreviewFailure(error) }),
@@ -139,7 +109,6 @@ function Join({ token }: { token: string | undefined }) {
     }
     loadPreview(token);
     return loadControls.interrupt;
-    // `retries` re-runs the load after the offline card's Try again.
   }, [token, previewJoinLink, retries, loadPreview, loadControls]);
 
   const cancel = () => {
@@ -151,13 +120,7 @@ function Join({ token }: { token: string | undefined }) {
     setRetries((count) => count + 1);
   };
 
-  // Opens the group's General topic (same mapping as the topics screen),
-  // falling back to the group screen and then the chats list when the
-  // refresh has not landed yet. The group id comes from the server's join
-  // result (or from the preview when already a member) — never the token.
-  // Reads the chats fresh at call time: the store refreshes them before the
-  // join promise resolves, so a render-time snapshot would never contain
-  // the new group and every success would fall through to `/`.
+  // Opens the group's General topic, falling back to the group screen and then the chats list. The group id comes from the server's result, never the token; a fresh read at call time is needed because a render snapshot would never contain the new group.
   const openGroup = (groupId: string | undefined) => {
     if (groupId === undefined) {
       router.replace('/');
@@ -181,9 +144,7 @@ function Join({ token }: { token: string | undefined }) {
       Effect.tapError((error) =>
         Effect.sync(() => {
           setBusy(false);
-          // Invalid, expired, revoked and full links all read the same: the
-          // failure never reveals why. Only an unreachable server keeps the
-          // preview with a retry error (raw server text never renders).
+          // The failure never reveals why. Only an unreachable server keeps the preview with a retry error; raw server text never renders.
           setView(joinPressFailure(error, input.preview));
         }),
       ),
@@ -195,7 +156,6 @@ function Join({ token }: { token: string | undefined }) {
       return;
     }
     const preview = view.preview;
-    // Already a member: just open the group, no use consumed (server-side).
     if (preview.alreadyMember) {
       openGroup(preview.groupId);
       return;

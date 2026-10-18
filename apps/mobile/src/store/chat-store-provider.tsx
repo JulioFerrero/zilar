@@ -32,7 +32,6 @@ import type { StoreApi } from './atomStore';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
-/** React Native's `AppState`, in the shape the store listens to. */
 const rnAppState: AppStateLike = {
   current: () => AppState.currentState,
   subscribe: (handler) => {
@@ -41,24 +40,17 @@ const rnAppState: AppStateLike = {
   },
 };
 
-/** The deps both store builds share: the phone's `AppState` and the uploader. */
 function sharedDeps(): Pick<RealStoreDeps, 'appState' | 'uploader' | 'statSize'> {
   return {
     appState: rnAppState,
     uploader: createAttachmentUploader(),
-    // Unknown-size picks are re-statted right before the slot request (T-0157);
-    // the same reader the picker defaults to.
+    // Unknown-size picks are re-statted right before the slot request.
     statSize: (uri) => createSizeReader().sizeOf(uri),
   };
 }
 
 /**
- * The real store's dependencies in mock mode (plan task H): every API factory
- * talks to the shared backend through `mockFetch`, and the fake XMPP core comes
- * from the same backend. The mock backend (and its seed) is loaded behind a
- * literal build-time condition, so Metro folds it to `false` in a release build
- * and leaves it out of the bundle. A build with `EXPO_PUBLIC_ZILAR_MOCK` keeps
- * it. Returns null when the condition is folded away.
+ * The mock backend is loaded behind a literal build-time condition, so Metro folds it to `false` in a release build and leaves it out of the bundle.
  */
 function mockStoreDeps(): RealStoreDeps | null {
   if (process.env.NODE_ENV === 'test' || __DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
@@ -68,9 +60,7 @@ function mockStoreDeps(): RealStoreDeps | null {
     const { createMockUploader } = require('../mock/uploader') as typeof import('../mock/uploader');
     return {
       ...sharedDeps(),
-      // The fake core's slot URL is a `data:` URL, so the real native PUT cannot
-      // work in mock mode (T-1047): this one reports progress and resolves
-      // without network, keeping sharedDeps' uploader for real builds.
+      // The fake core's slot URL is a `data:` URL, so the real native PUT cannot work in mock mode: this one reports progress and resolves without network.
       uploader: createMockUploader(),
       api: createChatApi(mockToken, mockFetch, API_URL),
       topicsApi: createTopicsApi(mockToken, mockFetch, API_URL),
@@ -87,7 +77,6 @@ function mockStoreDeps(): RealStoreDeps | null {
   return null;
 }
 
-/** The real store's dependencies against the real server (or a test's fetch). */
 function realStoreDeps(): RealStoreDeps {
   return {
     ...sharedDeps(),
@@ -97,28 +86,17 @@ function realStoreDeps(): RealStoreDeps {
   };
 }
 
-/**
- * Runs the real store against the shared mock backend in mock mode, else against
- * the real server. The store starts once the session is authenticated, or
- * immediately in mock mode (nobody is logged in there, plan risk R3). Stopping
- * on sign-out tears the XMPP connection down.
- */
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const params = useGlobalSearchParams();
   const { status } = useSession();
-  // Pinned at mount: the store (and its mock/real wiring) is created once, so
-  // the mode must not flip under it if a later route drops the `?mock` param.
+  // Pinned at mount, so the mode cannot flip under the store if a later route drops the `?mock` param.
   const [mock] = useState(() =>
     isMockMode(params, { dev: __DEV__, envMock: ENV_MOCK, nodeEnv: ENV_NODE_ENV }),
   );
   const [store] = useState<StoreApi<ChatStoreState>>(() =>
     createRealChatStore((mock ? mockStoreDeps() : null) ?? realStoreDeps()),
   );
-  // Mock mode has no session, so its status settling to `guest` must not tear
-  // the store down and restart it: that lost the open chat's history (the
-  // second start never re-opened it). `active` is stable while mock, so the
-  // effect runs once there; a real session still starts on sign-in and stops on
-  // sign-out.
+  // Mock mode has no session: its status settling to `guest` must not tear the store down and lose the open chat's history.
   const active = mock || status === 'authenticated';
 
   useEffect(() => {
@@ -129,20 +107,13 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     return () => store.getState().stop();
   }, [store, active]);
 
-  // Signing out also forgets the user scoped files on the phone (T-0901).
   useEffect(() => {
     if (status === 'guest') {
       void clearTranscripts();
     }
   }, [status]);
 
-  // Native push (T-1139): once the store first reaches `online` after a
-  // sign-in, register the FCM token once per signed-in session; mock mode
-  // registers nothing. The token-roll listener goes with the session.
-  // Reconnects and wakes run a new XMPP session, whose push pair is missing
-  // (ejabberd binds the pair to the session that sent `<enable/>`); every
-  // later transition into `online` re-sends the saved pair instead (T-1152),
-  // which also retries a failed first enable (MP-13).
+  // Reconnects and wakes run a new XMPP session, whose push pair is missing (ejabberd binds the pair to the session that sent `<enable/>`); every later transition into `online` re-sends the saved pair, which also retries a failed first enable.
   useEffect(() => {
     if (!active || mock) {
       return;
@@ -176,7 +147,6 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   return <ChatStoreContext.Provider value={store}>{children}</ChatStoreContext.Provider>;
 }
 
-/** The store hook every chat screen uses, backed by the provider. */
 export function useChatStore<T>(selector: (state: ChatStoreState) => T): T {
   const store = useContext(ChatStoreContext);
   if (store === null) {
@@ -189,11 +159,7 @@ export function useChatStore<T>(selector: (state: ChatStoreState) => T): T {
   );
 }
 
-/**
- * The raw store for call-time reads outside render (T-0136): the join route
- * resolves the just-joined group after the store refreshes chats, so it
- * must read the chats fresh rather than from its render-time snapshot.
- */
+/** The join route resolves the just-joined group after the store refreshes chats, so it must read fresh rather than from its render-time snapshot. */
 export function useChatStoreApi(): StoreApi<ChatStoreState> {
   const store = useContext(ChatStoreContext);
   if (store === null) {

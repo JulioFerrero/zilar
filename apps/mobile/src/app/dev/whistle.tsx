@@ -1,8 +1,6 @@
-// effect-plain: hidden dev-only Whistle spike screen (T-0177), unlinked; its async is local UI state, not product flow
+// effect-plain: hidden dev-only Whistle spike screen, unlinked; its async is local UI state, not product flow.
 /**
- * Hidden Whistle spike screen (T-0177): reachable only by the `zilar://dev/whistle`
- * URL, linked from nowhere. It exists in release builds too (Julio tests a
- * release build) but stays unlinked: no tab, no button, no router push.
+ * Reachable only by `zilar://dev/whistle`, linked from nowhere; it ships in release builds but has no tab, button or router push.
  */
 import { AudioLines, Download, Mic, Play } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,7 +25,7 @@ type Phase =
   | { kind: 'transcribing'; label: string }
   | { kind: 'error'; message: string };
 
-/** Long on purpose: the spike needs a clip that forces several 28 s chunks. */
+/** 120 s on purpose: the spike needs a clip that forces several 28 s chunks. */
 const RECORD_MS = 120_000;
 
 export interface WhistleScreenDeps {
@@ -49,8 +47,6 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [result, setResult] = useState<WhistleTranscript | undefined>(undefined);
   const messagesByChat = useChatStore((state) => state.messagesByChat);
-  // Derived during render, not in an effect: the store snapshot already
-  // holds the newest voice note, and there is no external system to sync.
   const lastNote = lastVoiceNoteOf(messagesByChat);
   const mounted = useRef(true);
 

@@ -8,12 +8,6 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
 import type { KeyCheck } from '@/components/connections/use-key-check';
 
-/**
- * Step 2 (PhoneKey.dc.html): one well field with a lock, a green dot once the
- * key works, a show toggle and "Get one". A provider with a saved connection
- * starts verified, so Continue needs no typing. Shared by the New AI flow and
- * the Add key sheet.
- */
 export function KeyStep({ keys }: { keys: KeyCheck }) {
   const pageUrl = keys.keyPageUrl;
   return (

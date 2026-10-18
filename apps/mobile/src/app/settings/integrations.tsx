@@ -25,17 +25,7 @@ const UNCONFIGURED_VOICE: VoiceIntegrationStatus = {
 };
 
 /**
- * Settings → Integrations (mirrors web's `IntegrationsPage`): the owner-only
- * Email, Voice transcription and Telegram bot cards in the web order. Anyone
- * who is not the owner gets the same 404 as an unknown route, so the screen
- * shows the owner sentence instead of the cards. Secrets are write-only: a
- * secret field is never prefilled, is cleared the moment its save succeeds,
- * and is never rendered, logged or stored anywhere else.
- *
- * The screens keep their state in React `useState`; every network call is an
- * Effect run by `useAction`, which writes its result back into that state.
- * `useAction` also ignores a second press while a call runs and interrupts a
- * running call on unmount.
+ * Anyone who is not the owner gets the same 404 as an unknown route. Secrets are write-only: never prefilled, cleared the moment a save succeeds, never rendered, logged or stored anywhere else.
  */
 export default function IntegrationsScreen() {
   return (
@@ -53,11 +43,8 @@ function IntegrationsBody() {
   const [status, setStatus] = useState<PageStatus>('loading');
   const [errorInfo, setErrorInfo] = useState<{ message: string }>({ message: '' });
 
-  // Latest reload wins: a focus reload replaces a load still in flight.
   const [, load] = useAction(
     () => {
-      // A refresh with the cards on screen keeps them: the spinner is only for
-      // a screen with nothing to show yet (T-1906).
       const keepContent = status === 'ready';
       return Effect.tryPromise({
         try: () => api.getIntegrationsStatus(),
@@ -71,7 +58,6 @@ function IntegrationsBody() {
         ),
         Effect.catch((cause) =>
           Effect.sync(() => {
-            // A failed background refresh keeps the cards; the next focus retries.
             if (keepContent) {
               return;
             }

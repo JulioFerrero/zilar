@@ -11,17 +11,13 @@ type AisScreenShellProps = {
   title: string;
   subtitle?: string | undefined;
   onBack?: (() => void) | undefined;
-  /** A header action, e.g. the list's "Create AI" button. */
   right?: ReactNode;
-  /** Scrolls the body and keeps `footer` pinned above the keyboard. */
   scroll?: boolean;
   footer?: ReactNode;
-  /** T-1969: the root tab that scrolls this body to the top when re-tapped. */
   tabName?: string | undefined;
   children: ReactNode;
 };
 
-/** The frame shared by the My AIs, Create and Edit screens. */
 export function AisScreenShell({
   title,
   subtitle,

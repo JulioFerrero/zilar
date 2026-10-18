@@ -59,11 +59,7 @@ function GroupInfo() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState('');
   const [leaveOpen, setLeaveOpen] = useState(false);
-  // T-1569: the Group info page switch. The pages are rendered beside the
-  // sheets so the Members page's Invite links and Roles rows reuse them.
-  // T-1573 adds the Content pages (tools, activity, always allowed).
   const [page, setPage] = useState<GroupInfoPage>('root');
-  // The root's Add key lands on the Members page with the picker already open.
   const [pickerOnMount, setPickerOnMount] = useState(false);
 
   useEffect(() => {
@@ -75,8 +71,7 @@ function GroupInfo() {
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
   const groupTitle = general?.groupTitle ?? general?.title ?? groupDetail?.title ?? 'Group';
-  // Mute and Search act on the group's own chat row, the General topic (T-1552).
-  // T-1569: without it the keys stay disabled; the raw group id is no fallback.
+  // Mute and Search act on the group's own chat row, the General topic; without it the keys stay disabled (the raw group id is no fallback).
   const groupChatId = general?.id ?? topics[0]?.id;
   const chatReady = groupChatId !== undefined;
 
@@ -90,7 +85,6 @@ function GroupInfo() {
   const roles = useGroupRoles(groupId, members);
   const links = useGroupInviteLinks(groupId);
   const visibility = useGroupVisibility(groupId);
-  // T-1787: the New topic row's sheet (the same hook the group screen uses).
   const myAisInGroup = useMemo(
     () => groupAis.filter((ai) => ownedAis.some((owned) => owned.id === ai.aiId)),
     [groupAis, ownedAis],
@@ -101,8 +95,6 @@ function GroupInfo() {
     membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
   });
   const newTopic = useGroupNewTopic({ groupChatId: groupChatId ?? '', myAis: myAisInGroup });
-  // T-1573: the Content rows' sheets (media and pins, chat-scoped) and the
-  // pins count; the always-allowed rules feed the root count and the page.
   const content = useGroupContent(groupChatId);
   const groupRules = useGroupRules(groupId, isManager);
 
@@ -113,9 +105,7 @@ function GroupInfo() {
     }
   };
 
-  // T-1552: the sheets open only behind their own role gate, so a hidden key or
-  // row can never open a manager- or owner-only sheet (a stale local role is
-  // still bounded by the server, which is the enforcer).
+  // The sheets open only behind their own role gate, so a hidden key can never open a manager- or owner-only sheet; the server is the enforcer.
   const openLinks = () => {
     if (isManager) {
       links.open();
@@ -199,8 +189,6 @@ function GroupInfo() {
     onOpenActivity: openActivity,
     onOpenAllowed: openAllowed,
     onOpenTopic: (chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } }),
-    // T-1787: the New topic row opens the sheet only behind the same gate as
-    // the group screen's "+": managers, or members when the switch is on.
     onNewTopic: () => {
       if (canCreate && groupChatId !== undefined) {
         newTopic.open();

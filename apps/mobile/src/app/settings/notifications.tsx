@@ -38,12 +38,6 @@ const LOAD_ERROR = 'Could not load notification settings. Try again.';
 const PREVIEW_ERROR = 'Could not save message previews. Try again.';
 const TEST_ERROR = 'Could not send a test notification. Try again.';
 
-/**
- * Settings → Notifications (T-1206, mirrors the web `NotificationsPage`): the
- * permission state on this phone, the message-preview switch and a test
- * button. The enable button registers native push the same way the first
- * online does (`chat-store-provider.tsx`).
- */
 export default function NotificationsSettingsScreen() {
   return (
     <RequireAuth>
@@ -59,14 +53,11 @@ function permissionViewOf(permission: Notifications.PermissionResponse): Permiss
   return permission.canAskAgain ? 'not-enabled' : 'blocked';
 }
 
-/** The production push client: bearer auth, `fetch`, the build-time API URL. */
 function createRealPushClient() {
   return createApiClient({ getToken: getSessionToken, fetchImpl: fetch, apiUrl: API_URL }).push;
 }
 
-/** Builds the mock-mode push client on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build,
- * so the mock module stays out of the bundle (the `use-ais-api` recipe). */
+/** Built on the shared mock backend behind a literal build-time condition: Metro folds it to `false` in a release build, so the mock module stays out of the bundle. */
 function createMockPushClient() {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -76,7 +67,6 @@ function createMockPushClient() {
   throw new Error('The mock API is not part of this build');
 }
 
-/** Picks the real push client or the mock one from the route param or the env. */
 function usePushClient() {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
@@ -99,9 +89,7 @@ function NotificationsSettings() {
   const [thisDeviceId, setThisDeviceId] = useState<string | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<string | null>(null);
 
-  // The load callback keeps its identity between focuses, so it reads the
-  // status from a ref: a refresh with the settings on screen keeps them and
-  // only a screen with nothing to show yet gets the spinner (T-1906).
+  // The load callback keeps its identity between focuses, so it reads the status from a ref: a refresh with settings on screen keeps them, and only an empty screen gets the spinner.
   const statusRef = useRef<PageStatus>('loading');
   useEffect(() => {
     statusRef.current = status;
@@ -137,7 +125,6 @@ function NotificationsSettings() {
         ),
         Effect.tapError(() =>
           Effect.sync(() => {
-            // A failed background refresh keeps the settings; the next focus retries.
             if (keepContent) {
               return;
             }
@@ -227,8 +214,7 @@ function NotificationsSettings() {
         fromApi(() => runApi(push.test({ payload: { subscriptionId: registration.id } }))),
       ),
       Effect.tap(() => Effect.sync(() => setTestResult('sent'))),
-      // Refresh the diagnostics so the test's result shows. Ignored: a failed
-      // refresh must not turn a successful send into an error.
+      // A failed refresh must not turn a successful send into an error.
       Effect.tap(() =>
         Effect.all(
           [

@@ -14,9 +14,6 @@ import {
 } from '../../lib/voice';
 import type { RealStoreDeps } from './ports';
 
-// The voice pipeline (T-0154): conversion through `POST /api/voice` when the
-// recording is not already M4A, then the XEP-0363 upload. The app wires the
-// real port through the uploader seam; tests inject a fake.
 export function voicePortFor(deps: RealStoreDeps): VoicePort {
   if (deps.voice !== undefined) {
     return deps.voice;
@@ -31,7 +28,6 @@ export function voicePortFor(deps: RealStoreDeps): VoicePort {
   return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
 }
 
-// The image size a picked asset already carries, when it is a valid one.
 function pickedImageSize(file: PickedFile): { width: number; height: number } | undefined {
   const { width, height } = file;
   if (
@@ -47,11 +43,7 @@ function pickedImageSize(file: PickedFile): { width: number; height: number } | 
   return { width, height };
 }
 
-// The core `bytes` port (T10) over mobile's uploader and stat seams: classify
-// and describe the file, report the already-known image size, then take a
-// XEP-0363 slot and PUT the bytes. An unknown size is stat'd once, right before
-// the slot request (the slot API needs an exact count); a missing uploader or a
-// still-unknown size fails the send like any other upload failure.
+// The core `bytes` port over mobile's uploader and stat seams. An unknown size is stat'd once, right before the slot request (the slot API needs an exact count).
 export function bytesFor(deps: RealStoreDeps): OutgoingBytes {
   const uploader = deps.uploader;
   const statSize = deps.statSize;
@@ -101,9 +93,6 @@ export function bytesFor(deps: RealStoreDeps): OutgoingBytes {
   };
 }
 
-// The core `voice` port (T10) over mobile's voice port: the recording's bytes
-// stay opaque to the core, so this unwraps them on convert and the converted
-// audio on upload.
 export function voiceOutFor(deps: RealStoreDeps): VoiceOut {
   const port = voicePortFor(deps);
   return {

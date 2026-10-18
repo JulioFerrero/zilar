@@ -28,12 +28,6 @@ type GroupCreateInput = {
   handle?: string;
 };
 
-/**
- * The full-screen New group flow (T-1314, the Telegram-style twin of the old
- * `NewGroupSheet`): step 1 picks members (search, chips, round checkboxes) and
- * step 2 names the group, then reuses the same `createGroup` store call. Next
- * and Create sit in the header.
- */
 export default function NewGroupScreen() {
   return (
     <RequireAuth>
@@ -51,8 +45,7 @@ function NewGroupFlow() {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [localError, setLocalError] = useState('');
-  // T-0228: Private (default, invite-only) or Public with its own checked
-  // `@handle`; the fields keep the same guards the old sheet used.
+  // Private (default, invite-only) or Public with its own checked `@handle`.
   const [visibility, setVisibility] = useState<CreateVisibility>('private');
   const [handle, setHandle] = useState('');
   const { api: directoryApi } = useDirectoryApi();
@@ -62,8 +55,6 @@ function NewGroupFlow() {
   );
   const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
 
-  // The same create-group call the sheet made: it refreshes the chat list and
-  // returns the new group id, then the group screen opens over this form.
   const [createState, submit] = useAction((input: GroupCreateInput) =>
     Effect.tryPromise({
       try: () => createGroup(input),

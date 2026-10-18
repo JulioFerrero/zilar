@@ -3,21 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ToolsApiError, type AiToolsApi, type Routine } from '@/lib/tools-api';
 
-/**
- * The routine action logic shared by the AI page's `RoutinesSection` and the
- * group's Tools and routines page (T-1740): the fixed messages, the effect
- * that applies one action to the list, and the `useRoutineActions` hook that
- * owns the busy/confirm state and runs one action at a time.
- */
-
-/** The hint under the list when the server says the routine needs re-approval. */
 export const ROUTINE_NEEDS_APPROVAL_MESSAGE =
   'This routine needs re-approval. Ask the AI to schedule it again.';
 
-/** The error under the list when the server refuses the change. */
 export const ROUTINE_FORBIDDEN_MESSAGE = 'You may not change this routine.';
 
-/** The error under the list for any other action failure. Never server text. */
 export const ROUTINE_UPDATE_FAILED_MESSAGE = 'Could not update the routine. Try again.';
 
 export type RoutineActionMessage = {
@@ -27,12 +17,7 @@ export type RoutineActionMessage = {
 
 export type RoutineAction = 'pause' | 'resume' | 'delete';
 
-/**
- * Maps an action failure to the fixed user-facing message (T-0212, like
- * web's `mutate` in `RoutinesSection.tsx` but never the server text): a
- * `needs_approval` answer is a hint, 403/404 is the forbidden line, and
- * anything else (including network errors) is the generic line.
- */
+/** A `needs_approval` answer is a hint, 403/404 is the forbidden line, anything else the generic line; never the server text. */
 export function routineActionMessage(error: unknown): RoutineActionMessage {
   if (error instanceof ToolsApiError && error.code === 'needs_approval') {
     return { kind: 'hint', text: ROUTINE_NEEDS_APPROVAL_MESSAGE };
@@ -48,12 +33,7 @@ export type RoutineActionOutcome = {
   action: RoutineActionMessage | null;
 };
 
-/**
- * Runs one routine action and folds it into the list: pause/resume swaps
- * the row for the routine the server returned, delete removes the row, and
- * a failure keeps the list with the fixed message. A new call clears the
- * previous message (success carries `action: null`).
- */
+/** A failure keeps the list with the fixed message. A new call clears the previous message (success carries `action: null`). */
 export const applyRoutineActionEffect = (
   api: AiToolsApi,
   routines: Routine[],
@@ -80,7 +60,6 @@ export const applyRoutineActionEffect = (
     Effect.catch((error) => Effect.succeed({ routines, action: routineActionMessage(error) })),
   );
 
-/** Promise form of `applyRoutineActionEffect`. It never rejects: a failure is the outcome's message. */
 export const applyRoutineAction = (
   api: AiToolsApi,
   routines: Routine[],
@@ -89,7 +68,6 @@ export const applyRoutineAction = (
 ): Promise<RoutineActionOutcome> =>
   Effect.runPromise(applyRoutineActionEffect(api, routines, id, action));
 
-/** The row-level actions a list of routines passes down to each row. */
 export type RoutineRowActions = {
   busyId: string | null;
   confirmingId: string | null;
@@ -100,19 +78,10 @@ export type RoutineRowActions = {
   onCancelDelete: () => void;
 };
 
-/** The hook's answer: the row actions plus the message under the list. */
 export type RoutineActions = RoutineRowActions & {
   action: RoutineActionMessage | null;
 };
 
-/**
- * The shared routine-row action state (T-1740): one action at a time (a
- * second click while one runs is ignored), the busy row, the row awaiting
- * delete confirmation, and the message under the list. `routines` is the
- * latest list and `onRoutines` receives the list an action produced, so the
- * caller owns where the list lives (component state on the AI page, the
- * loaded query on the group page).
- */
 export function useRoutineActions({
   api,
   routines,
@@ -126,8 +95,7 @@ export function useRoutineActions({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [action, setAction] = useState<RoutineActionMessage | null>(null);
 
-  // The running action folds into the latest list through the refs: the
-  // closure's props would go stale while the call is in flight.
+  // The action folds into the latest list through the refs: the closure's props would go stale while the call is in flight.
   const routinesRef = useRef(routines);
   useEffect(() => {
     routinesRef.current = routines;

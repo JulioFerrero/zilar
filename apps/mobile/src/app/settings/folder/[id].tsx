@@ -33,17 +33,7 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 const TYPE_ORDER: FolderChatType[] = ['dm', 'group', 'channel', 'ai'];
 
 /**
- * Settings → Chat folders → editor (T-0255, mirrors the web
- * `FolderEditorDialog`): name and icon, the chat types to show, what to hide,
- * and — for an existing folder — an inline delete confirm. `id` is `new` for a
- * new folder. The single-chat pickers are a later task; a folder's existing
- * include/exclude chat lists are left untouched.
- *
- * The folder is resolved from the store before the form mounts (T-0262): a deep
- * link or cold start shows "Loading folder…" until folders sync, the form only
- * mounts once the folder is known (keyed by its id so the snapshot is taken
- * exactly once), and a synced-but-absent id shows a missing notice instead of a
- * blank form that could PATCH over data it never loaded.
+ * The folder is resolved from the store before the form mounts: the form takes its snapshot once, and a synced-but-absent id shows a missing notice instead of a blank form that could PATCH over data it never loaded.
  */
 export default function FolderEditorScreen() {
   return (
@@ -141,7 +131,6 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
       Effect.asVoid,
     ),
   );
-  // Save and Delete run one at a time; while either runs the form is busy.
   const busy = isWaiting(saveState) || isWaiting(removeState);
   const canSave = isFolderNameValid(name) && !busy;
 
