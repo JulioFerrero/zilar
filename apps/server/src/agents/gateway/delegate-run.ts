@@ -1,6 +1,3 @@
-// T-1580: the `delegate` and `task_status` runners split out of `tool-exec.ts`
-// so no gateway file exceeds the 400-line cap. A pure move: the wording, log
-// lines and guard order are unchanged.
 import { Effect } from 'effect';
 import { createDelegation, getDelegationForAi } from '../delegation/service';
 import { type ToolExecution, type ValidToolCall } from '../reply';
@@ -28,11 +25,6 @@ interface DelegateRunnerContext {
   secretsFor: (secret?: string) => string[];
 }
 
-// Routes a `delegate` call: it checks the context and targets, finds the
-// target session, spends a hop on the room round, creates the delegation,
-// queues the synthetic handoff trigger, pumps the room, logs, and returns the
-// JSON `{ task_id, status }`. A `task_status` call reads an existing row for
-// this AI. Both are only reachable in a group turn that offered the tool.
 export function createDelegateRunner(ctx: DelegateRunnerContext) {
   const { deps, logger, sessions, roomRounds, pumpRoom, secretsFor } = ctx;
 
@@ -158,9 +150,6 @@ export function createDelegateRunner(ctx: DelegateRunnerContext) {
     context: RequestActionContext | undefined,
     call: TaskStatusCall,
   ): Effect.fn.Return<ToolExecution> {
-    // Only reachable in a group turn that offered the tool; a DM has no
-    // delegation context, so an improvised call gets the same
-    // `invalid: unknown tool` as any other unadvertised tool.
     if (context === undefined) {
       return { content: 'invalid: unknown tool' };
     }

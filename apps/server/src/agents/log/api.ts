@@ -1,7 +1,3 @@
-// T-1426: `GET /api/agents/tasks/:taskId/events` on the Effect `HttpApi`
-// adapter. Owner only: an unknown task and a task owned by someone else answer
-// the same 404, so existence is never leaked. The query is clamped in the
-// handler (`after` defaults to 0, `limit` to 50, max 100).
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AgentTasksGroup } from '@zilar/api-contract';
@@ -77,7 +73,6 @@ export function createAgentTasksApi(deps: AgentTasksApiDependencies): EffectApiM
             if (ownerId === null || ownerId !== user.id) {
               throw new HttpError(404, 'not_found', 'Task not found');
             }
-            // T-1530: the assembled "View steps" payload for the same owner.
             return yield* Effect.promise(() => taskSteps(deps.db, taskId));
           }),
         ),

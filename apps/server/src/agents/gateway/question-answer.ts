@@ -1,7 +1,3 @@
-// T-1579 (plan docs/audit/handoff-questions-plan.md §3e, §3f, §7 step 6): the
-// answer path for a question card. Both functions run on the room message path
-// and are best-effort: each logs the AI id and the outcome only, and turns every
-// failure into a logged no-op so a database hiccup never breaks ingest.
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import type { ServerDatabase } from '../../db/client';
@@ -17,10 +13,9 @@ import { errorName, isAiSender, type AiSession, type GatewayLogger } from './con
 // The stored answer is bounded, like every other stored question text.
 const MAX_ANSWER_LENGTH = 200;
 
-// T-1579: the AI's own card comes back from the room as an outgoing reflection.
-// Its `id` is the archive stanza id (XEP-0359) that clients quote in
-// `replyTo.id`, while the row was stamped with the origin id the gateway chose
-// when sending, so a reply can never match it. Re-key the row to the stanza id.
+// The AI's own card comes back from the room as an outgoing reflection. Its
+// `id` is the archive stanza id clients quote, while the row was stamped with
+// the origin id, so a reply can never match it. Re-key the row.
 export async function rekeyOnReflection(
   db: ServerDatabase,
   session: AiSession,
@@ -45,9 +40,9 @@ export async function rekeyOnReflection(
   }
 }
 
-// T-1579: a person's reply to a question card answers (closes) it. Every AI
-// session in the room receives the same stanza, so only the asking AI's session
-// handles it. The first reply wins; a later one finds the row no longer open.
+// A person's reply to a question card answers (closes) it. Every AI session in
+// the room receives the same stanza, so only the asking AI's session handles
+// it. The first reply wins; a later one finds the row no longer open.
 export async function answerOnReply(
   db: ServerDatabase,
   session: AiSession,
@@ -64,8 +59,6 @@ export async function answerOnReply(
   }
   const answered = await Effect.runPromise(
     Effect.gen(function* () {
-      // T-1991: a question belongs to one room. A reply in another room the
-      // AI is also in must not close it.
       const roomJid = normBareJid(message.chatJid);
       const question = yield* Effect.tryPromise(() =>
         findOpenQuestionByMessage(db, replyTo.id, roomJid),
@@ -92,10 +85,10 @@ export async function answerOnReply(
   }
 }
 
-// T-1738: a person's typed message that reaches an AI in a topic answers the
-// AI's open questions there, so the topic stops showing "waiting for you". The
-// message text is the answer and its sender is `answered_by`. Best-effort, like
-// the reply path above: a failure is a logged no-op.
+// A person's typed message that reaches an AI in a topic answers the AI's open
+// questions there, so the topic stops showing "waiting for you". The message
+// text is the answer and its sender is `answered_by`. Best-effort: a failure is
+// a logged no-op.
 export async function answerOpenQuestionsOnTurn(
   db: ServerDatabase,
   session: AiSession,

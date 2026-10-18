@@ -17,8 +17,8 @@ export function startTurn<T extends { scheduled?: { onStart?: () => void } }>(
   settle: (outcome: ScheduledTurnOutcome) => void,
 ): Effect.Effect<ActiveAiForGateway | null> {
   return Effect.gen(function* () {
-    // T-1657 (audit G2): the turn starts now, so a scheduled item's runner
-    // starts its timeout here instead of at enqueue.
+    // The turn starts now, so a scheduled item's runner starts its timeout here
+    // instead of at enqueue.
     for (const item of batch) item.scheduled?.onStart?.();
     // The owner JID comes from the database, never from the message. This AI
     // id is the gateway's own, so the lookup can never be aimed at message data.

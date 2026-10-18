@@ -1,10 +1,3 @@
-// T-1299 (AI-22): the class of a failed model turn. One `kind` per
-// `mapFailureToReply` branch — `budget`, `key_rejected`, `rate_limited`,
-// `model_not_found`, `context_too_long`, `other` — with the last branch split
-// by cause: `timeout` (the request ran out of time) and `provider_error` (the
-// provider answered with an HTTP status, but none of the classes above). The
-// classification is the single source of truth for both the reply text and
-// the failure log fields, so the two can never drift.
 import { ChatCompletionError } from './tool-loop';
 
 export type AiFailureKind =

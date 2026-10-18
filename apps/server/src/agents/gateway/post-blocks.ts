@@ -1,7 +1,3 @@
-// T-1758: the `post_blocks` runner, split out of `tool-exec.ts` like
-// `ask-people.ts`. It turns one validated call into a `blocks` card in the
-// room. The AI id and room come from the live session and the turn context,
-// never from the model's arguments.
 import { Effect } from 'effect';
 import type { Block, Payload } from '@zilar/protocol';
 import type { CardMediaRow } from '../../db/rows-agents';
@@ -25,8 +21,8 @@ export interface PostBlocksCall {
   blocks: unknown[];
 }
 
-// The room the turn runs in: where the card is posted. T-1800: `kind` is
-// `chat` for the owner's DM and `groupchat` (the default) everywhere else.
+// The room the turn runs in: where the card is posted. `kind` is `chat` for
+// the owner's DM and `groupchat` (the default) everywhere else.
 export interface PostBlocksChat {
   roomJid: string;
   groupId?: string;
@@ -34,9 +30,6 @@ export interface PostBlocksChat {
   kind?: 'groupchat' | 'chat';
 }
 
-// T-1800: a group card lands in the room, a DM card in the chat with the owner.
-// T-1869: the result names the posted card's id so the model can pass it to
-// `routine.schedule`.
 function postedText(id: string, where: 'this room' | 'this chat'): string {
   return `Your card was posted in ${where} (card id ${id}). Do not repeat what it shows; reply with at most one short line.`;
 }
@@ -66,8 +59,8 @@ export function createPostBlocksRunner(
     }
   }
 
-  // T-1791: records the posted card so a tap can find it later. Best-effort:
-  // a storage failure is logged and never changes the tool result.
+  // Records the posted card so a tap can find it later. Best-effort: a storage
+  // failure is logged and never changes the tool result.
   async function recordPosted(
     session: AiSession,
     chat: PostBlocksChat,
@@ -88,7 +81,7 @@ export function createPostBlocksRunner(
     }
   }
 
-  // T-1872: a card may only carry media this AI fetched into this chat. A
+  // A card may only carry media this AI fetched into this chat. A
   // missing row, another AI's row and another chat's row all answer the same
   // reason, so the model cannot probe ids. A lookup failure is not a verdict:
   // the caller reports it like any other failed post.
@@ -175,11 +168,10 @@ export function createPostBlocksRunner(
       );
       return { content: FAILED_TEXT };
     }
-    // T-1824: a DM card is never reflected, so it keeps the sent id and is
-    // recorded there too; the owner answers it, anyone else gets 404.
+    // A DM card is never reflected, so it keeps the sent id and is recorded
+    // there too; the owner answers it, anyone else gets 404.
     yield* Effect.promise(() => recordPosted(session, chat, posted.id, payload.data));
     logger.info({ aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: true }, 'AI post_blocks posted');
-    // T-1761: the card is in the room, so the group turn sends no echo reply.
     return {
       content: postedText(posted.id, kind === 'chat' ? 'this chat' : 'this room'),
       postedToRoom: true,

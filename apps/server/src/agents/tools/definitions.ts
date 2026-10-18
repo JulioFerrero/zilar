@@ -25,10 +25,6 @@ export interface ChatToolDefinition {
   };
 }
 
-// T-1745: every tool the model gets offers one optional `task_title`, sent only
-// on the first call of a task. It names the work card and is stripped before any
-// tool runs (`tools/parse.ts`), so no tool ever sees it. One helper keeps the
-// description and the cap in a single place.
 export const TASK_TITLE_PARAM = 'task_title';
 export const TASK_TITLE_MAX_LENGTH = 40;
 
@@ -57,13 +53,10 @@ function withTaskTitle(tool: ChatToolDefinition): ChatToolDefinition {
   };
 }
 
-/** Adds the optional `task_title` property to every tool the model gets. */
 function withTaskTitles(tools: ChatToolDefinition[]): ChatToolDefinition[] {
   return tools.map(withTaskTitle);
 }
 
-// The `tools` array the DM turn sends with `tool_choice: "auto"`. Only in
-// turns the gateway already runs: the owner's DMs.
 export const PERSONA_TOOLS: ChatToolDefinition[] = [
   {
     type: 'function',
@@ -100,11 +93,6 @@ export const PERSONA_TOOLS: ChatToolDefinition[] = [
   },
 ];
 
-// The three memory tools offered in every DM and room turn (T-0444,
-// docs/audit/ai-memory-plan.md §3.4). They are always advertised: recall and
-// memory_zoom read this chat's mirror, and remember pins a fact. The AI id and
-// chat key never appear here — they come from the turn, never from the
-// arguments.
 export const MEMORY_TOOLS: ChatToolDefinition[] = [
   {
     type: 'function',
@@ -189,8 +177,6 @@ function describeRequestAction(
   );
 }
 
-// The tool definition the model sees for `request_action`. Kept in one
-// place so `buildTools` and its tests share it.
 export function buildRequestActionTool(
   actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
 ): ChatToolDefinition {
@@ -212,11 +198,6 @@ export function buildRequestActionTool(
   };
 }
 
-// T-0482: the tool definition the model sees for `delegate`. The targets are
-// listed as `id — name`, and the model must pick the id (a name from its own
-// text is never trusted). The worker runs the task with its own model, key and
-// budget and answers in the room; the boss reads the stored result later with
-// `task_status`.
 export function buildDelegateTool(
   targets: ReadonlyArray<{ id: string; name: string }>,
 ): ChatToolDefinition {
@@ -250,11 +231,6 @@ export function buildDelegateTool(
   };
 }
 
-// T-1576: the `ask_people` tool definition, offered only when a person (not
-// another AI) triggered the turn. The model asks one decision question and
-// gives 2-4 short options; the card's chips let people answer with one tap, but
-// a free reply is still allowed. T-1738: one short question in plain words,
-// with chip-sized options.
 export const ASK_PEOPLE_TOOL_DEF: ChatToolDefinition = {
   type: 'function',
   function: {
@@ -301,13 +277,6 @@ export const TASK_STATUS_TOOL_DEF: ChatToolDefinition = {
   },
 };
 
-// The full tools array for one DM turn: the persona tools, the memory tools,
-// and `request_action` only when at least one action is registered. With no
-// actions (the production default while `ACTION_DEMO_ENABLED` is off and no
-// real adapters are wired) a `request_action` call still falls through to
-// `invalid: unknown tool`, while `recall` / `memory_zoom` / `remember` keep
-// working. T-1409: `opts.desk` appends the seven desk tools when the AI has a
-// cloud computer.
 export function buildTools(
   actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
   opts?: { desk?: boolean },
@@ -316,10 +285,6 @@ export function buildTools(
     actions.length === 0
       ? [...PERSONA_TOOLS, ...MEMORY_TOOLS]
       : [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
-  // T-1800: the owner's DM offers `post_blocks` too, so a card request gets a
-  // card instead of plain text. The executor sends it as a `chat` message.
-  // T-1873: `fetch_media` rides with it, so a card can cite a fetched file.
-  // T-1883: `save_text_media` sits right after it, for a file the model wrote.
   const withBlocks = [
     ...base,
     POST_BLOCKS_TOOL_DEF,
@@ -331,17 +296,6 @@ export function buildTools(
   );
 }
 
-// The tools array for one group turn: always the three memory tools (T-0444),
-// plus `request_action` only when the trigger is allowed to ask for an action
-// (T-0098). Persona tools never appear in a group — only the AI's owner may
-// reshape it, and only in the DM. With no acceptable actions the result is the
-// memory tools alone, so a plain member's turn still carries no action tool.
-// T-0482: when `delegateTargets` is non-empty (the AI may delegate and at
-// least one accepting AI is in the room) `delegate` and `task_status` are
-// appended. Without targets the output is unchanged. T-1409: `opts.desk`
-// appends the seven desk tools when the AI has a cloud computer. T-1576:
-// `opts.askPeople` appends `ask_people` when a person triggered the turn.
-// T-1758: `post_blocks` is always appended, routine runs included.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
   delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
@@ -355,9 +309,6 @@ export function buildGroupTools(
       : [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
   const withAskPeople =
     opts?.askPeople === true ? [...withDelegation, ASK_PEOPLE_TOOL_DEF] : withDelegation;
-  // T-1758: `post_blocks` is offered on every group turn, routine runs
-  // included, so it needs no flag. T-1873: `fetch_media` rides with it.
-  // T-1883: `save_text_media` sits right after it.
   const withBlocks = [
     ...withAskPeople,
     POST_BLOCKS_TOOL_DEF,

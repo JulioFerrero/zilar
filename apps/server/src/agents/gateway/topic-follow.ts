@@ -1,12 +1,3 @@
-// T-1448 (UX Task I): an AI assigned as a topic's owner follows that topic.
-// T-1529: following moved off the owner to the last @mentioned AI — the
-// `topics.follower_ai_id` column. Every new human message there reaches the
-// follower with no `@`, until the topic is marked done or the follower presses
-// Stop. The room's follower is read from the `topics` row by room localpart,
-// cached briefly because a busy followed room asks on every message. T-1493: a
-// Stop pause is saved in `topics.follow_paused_at` and reloaded at start, so a
-// restart or a deploy never resumes following on its own. The General topic is
-// never followed (T-1529).
 import { Cause, Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
@@ -31,12 +22,10 @@ const followCache = new Map<string, FollowCacheEntry>();
 
 // Rooms where this AI paused following, keyed by AI id. The durable copy lives
 // in `topics.follow_paused_at`; this map is the in-memory copy that keeps
-// `isFollowPaused` synchronous on the message path (T-1493).
+// `isFollowPaused` synchronous on the message path, with the durable copy in
+// `topics.follow_paused_at`.
 const pausedFollows = new Map<string, Set<string>>();
 
-// The database `initTopicFollow` was handed, used to save every pause and
-// resume. It stays `undefined` until start (or a test) calls `initTopicFollow`;
-// until then a pause is kept in memory only.
 let pauseDb: ServerDatabase | undefined;
 
 // A topic, a claim or a Stop can all name the room by its JID or by its
@@ -45,15 +34,10 @@ function roomLocalpart(roomJid: string): string {
   return bareJid(roomJid).split('@')[0] ?? '';
 }
 
-/** Forgets a room's cached follower after its topic changes. */
 export function invalidateTopicFollow(roomLocalpart: string): void {
   followCache.delete(roomLocalpart);
 }
 
-/**
- * The AI that follows the non-archived, non-General topic behind this room, or
- * `null` when no topic follows it. Cached for {@link FOLLOW_CACHE_TTL_MS}.
- */
 export async function followingAiFor(db: ServerDatabase, roomJid: string): Promise<string | null> {
   const localpart = roomLocalpart(roomJid);
   const cached = followCache.get(localpart);
@@ -115,10 +99,6 @@ export async function initTopicFollow(database: ServerDatabase): Promise<void> {
   }
 }
 
-/**
- * Forgets the in-memory state (the saved rows in `topics` stay), so a test can
- * reload the pauses the way a restart does. Not called from server code.
- */
 export function resetTopicFollowStateForTests(): void {
   followCache.clear();
   pausedFollows.clear();
@@ -142,7 +122,6 @@ export function pauseFollow(aiId: string, roomJid: string): Promise<void> {
   );
 }
 
-/** Restarts following for the AI in this room. */
 export function resumeFollow(aiId: string, roomJid: string): Promise<void> {
   const rooms = pausedFollows.get(aiId);
   if (rooms === undefined) {
@@ -165,8 +144,8 @@ export function resumeFollow(aiId: string, roomJid: string): Promise<void> {
 
 /**
  * Makes an AI the topic's follower and clears any Stop pause, so a person's
- * @mention or reply moves following to that AI (T-1529). The write is
- * fire-and-forget like {@link pauseFollow}; General is never followed.
+ * @mention or reply moves following to that AI. The write is fire-and-forget;
+ * General is never followed.
  */
 export function setTopicFollower(roomJid: string, aiId: string): Promise<void> {
   const localpart = roomLocalpart(roomJid);
@@ -193,9 +172,9 @@ export function setTopicFollower(roomJid: string, aiId: string): Promise<void> {
 }
 
 /**
- * Saves one pause or resume when the gateway has a database, and resolves either
- * way so the callers can keep `void`ing it. A failure is logged like the
- * swallowed failure in `effect/sql.ts`; it never throws into the message path.
+ * Saves one pause or resume when the gateway has a database, and resolves
+ * either way so callers can keep `void`ing it; a failure is logged and never
+ * throws into the message path.
  */
 function saveFollowChange(
   statement: Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient>,
@@ -222,7 +201,6 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Whether the AI has stopped following this room. */
 export function isFollowPaused(aiId: string, roomJid: string): boolean {
   return pausedFollows.get(aiId)?.has(roomLocalpart(roomJid)) ?? false;
 }

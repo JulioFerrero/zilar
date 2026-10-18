@@ -13,9 +13,6 @@ export const MODEL_NOT_FOUND_REPLY =
 export const CONTEXT_TOO_LONG_REPLY =
   'This conversation is too long for my model. Start a new topic or ask me something shorter.';
 
-// T-1290 (AI-10): the room text when a turn fails. The asker cannot act on the
-// owner's provider key or budget, so the room only learns the AI is not
-// answering; the real reason goes to the owner by DM (once a day per room).
 export const GROUP_FAILURE_REPLY = "I can't answer right now. My owner has been told.";
 
 // AI-5: appended to a reply the provider cut at `max_tokens`, so it does not

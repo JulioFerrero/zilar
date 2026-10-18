@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
+// effect-plain: this module's public edge stays Promise-shaped.
 import type { Payload } from '@zilar/protocol';
 import type { SendMessageOptions } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
@@ -33,7 +33,7 @@ import type { GroupTurnDeps } from './group-turn-deps';
 
 export type { GroupTurnDeps } from './group-turn-deps';
 
-// T-1290 (AI-10): tells the owner the real reason a room turn failed, best
+// Tells the owner the real reason a room turn failed, best
 // effort. The room already heard `GROUP_FAILURE_REPLY`; a throw from the
 // callback is logged (ids only) and never fails the turn.
 async function reportFailure(
@@ -54,23 +54,12 @@ async function reportFailure(
   }
 }
 
-// Runs one group turn: typing on, one model call (plain or tool loop),
-// reply into the room, typing off. The plain path is today's behaviour:
-// no tools advertised, and improvised tool calls the model sneaks in are
-// answered `invalid: unknown tool` (T-0098: a plain member must never
-// reach the action gateway). The tool path is the DM tool
-// loop applied to a room: one model call with tools, parsed calls run
-// through `executeTool`, one follow-up call, then the final text is sent
-// with `replyTo` on the trigger (T-1761: no `@Name` prefix; a call that
-// posted a card sends no echo reply at all). A model failure
-// posts the honest failure text in the room (never the raw error). XMPP
-// send failures are logged, never thrown.
 export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
-  // T-1625: the model's own leading `@asker` is stripped; the name is still
+  // The model's own leading `@asker` is stripped; the name is still
   // read for that. Fall back to the sender's JID when no display name is known.
   const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
-  // T-1572: the handoff marker attached to a success reply only. A fixed
+  // The handoff marker attached to a success reply only. A fixed
   // failure reply never carries it (see the `withHandoff` flag below).
   const handoffPayload = (text: string): Payload | undefined => {
     if (deps.aiJid === undefined) {
@@ -84,9 +73,9 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     return line === null ? undefined : { v: 0, type: 'handoff.line', data: line };
   };
   const wire = (text: string, withHandoff = false): { text: string; opts: SendMessageOptions } => {
-    // T-1761: the room reply no longer tags the asker; it quotes the trigger
+    // The room reply does not tag the asker; it quotes the trigger
     // with `replyTo` instead. The model's own leading `@asker` is still
-    // stripped (T-1625) so a mention never sneaks back in.
+    // stripped so a mention never sneaks back in.
     const body = stripLeadingMention(text, name);
     const mentions: NonNullable<SendMessageOptions['mentions']> = [];
     for (const target of deps.handoffTargets ?? []) {
@@ -112,7 +101,6 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     return {
       text: body,
       opts: {
-        // T-1738: a synthetic follow-up has no real message to quote.
         ...(deps.syntheticTrigger === true ? {} : { replyTo: { id: deps.triggerId } }),
         mentions,
         ...(payload === undefined ? {} : { payload }),
@@ -188,16 +176,6 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   }
 }
 
-// The group variant of the DM tool loop: every path below runs the shared
-// `runToolLoop` — DM and group turns share one implementation, no copy.
-// The only differences are the executor (only an advertised tool may run,
-// through `executeAdvertised`) and the final send (the room with `replyTo`
-// instead of the owner's DM).
-//
-// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
-// round 1 offers tools, executes, and the tail makes exactly one more
-// follow-up call with tools, answered from its text alone. The
-// plain-member guard is unchanged.
 async function runGroupToolTurn(
   deps: GroupTurnDeps,
   completionInput: {
@@ -274,7 +252,7 @@ async function runGroupToolTurn(
     await reportFailure(deps, secrets, loop.failure.reply);
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
-  // T-1761: a call already posted the answer into the room (a `blocks` card),
+  // A call already posted the answer into the room (a `blocks` card),
   // so the room gets no echo reply. The card still finishes `done`, exactly
   // like a normal reply would.
   if (loop.postedToRoom) {
@@ -284,7 +262,7 @@ async function runGroupToolTurn(
   }
   if (loop.text === null) {
     // The caps stopped the loop with no text: one last call so the AI must
-    // answer in text. The legacy single-round shape offers tools on that
+    // answer in text. The single-round shape offers tools on that
     // call and answers from its text alone; longer turns go tool-free.
     // The gate runs first: a stop or budget trip before the last call drops
     // the turn with the gate's fixed reply instead of another model call.

@@ -1,8 +1,3 @@
-// T-0106: the fixed prompt guide for AI tool use. Appended to the DM and
-// group system prompts ONLY when tools are enabled and the AI has tool or
-// routine adapters registered for that context. Fixed text: no user data,
-// no persona, no tool output inside — the model can never smuggle content
-// in through it.
 import { cardGuide } from '../message-blocks/guide';
 import {
   MEMORY_ZOOM_TOOL,
@@ -41,7 +36,6 @@ export const TOOL_GUIDE: string = TOOL_GUIDE_LINES.join('\n');
 const TOOL_STAGE_BY_TOOL: Record<string, string> = {
   update_persona: 'Updating how I behave',
   revert_persona: 'Undoing the last change',
-  // T-1409: the desk tools.
   bash: 'Running a command',
   read: 'Reading files',
   write: 'Editing files',
@@ -51,7 +45,6 @@ const TOOL_STAGE_BY_TOOL: Record<string, string> = {
   git: 'Using git',
 };
 
-/** T-1409: the stage while the desk is being provisioned or is queued. */
 export const TOOL_STAGE_WAITING_FOR_COMPUTER = 'Waiting for a computer';
 
 const TOOL_STAGE_BY_ACTION: Record<string, string> = {
@@ -74,9 +67,6 @@ const TOOL_STAGE_BY_ACTION: Record<string, string> = {
 
 export const TOOL_STAGE_FALLBACK = 'Working on it';
 
-// T-1727: a round whose calls are all memory or persona tools does not open a
-// work card. `tool-exec` reports the first call outside this set and nothing
-// when every call is inside it, so a memory-only turn shows no card.
 export const QUIET_TOOLS: ReadonlySet<string> = new Set([
   RECALL_TOOL,
   REMEMBER_TOOL,
@@ -85,7 +75,6 @@ export const QUIET_TOOLS: ReadonlySet<string> = new Set([
   REVERT_PERSONA_TOOL,
 ]);
 
-/** T-1406: the status the AI carries before its first tool stage. */
 export const TOOL_STAGE_THINKING = 'Thinking';
 
 export function stageForToolCall(tool: string, action?: string): string {

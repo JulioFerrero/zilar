@@ -1,9 +1,3 @@
-// T-1709 (plan §2.2): after a person approves an AI's request, queue a
-// follow-up turn on the AI's own DM or room queue, from the person who
-// decided, so the AI can continue the task it stopped at. A deny queues
-// nothing. The queueing matches the routine runner (T-1647): the item lands
-// on the same queue a live turn uses, so it never overlaps one. It carries no
-// `scheduled` field — a person approved, so the turn has that person's role.
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import type { ApprovalRow } from '../../db/rows';
@@ -44,9 +38,8 @@ export function createApprovalFollowUp(deps: ApprovalFollowUpDeps): ApprovalFoll
       ) {
         return;
       }
-      // T-1738: a routine card's result is its check line plus the routine's
-      // own message, so approving it queues no follow-up turn. Every other
-      // action keeps the follow-up.
+      // A routine card's result is its check line plus the routine's own
+      // message, so approving it queues no follow-up turn.
       if (row.action.startsWith('routine.')) {
         return;
       }

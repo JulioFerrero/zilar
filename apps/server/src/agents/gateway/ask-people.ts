@@ -1,8 +1,3 @@
-// T-1576: the `ask_people` runner, split out of `tool-exec.ts` like
-// `request-action.ts`. It turns one validated call into an `ai_questions` row
-// and a question card in the room, then stamps the card's message id on the
-// still-open row. The AI id, room, group and topic all come from the live
-// session and the turn context, never from the model's arguments.
 import { Effect } from 'effect';
 import type { Question } from '@zilar/protocol';
 import type { ServerDatabase } from '../../db/client';
@@ -16,8 +11,6 @@ import type { createLiveSession } from './live';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
-// The validated `ask_people` arguments the executor passes in. They are the
-// `ValidToolCall` member's fields; the service validates them again.
 export interface AskPeopleCall {
   question: string;
   options: string[];

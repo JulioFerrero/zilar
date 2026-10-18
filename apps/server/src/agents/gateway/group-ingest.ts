@@ -19,12 +19,9 @@ import { answerOnReply, rekeyOnReflection } from './question-answer';
 import { rekeyCardOnReflection } from './card-rekey';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
 
-// T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
-// even without an `@` mention. Zilar's own clients quote a reply by id only
-// (client-core's send paths carry no `to`), so the quoted id is matched
-// against the ids this AI recently sent in the room. A third-party client
-// that follows XEP-0461's optional `to` names the AI by its bare JID or by
-// its MUC occupant JID (`room/nick`); both forms are matched too.
+// A reply to the AI's own message wakes it, like Telegram, even without an
+// `@` mention: the quoted id is matched against the ids this AI recently sent
+// in the room, including XEP-0461 `to` names (bare or MUC occupant JID).
 export function replyTargetsAi(input: {
   replyTo: ChatMessage['replyTo'];
   aiBare: string;
@@ -44,11 +41,6 @@ export function replyTargetsAi(input: {
   return input.sentIds?.includes(replyTo.id) ?? false;
 }
 
-// T-0549 (plan §3, G8b): the group ingest side extracted from
-// `createAgentGateway`. The factory takes the shared session maps, the room
-// listener, the group turn runner and the gateway callbacks the moved code
-// closes over, and returns the same `sessionForAiJid`, `handleRoomIncoming`
-// and `pumpRoom` the gateway calls. A pure move: no logic or wording changed.
 interface GroupIngestContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
@@ -74,8 +66,8 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     runGroupSessionTurn,
   } = ctx;
 
-  // T-0481: the live session for an `ai-*` sender's bare JID, if this gateway
-  // runs it. `sessions` is keyed by the gateway's own AI id, so match the JID.
+  // The live session for an `ai-*` sender's bare JID, if this gateway runs
+  // it. `sessions` is keyed by the gateway's own AI id, so match the JID.
   function sessionForAiJid(bare: string): AiSession | undefined {
     for (const candidate of sessions.values()) {
       if (normBareJid(candidate.aiJid) === bare) {
@@ -85,36 +77,27 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     return undefined;
   }
 
-  // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
-  // check that needs no database runs here; the sender's membership and the
-  // rate limit are checked fresh at turn time.
+  // A person @mentions AIs, and only those AIs reply. Every check that needs
+  // no database runs here; the sender's membership and the rate limit are
+  // checked fresh at turn time.
   function handleRoomIncoming(session: AiSession, message: ChatMessage): Promise<void> | undefined {
     // An edit or a retraction in a room is never a mention: it starts no turn.
     if (message.correction !== undefined || message.retraction !== undefined) {
       return;
     }
-    // T-1176 (AI-8): the AI's own room reflection comes back as `outgoing`
-    // (xmpp-core's `resolve-sender.ts` marks a room message outgoing when the
-    // sender is the AI's own occupant JID or nick). It is never a new turn,
-    // but its `id` is the archive stanza-id (XEP-0359) that clients quote in
-    // `replyTo.id`, and `originId` is the id the gateway chose when sending.
-    // Remember both so a reply to this message wakes the AI. The turn's own
-    // send records the sent id too; a duplicate is harmless.
+    // The AI's own room reflection comes back as `outgoing` (xmpp-core's
+    // `resolve-sender.ts`). It is never a new turn, but its `id` (XEP-0359
+    // stanza-id) and `originId` are what clients quote, so remember both.
     if (message.outgoing) {
       const ownRoomJid = normBareJid(message.chatJid);
       const ownRoom = session.rooms.get(ownRoomJid);
       if (ownRoom !== undefined) {
-        // T-1633: stamp this AI's own reflection so rule R (a follow-up
-        // question right after its reply) can see how long ago it answered.
         ownRoom.lastOwnReplyAtMs = Date.now();
         rememberRoomSentId(session, ownRoomJid, message.id);
         if (message.originId !== undefined) {
           rememberRoomSentId(session, ownRoomJid, message.originId);
         }
-        // T-1579: re-key a question card's row from the origin id to the
-        // stanza id a reply quotes. Best-effort, never awaited.
         void rekeyOnReflection(deps.db, session, message, logger);
-        // T-1791: re-key the blocks card row the same way.
         void rekeyCardOnReflection(deps.db, session, message, logger);
       }
       return;
@@ -134,11 +117,7 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
       return;
     }
-    // T-0479: every human room message opens a fresh round, mention or not.
-    // Every AI session receives the same stanza, so an id we already opened on
-    // leaves the running count alone.
     if (!isAiSender(normBareJid(message.fromJid))) {
-      // T-1579: a person's reply to a question card answers it, mention or not.
       void answerOnReply(deps.db, session, message, logger);
       const round = roomRounds.get(roomJid);
       if (round === undefined || round.humanMessageId !== message.id) {
@@ -152,8 +131,6 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     }
     const aiBare = normBareJid(session.aiJid);
     const fromBare = normBareJid(message.fromJid);
-    // T-1633: another AI's room message is remembered so rule R only follows
-    // this AI's own last reply, not a reply another AI gave.
     if (isAiSender(fromBare) && fromBare !== aiBare) {
       room.lastOtherAiAtMs = Date.now();
     }
@@ -166,12 +143,9 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       aiOccupantJid: `${roomJid}/${room.nick}`,
       sentIds: session.roomSentIds.get(roomJid),
     });
-    // T-1617: a person who types the AI's nick or username instead of picking
-    // it from the list wakes it too. Only a person's typed mention counts, so
-    // two AIs cannot wake each other by naming one another.
-    // T-1633: the typed address now runs through `decideWake`, which adds the
-    // one-AI-room question (S) and the follow-up question (R). The live-AI
-    // count is only read once the cheaper mention and reply checks miss.
+    // A person who types the AI's nick or username instead of picking it from
+    // the list wakes it too. Only a person's typed mention counts, so two AIs
+    // cannot wake each other by naming one another.
     let wakeReason: WakeReason | null = null;
     if (!pickedMention && !replied && !isAiSender(fromBare)) {
       const liveAisInRoom = [...sessions.values()].filter((candidate) =>
@@ -191,24 +165,22 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       }
     }
     const mentioned = pickedMention || replied || wakeReason !== null;
-    // T-0475: the listener sees every human room message, mention or not,
-    // before the mention early-return below. AI senders never feed it.
+    // The listener sees every human room message, mention or not, before the
+    // mention early-return below. AI senders never feed it.
     if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {
       noteListenerMessage(roomJid, room, message, body);
     }
     if (!mentioned) {
-      // T-1448/T-1529: the topic's follower — the last AI a person mentioned —
-      // follows it: a plain human message reaches it with no `@`, until Stop
-      // pauses it. AI senders never trigger following, so two AIs cannot loop.
-      // The returned promise settles when the check is done; the gateway
-      // ignores it, tests await it.
+      // The topic's follower — the last AI a person mentioned — follows it: a
+      // plain human message reaches it with no `@`, until Stop pauses it. AI
+      // senders never trigger following, so two AIs cannot loop.
       return followTopic(session, message, roomJid, body);
     }
     let handoff = false;
     if (isAiSender(fromBare)) {
-      // T-0481: an AI mentioning another AI hands the question over, inside
-      // the round's hop budget. The sender must be another live session
-      // joined to this room — never a JID or nick taken from the message.
+      // An AI mentioning another AI hands the question over, inside the
+      // round's hop budget. The sender must be another live session joined to
+      // this room — never a JID or nick taken from the message.
       const senderSession = sessionForAiJid(fromBare);
       if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
         return;
@@ -230,19 +202,11 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       }
       handoff = true;
     } else {
-      // T-1529: a person's mention or reply moves following to this AI. An AI
-      // sender's mention is a handoff and changes nothing.
       setTopicFollower(roomJid, session.aiId);
     }
     queueRoomTurn(session, roomJid, message, body, handoff);
   }
 
-  // T-1448/T-1529: the topic's follower is read asynchronously (the cache may
-  // miss), so the follow check runs on the effect runtime like the pump. A
-  // sender that is an AI, or a room this AI paused with Stop, is skipped
-  // without a read; those paths return no promise. The returned promise
-  // settles when the check is done, so a caller can wait for it instead of
-  // guessing at a delay.
   function followTopic(
     session: AiSession,
     message: ChatMessage,
@@ -275,8 +239,6 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     );
   }
 
-  // The queue step shared by a mention, a reply and a followed topic. Messages
-  // arriving during a turn coalesce per room; the pump starts (or continues).
   function queueRoomTurn(
     session: AiSession,
     roomJid: string,
@@ -326,16 +288,8 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         if (queued.length === 0) {
           break;
         }
-        // T-0482: a delegated task is always its own turn. If it coalesced
-        // with a mention or another delegation, only the last item would be
-        // the trigger and the other delegation rows would stay `working`
-        // forever.
-        // T-1646: a scheduled routine's trigger is always its own turn for the
-        // same reason: it must settle its own outcome and never hides behind a
-        // mention's trigger.
-        // T-1290 (AI-9): mentions coalesce only when they come from the same
-        // sender. A different sender starts a new turn that runs after this
-        // one, so the reply is tagged to the person it answers, in order.
+        // A delegated task and a scheduled routine's trigger are always their
+        // own turn: coalescing would drop their row `working` or their outcome.
         const first = queued[0] as RoomPendingMessage;
         let take = 1;
         if (first.delegationId === undefined && first.scheduled === undefined) {

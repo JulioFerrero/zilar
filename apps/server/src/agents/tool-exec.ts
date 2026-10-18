@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
+// effect-plain: this module's public edge stays Promise-shaped.
 import { classifyFailure } from './failure-class';
 import { REQUEST_ACTION_TOOL } from './tools';
 import { stripTaskTitle } from './tools/parse';
@@ -23,9 +23,7 @@ import { executeToolCalls } from './tool-calls';
 import { redactError } from './redact-error';
 import { byteLength, redactAndTruncate, type TurnLog } from './log/append';
 
-// AI-22: the failure class and its log fields live in `./failure-class`.
 export { failureLogFields } from './failure-class';
-// T-1409 review: kept re-exported here for the existing callers.
 export { executeToolCalls, redactError };
 
 // Maps any turn failure to the exact DM text. Never the raw provider body.
@@ -46,9 +44,6 @@ export function mapFailureToReply(error: unknown): string {
   }
 }
 
-// Builds the messages array for the second model call: the original
-// conversation, the assistant turn with its raw tool calls, and every
-// collected tool result in order.
 export function followUpMessages(
   history: ModelRequestMessage[],
   first: ChatCompletionResult,
@@ -69,11 +64,6 @@ export function followUpMessages(
   ];
 }
 
-// T-0106: truncates one executed tool result before it is fed back to the
-// model. Summaries are already short; `modelText` inside
-// `<untrusted-tool-output>` can be 16 KiB. The wrapper survives: only the
-// inside is cut and the closing tag is put back, so the model still sees
-// labelled data, never instructions.
 const TOOL_OUTPUT_CLOSE = '\n</untrusted-tool-output>';
 
 function truncateToolContent(content: string): string {
@@ -87,16 +77,12 @@ function truncateToolContent(content: string): string {
   return `${content.slice(0, TOOL_RESULT_MAX_CHARS)}…`;
 }
 
-// T-0106: the per-round pipeline both loops share: dedupe repeated calls,
-// report progress, execute (capped), truncate results, collect notices.
-// Returns the follow-up messages for the next model call.
 export async function runLoopRound(input: {
   aiId: string;
   messages: ModelRequestMessage[];
   result: ChatCompletionResult;
   previousSignature: string | null;
   executedCalls: number;
-  /** T-1611: the turn's total call cap (`caps.maxCalls`). */
   maxCalls: number;
   executeTool?: ExecuteToolCall;
   executeAdvertised?: ExecuteToolCall;
@@ -105,8 +91,6 @@ export async function runLoopRound(input: {
   reportProgress?: (stage: string, title?: string) => Promise<string | null>;
   progressPosted?: boolean;
   actionOf?: (tool: string, argsJson: string) => string | undefined;
-  /** T-1426: the turn's session log. One `tool_call` and one `tool_result`
-   * row are appended per executed call (redacted and truncated). */
   log?: TurnLog;
 }): Promise<{
   messages: ModelRequestMessage[];
@@ -134,15 +118,9 @@ export async function runLoopRound(input: {
   }
   let progressPosted = input.progressPosted ?? false;
   if (input.reportProgress !== undefined) {
-    // T-1727: skip the memory and persona tools. A round that only recalls or
-    // remembers has no stage worth a card, so it opens none; the first call
-    // that is not one of them reports progress as before.
     const first = input.result.toolCalls.find((call) => !QUIET_TOOLS.has(call.name));
     if (first !== undefined) {
       const stage = stageForToolCall(first.name, input.actionOf?.(first.name, first.argsJson));
-      // T-1745: the first call of the round may carry the model's own task
-      // title. It names the card only; it is never logged and never reaches
-      // a tool (parse.ts strips it before the decode).
       const title = taskTitleOfCall(first.argsJson);
       try {
         await input.reportProgress(stage, title);
@@ -171,9 +149,6 @@ export async function runLoopRound(input: {
     logger: input.logger,
     secrets: input.secrets,
   });
-  // T-1426: one pair of session-log rows per executed call — the tool name,
-  // the arguments and the output redacted and truncated to 2 KiB, the byte
-  // counts, the exit code and the duration. Order: tool_call then tool_result.
   if (input.log !== undefined) {
     for (let index = 0; index < runnable.length; index += 1) {
       const outcome = outcomes[index];
@@ -201,9 +176,6 @@ export async function runLoopRound(input: {
       );
     }
   }
-  // T-1409: a call may report a new stage after it ran (for example
-  // "Waiting for a computer" while the desk is queued). Report the last one,
-  // best effort, exactly like the pre-round stage above.
   const postStage = stages[stages.length - 1];
   if (postStage !== undefined && input.reportProgress !== undefined) {
     try {
@@ -241,9 +213,6 @@ export async function runLoopRound(input: {
   };
 }
 
-// T-0106: reads the adapter name out of a `request_action` call's arguments
-// for the progress stage lookup. Anything unparsable (or any other tool)
-// yields undefined, and the stage falls back to the tool name's entry.
 export function actionOfCall(tool: string, argsJson: string): string | undefined {
   if (tool !== REQUEST_ACTION_TOOL) {
     return undefined;
@@ -262,9 +231,6 @@ export function actionOfCall(tool: string, argsJson: string): string | undefined
   return undefined;
 }
 
-// T-1745: reads the model's optional `task_title` out of one call's arguments,
-// the way `actionOfCall` reads `request_action`'s action. It is cleaned to one
-// plain line of at most 40 characters; a blank or unparsable title is dropped.
 export const TASK_TITLE_MAX_LENGTH = 40;
 
 export function taskTitleOfCall(argsJson: string): string | undefined {

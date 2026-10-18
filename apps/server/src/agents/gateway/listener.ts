@@ -39,14 +39,12 @@ export function createRoomListener(ctx: RoomListenerContext) {
   const { deps, logger, secretsFor, sessions, roomRounds, sessionIsLive, isStarted, pumpRoom } =
     ctx;
 
-  // T-0475: the listener's per-room debounce windows (see RoomListenerState).
   const roomListeners = new Map<string, RoomListenerState>();
 
-  // T-0475: feed one human room message to the room's debounce window. Every
-  // AI session receives the same stanza, so the first call records it and the
-  // rest are dropped by id. A message that mentions an AI already wakes that
-  // AI through the mention path, so it resets the window instead. Never logs
-  // room text: ids and counts only.
+  // Feed one human room message to the room's debounce window. Every AI
+  // session receives the same stanza, so the first call records it and the rest
+  // are dropped by id; a mention resets the window instead. Never logs room
+  // text: ids and counts only.
   function noteListenerMessage(
     roomJid: string,
     room: RoomSubscription,
@@ -98,7 +96,6 @@ export function createRoomListener(ctx: RoomListenerContext) {
       isAiSender(normBareJid(mention.jid)),
     );
     if (mentionsAi) {
-      // Mentions already wake the right AIs; drop the debounce.
       state.count = 0;
       clearListenerTimer(state);
       return;
@@ -213,8 +210,8 @@ export function createRoomListener(ctx: RoomListenerContext) {
     state: RoomListenerState,
     wakeIds: readonly string[],
   ): void {
-    // T-1168: a gateway that is stopping (or stopped) refuses new turns, so a
-    // listener wake must not start a room turn mid-drain.
+    // A gateway that is stopping (or stopped) refuses new turns, so a listener
+    // wake must not start a room turn mid-drain.
     if (!isStarted()) {
       return;
     }

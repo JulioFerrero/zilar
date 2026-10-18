@@ -1,20 +1,13 @@
-// Whole-chat memory state: the room-memory delete and "clear memory". Split
-// out of `agents/memory/store.ts` unchanged (T-1025).
-
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 
-// T-0442: removing an AI from a room deletes that room's memory at once
-// (plan §3.5). A room's chat key is `room:<localpart>@<muc domain>`; the
-// prefix before the `@` identifies the room, so this covers the room however
-// its domain is spelled. Rows of other AIs and other chats (DMs, other rooms)
-// stay. The caller passes a room list only, and the delete is scoped to the
-// one AI.
-//
-// T-0666: the delete runs on effect/sql, in the order messages, nodes, facts,
-// state.
+// Removing an AI from a room deletes that room's memory at once: the chat key
+// is `room:<localpart>@<muc domain>`, and the prefix before `@` identifies the
+// room however its domain is spelled. Rows of other AIs and other chats stay;
+// the caller passes a room list only and the delete is scoped to the one AI.
+// The delete runs on effect/sql in the order messages, nodes, facts, state.
 export function deleteRoomMemoryEffect(
   aiId: string,
   roomLocalparts: string[],

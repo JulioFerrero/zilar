@@ -1,6 +1,3 @@
-// Pinned facts for one (AI, chat): list, add under a per-chat lock, delete.
-// Split out of `agents/memory/store.ts` unchanged (T-1025).
-
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';

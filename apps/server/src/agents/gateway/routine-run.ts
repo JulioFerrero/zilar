@@ -1,21 +1,18 @@
-// T-1647 (plan §2.2): the routine scheduler's port into the gateway. A
-// scheduled run queues a routine's synthetic trigger on the AI's own DM or
-// room queue — the same queue a live turn uses, so it never overlaps one — and
-// resolves with the turn's outcome. It is never reached from the network: only
-// the scheduler calls it.
+// The routine scheduler's port into the gateway: a scheduled run queues a
+// routine's synthetic trigger on the AI's own queue — never reached from the
+// network, only the scheduler calls it.
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import type { AiSession, ScheduledRunOutcome, ScheduledTurnOutcome } from './contracts';
 
 // A turn that never settles resolves `'failed'` after this. A computer turn is
-// capped at 15 minutes (T-1611), so 20 minutes leaves room for the model calls
-// and tools around it. T-1657 (audit G2): it starts when the turn starts, not
-// at enqueue.
+// capped at 15 minutes, so 20 minutes leaves room for the model calls and tools
+// around it. It starts when the turn starts, not at enqueue.
 export const ROUTINE_TIMEOUT_MS = 20 * 60 * 1000;
 
-// T-1657 (audit G2): a run whose turn never starts — the AI's queue is busy
-// behind a long computer turn — is settled `failed` after this queue wait.
+// A run whose turn never starts — the AI's queue is busy behind a long computer
+// turn — is settled `failed` after this queue wait.
 export const ROUTINE_QUEUE_WAIT_MS = 60 * 60 * 1000;
 
 export interface ScheduledTurnInput {
@@ -43,7 +40,6 @@ export interface RoutineRunnerDeps {
   kickDm: (session: AiSession) => void;
   kickRoom: (session: AiSession, roomJid: string) => void;
   timeoutMs?: number;
-  /** T-1657 (audit G2): how long a queued run may wait for its turn to start. */
   queueWaitMs?: number;
 }
 
@@ -82,10 +78,9 @@ export function createRoutineRunner(deps: RoutineRunnerDeps): RoutineRunner {
       settled = true;
       resolveOutcome(value);
     };
-    // T-1657 (audit G2): the turn's own cap starts when the turn starts, not at
-    // enqueue, so a run waiting behind a long turn is not settled `failed`
-    // early. A separate queue wait covers a turn that never starts at all.
-    // Both timers are cleared in the `finally`.
+    // The turn's own cap starts when the turn starts, not at enqueue, so a run
+    // waiting behind a long turn is not settled early. A separate queue wait
+    // covers a turn that never starts. Both timers are cleared in the `finally`.
     let turnTimer: ReturnType<typeof setTimeout> | undefined;
     let queueTimer: ReturnType<typeof setTimeout> | undefined;
     const startTurn = (): void => {

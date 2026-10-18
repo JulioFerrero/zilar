@@ -33,12 +33,10 @@ interface AiLimitRow {
   perMonthUsd: string | null;
 }
 
-// T-1437 (AI-15): the AI's own spend bounds, read on their own so a usage-read
-// failure can still tell a limited AI from one with no limit. A `null` bound
-// means no bound for that window; a missing row means the AI has no limits row
-// at all, so it is unlimited. A failed read rejects and the callers treat the
-// unknown bound as limited (money first). `numeric` columns come back as
-// strings, so the per-day cap is converted here.
+// The AI's own spend bounds. A `null` bound means none for that window; a
+// missing row means the AI has no limits. A failed read rejects, and callers
+// treat the unknown bound as limited (money first). `numeric` columns come
+// back as strings, so the per-day cap is converted here.
 async function limitsFor(
   db: ServerDatabase,
   aiId: string,
@@ -97,9 +95,8 @@ export function createBudgetGate(ctx: BudgetGateContext) {
   // Daily and monthly warnings are independent; a restart may repeat one.
   const dailyWarningNotices = new Map<string, string>();
   const monthlyWarningNotices = new Map<string, string>();
-  // T-1290 (AI-10): one owner DM per AI per room per UTC day when a room turn
-  // fails — the same in-memory day key as `dailyLimitNotices` above. After a
-  // restart the map is empty, so a failure may notify the owner once more.
+  // One owner DM per AI per room per UTC day when a room turn fails — the same
+  // in-memory day key as `dailyLimitNotices`; a restart may repeat one.
   const ownerFailureNotices = new Map<string, string>();
 
   function utcDay(): string {
@@ -107,9 +104,9 @@ export function createBudgetGate(ctx: BudgetGateContext) {
   }
 
   const usageFor = async (aiId: string): Promise<AiUsage | null> => {
-    // T-1461: a write from the call that just finished may still be in flight
-    // (fire and forget). Wait for it, bounded, so the gate never reads spend
-    // that is missing the last call or calls.
+    // A write from the call that just finished may still be in flight (fire
+    // and forget). Wait for it, bounded, so the gate never reads spend missing
+    // the last call.
     await settlePendingUsage(aiId);
     return getAiUsage(
       {
@@ -120,15 +117,12 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     );
   };
 
-  // The spend-limit check (T-0058), shared by DM and group turns. It runs
-  // before any model call and a NULL daily bound (T-1408, no limit set) never
-  // skips the turn. A usage-read failure is T-1437 (AI-15): when the AI has a
-  // daily or monthly limit, the gate fails closed (the turn is skipped and the
-  // fixed notice is sent); an AI with no limit keeps the old fail-open path.
-  // An unreadable bound counts as set, so a database outage never lets a
-  // limited AI run past its cap. The fetched usage is returned so the caller
-  // can send the 80% warnings after the reply without a second read. Only ids
-  // are ever logged.
+  // The spend-limit check, shared by DM and group turns. It runs before any
+  // model call; a NULL daily bound never skips the turn. A usage-read failure
+  // fails closed when the AI has a limit (skip and send the notice), while an
+  // AI with no limit keeps the fail-open path. An unreadable bound counts as
+  // set, so an outage never lets a limited AI run past its cap. The fetched
+  // usage is returned for the 80% warnings; only ids are ever logged.
   const checkDailyLimitEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     chatKey: string;
@@ -205,11 +199,10 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     return { limited: true, usage };
   });
 
-  // Sends the 80% heads-ups after the AI's reply for the turn that crossed
-  // them: daily first, then monthly. At most one per kind per AI per chat per
-  // UTC day. A reached limit sends nothing: the notice path above applies.
-  // Usage null fails open with no warning. A failed send only logs (ids
-  // only, never the key or amounts) and never fails the turn.
+  // Sends the 80% heads-ups after the reply: daily first, then monthly, at
+  // most one per kind per AI per chat per UTC day. A reached limit sends the
+  // notice instead. A failed send only logs (ids only, never the key or
+  // amounts) and never fails the turn.
   const sendBudgetWarningsEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     chatKey: string;
@@ -259,13 +252,10 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     }
   });
 
-  // T-0106: per-round gate for the multi-round tool loop. Before each model
-  // call the AI must still be live (kill switch) and still under its
-  // daily/monthly limits. A limited AI gets the same fixed budget reply the
-  // single-round turn would send; a stopped AI gets the stopped reply and
-  // sends nothing. A usage-read failure is T-1437 (AI-15): a limited AI (or an
-  // unreadable bound) fails closed, an AI with no limit keeps the old
-  // fail-open path.
+  // Per-round gate for the multi-round tool loop. Before each model call the
+  // AI must still be live (kill switch) and under its limits. A limited AI gets
+  // the fixed budget reply, a stopped AI the stopped reply; an unreadable
+  // bound fails closed for a limited AI and fails open for an unlimited one.
   const checkDmRoundGateEffect = Effect.fnUntraced(function* (
     session: AiSession,
   ): Effect.fn.Return<{ limited: boolean; reply: string } | null> {
@@ -301,13 +291,11 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     return { limited: true, reply: limitReachedReply(usage) };
   });
 
-  // T-1290 (AI-10): DMs the AI's owner the real reason a room turn failed, at
-  // most once per AI per room per UTC day — the same day-key pattern as
-  // `dailyLimitNotices`. The room always hears the fixed `GROUP_FAILURE_REPLY`;
-  // this is the only place the owner learns of the failure. `send` is the
-  // caller's live DM path, so a stopped AI drops the notice. A failed owner
-  // lookup or send only logs (ids only) and never marks the day spent, so a
-  // later failure retries.
+  // DMs the owner the real reason a room turn failed, at most once per AI per
+  // room per UTC day. The room always hears the fixed `GROUP_FAILURE_REPLY`;
+  // this is the only place the owner learns the reason. `send` is the live DM
+  // path, so a stopped AI drops it; a failed lookup or send only logs and never
+  // marks the day spent.
   const notifyOwnerOfFailureEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     roomJid: string;

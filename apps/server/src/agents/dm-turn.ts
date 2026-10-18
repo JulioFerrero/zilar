@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
+// effect-plain: the reply pipeline's public edge stays Promise-shaped.
 import type { ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
@@ -57,9 +57,7 @@ export interface DmTurnDeps {
   aiId: string;
   ownerJid: string;
   messages: ChatCompletionMessage[];
-  /** The AI's own provider connection, resolved per turn. */
   target: ModelTarget;
-  /** Runs one validated persona tool call against the AI's own row. */
   executeTool?: ExecuteToolCall;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
@@ -67,8 +65,6 @@ export interface DmTurnDeps {
   onDelta?: (textSoFar: string) => void;
   /** Receives the token counters of every model call in the turn. */
   onUsage?: (usage: ChatUsage) => void;
-  /** T-1422: the turn's abort signal. When it fires, the model call and the
-   * tool loop stop, no reply is posted, and the card ends `stopped`. */
   signal?: AbortSignal;
   /** Called with the exact final reply text right before its XMPP send. Never
    * called for notices on their own or for failure texts. */
@@ -80,50 +76,17 @@ export interface DmTurnDeps {
   };
   /** Extra secrets to redact from every log line (e.g. the master key). */
   secrets?: readonly string[];
-  /** Tools to advertise to the model. Defaults to `PERSONA_TOOLS` (the
-   * historical behaviour), so existing callers and tests stay unchanged.
-   * When `request_action` is in play the agent gateway passes a list that
-   * also includes the `request_action` tool definition. */
   tools?: ChatToolDefinition[];
-  /** T-0106: how many tool rounds this turn may run. Defaults to 1:
-   * first model call with tools, execute, exactly one follow-up call —
-   * today's behaviour, byte for byte. The gateway passes
-   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
   maxRounds?: number;
-  /** T-1611: the turn's caps for the shared tool loop. Defaults to
-   * `CHAT_TURN_CAPS`; a computer turn passes `COMPUTER_TURN_CAPS`. */
   caps?: TurnCaps;
-  /** T-0106: a gate the turn checks before every model call. Null = the AI
-   * may proceed (live, under budget, usage unavailable). Non-null with
-   * `limited: true` = stop the loop and send the fixed reply. In
-   * production the gateway wires the kill switch + budget check; tests
-   * wire scripted gates. */
   checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
-  /** T-0106: wall-clock start of the turn (ms). Rounds stop when
-   * `TOOL_TURN_WALL_CLOCK_MS` have passed. Defaults to `Date.now()`. */
   turnStartMs?: number;
-  /** T-0106: `Date.now` seam for the wall-clock cap. Defaults to Date.now. */
   nowMs?: () => number;
-  /** T-0106: posts one live progress message at the first tool round and
-   * updates it at each round. T-1745: the optional second argument is the
-   * model's own 2-4 word task title, when it sent one on that round's first
-   * call. Resolves with the progress message id when one was posted
-   * (corrections target it); null when no progress message exists (not posted
-   * yet, or posting failed). Best effort: a throw or a null never fails the
-   * turn. */
   reportProgress?: (stage: string, title?: string) => Promise<string | null>;
-  /** T-1414: sends the turn's final task-card correction (`state: done`,
-   * `failed` or `stopped`, with `elapsed_ms` and `summary`). Replaces T-0106's
-   * `clearProgress`: the card is left in place, never retracted. Best effort:
-   * a throw never fails the turn. */
   finishProgress?: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
-  /** T-0106: counts logger. The loop logs only counts (rounds, tool
-   * calls, ms), never content. Defaults to `deps.logger`. */
   turnLogger?: {
     info: (fields: Record<string, unknown>, message: string) => void;
   };
-  /** T-1426: the turn's session log. Best effort; a write never fails the
-   * turn. */
   log?: TurnLog;
 }
 
@@ -154,12 +117,8 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {
-    // The loop owns every model call, starting with round 1 (tools
-    // offered, exactly like the legacy first call). A text answer comes
-    // back as the final text; an empty first reply throws, like before.
     return await runToolTurn(deps, completionInput, secrets, tools);
   } catch (error) {
-    // T-1422: a stopped turn posts no reply; the card ends `stopped`.
     if (deps.signal?.aborted === true) {
       await finishProgressQuietly(deps, secrets, 'stopped');
       return { kind: 'stopped', text: '' };

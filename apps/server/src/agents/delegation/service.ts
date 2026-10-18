@@ -1,14 +1,3 @@
-// T-0480: the delegation data core (plan `listener-delegation-plan.md` §4.1,
-// §4.3, §4.4 and §8). One AI hands another a task inside a group or topic; the
-// permission rules come from the two owner flags on `ais` (`canDelegate` to
-// hand out, `acceptsDelegation` to receive). The `delegate` and `task_status`
-// tools and the gateway wiring are a later task, so nothing here touches the
-// gateway: these are pure DB helpers with the caps applied at the boundary.
-//
-// T-0568: every query runs on the `effect/sql` client registered for this
-// database (see `../../effect/sql`). The exported functions stay `async` so
-// callers and tests keep their shape.
-
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';

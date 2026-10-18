@@ -1,8 +1,4 @@
-// effect-plain: moved unchanged from agents/{dm-tool-turn,group-turn}.ts (size split)
-// T-1422: the two turn senders — the DM's `sendReply` and the group's
-// `sendGroupReply` — split out so both turn files stay under the 400-line cap.
-// Each sends the final text and shapes the outcome; a send failure is logged
-// (ids only) and never thrown.
+// effect-plain: this module's public edge stays Promise-shaped.
 import type { SendMessageOptions } from '@zilar/xmpp-core';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
@@ -24,8 +20,6 @@ export async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnO
     );
     return { kind: 'failed', text: '' };
   }
-  // T-1426: the answer went out. The session log stores its size only, never
-  // the text.
   deps.log?.append('answer', { bytes: byteLength(text) });
   return { kind: 'replied', text };
 }

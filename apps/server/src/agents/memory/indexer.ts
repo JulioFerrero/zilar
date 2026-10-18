@@ -1,8 +1,3 @@
-// Mirrors an AI chat's archive into `ai_memory_messages` (T-0437, plan §3.2).
-// Same shape as the media indexer: a cursor-driven, bounded read of the AI's
-// own archive. Text edits (corrections, retractions) rewrite the mirror and
-// drop every summary that covers the message, which is rebuilt without it.
-
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
@@ -29,22 +24,16 @@ export interface IndexMemoryInput {
   db: ServerDatabase;
   aiId: string;
   chatKey: string;
-  /** The archive `username`: the AI's localpart for a DM, the room JID for a room. */
   archiveOwner: string;
   scope: MemoryScope;
-  /** The AI's bare JID; its own archive rows are stored with the sender "AI". */
   aiBareJid: string;
-  /** The DM owner's display name; defaults to "Owner". */
   ownerName?: string | undefined;
   now: Date;
 }
 
 export interface IndexMemoryResult {
-  /** Rows read from the archive on this pass. */
   read: number;
-  /** Rows actually inserted (conflicts count nothing). */
   inserted: number;
-  /** True when this pass reached the end of the window. */
   done: boolean;
 }
 
@@ -66,8 +55,6 @@ function formatDuration(durationMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-// The placeholder for the first non-link item, or null when the row has only
-// links (a link-only message keeps its body as the text).
 function mediaPlaceholder(items: ExtractedMediaItem[]): string | null {
   for (const item of items) {
     if (item.kind === 'image') return `[image: ${item.name ?? ''}]`;
@@ -78,12 +65,9 @@ function mediaPlaceholder(items: ExtractedMediaItem[]): string | null {
   return null;
 }
 
-// The mirror text for one row: a media placeholder in front of the body, the
-// body alone for a plain or link-only message, and empty when there is nothing
-// to store.
 export function memoryText(row: ArchiveRow): string {
   // The live AI UI is not a message: a progress card's stage text is not
-  // something the AI should remember from the conversation (T-1400).
+  // something the AI should remember from the conversation.
   if (isLiveAiUiRow(row.xml, row.barePeer)) {
     return '';
   }
@@ -143,9 +127,6 @@ function buildIndexQuery(input: {
   };
 }
 
-// Every statement in the indexer runs on the `effect/sql` client registered for
-// the chat's database (see `../../effect/sql`); `indexMemory` itself stays
-// `async` so its caller and tests keep their shape.
 function targetSeq(
   aiId: string,
   chatKey: string,

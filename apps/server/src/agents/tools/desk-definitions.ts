@@ -13,11 +13,6 @@ import {
   WRITE_TOOL,
 } from './schemas';
 
-// T-1409: the seven desk tools, offered to the model whenever the AI's
-// computer resolves (any `computer_mode` but `off`, with a Hands client
-// available). The names and parameters match the daemon's tool table
-// (`packages/desk/README.md`). The list is fixed for the whole turn
-// (design §2.5).
 const DESK_TOOLS: ChatToolDefinition[] = [
   {
     type: 'function',

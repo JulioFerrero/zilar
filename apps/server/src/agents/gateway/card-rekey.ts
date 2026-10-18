@@ -1,11 +1,7 @@
-// T-1791: the AI's own blocks card comes back from the room as an outgoing
-// reflection. Its `id` is the archive stanza id (XEP-0359) that clients quote,
-// while the row was written under the origin id the gateway chose when sending,
-// so a tap could never find it. Best-effort: logs the AI id and the outcome
-// only, and turns every failure into a logged no-op so ingest never breaks.
-//
-// T-1792: the reflection can beat the insert (the send returns before the row
-// is written), so a miss is retried a few times with backoff before giving up.
+// The AI's own blocks card comes back from the room as an outgoing reflection.
+// Its `id` is the archive stanza id clients quote, while the row used the origin
+// id, so a tap could never find it. A reflection can beat the insert, so a miss
+// is retried with backoff. Failures log ids only and never break ingest.
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import type { ServerDatabase } from '../../db/client';

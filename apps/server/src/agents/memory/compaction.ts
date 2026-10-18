@@ -1,6 +1,3 @@
-// The compaction feed and the summary-node store. Split out of
-// `agents/memory/store.ts` unchanged (T-1025).
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';

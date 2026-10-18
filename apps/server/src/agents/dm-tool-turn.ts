@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
+// effect-plain: the turn adapters stay Promise-shaped over the shared tool loop.
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
@@ -15,18 +15,6 @@ import type { TurnLog } from './log/append';
 
 export { runToolLoop } from './tool-rounds';
 
-// The second half of a tool turn: every path below runs the shared
-// `runToolLoop` — DM and group turns share one implementation, no copy.
-// The turn only adapts: its own executor (`executeTool`), its own sender
-// (DM sends plain text into the owner's DM), and the legacy single-round
-// tail (a follow-up call WITH tools, answered from its text alone). Gates,
-// clock, caps, dedupe, truncation, the tool-free last call and counts
-// logging all live in the loop.
-//
-// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
-// round 1 offers tools, executes, and the tail makes exactly one more
-// follow-up call with tools. The failure path is unchanged: the persona
-// lines ride along on the failure text.
 export async function runToolTurn(
   deps: DmTurnDeps,
   completionInput: {
@@ -37,7 +25,6 @@ export async function runToolTurn(
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
     log?: TurnLog;
-    /** T-1422: the turn's abort signal, forwarded to every model call. */
     signal?: AbortSignal;
   },
   secrets: string[],
@@ -75,7 +62,6 @@ export async function runToolTurn(
       ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
-    // T-1422: a stopped turn posts no reply; the card ends `stopped`.
     if (turnStopped(deps)) {
       return await stoppedTurn(deps, secrets);
     }
@@ -116,14 +102,12 @@ export async function runToolTurn(
   }
   if (loop.text === null) {
     // The caps stopped the loop with no text: one last call so the AI must
-    // answer in text. The legacy single-round shape offers tools on that
+    // answer in text. The single-round shape offers tools on that
     // call and answers from its text alone; longer turns go tool-free.
     // The gate runs first: a stop or budget trip before the last call sends
     // the gate's fixed reply instead of another model call.
     if (deps.checkRoundGate !== undefined) {
       const gate = await deps.checkRoundGate();
-      // T-1422: a stop that landed while the gate was awaited drops the turn
-      // quietly, exactly like the group tail; a budget trip never overrides it.
       if (turnStopped(deps)) {
         return await stoppedTurn(deps, secrets);
       }

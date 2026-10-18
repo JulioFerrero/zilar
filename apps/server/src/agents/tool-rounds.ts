@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/dm-tool-turn.ts (size split)
+// effect-plain: this module's public edge stays Promise-shaped.
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
@@ -17,32 +17,11 @@ import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools';
 import type { TurnLog } from './log/append';
 
-// T-0106: the one shared multi-round tool loop for DM and group turns. No
-// copy: both turns call this, differing only in their executor (groups wrap
-// it with the advertised-tools guard) and their final sender (DM sends
-// plain text, groups wire `@Name` + `replyTo`). Round 1 always offers
-// tools, exactly like the legacy first call did; every round that asks for
-// tool calls has them executed and fed back, until a round answers in text
-// or the caps stop the loop. Rules that hold on EVERY round:
-// - `checkRoundGate` runs before each model call: an over-budget or
-//   stopped AI runs no further round and sends nothing (the caller sends
-//   the gate's fixed reply, like a model failure);
-// - the turn's caps (`caps`: the chat caps unless a computer turn passes its
-//   own) stop the loop; when the rounds run out, the last model call is made
-//   WITHOUT tools so the AI must answer in text
-//   (`maxRounds: 1` keeps the legacy shape instead — see below);
-// - a round that repeats the previous round's calls exactly gets the
-//   "already done" result without executing;
-// - tool results are truncated to `TOOL_RESULT_MAX_CHARS` and still arrive
-//   inside `<untrusted-tool-output>`;
-// - only counts (rounds, tool calls, ms) reach the log, never content —
-//   the loop logs one counts line per turn, even when it throws.
-// Progress posts only happen on multi-round turns (`maxRounds > 1`): a
-// legacy single-round turn finishes in two calls and stays byte for byte.
-//
-// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
-// round 1 offers tools, executes, and the caller makes exactly one more
-// follow-up call WITH tools, answered from its text alone.
+// The one shared multi-round tool loop for DM and group turns; the two differ
+// only in their executor and final sender. `checkRoundGate` runs before each
+// model call, tool results are truncated and wrapped as untrusted, and only
+// counts (rounds, tool calls, ms) reach the log, never content. When the rounds
+// run out the last call is made without tools so the AI must answer in text.
 export async function runToolLoop(input: {
   aiId: string;
   messages: ModelRequestMessage[];
@@ -55,12 +34,9 @@ export async function runToolLoop(input: {
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
     log?: TurnLog;
-    /** T-1422: the turn's abort signal, forwarded to every model call. */
     signal?: AbortSignal;
   };
   maxRounds: number;
-  /** T-1611: the turn's caps. Defaults to `CHAT_TURN_CAPS`; a turn with the
-   * AI's computer on passes `COMPUTER_TURN_CAPS`. */
   caps?: TurnCaps;
   executeTool?: ExecuteToolCall;
   executeAdvertised?: ExecuteToolCall;
@@ -72,7 +48,6 @@ export async function runToolLoop(input: {
   nowMs: () => number;
   reportProgress?: (stage: string) => Promise<string | null>;
   actionOf?: (tool: string, argsJson: string) => string | undefined;
-  /** T-1426: the turn's session log for the tool-call rows. */
   log?: TurnLog;
 }): Promise<{
   text: string | null;
@@ -81,7 +56,6 @@ export async function runToolLoop(input: {
   rounds: number;
   toolCalls: number;
   messages: ModelRequestMessage[];
-  /** T-1761: true when any executed call posted into the room itself. */
   postedToRoom: boolean;
 }> {
   const startedAt = input.turnStartMs;
@@ -92,12 +66,7 @@ export async function runToolLoop(input: {
   const notices: string[] = [];
   let previousSignature: string | null = null;
   let progressPosted = false;
-  // Progress and the counts line both key off multi-round turns; a legacy
-  // single-round turn reports nothing and stays byte for byte.
   const multiRound = input.maxRounds > 1;
-  // T-1761: a call that posted into the room itself (a `blocks` card) sets
-  // this flag. The group turn reads it and sends no echo reply. Both executor
-  // seams are wrapped so the flag is captured from every executed call.
   let postedToRoom = false;
   const recordPosted = (exec: ExecuteToolCall | undefined): ExecuteToolCall | undefined =>
     exec === undefined
@@ -114,7 +83,6 @@ export async function runToolLoop(input: {
 
   try {
     for (let round = 1; round <= input.maxRounds; round += 1) {
-      // T-1422: a stop drops the loop before another round.
       if (input.completionInput.signal?.aborted === true) break;
       if (input.nowMs() - startedAt >= caps.wallClockMs) {
         break;
@@ -135,9 +103,9 @@ export async function runToolLoop(input: {
       }
       rounds += 1;
       const lastRound = round >= input.maxRounds;
-      // Round 1 always offers tools, exactly like the legacy first call.
+      // Round 1 always offers tools, exactly like the first call.
       // When the rounds run out, the last model call is made without tools
-      // so the AI must answer in text — except the legacy single-round
+      // so the AI must answer in text — except the single-round
       // shape (`maxRounds: 1`), whose follow-up call carries tools and is
       // answered from its text alone.
       const lastCall = lastRound && round > 1;
@@ -148,7 +116,7 @@ export async function runToolLoop(input: {
         ...(lastCall ? {} : { tools: input.tools }),
       });
       if (result.toolCalls.length === 0) {
-        // An empty first reply is a model failure, exactly like the legacy
+        // An empty first reply is a model failure, like the
         // turn: the caller maps it to the honest failure text. A later text
         // answer with no text falls back instead, plus any earned notices.
         if (result.content === null) {

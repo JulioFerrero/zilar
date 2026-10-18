@@ -1,6 +1,4 @@
-// effect-plain: the tool-call pipeline split out of `tool-exec.ts` so no agent
-// file exceeds the 400-line cap. A pure move: the validation, redaction and
-// wording are unchanged.
+// effect-plain: the tool-call pipeline's edge stays Promise-shaped over the executor.
 import { redactError } from './redact-error';
 import {
   ASK_PEOPLE_TOOL,
@@ -29,25 +27,15 @@ import type {
   ValidToolCall,
 } from './tool-loop';
 
-// T-1426: one call's row for the session log: the safe tool name, whether it
-// ran, its result text (the caller redacts and truncates it), its duration and
-// the exit code when the tool ran a process.
 export interface ToolCallOutcome {
   tool: string;
   ok: boolean;
   content: string;
   durationMs: number;
   exitCode?: number;
-  // T-1530: the approval a `request_action` call raised, carried to the
-  // session log so a step's approval decision can be joined later.
   approvalId?: string;
 }
 
-// Parses one raw tool call's `arguments`, runs the executor on it, and turns
-// the result into a `tool` message plus an optional persona notice. Shared by
-// the DM and the group tool loop (T-0098) so they run the exact same
-// validation and redaction rules. A thrown executor becomes a
-// `failed: could not save` message and the next call still runs.
 async function executeOneToolCall(
   call: ChatToolCall,
   context: {
@@ -179,11 +167,6 @@ export async function executeToolCalls(input: {
   return { toolMessages, notices, stages, outcomes };
 }
 
-// Lifts a parsed `request_action` / `update_persona` / `revert_persona` /
-// memory-tool shape into the `ValidToolCall` the executor understands. The
-// call id comes from the wire; everything else is already validated by zod.
-// T-0482: the delegation tools fold their snake_case arguments into the
-// camelCase shape the executor uses.
 function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   if (parsed.tool === UPDATE_PERSONA_TOOL) {
     return {
@@ -251,7 +234,6 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
       content: parsed.content,
     };
   }
-  // T-1409: the desk tools carry their validated args straight to the executor.
   if (isDeskParsedTool(parsed)) {
     return { id, tool: parsed.tool, args: parsed.args };
   }
@@ -263,10 +245,6 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   };
 }
 
-// T-1409: a parsed call is a desk call when its `tool` is one of the seven
-// names. The desk variant's `tool` is a union of literals, so TypeScript cannot
-// subtract it from `ParsedToolArguments` by a property check alone; this
-// object-level guard narrows both the `if` and the fallthrough.
 function isDeskParsedTool(
   parsed: ParsedToolArgumentsOk,
 ): parsed is Extract<ParsedToolArgumentsOk, { tool: DeskToolName }> {

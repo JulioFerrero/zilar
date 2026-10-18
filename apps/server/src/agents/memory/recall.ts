@@ -1,6 +1,3 @@
-// Keyword and zoom recall over the mirror. Split out of
-// `agents/memory/store.ts` unchanged (T-1025).
-
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';

@@ -1,10 +1,3 @@
-// The AI-memory routes on the Effect `HttpApi` adapter (T-0533): the same
-// methods, paths, limiter order, status codes and bodies as the deleted
-// router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// A DM is visible to and changeable by the AI's owner only; a room is visible
-// to everyone who can see it and changeable by the AI's owner and the topic
-// managers. Text is never logged.
-
 import { Effect, Layer } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';

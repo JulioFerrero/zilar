@@ -1,10 +1,3 @@
-// The agent tool names, argument schemas, tool definitions and reply lines
-// used to live here. T-1029 split the body into `tools/schemas.ts` (the tool
-// names, caps and Effect argument schemas), `tools/parse.ts` (the raw tool-call
-// argument decoder), `tools/definitions.ts` (the `ChatToolDefinition` objects
-// and the `build*` helpers) and `tools/reply-lines.ts` (the reply lines the
-// gateway appends). This path stays a thin barrel so every importer keeps
-// working with the same names and kinds.
 export {
   ACTION_NAME_MAX_LENGTH,
   ASK_PEOPLE_TOOL,

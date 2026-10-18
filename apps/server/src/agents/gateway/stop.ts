@@ -1,10 +1,3 @@
-// T-1422: stopping one running turn from the owner's task card. Each running
-// turn (a DM or a room) registers an `AbortController` on its session, keyed by
-// the client chat id the owner sees: the AI's own JID in a DM, the room JID in
-// a group/topic. `stopTurn` looks the session up by the gateway's own AI id and
-// aborts that chat's controller. The route does the owner check; this file only
-// reaches the sessions the gateway already holds, so it can never aim at a
-// chat or an AI the caller did not name.
 import type { AiSession } from './contracts';
 import type { TurnStopper } from './stop-types';
 import { pauseFollow } from './topic-follow';
@@ -35,8 +28,6 @@ export function clearTurnAbort(
 export function createStopTurn(sessions: Map<string, AiSession>): TurnStopper {
   return {
     stopTurn(aiId: string, chatJid: string): boolean {
-      // T-1448: stopping a turn in a followed room also pauses following, so a
-      // plain message cannot restart it. A later mention resumes following.
       pauseFollow(aiId, chatJid);
       const session = sessions.get(aiId);
       if (session === undefined) {

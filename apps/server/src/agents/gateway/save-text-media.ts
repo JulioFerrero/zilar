@@ -1,15 +1,5 @@
-// T-1883: the `save_text_media` runner. It takes text the model wrote, adds a
-// fixed extension, encodes it and stores it with `storeCardMedia`, so the model
-// can put the returned media id in a `file` block. The AI id and the chat's
-// media key come from the live session and the turn, never from the model's
-// arguments.
-//
 // Every failure is a fixed `error:` line. Log lines carry the AI id, the tool
 // name, the outcome and the fixed reason only, never the content.
-//
-// Effect runs inside and `Effect.runPromise` sits at the edge (EFFECT_GUIDE
-// "The Promise boundary rule"): the store's quota refusal and every other store
-// failure become one reason at this boundary.
 import { Data, Effect, type Effect as EffectType } from 'effect';
 import { CardMediaQuotaError, storeCardMedia } from '../../card-media/service';
 import type { CardMediaRow } from '../../db/rows-agents';
@@ -18,7 +8,6 @@ import type { ToolExecution } from '../reply';
 import type { AgentGatewayDeps, AiSession } from './contracts';
 import type { FetchMediaChat } from './fetch-media';
 
-// The validated `save_text_media` arguments the executor passes in.
 export interface SaveTextMediaCall {
   name: string;
   format: SaveTextMediaFormat;

@@ -98,10 +98,6 @@ export async function loadOwnerName(db: ServerDatabase, ownerId: string): Promis
   return name === '' ? 'owner' : name;
 }
 
-// Every room an AI belongs to (T-0109): for each `group_ais` row the
-// group's General room, plus each non-archived topic where the AI is in
-// `topic_ais`. Every subscription carries the topic id (and still the group
-// id) so the turn knows which topic it is answering in.
 export async function listAiRooms(
   db: ServerDatabase,
   aiId: string,
@@ -110,8 +106,6 @@ export async function listAiRooms(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // T-1990: the AI counts only while its owner is still a group member,
-      // the same rule `allowedTopicAiIds` applies to other topics.
       return yield* sql<GroupRoomRow>`SELECT ga.group_id, g.room_localpart
         FROM group_ais ga
         INNER JOIN groups g ON g.id = ga.group_id
@@ -165,7 +159,7 @@ export async function listAiRooms(
   }
   // General rooms ride on the `group_ais` rows themselves (one General topic
   // per group, always public, never archived), and only while the AI's owner
-  // is still a group member (T-1990).
+  // is still a group member.
   const generals = new Map(
     topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row] as const),
   );
@@ -301,23 +295,16 @@ export async function loadDelegationFlags(
 export interface RoomGateState {
   /** Bare JIDs of the current human members, lowercased. */
   memberJids: Set<string>;
-  /** Per-member role for the gate that decides whether a sender may wake an
-   * AI for an action (T-0098). Keys are lowercased bare JIDs. */
   memberRolesByJid: Map<string, GroupRole>;
 }
 
-// The fresh gate for one topic turn: who may trigger the AI, and which
-// nicks belong to AIs. For a General topic the humans are every group
-// member; for any other topic they are that topic's members (T-1757: the
-// `topic_members` rows plus the holders of its roles). Member JIDs
-// are derived with the same `localpartFor` the provisioning uses, so no
-// extra mapping table is needed. Roles come from `group_members` and are
-// looked up per turn so a promotion or demotion that lands between turns is
-// picked up the next time the AI wakes. A message from someone who is not a
-// topic member cannot wake the AI (they cannot even be in the room, but it
-// is asserted anyway). The `request_action` role check (T-0098: sender is
-// group owner/admin) stays, and additionally requires the sender to be in
-// the topic.
+// The fresh gate for one topic turn: who may trigger the AI, and which nicks
+// belong to AIs. For General the humans are every group member; otherwise they
+// are the topic's members plus its role holders. JIDs are derived with the same
+// `localpartFor` as provisioning. Roles are read per turn, so a promotion or
+// demotion applies on the next wake. A non-member cannot even be in the room,
+// but it is asserted anyway. A `request_action` also needs a group owner/admin
+// role and topic membership.
 export async function loadRoomGateState(
   db: ServerDatabase,
   groupId: string,
@@ -356,7 +343,6 @@ export async function loadRoomGateState(
       }),
     );
     memberIds = new Set(rows.map((row) => row.userId));
-    // T-1757/T-0116: a role holder is a topic member too, like the room sync.
     for (const holder of await topicRoleHolderIds(db, topic.id, groupId)) {
       memberIds.add(holder);
     }

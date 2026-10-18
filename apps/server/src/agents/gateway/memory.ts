@@ -39,9 +39,7 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
 
   // Indexes this chat when an archive is configured, then reads its pinned
   // facts and memory block. It never throws and never logs text: a failure
-  // still lets the reply go out with whatever is already stored. The calls are
-  // lifted with plain `Effect.promise`, so a rejection dies with the original
-  // error and `catchDefect` logs it, like the old `catch` blocks.
+  // still lets the reply go out with what is already stored.
   const loadMemoryContextEffect = Effect.fnUntraced(function* (
     input: LoadMemoryInput,
   ): Effect.fn.Return<MemoryContext> {
@@ -93,11 +91,11 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
     );
   });
 
-  // T-0446: one compaction per (AI, chat) at a time, in memory only. The
-  // gateway fires `startCompaction` after a turn's reply; it is never awaited,
-  // so a slow or failed model call can neither delay nor fail the reply. The
-  // daily-limit gate is re-checked here (usage can have crossed the cap since
-  // the turn started) and the run never logs prompt or summary text.
+  // One compaction per (AI, chat) at a time, in memory only. The gateway fires
+  // `startCompaction` after a turn's reply and never awaits it, so a slow or
+  // failed model call cannot delay or fail the reply. The daily-limit gate is
+  // re-checked here (usage can cross the cap mid-turn); prompt and summary text
+  // is never logged.
   const runningCompactions = new Set<string>();
 
   const compactionEffect = Effect.fnUntraced(function* (
@@ -120,8 +118,8 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
           messages: [{ role: 'user', content: prompt }],
           ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
           secrets: secretsFor(),
-          // T-1405: compaction is a model call too; count its tokens and cost
-          // against the AI. Best effort and fire and forget.
+          // Compaction is a model call too; count its tokens and cost against
+          // the AI, best effort and fire and forget.
           onUsage: (usage) => {
             void recordUsage(
               { db: deps.db, logger },

@@ -1,11 +1,8 @@
-// T-1714 (plan §1): a routine posts exactly one message, and every later run
-// edits it. This wrapper sits at the gateway's wiring layer, so `turn-send.ts`
-// and the turn loops stay unchanged: it remembers the routine's message id
-// across the sends of one run, edits that message while it is under `maxAgeMs`
-// old, and posts a fresh one otherwise. Every send and edit carries the
-// T-1721 `routine` payload (`{ id, title, schedule }`) so a client can draw the
-// routine header and bump the chat; a correction still quotes no reply and
-// mentions no one.
+// A routine posts exactly one message and every later run edits it. The wrapper
+// remembers the routine's message id across one run, edits while it is under
+// `maxAgeMs` old, and posts fresh otherwise. Every send and edit carries the
+// `routine` payload so a client can draw the header; a correction quotes no
+// reply and mentions no one.
 import { Effect } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { ChatKind } from '@zilar/xmpp-core';
@@ -38,8 +35,8 @@ type RecordRoutineMessage = (
 
 type LoadRoutine = (db: ServerDatabase, routineId: string) => Promise<RoutineRow | null>;
 
-// The T-1721 header payload, or `undefined` for a routine that cannot be
-// loaded or parsed, so the send goes out exactly as it did before.
+// The routine header payload, or `undefined` for a routine that cannot be
+// loaded or parsed, so the send goes out exactly as before.
 function routinePayload(routine: RoutineRow): Payload | undefined {
   const parsed = parseRoutineSchedule(routine.schedule);
   if (!parsed.ok) {
@@ -142,7 +139,7 @@ export function createRoutineSend(deps: RoutineSendDeps): RoutineSend {
         return { id: '' };
       }
       yield* loadTarget();
-      // The T-1721 routine header rides on both the send and every edit.
+      // The routine header rides on both the send and every edit.
       const opts = payload === undefined ? undefined : { payload };
       const existing = targetId;
       if (existing !== null) {

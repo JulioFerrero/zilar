@@ -1,8 +1,3 @@
-// The pure core of long-term memory (T-0433, docs/audit/ai-memory-plan.md §4).
-// A re-implementation of OptMem's `cover` and `pending`, adapted so the
-// smallest summary block is `MEMORY_MIN_BLOCK` messages instead of two. No
-// I/O: the mirror, the nodes table and the gateway build on these functions.
-
 export type Block = { lo: number; hi: number };
 
 export const MEMORY_MIN_BLOCK = 16;

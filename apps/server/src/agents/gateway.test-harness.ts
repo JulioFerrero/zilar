@@ -68,7 +68,6 @@ export function completionResponse(content: string): Response {
   ]);
 }
 
-/** One tool call followed by the server's end-of-stream markers. */
 export function toolCallResponse(id: string, name: string, argsJson: string): Response {
   return sseResponse([
     sseChunk(

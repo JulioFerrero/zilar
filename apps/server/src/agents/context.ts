@@ -29,15 +29,10 @@ export interface DmContextInput {
   ownerName: string;
   /** The local date and time line, e.g. "Thursday, 15 October 2026, 04:12 (Europe/Madrid)". */
   today: string;
-  /** Bare JID of the AI, to recognise its own turns. */
   aiJid: string;
-  /** Bare JID of the owner, to recognise the owner's turns. */
   ownerJid: string;
-  /** DM history oldest first, as MAM returns it. */
   history: ChatMessage[];
-  /** The owner message that woke the AI. */
   trigger: Pick<ChatMessage, 'id' | 'body'>;
-  /** Pinned facts and memory block, in their own system message. */
   memory?: MemoryContext;
 }
 
@@ -77,36 +72,20 @@ export interface GroupContextInput {
   persona: string;
   /** Display name of the person who mentioned the AI. */
   senderName: string;
-  /** The local date and time line, e.g. "Thursday, 15 October 2026, 04:12 (Europe/Madrid)". */
   today: string;
-  /** Bare JID of the AI, to recognise its own turns. */
   aiJid: string;
-  /** Name of the group the topic belongs to. Omitted when unknown. */
   groupName?: string;
-  /** Name of the topic the turn runs in. Omitted when unknown. */
   topicName?: string;
-  /** Room history oldest first, as MAM returns it. */
   history: ChatMessage[];
   /** Display names of resolved senders, keyed by bare JID: one batched read per
    * turn. A resolved sender's nick is never trusted; only an unresolved one's
    * nick is used. */
   senderNames?: ReadonlyMap<string, string>;
-  /** The room message that mentioned the AI. */
   trigger: Pick<ChatMessage, 'id' | 'body'>;
-  /** Pinned facts and memory block, in their own system message. */
   memory?: MemoryContext;
-  /** T-0481: room nicks of other AIs here whose `acceptsDelegation` is on.
-   * When present, the prompt tells the AI it may hand a question over. */
   handoffNames?: string[];
 }
 
-// The fixed prefix for a group turn: the same persona and date lines as a DM,
-// but the platform line says the AI is in a group and replies to the person
-// who mentioned it, briefly unless asked. No persona-tool line: persona tools
-// are DM-only (only the owner may reshape the AI, and only in the DM).
-// T-0109: for a topic turn the platform line names the topic
-// ("You are in the topic <name> of the group <group>") for public and
-// private topics alike; it never lists the names of other topics.
 export function buildGroupSystemMessage(input: {
   aiName: string;
   persona: string;

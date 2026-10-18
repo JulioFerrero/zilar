@@ -19,11 +19,10 @@ import { TOOL_STAGE_WAITING_FOR_COMPUTER } from '../tool-guide';
 import { formatModelText, type GatewayLogger } from './contracts';
 import { isDeskToolName, type DeskToolName } from '../tools';
 
-// T-1409: runs one desk tool call against the cloud `Hands` client. The plan's
-// per-jail ceilings are sent on the first `provision` of a turn (`packages/desk`
-// enforces them host-side); the desk outlives the turn and a second `provision`
-// for the same `DeskKey` returns the live jail, so re-provisioning each turn is
-// idempotent (design §2.3).
+// Runs one desk tool call against the cloud `Hands` client. The plan's per-jail
+// ceilings are sent on the first `provision` of a turn (`packages/desk`
+// enforces them host-side); a second `provision` for the same `DeskKey` returns
+// the live jail, so re-provisioning each turn is idempotent.
 const OWNER_PROJECT_ID = 'default';
 const DESK_CPU_SHARES = 512;
 const DESK_TASK_WALL_CLOCK_MS = 30 * 60_000;
@@ -41,18 +40,16 @@ export interface DeskClient {
 export interface DeskTurnContext {
   readonly ownerUserId: string;
   readonly client?: DeskClient;
-  /** T-1422: the turn's abort signal, so a stopped turn kills its jail call. */
+  /** The turn's abort signal, so a stopped turn kills its jail call. */
   readonly signal?: AbortSignal;
 }
 
 export type DeskToolCallValid = Extract<ValidToolCall, { tool: DeskToolName }>;
 
-/** Narrows a validated call to one of the seven desk tools. */
 export function isDeskToolCall(call: ValidToolCall): call is DeskToolCallValid {
   return isDeskToolName(call.tool);
 }
 
-/** One desk call for a turn: the shared runner, or `null` when it offered none. */
 export type DeskRunner = (call: DeskToolCallValid) => Promise<ToolExecution>;
 
 interface DeskRunnerInput {
@@ -61,9 +58,9 @@ interface DeskRunnerInput {
   aiId: string;
   ownerUserId: string;
   logger: GatewayLogger;
-  /** T-1422: the turn's abort signal, forwarded to every `execute` call. */
+  /** The turn's abort signal, forwarded to every `execute` call. */
   signal?: AbortSignal;
-  /** T-1995: re-checked before each runner call; a revoke stops the next one. */
+  /** Re-checked before each runner call; a revoke stops the next one. */
   isUsable?: () => Promise<boolean>;
 }
 
@@ -87,9 +84,9 @@ function errorText(error: DeskError): string {
 }
 
 /**
- * One desk runner per turn: provisions on the first call, then reuses the ref
- * for the rest of the turn. The returned promise always resolves with a short
- * tool result; a failure stays in the model's context.
+ * One desk runner per turn: provisions on the first call, then reuses the ref.
+ * The returned promise always resolves with a short tool result; a failure
+ * stays in the model's context.
  */
 export function createDeskRunner(input: DeskRunnerInput): DeskRunner {
   let ref: DeskRef | null = null;
@@ -124,7 +121,6 @@ export function createDeskRunner(input: DeskRunnerInput): DeskRunner {
   };
 }
 
-/** Creates the turn's desk runner, or `null` when the turn did not offer the tools. */
 export function createTurnDeskRunner(
   turn: DeskTurnContext | undefined,
   aiId: string,
@@ -144,13 +140,13 @@ export function createTurnDeskRunner(
   });
 }
 
-/** T-1423: the stage shown while `runner` mode waits for an offline runner. */
+/** The stage shown while `runner` mode waits for an offline runner. */
 export const TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER = 'Waiting for your computer';
 
 export interface TurnDeskDeps {
   readonly db: ServerDatabase;
-  /** T-1603: the cached cloud probe; awaited once per turn. Absent means no
-   * cloud computer at all. */
+  /** The cached cloud probe; awaited once per turn. Absent means no cloud
+   * computer at all. */
   readonly desk?: (() => Promise<DeskClient | null>) | undefined;
   readonly runnerDesk?: (() => RunnerDeskSource | null) | undefined;
 }
@@ -171,8 +167,8 @@ export interface TurnDesk {
 /** Resolves the AI's computer for one turn. Called per turn, so a runner that
  * goes offline is seen at once; no hub and no desk env stays `{ waiting: false }`. */
 export async function resolveTurnDesk(deps: TurnDeskDeps, input: DeskTurnInput): Promise<TurnDesk> {
-  // T-1603: the cloud client is a cached probe, awaited once per turn. A not
-  // ready agent is simply "no cloud computer" (never a hard failure).
+  // The cloud client is a cached probe, awaited once per turn. A not-ready
+  // agent is simply "no cloud computer", never a hard failure.
   const cloud = (await deps.desk?.()) ?? null;
   const hub = deps.runnerDesk?.() ?? null;
   if (cloud === null && hub === null) {
@@ -207,7 +203,6 @@ export async function resolveTurnDesk(deps: TurnDeskDeps, input: DeskTurnInput):
   };
 }
 
-/** Runs one desk call; an improvised call on a turn that offered none is refused. */
 export function runDeskCall(
   runner: DeskRunner | null,
   call: DeskToolCallValid,
@@ -241,8 +236,8 @@ async function runExecute(
         truncated = chunk.truncated;
         continue;
       }
-      // T-1993: keep at most one char past the cap, then stop reading and cut
-      // the stream. An endless producer can no longer grow the result.
+      // Keep at most one char past the cap, then stop reading and cut the
+      // stream, so an endless producer cannot grow the result.
       const room = TOOL_RESULT_MAX_CHARS + 1 - output.length;
       output += chunk.data.length > room ? chunk.data.slice(0, room) : chunk.data;
       if (output.length > TOOL_RESULT_MAX_CHARS) {
@@ -301,7 +296,7 @@ function executeFailure(
   call: DeskToolCallValid,
   input: DeskRunnerInput,
 ): ToolExecution {
-  // T-1422: a stop landed mid-call; the abort is expected, not a tool failure.
+  // A stop landed mid-call; the abort is expected, not a tool failure.
   if (input.signal?.aborted === true) {
     return { content: 'the tool call was stopped' };
   }

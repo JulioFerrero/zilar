@@ -37,10 +37,6 @@ import type { MemoryRunner } from './memory';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
-// T-0540 (plan §3, G7): the DM turn extracted from `createAgentGateway`. The
-// factory takes the shared live session, budget gate, memory runner and the
-// gateway callbacks the moved code closes over, and returns the same
-// `pumpSessionEffect` the gateway forks. A pure move: no logic or wording changed.
 export interface DmTurnContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
@@ -94,10 +90,9 @@ export function createDmTurn(ctx: DmTurnContext) {
     session.busy = true;
     yield* Effect.gen(function* () {
       while (session.pending.length > 0 && !session.stopped) {
-        // T-1657 (audit G5): a scheduled routine's item is always its own turn,
-        // the same rule the room pump applies (T-1646): it must settle its own
-        // outcome and never hides behind an owner message's trigger. Otherwise
-        // coalesce the run of owner messages up to the first scheduled item.
+        // A scheduled routine's item is always its own turn, like the room
+        // pump: it must settle its own outcome. Otherwise coalesce the run of
+        // owner messages up to the first scheduled item.
         const first = session.pending[0] as PendingMessage;
         let take = 1;
         if (first.scheduled === undefined) {
@@ -145,27 +140,18 @@ export function createDmTurn(ctx: DmTurnContext) {
       if (item.scheduled !== undefined || from === ownerBare) {
         ownerMessages.push(item);
       } else if (isAiSender(from)) {
-        // Another AI (or our own reflection): never a turn, never a loop.
       }
-      // Anything else is a stranger and is ignored.
     }
     if (ownerMessages.length === 0) {
-      // Strangers, other `ai-*` senders (no AI-to-AI loops) and anything else
-      // get no turn and no model call.
       return;
     }
     const trigger = ownerMessages[ownerMessages.length - 1] as PendingMessage;
 
     // The owner's ticks turn to read: one XEP-0333 displayed marker per turn
-    // for the last owner message of the batch. `trigger.id` is the incoming
-    // `ChatMessage.id`, the same id the owner's client stores and matches
-    // received markers against (the archive stanza-id when known, else the
-    // stanza id). Only owner messages are ever marked: strangers and other
-    // AIs returned above, before this point. The `liveMarkDisplayed` wrapper
-    // drops the marker when the AI was stopped between the message arriving
-    // and the marker going out. T-1642: a scheduled trigger has no real
-    // incoming message to mark, so when it coalesced with a real owner message,
-    // T-1647 marks that last owner message instead.
+    // for the last owner message of the batch, using the id the owner's client
+    // matches markers against. `liveMarkDisplayed` drops it when the AI was
+    // stopped in between. A scheduled trigger has no message to mark, so it
+    // marks the last real owner message instead.
     const lastOwnerMessage = [...ownerMessages]
       .reverse()
       .find((item) => item.scheduled === undefined);
@@ -173,10 +159,8 @@ export function createDmTurn(ctx: DmTurnContext) {
       liveMarkDisplayed(session, ownerJid, 'chat', lastOwnerMessage.id);
     }
 
-    // The soft daily limit holds even when the marker above already went out:
-    // a limited AI answers with at most one notice per day, and further
-    // messages that day get no reply and no notice. The usage read also
-    // decides the 80% warnings, which go out after the reply below.
+    // The soft daily limit holds even after the marker: a limited AI answers
+    // with one notice per day, and further messages get no reply and no notice.
     const dmChatKey = `dm:${ownerBare}`;
     const dmBudget = yield* Effect.promise(() =>
       budgetGate.checkDailyLimit({
@@ -190,12 +174,9 @@ export function createDmTurn(ctx: DmTurnContext) {
       return;
     }
 
-    // Each turn streams its drafts to the owner under one turn id. The
-    // publisher throttles (150 ms); the complete reply is flushed as a draft
-    // right before the final XMPP send (`beforeFinalSend`), so the last
-    // `draft` carries the final text; `end` always comes after the final XMPP
-    // message below. Typing indicators stay exactly as before, for clients
-    // without drafts.
+    // Each turn streams drafts under one turn id; the publisher throttles
+    // (150 ms) and flushes the complete reply right before the final XMPP
+    // send, so `end` always follows the final message.
     const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
     const turnLog = openTurnLog(deps.db, logger, session.aiId, ai.owner, ownerBare, secretsFor());
     const turnBody = Effect.gen(function* () {
@@ -250,10 +231,9 @@ export function createDmTurn(ctx: DmTurnContext) {
           secret: target.apiKey,
         }),
       );
-      // The batch is newer than the archive may know: merge the triggering
-      // messages into the history (skipping ids MAM already returned) so a
-      // coalesced turn sees every message that arrived, and the trigger below
-      // deduplicates against the last one by id.
+      // The batch is newer than the archive may know: merge its messages into
+      // the history, skipping ids MAM already returned, so a coalesced turn
+      // sees every message that arrived.
       const knownIds = new Set(history.map((message) => message.id));
       const fresh: ChatMessage[] = ownerMessages
         .filter((item) => !knownIds.has(item.id))
@@ -278,23 +258,18 @@ export function createDmTurn(ctx: DmTurnContext) {
         trigger,
         memory,
       });
-      // T-0106: the guide rides as a trailing user turn only when tools are
-      // enabled and tool/routine adapters are registered (a non-empty
-      // action list, so `request_action` is actually offered). Otherwise
-      // today's messages, byte for byte. T-1655: a scheduled run offers
-      // `request_action` again (T-1647 had turned it off); the unattended
-      // flag the executor passes keeps it from parking a card.
+      // The guide rides as a trailing user turn only when tools are enabled
+      // and tool/routine adapters are registered. A scheduled run offers
+      // `request_action` but the unattended flag keeps it from parking a card.
       const dmActionsList = deps.actions?.listActions() ?? [];
       const dmMessages =
         deps.toolsEnabled === true && dmActionsList.length > 0 ? withToolGuide(messages) : messages;
 
-      // `end` always comes after the final XMPP message: `runDmTurn` sends
-      // it before resolving. Every send and draft push is gated by a
-      // `live*` wrapper so a stop that lands between the LLM call and the
-      // final send drops the reply (and every draft) instead of delivering
-      // it. The `end` itself runs unconditionally so the owner's client
-      // sees the turn terminate instead of hanging.
-      // T-0106/T-1414: multi-round turns post one task card, edited in place
+      // `end` always comes after the final XMPP message. Every send and draft
+      // push is gated by a `live*` wrapper so a stop drops the reply and every
+      // draft instead of delivering it; `end` runs unconditionally so the
+      // owner's client never hangs.
+      // multi-round turns post one task card, edited in place
       // and closed with a final `done`/`failed` correction. Best effort: the
       // turn never fails over it.
       const outcome = yield* runDmTurnInput({
@@ -307,13 +282,11 @@ export function createDmTurn(ctx: DmTurnContext) {
         chatKey: dmChatKey,
         drafts: turnDrafts,
         log: turnLog,
-        // T-1647/T-1655: a routine's synthetic trigger. The action tools are
-        // offered again, but the run is marked unattended so a tier-2 request
-        // without a standing rule is refused instead of parking a card; the
-        // desk tools stay on.
+        // A routine's synthetic trigger offers the action tools again, but the
+        // run is marked unattended so a tier-2 request without a standing rule
+        // is refused instead of parking a card; the desk tools stay on.
         scheduled: trigger.scheduled !== undefined,
-        // T-1714: a routine's synthetic trigger carries the routine id, so the
-        // turn edits that routine's one message instead of posting a new one.
+        // Carries the routine id, so the turn edits that routine's one message.
         ...(trigger.scheduled === undefined
           ? {}
           : { scheduledRoutineId: trigger.scheduled.routineId }),

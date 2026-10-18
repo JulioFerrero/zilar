@@ -3,9 +3,9 @@
 // free of the XMPP core behind agents/gateway/contracts.ts.
 import type { ApprovalFollower } from './stop-types';
 
-// T-1709: the approvals route's `onDecided` hook. The action runs first, so
-// the follow-up turn sees the result, then the follow-up queues one turn on
-// the AI's own queue.
+// The approvals route's `onDecided` hook. The action runs first, so the
+// follow-up turn sees the result, then the follow-up queues one turn on the AI's
+// own queue.
 export function createOnDecided(deps: {
   runAction: (approvalId: string) => Promise<void>;
   /** The live gateway's follow-up hook, or null when it carries none. */

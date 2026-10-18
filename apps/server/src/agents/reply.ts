@@ -1,9 +1,3 @@
-// The AI reply pipeline used to live here. It is split into `tool-loop.ts`
-// (the model call + the tool-loop types and caps), `tool-exec.ts` (tool
-// execution, the round pipeline and redaction), `dm-turn.ts` (the DM turn),
-// `dm-tool-turn.ts` (the shared tool loop and the DM tool turn) and
-// `group-turn.ts` (the group turn). This path stays a thin barrel so every
-// importer keeps working with the same names and kinds.
 export type {
   ChatToolCall,
   CompleteChatInput,

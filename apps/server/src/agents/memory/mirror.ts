@@ -1,7 +1,3 @@
-// The mirror reads the memory modules share: the (AI, chat) range and the raw
-// message and summary-node loads. Split out of `agents/memory/store.ts`
-// unchanged (T-1025).
-
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';

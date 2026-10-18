@@ -46,12 +46,6 @@ import type { RequestActionContext } from './group-turn';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
-// T-0556 (plan §3, G4): the tool executor extracted from
-// `createAgentGateway`. The factory takes the shared session maps, the live
-// session check, the group room pump and the gateway callbacks the moved
-// code closes over, and returns the same `executeToolCall`,
-// `runRequestAction` and `withToolGuide` the DM and group turns take as
-// ctx fields. A pure move: no logic or wording changed.
 interface ToolExecContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
@@ -60,7 +54,6 @@ interface ToolExecContext {
   sessionIsLive: LiveSession['sessionIsLive'];
   pumpRoom: (session: AiSession, roomJid: string) => Promise<void>;
   secretsFor: (secret?: string) => string[];
-  /** T-1576: the `ask_people` runner posts its card through this wrapper. */
   liveSendMessage: LiveSession['liveSendMessage'];
 }
 
@@ -95,13 +88,9 @@ export function createToolExec(ctx: ToolExecContext) {
     secretsFor,
   });
 
-  // Runs one validated tool call against the gateway's own AI id. The id
-  // comes from the session, never from the model's arguments, and the
-  // `chatKey` comes from the turn. Only `ais.persona` /
-  // `ais.previous_persona` (persona tools), the action gateway
-  // (request_action) or this chat's memory rows (the memory tools) can
-  // change. Log lines carry the AI id, the tool name and the outcome only:
-  // never the persona text, a recall query, a block id or a fact.
+  // Runs one validated tool call against the gateway's own AI id. The id and
+  // `chatKey` come from the session/turn, never from the model's arguments.
+  // Log lines carry ids, the tool name and the outcome only: never text.
   function executeToolCall(
     session: AiSession,
     chatKey: string,
@@ -110,16 +99,15 @@ export function createToolExec(ctx: ToolExecContext) {
     options?: { unattended?: boolean; dmJid?: string },
   ): ExecuteToolCall {
     const aiId = session.aiId;
-    // T-1409: one desk runner per turn, created only when the turn offered the
-    // desk tools; `null` keeps an improvised call an unknown tool.
+    // One desk runner per turn, created only when the turn offered the desk
+    // tools; `null` keeps an improvised call an unknown tool.
     const deskRunner = createTurnDeskRunner(desk, aiId, logger);
-    // The T-0444 cap: at most five facts saved per turn. The counter lives in
-    // this closure, which is created once per turn, so it resets with the
-    // turn.
+    // At most five facts saved per turn. The counter lives in this closure,
+    // created once per turn, so it resets with the turn.
     let savedFacts = 0;
-    // T-1873: at most four media calls per turn, so one model cannot pull
-    // unbounded data through the server. T-1883 shares the counter between
-    // `fetch_media` and `save_text_media`. It resets with the turn.
+    // At most four media calls per turn, so one model cannot pull unbounded
+    // data through the server; `fetch_media` and `save_text_media` share it.
+    // It resets with the turn.
     let mediaThisTurn = 0;
     const execute = Effect.fnUntraced(function* (
       call: ValidToolCall,
@@ -141,13 +129,10 @@ export function createToolExec(ctx: ToolExecContext) {
           call.tool === RECALL_TOOL ||
           call.tool === MEMORY_ZOOM_TOOL ||
           call.tool === REMEMBER_TOOL;
-        // T-0482: `delegate` is offered only when this AI may delegate and at
-        // least one accepting AI is in the room, and a model that improvises
-        // it otherwise gets the same `invalid: unknown tool` as any other
-        // unadvertised tool. `task_status` is always a known group tool: it
-        // reads an existing row and `getDelegationForAi` already scopes the
-        // read to the two involved AIs, so it must still fall through when
-        // there are no delegation targets.
+        // `delegate` is offered only when this AI may delegate and at least
+        // one accepting AI is in the room; an improvised call otherwise gets
+        // `invalid: unknown tool`. `task_status` stays known: it reads an
+        // existing row scoped to the two involved AIs.
         const isDelegationTool = call.tool === DELEGATE_TOOL || call.tool === TASK_STATUS_TOOL;
         if (
           !isMemoryTool &&
@@ -166,9 +151,8 @@ export function createToolExec(ctx: ToolExecContext) {
         if (call.tool === REQUEST_ACTION_TOOL && !context.allowActions) {
           return { content: 'invalid: unknown tool' };
         }
-        // T-1576: `ask_people` is offered only when a person triggered the
-        // turn; an AI handoff or a delegated trigger that improvises it gets
-        // the same unknown-tool answer.
+        // `ask_people` is offered only when a person triggered the turn; an AI
+        // handoff or a delegated trigger that improvises it gets unknown-tool.
         if (call.tool === ASK_PEOPLE_TOOL && !context.askPeople) {
           return { content: 'invalid: unknown tool' };
         }
@@ -227,9 +211,8 @@ export function createToolExec(ctx: ToolExecContext) {
         });
       }
       if (call.tool === POST_BLOCKS_TOOL) {
-        // Offered on every group turn and, since T-1800, in the owner's DM;
-        // any other context-free turn (an AI handoff, say) got the guard
-        // above or has no DM JID, so it stays an unknown tool.
+        // Offered on every group turn and in the owner's DM; any other
+        // context-free turn (an AI handoff, say) stays an unknown tool.
         if (context === undefined) {
           if (options?.dmJid === undefined) {
             return { content: 'invalid: unknown tool' };
@@ -279,15 +262,11 @@ export function createToolExec(ctx: ToolExecContext) {
       }
       if (call.tool === REQUEST_ACTION_TOOL) {
         const unattended = options?.unattended === true;
-        // The triggering user's membership may have changed during a long
-        // turn (T-1727): re-check the database before calling the action
-        // gateway, and short-circuit to `denied: not allowed` when the
-        // sender is no longer a member of this topic. The gateway is never
-        // invoked in that case, so no audit row is written and no card
-        // appears.
-        // T-1655: a scheduled (unattended) run has no live person whose
-        // role could change mid-turn — the routine's creator was checked
-        // when it was approved — so the re-check is skipped.
+        // The sender's membership may have changed during a long turn: re-check
+        // the database before calling the action gateway and short-circuit to
+        // `denied: not allowed` when they left. The gateway is never invoked,
+        // so no audit row is written and no card appears. A scheduled run has
+        // no live person and skips the re-check.
         if (context !== undefined && !unattended) {
           const stillAllowed = yield* Effect.promise(() => context.isStillAllowed());
           if (!stillAllowed) {
@@ -317,11 +296,9 @@ export function createToolExec(ctx: ToolExecContext) {
     return (call) => Effect.runPromise(execute(call));
   }
 
-  // T-0106: appends the fixed tool guide to the last user turn. The system
-  // prompt builders take no options (their shape is frozen for provider
-  // caching), so the guide rides as a separate user turn right before the
-  // trigger. Only called when tools are enabled and adapters are
-  // registered; otherwise the messages pass through untouched.
+  // Appends the fixed tool guide to the last user turn. The system prompt
+  // builders take no options (their shape is frozen for provider caching), so
+  // the guide rides as a separate user turn right before the trigger.
   function withToolGuide(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
     return [...messages, { role: 'user', content: TOOL_GUIDE }];
   }

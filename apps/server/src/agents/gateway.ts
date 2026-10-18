@@ -54,11 +54,9 @@ export {
   ROUND_MAX_HOPS,
 } from './gateway/contracts';
 
-// Agent gateway v0: keeps every active AI online over XMPP and replies to the
-// AI's owner in their DM. The AI id always comes from the gateway's own
-// connection map, never from message content. Reconnects are xmpp-core's own
-// auto-reconnect plus this module's backoff on failed connects and the
-// periodic reconcile as a safety net.
+// Agent gateway: keeps every active AI online over XMPP and replies to its
+// owner in their DM. The AI id always comes from the gateway's own connection
+// map, never from message content.
 export function createAgentGateway(
   deps: AgentGatewayDeps,
   config: AgentGatewayConfig,
@@ -70,13 +68,12 @@ export function createAgentGateway(
   const createCore = deps.createCore ?? createXmppCore;
   const draftHub = deps.drafts?.hub ?? sharedDraftHub;
   const sessions = new Map<string, AiSession>();
-  // T-1422: the per-turn stop hook, backed by the live session map.
+  // The per-turn stop hook, backed by the live session map.
   const { stopTurn } = createStopTurn(sessions);
-  // AIs another gateway replaced while this process runs. `reconcile` and
-  // retries never reconnect them again until the gateway restarts. In memory
-  // only, keyed by the gateway's own AI ids.
+  // AIs another gateway replaced while this process runs: `reconcile` and
+  // retries never reconnect them until restart. In memory, keyed by AI id.
   const superseded = new Set<string>();
-  // T-0529: the live-session wrappers and `postToChat`, shared by the turns,
+  // The live-session wrappers and `postToChat`, shared by the turns,
   // the room listener and the budget gate. Both take `sessionIsLive` as a
   // value, so the factory must run before them.
   const {
@@ -91,10 +88,9 @@ export function createAgentGateway(
     loadRoomJid,
     loadTopicRoomJid,
   } = createLiveSession({ sessions, deps, logger, secretsFor, roomJidFor });
-  // T-0479: per-room round budgets (see RoomRound). In memory: a restart
+  // Per-room round budgets (see RoomRound). In memory: a restart
   // safely resets it, a fresh start can only wake fewer AIs.
   const roomRounds = new Map<string, RoomRound>();
-  // T-0475: the listener's per-room debounce windows and scoring calls.
   const roomListener = createRoomListener({
     deps,
     logger,
@@ -102,18 +98,10 @@ export function createAgentGateway(
     sessions,
     roomRounds,
     sessionIsLive,
-    // T-1168: lazily read like the session lifecycle's gate below; the
-    // lifecycle factory is created later and this arrow runs at event time.
     isStarted: () => lifecycle.isStarted(),
     pumpRoom: (session, roomJid) => pumpRoom(session, roomJid),
   });
 
-  // T-0534 (plan §3, G5b): the session lifecycle lives in
-  // `agents/gateway/sessions.ts`. The factory takes the shared maps and the
-  // callbacks for the gateway code that stays here; the destructured names
-  // keep every call site below unchanged. `isStarted` reads the lifecycle
-  // factory lazily: it is created below, and the arrow runs only at event
-  // time, so the later declaration is TDZ-safe.
   const { connectAi, disconnectAi, syncAiRooms } = createSessionLifecycle({
     sessions,
     superseded,
@@ -141,8 +129,6 @@ export function createAgentGateway(
     return secret === undefined ? [] : [secret];
   }
 
-  // The budget gate owns the in-memory notice state, the daily-limit check,
-  // the 80% warnings and the per-round gate, shared by the DM and group turns.
   const budgetGate = createBudgetGate({ deps, logger, sessionIsLive, secretsFor });
 
   const { loadMemoryContext, startCompaction } = createMemoryRunner({
@@ -154,14 +140,6 @@ export function createAgentGateway(
     checkDmRoundGate: budgetGate.checkDmRoundGate,
   });
 
-  // T-0556 (plan §3, G4): the tool executor lives in
-  // `agents/gateway/tool-exec.ts`. This is a pure move: the factory takes
-  // the shared session maps, the live session check and the gateway
-  // callbacks the moved code closes over, and the destructured names keep
-  // the turn factories' ctx fields unchanged. `createGroupIngest` below is
-  // created after it because the `pumpRoom` callback reads lazily, while
-  // `createDmTurn` and `createGroupTurn` are created after both so the
-  // executor's functions are real values rather than lazy arrows.
   const { executeToolCall, withToolGuide } = createToolExec({
     deps,
     logger,
@@ -170,15 +148,9 @@ export function createAgentGateway(
     sessionIsLive,
     pumpRoom: (session, roomJid) => pumpRoom(session, roomJid),
     secretsFor,
-    // T-1576: the `ask_people` runner posts its card through the same live
-    // send wrapper the other runs use.
     liveSendMessage,
   });
 
-  // T-0540 (plan §3, G7): the DM turn lives in `agents/gateway/dm-turn.ts`.
-  // This is a pure move: the factory takes the live session, the budget gate,
-  // the memory runner and the gateway callbacks the moved code closes over,
-  // and the destructured name keeps `handleIncoming`'s call site unchanged.
   const { pumpSessionEffect } = createDmTurn({
     deps,
     logger,
@@ -198,12 +170,6 @@ export function createAgentGateway(
     draftHub,
   });
 
-  // T-0549 (plan §3, G8b): the group ingest side lives in
-  // `agents/gateway/group-ingest.ts`. This is a pure move: the factory takes
-  // the shared session maps, the room listener and the group turn runner, and
-  // the destructured names keep every call site below unchanged. The
-  // `runGroupSessionTurn` callback reads lazily: the group turn factory is
-  // created just below.
   const { sessionForAiJid, handleRoomIncoming, pumpRoom } = createGroupIngest({
     deps,
     logger,
@@ -214,11 +180,6 @@ export function createAgentGateway(
     runGroupSessionTurn: (session, roomJid, batch) => runGroupSessionTurn(session, roomJid, batch),
   });
 
-  // T-0546 (plan §3, G8a): the group/topic turn lives in
-  // `agents/gateway/group-turn.ts`. This is a pure move: the factory takes
-  // the shared session maps, the live session, the budget gate, the memory
-  // runner and the gateway callbacks the moved code closes over, and the
-  // destructured name keeps `pumpRoom`'s call site unchanged.
   const { runGroupSessionTurn } = createGroupTurn({
     deps,
     logger,
@@ -239,11 +200,6 @@ export function createAgentGateway(
     nowMs,
   });
 
-  // T-0562 (plan §3, G9): the gateway lifecycle (start, stop, reconcile and
-  // their state) lives in `agents/gateway/lifecycle.ts`. It is created after
-  // the factories it calls into, and its `isStarted` is read lazily by the
-  // session lifecycle above. The destructured names keep the returned
-  // gateway object below unchanged.
   const lifecycle = createGatewayLifecycle({
     deps,
     config,
@@ -266,13 +222,11 @@ export function createAgentGateway(
     if (message.correction !== undefined || message.retraction !== undefined) {
       return;
     }
-    // T-1168 (AI-1): a gateway that is stopping refuses new turns. `started`
-    // gates the lifecycle event subscriptions (`lifecycle.ts:142,180,196`), but
-    // incoming messages reach `pumpSessionEffect` through the per-session core
-    // listeners, which stay attached until `disconnectAi`; during the drain the
-    // session is still in the map and not stopped, so without this check a
-    // message that lands mid-drain would start a turn the drain never waits on.
-    // `started` is false from the first line of `stopEffect`.
+    // A gateway that is stopping refuses new turns. Incoming messages reach the
+    // per-session core listeners, which stay attached until `disconnectAi`, so
+    // without this check a message landing mid-drain would start a turn the
+    // drain never waits on. `started` is false from the first line of
+    // `stopEffect`.
     if (!lifecycle.isStarted()) {
       return;
     }
@@ -283,8 +237,6 @@ export function createAgentGateway(
       handleRoomIncoming(session, message);
       return;
     }
-    // v0 answers DMs only. Groups, own messages and empty bodies are ignored
-    // before any database or model work.
     if (message.kind !== 'chat' || message.outgoing) {
       return;
     }
@@ -296,10 +248,9 @@ export function createAgentGateway(
     kickDm(session);
   }
 
-  // T-1647: the fire-and-forget DM pump fork, shared by `handleIncoming` and
-  // the routine runner. `busy` is reset in the pump's `finally`, but a truly
-  // unexpected throw still needs a redacted log line rather than an unhandled
-  // rejection.
+  // The fire-and-forget DM pump fork. `busy` is reset in the pump's `finally`,
+  // but an unexpected throw still needs a redacted log line instead of an
+  // unhandled rejection.
   function kickDm(session: AiSession): void {
     Effect.runFork(
       pumpSessionEffect(session).pipe(
@@ -315,9 +266,8 @@ export function createAgentGateway(
     );
   }
 
-  // T-1647: the routine runner's room kick. `pumpRoom` returns the pump's
-  // promise, whose own `catchDefect` logs a failure; the runner only ever
-  // awaits the turn's outcome, never this fork.
+  // The routine runner's room kick: it awaits the turn's outcome, never the
+  // pump's promise, whose own `catchDefect` logs a failure.
   function kickRoom(session: AiSession, roomJid: string): void {
     void pumpRoom(session, roomJid).catch((error) => {
       logger.warn(
@@ -327,9 +277,9 @@ export function createAgentGateway(
     });
   }
 
-  // T-1647 (plan §2.2): the routine scheduler's port. It queues a routine's
-  // synthetic trigger on the AI's own DM or room queue and resolves with the
-  // turn's outcome; it is never reached from the network.
+  // The routine scheduler's port: queues a routine's synthetic trigger on the
+  // AI's own queue and resolves with the turn's outcome; never reached from the
+  // network.
   const { runScheduledTurn } = createRoutineRunner({
     sessions,
     sessionIsLive,
@@ -342,8 +292,8 @@ export function createAgentGateway(
     kickRoom,
   });
 
-  // T-1709: the approvals route asks the AI to continue its task after a
-  // person decides. The row read mirrors `approvals/service.ts`.
+  // The approvals route asks the AI to continue its task after a person
+  // decides. The row read mirrors `approvals/service.ts`.
   async function loadApproval(id: string): Promise<ApprovalRow | null> {
     const [raw] = await runSql(
       deps.db,
@@ -367,18 +317,14 @@ export function createAgentGateway(
     loadApproval,
   });
 
-  // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live
-  // in `agents/gateway/group-ingest.ts`; the destructured names above keep
-  // every call site unchanged.)
-
   return {
     start,
     stop,
     reconcile,
     size: () => sessions.size,
     aiIds: () => [...sessions.keys()],
-    // T-1505: the ids of the live sessions with a turn in flight in one room,
-    // so the topic activity read model can mark those AIs as working.
+    // The ids of the live sessions with a turn in flight in one room, so the
+    // topic activity read model can mark those AIs as working.
     runningAiIds: (roomJid: string) => {
       const ids: string[] = [];
       for (const session of sessions.values()) {

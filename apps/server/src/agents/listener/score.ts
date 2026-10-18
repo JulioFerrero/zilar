@@ -1,11 +1,3 @@
-// T-0472: the listener's pure scoring core (plan `listener-delegation-plan.md`
-// §2.2, §2.3, §2.5 and §8). It loads the AI roster of a room, builds one
-// tool-free scoring prompt, parses the model's strict JSON and turns scores
-// above the room's eagerness threshold into a wake list. Nothing here touches
-// the gateway or writes to the DB: the S3 hook wires it up. Room text is
-// handled as untrusted data and the module never throws: any failure wakes
-// nobody.
-
 import { Effect, Exit, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ModelTarget } from '../../ai/providers';
@@ -32,7 +24,6 @@ export interface RosterAi {
 
 export interface LoadRosterInput {
   groupId: string;
-  /** Set for a non-General topic; unset to use the group's own AIs. */
   topicId?: string;
 }
 
@@ -49,8 +40,6 @@ interface RosterRow {
   persona: string;
 }
 
-// The AIs in a topic when `topicId` is given, otherwise the AIs in the group.
-// Sorted by name, then id, so the same room always produces the same prompt.
 export async function loadRoster(db: ServerDatabase, input: LoadRosterInput): Promise<RosterAi[]> {
   const rows =
     input.topicId !== undefined
@@ -106,8 +95,6 @@ export interface BuildListenerMessagesInput {
   roomSummary?: string;
 }
 
-// The two turns of the listener call: a fixed system job and one user turn
-// with the roster, the optional room summary and the capped window.
 export function buildListenerMessages(input: BuildListenerMessagesInput): ModelRequestMessage[] {
   const sections: string[] = [
     'Roster (id: name, summary):',
@@ -198,9 +185,7 @@ export function parseListenerOutput(
 }
 
 export interface ScoreRoomInput {
-  /** Injected `completeChat`; the listener never advertises tools. */
   complete: (input: CompleteChatInput) => Promise<string>;
-  /** The AI's own provider connection, resolved per check. */
   target: ModelTarget;
   roster: RosterAi[];
   window: ListenerWindowMessage[];
@@ -215,9 +200,6 @@ export interface ScoreRoomResult {
   messageIds: string[];
 }
 
-// One scoring call. Wakes the AIs whose score reaches the room's threshold,
-// highest first. Never throws: an empty roster, a parse failure or a rejected
-// call all return null (no wake).
 export async function scoreRoom(input: ScoreRoomInput): Promise<ScoreRoomResult | null> {
   if (input.roster.length === 0) {
     return null;

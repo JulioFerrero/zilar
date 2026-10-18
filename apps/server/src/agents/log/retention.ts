@@ -1,14 +1,9 @@
-// T-1426: the retention sweeper for `agent_task_events`. Rows older than 30
-// days are deleted by a leader-only 60 s tick registered next to the approvals
-// sweeper (`leader/start.ts`). A tick failure logs and never throws, so the
-// timer keeps running.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { startSweepLoop } from '../../effect/sweep-loop';
 
-/** The retention window; the lead's decision (T-1398 Review). */
 export const TASK_EVENT_RETENTION_DAYS = 30;
 
 /** The oldest `at` a row may keep at `now`. */

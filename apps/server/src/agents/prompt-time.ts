@@ -1,7 +1,3 @@
-// T-1440 (AI-17): the one prompt line that tells a model what day and time it
-// is for the person it answers, in that person's own IANA zone. `null` (or a
-// missing profile) falls back to UTC.
-
 /**
  * Renders an instant as e.g. `Thursday, 15 October 2026, 04:12 (Europe/Madrid)`.
  * A `null` zone renders the same instant in UTC and ends with `(UTC)`.

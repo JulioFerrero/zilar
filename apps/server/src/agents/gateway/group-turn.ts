@@ -32,12 +32,7 @@ import { senderNamesByJid } from '../../xmpp/archive-sender';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
-// T-0546 (plan §3, G8a): the group/topic turn extracted from
-// `createAgentGateway`. The factory takes the shared session maps, the live
-// session, the budget gate, the memory runner and the gateway callbacks the
-// moved code closes over, and returns the same `runGroupSessionTurn` the
-// gateway's `pumpRoom` calls. A pure move: no logic or wording changed.
-// Per-turn context for a `request_action` call in a group (T-0098). The
+// Per-turn context for a `request_action` call in a group. The
 // `groupId` and `topicId` are the room the AI was woken in — they ride
 // along to the action gateway and are used to pick the model-facing
 // wording. The `isStillAllowed` callback re-queries the database right
@@ -49,20 +44,11 @@ type LiveSession = ReturnType<typeof createLiveSession>;
 export interface RequestActionContext {
   groupId: string;
   topicId: string;
-  /** T-0482: the room JID the turn is answering in, so `delegate` can queue
-   * the worker's synthetic trigger and read this AI's room nick. */
   roomJid: string;
-  /** T-0482: the message id that opened the turn, stored as `reply_to`. */
   triggerId: string;
   isStillAllowed: () => Promise<boolean>;
   allowActions: boolean;
-  /** T-1576: true only when a person (not an AI handoff/delegation) triggered
-   * the turn, so `ask_people` is offered. When false, an improvised call gets
-   * the same `invalid: unknown tool` as any other unadvertised tool. */
   askPeople: boolean;
-  /** T-0482: the AI ids in this room that may receive a delegation. Empty
-   * when this AI may not delegate or no accepting AI is present, which makes
-   * both delegation tools answer `invalid: unknown tool`. */
   delegateTargetIds: ReadonlySet<string>;
 }
 
@@ -133,17 +119,16 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     const eligible: RoomPendingMessage[] = [];
     for (const item of batch) {
       if (item.scheduled !== undefined) {
-        // T-1646: a routine's trigger, never from the network. Admitted before
-        // the AI-sender, `fromResolved` and member checks: its owner may not
-        // be a room member.
+        // A routine's trigger, never from the network. Admitted before the
+        // AI-sender, `fromResolved` and member checks: its owner may not be a
+        // room member.
         eligible.push(item);
         continue;
       }
       const fromBare = normBareJid(item.fromJid);
       if (isAiSender(fromBare)) {
-        // T-0481: an AI sender passes only for a queued handoff, and only
-        // while it is still a live session in this room. Everything else is
-        // the old M2 ban.
+        // An AI sender passes only for a queued handoff, and only while it is
+        // still a live session in this room. Everything else is banned.
         if (item.handoff !== true) {
           continue;
         }
@@ -172,10 +157,8 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     }
     const trigger = eligible[eligible.length - 1] as RoomPendingMessage;
 
-    // T-0482: a delegated trigger that is dropped before the model call must
-    // not leave its row `working` forever. Fails quietly: a lookup or update
-    // error here only logs ids. A turn that does reach the model finishes its
-    // row below with the worker's text.
+    // A delegated trigger dropped before the model call must not leave its
+    // row `working` forever; a failed lookup or update only logs ids.
     const failDelegationQuietly = Effect.fnUntraced(function* (
       delegationId: string | undefined,
     ): Effect.fn.Return<void> {
@@ -201,12 +184,8 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     });
 
     // The soft daily limit is checked before the rate budget and any model
-    // call: a limited AI sends at most one fixed notice per room per UTC day
-    // (a plain room message, no mention) and further mentions get nothing.
-    // The usage read also decides the 80% warnings, which go out after the
-    // reply below — never for a skipped or rate-limited turn. The notice
-    // goes through `liveSendMessage` so a stop that lands between the spend
-    // read and the notice is silently dropped.
+    // call: a limited AI sends one fixed notice per room per UTC day, and the
+    // notice goes through `liveSendMessage` so a concurrent stop drops it.
     const groupChatKey = `room:${roomJid}`;
     const groupBudget = yield* Effect.promise(() =>
       budgetGate.checkDailyLimit({
@@ -221,7 +200,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       return;
     }
 
-    // T-1176 (AI-7): the rate window and the per-message round budget live in
+    // The rate window and the per-message round budget live in
     // `room-limits.ts`. A rate drop tells the asker once per window; a round
     // drop never does (AIs answering each other is expected).
     const atMs = nowMs();
@@ -246,21 +225,15 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       return;
     }
 
-    // T-0479: a pure listener wake (every eligible item is a wake, no mention
-    // in the batch) shows the short "looking at this" line only once the turn
-    // has passed every gate above. A mention turn never posts it.
     if (eligible.every((item) => item.wake === true)) {
       yield* Effect.promise(() =>
         liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`),
       ).pipe(Effect.catchDefect(() => Effect.void));
     }
 
-    // The room history the AI reads for a turn is that topic's room only:
-    // the `roomJid` above is the joined topic room, and `loadHistory` reads
-    // that room alone. The trigger is always inside it (checked at enqueue).
-    // The trigger's label is its database name when the archive resolved the
-    // sender; a nick is free text and only labels an unresolved sender. A
-    // failed lookup falls back to the bare JID, never the nick.
+    // The history is the joined topic's room only. The trigger's label is its
+    // database name when resolved; a nick is free text and labels only an
+    // unresolved sender, and a failed lookup falls back to the bare JID.
     const triggerNames = yield* Effect.promise(() =>
       senderNamesByJid(deps.db, [trigger.fromJid]),
     ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
@@ -272,10 +245,9 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       },
       triggerNames,
     );
-    // T-0109: names for the topic-aware system prompt. Best effort: a lookup
-    // failure keeps the old generic prompt. The topic name goes to the model
-    // alone, never into another topic's turn or any log line.
-    // Best effort: the turn still runs with the generic prompt.
+    // Names for the topic-aware system prompt. Best effort: a lookup failure
+    // keeps the generic prompt. The topic name goes to the model alone, never
+    // into another topic's turn or any log line.
     const groupName = yield* Effect.promise(() => loadGroupTitle(deps.db, room.groupId)).pipe(
       Effect.map((title) => title ?? undefined),
       Effect.catchDefect(() => Effect.succeed(undefined)),
@@ -317,12 +289,12 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           );
           turnLog.append('error', failureLogFields(error));
           settle('failed');
-          // T-0482: if this was a delegated turn, the model call never happened
-          // (or the turn failed around it), so the row must not stay `working`.
+          // If this was a delegated turn, the model call never happened (or
+          // the turn failed around it), so the row must not stay `working`.
           yield* failDelegationQuietly(trigger.delegationId);
           const reason = mapFailureToReply(error);
-          // T-1290 (AI-10): the owner hears the real reason (once a day per
-          // room); the room only hears the fixed reply.
+          // The owner hears the real reason (once a day per room); the room
+          // only hears the fixed reply.
           yield* Effect.promise(() => notifyOwnerOfFailure(ctx, session, roomJid, reason)).pipe(
             Effect.catchDefect((notifyError) =>
               Effect.sync(() => {
@@ -334,13 +306,10 @@ export function createGroupTurn(ctx: GroupTurnContext) {
             ),
           );
           // There is nobody left to tell when the send itself fails.
-          // T-1721: a scheduled run's failure is recorded by the scheduler; it
+          // a scheduled run's failure is recorded by the scheduler; it
           // posts no @mention fallback in the room.
           if (trigger.scheduled === undefined) {
             yield* Effect.promise(() =>
-              // T-1763: like every other group reply since T-1761, the crash
-              // reply is untagged; it only quotes the trigger. T-1743: a
-              // synthetic follow-up has no real message to quote.
               liveSendMessage(
                 session,
                 roomJid,
@@ -365,8 +334,8 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       roomJid: string,
       batch: RoomPendingMessage[],
     ): Promise<void> => {
-      // T-1646: the once-only settle for this batch. The `ensuring` reports the
-      // catch-all 'failed' after every exit (an already-settled item is skipped).
+      // The once-only settle for this batch: `ensuring` reports the catch-all
+      // 'failed' after every exit (an already-settled item is skipped).
       const settle = settleFor(batch);
       return Effect.runPromise(
         runGroupSessionTurnEffect(session, roomJid, batch, settle).pipe(

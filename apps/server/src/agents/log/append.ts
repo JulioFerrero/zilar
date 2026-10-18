@@ -1,9 +1,3 @@
-// T-1426: the append side of the session log behind "View steps". One
-// `TurnLog` per turn assigns `seq` in memory and writes one
-// `agent_task_events` row per step. Every append is best effort: a write
-// failure logs ids only and never fails the turn (the same contract as the
-// task-card sends in `gateway/live.ts`).
-//
 // Privacy: callers pass ids, counts and fixed labels. Tool arguments and
 // output are allowed, but this module redacts every secret-shaped string and
 // truncates every string to `TASK_EVENT_TEXT_MAX_BYTES` (2 KiB), so a stray

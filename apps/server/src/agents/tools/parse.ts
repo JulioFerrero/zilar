@@ -62,9 +62,6 @@ export function safeToolName(name: string): string {
   return out;
 }
 
-// T-1745: `task_title` is not a tool argument — it only names the work card.
-// It is dropped from the parsed object before the strict decode so no tool
-// ever sees it, and from the raw string the session log keeps.
 const TASK_TITLE_KEY = 'task_title';
 
 function withoutTaskTitle(parsed: unknown): unknown {
@@ -81,8 +78,6 @@ function withoutTaskTitle(parsed: unknown): unknown {
   return copy;
 }
 
-/** Drops a top-level `task_title` from a raw arguments JSON string, for the
- * session log. Returns the input unchanged when there is nothing to drop. */
 export function stripTaskTitle(argsJson: string): string {
   let parsed: unknown;
   try {
@@ -354,10 +349,6 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
   };
 }
 
-// Decodes one tool call's arguments with Effect Schema. All eight schemas are
-// strict, so an extra key fails; `errors: 'all'` collects every issue and the
-// first one is turned into a value-free reason for the model (see
-// `firstIssueReason`).
 function decodeToolArguments<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   raw: unknown,

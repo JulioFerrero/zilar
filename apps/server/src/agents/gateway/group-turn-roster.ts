@@ -1,6 +1,3 @@
-// T-1570: the handoff-roster read split out of `group-turn-body.ts` so no
-// agent file exceeds the 400-line cap. A pure move: the code, wording and
-// behaviour are unchanged.
 import { Effect } from 'effect';
 import type { ServerDatabase } from '../../db/client';
 import type { AiSession } from './contracts';
@@ -12,11 +9,9 @@ export interface HandoffTarget {
   jid: string;
 }
 
-// T-0481: the other AIs in this room that may receive a handoff. T-0482:
-// the same read carries this AI's `canDelegate` and each target's AI id,
-// so the delegation tools can list the roster. One database read for the
-// turn; a lookup failure just means no targets and no delegation tools,
-// and the turn runs unchanged.
+// The other AIs in this room that may receive a handoff. The same read carries
+// this AI's `canDelegate` and each target's AI id, so the delegation tools can
+// list the roster. A lookup failure just means no targets and no tools.
 export const resolveHandoffRoster = (
   db: ServerDatabase,
   sessions: Map<string, AiSession>,

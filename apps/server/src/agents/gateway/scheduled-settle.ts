@@ -1,10 +1,8 @@
 import type { ScheduledTurnOutcome } from './contracts';
 
-// T-1646: the once-only settle for one turn's scheduled items, shared by the DM
-// queue (`dm-turn.ts`, T-1642) and the room queue (`group-turn.ts`). A routine's
-// synthetic trigger reports one outcome through `onOutcome`; the first outcome
-// wins, whatever the exit. The caller also runs it under `Effect.ensuring` with
-// the catch-all `'failed'`, harmless because a settled item is skipped.
+// The once-only settle for one turn's scheduled items, shared by the DM and
+// room queues. A routine's synthetic trigger reports one outcome through
+// `onOutcome`; the first outcome wins, whatever the exit.
 export interface ScheduledSettleItem {
   id: string;
   scheduled?: { onOutcome: (outcome: ScheduledTurnOutcome) => void };

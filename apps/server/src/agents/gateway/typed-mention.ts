@@ -1,10 +1,3 @@
-// T-1617: a mention typed in full (`@Deepseek run …`) or a message that opens
-// with the AI's name (`Deepseek, run the tests`) carries no `message.mentions`
-// entry, because the sender did not pick it from the mention list. Match the
-// AI's room nick and username in the body on the server, so every client —
-// web, phone and older builds — wakes the AI the same way a picked mention
-// does.
-
 // A mention's `@` must sit at the start of the body or right after whitespace
 // or an opening bracket/quote, so `a@deepseek.com` is an address, not a
 // mention.

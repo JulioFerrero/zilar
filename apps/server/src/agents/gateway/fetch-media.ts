@@ -1,20 +1,12 @@
-// T-1873: the `fetch_media` runner. It fetches one https image or file with
-// `fetchCardMedia` (T-1862 hardens the fetch and the store) and answers with
-// the media id the model puts in an `images` or `file` block. The AI id and the
-// chat's media key come from the live session and the turn, never from the
-// model's arguments.
-//
 // Every failure is a fixed `error:` line: a refusal's reason is already fixed
-// text, and a store failure is caught here because `fetchCardMedia` rejects on
-// a non-quota store error. Log lines carry the AI id, the tool name, the
-// outcome and the fixed reason only, never the URL.
+// text, and a store failure is caught here. Log lines carry the AI id, the tool
+// name, the outcome and the fixed reason only, never the URL.
 import { Effect } from 'effect';
 import { fetchCardMedia, type FetchCardMediaResult } from '../../card-media/fetch';
 import { FETCH_MEDIA_TOOL } from '../tools';
 import type { ToolExecution } from '../reply';
 import { type AgentGatewayDeps, type AiSession } from './contracts';
 
-// The validated `fetch_media` arguments the executor passes in.
 export interface FetchMediaCall {
   url: string;
   kind: 'image' | 'file';
@@ -22,8 +14,7 @@ export interface FetchMediaCall {
 }
 
 // The chat's media key: the room JID in a group turn, the AI's own JID in the
-// owner's DM. `groupId` and `topicId` ride along so the media rows keep the
-// group and topic scoping T-1872 checks.
+// owner's DM. `groupId` and `topicId` ride along for the media rows' scoping.
 export interface FetchMediaChat {
   roomJid: string;
   groupId?: string;

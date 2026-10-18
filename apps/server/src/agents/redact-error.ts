@@ -1,6 +1,3 @@
-// T-1409 review: `redactError` split out of `tool-exec.ts` so the tool-call
-// pipeline can move to its own module without a cycle. A pure move: the
-// behaviour is unchanged.
 import { redactSecrets } from '../ai/http';
 
 // Rebuilds the error with every secret redacted out of its message, so the

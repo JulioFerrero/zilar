@@ -1,7 +1,3 @@
-// T-1426: the read side of the session log. `listTaskEvents` pages one task's
-// events by `seq` (max 100 per page) and `loadTaskOwnerId` answers who owns a
-// task id, so the route can return the same 404 for an unknown task and a
-// task the caller may not see.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';

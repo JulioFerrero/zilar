@@ -1,7 +1,3 @@
-// T-1422: the DM turn's last resort when something outside the turn body
-// throws — the connection lookup, say. It tells the owner with an honest short
-// message (never the raw error) and closes the drafts with the failed `end`.
-// Split out of `gateway/dm-turn.ts` so that file stays under the 400-line cap.
 import { Effect } from 'effect';
 import type { TurnLog } from '../log/append';
 import { failureLogFields, mapFailureToReply } from '../reply';
@@ -19,8 +15,8 @@ export interface DmTurnDefectInput {
   liveSendTyping: LiveSession['liveSendTyping'];
   endDrafts: () => void;
   error: unknown;
-  /** T-1721: a scheduled routine's run posts no extra failure reply; the
-   * scheduler records the failure instead. */
+  /** A scheduled routine's run posts no extra failure reply; the scheduler
+   * records the failure instead. */
   scheduled?: boolean;
 }
 
@@ -41,7 +37,7 @@ export function reportDmTurnDefect(input: DmTurnDefectInput): Effect.Effect<void
     // short message, never the raw error.
     logger.warn({ ...failureLogFields(error), aiId: session.aiId }, 'AI turn failed');
     turnLog.append('error', failureLogFields(error));
-    // T-1721: a scheduled run posts no extra message at all.
+    // A scheduled run posts no extra message at all.
     if (scheduled !== true) {
       const reply = mapFailureToReply(error);
       // There is nobody left to tell when the send itself fails.

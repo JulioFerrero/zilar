@@ -15,10 +15,6 @@ import {
 } from './contracts';
 import { listAiRooms } from './db';
 
-// T-0534 (plan §3, G5b): the session lifecycle extracted from
-// `createAgentGateway`. It takes the shared maps and the callbacks for the
-// gateway code that stays behind, and returns the same functions the gateway
-// calls. A pure move: no logic or wording changed.
 interface SessionLifecycleContext {
   sessions: Map<string, AiSession>;
   superseded: Set<string>;
@@ -57,8 +53,6 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     session.retryAttempt += 1;
     const delay = retryDelayMs(session.retryAttempt, retryBaseMs);
     cancelTimer(session.retryTimer);
-    // The pending reconnect is a fiber that sleeps, then reconnects; the
-    // fiber clears the field first so a later cancel never touches it.
     session.retryTimer = Effect.runFork(
       Effect.sleep(delay).pipe(Effect.andThen(Effect.suspend(() => reconnect(session)))),
     );
@@ -203,7 +197,6 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     session.stopped = true;
     cancelTimer(session.retryTimer);
     session.retryTimer = undefined;
-    // Unsubscribing is best-effort during shutdown.
     yield* Effect.forEach(session.unsubs, (unsub) =>
       Effect.try({ try: unsub, catch: (error) => error }).pipe(Effect.ignore),
     );
@@ -218,11 +211,10 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     logger.info({ aiId }, 'AI is offline');
   });
 
-  // Drifts the AI's room joins toward the database: joins every room the AI
-  // belongs to with the AI's name as nick, re-joins when the nick went stale,
-  // and leaves rooms the AI no longer belongs to. A join failure is logged
-  // (ids only) and retried by the next reconcile; it never throws and never
-  // breaks the AI's DMs.
+  // Drifts the AI's room joins toward the database: joins every room it belongs
+  // to with the AI's name as nick, re-joins a stale nick, and leaves rooms it
+  // no longer belongs to. A join failure is logged (ids only) and retried by
+  // reconcile; it never breaks the AI's DMs.
   const syncAiRoomsEffect = Effect.fnUntraced(function* (
     session: AiSession,
     aiName: string,
@@ -320,8 +312,6 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     logger.info({ aiId: session.aiId, groupId }, 'AI left the room');
   });
 
-  // The factory keeps its Promise-typed methods: callers outside this file
-  // still await them.
   const connectAi = (record: ActiveAiForGateway): Promise<void> =>
     Effect.runPromise(connectAiEffect(record));
   const disconnectAi = (aiId: string): Promise<void> => Effect.runPromise(disconnectAiEffect(aiId));

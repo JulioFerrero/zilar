@@ -1,16 +1,11 @@
 import { SchemaIssue } from 'effect';
 
-// The type name a missing key's `Invalid input: expected …, received
-// undefined` reason uses. Every key in the model tool schemas is a string
-// except `request_action`'s `args`, which is a record.
 const MISSING_KEY_TYPE: Readonly<Record<string, string>> = { args: 'record' };
 
 // Turns Effect's issue tree into one short reason for the model. The reason
-// comes only from keys, schema tags and code-written annotations: a value is
-// never read into the text (`raw` is inspected for its runtime type name
-// only), so persona text or an action argument can never leak through a
-// rejection. Returns `undefined` when no branch applies; the caller then uses
-// its own generic reason.
+// comes only from keys, schema tags and code-written annotations, never a
+// value, so persona text or an action argument can never leak through a
+// rejection.
 export function firstIssueReason(
   issue: SchemaIssue.Issue,
   raw?: unknown,

@@ -1,9 +1,3 @@
-// T-1631: the pure addressing core (docs/plan/smart-wake.md §2(a)). It decides
-// whether a person's group message is meant for this AI: name address V1–V3,
-// the one-AI-room question rule S, and the follow-up-question rule R. No I/O
-// and no model. Nothing calls this yet — the next task wires it into group
-// ingest, so behaviour is unchanged for now.
-
 import { bodyAddressesAi } from './typed-mention';
 
 // V1 and V3 only apply to names of 4 or more characters: shorter names collide

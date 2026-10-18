@@ -38,9 +38,9 @@ export async function loadModelTarget(
   if (row === undefined) {
     return null;
   }
-  // T-1429: a catalog provider is not in `MODEL_PROVIDERS` but stores its base
-  // URL at create, so it runs through the pinned OpenAI-compatible path. Its
-  // usage and prices stay keyed by its own id (`usageProvider`).
+  // A catalog provider is not in `MODEL_PROVIDERS` but stores its base URL at
+  // create, so it runs through the pinned OpenAI-compatible path. Its usage and
+  // prices stay keyed by its own id (`usageProvider`).
   if (!isModelProvider(row.provider)) {
     if (row.baseUrl === null) {
       return null;
@@ -53,8 +53,8 @@ export async function loadModelTarget(
       usageProvider: row.provider,
     };
   }
-  // T-1396: a custom provider always carries its validated base URL; without
-  // one there is no model to call, so the turn is skipped like a missing key.
+  // A custom provider always carries its validated base URL; without one there
+  // is no model to call, so the turn is skipped like a missing key.
   if (row.provider === 'openai-compatible' && row.baseUrl === null) {
     return null;
   }

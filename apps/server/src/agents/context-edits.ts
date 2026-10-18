@@ -1,7 +1,6 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
 
-// Maps a correction's target to its new body. Later corrections win, so the
-// newest text is the one applied.
+// Later corrections win, so the newest body is the one applied.
 function correctedBodies(history: ChatMessage[]): Map<string, string> {
   const bodies = new Map<string, string>();
   for (const message of history) {
@@ -58,11 +57,9 @@ function isTarget(targets: Set<string>, message: ChatMessage): boolean {
   );
 }
 
-// Applies the edits the archive already holds to a history before it becomes
-// AI context: a correction replaces its target's body, a retraction drops the
-// target, and the AI's own progress lines are not turns. Corrections,
-// retractions and progress lines never appear themselves. Pure and
-// order-preserving.
+// Applies the archive's edits to a history before it becomes AI context:
+// corrections replace or retract their target, and neither they nor the AI's
+// own progress lines appear as turns. Pure and order-preserving.
 export function applyEdits(history: ChatMessage[]): ChatMessage[] {
   const corrections = correctedBodies(history);
   const corrected = correctionTargets(history);

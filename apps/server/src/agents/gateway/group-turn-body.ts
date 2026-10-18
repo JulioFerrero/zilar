@@ -1,6 +1,3 @@
-// T-1290 review: the group turn's model/reply body, split out of
-// `group-turn.ts` so no agent file exceeds the 400-line cap. A pure move:
-// the code, wording and behaviour are unchanged.
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { type ActiveAiForGateway } from '../../ais/service';
@@ -56,16 +53,14 @@ export interface GroupTurnBodyInput {
   senderName: string;
   groupName: string | undefined;
   topicName: string | undefined;
-  /** T-1426: the turn's session log; its task id keys every row. */
   log: TurnLog;
-  /** T-1290: filled with the decrypted key so the caller's failure path can
-   * redact it from the log line without holding the key itself. */
+  /** Filled with the decrypted key so the caller's failure path can redact it
+   * from the log line without holding the key itself. */
   secretRef: { value?: string };
-  /** T-1646: reports this turn's outcome for a scheduled routine's trigger. */
   settle: (outcome: ScheduledTurnOutcome) => void;
 }
 
-// T-1290 (AI-10): the room hears the fixed `GROUP_FAILURE_REPLY`; the owner
+// The room hears the fixed `GROUP_FAILURE_REPLY`; the owner
 // hears the real reason by DM, at most once a day per room. The budget gate
 // owns the day key (the `dailyLimitNotices` pattern) and the owner lookup.
 export function notifyOwnerOfFailure(
@@ -179,8 +174,6 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       }));
     const roster = yield* resolveHandoffRoster(deps.db, sessions, session, roomJid);
     const { handoffTargets, canDelegate } = roster;
-    // One batched name lookup for this turn's resolved room senders (T-2014);
-    // the nick only labels an unresolved sender. A failure keeps bare JIDs.
     const senderNames = yield* Effect.promise(() =>
       senderNamesByJid(
         deps.db,
@@ -216,32 +209,27 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         handoffTargets,
         aiOwnerBare: normBareJid(jidFor(localpartFor(ai.owner), deps.xmpp.domain)),
       });
-    // T-1738: a person's message that reached this AI answers its open
-    // questions in this topic, so the topic stops showing "waiting for you".
     if (askPeople && trigger.synthetic !== true) {
       yield* Effect.promise(() =>
         answerOpenQuestionsOnTurn(deps.db, session, trigger, roomJid, logger),
       );
     }
-    // T-1423: resolve the AI's computer for this turn (cloud or its runner).
-    // SEC-13b: a plain member's or another AI's mention must not use the
-    // owner's computer, so the desk is not even resolved for those turns.
+    // Resolve the AI's computer for this turn (cloud or its runner). A plain
+    // member's or another AI's mention must not use the owner's computer, so
+    // the desk is not even resolved for those turns.
     const turnDesk: TurnDesk = allowDesk
       ? yield* Effect.promise(() => resolveTurnDesk(deps, ai))
       : { waiting: false };
     const deskEnabled = turnDesk.client !== undefined;
     const groupTools = buildGroupTools(allowActions ? actionsList : [], delegateTargets, {
-      // T-1409: the desk tools ride the same flag as their executor.
       desk: deskEnabled,
-      // T-1576: the question tool rides the same flag as its executor branch.
       askPeople,
     });
     const isStillAllowed = makeIsStillAllowed(deps.db, deps.xmpp.domain, room, triggerBare);
 
-    // The room reply uses the shared group tool loop (T-0098) with the guide
-    // on the last user turn when tools are on (T-0106); a scheduled run posts
-    // one message per routine and edits it on later runs (T-1714), while a
-    // live turn keeps the T-1414 progress card.
+    // The room reply uses the shared group tool loop, with the guide on the
+    // last user turn when tools are on; a scheduled run posts one message per
+    // routine and edits it, while a live turn keeps a progress card.
     const routineSend =
       trigger.scheduled === undefined
         ? null
@@ -264,8 +252,6 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     }
     const groupMessages =
       deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
-    // T-1422: the room turn's abort controller, keyed by the room JID (the
-    // client chat id of a group/topic). The stop route aborts it.
     const groupAbort = registerTurnAbort(session, roomJid);
     const turnOutcome = yield* Effect.promise(() =>
       runGroupTurn({
@@ -297,9 +283,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           deskEnabled
             ? { ownerUserId: ai.owner, client: turnDesk.client, signal: groupAbort.signal }
             : undefined,
-          // T-1655: a scheduled trigger's turn is unattended, so the action
-          // gateway runs tier 0/1 and refuses a tier-2 request without a
-          // standing rule with `needs_approval` instead of parking a card.
+          // A scheduled trigger's turn is unattended, so the action gateway
+          // runs tier 0/1 and refuses a tier-2 request without a standing rule
+          // instead of parking a card.
           { unattended: scheduledTrigger },
         ),
         ...turnLimits(deps.toolMaxRounds, deskEnabled),
@@ -312,12 +298,11 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
               reportProgress: groupProgress.reportProgress,
               finishProgress: groupProgress.finishProgress,
             }),
-        // T-0156: the per-turn counts line (ids and counts only), like the
+        // The per-turn counts line (ids and counts only), like the
         // DM path below.
         turnLogger,
-        // T-1405: every model call in the turn adds its tokens and cost to the
-        // AI's `ai_usage` row. Best effort and fire and forget; it can never
-        // fail the turn.
+        // Every model call adds its tokens and cost to the AI's `ai_usage` row,
+        // best effort and fire and forget; it can never fail the turn.
         onUsage: (usage) => {
           void recordUsage(
             { db: deps.db, logger },
@@ -333,14 +318,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             routineSend === null
               ? await liveSendMessage(session, to, kind, text, opts)
               : await routineSend.send(to, kind, text);
-          // T-1176 (AI-8): remember the id so a reply quoting this message
-          // wakes the AI without a mention.
           rememberRoomSentId(session, roomJid, sent.id);
           return sent;
         },
         sendTyping: (to, kind, state) => {
-          // T-1406: the room turn opens with the fixed "Thinking" status; tool
-          // stages replace it and the final `paused` clears it.
           liveSendTyping(
             session,
             to,
@@ -354,15 +335,14 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         log,
       }),
     ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, roomJid, groupAbort))));
-    // T-1646: report the turn's outcome for a scheduled routine's trigger
-    // exactly once; a non-scheduled batch has nothing to settle. T-1657
-    // (audit G3): a `replied` turn whose session stopped before the send
-    // settles `stopped`.
+    // Report the turn's outcome for a scheduled routine's trigger exactly
+    // once; a non-scheduled batch has nothing to settle. A `replied` turn whose
+    // session stopped before the send settles `stopped`.
     const sessionLive = !session.stopped && sessions.get(session.aiId) === session;
     settle(turnOutcome.kind === 'replied' && !sessionLive ? 'stopped' : turnOutcome.kind);
-    // T-0482: a delegated turn stores its result on the row: a normal reply
-    // stores its text, a failed turn whatever was posted, and T-1763 a card
-    // turn (empty text) a fixed summary. Log ids only.
+    // A delegated turn stores its result on the row: the reply text, or
+    // whatever was posted for a failed or card turn (empty text gets a fixed
+    // summary). Log ids only.
     const finishedDelegationId = trigger.delegationId;
     if (finishedDelegationId !== undefined) {
       const resultSummary =

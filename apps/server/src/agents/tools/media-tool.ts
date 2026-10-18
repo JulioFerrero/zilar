@@ -1,9 +1,6 @@
 import type { ChatToolDefinition } from './definitions';
 import { FETCH_MEDIA_TOOL, SAVE_TEXT_MEDIA_FORMATS, SAVE_TEXT_MEDIA_TOOL } from './schemas';
 
-// T-1873: the `fetch_media` tool definition. The model fetches one https image
-// or file; the server sniffs the real type, stores the bytes and returns the
-// media id the model puts in an `images` or `file` block.
 const FETCH_MEDIA_DESCRIPTION =
   'Fetch one https image (PNG, JPEG, WebP; at most 8 MB) or file (PDF, CSV, ' +
   'plain text; at most 25 MB) so a card can show it. Returns a media id: put ' +
@@ -36,9 +33,6 @@ export const FETCH_MEDIA_TOOL_DEF: ChatToolDefinition = {
   },
 };
 
-// T-1883: the `save_text_media` tool definition. The model hands over text it
-// wrote; the server stores it as card media and returns the id for a `file`
-// block, so people get a real download instead of a wall of text.
 const SAVE_TEXT_MEDIA_DESCRIPTION =
   'Save text you wrote (CSV, plain text, Markdown or JSON; at most 64 KB) as a ' +
   'file people can download from a card. Returns a media id: put it in a ' +

@@ -1,9 +1,3 @@
-// T-0446: the memory compactor (docs/audit/ai-memory-plan.md §3.7). After a
-// turn's reply, the gateway calls `compactMemory` in the background: it builds
-// up to `limit` pending summary nodes for one (AI, chat), smallest first, using
-// the AI's own model (the caller supplies `complete`). It never logs, and text
-// only ever moves from the mirror into a summary.
-
 import { Effect } from 'effect';
 import type { ServerDatabase } from '../../db/client';
 import { looksLikeSecret } from './secrets';

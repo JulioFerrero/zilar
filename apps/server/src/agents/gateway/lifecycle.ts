@@ -16,11 +16,6 @@ import {
 } from './contracts';
 import { loadActiveAi, loadAiOwnerId } from './db';
 
-// T-0562 (plan §3, G9): the gateway lifecycle extracted from
-// `createAgentGateway`. The factory owns `started`, the reconcile timer and
-// the event unsubscribes, and returns the same `start`, `stop` and
-// `reconcile` the gateway exposes, plus `isStarted` for the session
-// lifecycle's lazy guard. A pure move: no logic or wording changed.
 interface GatewayLifecycleContext {
   deps: AgentGatewayDeps;
   config: AgentGatewayConfig;
@@ -51,7 +46,6 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
   } = ctx;
 
   let started = false;
-  // The periodic reconcile: a fiber that sleeps and ticks, forever.
   let timer: Fiber.Fiber<void> | undefined;
   let unsubscribes: Array<() => void> = [];
 
@@ -147,9 +141,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
           return;
         }
         if (event.type === 'created' || event.type === 'resumed') {
-          // `loadActiveAi` is the same `WHERE status = 'active'` filter the
-          // periodic reconcile uses (T-0080): a `stopped` or `disabled` row
-          // never wakes the gateway back up, even on the notifier path.
+          // `loadActiveAi` uses the same `WHERE status = 'active'` filter as
+          // reconcile: a `stopped` or `disabled` row never wakes the gateway.
           withActiveAi(
             event.aiId,
             (record) => attempt(() => connectAi(record)),
@@ -193,9 +186,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
         }
         syncRoomsOnEvent(event.aiId, session);
       }),
-      // T-0109: the sibling event for per-topic AI membership. A newly added
-      // or removed membership shows up without waiting for the next full
-      // reconcile, through the same right-away sync as the group event.
+      // The sibling event for per-topic AI membership: a newly added or
+      // removed membership syncs right away instead of waiting for reconcile.
       onTopicAi((event) => {
         if (!started) {
           return;
@@ -234,8 +226,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
     );
   }
 
-  // T-1168 (AI-1): how many turns are in flight. One per busy DM
-  // (`session.busy`) plus one per busy room (`session.roomBusy`).
+  // How many turns are in flight: one per busy DM (`session.busy`) plus one
+  // per busy room (`session.roomBusy`).
   function runningTurns(): number {
     let count = 0;
     for (const session of sessions.values()) {
@@ -247,9 +239,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
     return count;
   }
 
-  // T-1168: tells one AI's owner, through the session that is still connected,
-  // that its in-flight DM reply was lost. The owner JID is derived the same
-  // way the rest of the gateway derives it; a missing row sends nothing.
+  // Tells one AI's owner, through the session that is still connected, that its
+  // in-flight DM reply was lost. A missing row sends nothing.
   async function sendRestartToOwner(session: AiSession): Promise<void> {
     const ownerId = await loadAiOwnerId(deps.db, session.aiId);
     if (ownerId === null) {
@@ -262,12 +253,10 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
     );
   }
 
-  // T-1168: the drain `stopEffect` runs before it disconnects anyone. Poll
-  // until no turn is in flight or `AI_DRAIN_MS` has passed, log the count
-  // still running, then notify each one — the DM owner's chat and every busy
-  // room — through the session that is still connected. A session with a
-  // leftover turn is marked `stopped` first, so its own late send is skipped
-  // instead of racing the notice and being reported as a reply that went out.
+  // The drain runs before it disconnects anyone: poll until no turn is in
+  // flight or `AI_DRAIN_MS` passes, then notify each one through the session
+  // that is still connected. A session with a leftover turn is marked `stopped`
+  // first, so its late send is skipped instead of racing the notice.
   const drainEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
     const deadline = Date.now() + AI_DRAIN_MS;
     while (runningTurns() > 0 && Date.now() < deadline) {
@@ -306,8 +295,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
       Effect.try({ try: unsub, catch: (error) => error }).pipe(Effect.ignore),
     );
     unsubscribes = [];
-    // T-1168 (AI-1): wait for the turns in flight before tearing the sessions
-    // down, so a reply the model already produced is still delivered.
+    // Wait for the turns in flight before tearing the sessions down, so a reply
+    // the model already produced is still delivered.
     yield* drainEffect();
     for (const aiId of sessions.keys()) {
       // Shutdown disconnects everyone; one failure stops nothing else.

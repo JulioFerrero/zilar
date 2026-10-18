@@ -1,8 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/agents/memory/store.ts (size split)
-// The system-prompt memory block: resolves the floor and the budget into cover
-// blocks and renders them oldest-first. Split out of `agents/memory/store.ts`
-// unchanged (T-1025).
-
+// effect-plain: the renderer's public edge stays Promise-shaped over memory reads.
 import type { ServerDatabase } from '../../db/client';
 import { MEMORY_MIN_BLOCK, MEMORY_WAKE_LINES, cover, type Block } from './tree';
 import {

@@ -1,10 +1,3 @@
-// T-1530: the assembled "View steps" reader. `taskSteps` walks one turn's
-// session-log rows in `seq` order and groups each tool call under the card step
-// that was open when it ran, exactly as `task-card.ts` builds the card from the
-// reported stages. The card's 20-step cap is honoured: a stage past it renames
-// the last step instead of adding one. Owner-only: callers load the owner first
-// and answer the same 404 for an unknown task and one the caller may not see.
-//
 // Never shown: `model_call`, `answer` and `error` rows, and the close markers
 // (`card_done` / `card_failed` / `card_stopped` and the stop path's `stopped`).
 // Only `status`, `tool_call` and `tool_result` rows shape the result.
@@ -16,13 +9,10 @@ import type { AgentTaskEventRow } from '../../db/rows';
 import { runSql } from '../../effect/sql';
 import { TASK_CARD_MAX_STEPS } from '../task-card';
 
-/** The most rows read for one task; a longer log is truncated to the first. */
 export const TASK_STEPS_MAX_ROWS = 2000;
 
-/** How many characters of a tool's command text travel to the panel. */
 export const TASK_STEP_COMMAND_MAX_CHARS = 120;
 
-/** A terminal `status` row's stage, mapped to the state it closes the card with. */
 const CARD_CLOSE_STATES: Record<string, TaskStep['state']> = {
   card_done: 'done',
   card_failed: 'failed',
@@ -47,12 +37,10 @@ function stepStage(row: AgentTaskEventRow): string | undefined {
   return stage;
 }
 
-/** Milliseconds since the epoch for a row's timestamp. */
 function timeOf(row: AgentTaskEventRow | undefined): number {
   return row === undefined ? 0 : new Date(row.at).getTime();
 }
 
-/** The card's close marker, when one was logged: its state and timestamp. */
 function closeMarkerOf(
   rows: readonly AgentTaskEventRow[],
 ): { state: TaskStep['state']; at: number } | null {
@@ -70,9 +58,6 @@ function closeMarkerOf(
   return found;
 }
 
-// Builds the step list from the filtered status rows (row 0 is the title, row
-// k opens `step-k`; stages past the cap rename the last step). A step runs to
-// the next step's `at`, and the last to the close marker or the last row.
 function buildSteps(
   rows: readonly AgentTaskEventRow[],
   statusRows: readonly AgentTaskEventRow[],
@@ -82,14 +67,11 @@ function buildSteps(
     return [];
   }
   const lastIndex = statusRows.length - 1;
-  // A card with only its title still stands for one step of work.
   const count = statusRows.length === 1 ? 1 : Math.min(statusRows.length - 1, TASK_CARD_MAX_STEPS);
   const close = closeMarkerOf(rows);
   const endAt = close === null ? timeOf(rows[rows.length - 1]) : close.at;
   const steps: TaskStep[] = [];
   for (let index = 1; index <= count; index += 1) {
-    // A stage past the cap renames the last step, exactly like the card, so
-    // the last step takes the final stage's row as its source.
     const source = index === count ? lastIndex : index;
     const startAt = timeOf(statusRows[source]);
     const nextAt = index < count ? timeOf(statusRows[Math.min(index + 1, lastIndex)]) : endAt;
@@ -105,14 +87,12 @@ function buildSteps(
   return steps;
 }
 
-/** The short `<tool> <args>` text a step row shows, cut to the cap. */
 function commandOf(row: AgentTaskEventRow): string {
   const tool = typeof row.data.tool === 'string' ? row.data.tool : 'tool';
   const args = typeof row.data.args === 'string' ? row.data.args.trim() : '';
   return (args === '' ? tool : `${tool} ${args}`).slice(0, TASK_STEP_COMMAND_MAX_CHARS);
 }
 
-/** One action from its command text and the matching `tool_result` row. */
 function actionOf(command: string, row: AgentTaskEventRow): TaskStepAction {
   const ok = row.data.ok === true;
   const output = row.data.output;
@@ -124,16 +104,13 @@ function actionOf(command: string, row: AgentTaskEventRow): TaskStepAction {
   };
 }
 
-/** The approval a `tool_result` raised, when it carries one. */
 function approvalIdOf(row: AgentTaskEventRow): string | undefined {
   const id = row.data.approval_id;
   return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
 interface GroupedActions {
-  /** One action list per step, in step order. */
   actions: TaskStepAction[][];
-  /** One approval-id set per step, in step order. */
   approvalIds: Set<string>[];
 }
 
@@ -178,7 +155,6 @@ function groupActions(
   return { actions, approvalIds };
 }
 
-/** The ids of the given approvals that were granted, in one batched read. */
 async function loadApprovedIds(db: ServerDatabase, ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) {
     return new Set();
@@ -194,7 +170,6 @@ async function loadApprovedIds(db: ServerDatabase, ids: string[]): Promise<Set<s
   return new Set(rows.map((row) => row.id));
 }
 
-/** Every row of a task in `seq` order, capped so one huge turn stays bounded. */
 async function loadTaskRows(
   db: ServerDatabase,
   taskId: string,
@@ -212,7 +187,6 @@ async function loadTaskRows(
   );
 }
 
-/** The card's steps with their actions, durations, states and approvals. */
 export async function taskSteps(db: ServerDatabase, taskId: string): Promise<TaskSteps> {
   const rows = await loadTaskRows(db, taskId);
   const statusRows: AgentTaskEventRow[] = [];

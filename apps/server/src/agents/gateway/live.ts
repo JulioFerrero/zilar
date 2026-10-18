@@ -31,7 +31,7 @@ interface LiveSessionContext {
 export function createLiveSession(ctx: LiveSessionContext) {
   const { sessions, deps, logger, secretsFor, roomJidFor } = ctx;
 
-  // Whether a session is still owned by the gateway. T-0080: every send path
+  // Whether a session is still owned by the gateway. Every send path
   // a running AI turn triggers — DM reply, group reply, budget warnings,
   // daily-limit notice, drafts, persona-tool notice — checks this right
   // before it sends, so a stop that lands mid-turn drops the reply rather
@@ -68,14 +68,10 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return Effect.runPromise(liveSendMessageEffect(session, to, kind, text, opts));
   }
 
-  // T-1414: one task card per turn — a `progress` message posted once, then
-  // edited in place with corrections that carry the full payload. Stage texts
-  // come from the fixed table in `agents/tool-guide.ts` — never model text,
-  // never tool output. Corrections are throttled to at most one per second, so
-  // a fast turn writes few MAM rows; the final correction always goes out with
-  // `state`, `elapsed_ms` and `summary`. Nothing is retracted: the card stays
-  // above the reply. Best effort: a failed post or update warns with ids only
-  // and the turn continues.
+  // One task card per turn: a `progress` message posted once and edited in
+  // place, at most one correction per second. Stage texts are fixed, never model
+  // or tool text; nothing is retracted, so the card stays above the reply. Best
+  // effort: a failed post or update warns with ids only and the turn continues.
   const PROGRESS_THROTTLE_MS = 1_000;
 
   function liveProgressReporter(
@@ -93,9 +89,6 @@ export function createLiveSession(ctx: LiveSessionContext) {
     let card: TaskCard | null = null;
     let lastSentAtMs = 0;
 
-    // The sends are lifted with plain `Effect.promise`: a rejection dies with
-    // the original error, and `catchDefect` logs it (ids only) like the old
-    // `catch` blocks did.
     const reportProgressEffect = Effect.fnUntraced(function* (
       stage: string,
       title?: string,
@@ -103,18 +96,18 @@ export function createLiveSession(ctx: LiveSessionContext) {
       if (!sessionIsLive(session)) {
         return null;
       }
-      // T-1406: the same fixed stage text rides the chat state, next to the
-      // card. Both come from one place, so they never disagree.
+      // The same fixed stage text rides the chat state, next to the card, so
+      // they never disagree.
       liveSendStatus(session, to, kind, stage);
-      // T-1426: one session-log status row per reported stage. The label is a
-      // fixed `TOOL_STAGE_*` text, never model or tool output.
+      // One session-log status row per reported stage. The label is a fixed
+      // `TOOL_STAGE_*` text, never model or tool output.
       log?.append('status', { stage });
       const opened =
         card === null
           ? startTaskCard(stage, new Date().toISOString())
           : addTaskCardStep(card, stage);
-      // T-1745: the model may name the card on its first call. The name is set
-      // once; the fixed stage the card opened with becomes its first step.
+      // The model may name the card on its first call; the name is set once and
+      // the fixed stage the card opened with becomes its first step.
       const nextCard = title === undefined ? opened : nameTaskCard(opened, title);
       card = nextCard;
       // Every correction carries the full payload, so a throttled update is
@@ -164,9 +157,9 @@ export function createLiveSession(ctx: LiveSessionContext) {
       if (current === null || card === null || !sessionIsLive(session)) {
         return;
       }
-      // T-1505: one session-log row records that the card was closed and how,
-      // so the topic activity read model can tell a card that finished `done`
-      // from one that failed or was stopped. A turn with no card logs nothing.
+      // One session-log row records that the card was closed and how, so the
+      // topic activity model can tell `done` from failed or stopped. A turn with
+      // no card logs nothing.
       log?.append('status', { stage: `card_${state}` });
       const elapsedMs = Math.max(0, Date.now() - Date.parse(card.startedAt));
       const finished = finishTaskCard(
@@ -215,9 +208,9 @@ export function createLiveSession(ctx: LiveSessionContext) {
     session.core.sendTyping(to, kind, state, status);
   }
 
-  // T-1406: the AI's chat state carries its short fixed status text ("Thinking",
-  // a `TOOL_STAGE_*` line). It goes out as a composing state, so it clears with
-  // the `paused` the turn sends at the end and leaves nothing in history.
+  // The AI's chat state carries its short fixed status text. It goes out as a
+  // composing state, so it clears with the `paused` the turn sends at the end
+  // and leaves nothing in history.
   function liveSendStatus(session: AiSession, to: string, kind: ChatKind, status: string): void {
     liveSendTyping(session, to, kind, 'composing', status);
   }
@@ -240,8 +233,6 @@ export function createLiveSession(ctx: LiveSessionContext) {
   const loadOwnerId = (aiId: string): Effect.Effect<string | null> =>
     Effect.promise(() => loadAiOwnerId(deps.db, aiId));
 
-  // Looks up the room JID (bare) for one group. Returns `null` when the
-  // group does not exist; the caller answers `false` for that case too.
   const loadRoomJid = Effect.fnUntraced(function* (
     groupId: string,
   ): Effect.fn.Return<string | null> {
@@ -252,9 +243,6 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return roomJidFor(roomLocalpart);
   });
 
-  // Looks up the room JID (bare) for one topic. Returns `null` when the
-  // topic does not exist or is archived; the caller answers `false` for
-  // those cases too.
   const loadTopicRoomJid = Effect.fnUntraced(function* (
     topicId: string,
   ): Effect.fn.Return<string | null> {
@@ -265,21 +253,16 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return roomJidFor(row.roomLocalpart);
   });
 
-  // Builds the `SendMessageOptions` for one `postToChat` call. The
-  // `payload` field is only present when the caller actually passed one.
   function sendOptions(input: { text: string; payload?: Payload }): SendMessageOptions {
     return input.payload === undefined ? {} : { payload: input.payload };
   }
 
-  // T-0092: posts one message from the AI's live XMPP session into the chat
-  // the action gateway asked about. The session must be live (not stopped,
-  // still owned by this gateway), the AI must exist, and — for a group —
-  // the session must currently hold a subscription to the room. Any other
-  // answer is `false` with no send, so a stopped AI (kill switch) and an
-  // AI that was never in the room stay silent. T-0109: an optional `topicId`
-  // posts into that topic's room instead (the AI must be a member and the
-  // topic live); otherwise the group post goes into General (the group's own
-  // room) or the DM. `session.rooms.has(roomJid)` remains the guard.
+  // Posts one message from the AI's live session into the chat the action
+  // gateway asked about. The session must be live (not stopped, still owned by
+  // this gateway), the AI must exist, and for a group it must hold the room.
+  // Anything else is `false` with no send, so a stopped AI and one that was
+  // never in the room stay silent. An optional `topicId` posts into that topic's
+  // room instead, otherwise into General or the DM.
   const postToChatEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     groupId: string | null;
@@ -332,8 +315,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return Effect.runPromise(postToChatEffect(input));
   }
 
-  // T-1792: corrects one message the AI posted in a room (XEP-0308) with the
-  // same guards as `postToChatEffect`. T-1824: a DM card corrects as `chat`.
+  // Corrects one message the AI posted in a room (XEP-0308) with the same
+  // guards as `postToChatEffect`. A DM card corrects as `chat`.
   const correctInRoomEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     roomJid: string;
@@ -386,10 +369,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
     liveSendStatus,
     liveMarkDisplayed,
     postToChat,
-    // T-1792: correct a card in the room as the AI, after a member answers it.
+    // Correct a card in the room as the AI, after a member answers it.
     correctInRoom,
-    // T-1647: the routine runner resolves the owner JID and the room JID the
-    // same way `postToChatEffect` does, so it needs the same loaders.
     loadOwnerId,
     loadRoomJid,
     loadTopicRoomJid,

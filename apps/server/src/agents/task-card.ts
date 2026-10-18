@@ -1,31 +1,19 @@
-// T-1414: the task card — one progress message per turn, edited in place.
-// This module is the pure half: it builds the card state (title, steps,
-// terminal state, summary) that the reporter in `gateway/live.ts` sends. Every
-// label is a fixed stage text (`agents/tool-guide.ts`); never model text or
-// tool output. Each function returns a new card, so the reporter just keeps
-// the newest value.
 import type { Payload, ProgressStep } from '@zilar/protocol';
 
 export type TaskCardState = 'working' | 'done' | 'failed' | 'stopped';
 
 export interface TaskCard {
-  /** The first stage text, or the fixed fallback. */
   title: string;
-  /** The current stage text, sent as the correction body for old clients. */
   stage: string;
   steps: ProgressStep[];
   state: TaskCardState;
-  /** ISO 8601 with `Z`, set when the card starts. */
   startedAt: string;
   summary: string | null;
-  /** T-1745: true once the model has named the card; later titles are ignored. */
   named: boolean;
 }
 
-/** The title a card shows when its turn has no stage text. */
 export const TASK_CARD_DEFAULT_TITLE = 'Working on it';
 
-/** The step-list cap, so the payload stays small (plan §2.2). */
 export const TASK_CARD_MAX_STEPS = 20;
 
 function titleFor(stage: string): string {
@@ -36,8 +24,6 @@ function stepId(index: number): string {
   return `step-${index}`;
 }
 
-/** Opens the card: `state: working`, `started_at` set, and the title taken
- * from the first stage text. */
 export function startTaskCard(stage: string, startedAt: string): TaskCard {
   return {
     title: titleFor(stage),
@@ -50,10 +36,6 @@ export function startTaskCard(stage: string, startedAt: string): TaskCard {
   };
 }
 
-/** T-1745: gives the card the model's own 2-4 word name, once. The stage the
- * card opened with becomes its first step, because the title no longer repeats
- * it (T-1727 skipped that step only while the title matched). A blank name, or a
- * card already named, is left unchanged. */
 export function nameTaskCard(card: TaskCard, title: string): TaskCard {
   const clean = title.trim();
   if (clean === '' || card.named) {
@@ -70,9 +52,6 @@ export function nameTaskCard(card: TaskCard, title: string): TaskCard {
  * one `doing`. At the cap the newest label renames the last step instead of
  * adding a 21st. */
 export function addTaskCardStep(card: TaskCard, label: string): TaskCard {
-  // T-1727: the opening stage is also the card title, so repeating it as the
-  // first step would print the same line twice. Skip that first step and keep
-  // the stage in sync; a later, different label still opens step 1.
   if (card.steps.length === 0 && label === card.title) {
     return { ...card, stage: label };
   }
@@ -174,8 +153,6 @@ export function taskCardPayload(input: {
       title: input.card.title,
       steps: input.card.steps,
       state: input.card.state,
-      // T-1422: a working card can be stopped from its chat; a terminal card
-      // no longer offers the button.
       ...(input.card.state === 'working' ? { can_stop: true } : {}),
       started_at: input.card.startedAt,
       ...(input.card.summary === null ? {} : { summary: input.card.summary }),

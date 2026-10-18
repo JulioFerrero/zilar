@@ -1,8 +1,7 @@
 // Best-effort detection of secret-looking text, used only to refuse a
-// `remember` call (docs/audit/ai-memory-plan.md §3.5). It never logs or returns
-// the match: the caller sees a fixed `refused: looks like a secret` line. The
-// patterns are deliberately broad — a false positive costs one refused fact, a
-// false negative stores a live credential in the mirror.
+// `remember` call. The match is never logged or returned: the caller sees a
+// fixed refusal. The patterns are broad on purpose: a false positive costs one
+// refused fact, a false negative stores a live credential in the mirror.
 
 const SK_KEY = /sk-[A-Za-z0-9_-]{16,}/;
 const GITHUB_KEY = /gh[pousr]_[A-Za-z0-9]{20,}/i;
