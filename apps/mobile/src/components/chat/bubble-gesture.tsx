@@ -3,7 +3,9 @@ import { Effect } from 'effect';
 import * as Haptics from 'expo-haptics';
 import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-handler';
+
+import { useRowPan } from '@/components/chat/row-gesture';
 
 // A failed haptic is ignored: the reaction itself still toggles without it.
 function lightHaptic(): void {
@@ -32,6 +34,10 @@ type BubbleGestureProps = {
  * gesture is disabled while the bubble has no wire id (a draft, or still
  * sending/failed) and in select mode. A single tap or a long press never
  * triggers it.
+ *
+ * The bubble's tap is linked to the row's swipe pan (T-2022) so the two run
+ * simultaneously: a swipe that starts on the bubble still replies, and the tap
+ * never covers the avatar, the reaction chips or the handoff line.
  */
 export function BubbleGesture({
   message,
@@ -40,20 +46,20 @@ export function BubbleGesture({
   className,
   children,
 }: BubbleGestureProps) {
+  const rowPan = useRowPan();
   const canReact =
     onReact !== undefined && enabled && message.status !== 'sending' && message.status !== 'failed';
-  const doubleTap = useMemo(
-    () =>
-      Gesture.Tap()
-        .numberOfTaps(2)
-        .enabled(canReact)
-        .runOnJS(true)
-        .onEnd(() => {
-          lightHaptic();
-          onReact?.(message, QUICK_REACTIONS[0]);
-        }),
-    [canReact, message, onReact],
-  );
+  const doubleTap = useMemo(() => {
+    const tap: TapGesture = Gesture.Tap()
+      .numberOfTaps(2)
+      .enabled(canReact)
+      .runOnJS(true)
+      .onEnd(() => {
+        lightHaptic();
+        onReact?.(message, QUICK_REACTIONS[0]);
+      });
+    return rowPan === null ? tap : tap.simultaneousWithExternalGesture(rowPan);
+  }, [canReact, message, onReact, rowPan]);
   return (
     <GestureDetector gesture={doubleTap}>
       <View className={className}>{children}</View>

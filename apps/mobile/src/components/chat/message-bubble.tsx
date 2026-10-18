@@ -24,7 +24,7 @@ import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { PersonPressable } from '@/components/chat/person-pressable';
 import { ReactionChips } from '@/components/chat/reaction-chips';
-import { SwipeToReply } from '@/components/chat/swipe-to-reply';
+import { RowGesture } from '@/components/chat/row-gesture';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle } from '@/lib/depth';
@@ -302,9 +302,9 @@ function MessageBubbleImpl({
   );
 
   return (
-    <SwipeToReply
+    <RowGesture
       color={colors.incomingMeta}
-      enabled={selecting !== true}
+      swipeEnabled={selecting !== true}
       onReply={() => onReply(message)}
     >
       <View
@@ -363,7 +363,7 @@ function MessageBubbleImpl({
           />
         ) : null}
       </View>
-    </SwipeToReply>
+    </RowGesture>
   );
 }
 

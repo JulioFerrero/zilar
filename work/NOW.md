@@ -982,6 +982,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - the T-2031 follow-ups (gifs `runApiAbortable`, `api-effect` re-exports);
                         - the routine-header AI gate (T-2001 follow-up).
                       - **Skipped:** server clone #30, because the server doesn't depend on chat-core.
+                      - **Seen on web mock 10-18:** message-search snippets show raw Markdown (`## Review summary … **both**`).
+                        - **Where:** server `ts_headline` snippets carry highlight offsets, so stripping on the client would shift the marks.
+                        - **Fix needed:** a server-side task that strips Markdown before the headline and remaps the marks. Not urgent.
+                      - **Merged after 18:30:** T-2046 (AI gate on the routine header) and T-2045 (people prefix search, −80).
                       - **Also merged:**
                         - T-2036: channel owners and admins see full topic members;
                         - T-2001: AI-only cards;
