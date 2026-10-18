@@ -1,4 +1,5 @@
 import { ArrowUpRight, Eye, EyeOff, Lock } from 'lucide-react-native';
+import { useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import { IconButton } from '@/components/ui/icon-button';
@@ -9,7 +10,8 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import type { KeyCheck } from '@/components/connections/use-key-check';
 
 export function KeyStep({ keys }: { keys: KeyCheck }) {
-  const pageUrl = keys.keyPageUrl;
+  const [showKey, setShowKey] = useState(false);
+  const pageUrl = keys.keyPage;
   return (
     <View className="gap-2">
       <View className="flex-row items-center">
@@ -30,11 +32,11 @@ export function KeyStep({ keys }: { keys: KeyCheck }) {
       <View className="flex-row items-center gap-2 rounded-[10px] border border-border-strong bg-well px-3">
         <Lock size={15} color={MUTED_FOREGROUND} />
         <TextField
-          value={keys.keyValue}
-          onChangeText={keys.setKeyValue}
+          value={keys.key}
+          onChangeText={keys.setKey}
           accessibilityLabel="API key"
           placeholder={keys.keyPlaceholder}
-          secureTextEntry={!keys.showKey}
+          secureTextEntry={!showKey}
           autoCapitalize="none"
           autoCorrect={false}
           maxLength={16384}
@@ -42,17 +44,17 @@ export function KeyStep({ keys }: { keys: KeyCheck }) {
         />
         {keys.keyVerified ? <View className="h-2 w-2 rounded-full bg-online" /> : null}
         <IconButton
-          label={keys.showKey ? 'Hide key' : 'Show key'}
+          label={showKey ? 'Hide key' : 'Show key'}
           className="h-9 w-9 rounded-full"
-          onPress={keys.toggleShowKey}
+          onPress={() => setShowKey((value) => !value)}
         >
-          {keys.showKey ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
+          {showKey ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
         </IconButton>
       </View>
 
-      {keys.keyMessage !== '' ? (
+      {keys.keyError !== '' ? (
         <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {keys.keyMessage}
+          {keys.keyError}
         </Text>
       ) : null}
     </View>

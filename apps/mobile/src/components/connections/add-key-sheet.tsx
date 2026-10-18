@@ -23,7 +23,7 @@ export function AddKeySheet({
   const [step, setStep] = useState(0);
 
   const providerLabel =
-    keys.providerChoices.find((choice) => choice.id === keys.providerId)?.label ??
+    keys.choices.find((choice) => choice.id === keys.providerId)?.label ??
     keys.providerId ??
     'Provider';
   const steps: StepTrackStep[] = [
@@ -52,7 +52,7 @@ export function AddKeySheet({
   const primaryDisabled =
     step === 0
       ? !keys.providerReady
-      : keys.checking || (!keys.keyVerified && keys.keyValue.trim() === '');
+      : keys.checkingKey || (!keys.keyVerified && keys.key.trim() === '');
 
   return (
     <BottomSheet
@@ -63,7 +63,7 @@ export function AddKeySheet({
       footer={
         <View className="flex-row items-center gap-2">
           {step > 0 ? (
-            <Button variant="ghost" disabled={keys.checking} onPress={() => setStep(0)}>
+            <Button variant="ghost" disabled={keys.checkingKey} onPress={() => setStep(0)}>
               <Text>Back</Text>
             </Button>
           ) : null}
@@ -78,7 +78,7 @@ export function AddKeySheet({
           steps={steps}
           current={step === 0 ? 'provider' : 'key'}
           onStepPress={() => {
-            if (!keys.checking) setStep(0);
+            if (!keys.checkingKey) setStep(0);
           }}
         />
         {step === 0 ? <ProviderStep keys={keys} /> : null}

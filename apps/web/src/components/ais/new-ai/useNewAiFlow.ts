@@ -162,6 +162,7 @@ export function useNewAiFlow({ onClose, onCreated }: NewAiFlowOptions) {
     const chosenMachine = machineId;
     const seed = name.trim();
     return Effect.gen(function* () {
+      yield* Effect.sync(() => keys.beginCreate());
       const created = yield* fromApi(() => createAi(body));
       let partial = false;
       if (orb !== null) {
@@ -189,8 +190,9 @@ export function useNewAiFlow({ onClose, onCreated }: NewAiFlowOptions) {
       if (partial) {
         toast(PARTIAL_FAILURE);
       }
+      yield* Effect.sync(() => keys.finishCreate(true));
       yield* Effect.sync(() => onCreated(created));
-    });
+    }).pipe(Effect.tapError(() => Effect.sync(() => keys.finishCreate(false))));
   });
 
   const setOrb = (patch: Partial<OrbParams>): void =>

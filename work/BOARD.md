@@ -2108,3 +2108,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2102](T-2102-fold-web-message.md) | web: fold 32 single-use message files, one block dispatcher | 2026-10-18 |
 | [T-2112](T-2112-store-phase2-plan.md) | docs: store phase 2 plan (prefs, pins, group writes) | 2026-10-18 |
 | [T-2113](T-2113-merge-phone-a.md) | phone: merge 8 split hooks and children back into their user | 2026-10-18 |
+| [T-2093](T-2093-shared-key-check.md) | share: one key check for web and phone in client-core | 2026-10-18 |

@@ -179,7 +179,7 @@ export function useNewAiFlow({
   }
 
   function goToStep(value: string): void {
-    if (keys.checking) return;
+    if (keys.checkingKey) return;
     if (value === 'provider' && step !== 'provider') setStep('provider');
     else if (value === 'key' && (step === 'model' || step === 'setup')) setStep('key');
     else if (value === 'model' && step === 'setup') setStep('model');
@@ -192,10 +192,10 @@ export function useNewAiFlow({
 
   const needsMachine = (computer === 'runner' || computer === 'auto') && machineId === null;
   const primaryDisabled =
-    keys.checking ||
+    keys.checkingKey ||
     creating ||
     (step === 'provider' && keys.providerId === null) ||
-    (step === 'key' && !keys.keyVerified && keys.keyValue.trim() === '') ||
+    (step === 'key' && !keys.keyVerified && keys.key.trim() === '') ||
     (step === 'model' && (name.trim() === '' || model.trim() === '')) ||
     (step === 'setup' && (limits.limits === null || needsMachine));
 
@@ -209,11 +209,11 @@ export function useNewAiFlow({
         ? creating
           ? 'Creating…'
           : 'Create AI'
-        : keys.checking
+        : keys.checkingKey
           ? 'Checking…'
           : 'Continue',
     primaryDisabled,
-    busy: keys.checking || creating,
+    busy: keys.checkingKey || creating,
     advance,
     create,
     error,

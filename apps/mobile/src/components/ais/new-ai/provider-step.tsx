@@ -7,7 +7,7 @@ import { TextField } from '@/components/ui/text-field';
 import type { KeyCheck } from '@/components/connections/use-key-check';
 
 export function ProviderStep({ keys }: { keys: KeyCheck }) {
-  const options: SelectSheetOption[] = keys.providerChoices
+  const options: SelectSheetOption[] = keys.choices
     .filter((choice) => choice.id !== 'openai-compatible')
     .map((choice) => ({
       value: choice.id,
@@ -23,12 +23,12 @@ export function ProviderStep({ keys }: { keys: KeyCheck }) {
           label="Provider"
           value={keys.providerId}
           options={options}
-          onChange={keys.selectProvider}
+          onChange={keys.chooseProvider}
           searchPlaceholder="Filter providers"
           footerOption={{
             label: 'OpenAI-compatible',
             value: 'openai-compatible',
-            onPress: () => keys.selectProvider('openai-compatible'),
+            onPress: () => keys.chooseProvider('openai-compatible'),
           }}
         />
       </View>
@@ -54,8 +54,8 @@ export function ProviderStep({ keys }: { keys: KeyCheck }) {
           <View className="gap-1">
             <Text className="text-[13px] font-medium text-foreground">Name</Text>
             <TextField
-              value={keys.connectionName}
-              onChangeText={keys.setConnectionName}
+              value={keys.compatibleName}
+              onChangeText={keys.setCompatibleName}
               accessibilityLabel="Name"
               placeholder="Together"
               maxLength={256}

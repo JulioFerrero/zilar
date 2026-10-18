@@ -22,6 +22,7 @@ export function AddKeyDialog({ onClose, onSaved }: { onClose: () => void; onSave
       return;
     }
     if (keys.keyVerified) {
+      keys.claim();
       onSaved();
       return;
     }
