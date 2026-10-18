@@ -1,8 +1,7 @@
-import { Film, Smile, Sticker as StickerIcon } from 'lucide-react-native';
-import { Pressable, View } from 'react-native';
+import { Film, Smile, Sticker as StickerIcon, type LucideIcon } from 'lucide-react-native';
+import { View } from 'react-native';
 
-import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import type { EmojiCategoryId } from '@/lib/emoji-data';
 import type { GifItem } from '@/lib/gifs';
 import type { GifsApi } from '@/lib/gifs-api';
@@ -12,7 +11,7 @@ import { GifPanel } from '@/components/chat/gif-panel';
 import { StickerGrid, type StickerPanelState } from '@/components/chat/sticker-panel';
 
 /** The inline panel's height, about what Telegram docks under the input. */
-const PANEL_HEIGHT = 300;
+const PANEL_HEIGHT = 320;
 
 /** The sheet tabs, in display order (Emoji first, selected by default). */
 export type EmojiSheetTab = 'emoji' | 'stickers' | 'gifs';
@@ -93,40 +92,35 @@ function EmojiSheetBody({
   gifsApi,
   onPickGif,
 }: EmojiSheetProps) {
-  const iconColor = ICON;
   const visible: EmojiSheetTab = resolveSheetTab(tab, gifsVisible);
-  const tabs: { id: EmojiSheetTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'emoji', label: 'Emoji', icon: <Smile size={16} color={iconColor} /> },
-    { id: 'stickers', label: 'Stickers', icon: <StickerIcon size={16} color={iconColor} /> },
-    ...(gifsVisible
-      ? [{ id: 'gifs' as const, label: 'GIFs', icon: <Film size={16} color={iconColor} /> }]
-      : []),
+  const tabs: { id: EmojiSheetTab; label: string; icon: LucideIcon }[] = [
+    { id: 'emoji', label: 'Emoji', icon: Smile },
+    { id: 'stickers', label: 'Stickers', icon: StickerIcon },
+    ...(gifsVisible ? [{ id: 'gifs' as const, label: 'GIFs', icon: Film }] : []),
   ];
   return (
     <View
       accessibilityRole="menu"
       accessibilityLabel="Emoji, stickers and GIFs"
-      className="mt-1.5 border-t border-border bg-surface px-4 pt-3"
+      className="mt-1.5 border-t border-border bg-surface px-3 pt-2"
       style={{ height: PANEL_HEIGHT }}
     >
-      <View
-        accessibilityRole="tablist"
-        accessibilityLabel="Panel tabs"
-        className="flex-row gap-1 pb-2"
-      >
-        {tabs.map((item) => (
-          <Pressable
-            key={item.id}
-            accessibilityRole="tab"
-            accessibilityLabel={item.label}
-            accessibilityState={{ selected: visible === item.id }}
-            onPress={() => onSelectTab(item.id)}
-            className="flex-row items-center gap-1.5 rounded-[8px] px-3 py-1.5 active:bg-surface-raised"
-          >
-            {item.icon}
-            <Text className="text-[13px] font-medium text-foreground">{item.label}</Text>
-          </Pressable>
-        ))}
+      <View className="pb-2">
+        <SegmentedControl
+          accessibilityLabel="Panel tabs"
+          options={tabs.map((item) => ({
+            value: item.id,
+            label: item.label,
+            icon: item.icon,
+          }))}
+          value={visible}
+          onChange={(value) => {
+            const next = tabs.find((item) => item.id === value);
+            if (next !== undefined) {
+              onSelectTab(next.id);
+            }
+          }}
+        />
       </View>
       <View className="min-h-0 flex-1">
         {visible === 'emoji' ? (

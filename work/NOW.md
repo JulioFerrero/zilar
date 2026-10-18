@@ -815,6 +815,28 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - T-1936: a dead Recent sticker (file 404) showed a broken image; it now drops out, and pack thumbnails fall back to their emoji (web and phone).
                   - T-1937: the web composer floats over the list, with no solid band. The phone twin isn't specced yet (keyboard risk); web first.
                   - Both merged and held. **Julio: "wait for more reports"** before pushing.
+                - **Julio at lunch (10-18, about 11:40 UTC): "continue working please and dont stop".**
+                  - **Merged and held:**
+                    - T-1938 (the two-servers re-audit, kept as reference);
+                    - T-1943 (compose fast start);
+                    - T-1944 (the XMPP token is fetched beside the boot fetches).
+                  - **Skipped:**
+                    - smooth-app item 4, previews after the open chat: T-1902 already put the open room first;
+                    - the phone floating-composer twin: on the emulator the phone already has no band; the pill sits on the dot background.
+                    - Item 7 (contact-request rows from the cache) is deferred: it only jumps when requests exist.
+                  - **His new ask:** Telegram/WhatsApp/Discord parity; one style and flow everywhere; the emoji panel reworked (continuous scroll, the category bar follows it, spacing); tested on web and phone.
+                    - **Running:**
+                      - T-1945: web emoji panel;
+                      - T-1946: phone emoji panel;
+                      - T-1947: UI consistency audit → `docs/audit/ui-consistency.md`, with fix batches.
+                    - **Seen on the emulator:**
+                      - three root title sizes;
+                      - five sub-screen header patterns;
+                      - two chip styles;
+                      - two section-label styles;
+                      - request rows with 44 px avatars;
+                      - web panel tabs in a different order than the phone's.
+                  - **T-1942 fix round 3:** Go free models count as free; a pre-review counts its own worker; real models recorded for pre-review and doctor; the doctor follows the free pause.
                 - **Models (10-18):**
                   - OpenCode's free gateway refuses every free model ("Detect Abuse Traffic"), and the Go key has expired (Go was already paused until 10-27).
                   - So workers run on the DeepSeek API and reviews on paid Muse. The autopilot was restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor`.

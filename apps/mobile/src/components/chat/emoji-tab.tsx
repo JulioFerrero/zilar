@@ -1,39 +1,29 @@
 import { searchEmoji } from '@zilar/chat-core';
+import { X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Clock,
-  Flag,
-  Hand,
-  Hash,
-  Lightbulb,
-  PawPrint,
-  Pizza,
-  Plane,
-  Smile,
-  Trophy,
-} from 'lucide-react-native';
-import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  FlatList,
+  Pressable,
+  type LayoutChangeEvent,
+  type ListRenderItemInfo,
+  View,
+} from 'react-native';
 
+import { EmojiCategoryBar } from '@/components/chat/emoji-category-bar';
+import {
+  buildEmojiRows,
+  buildSearchRows,
+  type EmojiListItem,
+  type EmojiRowItem,
+  type EmojiSectionCategory,
+} from '@/components/chat/emoji-rows';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
-import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, type EmojiCategoryId } from '@/lib/emoji-data';
+import { MUTED_FOREGROUND } from '@/lib/colors';
+import { EMOJI_BY_CATEGORY, type EmojiCategoryId } from '@/lib/emoji-data';
 
 /** Every glyph of every category, in category order; the search corpus. */
 const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
-
-const CATEGORY_ICONS: Record<EmojiCategoryId, typeof Smile> = {
-  smileys: Smile,
-  people: Hand,
-  animals: PawPrint,
-  food: Pizza,
-  activities: Trophy,
-  travel: Plane,
-  objects: Lightbulb,
-  symbols: Hash,
-  flags: Flag,
-};
 
 type EmojiTabProps = {
   /** The sheet must be open for the body to render (tests hand `true`). */
@@ -50,18 +40,31 @@ type EmojiTabProps = {
 /** How many emoji cells fit one row inside the sheet. */
 export const EMOJI_GRID_COLUMNS = 8;
 
+/** A category header's fixed height, so `getItemLayout` stays exact. */
+const HEADER_HEIGHT = 28;
+
+/** The section the panel opens on: the remembered one, else the first filled. */
+function resolveInitialCategory(
+  category: EmojiCategoryId | 'recent' | undefined,
+  recents: readonly string[],
+): EmojiSectionCategory {
+  if (category === 'recent' && recents.length === 0) {
+    return 'smileys';
+  }
+  if (category === undefined) {
+    return recents.length > 0 ? 'recent' : 'smileys';
+  }
+  return category;
+}
+
 /**
- * The Emoji tab (T-0175): a category strip (Recent first, then the nine
- * categories) and a grid of plain-Unicode emoji. Tapping inserts at the
- * caret and never closes the sheet; a Lucide icon per category, emoji
- * characters only as emoji content.
- *
- * T-1660 adds a search field (in the body below): a non-empty query hides the
- * strip and filters every category by name. The query lives in the body, which
- * unmounts while the sheet is closed, so reopening starts on an empty query.
+ * The Emoji tab (T-0175, reworked by T-1946): one continuous list of every
+ * emoji with a header per category, a bar that follows the scroll and jumps to
+ * a category when tapped. Search swaps the bar for a field in place. Tapping
+ * inserts at the caret and never closes the sheet; Lucide icons for chrome,
+ * emoji characters only as emoji content.
  */
 export function EmojiTab({ open, ...props }: EmojiTabProps) {
-  useSafeAreaInsets();
   if (!open) {
     return null;
   }
@@ -71,110 +74,204 @@ export function EmojiTab({ open, ...props }: EmojiTabProps) {
 type EmojiTabBodyProps = Omit<EmojiTabProps, 'open'>;
 
 function EmojiTabBody({ recents, activeCategory, onSelectCategory, onPick }: EmojiTabBodyProps) {
-  const iconColor = ICON;
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [width, setWidth] = useState(0);
+
+  // A pick records a recent in the composer, but the open list must not
+  // reorder under the finger: it freezes the recents it opened with and the
+  // next open rebuilds from the stored ones.
+  const [initialRecents] = useState(recents);
+  const initialCategory = resolveInitialCategory(activeCategory, initialRecents);
+  const [active, setActive] = useState<EmojiSectionCategory>(initialCategory);
+  const activeRef = useRef(active);
+
+  const { items, headerIndex } = useMemo(
+    () => buildEmojiRows(initialRecents, EMOJI_GRID_COLUMNS),
+    [initialRecents],
+  );
+
   const searching = query.trim() !== '';
-  const active: EmojiCategoryId | 'recent' =
-    activeCategory ?? (recents.length > 0 ? 'recent' : 'smileys');
-  const emoji =
-    active === 'recent' ? recents : (EMOJI_BY_CATEGORY[active] ?? EMOJI_BY_CATEGORY.smileys);
-  const list = searching ? searchEmoji(query, ALL_EMOJI) : emoji;
+  const results = useMemo(
+    () => (searching ? searchEmoji(query, ALL_EMOJI) : []),
+    [query, searching],
+  );
+  const searchRows = useMemo(() => buildSearchRows(results, EMOJI_GRID_COLUMNS), [results]);
+
+  const cell = width / EMOJI_GRID_COLUMNS;
+
+  const categoryLayouts = useMemo(() => {
+    const lengths = items.map((item) => (item.kind === 'header' ? HEADER_HEIGHT : cell));
+    return lengths.map((length, index) => ({
+      index,
+      length,
+      offset: lengths.slice(0, index).reduce((sum, itemLength) => sum + itemLength, 0),
+    }));
+  }, [items, cell]);
+
+  const listRef = useRef<FlatList<EmojiListItem>>(null);
+  const onSelectCategoryRef = useRef(onSelectCategory);
+  useEffect(() => {
+    onSelectCategoryRef.current = onSelectCategory;
+  }, [onSelectCategory]);
+
+  // The bar follows the first viewable item. The handler must keep one
+  // identity for the list's lifetime, so it reads the live callback from a ref.
+  const handleViewableItemsChanged = useCallback(
+    (info: { viewableItems: { item: EmojiListItem }[] }) => {
+      const category = info.viewableItems[0]?.item.category;
+      if (category === undefined || activeRef.current === category) {
+        return;
+      }
+      activeRef.current = category;
+      setActive(category);
+      onSelectCategoryRef.current(category);
+    },
+    [],
+  );
+  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 10 }), []);
+
+  const selectCategory = (category: EmojiCategoryId | 'recent'): void => {
+    activeRef.current = category;
+    setActive(category);
+    const index = headerIndex[category];
+    if (index !== undefined) {
+      listRef.current?.scrollToIndex({ index, animated: false });
+    }
+    onSelectCategory(category);
+  };
+
+  const handleLayout = (event: LayoutChangeEvent): void => {
+    const next = event.nativeEvent.layout.width;
+    setWidth((current) => (current === next ? current : next));
+  };
+
+  const closeSearch = (): void => {
+    setSearchOpen(false);
+    setQuery('');
+  };
+
+  const renderCategoryItem = ({ item }: ListRenderItemInfo<EmojiListItem>) => {
+    if (item.kind === 'header') {
+      return (
+        <View style={{ height: HEADER_HEIGHT }} className="justify-center px-1">
+          <Text className="text-[12px] font-semibold text-muted-foreground">{item.label}</Text>
+        </View>
+      );
+    }
+    return <EmojiRow glyphs={item.glyphs} cell={cell} onPick={onPick} />;
+  };
+
+  const renderSearchItem = ({ item }: ListRenderItemInfo<EmojiRowItem>) => (
+    <EmojiRow glyphs={item.glyphs} cell={cell} onPick={onPick} />
+  );
+
   return (
     <View className="flex min-h-0 flex-1 flex-col">
-      <View className="p-2">
-        <SearchField
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search emoji"
-          accessibilityLabel="Search emoji"
-          onClear={() => setQuery('')}
-        />
-      </View>
-      {searching ? null : (
-        <ScrollView
-          horizontal
-          accessibilityRole="toolbar"
-          accessibilityLabel="Emoji categories"
-          // A horizontal ScrollView grows to fill the free height; without this
-          // the category strip floats in a big empty gap under the tabs.
-          style={{ flexGrow: 0 }}
-          contentContainerStyle={{
-            flexDirection: 'row',
-            gap: 2,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-          }}
-        >
-          <CategoryButton
-            label="Recent emoji"
-            selected={active === 'recent'}
-            onPress={() => onSelectCategory('recent')}
-            icon={<Clock size={18} color={iconColor} />}
-          />
-          {EMOJI_CATEGORIES.map((category) => {
-            const Icon = CATEGORY_ICONS[category.id];
-            return (
-              <CategoryButton
-                key={category.id}
-                label={`${category.label} emoji`}
-                selected={active === category.id}
-                onPress={() => onSelectCategory(category.id)}
-                icon={<Icon size={18} color={iconColor} />}
-              />
-            );
-          })}
-        </ScrollView>
-      )}
-      {list.length === 0 ? (
-        <View className="h-[180px] items-center justify-center px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">
-            {searching ? 'No emoji found.' : 'Tap an emoji below to keep it here.'}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          accessibilityLabel="Emoji grid"
-          className="min-h-0 flex-1"
-          contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}
-        >
-          {list.map((item) => (
+      <View className="pb-2">
+        {searchOpen ? (
+          <View className="flex-row items-center gap-2">
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search emoji"
+              accessibilityLabel="Search emoji"
+              autoFocus
+              containerClassName="h-9 min-h-9 flex-1"
+            />
             <Pressable
-              key={item}
               accessibilityRole="button"
-              accessibilityLabel={`Insert ${item}`}
-              onPress={() => onPick(item)}
-              className="items-center justify-center rounded-[8px] active:bg-surface-raised"
-              style={{ width: `${100 / EMOJI_GRID_COLUMNS}%`, aspectRatio: 1 }}
+              accessibilityLabel="Close emoji search"
+              hitSlop={8}
+              onPress={closeSearch}
+              className="h-9 w-9 items-center justify-center rounded-[8px] active:bg-surface-raised"
             >
-              <Text className="text-[26px]">{item}</Text>
+              <X size={18} color={MUTED_FOREGROUND} />
             </Pressable>
-          ))}
-        </ScrollView>
-      )}
+          </View>
+        ) : (
+          <EmojiCategoryBar
+            active={active}
+            hasRecents={initialRecents.length > 0}
+            onSelect={selectCategory}
+            onOpenSearch={() => setSearchOpen(true)}
+          />
+        )}
+      </View>
+      <View className="min-h-0 flex-1" onLayout={handleLayout}>
+        {width === 0 ? null : searching ? (
+          results.length === 0 ? (
+            <NoResults />
+          ) : (
+            <FlatList
+              key="emoji-search"
+              data={searchRows}
+              keyExtractor={(item) => item.key}
+              renderItem={renderSearchItem}
+              getItemLayout={(_data, index) => ({
+                index,
+                length: cell,
+                offset: cell * index,
+              })}
+              keyboardShouldPersistTaps="handled"
+              className="flex-1"
+            />
+          )
+        ) : (
+          <FlatList
+            key="emoji-all"
+            ref={listRef}
+            data={items}
+            keyExtractor={(item) => item.key}
+            renderItem={renderCategoryItem}
+            getItemLayout={(_data, index) =>
+              categoryLayouts[index] ?? { index, length: 0, offset: 0 }
+            }
+            initialScrollIndex={headerIndex[active] ?? 0}
+            initialNumToRender={10}
+            windowSize={5}
+            onViewableItemsChanged={handleViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            keyboardShouldPersistTaps="handled"
+            className="flex-1"
+          />
+        )}
+      </View>
     </View>
   );
 }
 
-function CategoryButton({
-  label,
-  selected,
-  onPress,
-  icon,
+function EmojiRow({
+  glyphs,
+  cell,
+  onPick,
 }: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  icon: React.ReactNode;
+  glyphs: string[];
+  cell: number;
+  onPick: (emoji: string) => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      className="shrink-0 items-center justify-center rounded-[8px] p-2 active:bg-surface-raised"
-    >
-      {icon}
-    </Pressable>
+    <View style={{ flexDirection: 'row', height: cell }}>
+      {glyphs.map((glyph) => (
+        <Pressable
+          key={glyph}
+          accessibilityRole="button"
+          accessibilityLabel={`Insert ${glyph}`}
+          onPress={() => onPick(glyph)}
+          className="items-center justify-center rounded-[8px] active:bg-surface-raised"
+          style={{ width: cell, height: cell }}
+        >
+          <Text className="text-[28px]">{glyph}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function NoResults() {
+  return (
+    <View className="flex-1 items-center justify-center px-4">
+      <Text className="text-center text-[13px] text-muted-foreground">No emoji found.</Text>
+    </View>
   );
 }

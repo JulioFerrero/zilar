@@ -1953,3 +1953,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1943](T-1943-compose-fast-start.md) | faster compose start (start_interval, web needs server started) | 2026-10-18 |
 | [T-1938](T-1938-two-servers-reaudit.md) | two-servers re-audit (reference; split shelved) | 2026-10-18 |
 | [T-1944](T-1944-token-during-boot.md) | the XMPP token is fetched beside the boot fetches | 2026-10-18 |
+| [T-1946](T-1946-phone-emoji-panel.md) | phone emoji panel: one scroll, category bar follows | 2026-10-18 |
