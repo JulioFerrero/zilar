@@ -1981,3 +1981,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1971](T-1971-phone-pull-refresh-tools.md) | phone pull to refresh on tools settings lists | 2026-10-18 |
 | [T-1968](T-1968-claude-audit-auth-keys.md) | auth and keys audit (findings private) | 2026-10-18 |
 | [T-1979](T-1979-web-pinned-banner-polish.md) | web pinned bar: one keyboard ring, calm not-found note, Unpin | 2026-10-18 |
+| [T-1984](T-1984-connections-write-limits.md) | per-user limit and cap on saved provider keys | 2026-10-18 |

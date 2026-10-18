@@ -55,6 +55,11 @@ import {
 export const CONNECTION_TEST_RATE_LIMIT_MAX = 5;
 export const CONNECTION_TEST_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
+// T-1984: every write has a limit. Create resolves a host name the user chose,
+// so both writes share one per-user budget.
+export const CONNECTION_WRITE_RATE_LIMIT_MAX = 10;
+export const CONNECTION_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
 export interface ConnectionsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -76,6 +81,7 @@ export interface ConnectionsLogger {
 
 export interface ConnectionsApiDependencies extends ConnectionsRoutesDependencies {
   testLimiter?: RateLimiter;
+  writeLimiter?: RateLimiter;
 }
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
@@ -149,6 +155,13 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
       windowMs: CONNECTION_TEST_RATE_LIMIT_WINDOW_MS,
       now,
     });
+  const writeLimiter =
+    deps.writeLimiter ??
+    createRateLimiter({
+      max: CONNECTION_WRITE_RATE_LIMIT_MAX,
+      windowMs: CONNECTION_WRITE_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
 
   // The envelope reports defects through `error`. The route tests may
   // inject a warn-only fake logger, which keeps `error` absent; forward to
@@ -189,6 +202,13 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
         handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
             const keyCipher = requireCipher();
+            if (!writeLimiter.allow(user.id)) {
+              throw new HttpError(
+                429,
+                'rate_limited',
+                'Too many connection changes, try again in a minute',
+              );
+            }
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
             );
@@ -224,6 +244,13 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
         handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
             const keyCipher = requireCipher();
+            if (!writeLimiter.allow(user.id)) {
+              throw new HttpError(
+                429,
+                'rate_limited',
+                'Too many connection changes, try again in a minute',
+              );
+            }
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
             );

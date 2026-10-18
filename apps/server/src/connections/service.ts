@@ -4,10 +4,15 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { ProviderConnectionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { HttpError } from '../errors';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
 export type ConnectionRow = ProviderConnectionRow;
+
+// T-1984: a user keeps at most this many active provider keys; the create
+// route answers 409 `limit_reached` at the cap.
+export const CONNECTIONS_MAX_PER_USER = 50;
 
 export interface PublicConnection {
   id: string;
@@ -68,10 +73,30 @@ export async function createConnection(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ConnectionRow>`INSERT INTO provider_connections
-        (id, owner, provider, encrypted_key, label, base_url)
-        VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label}, ${input.baseUrl})
-        RETURNING *`;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          // The count and the insert share one transaction under a per-owner
+          // advisory lock: two concurrent creates at the cap would otherwise
+          // both read under it and both insert.
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'connections:' + input.owner}))`;
+          const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+            FROM provider_connections
+            WHERE owner = ${input.owner} AND status = 'active'`;
+          if (Number(counter?.total ?? 0) >= CONNECTIONS_MAX_PER_USER) {
+            return yield* Effect.fail(
+              new HttpError(
+                409,
+                'limit_reached',
+                'You have too many saved keys. Remove one first.',
+              ),
+            );
+          }
+          return yield* sql<ConnectionRow>`INSERT INTO provider_connections
+            (id, owner, provider, encrypted_key, label, base_url)
+            VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label}, ${input.baseUrl})
+            RETURNING *`;
+        }),
+      );
     }),
   );
   if (!row) {
