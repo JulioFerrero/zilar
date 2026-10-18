@@ -418,6 +418,68 @@ describe('openAtMessage (core)', () => {
 
     expect(found.id).toBe('stanza-7');
   });
+
+  it('finds a MAM-loaded card by its archive id, not just the chat preview (T-1980)', async () => {
+    // Julio pinned a card whose live id happened to be its archive id
+    // (`pins.ts` stores whatever id the row has). Later, a reload loads it
+    // through MAM: the forwarded stanza carries a `<stanza-id>` that
+    // `resolve-sender.ts` prefers over the raw archive id, so the row's
+    // displayed id differs from the pin. The card is not the chat's newest
+    // message, so the old preview-only lookup (`:281`) cannot help.
+    const archiveId = '1792170770205830';
+    const card: ChatMessage = {
+      kind: 'chat',
+      chatJid: ANA,
+      id: 'card-stanza-7',
+      archiveId,
+      fromJid: ANA,
+      fromResolved: true,
+      body: 'Which iOS should I test on?',
+      timestamp: new Date(Date.UTC(2026, 9, 16, 6, 0)),
+      outgoing: false,
+    };
+    const later: ChatMessage = {
+      kind: 'chat',
+      chatJid: ANA,
+      id: 'ana-later',
+      fromJid: ANA,
+      fromResolved: true,
+      body: 'a later message',
+      timestamp: new Date(Date.UTC(2026, 9, 16, 6, 1)),
+      outgoing: false,
+    };
+    const { ctx } = historyCtx({ loadHistory: serverOver([card, later]) });
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    const found = await Effect.runPromise(openAtMessage(ctx, ANA, archiveId));
+
+    expect(found.id).toBe('card-stanza-7');
+  });
+
+  it('keeps the origin id as the wire target after aliasing the archive id (T-1980)', async () => {
+    // Reactions and replies name `wireTargetFor(row.id)`; the other person only
+    // knows the origin id, never this user's own archive id.
+    const archiveId = '1792170770205830';
+    const card: ChatMessage = {
+      kind: 'chat',
+      chatJid: ANA,
+      id: 'card-stanza-7',
+      originId: 'origin-7',
+      archiveId,
+      fromJid: ANA,
+      fromResolved: true,
+      body: 'Which iOS should I test on?',
+      timestamp: new Date(Date.UTC(2026, 9, 16, 6, 0)),
+      outgoing: false,
+    };
+    const { ctx } = historyCtx({ loadHistory: serverOver([card]) });
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    const found = await Effect.runPromise(openAtMessage(ctx, ANA, archiveId));
+
+    expect(found.id).toBe('card-stanza-7');
+    expect(ctx.k.wireTargetFor(found.id)).toBe('origin-7');
+  });
 });
 
 describe('clearSupersededMarker (core)', () => {

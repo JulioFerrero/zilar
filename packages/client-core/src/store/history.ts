@@ -3,7 +3,7 @@
 // search). The chat list refresh and the open-chat side effects stay per app.
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import type { XmppCore } from '@zilar/xmpp-core';
+import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { fromPromise, type CoreCtx, type CoreState } from './ctx';
 import {
   MESSAGE_JUMP_MAX_PAGES,
@@ -48,6 +48,32 @@ const batchedCtx = (ctx: HistoryCtx, view: LedgerBatchView): CoreCtx => {
 };
 
 /**
+ * Maps a decoded stanza to its bubble and, when it carries a known MAM archive
+ * id (T-1980), aliases that id to the row (`k.linkMessageIds`). A card can be
+ * re-keyed between the id it had live and the id MAM reports for it
+ * (`rekeyQuestionMessage`, T-1739), and a 1:1 archive id is only ever this
+ * user's own, so a row's displayed id (`resolve-sender.ts` `messageId`, which
+ * prefers a `<stanza-id>` over the raw archive id) can differ from the id a
+ * pin stored. The alias makes `k.sameMessage` — and so `openAtMessage`'s
+ * `find()` — match the row by either id, however it was loaded. The row's own
+ * root stays the root (the archive id joins it, not the other way round), so
+ * `wireTargetFor` and `correctionTargetFor` keep naming the id the other
+ * person knows, never this user's private archive id.
+ */
+function linkArchiveId(
+  k: HistoryCtx['k'],
+  message: ChatMessage,
+  currentUserId: string,
+  page?: readonly ChatMessage[],
+): UiMessage {
+  const ui = k.toUiMessage(message, currentUserId, page);
+  if (message.archiveId !== undefined) {
+    k.linkMessageIds(ui.id, message.archiveId);
+  }
+  return ui;
+}
+
+/**
  * One backwards history page, shared with `loadOlder` and `openAtMessage`.
  * The page can overlap what is loaded: `loadOlder` during the first page load
  * pages from the boot preview's cursor, the newest message. A message that is
@@ -77,7 +103,7 @@ export const loadOlderPage = (
         k.ingestHistoryEdits(page.messages);
         const older = page.messages
           .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
-          .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
+          .map((message) => linkArchiveId(k, message, ctx.get().currentUserId, page.messages));
         k.resolvePendingEdits(chatId);
         const withEditsApplied = dedupePage(
           k.sameMessage,
@@ -123,7 +149,7 @@ export const loadPreview = (
     if (last === undefined) {
       return;
     }
-    const ui = k.toUiMessage(last, ctx.get().currentUserId);
+    const ui = linkArchiveId(k, last, ctx.get().currentUserId);
     k.resolvePendingEdits(chat.id);
     const preview = k.previewFor(k.withEdits(ui, chat.id));
     // One update for the list row and its history flag (PERF-1), so a preview
@@ -200,7 +226,7 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
         k.ingestHistoryEdits(page.messages);
         const loaded = page.messages
           .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
-          .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
+          .map((message) => linkArchiveId(k, message, ctx.get().currentUserId, page.messages));
         k.resolvePendingEdits(chatId);
         const withEditsApplied = dedupePage(
           k.sameMessage,

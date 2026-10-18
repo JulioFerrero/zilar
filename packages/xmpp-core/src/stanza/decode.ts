@@ -39,6 +39,22 @@ import {
 import { conversationJid, fromNick, messageId, resolveSender } from './resolve-sender';
 import { CHAT_STATES } from './reactions';
 
+// `types.ts` has a 400-line cap (shared with another task), so this field
+// joins `ChatMessage` as a module augmentation, the way `types-ack.ts` and
+// `types-delivered.ts` add their own fields.
+declare module '../types' {
+  interface ChatMessage {
+    /**
+     * The MAM `<result id>` (T-1980): this user's own archive id for the
+     * message, present only when the stanza was fetched from the archive.
+     * Kept apart from `id` because `id` may resolve to a `<stanza-id>`
+     * instead (`resolve-sender.ts` `messageId`), which a pin stored under the
+     * archive id may not match later.
+     */
+    archiveId?: string;
+  }
+}
+
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza, ctx);
   const inner = envelope.inner;
@@ -120,6 +136,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     };
     const originId = originIdOf(inner);
     if (originId !== undefined) message.originId = originId;
+    if (envelope.archiveId !== undefined) message.archiveId = envelope.archiveId;
     if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
