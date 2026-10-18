@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { API_URL } from '@/lib/auth';
 import { createStickersApi, type StickerBinaryUpload, type StickersApi } from '@/lib/stickers-api';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /** The 4 stand-in PNG bytes the mock sticker upload records; not a real picture. */
 const MOCK_STICKER_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -47,27 +47,6 @@ function createMockStickers(): { api: StickersApi; viewerId: string } {
   throw new Error('The mock API is not part of this build');
 }
 
-/**
- * The mock-mode gate mirrors `use-machines-api.ts` so the sticker screens read
- * the same `?mock=` param and env var. In mock mode the adapter talks to the
- * shared mock backend, which seeds the sticker packs, the panel and favorites.
- */
-function stickersMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  // `false` is the one explicit opt-out; any other value (including the old
-  // named scenarios) keeps the mock on.
-  return requested !== 'false';
-}
-
 export interface StickersApiHandle {
   api: StickersApi;
   /** True when the mock is active (used by tests/UI to skip the network). */
@@ -87,7 +66,7 @@ export interface StickersApiHandle {
 export function useStickersApi(): StickersApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
-  const mock = stickersMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
+  const mock = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const resolved = useMemo(
     () =>
       mock

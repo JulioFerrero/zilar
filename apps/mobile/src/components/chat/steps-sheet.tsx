@@ -23,7 +23,7 @@ import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /** Builds the mock-mode `AgentTasksApi` on the shared mock backend, behind a
  * literal build-time condition: Metro folds it to `false` in a release build, so
@@ -35,22 +35,6 @@ function createMockAgentTasks(): AgentTasksApi {
     return createAgentTasksApi(mockToken, mockFetch, API_URL);
   }
   throw new Error('The mock API is not part of this build');
-}
-
-/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param or
- * the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
-function stepsMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  return requested !== 'false';
 }
 
 /** The state icon of one step row; a status is never a word. */
@@ -179,7 +163,7 @@ export function StepsSheet({
 }) {
   const reduceMotion = useReducedMotion();
   const params = useGlobalSearchParams();
-  const mock = stepsMockActive(
+  const mock = apiMockActive(
     ENV_MOCK,
     params,
     mockParamAllowed({ dev: __DEV__, envMock: ENV_MOCK }),

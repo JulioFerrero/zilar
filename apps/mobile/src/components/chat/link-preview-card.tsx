@@ -18,7 +18,7 @@ import { well } from '@/lib/depth';
 import { useLinkPreviewImage } from '@/lib/link-preview-image';
 import { safeLinkTarget } from '@/lib/links';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /** Builds the mock-mode `ChatApi` on the shared mock backend, behind a literal
  * build-time condition: Metro folds it to `false` in a release build, so the
@@ -30,22 +30,6 @@ function createMockChatApi(): ChatApi {
     return createChatApi(mockToken, mockFetch, API_URL);
   }
   throw new Error('The mock API is not part of this build');
-}
-
-/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param
- * or the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
-function linkPreviewMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  return requested !== 'false';
 }
 
 type PreviewState =
@@ -83,7 +67,7 @@ function loadPreview(api: ChatApi, url: string): Promise<LinkPreview | null> {
 
 export function LinkPreviewCard({ url }: { url: string }) {
   const params = useGlobalSearchParams();
-  const mock = linkPreviewMockActive(
+  const mock = apiMockActive(
     ENV_MOCK,
     params,
     mockParamAllowed({ dev: __DEV__, envMock: ENV_MOCK }),

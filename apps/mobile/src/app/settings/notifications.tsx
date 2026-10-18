@@ -28,7 +28,7 @@ import {
   type SetPushPair,
 } from '@/lib/push/native';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type PermissionView = 'enabled' | 'not-enabled' | 'blocked';
@@ -76,31 +76,11 @@ function createMockPushClient() {
   throw new Error('The mock API is not part of this build');
 }
 
-/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param
- * or the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
-function notificationsMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  return requested !== 'false';
-}
-
 /** Picks the real push client or the mock one from the route param or the env. */
 function usePushClient() {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
-  const mock = notificationsMockActive(
-    envMock,
-    params,
-    mockParamAllowed({ dev: __DEV__, envMock }),
-  );
+  const mock = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   return useMemo(() => (mock ? createMockPushClient() : createRealPushClient()), [mock]);
 }
 

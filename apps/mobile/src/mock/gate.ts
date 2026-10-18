@@ -15,6 +15,26 @@ export function mockParamAllowed(env: { dev: boolean; envMock: string | undefine
 }
 
 /**
+ * The `?mock=` gate every mockable API hook shares: the route param wins when
+ * `mockParamAllowed` opens it, then the bundle-time env decides. `''`, `'0'`,
+ * `'false'` and undefined are off; any other value (including named scenarios)
+ * keeps the mock on.
+ */
+export function apiMockActive(
+  envMock: string | undefined,
+  params: Record<string, string | string[] | undefined>,
+  paramAllowed: boolean,
+): boolean {
+  const rawParam = params['mock'];
+  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
+  const requested = param !== undefined ? param : envMock;
+  if (requested === undefined || requested === '' || requested === '0') {
+    return false;
+  }
+  return requested !== 'false';
+}
+
+/**
  * The mock-mode decision the chat store provider and the auth guard share. It
  * mirrors the old store's gate: the unit-test run and a literal
  * `EXPO_PUBLIC_ZILAR_MOCK=1` select mock mode anywhere; the `?mock=1` route

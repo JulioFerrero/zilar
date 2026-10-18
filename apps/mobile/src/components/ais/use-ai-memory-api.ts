@@ -1,45 +1,13 @@
-import { useGlobalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
-
 import { createAiMemoryApi, type AiMemoryApi } from '@/lib/ai-memory-api';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { useMockableApi } from '@/lib/use-mockable-api';
+import { mockToken } from '@/mock/gate';
 
-/**
- * Builds the mock-mode `AiMemoryApi` on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build,
- * so the mock module stays out of the bundle.
- */
-function createMockAiMemory(): AiMemoryApi {
-  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return createAiMemoryApi(mockToken, mockFetch, API_URL);
-  }
-  throw new Error('The mock API is not part of this build');
-}
+const realAiMemoryApi = () => createAiMemoryApi(getSessionToken);
 
-/**
- * The AI memory API supports exactly one mock scenario (the seeded memory),
- * so a yes/no answer is enough. The shape mirrors `use-audit-api.ts` so the
- * AI screens pick the same mock gate and env vars.
- */
-function aiMemoryMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  // `false` is the one explicit opt-out; any other value (including named
-  // scenarios that are not relevant here) keeps the mock on.
-  return requested !== 'false';
-}
+const mockAiMemoryApi = (mockFetch: typeof fetch) =>
+  createAiMemoryApi(mockToken, mockFetch, API_URL);
 
 export interface AiMemoryApiHandle {
   api: AiMemoryApi;
@@ -53,12 +21,5 @@ export interface AiMemoryApiHandle {
  * through `mockFetch`, so the AI edit screen shows the section without a server.
  */
 export function useAiMemoryApi(): AiMemoryApiHandle {
-  const params = useGlobalSearchParams();
-  const envMock = ENV_MOCK;
-  const mock = aiMemoryMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(
-    () => (mock ? createMockAiMemory() : createAiMemoryApi(getSessionToken)),
-    [mock],
-  );
-  return { api, mock };
+  return useMockableApi(realAiMemoryApi, mockAiMemoryApi);
 }

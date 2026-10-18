@@ -1,44 +1,13 @@
-import { useGlobalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
-
-import { createIntegrationsApi, type IntegrationsApi } from '@/lib/integrations-api';
 import { API_URL } from '@/lib/auth';
+import { createIntegrationsApi, type IntegrationsApi } from '@/lib/integrations-api';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { useMockableApi } from '@/lib/use-mockable-api';
+import { mockToken } from '@/mock/gate';
 
-/**
- * Builds the mock-mode `IntegrationsApi` on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build,
- * so the mock module stays out of the bundle.
- */
-function createMockIntegrations(): IntegrationsApi {
-  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return createIntegrationsApi(mockToken, mockFetch, API_URL);
-  }
-  throw new Error('The mock API is not part of this build');
-}
+const realIntegrationsApi = () => createIntegrationsApi(getSessionToken);
 
-/**
- * The mock-mode gate mirrors `use-machines-api.ts` so the integrations screen
- * reads the same `?mock=` param and env var. `false` is the one explicit
- * opt-out; any other value (including the old named scenarios) keeps the mock
- * on.
- */
-function integrationsMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  return requested !== 'false';
-}
+const mockIntegrationsApi = (mockFetch: typeof fetch) =>
+  createIntegrationsApi(mockToken, mockFetch, API_URL);
 
 export interface IntegrationsApiHandle {
   api: IntegrationsApi;
@@ -52,12 +21,5 @@ export interface IntegrationsApiHandle {
  * through `mockFetch`, which seeds Telegram and email configured.
  */
 export function useIntegrationsApi(): IntegrationsApiHandle {
-  const params = useGlobalSearchParams();
-  const envMock = ENV_MOCK;
-  const mock = integrationsMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(
-    () => (mock ? createMockIntegrations() : createIntegrationsApi(getSessionToken)),
-    [mock],
-  );
-  return { api, mock };
+  return useMockableApi(realIntegrationsApi, mockIntegrationsApi);
 }

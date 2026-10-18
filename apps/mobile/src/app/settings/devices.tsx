@@ -19,7 +19,7 @@ import { AuthApiError, listSessions, revokeSession } from '@/lib/auth-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -67,22 +67,6 @@ function createMockDevicesApi(): DevicesApi {
   throw new Error('The mock API is not part of this build');
 }
 
-/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param
- * or the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
-function devicesMockActive(
-  envMock: string | undefined,
-  params: Record<string, string | string[] | undefined>,
-  paramAllowed: boolean,
-): boolean {
-  const rawParam = params['mock'];
-  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : envMock;
-  if (requested === undefined || requested === '' || requested === '0') {
-    return false;
-  }
-  return requested !== 'false';
-}
-
 interface DevicesApiHandle {
   api: DevicesApi;
   /** True when the mock is active (used to label the screen). */
@@ -93,7 +77,7 @@ interface DevicesApiHandle {
 function useDevicesApi(): DevicesApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
-  const mock = devicesMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
+  const mock = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(() => (mock ? createMockDevicesApi() : createRealDevicesApi()), [mock]);
   return { api, mock };
 }
