@@ -1,41 +1,20 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
 import { MessageSquare, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { aiHealth, formatUsd, spendFraction, type AiHealthInput } from '@zilar/chat-core';
-import { ApiError, deleteAi, type PublicAi } from '@/lib/api';
+import { deleteAi, type PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { AiBadge } from '@/components/AiBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { FieldError } from '@/components/ais/AiPageShell';
-import { describeAiError } from '@/components/ais/errors';
+import { aiFailureText } from '@/components/ais/errors';
 import { formatLimit } from '@/components/ais/limits';
 import { IconButton } from '@/components/ui/icon-button';
 import { Menu, MenuItem } from '@/components/ui/menu';
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
-
-/**
- * The words for an api.ts failure, through describeAiError so each server code
- * keeps its wording. A call that never reached the server gets the fallback.
- */
-function aiFailureText(failure: ApiFailure, fallback: string): string {
-  if (failure.code === 'unknown_error') {
-    return fallback;
-  }
-  return describeAiError(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
-  ).message;
-}
 
 // The fix link inside the muted line: a bright, underline-on-hover link.
 const FIX_LINK = 'text-accent underline-offset-2 hover:underline';

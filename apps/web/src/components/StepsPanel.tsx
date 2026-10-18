@@ -1,11 +1,12 @@
 import type { Contact, TaskStep, TaskStepAction } from '@zilar/api-contract';
 import type { AvatarPersonInput, ChatSummary } from '@zilar/chat-core';
-import type { Progress } from '@zilar/protocol';
+import type { Progress, ProgressStep } from '@zilar/protocol';
 import { AsyncResult } from 'effect/reactivity';
 import {
   Check,
   ChevronDown,
   ChevronRight,
+  Circle,
   LoaderCircle,
   ShieldCheck,
   Square,
@@ -84,25 +85,27 @@ function aiPersonOf(
 }
 
 /** The state icon of one step row; a status is never a word. */
-function StepStateIcon({
+export function StepStateIcon({
   state,
   reduceMotion,
+  className = 'size-4',
 }: {
-  state: DisplayStep['state'];
+  state: DisplayStep['state'] | ProgressStep['state'];
   reduceMotion: boolean;
+  className?: string;
 }) {
-  const className = 'size-4 shrink-0';
+  const classes = cn(className, 'shrink-0');
   if (state === 'done') {
-    return <Check className={cn(className, 'text-accent')} aria-hidden="true" />;
+    return <Check className={cn(classes, 'text-accent')} aria-hidden="true" />;
   }
   if (state === 'failed') {
-    return <X className={cn(className, 'text-danger')} aria-hidden="true" />;
+    return <X className={cn(classes, 'text-danger')} aria-hidden="true" />;
   }
   if (state === 'doing') {
     return (
       <LoaderCircle
         className={cn(
-          className,
+          classes,
           'text-accent',
           !reduceMotion && 'animate-spin',
           reduceMotion && 'spinner-reduced',
@@ -111,7 +114,10 @@ function StepStateIcon({
       />
     );
   }
-  return <Square className={cn(className, 'text-muted-foreground')} aria-hidden="true" />;
+  if (state === 'stopped') {
+    return <Square className={cn(classes, 'text-muted-foreground')} aria-hidden="true" />;
+  }
+  return <Circle className={cn(classes, 'text-muted-foreground')} aria-hidden="true" />;
 }
 
 /** One step: its header toggles the actions logged under it. */

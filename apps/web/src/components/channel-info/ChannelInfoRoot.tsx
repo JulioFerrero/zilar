@@ -1,16 +1,13 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import {
-  Activity,
   Bell,
   BellOff,
   Bot,
-  Image as ImageIcon,
   Link,
   LogOut,
   Megaphone,
   MoreHorizontal,
-  Pin,
   Search,
   Settings,
   Share2,
@@ -27,6 +24,7 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from '../ais/AiPageShell';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { EntityAvatar } from '../EntityAvatar';
+import { ContentNav } from '../group-info/ContentNav';
 import { DeleteGroupDialog } from '../group-info/GroupExit';
 import { PanelFailure } from '../panels/groupPanelOps';
 import { IconButton } from '../ui/icon-button';
@@ -268,40 +266,13 @@ export function ChannelInfoRoot({
             )}
           </nav>
 
-          <nav
-            aria-label="Content"
-            className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface"
-          >
-            <ListRow
-              icon={<ImageIcon className="size-4" aria-hidden="true" />}
-              title="Shared media"
-              chevron
-              onClick={onOpenMedia}
-            />
-            <ListRow
-              icon={<Pin className="size-4" aria-hidden="true" />}
-              title="Pinned messages"
-              trailing={count(pinCount)}
-              chevron
-              onClick={() => storeApi.getState().setPinsPanel(chat.id)}
-            />
-            {isManager && (
-              <>
-                <ListRow
-                  icon={<Activity className="size-4" aria-hidden="true" />}
-                  title="Activity"
-                  chevron
-                  onClick={() => onOpenPage('activity')}
-                />
-                <ListRow
-                  icon={<ShieldCheck className="size-4" aria-hidden="true" />}
-                  title="Always allowed"
-                  chevron
-                  onClick={() => onOpenPage('allowed')}
-                />
-              </>
-            )}
-          </nav>
+          <ContentNav
+            chatId={chat.id}
+            pinCount={pinCount}
+            isManager={isManager}
+            onOpenMedia={onOpenMedia}
+            onOpenPage={onOpenPage}
+          />
 
           {isOwner && (
             <nav

@@ -1,21 +1,17 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import {
-  Activity,
   Bell,
   BellOff,
   Image as ImageIcon,
   MoreHorizontal,
-  Pin,
   Search,
   Settings,
-  ShieldCheck,
   Trash2,
   UserPlus,
   Wrench,
   X,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -25,6 +21,7 @@ import { IconButton } from '../ui/icon-button';
 import { ListRow } from '../ui/list-row';
 import { Menu, MenuItem } from '../ui/menu';
 import { PanelKey } from '../ui/panel-key';
+import { ContentNav } from './ContentNav';
 import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
 import { AvatarStack } from './AvatarStack';
 import type { AvatarStackEntry } from './AvatarStack';
@@ -46,11 +43,6 @@ export const GROUP_INFO_TITLES: Record<GroupInfoPageId, string> = {
 };
 
 const MUTE_ERROR = 'Could not update notifications. Try again.';
-
-/** The count at the right of a row, in mono as the design asks. */
-function count(value: number): ReactNode {
-  return <span className="font-mono text-[12px]">{value}</span>;
-}
 
 /**
  * The group info root page (T-1494): the picture, the name and the member
@@ -207,46 +199,21 @@ export function GroupInfoRoot({
           {/* T-1786: Your/Other topics, split by the caller's membership. */}
           <TopicsSection chat={chat} onClose={onClose} />
 
-          <nav
-            aria-label="Content"
-            className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface"
-          >
-            <ListRow
-              icon={<ImageIcon className="size-4" aria-hidden="true" />}
-              title="Shared media"
-              chevron
-              onClick={onOpenMedia}
-            />
-            <ListRow
-              icon={<Pin className="size-4" aria-hidden="true" />}
-              title="Pinned messages"
-              trailing={count(pinCount)}
-              chevron
-              onClick={() => storeApi.getState().setPinsPanel(chat.id)}
-            />
-            <ListRow
-              icon={<Wrench className="size-4" aria-hidden="true" />}
-              title="Tools and routines"
-              chevron
-              onClick={() => onOpenPage('tools')}
-            />
-            {isManager && (
-              <>
-                <ListRow
-                  icon={<Activity className="size-4" aria-hidden="true" />}
-                  title="Activity"
-                  chevron
-                  onClick={() => onOpenPage('activity')}
-                />
-                <ListRow
-                  icon={<ShieldCheck className="size-4" aria-hidden="true" />}
-                  title="Always allowed"
-                  chevron
-                  onClick={() => onOpenPage('allowed')}
-                />
-              </>
-            )}
-          </nav>
+          <ContentNav
+            chatId={chat.id}
+            pinCount={pinCount}
+            isManager={isManager}
+            onOpenMedia={onOpenMedia}
+            onOpenPage={onOpenPage}
+            extraRow={
+              <ListRow
+                icon={<Wrench className="size-4" aria-hidden="true" />}
+                title="Tools and routines"
+                chevron
+                onClick={() => onOpenPage('tools')}
+              />
+            }
+          />
 
           {isManager && (
             <nav

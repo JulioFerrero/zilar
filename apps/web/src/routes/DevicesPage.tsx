@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
 import { listSessions, revokeSession, type AuthSession } from '@/lib/api/devices';
 import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
@@ -234,9 +233,4 @@ function OtherDeviceRow({
       </div>
     </li>
   );
-}
-
-/** The last failure, hidden while a new call runs (as in BlockedPage). */
-function shownFailure<A>(state: AsyncResult.AsyncResult<A, ApiFailure>): ApiFailure | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
 }

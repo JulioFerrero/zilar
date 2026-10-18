@@ -1,5 +1,5 @@
-import type { Progress, ProgressStep } from '@zilar/protocol';
-import { Check, ChevronRight, Circle, CircleAlert, LoaderCircle, Square, X } from 'lucide-react';
+import type { Progress } from '@zilar/protocol';
+import { Check, ChevronRight, CircleAlert, LoaderCircle, Square } from 'lucide-react';
 import { Effect, Fiber, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
@@ -11,6 +11,7 @@ import { formatClock } from '@/lib/format-duration';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
+import { StepStateIcon } from './StepsPanel';
 
 /** A card without a terminal state is still working. */
 function isLive(state: Progress['state']): boolean {
@@ -59,37 +60,6 @@ function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMo
       aria-hidden="true"
     />
   );
-}
-
-/** The state icon of one checklist row. */
-function StepIcon({
-  state,
-  reduceMotion,
-}: {
-  state: ProgressStep['state'];
-  reduceMotion: boolean;
-}) {
-  const className = 'size-3.5 shrink-0';
-  if (state === 'done') {
-    return <Check className={cn(className, 'text-accent')} aria-hidden="true" />;
-  }
-  if (state === 'failed') {
-    return <X className={cn(className, 'text-danger')} aria-hidden="true" />;
-  }
-  if (state === 'doing') {
-    return (
-      <LoaderCircle
-        className={cn(
-          className,
-          'text-accent',
-          !reduceMotion && 'animate-spin',
-          reduceMotion && 'spinner-reduced',
-        )}
-        aria-hidden="true"
-      />
-    );
-  }
-  return <Circle className={cn(className, 'text-muted-foreground')} aria-hidden="true" />;
 }
 
 /**
@@ -248,7 +218,11 @@ export function ProgressCard({
             <div className="mt-2 flex flex-col gap-1.5">
               {steps.map((step) => (
                 <div key={step.id} className="flex items-center gap-2">
-                  <StepIcon state={step.state} reduceMotion={reduceMotion} />
+                  <StepStateIcon
+                    state={step.state}
+                    reduceMotion={reduceMotion}
+                    className="size-3.5"
+                  />
                   <span className="min-w-0 flex-1 text-[13px] text-foreground">{step.label}</span>
                 </div>
               ))}

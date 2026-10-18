@@ -3,37 +3,17 @@ import { useNavigate } from 'react-router';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Plus, Zap } from 'lucide-react';
-import { ApiError, listAis, listConnections, type PublicAi } from '@/lib/api';
+import { listAis, listConnections, type PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+import { shownFailure } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { AiHealthRow } from '@/components/ais/AiHealthRow';
 import { Button } from '@/components/ui/button';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
-import { describeAiError } from '@/components/ais/errors';
+import { aiFailureText } from '@/components/ais/errors';
 import { NewAiDialog } from '@/components/ais/NewAiDialog';
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
-
-/**
- * The words for an api.ts failure, through describeAiError so each server code
- * keeps its wording. A call that never reached the server gets the fallback.
- */
-function aiFailureText(failure: ApiFailure, fallback: string): string {
-  if (failure.code === 'unknown_error') {
-    return fallback;
-  }
-  return describeAiError(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
-  ).message;
-}
 
 export function AisPage() {
   const navigate = useNavigate();

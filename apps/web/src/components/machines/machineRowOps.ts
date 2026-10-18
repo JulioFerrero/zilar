@@ -3,8 +3,8 @@ import type { HttpClient } from 'effect/http';
 import { ApiError } from '@/lib/api';
 import type { ApiFailure } from '@/lib/effect/errors';
 import {
-  failureOf,
   isWaiting,
+  shownFailure,
   useAction,
   type ActionControls,
   type ActionState,
@@ -21,11 +21,6 @@ export interface ConfirmingState {
 export type ConfirmKind = keyof ConfirmingState;
 
 export const EMPTY_CONFIRMING: ConfirmingState = { deny: null, revoke: null, delete: null };
-
-/** The last typed failure of a call, hidden while a new call runs. */
-function shownFailure<A>(state: ActionState<A, ApiFailure>): ApiFailure | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
 
 /** Clears the failure an earlier call left; a call that is still running is not interrupted. */
 export function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionControls): void {

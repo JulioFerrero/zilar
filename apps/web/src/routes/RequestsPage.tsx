@@ -10,7 +10,7 @@ import {
 } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
@@ -183,11 +183,6 @@ function contactCall(action: ContactAction, id: string): Promise<unknown> {
     return declineContactRequest(id);
   }
   return cancelContactRequest(id);
-}
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-function shownFailure<A>(state: AsyncResult.AsyncResult<A, ApiFailure>): ApiFailure | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
 }
 
 function friendlyError(error: ApiFailure): string {

@@ -69,6 +69,11 @@ export const failureOf = <A, E>(state: ActionState<A, E>): E | undefined => {
   return error._tag === 'Some' ? error.value : undefined;
 };
 
+/** The last failure, hidden while a new call runs (the page cleared it at once before). */
+export const shownFailure = <A, E>(state: ActionState<A, E>): E | undefined => {
+  return isWaiting(state) ? undefined : failureOf(state);
+};
+
 /**
  * Runs `fn(input)` when `run(input)` is called and returns its AsyncResult.
  * `run` and `controls` keep their identity across renders. Needs no provider:

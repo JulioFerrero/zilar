@@ -1,22 +1,16 @@
 import { useState } from 'react';
 import { Data, Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
 import { Button } from '@/components/ui/button';
 import { SecretInput } from '@/components/ui/text-input';
 import { replaceConnectionKey } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 
 /** The form's own check: the key is pasted before anything is sent. */
 class KeyMissing extends Data.TaggedError('KeyMissing') {}
 
 type FormError = KeyMissing | ApiFailure;
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
 
 /** The server's words for a failure, or the fixed fallback for a call that never reached the server. */
 function messageOf(failure: ApiFailure, fallback: string): string {

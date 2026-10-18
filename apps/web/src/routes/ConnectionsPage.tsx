@@ -10,13 +10,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { listConnections } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+import { shownFailure } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
 
 /** The server's words for a failure, or the fixed fallback for a call that never reached the server. */
 function messageOf(failure: ApiFailure, fallback: string): string {

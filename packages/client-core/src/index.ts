@@ -20,7 +20,7 @@ export {
   type UseBoundStore,
 } from './atom-store';
 export { ApiFailure, fromApi, isApiFailureCode, toApiFailure } from './errors';
-export { failureOf, isWaiting, makeUseAction } from './use-action';
+export { failureOf, isWaiting, makeUseAction, shownFailure } from './use-action';
 export type { ActionControls, ActionMode, ActionState, UseActionOptions } from './use-action';
 export { makeUseQuery } from './use-query';
 export { useSmoothText } from './use-smooth-text';

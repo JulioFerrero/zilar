@@ -1,7 +1,7 @@
 import { Data } from 'effect';
-import type { AsyncResult } from 'effect/reactivity';
 import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+
+export { shownFailure } from '@/lib/effect/use-action';
 
 /** Which of the three page states the integrations page is in. */
 export type PageStatus = 'loading' | 'ready' | 'forbidden';
@@ -10,11 +10,6 @@ export type PageStatus = 'loading' | 'ready' | 'forbidden';
 export class SenderMissing extends Data.TaggedError('SenderMissing') {}
 export class EndpointMissing extends Data.TaggedError('EndpointMissing') {}
 export class TokenMissing extends Data.TaggedError('TokenMissing') {}
-
-/** The last failure, hidden while a new call runs (the page cleared it at once before). */
-export function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
 
 export function friendlyError(error: ApiFailure): string {
   if (error.code === 'unknown_error') {

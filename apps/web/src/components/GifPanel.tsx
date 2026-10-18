@@ -5,7 +5,7 @@ import { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 import { gifMediaUrl, searchGifs, trendingGifs, type GifPage, type GifResult } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
@@ -87,11 +87,6 @@ function pageOf(search: string, pos: string | undefined): Effect.Effect<GifPage,
   return fromApi((signal) =>
     term === '' ? trendingGifs(pos, signal) : searchGifs(term, pos, signal),
   );
-}
-
-/** The failure of the last call, hidden while a new call runs (as BlockedPage does). */
-function shownFailure<A>(state: AsyncResult.AsyncResult<A, ApiFailure>): ApiFailure | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
 }
 
 /**
