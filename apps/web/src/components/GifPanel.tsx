@@ -46,10 +46,6 @@ export function gifsAvailability(): boolean | undefined {
   return gifsAvailabilityCache.value;
 }
 
-export function resetGifsAvailability(): void {
-  gifsAvailabilityCache.value = undefined;
-}
-
 const probeProvider = (): Effect.Effect<boolean> =>
   fromApi(() => trendingGifs(undefined, undefined)).pipe(
     Effect.map(() => {
@@ -70,10 +66,6 @@ export function probeGifsAvailabilityEffect(): Effect.Effect<boolean> {
     const cached = gifsAvailabilityCache.value;
     return cached === undefined ? probeProvider() : Effect.succeed(cached);
   });
-}
-
-export function probeGifsAvailability(): Promise<boolean> {
-  return Effect.runPromise(probeGifsAvailabilityEffect());
 }
 
 function pageOf(search: string, pos: string | undefined): Effect.Effect<GifPage, ApiFailure> {

@@ -3,13 +3,7 @@ import { MoreHorizontal } from 'lucide-react';
 import type * as React from 'react';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import type { GroupDetail, PublicAi } from '@/lib/api';
-import { AiBadge } from '../AiBadge';
-import { EntityAvatar } from '../EntityAvatar';
-import { Button } from '../ui/button';
 import { failInline } from './topic-failure';
-
-type GroupMemberRow = GroupDetail['members'][number];
 
 export function TopicOptionsKey({
   subject,
@@ -48,39 +42,6 @@ export function useRemoveMember({
   };
 }
 
-export function AddMemberButton({
-  member,
-  add,
-  onError,
-}: {
-  member: GroupMemberRow;
-  add: (userId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((userId) =>
-    add(userId).pipe(
-      Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the member.')),
-    ),
-  );
-  const adding = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={adding}
-      onClick={() => {
-        onError('');
-        run(member.userId);
-      }}
-      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-    >
-      <EntityAvatar person={member} size={28} />
-      <span className="min-w-0 flex-1 truncate">{member.name}</span>
-      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
-    </Button>
-  );
-}
-
 export function useRemoveAi({
   remove,
   onError,
@@ -100,36 +61,4 @@ export function useRemoveAi({
       run(aiId);
     },
   };
-}
-
-export function AddAiButton({
-  ai,
-  add,
-  onError,
-}: {
-  ai: PublicAi;
-  add: (aiId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((aiId) =>
-    add(aiId).pipe(Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the AI.'))),
-  );
-  const adding = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={adding}
-      onClick={() => {
-        onError('');
-        run(ai.id);
-      }}
-      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-    >
-      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={28} ai />
-      <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-      <AiBadge />
-      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
-    </Button>
-  );
 }
