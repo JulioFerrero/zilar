@@ -63,8 +63,9 @@ The audits found only about 3k safe lines, and they proposed dropping Whistle. J
 | Hand-written API wrappers: phone `lib/*-api*.ts` 4,037, web `lib/api` 2,216 | 6.2k | One set of API wrappers in client-core over the derived `ZilarClient` (`packages/api-contract/src/client.ts`), used by both apps (like `makeTopicsApi` and `makeGroupsApi`) | −4k |
 | Lead devtools `packages/devtools/src/lead` | 10k | Prune commands the lead no longer uses | −2k (measure first) |
 | Wave A deletions (above) | — | Dead code, barrels, shims, rate-limit table | −3k |
+| Leftovers of the 10-10 size splits | 63 re-export-only files (1,233 lines); 144 files whose header says "size split / moved unchanged" (21,318 lines) | Julio, 10-18: 400 lines is now a soft limit, and merging back is fine when it saves lines (CLAUDE.md). Delete the barrels so importers point at the real module. Merge split files back into their parent where that removes imports, repeated types and glue. Gate: warn over 400, fail over 800 (T-2088) | −3k to −4k |
 
-Target: about −35k, with no feature removed.
+Target: about −35k to −40k, with no feature removed.
 
 **Not proposed:**
 - The runner hub, machines and `apps/runner` (~6,000 lines): the agent-system plan needs them (P3).
