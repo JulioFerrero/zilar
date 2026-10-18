@@ -196,7 +196,17 @@ async function probeVideo(
 ): Promise<ProbedVideo> {
   const result = await runOrFail(
     ffprobe,
-    ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', inputPath],
+    [
+      '-v',
+      'error',
+      '-print_format',
+      'json',
+      '-show_format',
+      '-show_streams',
+      '-protocol_whitelist',
+      'file,pipe',
+      inputPath,
+    ],
     FFPROBE_TIMEOUT_MS,
     warn,
   );
@@ -237,6 +247,8 @@ async function convertWithFfmpeg(
       [
         '-nostdin',
         '-y',
+        '-protocol_whitelist',
+        'file,pipe',
         ...decodeArgs(codecName),
         '-i',
         inputPath,

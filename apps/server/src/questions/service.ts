@@ -196,22 +196,17 @@ export async function expireQuestion(db: ServerDatabase, id: string): Promise<bo
 
 // The open, unexpired question a reply quotes. `now()` is the database clock,
 // so a question past its expiry is never returned. T-1991: `roomJid` keeps a
-// reply in another room from closing a card it never answered; callers on the
-// message path always pass it.
+// reply in another room from closing a card it never answered; T-2012 makes it
+// required so no caller can skip the room check.
 export async function findOpenQuestionByMessage(
   db: ServerDatabase,
   messageId: string,
-  roomJid?: string,
+  roomJid: string,
 ): Promise<AiQuestionRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      if (roomJid === undefined) {
-        return yield* sql<AiQuestionRow>`SELECT * FROM ai_questions
-          WHERE message_id = ${messageId} AND status = 'open' AND expires_at > now()
-          LIMIT 1`;
-      }
       return yield* sql<AiQuestionRow>`SELECT * FROM ai_questions
         WHERE message_id = ${messageId} AND room_jid = ${roomJid}
           AND status = 'open' AND expires_at > now()

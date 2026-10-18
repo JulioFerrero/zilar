@@ -63,9 +63,32 @@ describe('questions service', () => {
     expect(
       (await listOpenQuestions(context.db, { topicId: 'topic-1' })).map((item) => item.id),
     ).toEqual([row.id]);
-    const found = await findOpenQuestionByMessage(context.db, messageId);
+    const found = await findOpenQuestionByMessage(
+      context.db,
+      messageId,
+      'room@rooms.zilar.localhost',
+    );
     expect(found?.id).toBe(row.id);
     expect(found?.question).toBe('Which ship date?');
+  });
+
+  it('does not find a question through another room', async () => {
+    const aiId = await seedAiId();
+    const row = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'Which ship date?',
+      options: ['Friday', 'Monday'],
+    });
+    const messageId = randomUUID();
+    await setQuestionMessageId(context.db, row.id, messageId);
+
+    expect(
+      await findOpenQuestionByMessage(context.db, messageId, 'other@rooms.zilar.localhost'),
+    ).toBeNull();
+    expect(
+      (await findOpenQuestionByMessage(context.db, messageId, 'room@rooms.zilar.localhost'))?.id,
+    ).toBe(row.id);
   });
 
   it('answers once and a second answer changes nothing', async () => {
@@ -98,7 +121,9 @@ describe('questions service', () => {
     const messageId = randomUUID();
     await setQuestionMessageId(context.db, row.id, messageId);
 
-    expect(await findOpenQuestionByMessage(context.db, messageId)).toBeNull();
+    expect(
+      await findOpenQuestionByMessage(context.db, messageId, 'room@rooms.zilar.localhost'),
+    ).toBeNull();
     expect(await answerQuestion(context.db, row.id, { answer: 'Yes', answeredBy: 'user-1' })).toBe(
       false,
     );
@@ -141,8 +166,12 @@ describe('questions service', () => {
     await setQuestionMessageId(context.db, row.id, originId);
 
     expect(await rekeyQuestionMessage(context.db, originId, stanzaId)).toBe(true);
-    expect(await findOpenQuestionByMessage(context.db, originId)).toBeNull();
-    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(row.id);
+    expect(
+      await findOpenQuestionByMessage(context.db, originId, 'room@rooms.zilar.localhost'),
+    ).toBeNull();
+    expect(
+      (await findOpenQuestionByMessage(context.db, stanzaId, 'room@rooms.zilar.localhost'))?.id,
+    ).toBe(row.id);
 
     // Re-keying to the same id changes nothing.
     expect(await rekeyQuestionMessage(context.db, stanzaId, stanzaId)).toBe(false);

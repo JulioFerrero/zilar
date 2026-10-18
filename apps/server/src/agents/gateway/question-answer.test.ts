@@ -173,8 +173,10 @@ describe('a reply closes the question (T-1579)', () => {
     const asked = await askQuestion();
     const { session, stanzaId } = await rekey(asked);
 
-    expect(await findOpenQuestionByMessage(context.db, asked.originId)).toBeNull();
-    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
+    expect(await findOpenQuestionByMessage(context.db, asked.originId, asked.room)).toBeNull();
+    expect((await findOpenQuestionByMessage(context.db, stanzaId, asked.room))?.id).toBe(
+      asked.questionId,
+    );
 
     await answerOnReply(
       context.db,
@@ -183,7 +185,7 @@ describe('a reply closes the question (T-1579)', () => {
       silentLogger,
     );
 
-    expect(await findOpenQuestionByMessage(context.db, stanzaId)).toBeNull();
+    expect(await findOpenQuestionByMessage(context.db, stanzaId, asked.room)).toBeNull();
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({
       status: 'answered',
       answer: 'Friday',
@@ -205,7 +207,9 @@ describe('a reply closes the question (T-1579)', () => {
       silentLogger,
     );
 
-    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
+    expect((await findOpenQuestionByMessage(context.db, stanzaId, asked.room))?.id).toBe(
+      asked.questionId,
+    );
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
   });
 
@@ -220,7 +224,9 @@ describe('a reply closes the question (T-1579)', () => {
       silentLogger,
     );
 
-    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
+    expect((await findOpenQuestionByMessage(context.db, stanzaId, asked.room))?.id).toBe(
+      asked.questionId,
+    );
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
   });
 
@@ -261,7 +267,9 @@ describe('a reply closes the question (T-1579)', () => {
       silentLogger,
     );
 
-    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
+    expect((await findOpenQuestionByMessage(context.db, stanzaId, asked.room))?.id).toBe(
+      asked.questionId,
+    );
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
 
     // The same reply in the question's own room still closes it.
