@@ -11,6 +11,7 @@ This is a self-hosted chat app, similar to the messengers people already use, wh
 - a "runner" that people install on their own machines to host AI desks (sandboxed computers)
 
 The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links to, not the whole thing.
+Where each piece of code lives, and how a request flows from the contract to both apps, is in `docs/ARCHITECTURE.md`. Read it before your first change.
 
 ## How work is organized
 
@@ -38,7 +39,7 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 ## Coding rules
 
 - Use TypeScript in `strict` mode. Don't use `any` unless the spec allows it, and never use `@ts-ignore`.
-- Validate data at boundaries (network, files, env vars) with `zod`.
+- Validate data at boundaries (network, files, env vars) with Effect `Schema`. HTTP shapes live once in `packages/api-contract`, and app calls go through the shared `packages/client-core/src/<area>-api.ts` modules, never through a second hand-written client.
 - Match the naming and file layout of the code around you. Comments follow docs/COMMENTS.md: write one only for a WHY the code cannot say, and never cite a task ID (the task file and the commit carry the history).
 - 400 lines per file is a soft limit: never split a file only to meet it; only a file over 800 lines must be split.
 - **Don't add dependencies** unless the spec lists them. If you think one is needed, ask in the Report.

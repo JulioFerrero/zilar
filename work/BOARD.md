@@ -2101,3 +2101,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2103](T-2103-fold-web-a.md) | web: fold 62 single-use files into their importer | 2026-10-18 |
 | [T-2097](T-2097-api-stickers.md) | share: one stickers and GIFs API for web and phone | 2026-10-18 |
 | [T-2105](T-2105-fold-phone-chat.md) | phone: fold 73 single-use chat files into their importer | 2026-10-18 |
+| [T-2110](T-2110-agents-md-map.md) | docs: AGENTS.md points at the architecture map, Schema not zod | 2026-10-18 |
