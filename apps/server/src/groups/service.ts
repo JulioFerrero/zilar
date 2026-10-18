@@ -6,6 +6,7 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { classifyHandle, normalizeHandle } from '../handles/rules';
 import { isUniqueViolation } from '../handles/store';
+import { roomAffiliationFor } from '../topics/room-members';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { assertContacts, inviteNewMembers } from './invites';
@@ -236,7 +237,7 @@ export async function createGroup(
                 adminClient.setAffiliation(
                   roomLocalpart,
                   jidFor(localpartFor(input.creatorId), input.domain),
-                  'owner',
+                  roomAffiliationFor('owner', kind === 'channel'),
                 ),
               catch: (error) => error,
             });

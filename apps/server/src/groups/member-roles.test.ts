@@ -117,6 +117,18 @@ describe('group member roles (T-1741)', () => {
     expect(rolesOf(detail).get(owner.id)).toBe('owner');
   });
 
+  // T-2010: the creator of a plain group is a plain `member` of its room, not
+  // a MUC `owner`.
+  it('makes the creator of a plain group a plain member of its room', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    await createGroup(owner.cookie, 'Team', []);
+
+    const [room] = context.adminClient.roomsCreated;
+    expect(context.adminClient.affiliationState.get(room!)?.get(expectedJid(owner.id))).toBe(
+      'member',
+    );
+  });
+
   it('keeps a promoted admin a plain member of a group room and gives a channel admin voice', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const member = await contactOf(context, app, owner.id, 'member@example.com');

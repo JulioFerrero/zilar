@@ -11,7 +11,8 @@ import { recordAudit, type AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { roomAffiliationFor } from '../topics/room-members';
+import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { syncGroupTopicRooms } from './ais';
 import { syncChannelVoice } from './member-roles';
@@ -82,16 +83,25 @@ export async function transferGroupOwner(
   // stay. `syncChannelVoice` re-applies the channel mapping (a group room is
   // left untouched) and `syncGroupTopicRooms` re-syncs every topic room
   // (T-1180 retries a failed sync).
-  const affiliations: Array<{ userId: string; role: 'owner' | 'admin' }> = [
-    { userId: input.targetUserId, role: 'owner' },
-    { userId: input.actorId, role: 'admin' },
+  // T-2002: the General room follows `roomAffiliationFor` too, so a plain
+  // group writes `member` for both people and a channel writes `admin`.
+  const isChannelFeed = group.kind === 'channel';
+  const affiliations: Array<{ userId: string; affiliation: RoomAffiliation }> = [
+    {
+      userId: input.targetUserId,
+      affiliation: roomAffiliationFor('owner', isChannelFeed),
+    },
+    {
+      userId: input.actorId,
+      affiliation: roomAffiliationFor('admin', isChannelFeed),
+    },
   ];
-  for (const { userId, role } of affiliations) {
+  for (const { userId, affiliation } of affiliations) {
     try {
       await adminClient.setAffiliation(
         group.roomLocalpart,
         jidFor(localpartFor(userId), input.domain),
-        role,
+        affiliation,
       );
     } catch {
       input.logger.warn({ groupId: input.groupId }, 'could not set a transfer affiliation');

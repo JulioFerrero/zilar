@@ -140,4 +140,48 @@ describe('archived topic rooms after a removal (T-2002)', () => {
     expect(room?.has(expectedJid(removedId))).toBe(false);
     expect(room?.get(expectedJid(ownerId))).toBe('member');
   });
+
+  // T-2010: the retry includes archived topic rooms, so a failed removal
+  // there is retried instead of waiting for the next membership change.
+  it('retries a failed sync of an archived topic room', async () => {
+    const ownerId = await seedUser(context, { name: 'Owner' });
+    const { groupId } = await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], []);
+    const roomLocalpart = `t${randomUUID().replaceAll('-', '').slice(0, 15)}`;
+    await runSql(
+      context.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const topicId = randomUUID();
+        yield* sql`INSERT INTO topics ${sql.insert({
+          id: topicId,
+          group_id: groupId,
+          name: 'Old plans',
+          glyph: 'O',
+          room_localpart: roomLocalpart,
+          visibility: 'private',
+          kind: 'chat',
+          status: 'open',
+          is_general: false,
+          archived_at: new Date(),
+          created_by: ownerId,
+        })}`;
+        yield* sql`INSERT INTO topic_members ${sql.insert({
+          topic_id: topicId,
+          user_id: ownerId,
+          added_by: ownerId,
+        })}`;
+      }),
+    );
+
+    adminClient.failAffiliation = true;
+    await syncGroupTopicRooms(context.db, adminClient, groupId, TEST_XMPP_DOMAIN, context.logger);
+    expect(adminClient.affiliations).toHaveLength(0);
+
+    adminClient.failAffiliation = false;
+    await drainPendingGroupSyncs();
+
+    expect(adminClient.affiliationState.get(roomLocalpart)?.get(expectedJid(ownerId))).toBe(
+      'member',
+    );
+  });
 });

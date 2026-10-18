@@ -9,6 +9,7 @@ import {
   bootstrapUser,
   contactOf,
   createTestContext,
+  expectedJid,
   testApp,
   testSql,
   TEST_BASE_URL,
@@ -80,6 +81,22 @@ describe('group owner transfer (T-1187)', () => {
       headers: { cookie: owner.cookie },
     });
     expect(left.status).toBe(200);
+  });
+
+  // T-2010: a plain group hand-over writes plain members, never a MUC owner.
+  it('writes no owner affiliation on a plain group room during a hand-over', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const member = await contactOf(context, app, owner.id, 'member@example.com');
+    const group = await createGroup(owner.cookie, 'Team', [member.id]);
+    const [room] = context.adminClient.roomsCreated;
+
+    const transferred = await transferRequest(owner.cookie, group.id, member.id);
+    expect(transferred.status).toBe(200);
+
+    const state = context.adminClient.affiliationState.get(room!) ?? new Map();
+    expect(state.get(expectedJid(member.id))).toBe('member');
+    expect(state.get(expectedJid(owner.id))).toBe('member');
+    expect([...state.values()]).not.toContain('owner');
   });
 
   // T-1990: a removal can never take the current owner, even from an admin.
