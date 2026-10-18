@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { ApiError, toApiError } from '@zilar/api-contract';
+import { runApiAbortable } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -46,10 +47,6 @@ export interface SearchApi {
 export const SearchApiError = ApiError;
 export type SearchApiError = ApiError;
 
-function abortError(): DOMException {
-  return new DOMException('Aborted', 'AbortError');
-}
-
 /** The production `SearchApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createSearchApi(
   getToken: () => Promise<string | undefined>,
@@ -59,12 +56,6 @@ export function createSearchApi(
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
     async searchMessages(input) {
-      // A function, not a direct read, so TypeScript does not narrow `aborted`
-      // to `false` after the first check: the signal can still fire mid-request.
-      const isAborted = () => input.signal?.aborted === true;
-      if (isAborted()) {
-        throw abortError();
-      }
       // The cursor travels as a string in the app and decodes to a number in
       // the contract; an empty `chat` or `before` is left out, like before.
       const query = {
@@ -75,20 +66,12 @@ export function createSearchApi(
           ? {}
           : { before: Number(input.before) }),
       };
-      let page;
-      try {
-        // An abort is not a search failure: it interrupts the request and
-        // surfaces as the `AbortError` a `fetch` abort would give.
-        page = await Effect.runPromise(
-          Effect.mapError(client.search.search({ query }), toApiError),
-          input.signal === undefined ? undefined : { signal: input.signal },
-        );
-      } catch (error) {
-        throw isAborted() ? abortError() : error;
-      }
-      if (isAborted()) {
-        throw abortError();
-      }
+      // An abort is not a search failure: it interrupts the request and
+      // surfaces as the `AbortError` a `fetch` abort would give.
+      const page = await runApiAbortable(
+        Effect.mapError(client.search.search({ query }), toApiError),
+        input.signal,
+      );
       return {
         items: [...page.items],
         ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),

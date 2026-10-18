@@ -2029,3 +2029,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2030](T-2030-shared-attachment-rules.md) | attachment rules shared by web and phone in chat-core | 2026-10-18 |
 | [T-2023](T-2023-shared-sticker-recents.md) | sticker recents and token URL check shared; blocks .. escape | 2026-10-18 |
 | [T-2020](T-2020-shared-composer-drafts.md) | one composer-drafts store shared by web and phone | 2026-10-18 |
+| [T-2031](T-2031-shared-api-errors.md) | API error mapping and abortable calls shared by web and phone | 2026-10-18 |

@@ -16,6 +16,7 @@ import {
   withFetch,
   type ZilarClient,
 } from '@zilar/api-contract';
+import { runApiAbortable } from '@zilar/client-core';
 import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
 import { webRuntime } from './runtime';
@@ -54,31 +55,15 @@ export function callApi<A, E>(call: (client: ZilarClient) => Effect.Effect<A, E>
  * interrupts the request and rejects with the `DOMException` named
  * `AbortError`, as a `fetch` abort does; every other failure is an `ApiError`.
  */
-export async function callApiAbortable<A, E>(
+export function callApiAbortable<A, E>(
   call: (client: ZilarClient) => Effect.Effect<A, E>,
   signal?: AbortSignal,
 ): Promise<A> {
-  // A function, not a direct read, so TypeScript does not narrow `aborted` to
-  // `false` after the first check: the signal can still fire mid-request.
-  const isAborted = () => signal?.aborted === true;
-  const abortError = () => new DOMException('Aborted', 'AbortError');
-  if (isAborted()) {
-    throw abortError();
-  }
-  let value: A;
-  try {
-    value = await Effect.runPromise(
-      Effect.mapError(
-        Effect.suspend(() => call(zilarClient())),
-        toApiError,
-      ),
-      signal === undefined ? undefined : { signal },
-    );
-  } catch (error) {
-    throw isAborted() ? abortError() : error;
-  }
-  if (isAborted()) {
-    throw abortError();
-  }
-  return value;
+  return runApiAbortable(
+    Effect.mapError(
+      Effect.suspend(() => call(zilarClient())),
+      toApiError,
+    ),
+    signal,
+  );
 }
