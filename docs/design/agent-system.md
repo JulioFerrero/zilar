@@ -73,7 +73,7 @@ Written 2026-10-14 after research, for Julio's review. Status: **proposal**.
 - **Disk:** each AI's workspace is a **fixed-size disk image file** (e.g. 5 GB, ext4 inside), mounted into its jail. That's a quota without changing the host filesystem (the VPS is ext4; Julio's choice, 2026-10-14).
 - **Time:** a wall-clock limit per command (e.g. 10 min) and per task.
 - **Network** (Julio's decision, §7): **the open web through the egress proxy**, never a direct route out. The owner can narrow an AI to an allowlist (package registries, connected git hosts, chosen domains). The proxy logs every host contacted, and that list shows in "View steps".
-- **Never reachable:** internal and private ranges (our existing `classifyIp`, `apps/server/src/sandbox/ip-guard.ts`).
+- **Never reachable:** internal and private ranges (our existing `classifyIp`, `packages/desk/src/egress/ip-guard.ts`).
 - **Credentials never enter the jail.** For git push, **the proxy injects the owner's token** on requests to that git host only, so the jail holds no token. MCP and other APIs work the same way.
 
 **Tier 2, the browser:** one shared **browser service** (Playwright Chromium; Lightpanda later for text-only pages).

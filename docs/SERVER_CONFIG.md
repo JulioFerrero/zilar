@@ -3,8 +3,7 @@
 Every environment variable the Zilar server reads, its default and what it does. The server's own
 variables are decoded in `apps/server/src/config/server-schema.ts`, `apps/server/src/push/config.ts`
 and `apps/server/src/xmpp/config.ts` (loading and cross-field rules in
-`apps/server/src/config/load.ts` and `apps/server/src/config/mail.ts`); `apps/server/src/config.ts`
-re-exports the loader. Values are placeholders only — a real install keeps them in a git-ignored
+`apps/server/src/config/load.ts` and `apps/server/src/config/mail.ts`). Values are placeholders only — a real install keeps them in a git-ignored
 `.env`, never in a committed file.
 
 **Secret** in the last column means: never commit, never paste into chat, never echo in a config
