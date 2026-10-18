@@ -12,9 +12,7 @@ import { useGroupSearch, usePeopleSearch } from '@/lib/usePeopleSearch';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from './EntityAvatar';
 
-// The People and Public-groups sections above the chat-name and message
-// results. An `@handle` query runs the exact lookup (T-2050); any other query
-// of 3+ characters, after one leading `@`, runs the prefix search.
+// An `@handle` query is an exact lookup; any other 3+ character query (after one leading `@`) is a prefix search.
 export function PeopleSearchResult({ query }: { query: string }) {
   const groups = useGroupSearch(query);
   const groupEntries = groups.status === 'results' ? groups.entries : [];
@@ -40,8 +38,6 @@ export function PeopleSearchResult({ query }: { query: string }) {
   );
 }
 
-// The section is only mounted for a 3+ character query, so an empty result
-// always shows the "No people found" line.
 function PrefixPeople({ query }: { query: string }) {
   const { state } = usePeopleSearch(query);
 
@@ -85,8 +81,6 @@ function PrefixPeople({ query }: { query: string }) {
   );
 }
 
-// An `@handle` query is an exact lookup, like the phone: one person, or one
-// fixed line when nobody has that username.
 function HandlePeople({ query }: { query: string }) {
   const { view } = usePeopleHandleSearch(lookupByHandle, query);
 
@@ -120,19 +114,13 @@ function HandlePeople({ query }: { query: string }) {
   );
 }
 
-// A compact chat-list-style person row: a click opens the DM with a contact,
-// or the person's `/@handle` card, and clears the search. Marked
-// `data-topic-row` so the chat-list arrow keys reach it, and a link so Enter
-// on a focused row activates it.
 function PersonRow({ entry }: { entry: HandleProfile }) {
   const contacts = useChatSelector((s) => s.contacts);
   const chats = useChatSelector((s) => s.chats);
   const setSearch = useChatSelector((s) => s.setSearch);
   const storeApi = useChatStoreApi();
 
-  // The lookup profile carries no JID; the store's contact does. A contact
-  // with no chat row yet (the list has not refreshed since it was added) gets
-  // a refresh, and the shell opens the DM once the row lands.
+  // A contact with no chat row yet gets a refresh; the shell opens the DM when it lands.
   const contact = contacts.find((row) => row.userId === entry.userId);
   const href =
     contact === undefined ? `/@${entry.handle}` : `/c/${encodeURIComponent(contact.jid)}`;
@@ -162,7 +150,6 @@ function PersonRow({ entry }: { entry: HandleProfile }) {
   );
 }
 
-// One compact public-group row; a click opens its `/@handle` card.
 function GroupRow({ entry }: { entry: DirectoryEntry }) {
   const navigate = useNavigate();
   return (

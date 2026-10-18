@@ -4,17 +4,11 @@ import { isTrustedMediaUrl, mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 export interface GifMessageProps {
-  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  /** The chat JID; `GET /api/files` checks membership. */
   chatId: string;
   attachment: Attachment;
 }
 
-/**
- * A GIF-origin video attachment (T-0122): sent through the GIF tab as kind
- * `file` with a video mime, shown inline as a looping muted video. Still
- * images (gif/webp) arrive as kind `image` and render in `ImageMessage`;
- * this covers mp4/webm only. `prefers-reduced-motion` shows a paused frame.
- */
 export function GifMessage({ chatId, attachment }: GifMessageProps) {
   const [broken, setBroken] = useState(false);
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -31,8 +25,7 @@ export function GifMessage({ chatId, attachment }: GifMessageProps) {
     attachment.width !== undefined && attachment.height !== undefined
       ? `${attachment.width} / ${attachment.height}`
       : undefined;
-  // The raw URL decides linkability (the trust check never changes); a
-  // same-origin upload then loads and opens through the file route.
+  // The raw URL decides linkability; trusted same-origin uploads open through the file route.
   const src = mediaSrc(chatId, attachment.url);
   const href = safeHttpUrl(attachment.url) === undefined ? undefined : src;
   const video = (
@@ -66,13 +59,8 @@ export function GifMessage({ chatId, attachment }: GifMessageProps) {
 }
 
 /**
- * Whether a file attachment renders as an inline auto-playing video: the GIF
- * send path names files `gif-<id>.<ext>` with a video mime (mp4/webm are
- * never images per `classify`). The URL must additionally be trusted — a
- * relative same-origin `/api/` path, or an absolute URL on one of the
- * store's media hosts — so a hostile sender's arbitrary URL never auto-loads
- * even if it reaches this component past the store sanitizer (which renames
- * untrusted `gif-` attachments first; this is the second layer).
+ * A GIF send is trusted only on a relative same-origin `/api/` path or a known
+ * media host; this is the second layer after the store sanitizer.
  */
 export function isGifVideoAttachment(
   attachment: Attachment,
@@ -91,13 +79,10 @@ export function isGifVideoAttachment(
 }
 
 /**
- * Same-origin `/api/` paths auto-load (relative URLs resolve against the
- * page origin); absolute URLs only on a trusted media host. Anything else —
- * `javascript:`, `data:`, external hosts, garbage — renders as a file card.
+ * `/api/` paths are same-origin by construction; absolute URLs need a trusted
+ * media host, everything else renders as a file card.
  */
 function isTrustedGifUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  // A root-relative `/api/` path resolves against the page origin, so it is
-  // same-origin by construction. Absolute URLs need a trusted media host.
   if (url.startsWith('/api/')) {
     return true;
   }

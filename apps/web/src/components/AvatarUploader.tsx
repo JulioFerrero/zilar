@@ -31,21 +31,13 @@ interface AvatarUploaderProps {
   kind: AvatarKind;
   ownerId: string;
   ownerName: string;
-  /** The current picture URL, if any. */
   currentUrl?: string | undefined;
-  /** Called with the new URL after a save, or undefined after a remove. */
   onChanged: (url: string | undefined) => void;
 }
 
 /**
- * Reusable avatar picker (T-0165): choose a file (or drop one), crop it in
- * a dialog with a circular mask, a zoom slider and drag to position,
- * export a 256 x 256 WebP (PNG when the browser cannot encode WebP), Save
- * with a busy state, and Remove. The server validates everything again;
- * this only gets the file ready so the upload rarely fails.
- *
- * `imageLoader`/`exporter` are injectable so tests use fakes and never
- * touch `Image` or `<canvas>`. Production passes the browser defaults.
+ * Crops to 256 x 256 WebP (PNG when the browser cannot encode WebP); the
+ * server validates everything again.
  */
 export function AvatarUploader({
   kind,
@@ -65,17 +57,12 @@ export function AvatarUploader({
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  // Each user action is one Effect. A new pick replaces a pick still loading
-  // (the replaced preview URL is revoked on interrupt). Save and Remove drop a
-  // second click while the first one waits, so `busy` is the waiting state.
   const [, runLoad] = useAction((load: Effect.Effect<void>) => load, { mode: 'replace' });
   const [saveState, runSave] = useAction((save: Effect.Effect<void>) => save);
   const [removeState, runRemove] = useAction((remove: Effect.Effect<void>) => remove);
   const busy = isWaiting(saveState) || isWaiting(removeState);
 
-  // The crop object URL is revoked when the dialog closes (cancel, save
-  // or a failed save): every path out of the crop phase revokes it, so no
-  // effect is needed.
+  // Every path out of the crop phase revokes its object URL, so no effect is needed.
 
   const pick = useCallback(
     (file: File | undefined): void => {
@@ -134,8 +121,6 @@ export function AvatarUploader({
     [imageLoader, runLoad],
   );
 
-  // Save: export, upload, then hand the new URL to the parent. A failure at
-  // any step shows its sentence in the error phase, as before.
   const saveCrop = (picked: PickedCrop): Effect.Effect<void> =>
     Effect.gen(function* () {
       yield* Effect.sync(() => setMessage(undefined));

@@ -17,7 +17,6 @@ export interface MessageListRowProps {
   chat: ChatSummary;
   meId: string;
   meJid: string | undefined;
-  /** The pin on this row's message, from the list's one pin map (T-2011). */
   pinId: string | undefined;
   onReply: (message: UiMessage) => void;
   onForward: ((message: UiMessage) => void) | undefined;
@@ -28,8 +27,8 @@ export interface MessageListRowProps {
 }
 
 /**
- * The React key of one render item: the final message keeps the draft's key so
- * React reuses the same bubble and its reveal carries on instead of snapping.
+ * The React key: the final message keeps the draft's key, so the same bubble
+ * (and its reveal) carries on instead of snapping.
  */
 export function messageRowKey(
   item: RenderItem,
@@ -45,14 +44,6 @@ export function messageRowKey(
   return revealTurnId === undefined ? item.message.id : `draft-${revealTurnId}`;
 }
 
-/**
- * One row of the message list: the unread divider, a date separator, or a
- * message bubble. An album item renders its head bubble, whose attachment body
- * swaps in the grid, with the item's grouped members handed to the grid so it
- * draws exactly that run (T-1268). A `handoff.line` card renders the small
- * centred handoff line instead of the bubble, which a click toggles below it
- * (T-1575).
- */
 export function MessageListRow({
   item,
   index,

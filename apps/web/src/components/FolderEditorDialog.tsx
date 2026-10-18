@@ -26,17 +26,10 @@ import {
   type FolderWrite,
 } from './folder/folderEditorModel';
 
-/**
- * Create/edit dialog for one chat folder (T-0238): name and icon, which
- * chats to show, what to hide, and (in edit mode) a separate delete flow.
- * After every successful write it calls `setFolders` so the rail and the
- * chips above the chat list update without a reload.
- */
 export function FolderEditorDialog({
   folder,
   onClose,
 }: {
-  /** Null for create mode, the folder for edit mode. */
   folder: ApiChatFolder | null;
   onClose: () => void;
 }) {
@@ -93,8 +86,7 @@ export function FolderEditorDialog({
       onClose();
     });
 
-  // A second click while a write waits is dropped (mode 'ignore'), and so is a
-  // save during a delete: one state holds both, as the shared busy flag did.
+  // One busy state drops a second write, including a save during a delete.
   const [writeState, runWrite] = useAction(
     (request: FolderWrite): Effect.Effect<void, ApiFailure | FolderDeleteFailed> =>
       request === 'save' ? saveFolder() : folder === null ? Effect.void : deleteFolder(folder.id),
@@ -201,7 +193,7 @@ export function FolderEditorDialog({
           chats={chats}
         />
 
-        {/* T-1351: the confirm is a React child of the dialog, not a sibling,
+        {/* The confirm is a React child of the dialog,
             so Base UI nests it and Escape closes only the confirm. */}
         {confirmingDelete && folder !== null && (
           <ConfirmDialog

@@ -18,25 +18,15 @@ export function ApprovalCard({
   topicName,
 }: {
   request: ApprovalRequest;
-  /** T-2001: the message sender; the record's `aiId` must belong to it. */
+  /** The message sender; the record's `aiId` must belong to it. */
   senderId: string;
-  /** T-0111: the topic the card lives in; the confirm copy names it. */
   topicName?: string;
 }) {
-  // The polling hook owns the card's read-model state. A non-pending outcome,
-  // a 404, an id change, and an unmount all stop further reads; a failed poll
-  // keeps the last good state. `apply` lets the card push an optimistic state
-  // after a decision so the buttons drop at once.
   const { state, apply } = useApprovalPolling(request);
   const [inFlight, setInFlight] = useState<null | 'approve' | 'deny' | 'always'>(null);
-  // T-0100: the "Always allow" two-step. The first click arms the inline
-  // confirmation; `alwaysBlocked` drops the button for the rest of this view
-  // when the server says the action is not eligible.
   const [confirmingAlways, setConfirmingAlways] = useState(false);
   const [alwaysBlocked, setAlwaysBlocked] = useState(false);
 
-  // A stale answer (already decided or expired) reads the card again, so it
-  // shows the server's state instead of an error.
   const refreshAfterStale = () =>
     fromApi(() => getApproval(request.id)).pipe(
       Effect.tap((refreshed) => Effect.sync(() => apply({ kind: 'ready', approval: refreshed }))),
@@ -46,8 +36,7 @@ export function ApprovalCard({
     fromApi(() => decideApproval(request.id, decision)).pipe(
       Effect.tap((approval) => Effect.sync(() => apply({ kind: 'ready', approval }))),
       Effect.catchIf(isStaleDecision, refreshAfterStale),
-      // T-0101: the viewer lost the rights a standing rule needs: drop the
-      // third button, keep the one-time buttons.
+      // Lost rights: a standing rule is not offered, only the one-time buttons.
       Effect.tapError((failure) =>
         Effect.sync(() => {
           if (isAlwaysRefusal(failure)) {
@@ -67,10 +56,7 @@ export function ApprovalCard({
     decide(decision);
   };
 
-  // T-2001: the summary, action and AI come from the server's record, never
-  // from the message. Without a loaded record there is no card to act on: the
-  // loading state shows a placeholder, and a failed or missing read shows the
-  // fixed sentence with no buttons.
+  // Summary, action and AI come from the server's record, never the message.
   if (state.kind !== 'ready') {
     return (
       <div className="bubble-in flex min-w-[260px] flex-col gap-4 rounded-[12px] p-4">
@@ -88,26 +74,18 @@ export function ApprovalCard({
   }
   const approval = state.approval;
   const pending = approval.status === 'pending' ? approval : null;
-  // T-1723: a routine card's summary holds the title and the schedule; draw
-  // them apart, null for every other card.
   const routine = routineCardTitle(approval.action, approval.summary);
-  // T-2001: a forged card can name a real approval but must not decide it with
-  // its own buttons. The server's `aiId` has to belong to the message sender.
+  // A forged message can name a real approval but not decide it: the server's
+  // `aiId` must belong to the sender.
   const senderMatches = approvalSentBy(approval.aiId, senderId);
 
-  // The server turns a past-due `pending` row into `expired` in its read model
-  // (see `toPublicApproval`), so a `pending` status is already "pending and
-  // not expired" from the user's perspective. The third button needs the
-  // server's eligibility flag too: the polling state is the decidable read
-  // model, so a non-decider never gets this far (the hook reports
-  // `notDecidable` for them).
+  // A past-due `pending` row already reads `expired`; eligibility also needs
+  // the server's flag.
   const showAlways = pending !== null && pending.alwaysEligible && !alwaysBlocked && senderMatches;
   const busy = inFlight !== null;
-  // The last failure, hidden while a new decision runs.
   const failure = isWaiting(decisionState) ? undefined : failureOf(decisionState);
   const actionError = failure === undefined ? '' : decisionMessage(failure);
 
-  // A decided request is one compact line: an icon and the summary, muted.
   if (pending === null) {
     return (
       <div className="bubble-in flex min-w-[260px] items-center gap-2 rounded-[12px] px-3.5 py-2">
@@ -241,7 +219,6 @@ export function ApprovalCard({
   );
 }
 
-/** The decided status as one icon: green check, red cross, grey clock. */
 function DecidedIcon({ status }: { status: ApprovalStatus }) {
   if (status === 'denied') {
     return <X className="size-[15px] shrink-0 text-danger" role="img" aria-label="Denied" />;

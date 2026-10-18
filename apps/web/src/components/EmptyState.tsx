@@ -10,7 +10,6 @@ export function EmptyState({
 }: {
   variant: EmptyStateVariant;
   onInvite?: () => void;
-  // T-0164: reaching the Explore directory from the empty state.
   onExplore?: () => void;
 }) {
   if (variant === 'no-chats') {

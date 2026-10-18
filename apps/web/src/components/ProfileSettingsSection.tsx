@@ -20,8 +20,6 @@ type HandleCheck =
 
 const IDLE_CHECK: HandleCheck = { state: 'idle' };
 
-// Debounced live availability for a changed handle: the 300 ms sleep is the
-// debounce, and useQuery interrupts it when the handle changes.
 const handleCheck = (value: string, ownHandle: boolean): Effect.Effect<HandleCheck> =>
   value === '' || ownHandle
     ? Effect.succeed(IDLE_CHECK)
@@ -41,19 +39,13 @@ const handleCheck = (value: string, ownHandle: boolean): Effect.Effect<HandleChe
         ),
       );
 
-/** The caller's own picture, inside Settings → Profile. */
 function ProfilePictureSection() {
   const auth = useAuth();
   const user = auth.user;
-  // The uploader reports the new url (or undefined after a remove) through
-  // `onChanged`; while no change happened this render, the session wins.
   const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
-  // Replace, not ignore: a second change must refresh the session again.
   const [, refetchUser] = useAction<void, void, ApiFailure>(() => fromApi(() => auth.refetch()), {
     mode: 'replace',
   });
-  // T-1334: the ball's colour and light come from the name; the picture, when
-  // set, shows on top of it.
   if (user === undefined) {
     return null;
   }
@@ -74,7 +66,6 @@ function ProfilePictureSection() {
   );
 }
 
-/** Settings → Profile: picture, handle (with live check), bio, share link. */
 export function ProfileSettingsSection() {
   const auth = useAuth();
   const storeApi = useChatStoreApi();
@@ -83,14 +74,9 @@ export function ProfileSettingsSection() {
   const [error, setError] = useState<string | undefined>(undefined);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
-  // T-1258: the bio lives on `GET /me`, which `AuthProvider` does not keep, so
-  // this section reads it once; the input owns it after that.
   const [bio, setBio] = useState('');
   const [bioTyped, setBioTyped] = useState(false);
   const [remoteBio, setRemoteBio] = useState<string | undefined>(undefined);
-  // T-1282: the display name, editable here after onboarding. The session name
-  // is the first value; `GET /me` corrects it (the mock backend keeps no
-  // session) and the store's `me.name` is updated on save so the app agrees.
   const [name, setName] = useState(auth.user?.name ?? '');
   const [nameTyped, setNameTyped] = useState(false);
   const [remoteName, setRemoteName] = useState<string | undefined>(undefined);
@@ -115,22 +101,15 @@ export function ProfileSettingsSection() {
   const currentBio = remoteBio ?? '';
   const currentName = remoteName ?? auth.user?.name ?? '';
   const trimmedName = name.trim();
-  // The live check skips your own handle in any casing: the server sees its
-  // live row and would report "taken", which is misleading next to an
-  // enabled Save.
+  // Skip your own handle in any casing: the server would report it as taken.
   const ownHandle = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
 
-  // Fill the input when the handle arrives after `getMe()` — but only while
-  // the user has not started typing, so typed text is never overwritten.
   if (!typed && handle === '' && current !== '') {
     setHandle(current);
   }
-  // Same for the bio, which arrives from this section's own `getMe()` read.
   if (!bioTyped && bio === '' && remoteBio !== undefined && remoteBio !== '') {
     setBio(remoteBio);
   }
-  // The display name too: seed it from the server while the user has not
-  // typed, so a saved name survives a remount (the mock has no session).
   if (!nameTyped && remoteName !== undefined && name !== remoteName) {
     setName(remoteName);
   }
@@ -152,9 +131,7 @@ export function ProfileSettingsSection() {
         yield* fromApi(() => updateMe(nextName));
       }
       if (nextBio !== undefined) {
-        // `PATCH /me` requires the name: send the new one when the name
-        // changed, otherwise the current one, so a bio-only save never
-        // reverts a rename.
+        // `PATCH /me` requires the name, so a bio-only save resends the current one.
         yield* fromApi(() => updateMeProfile(nextName ?? currentName, nextBio));
       }
       yield* fromApi(() => auth.refetch());
@@ -169,8 +146,6 @@ export function ProfileSettingsSection() {
             const savedName = input.name;
             setName(savedName);
             setRemoteName(savedName);
-            // Keep the app's own user in step: the store's `me.name` is the
-            // display name the rest of the shell reads.
             storeApi.setState((state) =>
               state.me === undefined ? state : { me: { ...state.me, name: savedName } },
             );
@@ -193,14 +168,12 @@ export function ProfileSettingsSection() {
     if (busy) {
       return;
     }
-    // A cleared handle is not a change we apply; an empty handle that was
-    // already empty is fine and lets a name-only or bio-only save through.
+    // A cleared handle is not applied; one that was already empty still allows a save.
     if (handleChanged && trimmed === '') {
       setError('Choose a username');
       return;
     }
-    // The display name must stay 1–64 characters (the server's rule,
-    // `apps/server/src/auth/api.ts:91`), so clearing it is not a change.
+    // The display name must stay 1–64 characters (the server's rule).
     if (nameChanged && trimmedName === '') {
       setError('Enter your name');
       return;

@@ -58,15 +58,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   );
   const isWide = useMediaQuery('(min-width: 900px)');
   const connection = useDelayed(statusLabel(storeStatus), CONNECTION_BANNER_DELAY_MS);
-  // A retry keeps the list that is already painted: the store's `loading` flag
-  // means "pending" there, not "nothing to show". Only a list that has never
-  // arrived is blanked with skeletons.
+  // A retry keeps the painted list: only a list that never arrived shows skeletons.
   const hasAnyChats = storeChatCount > 0;
-  // Set on a manual retry so the button can show a pending state. A keep-alive
-  // refresh never sets it, so background loading does not disable the button.
   const [retryingChats, setRetryingChats] = useState(false);
-  // Reset during render (not in an effect) when the retry settles, so a later
-  // background `loading` with rows cannot leave the button stuck pending.
+  // Reset during render when the retry settles, not in an effect, so the button cannot stick.
   const [lastChatsState, setLastChatsState] = useState(chatsState);
   if (chatsState !== lastChatsState) {
     setLastChatsState(chatsState);
@@ -80,33 +75,21 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
     storeApi.getState().retryChats();
   };
 
-  // Sign out asks first: the menu closes and the confirmation opens, and only
-  // its confirm runs the sign out (WUX-9).
   const signOut = (): void => {
     setMenuOpen(false);
     setConfirmingSignOut(true);
   };
 
-  // The badge fetches only when the menu opens; `null` is "unknown or failed",
-  // which the UI treats as "show nothing". A failed call leaves the previous
-  // count in place.
-  // The Integrations menu entry is owner-only (T-0162): the hook starts
-  // as not-owner and switches on after the 200, so a non-owner never sees
-  // it, even for a flash.
+  // Integrations is owner-only: the hook starts not-owner so it never flashes.
   const isServerOwner = useIsServerOwner();
   const pendingApprovals = usePendingApprovalCount(menuOpen);
-  // T-0163: the incoming contact-request count badge, refetched on focus
-  // and every 60 seconds by the hook (no realtime channel in this task).
   const incomingRequests = useContactRequestCount(true);
-  // Installable app (T-0119): the browser offers `beforeinstallprompt` when
-  // Zilar is installable; the menu then carries an Install entry.
+  // The browser offers `beforeinstallprompt` when Zilar is installable.
   const { installEvent, promptInstall } = useInstallPrompt();
-  // The prompt is started by the click itself (it needs the click's user
-  // activation), so the action only waits for the promise the click created.
+  // The prompt must start from the click's user activation, so the action awaits that promise.
   const [installState, runInstall] = useAction<Promise<void>, void, InstallFailed>((prompt) =>
     Effect.tryPromise({ try: () => prompt, catch: () => new InstallFailed() }),
   );
-  // The retry label shows after a failed prompt, and hides while a new prompt runs.
   const installFailed = !isWaiting(installState) && failureOf(installState) !== undefined;
   const installing = isWaiting(installState);
   const install = (): void => runInstall(promptInstall());

@@ -37,7 +37,6 @@ import { cn } from '@/lib/utils';
 const EMPTY_MESSAGES: UiMessage[] = [];
 const EMPTY_NAMES: string[] = [];
 
-/** The lucide icon for each `previewKind`, in the kind's own order. */
 const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
   photo: ImageIcon,
   album: Images,
@@ -60,8 +59,6 @@ export const ChatListItem = memo(function ChatListItem({
   const currentUserId = useChatSelector((s) => s.currentUserId);
   const typingNames = useChatSelector((s) => s.typing[chatId]?.names) ?? EMPTY_NAMES;
   const hasDraft = useChatSelector((s) => s.drafts[chatId] !== undefined);
-  // T-1170 (WUX-3): a chat that is not open shows its composer draft instead of
-  // the last message, as Telegram does. `hasDraft` above is the AI reply draft.
   const composerDraft = useComposerDraft(chatId);
   const draftLine = composerDraft.trimStart().split('\n')[0] ?? '';
   const showDraft = !selected && composerDraft.trim().length > 0;
@@ -71,23 +68,16 @@ export const ChatListItem = memo(function ChatListItem({
   const options = { isGroup: chat.kind === 'group', currentUserId };
   const { prefix, body: rawBody, kind } = previewParts(preview, options);
   const KindIcon = kind === undefined ? undefined : PREVIEW_ICONS[kind];
-  // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
-  // chat or in a group; your own message previews literally, exactly as its
-  // bubble shows it.
+  // Only an incoming AI reply previews as Markdown; your own messages preview literally.
   const body =
     preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
       : lightToPlain(rawBody);
   const own = last !== undefined && last.senderId === currentUserId;
   const typing = typingLabel(chat, typingNames);
-  // `writing…` is the AI's reveal; people keep D23's wording (with the new dot).
   const writing = chat.isAI && (hasDraft || typing !== undefined);
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const [menuOpen, setMenuOpen] = useState(false);
-  // T-0124: channels get a megaphone avatar badge and a Channel label (as in
-  // the mockup); the header shows "N subscribers".
-  // T-0164: public groups and channels get a Public label next to the title.
-  // WUX-43: both are sentence-case muted text, not role-chip-style tags.
   const isChannel = chat.chatKind === 'channel';
   const isPublic = chat.visibility === 'public';
 
@@ -175,7 +165,6 @@ export const ChatListItem = memo(function ChatListItem({
                 className="ml-auto shrink-0"
               />
             ) : chat.unreadMark === true ? (
-              // T-1244: a hand-set unread mark shows a plain dot (no count).
               <span
                 role="img"
                 aria-label="Marked unread"

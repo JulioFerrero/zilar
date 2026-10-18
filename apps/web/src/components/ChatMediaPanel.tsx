@@ -8,12 +8,7 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MediaBody } from './media/MediaBody';
 import { TABS, type JumpTarget } from './media/mediaModel';
 
-/**
- * The chat media gallery (T-0434): Media / Files / Links / Voice tabs backed by
- * `GET /api/media`. Media items on an untrusted host arrive without a `url`
- * (see the real store), so they render as a file row and never auto-load.
- * Opened from the chat menu for DMs, groups and topics.
- */
+/** Media items on an untrusted host arrive without a `url` and render as a file row. */
 export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const [tab, setTab] = useState<MediaTab>('media');

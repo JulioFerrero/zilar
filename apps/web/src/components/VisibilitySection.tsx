@@ -14,13 +14,8 @@ import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from './ui/text-input';
 
-/** A chat-store call rejected with a plain Error: the sentence is the store's own. */
 class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
 
-/**
- * Lifts a chat-store call. An ApiError keeps its code (as in api.ts), a plain
- * Error keeps its message, and any other value becomes the generic failure.
- */
 function fromStore<A>(call: () => Promise<A>): Effect.Effect<A, ApiFailure | StoreFailed> {
   return Effect.tryPromise({
     try: call,
@@ -36,8 +31,6 @@ type HandleCheck =
 
 const IDLE_CHECK: HandleCheck = { state: 'idle' };
 
-// Debounced live availability for a public handle: the 300 ms sleep is the
-// debounce, and useQuery interrupts it when the handle or visibility changes.
 const visibilityCheck = (
   picked: 'private' | 'public',
   value: string,
@@ -62,13 +55,8 @@ const visibilityCheck = (
       );
 
 /**
- * Visibility settings (T-0164, owner only): flip a group or channel private
- * (invite-only, like before) or public (its own `@handle`, in the Explore
- * directory, joinable with one tap). Public asks for a handle with the live
- * availability check; going private explains that the group disappears from
- * the directory at once while members stay. The handle shows the "next
- * change possible on" message when the 14-day interval refuses, and a copy
- * button for the share link `<origin>/@handle`.
+ * Public groups get an `@handle` in the Explore directory; a handle change is
+ * limited to once every 14 days.
  */
 export function VisibilitySection({
   chatId,
@@ -91,8 +79,7 @@ export function VisibilitySection({
   const [copied, setCopied] = useState(false);
   const [confirmingPrivate, setConfirmingPrivate] = useState(false);
 
-  // Fill from server truth until the owner starts typing, so a change made
-  // elsewhere (or the first load) paints without clobbering typed text.
+  // Fill from server truth until the owner types, so a load never clobbers typed text.
   const [seeded, setSeeded] = useState(false);
   if (!seeded) {
     setSeeded(true);
@@ -102,9 +89,7 @@ export function VisibilitySection({
 
   const trimmed = typed.trim();
   const unchanged = picked === visibility && (picked === 'private' || trimmed === (handle ?? ''));
-  // The live check skips the group's own handle in any casing: the server
-  // sees its live row and would report "taken", which is misleading next
-  // to a Save the interval rule still guards.
+  // Skip the group's own handle in any casing: the server would report it as taken.
   const ownHandle =
     handle !== null && handle !== '' && trimmed.toLowerCase() === handle.toLowerCase();
 

@@ -5,12 +5,10 @@ import { Well } from './ui/well';
 
 export interface AttachmentPreviewProps {
   attachment: PendingAttachment;
-  /** The object URL of the chosen image, when it has one. */
   previewUrl?: string | undefined;
   onCancel: () => void;
 }
 
-/** The pending attachment bar above the composer well, with a thumbnail or icon. */
 export function AttachmentPreview({ attachment, previewUrl, onCancel }: AttachmentPreviewProps) {
   return (
     <Well className="mb-2 flex items-center gap-2.5 rounded-[10px] px-2.5 py-2">

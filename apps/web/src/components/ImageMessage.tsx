@@ -4,29 +4,19 @@ import { useMediaRetry } from '@/lib/media-retry';
 import { useMediaViewer } from './media/MediaViewer';
 
 export interface ImageMessageProps {
-  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  /** The chat JID; `GET /api/files` checks membership. */
   chatId: string;
-  /** The message the image belongs to: the viewer starts here and steps around it. */
   messageId: string;
   url: string;
   alt: string;
-  /** Pixel width, when known: reserves the aspect ratio before the image loads. */
   width?: number | undefined;
-  /** Pixel height, when known: reserves the aspect ratio before the image loads. */
   height?: number | undefined;
 }
 
 /**
- * An image bubble. The space is reserved from the known size so the list never
- * jumps, the image is lazy, and only http(s) URLs are made clickable. A broken
- * image becomes a small tile instead of the browser's broken icon. A plain
- * click opens the chat's photo viewer (T-1232); on a link, a modified or middle
- * click still follows the href in a new tab.
- *
- * A just-sent upload (T-1337) keeps its local `blob:` preview on screen while
- * its `/api/files` copy 404s behind the indexer, retries that copy with
- * backoff, and only shows "Image unavailable" — with a Retry — when there was
- * no preview to fall back on and every attempt is spent.
+ * Reserves space from the known size so the list never jumps; only http(s)
+ * URLs are clickable. A just-sent `blob:` preview stays while its `/api/files`
+ * copy 404s behind the indexer.
  */
 export function ImageMessage({ chatId, messageId, url, alt, width, height }: ImageMessageProps) {
   const openViewer = useMediaViewer();
@@ -44,8 +34,7 @@ export function ImageMessage({ chatId, messageId, url, alt, width, height }: Ima
   }
 
   const ratio = width !== undefined && height !== undefined ? `${width} / ${height}` : undefined;
-  // The raw URL decides whether the image is linkable (the trust check never
-  // changes); a same-origin upload then opens through the file route.
+  // The raw URL decides linkability; trusted same-origin uploads open through the file route.
   const href = safeHttpUrl(url) === undefined ? undefined : mediaSrc(chatId, url);
   const image = (
     <div className="relative">
@@ -75,8 +64,6 @@ export function ImageMessage({ chatId, messageId, url, alt, width, height }: Ima
     if (openViewer === null) {
       return;
     }
-    // A modified or non-primary click keeps the browser's own behaviour: a new
-    // tab on a link, and nothing on a plain image.
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
@@ -98,8 +85,6 @@ export function ImageMessage({ chatId, messageId, url, alt, width, height }: Ima
       </a>
     );
   }
-  // A `data:` or `blob:` image (the mock, an unsent upload) has no URL the
-  // browser may follow, so the whole tile opens the viewer.
   if (openViewer === null) {
     return image;
   }

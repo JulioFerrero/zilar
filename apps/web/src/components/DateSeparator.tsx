@@ -1,10 +1,8 @@
 import { formatDateSeparator } from '@zilar/chat-core';
 
 /**
- * The inline date divider: a plain flow row, so it scrolls away with its
- * messages instead of pinning. T-1327: a sticky row pinned every separator to
- * the top at once (all of them share the list as their containing block), so
- * they stacked into each other and the newest one covered messages at rest.
+ * A plain flow row: a sticky one pins every separator at once and covers
+ * messages, since they all share the list as containing block.
  */
 export function DateSeparator({ date }: { date: Date }) {
   return (

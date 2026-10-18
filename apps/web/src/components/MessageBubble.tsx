@@ -38,28 +38,15 @@ export interface MessageBubbleProps {
   firstInGroup: boolean;
   lastInGroup: boolean;
   currentUserId: string;
-  /** My bare JID, for highlighting a mention of me. */
   meJid?: string | undefined;
   onReply: (message: UiMessage) => void;
-  /** Opens the forward picker for this message. Omitted callers hide the item. */
   onForward?: (message: UiMessage) => void;
-  /** Multi-select mode (T-0439): shows a checkbox and routes clicks to selection. */
   selecting?: boolean;
-  /** True when this message is checked in select mode. */
   selected?: boolean;
-  /** Toggles this message's checked state. */
   onToggleSelect?: (message: UiMessage) => void;
-  /** Enters select mode with this message checked (the menu's Select item). */
   onStartSelect?: (message: UiMessage) => void;
-  /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
-  /**
-   * The turn whose draft this final message continues (T-0045). The bubble
-   * keeps revealing from the shown length and only becomes a normal message
-   * once the reveal is done.
-   */
   revealTurnId?: string | undefined;
-  /** The pin on this message, resolved once per list (T-2011). */
   pinId?: string | undefined;
 }
 
@@ -81,15 +68,12 @@ export const MessageBubble = memo(function MessageBubble({
   pinId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  // A right-click opens the menu at the pointer; the "…" button leaves it
-  // undefined so the menu keeps its old corner position.
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | undefined>(undefined);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
   const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
   const chatId = chat.id;
   const chatCanPin = useChatSelector((s) => s.canPin(chatId));
-  // T-1996: the group detail carries a member's picture, the topic row an AI's.
   const groupMembers = useChatSelector((s) => s.groupInfos[chat.id]?.members);
   const senderAvatar = senderAvatarUrl(message.senderId, chat.topic?.ais, groupMembers);
   const senderPerson = { id: message.senderId, name: message.senderName, avatarUrl: senderAvatar };
@@ -133,16 +117,9 @@ export const MessageBubble = memo(function MessageBubble({
     chatCanPin,
     now: new Date(),
   });
-  // A question card draws itself in place of the fallback body text (T-1578):
-  // the bubble hides the text body, but keeps `hasText` for copy and the text
-  // on the message for replies and search.
   const bodyText = hasText && !hidesBodyText(message.card);
-  // A work (progress) card stands alone (T-1618): like `bigEmoji`, the message
-  // draws no bubble surface around it and the card's own box is the only one.
-  // A blocks card (T-1755) stands alone the same way.
   const standaloneCard = message.card?.type === 'progress' || message.card?.type === 'blocks';
 
-  // A reply quote click: scroll when loaded, else load around it then scroll (PinnedBanner.tsx:40-55).
   const [, openQuote] = useAction((messageId: string) =>
     Effect.suspend(() =>
       scrollToMessage(messageId)
@@ -159,7 +136,6 @@ export const MessageBubble = memo(function MessageBubble({
     storeApi.getState().react(chat.id, message.id, emoji);
   };
 
-  // A retracted message keeps its place as a slim tombstone and has no actions.
   if (deleted) {
     return (
       <MessageTombstone
@@ -172,8 +148,6 @@ export const MessageBubble = memo(function MessageBubble({
     );
   }
 
-  // Both bubble layouts share one menu element; only the branch on screen
-  // renders it. The failed sticker branch has no copy or edit items.
   const messageMenu = (
     <MessageMenu
       open={

@@ -16,7 +16,7 @@ import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
 
 const TICK_MS = 100;
 
-/** The browser refused to start playback (autoplay policy, missing bytes, no audio API). */
+/** The browser refused playback (autoplay policy, missing bytes, no audio API). */
 class PlayRefused extends Data.TaggedError('PlayRefused') {}
 
 type TranscriptState =
@@ -25,14 +25,11 @@ type TranscriptState =
   | { kind: 'ready'; text: string }
   | { kind: 'error'; message: string };
 
-/** The audio element sending play/pause events right now, if any. */
 let activeVoiceAudio: HTMLAudioElement | null = null;
 
-/** Session memory of fetched transcripts, keyed by voice URL: toggling a
- * transcript (or meeting the same message again) never refetches. */
+/** Session cache of fetched transcripts keyed by voice URL, so a toggle never refetches. */
 const transcriptCache = new Map<string, string>();
 
-/** Forgets the session cache (tests only). */
 export function resetVoiceTranscriptCache(): void {
   transcriptCache.clear();
 }
@@ -61,7 +58,7 @@ export function VoiceMessage({
   voice,
   own,
 }: {
-  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  /** The chat JID; `GET /api/files` checks membership. */
   chatId: string;
   voice: VoiceMeta;
   own: boolean;
@@ -72,8 +69,6 @@ export function VoiceMessage({
   const [failed, setFailed] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptState>(() => {
-    // A transcript that arrived with the message (older servers may embed
-    // one) shows without a fetch.
     if (voice.transcript !== undefined) {
       return { kind: 'ready', text: voice.transcript.text };
     }
@@ -88,9 +83,6 @@ export function VoiceMessage({
   const canTranscribe = transcriptionEnabled && voice.url !== undefined && voice.url !== '';
   const showControl = voice.transcript !== undefined || canTranscribe;
 
-  // The playback progress tick: one read every TICK_MS while the message
-  // plays. The query is rebuilt on each `playing` change, so a pause, the end
-  // or an unmount interrupts the loop. The first read comes one tick after play.
   useQuery(
     (): Effect.Effect<unknown> =>
       playing
@@ -105,8 +97,6 @@ export function VoiceMessage({
     [playing],
   );
 
-  // One transcript fetch; the outcome lands in `transcript`. Unmounting
-  // interrupts it, so a late answer never updates a message that is gone.
   const [, fetchTranscript] = useAction((url: string) =>
     fromApi(() => getVoiceTranscript(url)).pipe(
       Effect.matchEffect({
@@ -123,9 +113,7 @@ export function VoiceMessage({
     ),
   );
 
-  // Starting playback. A refused play shows the unavailable state. When the
-  // play resolves, the element's own `onPlay` flips the button, so this never
-  // sets `playing` directly: the button always reflects the real state.
+  // `playing` follows the element's `onPlay`, so the button reflects the real state.
   const [, startPlayback] = useAction(
     (audio: HTMLAudioElement) =>
       Effect.try({ try: () => audio.play(), catch: () => new PlayRefused() }).pipe(
@@ -139,8 +127,6 @@ export function VoiceMessage({
     { mode: 'replace' },
   );
 
-  // A voice message that unmounts mid-play leaves nothing behind: another
-  // player is free to start, and this element never resumes on its own.
   useEffect(
     () => () => {
       if (activeVoiceAudio === audioRef.current) {
@@ -150,11 +136,8 @@ export function VoiceMessage({
     [],
   );
 
-  // The button reflects the element's real state, not just its own clicks:
-  // the track ending, a media key, or another player pausing this one all
-  // flow through these handlers. `paused` alone cannot drive this: jsdom
-  // (and a loaded-but-idle element) reports `paused` while playing, so the
-  // handlers trust the event itself over the property.
+  // The handlers trust the event, not `paused`: jsdom and a loaded-but-idle
+  // element report `paused` while playing.
   const onAudioPlay = (audio: HTMLAudioElement): void => {
     activeVoiceAudio = audio;
     setFailed(false);
@@ -209,8 +192,6 @@ export function VoiceMessage({
 
   const togglePlay = (): void => {
     const audio = audioRef.current;
-    // A failed audio may be retried by clicking again (the error can be
-    // transient); only a message without any audio URL is a dead button.
     if (audio === null || voice.url === undefined || voice.url === '') {
       return;
     }

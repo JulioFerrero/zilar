@@ -1,7 +1,3 @@
-// PERF-3: draws only the newest part of a chat's loaded render items, so a
-// long chat neither keeps every bubble in the DOM nor re-renders all of them on
-// every store tick. The window grows by one step when the reader reaches the
-// top; the list pages the archive only once the window shows everything.
 import type { RenderItem } from '@zilar/chat-core';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { scrollToMessage } from '@/lib/scrollToMessage';
@@ -11,13 +7,10 @@ import {
   subscribeMessageWindowReveals,
 } from '@/store/effects/history';
 
-/** How many render items the window shows before the reader grows it. */
 export const WINDOW = 150;
 
-/** No ids: the stable empty set the reveal reader returns for a chat with none. */
 const NO_REVEALS: ReadonlySet<string> = new Set();
 
-/** Whether one render item draws the message with this id (an album draws its members). */
 function drawsMessage(item: RenderItem, id: string): boolean {
   if (item.kind === 'message') {
     return item.message.id === id;
@@ -29,23 +22,16 @@ function drawsMessage(item: RenderItem, id: string): boolean {
 }
 
 export interface MessageWindow {
-  /** The newest window of render items to draw. */
   windowItems: RenderItem[];
-  /** The index in `items` the window starts at; a row's index is `start` + its place. */
   start: number;
-  /** True while loaded items are hidden above the window. */
   hasHidden: boolean;
-  /** The jump targets the window had to grow to include. */
   reveals: ReadonlySet<string>;
-  /** Widens the window by one WINDOW; the caller compensates the scroll. */
   grow: () => void;
 }
 
 /**
- * The newest `WINDOW` render items, grown to include the unread divider
- * (`anchorIndex`) and any jump target the store recorded (a search hit, a pin,
- * a reply quote). Once the target is drawn the hook scrolls to it and forgets
- * the reveal; the width it forced is kept, so the jump's position stays put.
+ * The newest `WINDOW` render items, grown to include the divider and any jump
+ * target; the forced width is kept so the jump does not shift.
  */
 export function useMessageWindow(
   chatId: string,
@@ -58,8 +44,7 @@ export function useMessageWindow(
     () => NO_REVEALS,
   );
   const [limit, setLimit] = useState(WINDOW);
-  // The width a reveal or an older page forced: kept after the reveal is
-  // cleared so the position the jump scrolled to does not shift again.
+  // The width a reveal or an older page forced is kept after the reveal clears.
   const [floor, setFloor] = useState(0);
 
   const start = useMemo(() => {
@@ -78,9 +63,7 @@ export function useMessageWindow(
     return value;
   }, [items, limit, floor, anchorIndex, reveals]);
 
-  // A reveal or the divider can force a window wider than the base size:
-  // remember that width during render (React's adjust-state-on-change pattern)
-  // so dropping the reveal keeps the window open. Guarded, so it converges.
+  // Remember a forced width during render (adjust-state-on-change), guarded so it converges.
   const needed = items.length - start;
   if (needed > floor) {
     setFloor(needed);
@@ -88,9 +71,7 @@ export function useMessageWindow(
 
   const grow = useCallback(() => setLimit((value) => value + WINDOW), []);
 
-  // Once the targets are drawn, scroll to them and forget the reveals; the
-  // kept width above holds the window open. Runs after the layout pass, so the
-  // rows are in the DOM (and the list's mount scroll already skipped).
+  // Scroll after the layout pass, when the rows are in the DOM.
   const scrolled = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (reveals.size === 0) {

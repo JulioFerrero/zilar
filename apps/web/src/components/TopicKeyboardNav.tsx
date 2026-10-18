@@ -2,21 +2,14 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
 /**
- * Arrow-key navigation across the topic list (T-0111): Up/Down moves focus
- * between topic rows, Enter follows the focused one. The rows are plain
- * links, so this only moves DOM focus; activation stays native.
- *
- * The wrapper takes no props: it navigates whatever topic rows are rendered
- * inside it. Every chat row — group topics, DM rows and single-group rows —
- * carries `data-topic-row` and takes part, and only inside the chat list
- * (`nav[aria-label="Chats"]`): message links, search hits and the empty
- * state never take part, even though they share the `/c/` prefix.
+ * Arrow keys move focus between `data-topic-row` rows inside the chat list;
+ * links elsewhere on the page never take part.
  */
 export function TopicKeyboardNav({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
-    // Alt/Ctrl/Meta+arrows belong to the window-level chat switch (T-1874).
+    // Alt/Ctrl/Meta+arrows belong to the window-level chat switch.
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }

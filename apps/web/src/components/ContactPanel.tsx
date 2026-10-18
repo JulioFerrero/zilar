@@ -36,10 +36,8 @@ const COPY_TOAST = 'Username copied';
 const BLOCK_ERROR = 'Could not block. Try again.';
 const UNBLOCK_ERROR = 'Could not unblock. Try again.';
 
-/** A failed panel action; `message` is the fixed sentence the panel shows. */
 class ContactFailure extends Data.TaggedError('ContactFailure')<{ readonly message: string }> {}
 
-/** One grouped info row: a small muted label over the value. */
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
@@ -51,16 +49,6 @@ function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/**
- * The contact info panel for a DM (T-1323): the Telegram `User info` drawer,
- * opened from the chat header. It shows the peer's big photo, name and status
- * (the header's subtitle source, `chatSubtitle`), a round action row (Message,
- * Mute, Search), the `@handle` with copy and the bio when the profile carries
- * one, Shared media, and Block / Unblock in the destructive colour.
- *
- * The handle comes from the contacts list (T-0163); the by-handle profile
- * (`GET /api/users/by-handle/:handle`, T-1258) adds the bio and the relation.
- */
 export function ContactPanel({
   chat,
   onClose,
@@ -124,8 +112,7 @@ export function ContactPanel({
   const status = chatSubtitle(chat, new Date());
   const online = chat.online === true;
 
-  // Message closes the panel and focuses the composer on the next macrotask,
-  // once the sheet has unmounted (a dialog would otherwise swallow the focus).
+  // Focus after the sheet unmounts, or the closed dialog swallows it.
   const startMessage = (): void => {
     onClose();
     void runWeb(

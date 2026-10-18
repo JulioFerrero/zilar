@@ -1,14 +1,7 @@
 import type { ReactNode } from 'react';
 import { ScreenHeader } from '@/components/ui/screen-header';
 
-/**
- * The one column every web settings page shares (T-0153): the kit
- * `ScreenHeader` row (T-1949), then a centered `max-w-2xl` column on a 16 px
- * gutter at 390 px wide, readable body text and bordered cards.
- *
- * The column, section and card recipes live here so the settings pages stay
- * alike without forcing every consumer onto them.
- */
+/** The column every settings page shares: `max-w-2xl` on a 16 px gutter at 390 px. */
 export function SettingsShell({
   title,
   subtitle,
@@ -18,7 +11,6 @@ export function SettingsShell({
 }: {
   title: string;
   subtitle?: string;
-  /** An optional key at the right end of the title row (T-1503). */
   action?: ReactNode;
   onBack: () => void;
   children: ReactNode;
@@ -37,9 +29,4 @@ export function SettingsShell({
   );
 }
 
-/**
- * The centered settings column itself (same width Stickers used before the
- * shell existed). Every page wraps its body in this so the column class is
- * one shared constant, asserted by one test per page.
- */
 export const SETTINGS_COLUMN = 'mx-auto flex w-full max-w-2xl flex-col gap-4';

@@ -2,10 +2,7 @@ import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 
-/** Quiet loading placeholders in the shape of the content they replace. */
-
-// Most loads finish in well under this. Showing placeholders only after it
-// avoids a skeleton that flashes for a frame and then vanishes.
+// Most loads finish well under this; showing placeholders only after it avoids a skeleton that flashes for a frame.
 export const SKELETON_DELAY_MS = 300;
 
 export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {

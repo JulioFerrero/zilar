@@ -15,13 +15,6 @@ import { Dialog } from './ui/dialog';
 import { ListRow } from './ui/list-row';
 import { SearchField } from './ui/search-field';
 
-/**
- * Group members (T-1183, redrawn in T-1508): a search field, the Add members
- * and Invite with a link rows for managers, and one rounded group of
- * `MemberRow`s. Leave and delete moved to the root page and its More menu;
- * every row's actions live in its ⋮ menu. Errors show inline; the server
- * enforces the same rules.
- */
 export function GroupMembersSection({
   chatId,
   info,
@@ -34,9 +27,7 @@ export function GroupMembersSection({
   info: GroupDetail;
   me: string | undefined;
   rolesByUser: Map<string, GroupRole[]>;
-  /** Opens the Invite links page from the "Invite with a link" row. */
   onOpenLinks: () => void;
-  /** T-1494: the root's Add key lands here with the picker already open. */
   openPickerOnMount?: boolean;
 }) {
   const storeApi = useChatStoreApi();
@@ -49,8 +40,6 @@ export function GroupMembersSection({
   const [pickerOpen, setPickerOpen] = useState(openPickerOnMount);
   const [selected, setSelected] = useState<string[]>([]);
 
-  // One action for the section, as in GroupRolesSection: buttons disable while
-  // a change runs, and the last failure stays visible.
   const [changeState, runChange] = useAction<Effect.Effect<void, PanelFailure>, void, PanelFailure>(
     (change) => change,
   );

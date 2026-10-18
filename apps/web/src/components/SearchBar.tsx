@@ -23,8 +23,6 @@ export function SearchBar() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // "Search only in this chat" from a chat header focuses this box; the
-  // scope chip below says which chat is being searched.
   useEffect(() => {
     const onFocusSearch = (): void => {
       inputRef.current?.focus();
@@ -62,13 +60,10 @@ export function SearchBar() {
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => {
-          // Enter opens the top message hit when the Messages section has
-          // one; the results list (a separate subtree) listens for this.
           if (event.key === 'Enter') {
             window.dispatchEvent(new Event('zilar:search-enter'));
             return;
           }
-          // Esc clears the query first, then blurs the box.
           if (event.key === 'Escape') {
             if (search !== '') {
               event.preventDefault();

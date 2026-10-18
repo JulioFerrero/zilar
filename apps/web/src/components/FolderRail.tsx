@@ -7,7 +7,6 @@ import { folderUnreadTotal } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-/** Folder rail for wide screens: All chats, every folder, then the Edit key. */
 export function FolderRail() {
   const folders = useChatSelector((s) => s.folders);
   const chats = useChatSelector((s) => s.chats);
@@ -42,9 +41,6 @@ export function FolderRail() {
     })),
   ];
 
-  // Arrow keys walk every key in the rail: the tablist items (All + folders),
-  // then Edit. Moving onto a folder tab selects it (selection follows focus);
-  // moving onto Edit only moves focus, Enter/Space activates it.
   const tabCount = items.length;
   const editIndex = tabCount;
 

@@ -22,12 +22,10 @@ import { EntityAvatar } from './EntityAvatar';
 
 type RowAction = 'send' | 'accept' | 'decline' | 'cancel' | 'block' | 'unblock';
 
-/** The request was answered or withdrawn before this click (another tab, or the other side). */
 class RequestGone extends Data.TaggedError('RequestGone') {}
 
 type RowFailure = ApiFailure | RequestGone;
 
-/** Finds this person's pending request in one direction, then runs `act` on it. */
 function onPendingRequest(
   userId: string,
   direction: 'incoming' | 'outgoing',
@@ -43,11 +41,6 @@ function onPendingRequest(
   });
 }
 
-/**
- * The shared profile row for an exact-handle lookup: avatar, name,
- * `@handle`, and one action per relation. Used by the Add contact dialog
- * and by the People section of the search results, so both behave the same.
- */
 export function ContactProfileRow({
   profile,
   onRelationChange,
@@ -62,11 +55,8 @@ export function ContactProfileRow({
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
-  // Keyed by the parent on the profile id, so a different handle remounts
-  // the row with fresh local state (no reset effect needed).
 
-  // One action for every button of this row: the buttons share one busy
-  // flag and one error line, so a second click (on any button) waits.
+  // The buttons share one busy flag and one error line, so a second click waits.
   const relationChange = (relation: HandleProfile['relation']) =>
     Effect.sync(() => onRelationChange({ ...profile, relation }));
 
@@ -129,10 +119,7 @@ export function ContactProfileRow({
     runAction(action);
   };
 
-  // The DM chat id is the contact's JID from the store (the lookup profile
-  // carries no JID). Every contact has a DM row on the server, so a missing
-  // row only means the chat list has not refreshed since the contact was
-  // added: refresh it, and the shell opens the chat once the row lands.
+  // The lookup profile carries no JID: refresh a missing chat row, and the shell opens the DM when it lands.
   const contact = contacts.find((entry) => entry.userId === profile.userId);
 
   const openChat = (): void => {

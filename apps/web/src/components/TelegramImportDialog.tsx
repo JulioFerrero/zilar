@@ -11,18 +11,7 @@ import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { Dialog } from './ui/dialog';
 
-/**
- * The Telegram import dialog (T-0123, overlay + unavailable state T-0162):
- * paste a pack link or name, run the import, and read the summary.
- * Imported packs are personal-use only — the dialog says so next to the
- * form, and the summary repeats the attribution
- * ("Imported from Telegram: <pack title>").
- *
- * It renders through the kit `Dialog`: Escape and the backdrop close it
- * (not while busy), focus moves to the input on open, and a 501 never
- * closes it — it shows the not-set-up state instead (with a settings link
- * for the server owner).
- */
+/** Telegram import dialog; imported packs are personal-use only. */
 export function TelegramImportDialog({
   onDone,
   onClose,
@@ -32,24 +21,12 @@ export function TelegramImportDialog({
 }: {
   onDone: () => void;
   onClose: () => void;
-  /**
-   * Called when the server answers 501, so the entry point's primary action
-   * can be disabled. The entry stays visible and the dialog shows why.
-   */
   onUnavailable?: () => void;
-  /**
-   * Forces the owner view (tests only). When omitted the dialog reads the
-   * shared `useIsServerOwner` hook, which starts as not-owner and switches
-   * on after the 200 — the settings link never flashes for a non-owner.
-   */
   isOwner?: boolean | undefined;
-  /** Injected in tests so no network is touched. */
   importFn?: typeof importTelegramStickers;
 }) {
   const [input, setInput] = useState('');
   const [notice, setNotice] = useState('');
-  // The import call. Unmounting interrupts it, so a closed dialog never
-  // reports back. A 501 also tells the entry point (`onUnavailable`).
   const [importState, runImport] = useAction((value: string) =>
     fromApi(() => importFn(value)).pipe(
       Effect.tapError((failure) =>
@@ -62,17 +39,11 @@ export function TelegramImportDialog({
     ),
   );
   const busy = isWaiting(importState);
-  // A call that is running hides the previous outcome, as the form did before.
   const failure = busy ? undefined : failureOf(importState);
   const result = !busy && AsyncResult.isSuccess(importState) ? importState.value : undefined;
-  // The not-set-up state and the token state replace the form. The saved
-  // token died at Telegram's side (revoked or replaced after it was stored):
-  // not a form error, so the whole dialog becomes the message.
+  // A saved token can be revoked at Telegram's side; that is not a form error.
   const unavailable = failure?.status === 501;
   const tokenInvalid = failure?.code === 'token_invalid';
-  // The owner view: the prop wins when given (tests), else the shared hook.
-  // The hook call is unconditional (rules of hooks); the prop only decides
-  // which value is used.
   const hookOwner = useIsServerOwner();
   const ownerView = isOwner ?? hookOwner;
   const error = notice !== '' ? notice : failure !== undefined ? importErrorText(failure) : '';
@@ -209,7 +180,6 @@ export function TelegramImportDialog({
   );
 }
 
-/** The fixed sentence for each server answer; anything else shows the server's own message. */
 function importErrorText(failure: ApiFailure): string {
   if (failure.status === 429) {
     return 'Too many imports — try again in an hour.';

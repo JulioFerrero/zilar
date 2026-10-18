@@ -5,11 +5,7 @@ import { parseUrl } from '@zilar/chat-core';
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
-/**
- * Returns the URL only for the allowed protocols. A relative link or any other
- * scheme (`javascript:`, `data:`, `vbscript:`, `file:`) returns `undefined`, so
- * its anchor is skipped and the text stays plain.
- */
+/** Only `http:`, `https:` and `mailto:` links render; any other scheme stays plain text. */
 function safeUrl(url: string): string | undefined {
   const parsed = parseUrl(url);
   if (parsed === undefined) {
@@ -44,11 +40,7 @@ const components: Components = {
   },
 };
 
-/**
- * Renders a Markdown reply with a safe subset: GFM, no raw HTML, links only to
- * `http:`, `https:` and `mailto:`, and never an `<img>`. Memoized on `text` so
- * a reveal frame with unchanged text does not re-parse.
- */
+/** Markdown reply subset: GFM, no raw HTML, no `<img>`; memoized on `text`. */
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
   return (
     <Markdown

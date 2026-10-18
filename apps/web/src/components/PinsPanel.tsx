@@ -22,7 +22,6 @@ const KIND_LABEL: Record<PinRow['kind'], string> = {
 };
 
 interface PinsPanelActions {
-  /** Closes the panel once a jump has landed on the message. */
   readonly onOpened: () => void;
   readonly onJumpStart: () => void;
   readonly onJumpFailed: () => void;
@@ -31,21 +30,13 @@ interface PinsPanelActions {
   readonly onUnpinSettled: (pinId: string) => void;
 }
 
-/**
- * The pins panel (T-0114): every pin of a chat, newest first, with jump and
- * (for managers) unpin. Opened from the banner's List button, the header
- * menu, and the chat/topic info panels. A retracted original reads "Message
- * deleted" once the client has seen the retraction.
- */
 export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const pins = useChatSelector((s) => s.pinsByChat[chatId]) ?? NO_PINS;
   const managers = useChatSelector((s) => s.canPin(chatId));
   const [jumpFailed, setJumpFailed] = useState(false);
   const [unpinFailed, setUnpinFailed] = useState(false);
-  // The store drops a pin as soon as its unpin starts. Its row stays mounted
-  // (rendering nothing) until the unpin settles, so the row's action still
-  // reports a failure after the pin has left the list.
+  // A row stays mounted until its unpin settles so a failure can still be reported.
   const [unpinning, setUnpinning] = useState<ReadonlyArray<PinRow>>([]);
 
   const settling = unpinning.filter((pin) => !pins.some((entry) => entry.id === pin.id));
@@ -129,11 +120,7 @@ export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => 
   );
 }
 
-/**
- * One pin with its own jump and unpin actions, so two rows can run at once;
- * a second click on the same row waits for the first. A row whose pin is no
- * longer listed renders nothing, but stays mounted until its unpin settles.
- */
+/** One pin with its own jump and unpin actions, so two rows can run at once. */
 function PinRowItem({
   chatId,
   pin,
@@ -221,7 +208,6 @@ function PinRowItem({
   );
 }
 
-/** A "Pinned messages" row for the chat/topic info panels (T-0114). */
 export function PinsSection({ chatId, onOpen }: { chatId: string; onOpen: () => void }) {
   const count = useChatSelector((s) => s.pinsByChat[chatId]?.length ?? 0);
   return (

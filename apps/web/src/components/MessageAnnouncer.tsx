@@ -2,11 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { UiMessage } from '@zilar/chat-core';
 
 /**
- * WUX-35: a visually hidden live region that announces an incoming message in
- * the open chat. An older history page prepends (the previous last message is
- * still present), my own sends are skipped, and the first population is a
- * history load, so only a new incoming message appended to a loaded chat
- * announces.
+ * Announces only a new incoming message appended to the open chat: history
+ * prepends, own sends and the first load are skipped.
  */
 export function MessageAnnouncer({
   messages,

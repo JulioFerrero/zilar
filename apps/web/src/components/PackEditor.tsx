@@ -26,11 +26,6 @@ export type {
 } from './sticker/packEditorModel';
 export { PACK_ACCEPT, takeSingleEmoji } from './sticker/packEditorModel';
 
-/**
- * The sticker pack editor (T-0121): its own settings shell (title, Create or
- * Save, Back), then the name and visibility row, a grid of sticker tiles with
- * an Add tile (T-1509), and the per-file preparation, upload and errors.
- */
 export function PackEditor({
   packId,
   initialTitle = '',
@@ -62,15 +57,13 @@ export function PackEditor({
   );
   const initialIdsRef = useRef(initialStickers.map((sticker) => sticker.id));
   const removedIdsRef = useRef<string[]>([]);
-  // The save loop reads the list at order-PATCH time, not from its
-  // click-time snapshot, so the patch always matches the finished UI.
+  // The save loop reads the list at PATCH time so the order matches the finished UI.
   const itemsRef = useRef(items);
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
   const [preparing, setPreparing] = useState(0);
   const [batches, setBatches] = useState<PrepareBatchJob[]>([]);
-  // The hidden picker lives in the form; the grid's Add tile opens it.
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | File[]): void => {
@@ -94,10 +87,7 @@ export function PackEditor({
   const removeItem = (key: string): void => {
     setItems((previous) => {
       const removed = previous.find((item) => item.key === key);
-      // Any sticker with a server id is deleted on save in edit mode — an
-      // existing row, or one uploaded earlier in this session (it keeps its
-      // blob, but the server already has it, so it must leave the order
-      // patch and be deleted).
+      // Every sticker with a server id is deleted on save in edit mode, including one uploaded this session.
       if (removed?.stickerId !== undefined) {
         removedIdsRef.current = [...removedIdsRef.current, removed.stickerId];
       }
@@ -105,7 +95,6 @@ export function PackEditor({
     });
   };
 
-  // One move for the Up/Down buttons and a drag-drop (the T-0981 dedup).
   const moveByIndex = (from: number, to: number): void => {
     setItems((previous) => {
       const next = [...previous];
@@ -155,9 +144,7 @@ export function PackEditor({
   });
 
   const readyCount = items.filter((item) => item.status === 'ready').length;
-  // Save stays disabled while any error row exists: the user retries or
-  // removes it first, so a re-save can never skip a failed file and close
-  // as success. `save()` re-checks the same condition defensively.
+  // Save stays disabled while any error row exists, so a re-save never skips a failed file.
   const errorCount = items.filter((item) => item.error !== undefined).length;
   const saveDisabled =
     busy || preparing > 0 || errorCount > 0 || (packId === undefined && readyCount === 0);

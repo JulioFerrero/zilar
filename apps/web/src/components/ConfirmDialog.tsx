@@ -5,23 +5,13 @@ import { Dialog } from './ui/dialog';
 export interface ConfirmDialogProps {
   title: string;
   body: string;
-  /** The destructive action's label, e.g. "Delete". */
   confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
-  /**
-   * T-1247: an optional second destructive choice shown before the confirm
-   * action, e.g. "Delete for me" beside "Delete for everyone".
-   */
   secondLabel?: string;
   onSecond?: () => void;
 }
 
-/**
- * A small confirmation dialog for a destructive action: Escape and Cancel
- * dismiss it, the confirm key is a danger button, focus starts on Cancel and
- * returns to the element focused when it opened.
- */
 export function ConfirmDialog({
   title,
   body,

@@ -18,9 +18,6 @@ type Lookup =
 
 const IDLE: Lookup = { state: 'idle' };
 
-// Debounced exact lookup: the 300 ms sleep is the debounce, and useQuery
-// interrupts it when the handle changes or the dialog closes. Unknown handles
-// read as "missing".
 const lookupHandle = (handle: string): Effect.Effect<Lookup> =>
   handle === ''
     ? Effect.succeed(IDLE)
@@ -43,7 +40,6 @@ function lookupFailure(failure: ApiFailure): Lookup {
   };
 }
 
-/** "Add contact" dialog: type a `@username`, see the card, send a request. */
 export function AddContactDialog({
   initialHandle,
   onClose,
@@ -56,8 +52,6 @@ export function AddContactDialog({
 
   const trimmed = query.trim().replace(/^@/, '');
 
-  // Re-seed when the prefill changes (e.g. /@alice then /@bob reuses the
-  // route): the query is derived from the prop until the user types.
   const [seedHandle, setSeedHandle] = useState(seed);
   if (seed !== seedHandle) {
     setSeedHandle(seed);
@@ -65,8 +59,6 @@ export function AddContactDialog({
   }
 
   const [lookupResult] = useQuery(() => lookupHandle(trimmed), [trimmed]);
-  // A relation change from the card (send, accept, ...) replaces the looked-up
-  // profile for the handle it was made on.
   const [refreshed, setRefreshed] = useState<{ handle: string; profile: HandleProfile }>();
   const lookup: Lookup =
     refreshed !== undefined && refreshed.handle === trimmed

@@ -1,13 +1,7 @@
 import { Button } from './ui/button';
 import { useClientVersionCheck } from '@/lib/useClientVersionCheck';
 
-/**
- * A thin bar pinned to the top when this web build is older than the server's
- * minimum client protocol (OPS-21), or when a new deploy's service worker has
- * taken over this page (`reason: 'deploy'`, T-1435). It never blocks the app;
- * Reload fetches the current bundle. With no reason and a current version,
- * nothing renders.
- */
+/** A thin bar when this build is older than the server's minimum protocol, or after a deploy; it never blocks the app. */
 export function ClientVersionBanner({ reason }: { reason?: 'deploy' | undefined } = {}) {
   const outdated = useClientVersionCheck();
 

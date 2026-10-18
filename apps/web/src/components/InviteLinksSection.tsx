@@ -37,10 +37,7 @@ function describeLink(link: GroupInviteLink, now: number): string {
     : `${name} — ${used}, ${expiry}, ${state}`;
 }
 
-/**
- * A revoke is either the DELETE promise GroupPanel returns or an Effect
- * ChannelPanel builds. The row stays busy until it settles, success or failure.
- */
+/** A revoke is either a DELETE promise or an Effect; the row stays busy until it settles. */
 type RevokeHandler = (linkId: string) => void | Promise<void> | Effect.Effect<void, unknown>;
 
 const settle = (
@@ -50,11 +47,7 @@ const settle = (
     ? result
     : Effect.tryPromise({ try: () => Promise.resolve(result), catch: (cause) => cause });
 
-/**
- * The group invite-links section (T-0115): owners and admins create a link
- * (label, expiry, max uses), see the URL once with a Copy button and a
- * warning that anyone with the link can join, and list/revoke links.
- */
+/** Owners and admins create invite links; the URL is shown once, and anyone with it can join. */
 export function InviteLinksSection({
   links,
   busy,
@@ -213,8 +206,6 @@ function LinkStatesList({
   links: GroupInviteLink[];
   onRevoke: RevokeHandler;
 }) {
-  // Fixed at mount: the expired/exhausted labels only re-render with the
-  // list itself (the parent reloads after create/revoke).
   const [now] = useState(() => Date.now());
   if (links.length === 0) {
     return <p className="px-2 text-[13px] text-muted-foreground">No invite links yet.</p>;
@@ -228,10 +219,7 @@ function LinkStatesList({
   );
 }
 
-/**
- * One link with its own Revoke action, so two links can be revoked at once;
- * a second click on the same row waits for the first.
- */
+/** One link with its own Revoke action, so two links can be revoked at once. */
 function LinkRow({
   link,
   now,

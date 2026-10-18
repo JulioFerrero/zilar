@@ -30,12 +30,6 @@ import { PresetGrid } from './background/PresetGrid';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 
-/**
- * T-0462/T-0464/T-0466: pick a shared preset (or one of the caller's uploaded
- * images) for this chat, for all chats, or for a group when `groupId` is set,
- * dim an image and delete one. The store paints the choice optimistically; a
- * failed write rolls back and shows a fixed sentence here.
- */
 export function ChatBackgroundDialog({
   chat,
   groupId,
@@ -43,7 +37,6 @@ export function ChatBackgroundDialog({
   onClose,
 }: {
   chat: ChatSummary;
-  /** T-0466: when set, the dialog edits the group's shared background. */
   groupId?: string;
   open: boolean;
   onClose: () => void;
@@ -59,27 +52,18 @@ export function ChatBackgroundDialog({
   const setDefaultBackgroundImage = useChatSelector((s) => s.setDefaultBackgroundImage);
   const [scope, setScope] = useState<Scope>('chat');
   const [error, setError] = useState(false);
-  // Images the caller uploaded or deleted since the list was loaded; the list
-  // itself comes from `listing` and is reloaded each time the dialog opens.
   const [added, setAdded] = useState<BackgroundListItem[]>([]);
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [uploadError, setUploadError] = useState<string | undefined>(undefined);
   const [confirmId, setConfirmId] = useState<string | undefined>(undefined);
-  // The slider value while the user drags it: kept next to the image id so a
-  // scope or image switch falls back to that image's stored dim during render
-  // (no effect needed).
   const [dimDraft, setDimDraft] = useState<{ imageId: string; value: number } | null>(null);
 
   const chatPreset = chatPref?.backgroundPreset ?? null;
   const chatImageId = chatPref?.backgroundImageId ?? null;
   const defaultPreset = defaultBackground?.backgroundPreset ?? null;
   const defaultImageId = defaultBackground?.backgroundImageId ?? null;
-  // T-0466: a group dialog reads the group's shared background; otherwise the
-  // scope picks between the chat's own pref and the caller's default.
   const isGroup = groupId !== undefined;
   const groupBackground = isGroup ? groupBackgroundStored : undefined;
-  // "This chat" shows the chat's own preset (none when unset); "All chats"
-  // shows the caller's default, falling back to slate.
   const selected: string | null = isGroup
     ? (groupBackground?.backgroundPreset ?? null)
     : scope === 'chat'
@@ -95,8 +79,6 @@ export function ChatBackgroundDialog({
     : scope === 'chat'
       ? (chatPref?.backgroundDim ?? null)
       : (defaultBackground?.backgroundDim ?? null);
-  // A live drag wins while it names the selected image; otherwise the stored
-  // dim (or 40) shows.
   const dim =
     dimDraft !== null && dimDraft.imageId === selectedImageId
       ? dimDraft.value
@@ -117,8 +99,6 @@ export function ChatBackgroundDialog({
     setDefaultBackgroundImage,
   });
 
-  // Load the caller's images each time the dialog opens. A failure leaves the
-  // list empty, so the section still offers Upload.
   const [listing] = useQuery(
     (): Effect.Effect<BackgroundListItem[]> =>
       open
@@ -129,12 +109,10 @@ export function ChatBackgroundDialog({
     [open],
   );
   const listed = AsyncResult.isSuccess(listing) ? listing.value : [];
-  // Deleted rows stay in the list (they render nothing), so their delete runs to the end.
   const images = [...added, ...listed];
   const shownIds = images.filter((row) => !removedIds.has(row.id)).map((row) => row.id);
 
-  // Saves run one at a time: a newer save replaces the one waiting or in flight,
-  // so a dim change cancels its pending save and a picked preset cancels it too.
+  // Saves run one at a time: a newer save replaces the waiting or in-flight one.
   const [, runSave, saveControls] = useAction(
     (request: SaveRequest) =>
       (request.delayMs > 0 ? Effect.sleep(request.delayMs) : Effect.void).pipe(
@@ -143,8 +121,6 @@ export function ChatBackgroundDialog({
     { mode: 'replace' },
   );
 
-  // A picked file is prepared, uploaded, added to the list and selected for
-  // the scope it was picked under. A second pick while one waits is ignored.
   const [uploadState, runUpload] = useAction(({ file, scope: targetScope }: UploadRequest) =>
     Effect.tryPromise({
       try: () => prepareBackgroundImage(file),
@@ -170,7 +146,6 @@ export function ChatBackgroundDialog({
           ]),
         ),
       ),
-      // A fresh upload becomes the look for the scope it was picked under.
       Effect.tap((uploaded) =>
         persist(() => writeImage(uploaded.id, DEFAULT_BACKGROUND_DIM, targetScope)),
       ),
@@ -179,10 +154,8 @@ export function ChatBackgroundDialog({
   );
   const busy = isWaiting(uploadState);
 
-  // One delete: the file goes, the dim draft for it is dropped and the store is
-  // patched when the image was selected. Each row runs its own copy (BackgroundRow).
-  // The whole unit is uninterruptible: closing the dialog unmounts the row, and
-  // the store patch must still run so the chat stops pointing at the deleted file.
+  // Each row deletes on its own; the store patch must still run after the
+  // dialog unmounts so the chat stops pointing at the deleted file.
   const deleteImage = (id: string): Effect.Effect<void> =>
     Effect.uninterruptible(
       Effect.tryPromise({ try: () => deleteBackground(id), catch: () => new DeleteFailed() }).pipe(
@@ -200,8 +173,6 @@ export function ChatBackgroundDialog({
       ),
     );
 
-  // Picking a preset clears any image, so a pending dim save for the image it
-  // replaces is dropped too: the save below replaces it.
   const choose = (presetId: string | null): void => {
     setDimDraft(null);
     runSave({ delayMs: 0, write: () => writePreset(presetId) });
@@ -230,15 +201,12 @@ export function ChatBackgroundDialog({
     runUpload({ file, scope });
   };
 
-  // Starts a confirmed delete: the confirm row closes and a pending dim save is dropped.
   const startDelete = (): void => {
     setConfirmId(undefined);
     setUploadError(undefined);
     saveControls.reset();
   };
 
-  // Each open starts clean: the previous scope, the uploads and deletes and a
-  // stale save error must not carry over to the next time the dialog is shown.
   const close = (): void => {
     saveControls.reset();
     setError(false);

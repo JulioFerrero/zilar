@@ -16,22 +16,16 @@ import { cn } from '@/lib/utils';
 
 type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic';
 
-/** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton({
   defaultGroupId,
   onExplore,
 }: {
   defaultGroupId?: string;
-  // T-0164, T-1972: reaching the Explore page from the + new chat menu. An
-  // owner (the chat list) supplies the navigation; the button renders the
-  // page's menu entry itself otherwise.
   onExplore?: () => void;
 } = {}) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
-  // "New topic" from a group header pre-selects that group; the menu asks
-  // which group when several can take a topic.
   const [topicGroupId, setTopicGroupId] = useState<string | undefined>(undefined);
   const isWide = useMediaQuery('(min-width: 900px)');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -39,8 +33,6 @@ export function NewChatButton({
   const currentUserId = useChatSelector((s) => s.currentUserId);
   const groupInfos = useChatSelector((s) => s.groupInfos);
 
-  // The wide button shows a `kbd N`: plain `n` (outside inputs) opens the
-  // same menu the button opens.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'n' && event.key !== 'N') {
@@ -85,9 +77,7 @@ export function NewChatButton({
     }
   };
 
-  // Groups the viewer may create a topic in: owner/admin always, members
-  // when the group allows it. The menu entry is absent (not disabled) when
-  // no group qualifies.
+  // Groups the viewer may create a topic in; the entry is absent when none qualifies.
   const topicGroups = useMemo(() => {
     const mine = currentUserId;
     const seen = new Map<string, { chatId: string; title: string }>();
@@ -107,9 +97,7 @@ export function NewChatButton({
           meUserId: mine,
           membersCanCreateTopics: info.membersCanCreateTopics === true,
         });
-      // The detail may not have loaded yet: fall back to showing the entry
-      // when any non-topic group row exists — the dialog's create call
-      // enforces the real permission and reports the failure.
+      // The detail may not be loaded yet; the dialog's create call enforces the real permission.
       if (role === undefined) {
         seen.set(chat.groupId, {
           chatId: chat.id,
@@ -145,10 +133,6 @@ export function NewChatButton({
     setTopicGroupId(undefined);
     setDialog('topic');
   };
-
-  // The trigger button is the menu's anchor: Base UI opens on click, moves
-  // focus into the panel, and returns it to the button on Escape or an outside
-  // click.
 
   return (
     <div

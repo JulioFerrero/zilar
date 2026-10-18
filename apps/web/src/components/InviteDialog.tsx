@@ -9,14 +9,12 @@ import { useQuery } from '@/lib/effect/use-query';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 
-/** Creates an invite link and lets the user copy it. */
 export function InviteDialog({ onClose }: { onClose: () => void }) {
   const storeApi = useChatStoreApi();
   const [created] = useQuery(() => fromApi(() => storeApi.getState().createInvite()), [storeApi]);
   const url = AsyncResult.isSuccess(created) ? created.value : undefined;
   const failed = failureOf(created) !== undefined;
 
-  // A copy that the clipboard refuses leaves the button on "Copy", as before.
   const [copyState, copyUrl] = useAction<string, void, unknown>((value) =>
     Effect.tryPromise({ try: () => copyText(value), catch: (cause) => cause }),
   );

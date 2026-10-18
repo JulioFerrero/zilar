@@ -5,11 +5,8 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 
 interface EntityAvatarProps {
-  /** A person, contact, member or AI. */
   person?: AvatarPersonInput | null | undefined;
-  /** A chat row: DM peer, group, channel, topic or AI chat. */
   chat?: AvatarChatInput | null | undefined;
-  /** The signed-in user (resolved from the auth session). */
   me?: boolean | undefined;
   size?: number | undefined;
   online?: boolean | undefined;
@@ -17,14 +14,7 @@ interface EntityAvatarProps {
   className?: string | undefined;
 }
 
-/**
- * The one avatar call the screens use (T-1334): it hands the entity to
- * `avatarIdentity` and fills a missing picture from the stores the app
- * already holds — the auth session for the own row, the contacts store for a
- * person (keyed by `userId`, `apps/web/src/store/ChatStoreProvider.tsx`) and
- * the chat rows for a chat (keyed by `id`). No call site decides the seed or
- * picks a URL.
- */
+/** Fills a missing picture from the stores the app already holds; no call site picks a URL. */
 export function EntityAvatar({
   person,
   chat,
@@ -35,8 +25,7 @@ export function EntityAvatar({
   className,
 }: EntityAvatarProps) {
   const user = useAuth().user;
-  // Only the one picture row is read (T-2011): a whole-array subscription
-  // re-renders every avatar on each store write while an AI reply streams.
+  // Subscribe to the one picture row only: a whole-array read re-renders every avatar on each store write.
   const chatId = chat?.id;
   const chatAvatarUrl = useChatSelector((s) =>
     chatId === undefined ? undefined : s.chats.find((entry) => entry.id === chatId)?.avatarUrl,

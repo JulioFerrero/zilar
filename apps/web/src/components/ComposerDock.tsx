@@ -1,11 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
-/**
- * The floating bottom bar (T-1937): it overlays the message list instead of
- * taking a row under it. Its height is published as `--composer-h` on the
- * wrapping column, so the list can pad its content and lift its jump button
- * above the composer while messages scroll under it.
- */
+/** Overlays the list and publishes its height as `--composer-h` so the list pads around it. */
 export function ComposerDock({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
 

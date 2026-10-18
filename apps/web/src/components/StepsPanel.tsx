@@ -28,12 +28,6 @@ import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { Well } from './ui/well';
 
-/**
- * The header's AI picture comes from the card's AI, never the chat: in a group
- * topic the chat is the group. The AI is found by its JID in the contacts, then
- * the chat rows; otherwise its name (the card message's sender, or the JID) is
- * enough for the orb.
- */
 function aiPersonOf(
   jid: string,
   fallbackName: string,
@@ -51,7 +45,6 @@ function aiPersonOf(
   return { id: jid, name: fallbackName };
 }
 
-/** The state icon of one step row; a status is never a word. */
 export function StepStateIcon({
   state,
   reduceMotion,
@@ -87,7 +80,6 @@ export function StepStateIcon({
   return <Circle className={cn(classes, 'text-muted-foreground')} aria-hidden="true" />;
 }
 
-/** One step: its header toggles the actions logged under it. */
 function StepRow({
   step,
   open,
@@ -99,8 +91,6 @@ function StepRow({
   reduceMotion: boolean;
   onToggle: () => void;
 }) {
-  // Only a step with actions expands; one without shows no chevron and is not
-  // a toggle.
   const expandable = step.actions.length > 0;
   const Chevron = open ? ChevronDown : ChevronRight;
   const content = (
@@ -165,11 +155,8 @@ function StepRow({
 }
 
 /**
- * The Steps panel (T-1535): the card's own steps with the actions logged under
- * each, opened from a finished card's "View steps" row. The panel lists the
- * same steps as the card — never model calls, tokens, money or the answer — and
- * reads the card's title, total and AI from the card message. A 404 or an empty log
- * (the log is kept 30 days) falls back to the card's steps with no actions.
+ * Lists the card's steps, never model calls, tokens, money or the answer; a
+ * missing log (kept 30 days) falls back to the card's steps.
  */
 export function StepsPanel({
   chatId,
@@ -200,8 +187,6 @@ export function StepsPanel({
   const loaded = AsyncResult.isSuccess(result) ? result.value.steps : undefined;
   const { steps, loading, errored } = stepsView(loaded, failure?.status, card);
 
-  // The step holding the first failed action starts open, until the reader
-  // picks another one.
   const defaultOpen = defaultOpenStepId(steps);
   const [chosenOpen, setChosenOpen] = useState<string | null>();
   const openId = chosenOpen === undefined ? defaultOpen : chosenOpen;

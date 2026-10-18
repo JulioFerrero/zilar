@@ -27,7 +27,6 @@ function topicErrorText(failure: TopicFailure): string {
     : 'Could not create the topic. Try again.';
 }
 
-// The group's roles feed the Roles picker; a failed load shows no roles.
 const rolesOf = (groupId: string | undefined): Effect.Effect<GroupRole[]> =>
   groupId === undefined
     ? Effect.succeed([])
@@ -40,17 +39,11 @@ function glyphFor(name: string): string {
   return first.toUpperCase();
 }
 
-/**
- * The new-topic dialog (T-0111): name, type chips, a Public/Private
- * segmented control, and for private topics a people list (the creator ticked
- * and locked) plus the viewer's own AIs that are in the group. Create posts
- * the topic, then one AI add per ticked AI, then navigates to the new topic.
- */
 export function NewTopicDialog({
   groupId,
   onClose,
 }: {
-  /** The group's chat id (a topic row id or the legacy group id). */
+  /** A topic row id or the legacy group id. */
   groupId: string;
   onClose: () => void;
 }) {
@@ -60,14 +53,9 @@ export function NewTopicDialog({
   const [visibility, setVisibility] = useState<TopicVisibility>('public');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAis, setSelectedAis] = useState<string[]>([]);
-  // T-0116: roles with access + the approver role, applied with one
-  // `setTopicRoles` after the topic exists.
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [approverRoleId, setApproverRoleId] = useState<string | null>(null);
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === groupId));
-  // The group detail is keyed by the chat that loaded it (a topic row id or
-  // the legacy group id); the loader runs for the id the dialog was opened
-  // with, so that exact key is the one to read.
   const detail: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(groupId));
   const me = useChatSelector((s) => s.currentUserId);
 
@@ -110,7 +98,6 @@ export function NewTopicDialog({
   };
 
   const toggleRole = (roleId: string): void => {
-    // Unpicking the approver role clears the Approvers select with it.
     if (selectedRoles.includes(roleId) && approverRoleId === roleId) {
       setApproverRoleId(null);
     }
@@ -119,7 +106,6 @@ export function NewTopicDialog({
     );
   };
 
-  // A second click while the call waits is dropped (mode 'ignore').
   const [createState, runCreate] = useAction<void, void, TopicFailure>(() =>
     Effect.gen(function* () {
       const trimmed = name.trim();
@@ -134,15 +120,11 @@ export function NewTopicDialog({
           ...(memberIds === undefined ? {} : { memberIds }),
         }),
       ).pipe(Effect.catchTag('ApiFailure', () => Effect.fail(new TopicCreateFailed())));
-      // One AI failing must not lose the topic: the panel can add it.
       yield* Effect.forEach(
         selectedAis,
         (aiId) => fromApi(() => storeApi.getState().addTopicAi(chatJid, aiId)).pipe(Effect.ignore),
         { discard: true },
       );
-      // T-0116: attach the picked roles (and approver) to the new private
-      // topic. A failure here must not lose the topic either: the panel
-      // can attach them.
       if (visibility === 'private' && selectedRoles.length > 0) {
         yield* fromApi(() =>
           storeApi.getState().setTopicRoles(chatJid, {

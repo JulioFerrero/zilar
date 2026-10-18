@@ -4,9 +4,7 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { EntityAvatar } from './EntityAvatar';
 
-// Renders one message hit with its snippet highlights. The snippet is plain
-// text from the server (plus character ranges); every slice is rendered as
-// text, never HTML, so a hostile snippet cannot inject markup.
+// The snippet is server text plus ranges and is always rendered as text, never HTML.
 export function SearchSnippet({
   snippet,
   marks,

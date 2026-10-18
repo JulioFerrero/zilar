@@ -1,6 +1,5 @@
 import { cn } from '@/lib/utils';
 
-/** Three animated dots, used for `typing…` and `AI · working…`. */
 export function TypingDots({ className }: { className?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-0.5', className)} aria-hidden="true">

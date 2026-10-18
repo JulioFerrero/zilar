@@ -23,13 +23,6 @@ import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 
-/**
- * The topic info panel (T-0111), following WebTopic.dc.html (T-1837): the Add
- * key, the counted AIs and people sections, the tools row, the topic's link and
- * done switch, the topic's Always-allowed rules and roles (read-only, rows show
- * the topic name), pins, Archive, and Make public / Make private (private →
- * public confirms with the history-exposure warning).
- */
 export function TopicPanel({
   chat,
   onOpenGroup,
@@ -112,11 +105,7 @@ function TopicPanelBody({
   const myAisInGroup = myAis.filter((ai) => groupAis.some((item) => item.aiId === ai.id));
   const addableAis = myAisInGroup.filter((ai) => !aisState.ais.some((item) => item.id === ai.id));
 
-  // T-1784: the Add dialog's rows. Contacts and other AIs are the ones a group
-  // owner or admin can pull in (they join the group in the same step, T-1769).
-  // T-1784: the contacts and other AIs are only "outside the group" once the
-  // group info has loaded; while it is loading `groupMembers` is empty and
-  // every contact would look like it is not in the group yet.
+  // Contacts and other AIs only count as outside the group after the group info loads; before that the list is empty.
   const contactsNotInGroup =
     info === undefined
       ? []
@@ -169,15 +158,13 @@ function TopicPanelBody({
     return name === undefined ? undefined : `${name}'s`;
   };
   const canRemoveAi = (aiId: string): boolean => {
-    // T-1834: an AI leaves General only by leaving the group, in the group panel.
     if (topic.isGeneral === true) {
       return false;
     }
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     return ownerId === me || isManager;
   };
-  // T-1836: AIs count as members, like the chat header; the count waits for
-  // both lists so it never jumps.
+  // AIs count as members; the count waits for both lists so it never jumps.
   const headerSuffix =
     topic.isGeneral === true
       ? ' · Everyone'
@@ -185,9 +172,7 @@ function TopicPanelBody({
         ? ` · ${membersState.members.length + aisState.ais.length} members`
         : '';
   const visibilityBusy = isWaiting(visibilityState);
-  // T-1534: any member who can see the topic may mark it done or reopen it.
-  // The store repaints the row from the server's answer, then `refreshChats`
-  // updates the sidebar's mark.
+  // Any member who can see the topic may mark it done or reopen it.
   const [, runToggleDone] = useAction<void, void, never>(() =>
     Effect.sync(() => setErrorMessage('')).pipe(
       Effect.andThen(
@@ -261,9 +246,6 @@ function TopicPanelBody({
             />
           )}
 
-          {/* T-1534: the topic's link and its done switch. Every member who
-              can see the topic may use both. T-1835: General is the group's
-              room, so it has no done switch. */}
           <section aria-label="Topic" className="flex flex-col gap-1">
             <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Topic</h2>
             <TopicLinkRow chat={chat} onError={setErrorMessage} />
@@ -286,8 +268,6 @@ function TopicPanelBody({
             <TopicRulesSection groupId={chat.groupId} topicId={topic.id} topicName={chat.title} />
           )}
 
-          {/* T-0116: roles with access + the approver role, for private
-              topics. Everyone sees the attached list; managers edit it. */}
           {isPrivate && chat.groupId !== undefined && (
             <TopicRolesSection
               chatId={chat.id}
@@ -311,7 +291,6 @@ function TopicPanelBody({
             />
           )}
 
-          {/* T-1797: the board's bottom group, one Leave row (none on General). */}
           <TopicMuteLeave
             chat={chat}
             groupTitle={groupTitle}
@@ -322,7 +301,7 @@ function TopicPanelBody({
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
         </div>
 
-        {/* T-1784: the one Add dialog. A child of the Sheet, like the confirms,
+        {/* The Add dialog is a child of the Sheet, like the confirms,
             so Escape closes only the topmost overlay. */}
         {addDialogOpen && (
           <TopicAddDialog
@@ -338,7 +317,7 @@ function TopicPanelBody({
           />
         )}
 
-        {/* T-1351: the confirms are React children of the Sheet, not siblings,
+        {/* The confirms are React children of the Sheet,
             so Base UI nests them and Escape closes only the confirm. */}
         {confirmingVisibility && topic.visibility === 'private' && (
           <ConfirmDialog

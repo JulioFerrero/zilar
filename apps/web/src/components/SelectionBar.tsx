@@ -23,11 +23,6 @@ function deleteActionFor(
   return isDm && message.deleted !== true ? 'me' : 'none';
 }
 
-/**
- * The bottom bar shown while several messages are selected (T-0439): "N
- * selected", Cancel, Delete, Copy and Forward. Delete and Copy follow the
- * single-message rules (WUX-32); Escape leaves select mode.
- */
 export function SelectionBar({
   chat,
   selectedIds,
@@ -35,7 +30,6 @@ export function SelectionBar({
   onCancel,
 }: {
   chat: ChatSummary;
-  /** The checked message ids, in the order they were checked. */
   selectedIds: string[];
   onForward: () => void;
   onCancel: () => void;
@@ -56,8 +50,7 @@ export function SelectionBar({
     () => selected.filter((message) => deleteActionFor(message, meId, isDm) !== 'none'),
     [selected, meId, isDm],
   );
-  // "Delete for everyone" is offered only when every deletable message is mine;
-  // a DM selection holding a peer's message can only be deleted for me.
+  // "Delete for everyone" is offered only when every deletable message is mine.
   const allMine = deletable.every((message) => message.senderId === meId);
   const copyable = selected.filter(
     (message) => message.deleted !== true && (message.text ?? '').length > 0,

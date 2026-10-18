@@ -7,9 +7,7 @@ import { Button } from '@/components/ui/button';
 
 const FALLBACK_FILENAME = 'zilar-export.json';
 
-// The three limits T-1262 answers with (a stale session, the hourly cap and the
-// 200 000-message cap), plus the generic line for anything else. They are fixed
-// sentences of our own, never the server's text (AGENTS.md).
+// Fixed sentences for a stale session, the hourly cap and the 200 000-message cap.
 type ExportReason = 'reauth' | 'rate' | 'too_large' | 'failed';
 
 const EXPORT_MESSAGES: Record<ExportReason, string> = {
@@ -37,9 +35,7 @@ function reasonForStatus(status: number): ExportReason {
   }
 }
 
-// `Content-Disposition: attachment; filename="zilar-export-2026-10-12.json"`.
-// Any path is stripped and an absent or empty name falls back, so the saved
-// file never leaves the download folder.
+// The filename is stripped of any path, so the saved file never leaves the download folder.
 function filenameFrom(header: string | null): string {
   const match = header === null ? null : /filename\s*=\s*"?([^";]+)"?/i.exec(header);
   const name = match?.[1]?.trim().split(/[\\/]/).pop();
@@ -57,9 +53,6 @@ function saveBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-// The whole click as one Effect: fetch the export, fail with a mapped sentence
-// on a refusal, else save the body. `fetchExport` itself only rejects when the
-// server is unreachable.
 const exportEffect = (): Effect.Effect<void, ExportFailure> =>
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
@@ -78,7 +71,6 @@ const exportEffect = (): Effect.Effect<void, ExportFailure> =>
     });
   });
 
-/** Settings → Profile: download the caller's own export (T-1265). */
 export function ExportSection() {
   const [state, runExport] = useAction<void, void, ExportFailure>(exportEffect);
   const busy = isWaiting(state);

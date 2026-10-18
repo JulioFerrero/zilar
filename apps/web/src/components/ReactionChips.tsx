@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 
 export interface ReactionChipsProps {
   reactions: UiReaction[];
-  /** True for my own outgoing bubble, which aligns the chips to the right. */
   own: boolean;
   className?: string;
   onToggle: (emoji: string) => void;
@@ -16,10 +15,6 @@ function chipLabel(reaction: UiReaction): string {
     : `${reaction.emoji} ${reaction.count}`;
 }
 
-/**
- * The raised reaction pills under a bubble (ui-style.md D24). Mine use the
- * pressed look. Each chip is a toggle button; its tooltip lists the reactors.
- */
 export function ReactionChips({ reactions, own, className, onToggle }: ReactionChipsProps) {
   if (reactions.length === 0) {
     return null;

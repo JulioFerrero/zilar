@@ -9,17 +9,12 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Menu, MenuItem, type MenuItemProps } from './ui/menu';
 
 const SAVE_ERROR = 'Could not save that change';
-/** T-1247: the same fixed line the store sets when a delete call fails. */
+/** The same fixed line the store sets when a delete call fails. */
 const DELETE_ERROR = 'Could not delete. Try again.';
 
-/** The chat store rejected a change; the menu shows the fixed sentence. */
 class PrefSaveFailed extends Data.TaggedError('PrefSaveFailed') {}
 
-/**
- * One menu entry with its own save, so two entries can run at the same time
- * and a second click on the same entry while it waits is ignored. The
- * parent shows the error sentence and gets told whether the change failed.
- */
+/** One entry with its own save, so two entries can run at once. */
 function PrefMenuItem({
   save,
   onDone,
@@ -54,8 +49,7 @@ function PrefMenuItem({
   return (
     <MenuItem
       {...item}
-      // Keep the menu open until the save settles so a failure can show the
-      // error sentence; success closes via onDone(false).
+      // Stay open until the save settles so a failure can show its sentence.
       closeOnClick={false}
       onSelect={startSave}
     >
@@ -64,10 +58,7 @@ function PrefMenuItem({
   );
 }
 
-/** Pin / Mute / Archive items for one chat row, shared by the row menu, the
- *  header menu and the topic menu. `children` renders after the Archive
- *  entry (e.g. the manager's "Archive topic for everyone" under a divider).
- */
+/** Pin / Mute / Archive items for one chat row, shared by the row, header and topic menus. */
 export function ChatPrefMenuItems({
   chat,
   onDone,
@@ -83,7 +74,6 @@ export function ChatPrefMenuItems({
   const [error, setError] = useState<string | undefined>(undefined);
   const pinned = chat.pinnedAt !== undefined;
   const archived = chat.archived === true;
-  // T-1244: the chat is marked unread by hand, or has unread messages.
   const marked = chat.unreadMark === true;
   const showMarkRead = chat.unread > 0 || marked;
   const PinIcon = pinned ? PinOff : Pin;
@@ -126,7 +116,6 @@ export function ChatPrefMenuItems({
         <MenuItem
           icon={BellOff}
           ariaLabel={`Mute ${chat.title}`}
-          // Keep the menu open so the durations appear in place.
           closeOnClick={false}
           onSelect={() => setMuteOpen(true)}
         >
@@ -172,7 +161,6 @@ export function ChatPrefMenuItems({
         <MenuItem
           icon={Eraser}
           ariaLabel={`Clear history with ${chat.title}`}
-          // Keep the menu open so the confirm dialog can appear.
           closeOnClick={false}
           onSelect={() => setClearOpen(true)}
         >
@@ -205,7 +193,6 @@ export function ChatPrefMenuItems({
   );
 }
 
-/** Pin / Mute / Archive menu for a chat row (the floating variant). */
 export function ChatActionsMenu({
   chat,
   onClose,

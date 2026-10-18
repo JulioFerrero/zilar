@@ -20,16 +20,6 @@ const KIND_LABEL: Record<PinRow['kind'], string> = {
   card: 'Card',
 };
 
-/**
- * The pinned-message banner under the chat header (T-0114, decision D28): a
- * slim 2-line-max well with the sender and the snapshot text (or a kind
- * label for attachments). Clicking the text jumps to the message — scrolling
- * when it is loaded, paging back through history when it is not. With
- * several pins the banner cycles ("1 of N"); the list button opens the pins
- * panel. A retracted original whose retraction the client has seen reads
- * "Message deleted", and a manager can unpin it from the panel. Pin/unpin
- * failures surface here with a dismiss key.
- */
 export function PinnedBanner({ chatId }: { chatId: string }) {
   const storeApi = useChatStoreApi();
   const pins = useChatSelector((s) => s.pinsByChat[chatId]) ?? NO_PINS;
@@ -40,7 +30,6 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
   const [index, setIndex] = useState(0);
   const [jumpState, jumpTo, jumpControls] = useAction((messageId: string) =>
     fromApi(() => storeApi.getState().openAtMessage(chatId, messageId)).pipe(
-      // The message is loaded now: bring its bubble into view.
       Effect.tap(() =>
         Effect.sync(() => {
           window.requestAnimationFrame(() => {
@@ -50,11 +39,9 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
       ),
     ),
   );
-  // The last jump failed; hidden while a new jump runs.
   const jumpFailed = !isWaiting(jumpState) && failureOf(jumpState) !== undefined;
   const [unpinState, unpin] = useAction((pinId: string) =>
     fromApi(() => storeApi.getState().unpinMessage(chatId, pinId)).pipe(
-      // The failed pin is gone: drop the not-found line with it.
       Effect.tap(() => Effect.sync(jumpControls.reset)),
     ),
   );

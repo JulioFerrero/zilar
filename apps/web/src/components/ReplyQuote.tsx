@@ -4,13 +4,6 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 /** Our own replies keep the accent instead of a sender colour. */
 const ACCENT = 'var(--accent)';
 
-/**
- * The snapshot of the replied-to message above a bubble: the name and the left
- * bar use the replied-to sender's colour (the accent for our own messages), and
- * the excerpt falls back to a media label ("Photo", "Voice message", …) when the
- * replied-to message has no text. With `onOpen` it is a button that jumps to the
- * original (WUX-13); without it, a plain block.
- */
 export function ReplyQuote({ message, onOpen }: { message: UiMessage; onOpen?: () => void }) {
   const quote = message.replyTo;
   // The wire reply carries no name: resolve the target from the loaded history.

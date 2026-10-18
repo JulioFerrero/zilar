@@ -42,13 +42,11 @@ export const MessageList = memo(function MessageList({
   chat: ChatSummary;
   onReply: (message: UiMessage) => void;
   onForward?: (message: UiMessage) => void;
-  /** Multi-select controller (T-0439). */
   selection?: {
     ids: ReadonlySet<string>;
     onToggle: (message: UiMessage) => void;
     onStart: (message: UiMessage) => void;
   };
-  /** True while select mode is active (drives the checkbox UI). */
   selecting?: boolean;
 }) {
   const storeApi = useChatStoreApi();
@@ -58,11 +56,8 @@ export const MessageList = memo(function MessageList({
   const defaultBackground = useChatSelector((s) => s.defaultBackground);
   const storedMessages = useChatSelector((s) => s.messagesByChat[chatId]);
   const messages = storedMessages ?? EMPTY_MESSAGES;
-  // Unknown means never requested, which the real store reports as loading:
-  // first paint (before ChatView's openChat effect runs) must never flash
-  // the empty state.
+  // Unknown means never requested: first paint must never flash the empty state.
   const history = useChatSelector((s) => s.historyStateFor(chatId));
-  // T-2011: one pin subscription for the whole list; each row gets its pin id.
   const pins = useChatSelector((s) => s.pinsByChat[chatId]);
   const pinIdByMessage = useMemo(() => {
     const map = new Map<string, string>();
@@ -75,8 +70,7 @@ export const MessageList = memo(function MessageList({
   const finishedDraftMessages = useChatSelector((s) => s.finishedDraftMessages);
   const meId = useChatSelector((s) => s.currentUserId);
   const meJid = useChatSelector((s) => s.me?.jid ?? undefined);
-  // T-0461/T-0466: the chat's own background, else the group's shared one,
-  // else the caller's default, else slate (which paints no inline style).
+  // Chat background, else the group's shared one, else the caller's default, else slate.
   const backgroundStyle = chatBackgroundStyle(
     effectiveBackground(chatPref, defaultBackground, chat.groupBackground),
   );
@@ -94,8 +88,6 @@ export const MessageList = memo(function MessageList({
         : messages,
     [hideBlocked, messages, meId, blockedJids],
   );
-  // The draft is rendered as the AI's next message, so grouping, styles and
-  // size are identical to the final message that replaces it.
   const draftMessage = useMemo<UiMessage | undefined>(
     () =>
       draftTurnId !== undefined && draftText.length > 0
@@ -120,8 +112,7 @@ export const MessageList = memo(function MessageList({
       ),
     [visibleMessages, draftMessage],
   );
-  // ChatView passes fresh callbacks on every render; the bubbles are memoised,
-  // so hand them wrappers whose identity never changes.
+  // Bubbles are memoised, so pass wrappers with a never-changing identity.
   const handleReply = useLatestCallback(onReply);
   const handleForward = useLatestCallback(onForward);
   const handleToggleSelect = useLatestCallback(selection?.onToggle);
@@ -129,8 +120,7 @@ export const MessageList = memo(function MessageList({
   const selectedIds = selection?.ids;
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread, meId);
-  // PERF-3: draw only the newest window of render items. The unread divider is
-  // the anchor, so it is always drawn; a jump can widen the window (T-1278).
+  // Draw only the newest window; the unread divider is always drawn.
   const { windowItems, start, hasHidden, reveals, grow } = useMessageWindow(
     chatId,
     items,
@@ -159,9 +149,7 @@ export const MessageList = memo(function MessageList({
     draftText,
   });
 
-  // Loading and empty are different states: the empty and error views only
-  // appear once the first history page has settled. Live messages that
-  // arrive while loading are shown immediately.
+  // The empty and error views appear only once the first history page has settled.
   if (items.length === 0) {
     if (history === 'loading') {
       return (

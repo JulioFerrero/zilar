@@ -40,12 +40,8 @@ import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 
 /**
- * The channel info panel (T-0124): a root page with the picture, the count and
- * the Mute / Search / Share / More keys over the grouped lists, and one subpage
- * per row holding the sections that used to stack in a single scroll (T-1519).
- * The subscriber audience is visible to managers only — subscribers see the
- * count plus who posts (the admins slice, which is public the way every admin
- * post carries its name), never the audience.
+ * Managers see the subscriber audience; subscribers see the count and the
+ * admins who post, never the audience.
  */
 export function ChannelPanel({
   chat,
@@ -83,13 +79,8 @@ export function ChannelPanel({
   const [myAisQuery] = useQuery(() => fromApi(() => storeApi.getState().listMyAis()), [storeApi]);
   const myAis = AsyncResult.isSuccess(myAisQuery) ? myAisQuery.value : [];
 
-  // T-0124: subscribers never see the audience (`GET /api/groups/:id`
-  // strips `members` for them), but the Admins page still names who posts:
-  // the members endpoint answers the admins slice to subscribers
-  // (owner/admins only — who posts is public, every admin post carries its
-  // name — while the subscriber audience stays hidden). Managers read the
-  // full list from the detail they already hold, so no second request.
-  // Nothing to load for a manager or before the group is known: Effect.never.
+  // Managers read the full list from the detail; subscribers get only the admins
+  // slice (who posts is public), never the subscriber audience.
   const [adminsQuery] = useQuery(
     (): Effect.Effect<GroupMember[], ApiFailure> =>
       groupId === undefined || isManager
@@ -133,8 +124,6 @@ export function ChannelPanel({
           ),
   );
 
-  // The InviteLinksSection row waits for this Effect, so its button stays busy
-  // until the DELETE settles (T-0141).
   const revokeLink = (linkId: string): Effect.Effect<void, ApiFailure> =>
     groupId === undefined
       ? Effect.void
@@ -170,7 +159,6 @@ export function ChannelPanel({
       ),
     ),
   );
-  // Every picker button waits on the one add in flight, which is the one picked.
   const addingId = isWaiting(addState) ? pendingAiId : undefined;
   const pickAi = (aiId: string): void => {
     setPendingAiId(aiId);
@@ -221,9 +209,6 @@ export function ChannelPanel({
     adminsList.find((member) => member.userId === ai.ownerId)?.name ??
     'someone';
 
-  // The audience list: managers see everyone (names + roles) from the detail;
-  // subscribers see only who posts (the admins slice, loaded above) — the
-  // subscriber audience stays hidden everywhere.
   const audience = isManager ? (info?.members ?? []) : [];
   const admins = isManager ? audience.filter((member) => member.role !== 'member') : adminsList;
   const adminsLoaded = AsyncResult.isSuccess(adminsQuery);
@@ -314,15 +299,12 @@ export function ChannelPanel({
                 />
               )}
 
-              {/* T-0086: room activity, owners and admins only. */}
               {page === 'activity' && isManager && <ActivitySection scope={{ groupId: info.id }} />}
 
-              {/* T-0100: the standing rules for this channel, managers only. */}
               {page === 'allowed' && isManager && (
                 <AlwaysAllowedList scope={{ groupId: info.id }} />
               )}
 
-              {/* T-0164: public visibility with a handle — the owner only. */}
               {page === 'settings' && isOwner && (
                 <VisibilitySection
                   chatId={chat.id}

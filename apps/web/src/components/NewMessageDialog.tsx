@@ -9,7 +9,6 @@ import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { SearchField } from './ui/search-field';
 
-// Case-insensitive prefix match on any word of the name, or on the handle.
 function matchesFilter(contact: Contact, needle: string): boolean {
   if (needle === '') {
     return true;
@@ -26,10 +25,7 @@ function matchesFilter(contact: Contact, needle: string): boolean {
   return handle != null && handle.toLowerCase().startsWith(needle);
 }
 
-/**
- * Picks one contact and opens the DM at once (WUX-7). The DM already exists
- * on the server for every contact; the chat list only has to catch up.
- */
+/** Picks one contact and opens the DM; the DM already exists on the server, so the list only catches up. */
 export function NewMessageDialog({
   onClose,
   onInvite,
@@ -52,7 +48,6 @@ export function NewMessageDialog({
     navigate(`/c/${encodeURIComponent(contact.jid)}`);
   };
 
-  // No contacts yet: keep the invite prompt and its button.
   if (contacts.length === 0) {
     return (
       <Dialog

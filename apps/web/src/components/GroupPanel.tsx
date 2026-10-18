@@ -27,13 +27,6 @@ import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSw
 import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
 import type { PanelFailure } from './panels/groupPanelOps';
 
-/**
- * The group info panel (T-1494): a root page with the picture, the member count
- * and the Mute / Search / Add keys over three grouped lists, and one subpage per
- * row holding the sections that used to stack in a single scroll. It slides in
- * from the right on wide screens and fills the screen on narrow ones, opened
- * with `?panel=group` (T-0055).
- */
 export function GroupPanel({
   chat,
   onClose,
@@ -54,18 +47,13 @@ export function GroupPanel({
   const memberCount =
     info === undefined ? (chat.memberCount ?? 0) : info.members.length + info.ais.length;
 
-  // The add picker: undefined while closed, else the AIs it offers. The list is
-  // a snapshot taken on open, so an option that was just added stays mounted
-  // until the panel closes the picker (its success callback needs that).
+  // The add picker's list is a snapshot taken on open, so a just-added option stays mounted.
   const [pickerChoices, setPickerChoices] = useState<PublicAi[] | undefined>(undefined);
-  /** T-0466: the manager-only group background dialog. */
   const [backgroundOpen, setBackgroundOpen] = useState(false);
-  /** T-1494: the open subpage, and whether the members page opens its picker. */
   const [page, setPage] = useState<GroupInfoPageId>('root');
   const [pickerOnMount, setPickerOnMount] = useState(false);
 
-  // T-0115: invite links for owners/admins. The list carries hints, never
-  // tokens; the created URL is shown once with a Copy button.
+  // Invite links carry hints, never tokens; the created URL is shown once.
   const groupId = info?.id;
   const [linksResult, refreshLinks] = useQuery(
     () => loadLinks(isManager, groupId),
@@ -95,9 +83,6 @@ export function GroupPanel({
   const [revokeError, setRevokeError] = useState<string | undefined>(undefined);
   const linksError = messageOf(createState) ?? revokeError ?? messageOf(linksResult);
 
-  // Revoke runs as a promise because InviteLinksSection awaits it to keep the
-  // button on "Revoking…" until the request settles (T-0141). It never rejects:
-  // a failure is shown through `revokeError`.
   const revokeLink = (linkId: string): Promise<void> =>
     runWeb(
       groupId === undefined
@@ -109,10 +94,6 @@ export function GroupPanel({
           ),
     );
 
-  // Custom group roles (T-0116): every member sees who holds what (the
-  // chips below); managers get the CRUD section further down. A failure
-  // shows an inline error with Retry and never breaks the rest of the
-  // panel.
   const [rolesResult, refreshRoles] = useQuery(() => loadRoles(info?.id), [info?.id]);
   const rolesState = rolesViewOf(rolesResult);
 
@@ -127,7 +108,6 @@ export function GroupPanel({
     }
   }
 
-  // The AI list feeds the add picker.
   const [myAisResult] = useQuery(
     () =>
       Effect.tryPromise({
@@ -142,18 +122,14 @@ export function GroupPanel({
     (ai) => ai.status === 'active' && info?.ais.some((item) => item.aiId === ai.id) !== true,
   );
 
-  // The panel refreshes the members when it opens, so a change made elsewhere
-  // shows up here.
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(chat.id);
   }, [storeApi, chat.id]);
 
   const isOwner = meRole === 'owner';
-  // T-1249: the panel can be handed the group's General topic row, whose
-  // `title` is the topic name ("General"), so show the group title instead.
+  // A General topic row's `title` is the topic name, so show the group title.
   const panelTitle = chat.groupTitle ?? chat.title;
 
-  // The People and AIs row's stack (T-1857): the group's AIs first, then people.
   const stack: AvatarStackEntry[] =
     info === undefined
       ? []
@@ -175,7 +151,6 @@ export function GroupPanel({
     setPage(next);
   };
 
-  // The root's Add key: the People and AIs page, with the picker already open.
   const openMembersWithPicker = (): void => {
     setPickerOnMount(true);
     setPage('people');
@@ -228,7 +203,6 @@ export function GroupPanel({
                 />
               )}
 
-              {/* T-0115: shareable invite links, owners and admins only. */}
               {page === 'links' && isManager && (
                 <InviteLinksSection
                   links={links}
@@ -241,8 +215,6 @@ export function GroupPanel({
                 />
               )}
 
-              {/* T-0107: tools and routines of the group (General). Plain
-                    members read; managers get the actions. */}
               {page === 'tools' && (
                 <>
                   <ToolsSection
@@ -258,19 +230,14 @@ export function GroupPanel({
                 </>
               )}
 
-              {/* T-0086: room activity, owners and admins only. The section
-                    handles its own load / error states. */}
               {page === 'activity' && isManager && <ActivitySection scope={{ groupId: info.id }} />}
 
-              {/* T-0100: the standing rules for this group, owners and admins
-                    only. */}
               {page === 'allowed' && isManager && (
                 <AlwaysAllowedList scope={{ groupId: info.id }} />
               )}
 
               {page === 'settings' && (
                 <>
-                  {/* T-0165: the group's picture, for owners and admins. */}
                   {isManager && (
                     <GroupPictureSection
                       groupId={info.id}
@@ -280,7 +247,6 @@ export function GroupPanel({
                     />
                   )}
 
-                  {/* T-0111: "Members can create topics", managers only. */}
                   {isManager && (
                     <GroupTopicSetting
                       chatId={chat.id}
@@ -288,8 +254,6 @@ export function GroupPanel({
                     />
                   )}
 
-                  {/* T-0478: the AI listener switch and eagerness, managers
-                        only. */}
                   {isManager && (
                     <GroupListenerSetting
                       chatId={chat.id}
@@ -299,7 +263,6 @@ export function GroupPanel({
                     />
                   )}
 
-                  {/* T-0164: public visibility with a handle — the owner only. */}
                   {isOwner && (
                     <VisibilitySection
                       chatId={chat.id}

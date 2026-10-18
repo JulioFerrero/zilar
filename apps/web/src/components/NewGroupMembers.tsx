@@ -5,11 +5,7 @@ import { HandleSuffix } from './HandleSuffix';
 import { Checkbox } from './ui/checkbox';
 import { SearchField } from './ui/search-field';
 
-/**
- * WUX-20: the "Add members" step of `NewGroupDialog`. A search box filters the
- * contact list by name or handle. Selection is controlled by the dialog, so
- * the chosen ids survive the search text changing or the list unmounting.
- */
+/** The "Add members" step; selection is controlled by the dialog, so chosen ids survive a search text change. */
 export function NewGroupMembers({
   contacts,
   selected,

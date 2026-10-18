@@ -11,11 +11,7 @@ export interface MentionPickerProps {
   onHover: (index: number) => void;
 }
 
-/**
- * The `@` member picker shown above a group composer. It is a D24 surface card
- * (like the message actions menu); the textarea keeps focus, so the active row
- * is tracked with `aria-activedescendant`.
- */
+/** The `@` picker above a group composer; the textarea keeps focus through `aria-activedescendant`. */
 export function MentionPicker({ id, members, activeIndex, onSelect, onHover }: MentionPickerProps) {
   return (
     <div

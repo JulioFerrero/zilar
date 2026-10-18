@@ -1,5 +1,3 @@
-// T-1697: select mode for the chat screen, split out of ChatView.tsx so the
-// route stays under its size limit. The bodies are moved unchanged.
 import type { UiMessage } from '@zilar/chat-core';
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -13,8 +11,7 @@ export function useMessageSelection({
   storeApi: ReturnType<typeof useChatStoreApi>;
   setForwarding: Dispatch<SetStateAction<UiMessage[] | null>>;
 }) {
-  // The ids checked in select mode; null means not selecting. Reset when the
-  // chat changes so a selection can never leak from one chat to the next.
+  // The ids checked in select mode; null means not selecting. Reset on chat change so a selection never leaks.
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [selectionChatId, setSelectionChatId] = useState(chatId);
   if (selectionChatId !== chatId) {

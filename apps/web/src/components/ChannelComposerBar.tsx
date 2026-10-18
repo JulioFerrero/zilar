@@ -5,13 +5,7 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Button } from '@/components/ui/button';
 import { useMuteToggle } from '@/components/useMuteToggle';
 
-/**
- * The channel feed's bottom bar (T-0124). Admins (owner/admin) see the normal
- * composer — they post. Subscribers see a recessed bar instead:
- * "Only admins can post here" with a Mute / Unmute button (the T-0113 chat
- * pref on the feed row). Posting itself is enforced by the moderated room,
- * not by this bar: a subscriber's send would be refused by ejabberd.
- */
+/** Subscribers see a read-only bar; the moderated room enforces posting, not this bar. */
 export function ChannelComposerBar({
   chat,
   replyTo,
@@ -23,12 +17,9 @@ export function ChannelComposerBar({
 }) {
   const info = useChatSelector((s) => s.groupInfo(chat.id));
   const currentUserId = useChatSelector((s) => s.currentUserId);
-  // A second click while the mute waits is ignored (the hook's default mode).
   const { muted, busy, error, toggle } = useMuteToggle(chat);
 
-  // The role rides the chat row (`myRole`) for channels; the group detail
-  // backs it up once loaded. Unknown = subscriber (read-only) until proven
-  // otherwise — the safe default.
+  // Unknown role means subscriber (read-only) until proven otherwise.
   const role = chat.myRole ?? info?.members.find((member) => member.userId === currentUserId)?.role;
   const canPost = role === 'owner' || role === 'admin';
 

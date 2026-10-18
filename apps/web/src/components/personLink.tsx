@@ -18,11 +18,6 @@ type PersonHref = {
 
 const noop = (): void => undefined;
 
-/**
- * Where a person opens from the web app: their DM when they are a contact or
- * have a chat row (the viewer's own AI included), the Add contact card for a
- * known handle, and nothing for yourself or an unknown sender.
- */
 export function usePersonHref(target: PersonTarget): PersonHref | undefined {
   const currentUserId = useChatSelector((state) => state.currentUserId);
   const contacts = useChatSelector((state) => state.contacts);
@@ -54,8 +49,6 @@ export function usePersonHref(target: PersonTarget): PersonHref | undefined {
     const chatId = destination.chatId;
     return {
       to: `/c/${encodeURIComponent(chatId)}`,
-      // The list may not have the new chat row yet; the shell opens the DM
-      // when it lands (the same hand-off as the global people search).
       onOpen: () => {
         if (!chats.some((chat) => chat.id === chatId)) {
           storeApi.getState().refreshChats();
@@ -65,11 +58,7 @@ export function usePersonHref(target: PersonTarget): PersonHref | undefined {
   }, [jid, userId, handle, currentUserId, contacts, chats, groupInfos, storeApi]);
 }
 
-/**
- * A group member carries the handle the Add contact card needs; the message
- * sender itself only carries a JID, so match its localpart to a member's user
- * id across the group details already loaded for the open chats.
- */
+/** A group member carries the handle the Add card needs; match the sender's localpart to a member's user id. */
 function memberHandle(
   groupInfos: Record<string, GroupDetail>,
   localpart: string,
@@ -83,11 +72,6 @@ function memberHandle(
   return undefined;
 }
 
-/**
- * Wraps a person's avatar and name in the link that opens them. A person with
- * nowhere to open stays exactly as it was, so self and unknown senders keep
- * their plain rendering.
- */
 export function PersonLink({
   target,
   name,
@@ -112,8 +96,7 @@ export function PersonLink({
       }}
       aria-label={`Open ${name}`}
       title={name}
-      // The bubble CSS styles every anchor white and underlined; the sender
-      // name must keep its per-sender colour and the panels their own type.
+      // The bubble CSS styles every anchor white; keep the sender's colour and the panels' type.
       style={{ color: 'inherit', textDecoration: 'none' }}
       className={cn(
         'rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',

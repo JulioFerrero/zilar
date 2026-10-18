@@ -1,10 +1,6 @@
 import { Pencil, X } from 'lucide-react';
 import { Well } from './ui/well';
 
-/**
- * The composer's edit bar, like the reply bar: it names the action, shows the
- * text being edited and closes with the × key or Escape.
- */
 export function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
   return (
     <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">

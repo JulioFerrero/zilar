@@ -27,15 +27,10 @@ const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: 'channel', label: 'Channels' },
 ];
 
-/** A chat-store call rejected with a plain Error: the sentence is the store's own. */
 class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
 
 type JoinFailure = ApiFailure | StoreFailed;
 
-/**
- * Lifts a chat-store call. An ApiError keeps its code (as in api.ts), a plain
- * Error keeps its message, and any other value becomes the generic failure.
- */
 function fromStore<A>(call: () => Promise<A>): Effect.Effect<A, JoinFailure> {
   return Effect.tryPromise({
     try: call,
@@ -46,20 +41,12 @@ function fromStore<A>(call: () => Promise<A>): Effect.Effect<A, JoinFailure> {
   });
 }
 
-/** The directory query for the search text and the kind filter. */
 const searchInput = (query: string, kind: KindFilter): SearchDirectoryInput => ({
   ...(query === '' ? {} : { q: query }),
   ...(kind === 'all' ? {} : { kind }),
 });
 
-/**
- * Explore (T-0164, T-1972): the page body reachable from the chat list, the
- * + new chat menu and the empty state. Searches public groups and channels
- * only (by handle or title prefix, at least 2 characters; empty lists the
- * newest), with a Groups / Channels filter. Each row shows the title,
- * `@handle`, description, member count and a Join button (or Open when
- * already joined). Empty and error states are real messages, never blank.
- */
+/** Searches public groups and channels by handle or title prefix (at least 2 characters). */
 export function ExploreContent({ onDone }: { onDone: () => void }) {
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
@@ -74,9 +61,6 @@ export function ExploreContent({ onDone }: { onDone: () => void }) {
 
   const trimmed = query.trim();
 
-  // The first page, debounced: the 300 ms sleep is the debounce, and useQuery
-  // interrupts it when the query or the kind changes. A query under 2
-  // characters (but not empty) waits for more typing instead of erroring.
   const [, reloadFirstPage] = useQuery(
     () =>
       trimmed !== '' && trimmed.length < 2
@@ -122,9 +106,6 @@ export function ExploreContent({ onDone }: { onDone: () => void }) {
     ),
   );
 
-  // Already joined: open the group chat. The General chat keeps the group's
-  // chat id, resolved from the painted list like JoinPage does. The page
-  // leaves only after the id is known, so the navigation is never cut short.
   const openGroup = (entry: DirectoryEntry): Effect.Effect<void> =>
     Effect.tryPromise({
       try: () => storeApi.getState().refreshGeneralTopic(entry.id),

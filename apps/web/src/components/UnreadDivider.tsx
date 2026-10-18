@@ -1,6 +1,5 @@
 import type { Ref } from 'react';
 
-/** Full-width "Unread messages" bar shown above the first unread message. */
 export function UnreadDivider({ ref }: { ref?: Ref<HTMLDivElement> }) {
   return (
     <div ref={ref} className="my-3 w-full">

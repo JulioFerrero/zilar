@@ -12,16 +12,12 @@ export interface StickerMessageProps {
   sticker: Sticker;
   message: UiMessage;
   own: boolean;
-  /** In select mode a click reaches the row's toggle instead of the pack link. */
   selecting?: boolean;
 }
 
 /**
- * A sticker without a bubble: at most 200 px on the chat background, with
- * the time and ticks overlaid in a small pill. The image loads from the
- * payload `url` only when it is on the same origin as the Zilar API;
- * anything else shows a placeholder so a hostile sender cannot make every
- * viewer's browser fetch an arbitrary URL.
+ * Loads the image only from the API's own origin; anything else shows a
+ * placeholder so a hostile sender cannot make viewers fetch an arbitrary URL.
  */
 export function StickerMessage({ sticker, message, own, selecting = false }: StickerMessageProps) {
   const [broken, setBroken] = useState(false);

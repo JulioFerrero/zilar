@@ -7,7 +7,6 @@ import { folderUnreadTotal } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-/** The folder track for narrow screens: "All chats" plus one tab per folder. */
 export function FolderTabs() {
   const folders = useChatSelector((s) => s.folders);
   const chats = useChatSelector((s) => s.chats);

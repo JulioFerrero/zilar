@@ -8,17 +8,13 @@ import { Dialog } from './ui/dialog';
 import { SearchField } from './ui/search-field';
 import { TextArea } from './ui/text-input';
 
-/** A topic row reads `Group › Topic`; everything else is just its title. */
 function targetLabel(chat: ChatSummary): string {
   return chat.topic !== undefined && chat.groupTitle !== undefined
     ? `${chat.groupTitle} › ${chat.title}`
     : chat.title;
 }
 
-/**
- * A channel row is offered only where the caller may post; a plain member (or
- * an unknown role) has no voice in the feed room.
- */
+/** A channel is offered only where the caller may post; an unknown role has no voice. */
 function canPostTo(chat: ChatSummary): boolean {
   if (chat.chatKind !== 'channel') {
     return true;
@@ -26,12 +22,7 @@ function canPostTo(chat: ChatSummary): boolean {
   return chat.myRole === 'owner' || chat.myRole === 'admin';
 }
 
-/**
- * Picks one or more target chats for a forward (T-0419). Several targets are
- * allowed; the optional comment rides along as a separate message per target
- * (the store action already splits it). Archived chats and non-postable
- * channels are never offered.
- */
+/** Picks one or more targets; archived chats and non-postable channels are never offered. */
 export function ForwardPicker({
   messages,
   onClose,

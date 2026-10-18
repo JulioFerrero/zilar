@@ -7,26 +7,15 @@ import { downloadFile, openPdfInNewTab } from '@/lib/open-file';
 import { cn } from '@/lib/utils';
 
 export interface FileMessageProps {
-  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  /** The chat JID; `GET /api/files` checks membership. */
   chatId: string;
   attachment: Attachment;
   own: boolean;
-  /** True while the bytes are still uploading. */
   uploading?: boolean;
-  /** True when the upload failed; the bubble shows a Retry instead. */
   failed?: boolean;
   onRetry?: (() => void) | undefined;
 }
 
-/**
- * A file attachment as a Telegram-style bubble (T-1322, parity with the mobile
- * `file-bubble.tsx`): a round accent circle (a `FileText` document icon for a
- * PDF, a download arrow for any other file, and a spinner while fetching), the
- * file name and "3.9 KB PDF" below. No inner card: the bubble's own surface is
- * the card. Clicking opens a PDF in a new tab through the browser's viewer, and
- * downloads any other file. Saving a PDF is the message menu's Download item
- * (T-1325), so the bubble keeps a single circle like Telegram.
- */
 export function FileMessage({
   chatId,
   attachment,

@@ -39,7 +39,6 @@ import { Badge } from './ui/badge';
 const NO_MESSAGES: UiMessage[] = [];
 const NO_NAMES: string[] = [];
 
-/** The lucide icon for each `previewKind`, in the kind's own order. */
 const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
   photo: ImageIcon,
   album: Images,

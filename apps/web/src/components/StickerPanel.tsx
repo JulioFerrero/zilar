@@ -30,18 +30,10 @@ export interface StickerChoice {
 export interface StickerPanelProps {
   onPick: (sticker: StickerChoice) => void;
   onClose: () => void;
-  /** Appends an emoji to the composer draft (the Emoji tab has no server). */
   onEmoji: (emoji: string) => void;
-  /** Sends a GIF through the attachment upload path (T-0122). */
   onGifPick: (gif: GifChoice) => void;
-  /** Opens Settings → Stickers ("Manage stickers" link in the panel). */
   onManage?: (() => void) | undefined;
-  /** Opens the pack creator (the "+" tab in the panel). */
   onCreate?: (() => void) | undefined;
-  /**
-   * Forces the GIFs tab visible or hidden (T-0146, tests only): the panel
-   * otherwise probes the server once per session.
-   */
   gifsTab?: 'show' | 'hide' | undefined;
 }
 
@@ -49,7 +41,6 @@ type Tab = 'emoji' | 'stickers' | 'gifs';
 
 const PANEL_TABS: readonly Tab[] = ['emoji', 'stickers', 'gifs'] as const;
 
-/** One row from a pack, a favorite or the recents, normalised to a panel choice. */
 function toChoice(source: Sticker | RecentStickerEntry): StickerChoice {
   if ('stickerId' in source) {
     return {
@@ -73,7 +64,6 @@ function toChoice(source: Sticker | RecentStickerEntry): StickerChoice {
   };
 }
 
-/** The panel choice as a favorite row, for the optimistic add and its rollback. */
 function favoriteFrom(choice: StickerChoice): Sticker {
   return {
     id: choice.stickerId,
@@ -88,17 +78,9 @@ function favoriteFrom(choice: StickerChoice): Sticker {
 }
 
 /**
- * The sticker panel in the composer (T-0120, GIFs in T-0122): tabs Emoji /
- * Stickers / GIFs (Emoji first, T-1945), a strip of pack tabs (first: Recent),
- * a 5-column grid of 56 px tiles that fit the 344 px panel with no overlap,
- * hover/keyboard focus preview, click sends. The GIFs tab searches through the
- * privacy-preserving proxy; the Emoji tab is one scrolling picker with a
- * category bar and appends an emoji to the draft.
- *
- * The dialog is `fixed` to the viewport's bottom-right (`right-4
- * bottom-24`, next to the composer's emoji button) with
- * `max-w-[calc(100vw-2rem)]`, so it opens above the button and always stays
- * inside the viewport, even on narrow windows.
+ * Composer sticker panel: Emoji, Stickers and GIFs tabs; GIF search goes
+ * through the privacy-preserving proxy. Fixed to the viewport's bottom-right
+ * so it stays inside narrow windows.
  */
 export function StickerPanel({
   onPick,
@@ -115,15 +97,8 @@ export function StickerPanel({
   const [favorites, setFavorites] = useState<Sticker[] | undefined>(undefined);
   const [favoriteError, setFavoriteError] = useState('');
   const [recents, setRecents] = useState<RecentStickerEntry[]>(readStoredRecents);
-  // T-0146: the GIFs tab hides when the provider is off. The probe runs
-  // once per session and remembers the answer. Shown/hidden are derived during
-  // render from the tri-state; the probe settles into the state below (an
-  // external-system sync, like the sticker list load), and a tab that
-  // disappears under the active tab falls back to Emoji at render time
-  // so the panel never shows an empty body.
-  // The probe runs in mock mode too (T-1086): the shared mock backend serves
-  // trending and search, so the tab is not assumed available.
-  // `gifsTab` forces the answer in tests of the hidden state.
+  // The GIFs tab hides on a 501 (provider off); the probe runs once per
+  // session, and a hidden active tab falls back to Emoji.
   const gifsProbeNeeded = gifsTab === undefined;
   const [gifsEnabled, setGifsEnabled] = useState<boolean | undefined>(() => {
     if (gifsTab !== undefined) {
@@ -142,11 +117,8 @@ export function StickerPanel({
     [gifsProbeNeeded],
   );
 
-  // The visible tab: when the GIF tab disappears under the active tab, the
-  // panel shows the Emoji tab instead of an empty body.
   const visibleTab: Tab = tab === 'gifs' && gifsEnabled === false ? 'emoji' : tab;
 
-  // A failed list shows no packs; the panel says so instead of loading forever.
   useQuery(
     () =>
       fromApi(() => listStickerPacks()).pipe(
@@ -156,7 +128,6 @@ export function StickerPanel({
     [],
   );
 
-  // Discover is best-effort: server packs are browsable even before T-0121.
   useQuery(
     () =>
       fromApi(() => discoverStickerPacks()).pipe(
@@ -175,7 +146,6 @@ export function StickerPanel({
     [],
   );
 
-  // Favorites are best-effort too: the panel works without them.
   useQuery(
     () =>
       fromApi(() => listStickerFavorites()).pipe(
@@ -224,8 +194,6 @@ export function StickerPanel({
     [favorites],
   );
 
-  // Optimistic favorite: flip the star at once (`wasStarred` is the state
-  // before the click).
   const applyFavorite = (sticker: StickerChoice, wasStarred: boolean): void => {
     setFavoriteError('');
     setFavorites((previous) => {
@@ -236,7 +204,6 @@ export function StickerPanel({
     });
   };
 
-  // Rolls back an optimistic favorite whose request failed.
   const undoFavorite = (sticker: StickerChoice, wasStarred: boolean): void => {
     setFavorites((previous) => {
       if (wasStarred) {

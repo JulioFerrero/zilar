@@ -11,17 +11,9 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { MessageSearchResult } from './MessageSearchResult';
 
-// A stable empty list: keeps `items` referentially equal between renders while
-// there is no settled answer, so the memo below does not churn.
+// A stable empty list keeps the memo below from churning while no results settle.
 const EMPTY_ITEMS: SearchItem[] = [];
 
-// Opens a hit at its message: the chat route, then a scroll, on the next
-// frame, once the history page holding the message is loaded and any window
-// growth has settled (the reply, pin and media jumps all defer their scroll
-// the same way, `MessageBubble.tsx:150`). `mode` is 'replace' for the narrow
-// search bar, whose single action must follow fast stepping instead of
-// dropping a step while the one before is still paging. Exported so the
-// narrow in-chat search bar (ChatSearchBar) jumps with the same path.
 export function useOpenHit(
   onNotFound: (chatJid: string) => void,
   mode: 'ignore' | 'replace' = 'ignore',
@@ -74,10 +66,6 @@ function SearchHit({
   );
 }
 
-// The rendered hit list with a highlighted row (WUX-23). It is keyed by the
-// query and scope in the parent, so a new search remounts it and the highlight
-// starts at the first hit again. Up/Down move the highlight, Enter opens it; a
-// click opens that hit at its message.
 function MessageHitList({
   groups,
   notFound,
@@ -99,9 +87,6 @@ function MessageHitList({
     return map;
   }, [displayItems]);
 
-  // The ref mirrors the ordered hits so the window listeners read the current
-  // list without being re-subscribed on every keystroke; a layout effect keeps
-  // it in step before the rows paint.
   const itemsRef = useRef<SearchItem[]>([]);
   useLayoutEffect(() => {
     itemsRef.current = displayItems;
@@ -127,10 +112,6 @@ function MessageHitList({
     setHighlighted((current) => (((current + delta) % count) + count) % count);
   }, []);
 
-  // The search input lives in `SearchBar`, outside this subtree, so Up/Down
-  // there arrive as window events while it has focus. Enter there is the
-  // existing `zilar:search-enter` path, now opening the highlighted hit
-  // instead of only the top one.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const active = document.activeElement;
@@ -201,9 +182,6 @@ function MessageHitList({
   );
 }
 
-// The Messages section of the chat list: hits grouped by chat, newest group
-// first. Rendered only once a search has results; the hit list handles the
-// highlight and Enter.
 export function MessageSearchResults({
   query,
   chatFilter,

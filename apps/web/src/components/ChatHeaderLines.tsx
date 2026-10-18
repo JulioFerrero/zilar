@@ -4,7 +4,6 @@ import { AiBadge } from './AiBadge';
 import { TypingDots } from './TypingDots';
 import { TopicPeopleLine } from './topic/TopicPeopleLine';
 
-/** The header's first line: the title with its AI, public and private badges. */
 export function ChatHeaderTitle({ chat, isTopic }: { chat: ChatSummary; isTopic: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -20,12 +19,6 @@ export function ChatHeaderTitle({ chat, isTopic }: { chat: ChatSummary; isTopic:
   );
 }
 
-/**
- * The header's second line: a topic's people line, or the subtitle with the
- * typing dots. T-1779 (W1): a topic swaps the old subtitle for the people stack
- * and, while someone writes, the writers with the pulsing dot. The connection
- * line and an AI status line win, exactly as before.
- */
 export function ChatHeaderSubtitle({
   chat,
   isTopic,

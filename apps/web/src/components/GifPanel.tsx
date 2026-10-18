@@ -13,10 +13,10 @@ import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 
 export interface GifChoice {
-  /** The provider item id (for attribution keys, never fetched). */
+  /** Attribution only; the id is never fetched from the provider. */
   id: string;
   title: string;
-  /** Same-origin proxy URL for the media bytes. */
+  /** Same-origin proxy, never the provider. */
   url: string;
   kind: 'image' | 'video';
   width: number;
@@ -28,7 +28,6 @@ export interface GifPanelProps {
   onPick: (gif: GifChoice) => void;
 }
 
-/** The pages after the first one, for the search that is shown. */
 interface MorePages {
   readonly items: GifResult[];
   readonly nextPos: string | undefined;
@@ -38,11 +37,8 @@ const ATTRIBUTION = 'Powered by Giphy';
 const LOAD_ERROR = 'Could not load GIFs. Try again.';
 
 /**
- * Probes GIF availability once per session and remembers the answer: `true`
- * while the provider answers, `false` after a 501 `gifs_unavailable`, and
- * `undefined` before the first probe. Network errors keep the answer unknown
- * (the tab stays, the panel shows Retry) so a transient outage does not
- * permanently hide the tab.
+ * Probes availability once per session: `false` only on a 501, while network
+ * errors stay `undefined` so a transient outage does not hide the tab.
  */
 const gifsAvailabilityCache: { value: boolean | undefined } = { value: undefined };
 
@@ -69,7 +65,6 @@ const probeProvider = (): Effect.Effect<boolean> =>
     }),
   );
 
-/** The cached answer, or one probe of the provider when none is cached yet. */
 export function probeGifsAvailabilityEffect(): Effect.Effect<boolean> {
   return Effect.suspend(() => {
     const cached = gifsAvailabilityCache.value;
@@ -81,7 +76,6 @@ export function probeGifsAvailability(): Promise<boolean> {
   return Effect.runPromise(probeGifsAvailabilityEffect());
 }
 
-/** One page: the trending feed for an empty search, otherwise the search. */
 function pageOf(search: string, pos: string | undefined): Effect.Effect<GifPage, ApiFailure> {
   const term = search.trim();
   return fromApi((signal) =>
@@ -90,19 +84,16 @@ function pageOf(search: string, pos: string | undefined): Effect.Effect<GifPage,
 }
 
 /**
- * The bytes to show for one result. Real results load through the
- * same-origin proxy; the mock backend's placeholder art is `data:image/`
- * (the same trust argument as the sticker demo packs) and renders directly.
+ * Bytes load through the same-origin proxy; mock `data:image/` placeholders
+ * render directly.
  */
 export function gifPreviewUrl(item: Pick<GifResult, 'mediaToken'>): string {
   return item.mediaToken.startsWith('data:image/') ? item.mediaToken : gifMediaUrl(item.mediaToken);
 }
 
 /**
- * One GIF cell: video loops muted inline (only while visible), images are
- * plain `<img>`. Every byte loads through the same-origin proxy, never the
- * provider. `prefers-reduced-motion` shows still frames: videos render
- * paused without autoplay.
+ * One cell: video loops muted inline only while visible, images are plain
+ * `<img>`, and reduced motion shows still frames.
  */
 function GifCell({
   item,
@@ -167,25 +158,13 @@ function GifCell({
   );
 }
 
-/**
- * The GIFs tab (T-0122): debounced search (300 ms, cancelling), trending on
- * open, a 2-column grid of proxy-loaded previews, infinite scroll with `pos`,
- * and the provider attribution. Empty, error and unavailable states included.
- *
- * T-0146: when the server answers 501 `gifs_unavailable` (provider off), the
- * sticker panel hides this tab instead of showing a dead-end message. The
- * probe runs once per session (`gifsAvailability`) and caches the answer;
- * `GifPanel` still renders its own unavailable state when mounted directly.
- */
 export function GifPanel({ onPick }: GifPanelProps) {
   const [typed, setTyped] = useState('');
-  // The search the results show: it moves 300 ms after the last keystroke.
   const [searched, setSearched] = useState('');
   const [more, setMore] = useState<MorePages | undefined>(undefined);
   const [visibleIds, setVisibleIds] = useState<ReadonlySet<string>>(() => new Set());
   const cellRefs = useRef(new Map<string, HTMLDivElement | null>());
 
-  // The next page of the shown search. A new search cancels it (below).
   const [moreState, loadMorePage, moreControls] = useAction((pos: string) =>
     pageOf(searched, pos).pipe(
       Effect.tap((page) =>
@@ -199,11 +178,7 @@ export function GifPanel({ onPick }: GifPanelProps) {
     ),
   );
 
-  // The debounce: each keystroke restarts the 300 ms wait. When it ends, the
-  // shown search changes and any page still loading for the old one is
-  // cancelled, so the grid keeps the old results until then. A wait whose
-  // keystroke is no longer the latest does nothing, even if it was not
-  // cancelled in time.
+  // Each keystroke restarts the 300 ms wait; a stale wait does nothing.
   const latestTyped = useRef('');
   useQuery(
     () =>
@@ -234,8 +209,7 @@ export function GifPanel({ onPick }: GifPanelProps) {
   const items = useMemo(() => [...(page?.items ?? []), ...(more?.items ?? [])], [page, more]);
   const nextPos = more !== undefined ? more.nextPos : page?.nextPos;
 
-  // Only visible items play: an IntersectionObserver tracks the cells. When
-  // the observer is unavailable every item counts as visible (see the grid).
+  // Only visible cells play; without IntersectionObserver all count as visible.
   const observerUnavailable = typeof IntersectionObserver === 'undefined';
   useEffect(() => {
     if (observerUnavailable) {
@@ -275,7 +249,6 @@ export function GifPanel({ onPick }: GifPanelProps) {
     }
   };
 
-  // Retry starts again from the first page; pages loaded before are dropped.
   const retry = (): void => {
     setMore(undefined);
     moreControls.reset();

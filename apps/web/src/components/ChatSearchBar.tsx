@@ -6,7 +6,6 @@ import { useOpenHit } from './MessageSearchResults';
 import { IconButton } from './ui/icon-button';
 import { Well } from './ui/well';
 
-/** The count chip: "n of N" once the query has hits, its length, or nothing. */
 function counterLabel(search: MessageSearchState, count: number, position: number): string {
   if (search.status === 'loading') {
     return '…';
@@ -17,19 +16,8 @@ function counterLabel(search: MessageSearchState, count: number, position: numbe
   return count === 0 ? '0' : `${position} of ${count}`;
 }
 
-/**
- * Search inside one chat on a narrow screen (WUX-34, T-1301): it replaces the
- * chat header with a back arrow, the query box and a match count, so searching
- * never leaves the chat. It runs the same chat-scoped search the wide layout's
- * list uses (`useMessageSearch(query, chat.id)`, as in `MessageSearchResults`)
- * and jumps with the same path (`useOpenHit`): it lands on the newest hit as
- * results arrive and on each ↑/↓ hit, calling `openAtMessage` (which pages the
- * hit in when it is not loaded) then `scrollToMessage` on the next frame.
- */
 export function ChatSearchBar({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const [query, setQuery] = useState('');
-  // The hit the reader stepped to for a given query; `null` means the arrival
-  // default (the newest hit). Keyed by query so a new query starts fresh.
   const [selection, setSelection] = useState<{ query: string; index: number } | null>(null);
   const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,10 +31,7 @@ export function ChatSearchBar({ chat, onClose }: { chat: ChatSummary; onClose: (
     inputRef.current?.select();
   }, []);
 
-  // Esc closes the bar and stays in the chat. The listener is on the capture
-  // phase so it runs before the shell's narrow Esc-to-home listener
-  // (ChatShell); it only acts when the key came from inside the bar, so an
-  // open panel's own Esc still works.
+  // Capture phase, so Esc closes the bar before the shell's Esc-to-home.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const target = event.target;
@@ -65,10 +50,6 @@ export function ChatSearchBar({ chat, onClose }: { chat: ChatSummary; onClose: (
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
-  // Land on the newest hit as soon as a query's results arrive, like pressing
-  // Enter in the wide layout's search box; once per query text. A new query
-  // clears the mark (its status drops to `loading` first), so retyping the
-  // same text jumps again.
   const jumpedQuery = useRef<string | null>(null);
   useEffect(() => {
     if (search.status !== 'ready') {

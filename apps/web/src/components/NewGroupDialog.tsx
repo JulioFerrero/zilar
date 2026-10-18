@@ -20,8 +20,6 @@ type HandleCheck =
 
 const IDLE_CHECK: HandleCheck = { state: 'idle' };
 
-// Debounced live availability for the public handle: the 300 ms sleep is the
-// debounce, and useQuery interrupts it when the handle or visibility changes.
 const checkHandle = (
   visibility: 'private' | 'public',
   handle: string,
@@ -52,7 +50,6 @@ class HandleRefused extends Data.TaggedError('HandleRefused')<{
 
 type CreateFailure = NameMissing | HandleMissing | HandleRefused | ApiFailure;
 
-/** Two-step dialog: pick contacts, set a title, then create the group. */
 export function NewGroupDialog({
   onClose,
   channel = false,
@@ -66,18 +63,14 @@ export function NewGroupDialog({
   const [step, setStep] = useState<'members' | 'title'>('members');
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState('');
-  // T-0124: the channel's short blurb (≤ 300), stored in groups.description.
-  // T-0164: groups get the same one-line description when public.
+  // The short blurb is at most 300 characters, stored in `groups.description`.
   const [description, setDescription] = useState('');
-  // T-0164: Private (default, invite-only like before) or Public (its own
-  // `@handle`, in the directory, joinable with one tap).
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [handle, setHandle] = useState('');
   const trimmedHandle = handle.trim();
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Moving to the Name step unmounts the Members keys, so focus would land on
-  // the body; the kit only focuses on dialog open, so focus the Name field here.
+  // Moving to the Name step unmounts the Members keys, so focus the Name field here.
   useEffect(() => {
     if (step === 'title') {
       nameInputRef.current?.focus();
@@ -96,8 +89,6 @@ export function NewGroupDialog({
     );
   };
 
-  // Validation failures are typed errors too, so one state holds the message.
-  // A second click while the call waits is dropped (mode 'ignore').
   const [createState, runCreate, createControls] = useAction<void, void, CreateFailure>(
     (): Effect.Effect<void, CreateFailure> => {
       const trimmed = title.trim();
@@ -223,10 +214,6 @@ export function NewGroupDialog({
               />
             </div>
           )}
-          {/* T-0164: Private (default, invite-only) or Public (its own
-                `@handle`, in the directory, joinable with one tap). Public
-                asks for a handle with the live availability check and a
-                one-line description. */}
           <fieldset className="mt-3">
             <legend className="text-[14px] font-medium">Visibility</legend>
             <div className="mt-1">
@@ -331,7 +318,6 @@ function createErrorText(failure: CreateFailure, channel: boolean): string {
 }
 
 function friendlyCreateError(error: ApiFailure, channel: boolean): string {
-  // toApiFailure gives status 0 to anything that was not an ApiError.
   if (error.status === 0) {
     return channel
       ? 'Could not create the channel. Try again.'

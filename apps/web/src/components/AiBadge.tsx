@@ -1,6 +1,5 @@
 import { cn } from '@/lib/utils';
 
-/** Geist Mono `AI` badge (ui-style.md §2). */
 export function AiBadge({ className }: { className?: string }) {
   return (
     <span

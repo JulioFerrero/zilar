@@ -1,19 +1,15 @@
-// WUX-28: remembers where the reader left each chat for the session, so
-// reopening a chat lands on the same message instead of the divider or the
-// bottom. The anchor is the id of the message at the top of the view and its
-// pixel offset from the viewport top; it lives in memory only (no storage).
+// Remembers the scroll anchor per chat for the session only (no storage).
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 
 interface ScrollAnchor {
   messageId: string;
-  /** Pixels from the top of the scroll viewport to the anchor message's top. */
+  /** Pixels from the viewport top to the anchor message's top. */
   offset: number;
 }
 
 /** Module-level so it survives a chat remount; cleared on a full reload. */
 const anchors = new Map<string, ScrollAnchor>();
 
-/** The message whose bubble crosses the top edge of the scroll viewport. */
 function anchorAt(container: HTMLElement): ScrollAnchor | undefined {
   const top = container.getBoundingClientRect().top;
   for (const row of container.querySelectorAll<HTMLElement>('[data-message-id]')) {
@@ -27,7 +23,6 @@ function anchorAt(container: HTMLElement): ScrollAnchor | undefined {
   return undefined;
 }
 
-/** Puts the remembered message back at its offset; false when it is not drawn. */
 function scrollToAnchor(container: HTMLElement, anchor: ScrollAnchor): boolean {
   const element = container.querySelector<HTMLElement>(
     `[data-message-id="${CSS.escape(anchor.messageId)}"]`,
@@ -41,15 +36,9 @@ function scrollToAnchor(container: HTMLElement, anchor: ScrollAnchor): boolean {
 }
 
 export interface ScrollMemory {
-  /** Restores the chat's saved spot once the rows are drawn; false otherwise. */
   restore: () => boolean;
 }
 
-/**
- * Restores and records the scroll anchor for one chat. `enabled` is false for a
- * chat with unread messages, which keeps the divider behaviour; `ready` gates
- * the scroll listener on the first drawn row.
- */
 export function useScrollMemory(
   chatId: string,
   scrollRef: RefObject<HTMLDivElement | null>,
@@ -69,8 +58,7 @@ export function useScrollMemory(
     }
   }, [chatId, scrollRef]);
 
-  // A rAF throttle keeps the DOM query off the scroll hot path; the cleanup
-  // records the last position so switching chats remembers it.
+  // A rAF throttle keeps the DOM query off the scroll hot path.
   useEffect(() => {
     const container = scrollRef.current;
     if (container === null) {
@@ -119,11 +107,6 @@ export function useScrollMemory(
   return useMemo(() => ({ restore }), [restore]);
 }
 
-/**
- * The initial scroll of a chat list (WUX-28): centres the unread divider; with
- * no divider the list's layout effect snaps to the bottom. Skipped while a jump
- * is pending or a restored view is pinned.
- */
 export function useInitialScroll(
   scrollRef: RefObject<HTMLDivElement | null>,
   dividerRef: RefObject<HTMLDivElement | null>,

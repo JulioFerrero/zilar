@@ -13,15 +13,11 @@ import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { StepStateIcon } from './StepsPanel';
 
-/** A card without a terminal state is still working. */
 function isLive(state: Progress['state']): boolean {
   return state === undefined || state === 'working';
 }
 
-/**
- * The elapsed to show: the time from `started_at` to now while working, so it
- * ticks; the frozen `elapsed_ms` once the task is over.
- */
+/** Elapsed: ticks from `started_at` while working, frozen `elapsed_ms` after. */
 function elapsedFor(progress: Progress, now: number): number | undefined {
   const parsed = progress.started_at === undefined ? undefined : Date.parse(progress.started_at);
   const started = parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined;
@@ -37,7 +33,6 @@ function elapsedFor(progress: Progress, now: number): number | undefined {
   return started === undefined ? undefined : Math.max(0, now - started);
 }
 
-/** The state icon of the collapsed line. */
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {
   const className = 'size-4 shrink-0';
   if (state === 'done') {
@@ -63,13 +58,8 @@ function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMo
 }
 
 /**
- * The task card: one collapsed line (state icon, title, elapsed) that expands
- * to the step checklist and the summary. Without `steps` it falls back to the
- * old `stage`/`detail` shape, so an old server still renders (T-1419).
- *
- * T-1811: `readOnly` draws a card the viewer does not own — the topic Join
- * preview. It keeps the checklist but never offers Stop and never reads the
- * viewer's AI list.
+ * Task card: one line expanding to steps; without `steps` it falls back to the
+ * old `stage`/`detail` shape. `readOnly` keeps the checklist but never Stop.
  */
 export function ProgressCard({
   progress,
@@ -101,10 +91,8 @@ export function ProgressCard({
   const steps = progress.steps ?? [];
   const expandable = steps.length > 0;
 
-  // T-1422: the Stop button shows only for a working card the viewer can stop:
-  // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
-  // the viewer's own `GET /api/ais` list). The chat id is the open chat's.
-  // T-1811: a read-only card skips that read entirely.
+  // Stop shows only for a working card the server lets the viewer stop and
+  // whose AI is in the viewer's own list; a read-only card skips that read.
   const chatJid = useChatSelector((state) => state.activeChatId);
   const [ownedResult] = useQuery(
     () =>
@@ -118,8 +106,6 @@ export function ProgressCard({
   const ownedAi = AsyncResult.isSuccess(ownedResult) ? ownedResult.value : null;
   const stoppable =
     !readOnly && isLive(progress.state) && progress.can_stop === true && ownedAi !== null;
-  // The card the stop was tapped on: "Stopping…" lasts until the next edit
-  // arrives, which changes `progress` and clears this.
   const [stoppedFor, setStoppedFor] = useState<Progress | null>(null);
   const stopping = stoppedFor === progress;
   const stop = (): void => {
@@ -128,14 +114,10 @@ export function ProgressCard({
     }
     setStoppedFor(progress);
     void stopAiTurn(ownedAi.id, chatJid).catch(() => {
-      // The card's next edit never came; let the owner try again.
       setStoppedFor(null);
     });
   };
 
-  // T-1535: a finished card whose AI is the viewer's own opens the Steps panel.
-  // The panel's task id rides the URL, so it survives a reload and needs no
-  // store state.
   const [searchParams, setSearchParams] = useSearchParams();
   const canViewSteps =
     progress.task_id !== undefined && !isLive(progress.state) && ownedAi !== null;
@@ -148,9 +130,6 @@ export function ProgressCard({
     setSearchParams(next, { replace: true });
   };
 
-  // A finished card is one line: clicking it opens the Steps panel for the
-  // viewer's own AI, or toggles the inline checklist otherwise. A working card
-  // only toggles its checklist.
   const finished = !isLive(progress.state);
   const actable = finished ? canViewSteps || expandable : expandable;
   const activate = (): void => {
@@ -177,8 +156,8 @@ export function ProgressCard({
 
   return (
     <div className="bubble-in min-w-[220px] rounded-[12px] p-2.5">
-      {/* T-1422: the Stop button sits at the right of the collapsed line; the
-          expand control and the button are siblings, never nested buttons. */}
+      {/* The expand control and the Stop button stay siblings,
+          never nested buttons. */}
       <div className="flex items-center gap-2">
         {actable ? (
           <button

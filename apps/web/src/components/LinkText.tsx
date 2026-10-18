@@ -9,15 +9,7 @@ import {
 import type { ReactNode } from 'react';
 import { PersonLink } from './personLink';
 
-/**
- * Renders message text: http/https URLs become safe external links and XEP-0372
- * mention ranges become chips. A mention of the current user (an exact bare-JID
- * match) gets the raised look so it stands out. With `formatted`, the light
- * Markdown subset also applies: **bold**, *italics*, `inline code` and fenced
- * code blocks (the code uses the `.md` look from `index.css:441-471`, inlined
- * as Tailwind classes so no stylesheet change is needed), with no links or
- * mentions inside code.
- */
+/** Renders URLs as external links, XEP-0372 mentions as chips, and optionally a Markdown subset. */
 export function LinkText({
   text,
   mentions,

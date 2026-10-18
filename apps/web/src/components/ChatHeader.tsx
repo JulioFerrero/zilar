@@ -28,16 +28,15 @@ const ARCHIVE_ERROR = 'Could not archive the topic.';
 const NO_NAMES: string[] = [];
 
 /**
- * T-1406: client-core writes a status beside the typing names; the web store's
- * `TypingState` (outside this task's Allowed files) types only `names`, so the
- * header reads the status through a widened record.
+ * The web store's `TypingState` types only `names`, so the status is read
+ * through a widened record.
  */
 type TypingStatus = { status?: string };
 
 /** The topic could not be archived (the store rejected the patch). */
 class ArchiveFailed extends Data.TaggedError('ArchiveFailed') {}
 
-/** The two menu items both chat menus share, in the same order. */
+/** The two menu items both chat menus share, in this order. */
 function PinsAndMediaItems(props: {
   chatId: string;
   onOpenMedia: (() => void) | undefined;
@@ -84,8 +83,6 @@ export function ChatHeader({
   const storeApi = useChatStoreApi();
   const typingNames = useChatSelector((s) => s.typing[chat.id]?.names);
   const names = typingNames ?? NO_NAMES;
-  // T-1452 (WUX-14): the connection line lives in the header like mobile
-  // (T-1192/MUX-15) and Telegram, not above the composer.
   const connection = statusLabel(useChatSelector((s) => s.status));
   const aiStatusText = useChatSelector(
     (s) => (s.typing[chat.id] as TypingStatus | undefined)?.status,
@@ -93,17 +90,12 @@ export function ChatHeader({
   const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
   const storedGroupTitle = useChatSelector((s) => s.groupInfo(chat.id)?.title);
   const typing = typingLabel(chat, names);
-  // An AI draft in flight reads `writing…`, the D24 wording (ui-style.md §5).
   const writing = chat.isAI && hasDraft;
   const working = chat.isAI && chat.aiStatus === 'working';
-  // T-1406: while the AI carries a status it reads next to the dots, e.g.
-  // "Searching the web…"; with no status the line keeps the plain dots.
   const aiLine = aiStatusText === undefined ? undefined : `${aiStatusText}…`;
   const subtitle =
     connection ?? aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const isTopic = chat.topic !== undefined;
-  // T-0124: a channel feed is one row (General keeps the group chat id), not
-  // a topic row; the panel is the channel panel, like the group panel.
   const isChannel = chat.chatKind === 'channel';
   const groupTitle = chat.groupTitle ?? storedGroupTitle;
   const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel ?? onOpenContactPanel;
@@ -119,8 +111,6 @@ export function ChatHeader({
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
-  // T-1249: one info entry, shown in both menus (topics and everything else)
-  // whenever this header can open the group/channel panel.
   const groupInfoItem =
     onOpenGroupPanel === undefined ? null : (
       <MenuItem
@@ -133,8 +123,6 @@ export function ChatHeader({
         {isChannel ? 'Channel info' : 'Group info'}
       </MenuItem>
     );
-  // Archiving the topic for everyone: patch it, then leave the dead topic like
-  // the topic panel does (to General when it exists, else `/`).
   const [archiveState, runArchive] = useAction<void, void, ArchiveFailed>(() =>
     Effect.tryPromise({
       try: () => storeApi.getState().patchTopic(chat.id, { archived: true }),
@@ -162,12 +150,7 @@ export function ChatHeader({
   const archiving = isWaiting(archiveState);
   const actionError = !archiving && failureOf(archiveState) !== undefined ? ARCHIVE_ERROR : '';
 
-  // A topic's Archive entry needs a manager; the entry hides until the
-  // group detail loads and the role is known (see `TopicArchiveItem`).
-
   const line1 = <ChatHeaderTitle chat={chat} isTopic={isTopic} />;
-  // T-1852: the second line is its own button (a topic's people line), so it
-  // stays a sibling of the panel button instead of nesting inside it.
   const line2 = (
     <ChatHeaderSubtitle
       chat={chat}
@@ -182,9 +165,6 @@ export function ChatHeader({
     />
   );
 
-  // On narrow screens the in-chat search bar replaces the header entirely
-  // (WUX-34); ChatView owns that state so the contact panel can start the same
-  // search, and this header only triggers it.
   return (
     <header className="relative flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
       <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
@@ -205,8 +185,6 @@ export function ChatHeader({
       )}
       {openPanel !== undefined ? (
         isTopic ? (
-          // T-1852: the second line opens the same panel on its own, so it
-          // stays a sibling of the panel button instead of nesting inside it.
           <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
             <button
               type="button"
@@ -339,10 +317,7 @@ function TopicArchiveItem({
   const me = useChatSelector((s) => s.currentUserId);
   const info = useChatSelector((s) => s.groupInfo(chat.id));
   const myRole = info?.members.find((member) => member.userId === me)?.role;
-  // Archive needs a manager (creator or group owner/admin); the detail may
-  // not have loaded yet, so the entry hides until the role is known. Never
-  // for General. It archives the topic for everyone (manager action), so it
-  // sits last under a divider, below the per-user "Archive chat".
+  // Needs a manager and hides until the role is known; never for General.
   if (chat.topic?.isGeneral === true) {
     return null;
   }
