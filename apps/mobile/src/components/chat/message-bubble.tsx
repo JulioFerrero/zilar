@@ -1,4 +1,5 @@
 import { canDeleteMessage, canEditMessage, isBigEmoji } from '@zilar/chat-core';
+import { senderAvatarUrl } from '@zilar/client-core/store';
 import { memo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -94,6 +95,17 @@ function MessageBubbleImpl({
   // deleted for everyone (`canDelete` above).
   const chat = useChatStore((state) => state.chats.find((entry) => entry.id === message.chatId));
   const isDm = chat?.kind === 'dm' && chat.isAI !== true;
+  // T-1996: a group sender's real picture — an AI's from the topic row, a
+  // member's from the group detail — so the ball seeded from the name stays
+  // only the fallback. The selector returns a string, so it stays stable.
+  const senderAvatar = useChatStore((state) => {
+    if (outgoing || !isGroup) {
+      return undefined;
+    }
+    const groupId = chat?.groupId ?? state.groupIdForChat(message.chatId);
+    const members = groupId === undefined ? undefined : state.groupDetail(groupId)?.members;
+    return senderAvatarUrl(message.senderId, chat?.topic?.ais, members);
+  });
   const canDeleteForMe = !draft && isDm && message.deleted !== true && message.status !== 'sending';
   // A forward copies what is already on screen: tombstones, still-sending
   // copies and my own failed sends have nothing to forward.
@@ -299,7 +311,11 @@ function MessageBubbleImpl({
             showAvatar ? (
               <PersonPressable target={{ jid: message.senderId }} name={message.senderName}>
                 <EntityAvatar
-                  person={{ id: message.senderId, name: message.senderName }}
+                  person={{
+                    id: message.senderId,
+                    name: message.senderName,
+                    ...(senderAvatar === undefined ? {} : { avatarUrl: senderAvatar }),
+                  }}
                   size={34}
                   className="mr-2"
                 />

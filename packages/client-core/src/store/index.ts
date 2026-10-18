@@ -54,3 +54,8 @@ export * from './group-actions';
 export * from './chat-rows';
 // ----------------------------------------------------------------------------
 // End of Phase 2.
+
+// T-1996: the group message sender's picture.
+export * from './sender-avatar';
+// ----------------------------------------------------------------------------
+// End of T-1996.

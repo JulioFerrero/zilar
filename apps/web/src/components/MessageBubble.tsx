@@ -1,4 +1,5 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { senderAvatarUrl } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
 import { EntityAvatar } from './EntityAvatar';
@@ -85,6 +86,10 @@ export const MessageBubble = memo(function MessageBubble({
   const chatId = chat.id;
   const chatCanPin = useChatSelector((s) => s.canPin(chatId));
   const pin = useChatSelector((s) => s.pinFor(chatId, message.id));
+  // T-1996: the group detail carries a member's picture, the topic row an AI's.
+  const groupMembers = useChatSelector((s) => s.groupInfos[chat.id]?.members);
+  const senderAvatar = senderAvatarUrl(message.senderId, chat.topic?.ais, groupMembers);
+  const senderPerson = { id: message.senderId, name: message.senderName, avatarUrl: senderAvatar };
   const mediaHosts = mediaTrustedHosts ?? EMPTY_HOSTS;
   const animate = draftAnimates(draft, revealTurnId);
   const { text, done } = useSmoothText(message.text ?? '', {
@@ -210,7 +215,7 @@ export const MessageBubble = memo(function MessageBubble({
         chat.kind === 'group' &&
         (lastInGroup ? (
           <PersonLink target={{ jid: message.senderId }} name={message.senderName}>
-            <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
+            <EntityAvatar person={senderPerson} size={34} />
           </PersonLink>
         ) : (
           <span className="w-[34px] shrink-0" aria-hidden="true" />
