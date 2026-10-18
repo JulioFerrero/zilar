@@ -20,7 +20,7 @@ export function Card({ children, className }: CardProps) {
   );
 }
 
-/** An uppercase muted section label (11/600, 0.06em tracking). */
+/** An uppercase muted section label (11/500, 0.06em tracking). */
 export function SectionLabel({
   children,
   as: As = 'h2',
@@ -29,7 +29,7 @@ export function SectionLabel({
   as?: 'h2' | 'h3' | 'p';
 }) {
   return (
-    <As className="m-0 text-[11px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+    <As className="m-0 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
       {children}
     </As>
   );

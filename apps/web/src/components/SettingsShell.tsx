@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 
 /**
- * The one column every web settings page shares (T-0153): back arrow + title
- * + one-line description in the header, then a centered `max-w-2xl` column on
- * a 16 px gutter at 390 px wide, readable body text and bordered cards.
+ * The one column every web settings page shares (T-0153): the kit
+ * `ScreenHeader` row (T-1949), then a centered `max-w-2xl` column on a 16 px
+ * gutter at 390 px wide, readable body text and bordered cards.
  *
  * The column, section and card recipes live here so the settings pages stay
  * alike without forcing every consumer onto them.
@@ -26,26 +25,13 @@ export function SettingsShell({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="settings-shell">
-      <header className="shrink-0 border-b border-divider px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Back"
-            title="Back"
-            onClick={onBack}
-            className="shrink-0 rounded-full text-muted-foreground"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </Button>
-          <h1 className="text-[20px] leading-7 font-semibold">{title}</h1>
-          {action !== undefined && <div className="ml-auto shrink-0">{action}</div>}
-        </div>
-        {subtitle !== undefined && (
-          <p className="mt-1 text-[14px] text-muted-foreground">{subtitle}</p>
-        )}
-      </header>
+      <ScreenHeader
+        variant="sub"
+        title={title}
+        subtitle={subtitle}
+        onBack={onBack}
+        right={action}
+      />
       <div className="flex-1 overflow-auto p-4">{children}</div>
     </div>
   );
