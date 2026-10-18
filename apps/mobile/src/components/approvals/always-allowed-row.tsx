@@ -5,7 +5,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import type { ApprovalRule } from '@/lib/approvals-api';
 
-/** One always-allowed rule with a two-step Revoke, mirroring web's `AlwaysAllowedList`. */
 export function AlwaysAllowedRow({
   rule,
   confirming,
@@ -62,8 +61,8 @@ export function AlwaysAllowedRow({
 }
 
 /**
- * The confirm-first step for revoking a rule. The app has no `Alert`
- * anywhere; the other confirmations are Modals too (see `DeleteConfirmDialog`).
+ * The confirm-first step for revoking a rule. The app has no `Alert` anywhere;
+ * the other confirmations are Modals too (`DeleteConfirmDialog`).
  */
 export function RevokeConfirmDialog({
   rule,

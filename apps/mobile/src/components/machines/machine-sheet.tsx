@@ -10,11 +10,6 @@ function groupFingerprint(value: string): string {
   return value.replace(/(.{4})(?=.)/g, '$1 ');
 }
 
-/**
- * The sheet opened by an approved machine row (T-1526): the status dot and the
- * name, then the hardware line, the fingerprint and the assigned AI names, with
- * Rename and Revoke. No status word and no money.
- */
 export function MachineSheet({
   machine,
   aiNames,
@@ -23,7 +18,6 @@ export function MachineSheet({
   onRename,
   onRevoke,
 }: {
-  /** The open machine, or `null` when the sheet is closed. */
   machine: Machine | null;
   aiNames: string[];
   visible: boolean;

@@ -3,7 +3,6 @@ import { TextField } from '@/components/ui/text-field';
 
 export { parseInviteCode };
 
-/** The sign-up invite code: accepts a bare code or a pasted invite link. */
 export function InviteCodeField({
   value,
   onChange,

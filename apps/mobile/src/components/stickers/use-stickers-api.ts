@@ -11,10 +11,8 @@ const MOCK_STICKER_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
 /**
  * The native `expo-file-system` upload posts to the real origin, which
- * `mockFetch` never sees, so in mock mode we skip it and POST the bytes through
- * the shared backend. Mock mode has no file bytes: the picked `uri` is a native
- * file, so these stand-in bytes are stored instead and the stored url's bytes
- * are not a real picture.
+ * `mockFetch` never sees, so mock mode stores these stand-in bytes through the
+ * shared backend; the stored url's bytes are not a real picture.
  */
 function createMockStickerUpload(mockFetch: typeof fetch): StickerBinaryUpload {
   return {
@@ -30,9 +28,8 @@ function createMockStickerUpload(mockFetch: typeof fetch): StickerBinaryUpload {
 }
 
 /**
- * Builds the mock-mode `StickersApi` on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build,
- * so the mock module stays out of the bundle.
+ * Builds the mock-mode `StickersApi` behind a literal build-time condition: Metro
+ * folds it to `false` in a release build, so the mock stays out of the bundle.
  */
 function createMockStickers(): { api: StickersApi; viewerId: string } {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
@@ -49,20 +46,10 @@ function createMockStickers(): { api: StickersApi; viewerId: string } {
 
 export interface StickersApiHandle {
   api: StickersApi;
-  /** True when the mock is active (used by tests/UI to skip the network). */
   mock: boolean;
-  /**
-   * The viewer's id in mock mode (nobody signs in there), else `undefined`;
-   * callers fall back to it wherever they need the signed-in user's id.
-   */
   viewerId: string | undefined;
 }
 
-/**
- * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
- * through `mockFetch`.
- */
 export function useStickersApi(): StickersApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;

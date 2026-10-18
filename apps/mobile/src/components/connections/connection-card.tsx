@@ -16,19 +16,12 @@ function hostOf(baseUrl: string): string {
   return withoutScheme.split('/')[0] ?? baseUrl;
 }
 
-/** The short date a connection was added, e.g. `Sep 20`. */
 function addedDate(createdAt: string): string {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(
     new Date(createdAt),
   );
 }
 
-/**
- * One connection row (T-1516): a status dot, the provider name, a muted line
- * and a ⋯ glyph; the whole row opens the key's action sheet. The dot is the
- * status — there is no status word — and a failed test in this screen reddens
- * it and its reason joins the line in red. The parent keys it by connection id.
- */
 export function ConnectionRow({
   connection,
   working,
@@ -37,11 +30,8 @@ export function ConnectionRow({
   onPress,
 }: {
   connection: ProviderConnection;
-  /** Green dot and no reason; a failed test or a revoked key gives false. */
   working: boolean;
-  /** The red reason when not working, e.g. "Key rejected" or "Key revoked". */
   reason: string | undefined;
-  /** Drops the bottom hairline on the list's last row. */
   last: boolean;
   onPress: () => void;
 }) {

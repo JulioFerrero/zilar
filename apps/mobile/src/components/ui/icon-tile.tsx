@@ -10,7 +10,6 @@ type IconTileProps = {
   testID?: string;
 };
 
-/** The dark key that holds a row's icon (ui-style.md §4): 34 px, 10 px radius. */
 export function IconTile({ children, size = 34, radius = 10, testID }: IconTileProps) {
   return (
     <View

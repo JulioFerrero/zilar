@@ -32,14 +32,6 @@ type GroupAisListProps = {
   isManager: boolean;
 };
 
-/**
- * The group's AIs (T-1569, moved out of the AIs page in T-1858): the section
- * label and count, the AI rows as orb rows with a ⋮ Remove (their owner or a
- * manager), and an Add AI row for managers opening the viewer's owned AIs not
- * already in the group. No scroll view and no header, so the People and AIs
- * page and the channel's AIs page can both hold it. The server enforces who
- * may write.
- */
 export function GroupAisList({ groupId, ais, isManager }: GroupAisListProps) {
   const me = useChatStore((state) => state.currentUserId);
   const ownedAis = useChatStore((state) => state.ownedAis);

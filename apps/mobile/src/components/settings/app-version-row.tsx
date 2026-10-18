@@ -27,7 +27,6 @@ function DownloadTile() {
   );
 }
 
-/** A settings-style row: a leading node, a title over a subtitle, and a key. */
 function RowShell({
   leading,
   title,
@@ -51,7 +50,6 @@ function RowShell({
   );
 }
 
-/** `Zilar 0.2.4`, with the version in mono, e.g. `Zilar <n> is available`. */
 function VersionTitle({
   lead,
   version,
@@ -71,7 +69,6 @@ function VersionTitle({
   );
 }
 
-/** `Zilar 0.2.4 is ready` with the new-version dot, as in the board. */
 function ReadyTitle({ version }: { version: string }) {
   return (
     <View className="flex-row items-center gap-2">
@@ -93,7 +90,6 @@ function Subtitle({ children }: { children: ReactNode }) {
   );
 }
 
-/** `<installed> installed · 67 MB`, with the installed version in mono. */
 function InstalledLine({
   installed,
   sizeBytes,
@@ -118,12 +114,6 @@ function checkedLabel(lastCheckedAt: string | null): string {
   return Number.isNaN(at.getTime()) ? 'Up to date' : `Up to date · checked ${formatTime(at)}`;
 }
 
-/**
- * The Settings › This app row (T-1725), from `docs/design/mockups/updater/`.
- * It is Android only: on iOS it renders nothing. In a dev or local build it
- * shows "Local build" and no key; otherwise it mirrors the updater state with a
- * Check, Download or Install action.
- */
 export function AppVersionRow() {
   const update = useAppUpdate();
 

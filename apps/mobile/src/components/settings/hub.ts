@@ -6,10 +6,8 @@ import {
 } from '@/lib/settings-items';
 
 /**
- * The hub row content the settings hub renders per item: the title, the
- * subtitle, the icon test id the screen maps to a lucide component, and the
- * group whose card holds the row. Kept hook- and JSX-free so Vitest covers
- * the hub list without a simulator (the screen itself only maps rows to rows).
+ * The hub row content: the title, the subtitle, the icon test id and the group
+ * whose card holds the row. Hook- and JSX-free so Vitest covers it.
  */
 
 export type { SettingsGroup };
@@ -25,14 +23,12 @@ export interface SettingsHubRow {
   group: SettingsGroup;
 }
 
-/** One card of the hub: an uppercase label above its rows. */
 export interface SettingsHubGroup {
   group: SettingsGroup;
   label: string;
   rows: SettingsHubRow[];
 }
 
-/** The uppercase label over each hub card. */
 export const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
   account: 'Account',
   ais: 'AIs and tools',
@@ -61,14 +57,12 @@ function toHubRow(item: (typeof SETTINGS_ITEMS)[number]): SettingsHubRow {
   };
 }
 
-/** Every hub row, ordered by group and then by the registry order. */
 export function settingsHubRows(): SettingsHubRow[] {
   return SETTINGS_GROUP_ORDER.flatMap((group) =>
     SETTINGS_ITEMS.filter((item) => item.group === group).map(toHubRow),
   );
 }
 
-/** The phone hub cards, in the group order, without the hidden rows and groups. */
 export function settingsHubGroups(): SettingsHubGroup[] {
   const rows = settingsHubRows();
   return SETTINGS_GROUP_ORDER.filter((group) => !PHONE_HIDDEN_GROUPS.has(group)).map((group) => ({

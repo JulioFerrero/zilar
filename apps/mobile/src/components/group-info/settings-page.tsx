@@ -16,16 +16,13 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/** The detail's listener block: the contract shape, carried by `GroupDetail`. */
 type GroupListenerInfo = NonNullable<GroupDetail['listener']>;
 
 type SettingsPageProps = {
   groupId: string;
   title: string;
-  /** The group's picture path (relative `/api/avatars/<id>`), if any. */
   avatarUrl: string | undefined;
   membersCanCreateTopics: boolean;
-  /** The detail's listener block; `undefined` until the detail is loaded. */
   listener: GroupListenerInfo | undefined;
   isManager: boolean;
   isOwner: boolean;
@@ -35,14 +32,6 @@ type SettingsPageProps = {
 
 const WRITE_ERROR = 'Could not save the setting. Try again.';
 
-/**
- * The Settings page of Group info (T-1574), after `Phone.dc.html` and the web
- * group panel: the picture, "Members can create topics", the AI listener and
- * eagerness, and a row that opens the existing visibility sheet. Full screen
- * with the root's back key. Who sees what matches web's `GroupPanel.tsx`: the
- * picture and both switches for owners and admins (`:303-330`), the visibility
- * row for the owner only (`:332-341`). The server enforces every write.
- */
 export function SettingsPage({
   groupId,
   title,

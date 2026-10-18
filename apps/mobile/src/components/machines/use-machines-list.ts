@@ -10,14 +10,13 @@ import { useMachinesApi } from './use-machines-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/** The state, handlers and sections the machines screen renders. */
 export function useMachinesList() {
   const { api } = useMachinesApi();
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   // `reload` keeps its identity, so a load reads the current status from here:
-  // only a screen with nothing shown yet gets the loading message (T-1971).
+  // only a screen with nothing shown yet gets the loading message.
   const statusRef = useRef<PageStatus>('loading');
   useEffect(() => {
     statusRef.current = status;
@@ -29,10 +28,9 @@ export function useMachinesList() {
     null,
   );
   const [confirmError, setConfirmError] = useState('');
-  // The add flow state lives here: the "Add machine" tap mints
-  // the code directly (an event, not an effect), and the sheet only renders
-  // the result. `addToken` guards a late answer after the sheet closed.
-  // `mintCode` ignores a second tap while a code is being made (10 per hour).
+  // The add flow state lives here: the "Add machine" tap mints the code directly
+  // (an event, not an effect), and `addToken` guards a late answer after the
+  // sheet closed. `mintCode` ignores a second tap (10 per hour).
   const [adding, setAdding] = useState(false);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
@@ -61,7 +59,7 @@ export function useMachinesList() {
   const [, loadList] = useAction(
     (settled: Deferred.Deferred<void>) =>
       Effect.sync(() => {
-        // A reload over a ready list keeps it on screen (T-1971).
+        // A reload over a ready list keeps it on screen.
         if (statusRef.current !== 'ready') {
           setStatus('loading');
         }

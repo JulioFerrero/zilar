@@ -6,18 +6,10 @@ import { TextField } from '@/components/ui/text-field';
 type BioFieldProps = {
   value: string;
   error?: string | undefined;
-  /** True while the screen's single Save runs, so the input stays read-only. */
   busy: boolean;
   onChange: (value: string) => void;
 };
 
-/**
- * The bio editor (T-1259): a single-line input with a `n / 140` counter and the
- * same hint as web. T-1329: the per-field Save key is gone; the screen's one
- * Save saves the fields that changed, so this only renders. New lines are
- * stripped as they are typed, so the value stays on one line like the server's
- * `AuthBio`.
- */
 export function BioField({ value, error, busy, onChange }: BioFieldProps) {
   return (
     <View className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">

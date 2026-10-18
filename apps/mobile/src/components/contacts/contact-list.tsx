@@ -23,7 +23,6 @@ import {
 } from './contact-presence';
 import { ContactRow } from './contact-row';
 
-/** The status line a contact row shows, or the `@handle` when no status is known. */
 function subtitleFor(person: Contact, chats: ChatSummary[], now: Date): string {
   const presence = contactPresence(person, chats, now);
   if (presence !== undefined) {
@@ -32,12 +31,6 @@ function subtitleFor(person: Contact, chats: ChatSummary[], now: Date): string {
   return person.handle !== undefined && person.handle !== null ? `@${person.handle}` : '';
 }
 
-/**
- * The Contacts list body (T-1314): a search field over the presence-sorted
- * contacts, a "⋯" menu on each row for View profile / Remove contact, and the
- * remove confirm the row used to show inline. Presence and sorting live in
- * `contact-presence.ts`; the row's look is `contact-row.tsx`.
- */
 export function ContactList({
   people,
   chats,
@@ -49,7 +42,6 @@ export function ContactList({
   chats: ChatSummary[];
   onOpenChat: (person: Contact) => void;
   onViewProfile: (handle: string) => void;
-  /** Removes the contact; resolves null on success or the fixed failure sentence. */
   onRemove: (userId: string) => Promise<string | null>;
 }) {
   const [query, setQuery] = useState('');
@@ -69,8 +61,7 @@ export function ContactList({
   const removeFailure = AsyncResult.isSuccess(removeState) ? removeState.value : undefined;
 
   // A successful removal drops the row upstream; close the confirm with it.
-  // Reset during render (the profile card's confirm does the same), so no
-  // effect synchronizes state.
+  // Reset during render, so no effect synchronizes state.
   if (confirmFor !== null && AsyncResult.isSuccess(removeState) && removeState.value === null) {
     setConfirmFor(null);
   }

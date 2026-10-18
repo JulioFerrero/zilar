@@ -6,11 +6,8 @@ import { removeIntegrationCard } from './card-save';
 import type { IntegrationsApi, IntegrationsStatus } from '@/lib/integrations-api';
 import { useAction } from '@/lib/effect/use-action';
 
-/** The secret field pair a card wires into the save machine. */
 export interface CardSecret {
-  /** Writes the field's next value: empty on success, the typed value on failure. */
   set: (value: string) => void;
-  /** Hides the revealed secret once the save stuck. */
   hide: () => void;
 }
 
@@ -18,21 +15,16 @@ export interface CardSaveActions<Draft> {
   busy: boolean;
   saved: boolean;
   error: string;
-  /** Shows a validation sentence instead of calling the save. */
   fail: (message: string) => void;
-  /** Runs the save with the typed draft. */
   submit: (draft: Draft) => void;
-  /** Clears the success line after a Remove did the writing. */
   clearSaved: () => void;
 }
 
 /**
  * The one save state machine behind the Email, Voice and Telegram cards: it
- * flips `busy` on, runs the card's save, writes the outcome back into `saved`,
- * `error` and the secret field, and flips `busy` off. The card keeps its own
- * validation sentence and hands it to `fail`. The secret clears whenever the
- * save itself succeeded — even when the status reload fails, the server
- * already stores the new secret.
+ * flips `busy`, runs the card's save, writes the outcome into `saved`, `error`
+ * and the secret field. The secret clears whenever the save itself succeeded —
+ * even when the status reload fails, the server already stores the new secret.
  */
 export function useCardSave<Draft>({
   request,
@@ -94,10 +86,9 @@ export interface CardRemoveActions {
 }
 
 /**
- * The one remove state machine behind the Voice and Telegram cards: it flips
- * `removing` on, removes the card, and closes the dialog only after the status
- * reload proves the remove stuck. A failed Remove keeps the dialog open with
- * the error sentence.
+ * The one remove state machine behind the Voice and Telegram cards: the dialog
+ * closes only after the status reload proves the remove stuck; a failed Remove
+ * keeps it open with the error sentence.
  */
 export function useCardRemove({
   api,

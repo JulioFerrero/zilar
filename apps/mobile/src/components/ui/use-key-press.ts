@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { useReducedMotion } from 'react-native-reanimated';
 
 /**
- * Tracks whether a key is pressed. `Pressable`'s function `style` is dropped
- * when combined with NativeWind's `className`, so keys drive their pressed
- * state through `onPressIn`/`onPressOut` and a plain style array instead.
+ * `Pressable`'s function `style` is dropped when combined with NativeWind's
+ * `className`, so keys drive pressed state through `onPressIn`/`onPressOut`.
  */
 export function useKeyPress() {
   const reduceMotion = useReducedMotion();

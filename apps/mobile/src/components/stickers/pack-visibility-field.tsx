@@ -6,7 +6,6 @@ import { Text } from '@/components/ui/text';
 
 import type { PackVisibility } from './use-pack-editor';
 
-/** The pack's `Private` / `Shared` choice, a segmented switch. */
 export function PackVisibilityField({
   value,
   disabled,

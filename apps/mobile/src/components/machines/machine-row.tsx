@@ -9,9 +9,8 @@ import type { Machine } from '@/lib/machines-api';
 import { cn } from '@/lib/utils';
 
 /**
- * The owner's AIs grouped by their home machine, so a row can show the first
- * AI's picture and the sheet can list the names. A `null` list (the AI read
- * failed) groups nothing, so no picture is shown.
+ * The owner's AIs grouped by their home machine, for the row picture and the
+ * sheet's names. A `null` list (the AI read failed) groups nothing.
  */
 export function groupAisByMachine(ais: PublicAi[] | null): Map<string, PublicAi[]> {
   const map = new Map<string, PublicAi[]>();
@@ -29,18 +28,12 @@ export function groupAisByMachine(ais: PublicAi[] | null): Map<string, PublicAi[
   return map;
 }
 
-/**
- * One approved machine in the list (T-1526): a status dot (online or offline,
- * never a word), the name, the first assigned AI's picture and a chevron.
- * Pressing the row opens the machine sheet.
- */
 export function MachineRow({
   machine,
   ai,
   onPress,
 }: {
   machine: Machine;
-  /** The first of the owner's AIs whose home machine this is, for the picture. */
   ai: PublicAi | undefined;
   onPress: () => void;
 }) {
@@ -75,11 +68,6 @@ export function MachineRow({
   );
 }
 
-/**
- * The last row of the approved list when any machine is revoked (T-1526): a
- * muted Ban, "Revoked", the count in mono and a chevron. It toggles the
- * revoked list under the card.
- */
 export function RevokedToggleRow({
   count,
   expanded,

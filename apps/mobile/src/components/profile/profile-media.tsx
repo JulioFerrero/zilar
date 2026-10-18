@@ -12,11 +12,6 @@ type ProfileMediaProps = {
   chatId: string;
 };
 
-/**
- * The DM's Shared media row for the profile screen (T-1664): the same Content
- * row and sheet the group info page shows. The sheet loads the DM's media and
- * a tap jumps the chat at that message, through the search-hit driver.
- */
 export function ProfileMedia({ chatId }: ProfileMediaProps) {
   const router = useRouter();
   const openAtMessage = useChatStore((state) => state.openAtMessage);

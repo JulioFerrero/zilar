@@ -6,10 +6,6 @@ import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import type { Contact } from '@/lib/contacts-api';
 
-/**
- * One selected member shown above the New group picker (T-1314): the avatar,
- * the name and an X that unsticks them, like Telegram's chips.
- */
 export function ContactChip({ person, onRemove }: { person: Contact; onRemove: () => void }) {
   return (
     <View className="flex-row items-center gap-1.5 rounded-full border border-border-strong bg-surface py-1 pl-1 pr-1.5">

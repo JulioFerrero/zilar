@@ -7,11 +7,6 @@ type RefreshScrollProps = Omit<ScrollViewProps, 'refreshControl'> & {
   readonly onRefresh: () => void;
 };
 
-/**
- * The settings lists' ScrollView (T-2057): the keyboard setup and the
- * pull-to-refresh spinner the Blocked people, Contact requests and Contacts
- * screens share.
- */
 export function RefreshScroll({
   refreshing,
   onRefresh,

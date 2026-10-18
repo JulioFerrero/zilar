@@ -12,36 +12,24 @@ import { channelSubscriberLabel } from '@/lib/channels';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
 type ChannelInfoRootProps = {
-  /** The channel's feed chat row: the picture, Mute and the Feed row. */
   feedId: string;
   title: string;
   avatarUrl: string | undefined;
-  /** The public `@handle`, or `null` while the channel has none. */
   handle: string | null;
   subscriberCount: number;
   description: string | null;
-  /** The channel's AIs, for the AIs row; `undefined` when not loaded. */
   aisCount: number | undefined;
-  /** The last feed message, or `undefined`: the Feed row's second line. */
   feedPreview: string | undefined;
-  /** Whether the feed chat row is loaded; until then Mute and Search are disabled. */
   chatReady: boolean;
-  /** The channel's pins, for the Pinned messages row; `undefined` when not loaded. */
   pinsCount: number | undefined;
   isManager: boolean;
-  /** The owner sees Settings and the More key. */
   isOwner: boolean;
-  /** A subscriber: show the red Leave channel row. */
   canLeave: boolean;
-  /** The leave call is in flight. */
   leaving: boolean;
-  /** The leave call failed: a plain message under the row. */
   leaveError: string;
   onBack: () => void;
   onSearch: () => void;
-  /** Given only when the channel has a handle. */
   onShare: (() => void) | undefined;
-  /** The owner's More key. */
   onMore: () => void;
   onOpenFeed: () => void;
   onOpenPeople: () => void;
@@ -55,17 +43,6 @@ type ChannelInfoRootProps = {
   onLeave: () => void;
 };
 
-/**
- * The channel info root page (T-1581), after `WebChannel.dc.html`: a back key,
- * the channel picture, name and `@handle · N subscribers` line and the
- * description, then the Mute / Search / Share / More keys, the Feed row, the
- * People group (Admins and subscribers, AIs, Invite links for managers), the
- * Content group (Shared media, Pinned messages, Activity and Always allowed for
- * managers), the owner's Settings row and the red Leave channel row for
- * non-owners. Thin view: `channel-screen.tsx` owns the data and the sheets.
- * T-1587 completes it with Content, Settings and More, matching web's channel
- * root.
- */
 export function ChannelInfoRoot({
   feedId,
   title,

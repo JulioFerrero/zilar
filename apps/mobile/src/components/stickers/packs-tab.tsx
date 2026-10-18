@@ -10,11 +10,6 @@ import type { StickerPack } from '@/lib/stickers';
 import type { PanelPack } from '@/lib/stickers-api';
 import { PackCard } from '@/components/stickers/pack-card';
 
-/**
- * The My packs tab (T-1533): one lean list of your own packs that opens the
- * pack sheet, the Import from Telegram row, and the Added list of other
- * people's packs with a remove key.
- */
 export function PacksTab({
   packs,
   token,
@@ -33,9 +28,7 @@ export function PacksTab({
   busy: boolean;
   actionError: string;
   onRemove: (pack: StickerPack) => void;
-  /** Opens the pack action sheet. */
   onOpenPack: (packId: string) => void;
-  /** Opens the pack link page (`/stickers/<id>`). */
   onOpenPackLink: (packId: string) => void;
   onImport: () => void;
   onOpenDiscover: () => void;

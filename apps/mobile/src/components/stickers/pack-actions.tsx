@@ -5,10 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { DANGER } from '@/lib/colors';
 
-/**
- * The save feedback, the Save/Cancel row and the delete button. The two
- * confirm dialogs stay in the route shell, outside the content column.
- */
 export function PackActions({
   saving,
   progress,

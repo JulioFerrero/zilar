@@ -18,15 +18,6 @@ import {
   telegramImportFailure,
 } from './telegram-import';
 
-/**
- * The Telegram import bottom sheet (T-0207, the mobile twin of web's
- * `TelegramImportDialog`): paste a pack link or name, run the import, and
- * read the summary. Imported packs stay private for personal use. The parent
- * remounts the sheet on every open (key), so earlier input, result and
- * error clear (brief §1). One primary lives in the sticky footer (T-1443):
- * Import on the pick step, Open pack on the result; the terminal states have
- * no footer and only the header's close key.
- */
 export function TelegramImportSheet({
   visible,
   onClose,
@@ -36,14 +27,10 @@ export function TelegramImportSheet({
   importFn,
 }: {
   visible: boolean;
-  /** Closes the sheet. Ignored while an import runs. */
   onClose: () => void;
-  /** Reloads the My packs list (called when the sheet closes after an import, and on Open pack). */
   onDone: () => void;
-  /** Opens the pack editor for the imported pack. */
   onOpenPack: (packId: string) => void;
   api: StickersApi;
-  /** Injected in tests so no network is touched. */
   importFn?: (input: string) => Promise<TelegramImportResult>;
 }) {
   const [input, setInput] = useState('');
@@ -75,8 +62,6 @@ export function TelegramImportSheet({
     setBusy(true);
     setError('');
     const invoke = importFn ?? ((value: string) => api.importTelegramStickers(value));
-    // The import runs as a fiber; the sheet is updated from its outcome and
-    // the busy flag clears on every exit, as the old promise chain did.
     Effect.runFork(
       Effect.tryPromise({ try: () => invoke(rawInput.trim()), catch: (cause) => cause }).pipe(
         Effect.matchEffect({
@@ -97,8 +82,6 @@ export function TelegramImportSheet({
     if (busyRef.current) {
       return;
     }
-    // The close key stands in for the removed Done key: once an import has a
-    // result, closing reloads My packs through `onDone` as Done used to.
     if (result !== null) {
       onDone();
     }

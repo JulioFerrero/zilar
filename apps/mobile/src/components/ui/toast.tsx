@@ -15,19 +15,13 @@ export interface ToastMessage {
   tone?: 'error' | 'notice';
 }
 
-/**
- * One transient message over the content (MUX-32): a new message replaces the
- * current one and restarts the timer, and it clears itself after
- * `TOAST_DURATION_MS`. Persistent connection state does not go through here.
- */
 export function Toast({ toast, onDismiss }: { toast: ToastMessage | null; onDismiss: () => void }) {
   const id = toast?.id;
   useEffect(() => {
     if (id === undefined) {
       return;
     }
-    // A fiber sleeps for the duration; a new toast (new id) or an unmount
-    // interrupts it, as `clearTimeout` did.
+    // A fiber sleeps for the duration; a new toast (new id) or an unmount interrupts it.
     const fiber = runLater(TOAST_DURATION_MS, onDismiss);
     return () => {
       interruptFiber(fiber);

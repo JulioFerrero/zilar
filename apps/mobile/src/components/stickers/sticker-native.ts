@@ -11,9 +11,8 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 
 /**
- * The seams the sticker pack editor needs, kept in one place so tests
- * inject fakes and never touch the native modules (the
- * `avatar-native.ts` pattern).
+ * The seams the sticker pack editor needs, in one place so tests inject fakes
+ * and never touch the native modules (the `avatar-native.ts` pattern).
  */
 
 export { fitStickerSize, STICKER_PREP_MAX_DIM };
@@ -27,13 +26,9 @@ export interface PickedStickerImage {
   uri: string;
   width: number;
   height: number;
-  /** `video` when the picker returned a video, `image` otherwise. */
   kind: 'image' | 'video';
-  /** The asset's declared MIME type, when the picker reports one. */
   mimeType?: string;
-  /** The asset's size in bytes, when the picker reports it. */
   fileSize?: number;
-  /** The asset's file name, for the too-large error, when the picker reports one. */
   fileName?: string;
 }
 
@@ -46,7 +41,6 @@ export interface StickerImagePicker {
   pickImages(): Promise<PickStickerResult>;
 }
 
-/** One prepared sticker file, ready for the binary upload. */
 export interface PreparedStickerImage {
   uri: string;
   mimeType: string;
@@ -62,12 +56,10 @@ export interface StickerImagePreparer {
   prepare(image: PickedStickerImage): Promise<PrepareStickerResult>;
 }
 
-/** Reads the byte size of a local file, or undefined when unknown. */
 export interface StickerSizeReader {
   sizeOf(uri: string): Promise<number | undefined>;
 }
 
-/** Reads up to `length` leading bytes of a local file, or undefined when unreadable. */
 export interface StickerByteReader {
   readHead(uri: string, length: number): Promise<Uint8Array | undefined>;
 }
@@ -76,10 +68,6 @@ const DENIED_MESSAGE =
   'Zilar needs access to your photos to add stickers. You can allow it in Settings.';
 const PICK_FAILED_MESSAGE = 'Could not pick those images. Try again.';
 
-/**
- * The byte size of a local file as an Effect: a failed stat is `undefined`,
- * the same as the old try/catch.
- */
 const sizeOfEffect = (
   getInfo: typeof LegacyFileSystem.getInfoAsync,
   uri: string,
@@ -91,7 +79,6 @@ const sizeOfEffect = (
     Effect.catch(() => Effect.succeed(undefined)),
   );
 
-/** The real size reader: `expo-file-system` stat of the prepared file. */
 export function createStickerSizeReader(
   getInfo: typeof LegacyFileSystem.getInfoAsync = LegacyFileSystem.getInfoAsync,
 ): StickerSizeReader {
@@ -102,7 +89,6 @@ export function createStickerSizeReader(
   };
 }
 
-/** Decodes base64 (no `data:` prefix) into bytes; Hermes provides `atob`. */
 function base64Bytes(base64: string): Uint8Array {
   const binary = globalThis.atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -112,7 +98,6 @@ function base64Bytes(base64: string): Uint8Array {
   return bytes;
 }
 
-/** The leading bytes of a local file as an Effect: a failed read is `undefined`. */
 const readHeadEffect = (
   readString: typeof LegacyFileSystem.readAsStringAsync,
   uri: string,
@@ -126,10 +111,6 @@ const readHeadEffect = (
     Effect.catch(() => Effect.succeed(undefined)),
   );
 
-/**
- * The real head reader: `expo-file-system` reads at most `length` bytes from
- * the start of the picked file as base64, decoded to bytes for the sniffer.
- */
 export function createStickerByteReader(
   readString: typeof LegacyFileSystem.readAsStringAsync = LegacyFileSystem.readAsStringAsync,
 ): StickerByteReader {
@@ -140,23 +121,17 @@ export function createStickerByteReader(
   };
 }
 
-/**
- * A manipulator call as an Effect: a throw is `undefined`, so the caller
- * skips that step, the way the old try/catch did.
- */
 const manipulateOrUndefined = <A>(run: () => PromiseLike<A>): EffectType.Effect<A | undefined> =>
   Effect.tryPromise(run).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
-/** The size reader is a Promise seam, so its rejection stays a defect. */
 const sizeOfPrepared = (
   reader: StickerSizeReader,
   uri: string,
 ): EffectType.Effect<number | undefined> => Effect.promise(() => reader.sizeOf(uri));
 
 /**
- * The motion kind of a picked file: a picked video is moving whatever its
- * bytes say, otherwise the first bytes are sniffed. An unreadable file falls
- * back to the still path (today's behaviour).
+ * The motion kind of a picked file: a picked video is moving whatever its bytes
+ * say, otherwise the first bytes are sniffed; an unreadable file stays still.
  */
 const motionKindEffect = (
   byteReader: StickerByteReader,
@@ -171,13 +146,9 @@ const motionKindEffect = (
   });
 
 /**
- * A GIF, video, animated WebP or APNG goes to the server raw (T-1525/T-1496):
- * the file is kept as it is, the server sniffs the bytes. The declared type
- * is the picked asset's own type, or `application/octet-stream` when the
- * picker reports none (T-1564); the bytes decide either way.
- * A GIF or video is capped at 4 MiB (the server converts it); a moving WebP
- * or PNG is already a sticker and is capped at 512 KiB, refused here exactly
- * as web's `keepAnimatedFile` does (T-1525 fix round).
+ * A GIF, video, animated WebP or APNG goes to the server raw: the file is kept
+ * as it is and the server sniffs the bytes. A GIF or video is capped at 4 MiB;
+ * a moving WebP or PNG is already a sticker and is capped at 512 KiB.
  */
 const keepMovingEffect = (
   reader: StickerSizeReader,
@@ -236,8 +207,7 @@ const prepareEffect = Effect.fnUntraced(function* (
     }
     const bytes = yield* sizeOfPrepared(reader, saved.uri);
     if (bytes === undefined) {
-      // The size is unknown: accept the first WebP save, like the
-      // avatar flow accepts an unknown size (only a real zero refuses).
+      // The size is unknown: accept the first WebP save (only a real zero refuses).
       return {
         status: 'prepared',
         image: {
@@ -265,7 +235,6 @@ const prepareEffect = Effect.fnUntraced(function* (
       };
     }
   }
-  // No WebP fit (every step too big, or the saves threw): one PNG try.
   const savedPng = yield* manipulateOrUndefined(() =>
     manipulate(image.uri, [{ resize: { width: size.width, height: size.height } }], {
       format: SaveFormat.PNG,
@@ -298,12 +267,9 @@ const prepareEffect = Effect.fnUntraced(function* (
 });
 
 /**
- * The real preparer: sniff the picked bytes first, keep a moving file raw
- * (the server converts a GIF or video, T-1496), otherwise fit a still inside
- * 512 x 512 keeping the ratio, encode WebP at each quality step until the
- * result fits in 512 KiB, then one PNG try (web's `prepareStickerImage`,
- * without the decode: the manipulator reads the JPEG/GIF asset itself). When
- * a WebP save throws, the steps that throw are skipped and the PNG try runs.
+ * The real preparer: sniff the picked bytes first, keep a moving file raw (the
+ * server converts a GIF or video), otherwise fit a still inside 512 x 512, encode
+ * WebP at each quality step until it fits 512 KiB, then one PNG try.
  */
 export function createStickerPreparer(
   manipulate: typeof manipulateAsync = manipulateAsync,
@@ -324,7 +290,6 @@ const launchEffect = (): EffectType.Effect<PickStickerResult> =>
     ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
-      // The server converts a video to an animated WebP with a 3 s cap (T-1496).
       videoMaxDuration: 3,
     }),
   ).pipe(
@@ -335,7 +300,6 @@ const launchEffect = (): EffectType.Effect<PickStickerResult> =>
     }),
   );
 
-/** Maps the picker's answer to the screen's result; a cancel is not an error. */
 function pickResultOf(result: ImagePicker.ImagePickerResult): PickStickerResult {
   if (result.canceled) {
     return { status: 'cancelled' };
@@ -365,7 +329,6 @@ const pickEffect = (): EffectType.Effect<PickStickerResult> =>
     ),
   );
 
-/** The real picker: the photo library, multi-select, images and videos, no editing. */
 export function createStickerImagePicker(): StickerImagePicker {
   return {
     pickImages() {

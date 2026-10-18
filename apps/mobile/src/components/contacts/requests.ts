@@ -2,9 +2,8 @@ import { Effect } from 'effect';
 import { ContactsApiError, type ContactsApi } from '@/lib/contacts-api';
 
 /**
- * The requests-screen states (T-0182, mirrors the web `RequestsPage`):
- * UI-free so the screen tests can import them without pulling in
- * `react-native`.
+ * The requests-screen states, mirroring the web `RequestsPage`: UI-free so the
+ * screen tests can import them without pulling in `react-native`.
  */
 
 export type RequestAction = 'accept' | 'decline' | 'cancel';
@@ -22,7 +21,6 @@ export function requestsLoadFailure(error: unknown): string {
   return 'Something went wrong. Try again.';
 }
 
-/** The action failure for an accept / decline / cancel press. */
 export function requestsActionFailure(error: unknown): string {
   if (error instanceof ContactsApiError && error.status === 404) {
     return 'That request is no longer here.';
@@ -30,12 +28,6 @@ export function requestsActionFailure(error: unknown): string {
   return requestsLoadFailure(error);
 }
 
-/**
- * Runs one request action (Accept, Decline, Cancel) and removes the row on
- * success. Resolves with null on success, or the inline failure message —
- * the row stays on failure so the user can retry. UI-free so the screen
- * tests can drive it with a fake API.
- */
 const sendAction = (api: ContactsApi, id: string, action: RequestAction): Promise<unknown> => {
   if (action === 'accept') {
     return api.acceptContactRequest(id);

@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import type { Machine } from '@/lib/machines-api';
 
-/** One machine row, reused by the pending, approved and revoked sections. */
 export function MachineCard({
   machine,
   busy,

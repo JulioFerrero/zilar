@@ -23,11 +23,6 @@ const REMOVE_MODAL_ERROR = 'Could not remove the pack. Try again.';
 const REORDER_ERROR = 'Could not reorder your packs. Try again.';
 const FAVORITE_ERROR = 'Could not remove the favorite. Try again.';
 
-/**
- * The panel state and actions behind Settings → Stickers (T-0187, split out
- * in T-0996): the pack list, the Discover search and the favorites, plus the
- * reload, reorder, add, remove and unfavorite requests.
- */
 export function useStickersPanel() {
   const { width: windowWidth } = useWindowDimensions();
   const { api, viewerId } = useStickersApi();
@@ -42,14 +37,11 @@ export function useStickersPanel() {
   const [query, setQuery] = useState('');
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Guards against a double tap landing before React re-renders the
-  // disabled button, so one tap can never send two requests (machines.tsx).
+  // Guards a double tap landing before React re-renders the disabled button.
   const busyRef = useRef(false);
   const [confirming, setConfirming] = useState<StickerPack | null>(null);
   const [confirmError, setConfirmError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
-  // Remounts the import sheet on every open so earlier input, result and
-  // error clear (brief §1).
   const [importNonce, setImportNonce] = useState(0);
   const [token, setToken] = useState<string | undefined>(undefined);
   const me = useAuthStore((state) => state.me);
@@ -70,9 +62,8 @@ export function useStickersPanel() {
     };
   }, []);
 
-  // T-1978: a reload over shown data keeps that data, so returning to the
-  // screen never flashes the loading state; only a load with nothing shown
-  // paints it. A failed reload likewise keeps the list instead of blanking it.
+  // A reload over shown data keeps it, so returning never flashes the loading
+  // state; a failed reload also keeps the list instead of blanking it.
   const reload = useCallback(() => {
     setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
     setActionError('');

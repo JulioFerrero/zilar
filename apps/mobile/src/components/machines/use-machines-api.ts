@@ -11,15 +11,9 @@ const mockMachinesApi = (mockFetch: typeof fetch) =>
 
 export interface MachinesApiHandle {
   api: MachinesApi;
-  /** True when the mock is active (used by tests/UI to skip the network). */
   mock: boolean;
 }
 
-/**
- * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
- * through `mockFetch`.
- */
 export function useMachinesApi(): MachinesApiHandle {
   return useMockableApi(realMachinesApi, mockMachinesApi);
 }

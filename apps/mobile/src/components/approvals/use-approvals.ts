@@ -24,17 +24,12 @@ import {
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
 
-/** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`) but the row carries none. */
+/** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`). */
 export type OwnedRule = OwnedScreenRule;
 
 const NOTICE_TIMEOUT_MS = 4000;
 const CLOCK_TICK_MS = 60_000;
 
-/**
- * The approvals screen's state and actions: the pending list load, the rules
- * fan-out, the decision and revoke flows, and the screen's clock and notice.
- * Kept apart from the render so the screen stays a composition.
- */
 export function useApprovals() {
   const { api } = useApprovalsApi();
   const { api: aisApi } = useAisApi();
@@ -55,14 +50,10 @@ export function useApprovals() {
   const [confirmRule, setConfirmRule] = useState<OwnedRule | null>(null);
   const [revokeError, setRevokeError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  // Per-id in-flight guard: a second tap while the first POST is running
-  // does nothing (the disabled button alone cannot stop a tap that lands
-  // before React re-renders).
+  // Per-id in-flight guard: a second tap while the first POST is running does
+  // nothing (the disabled button alone cannot stop a tap before React re-renders).
   const decidingIds = useRef(new Set<string>());
 
-  // The confirmation line after a decision ("Approved once", …) shows for a
-  // few seconds where the row was, then clears itself. A newer line replaces
-  // the timer; unmounting interrupts it.
   const [, showNotice] = useAction(
     (message: string) =>
       Effect.sync(() => setNotice(message)).pipe(
@@ -105,9 +96,8 @@ export function useApprovals() {
     { mode: 'replace' },
   );
 
-  // One AI-list fetch for display names; a failure leaves the names empty. It
-  // goes through `useAisApi` so mock mode reads the mock AIs: the rules
-  // fan-out must know every AI the person owns, even with nothing pending.
+  // One AI-list fetch for display names; it goes through `useAisApi` so mock
+  // mode reads the mock AIs, and a failure leaves the names empty.
   const aiList = Effect.tryPromise({
     try: () => aisApi.listAis(),
     catch: () => undefined,
@@ -119,9 +109,8 @@ export function useApprovals() {
   const [, runRules] = useAction(
     (pending: PublicApproval[]) =>
       Effect.sync(() => setRulesStatus('loading')).pipe(
-        // One AI-list fetch for display names, then one rules fetch per AI the
-        // person owns, whether or not it has a pending request (a standing
-        // rule must stay revocable). Group rules are out of scope: T-0184.
+        // One rules fetch per AI the person owns, even with nothing pending: a
+        // standing rule must stay revocable. Group rules are out of scope.
         Effect.andThen(aiList),
         Effect.flatMap((ais) => {
           const names: Record<string, string> = {};
@@ -132,9 +121,8 @@ export function useApprovals() {
           const aiIds = [
             ...new Set([...ais.map((ai) => ai.id), ...pending.map((approval) => approval.aiId)]),
           ];
-          // One AI's rules failure must not blank the others: each AI is
-          // handled on its own (`mergeRulesFanOut` skips failures), and only
-          // when every AI fails does the section show the error state.
+          // One AI's rules failure must not blank the others: `mergeRulesFanOut`
+          // skips it, and only when every AI fails does the section show an error.
           return Effect.forEach(
             aiIds,
             (aiId) =>
@@ -168,13 +156,11 @@ export function useApprovals() {
     { mode: 'replace' },
   );
 
-  // The first load.
   useEffect(() => {
     runLoad(true);
   }, [runLoad]);
 
-  // Refresh when the screen regains focus so coming back from a chat picks
-  // up anything decided elsewhere.
+  // Refresh on focus so coming back from a chat picks up decisions from elsewhere.
   useFocusEffect(
     useCallback(() => {
       runLoad(false);
@@ -182,7 +168,7 @@ export function useApprovals() {
   );
 
   // Tick `now` every minute so the "expires in" countdown updates without a
-  // full reload. Unmounting interrupts the tick.
+  // full reload.
   const [, startClock, clockControls] = useAction<void, void, never>(() =>
     Effect.forever(
       Effect.sleep(CLOCK_TICK_MS).pipe(Effect.andThen(Effect.sync(() => setNow(new Date())))),
@@ -193,7 +179,6 @@ export function useApprovals() {
     return () => clockControls.interrupt();
   }, [startClock, clockControls]);
 
-  // The rules ride the pending rows' AI ids; reload them once pending loaded.
   const pendingList = useMemo(() => orderedRows(rows), [rows]);
   const pendingAiKey = useMemo(
     () => [...new Set(pendingList.map((row) => row.approval.aiId))].join(','),
@@ -203,8 +188,8 @@ export function useApprovals() {
     if (status === 'ready') {
       runRules(pendingList.map((row) => row.approval));
     }
-    // Runs when the pending AI set (or its readiness) changes, not on every
-    // row render: `pendingList` is rebuilt per render.
+    // Runs when the pending AI set changes, not every render: `pendingList` is
+    // rebuilt per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAiKey, status]);
 
@@ -222,8 +207,8 @@ export function useApprovals() {
       });
       showNotice(confirmationForDecision(decision));
     } else if (outcome.kind === 'gone') {
-      // Decided or expired elsewhere: drop the row and explain, instead
-      // of failing silently.
+      // Decided or expired elsewhere: drop the row and explain, rather than
+      // failing silently.
       decidedIds.current.add(id);
       setRows((previous) => {
         const next = { ...previous };
@@ -232,9 +217,8 @@ export function useApprovals() {
       });
       showNotice(outcome.message);
     } else if (outcome.kind === 'stale') {
-      // The 409 race reloaded a row that is still pending: the decision
-      // did not land, so the row stays in the list with the refreshed
-      // server state and no error.
+      // The 409 race reloaded a row that is still pending: the decision did not
+      // land, so the row stays with the refreshed server state and no error.
       setRows((previous) => {
         const current = previous[id];
         if (current === undefined) {
@@ -246,8 +230,8 @@ export function useApprovals() {
         };
       });
     } else {
-      // Offline, 500, 403, …: clear `busy` and show the fixed inline
-      // message so the buttons work again and the person can retry.
+      // Offline, 500, 403, …: clear `busy` and show the fixed inline message so
+      // the buttons work again.
       setRows((previous) => {
         const current = previous[id];
         if (current === undefined) {
@@ -258,8 +242,8 @@ export function useApprovals() {
     }
   };
 
-  // One decision for one row. The row's own action keeps a second tap from
-  // starting it again; the claim keeps the id busy until the POST settles.
+  // One decision for one row: the row's action blocks a second tap, the claim
+  // keeps the id busy until the POST settles.
   const decide = (id: string, decision: ApprovalDecision): Effect.Effect<void> => {
     if (!claimDecision(decidingIds.current, id)) {
       return Effect.void;
@@ -285,7 +269,6 @@ export function useApprovals() {
     setConfirmRule(owned);
   }, []);
 
-  // A second confirm while one revoke runs is dropped by the action itself.
   const [revokeState, runRevoke] = useAction((id: string) =>
     Effect.tryPromise({
       try: () => api.revokeApprovalRule(id),
@@ -300,8 +283,7 @@ export function useApprovals() {
       Effect.catch((outcome: { dropped: boolean; message: string }) =>
         Effect.sync(() => {
           if (outcome.dropped) {
-            // Already gone (revoked elsewhere): drop the row quietly, like a
-            // successful revoke.
+            // Already gone (revoked elsewhere): drop the row quietly.
             setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
             setConfirmRule(null);
           } else {

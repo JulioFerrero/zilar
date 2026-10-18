@@ -9,31 +9,19 @@ type ConfirmDialogProps = {
   visible: boolean;
   title: string;
   message: string;
-  /** An alert line shown under the message, e.g. a failed action. */
   error?: string;
   confirmLabel: string;
   busyLabel: string;
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  /** Defaults to "Cancel". */
   cancelLabel?: string;
-  /** Defaults to `confirmLabel` via the button text. */
   confirmAccessibilityLabel?: string;
-  /** Defaults to `cancelLabel` via the button text. */
   cancelAccessibilityLabel?: string;
-  /** Renders the confirm button in the danger colour. Defaults to true. */
   destructive?: boolean;
-  /** The dialog's accessibility label, on the `Modal`. */
   accessibilityLabel?: string;
 };
 
-/**
- * The centred confirm shell: a fade-in `Modal` over a dimmed backdrop, a
- * rounded card with a title, a message, an optional alert line and a
- * right-aligned Cancel + confirm pair of kit `Button`s. The Android back
- * button cancels.
- */
 export function ConfirmDialog({
   visible,
   title,
@@ -51,11 +39,10 @@ export function ConfirmDialog({
   accessibilityLabel,
 }: ConfirmDialogProps) {
   const hasError = error !== undefined && error !== '';
-  // The dialog waits for a sheet that is still leaving (T-1931); iOS cannot
-  // dismiss one controller and present another in the same instant.
+  // The dialog waits for a sheet that is still leaving: iOS cannot dismiss one
+  // controller and present another at the same instant.
   const [shown, setShown] = useState(false);
-  // A close hides it at once; adjust during render (React's derived-state
-  // pattern), as `block-card.tsx` does.
+  // A close hides it at once; adjust during render, as `block-card.tsx` does.
   if (!visible && shown) {
     setShown(false);
   }

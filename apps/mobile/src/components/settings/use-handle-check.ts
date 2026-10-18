@@ -12,7 +12,6 @@ import {
 
 const HANDLE_CHECK_DEBOUNCE_MS = 300;
 
-/** What `useHandleCheck` reads: the API, the trimmed handle and the setter. */
 type HandleCheckOptions = {
   readonly api: ProfileApi;
   readonly trimmed: string;
@@ -21,9 +20,8 @@ type HandleCheckOptions = {
 };
 
 /**
- * Debounced live availability for a changed handle. A forked fiber waits the
- * debounce, then applies the result; a handle change interrupts it. Your own
- * handle (any casing) skips the check: the server sees its live row and would
+ * Debounced live availability for a changed handle; a handle change interrupts
+ * the fiber. Your own handle (any casing) skips the check: the server would
  * report "taken", which is misleading next to an enabled Save.
  */
 export function useHandleCheck({ api, trimmed, ownHandle, setAvailability }: HandleCheckOptions) {

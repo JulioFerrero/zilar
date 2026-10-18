@@ -3,24 +3,21 @@ import { Data, Effect } from 'effect';
 import type { Machine, MachinesApi } from '@/lib/machines-api';
 import { describeMachinesError } from './errors';
 
-/** A failed machines call, carrying the fixed sentence the screen shows. */
 export class MachineCallFailed extends Data.TaggedError('MachineCallFailed')<{
   readonly message: string;
 }> {}
 
-/** A row or dialog change: the machine that came back, or `null` when it was removed. */
 export interface MachineChange {
   readonly id: string;
   readonly machine: Machine | null;
 }
 
-/** One mutation the list can run; each one's failure text is fixed. */
 export type MachineMutation =
   | { readonly kind: 'approve' | 'deny' | 'revoke' | 'delete'; readonly id: string }
   | { readonly kind: 'rename'; readonly id: string; readonly name: string };
 
 /**
- * Runs one machines-api call. A rejection becomes the sentence for its error
+ * Runs one machines-api call; a rejection becomes the sentence for its error
  * (or the fallback), never the server's raw text.
  */
 export function call<A>(attempt: () => Promise<A>, fallback: string) {
@@ -31,7 +28,6 @@ export function call<A>(attempt: () => Promise<A>, fallback: string) {
   });
 }
 
-/** The API call behind a mutation, mapped to the change it makes in the list. */
 export function mutationCall(
   api: MachinesApi,
   input: MachineMutation,
@@ -61,7 +57,6 @@ export function mutationCall(
   }
 }
 
-/** Replaces the changed machine, or drops it when it was removed. */
 export function applyChange(list: Machine[], change: MachineChange): Machine[] {
   if (change.machine === null) {
     return list.filter((m) => m.id !== change.id);

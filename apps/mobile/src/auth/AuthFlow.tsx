@@ -21,10 +21,6 @@ export const RESEND_SECONDS = 30;
 
 const RESEND_INTERVAL_MS = 1000;
 
-/**
- * Shared email → code flow for the invite and login screens. The invite field
- * appears only once the server says the email has no account.
- */
 export function AuthFlow({
   inviteCode: inviteCodeProp,
   heading,
@@ -46,8 +42,6 @@ export function AuthFlow({
   const [error, setError] = useState<string | undefined>(undefined);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  // The invite a request carries: none before the server asks for one, then the
-  // trimmed field value (or none when the field is empty).
   const requestInvite = (): string | undefined => {
     if (!inviteStep) {
       return undefined;
@@ -56,8 +50,6 @@ export function AuthFlow({
     return trimmed === '' ? undefined : trimmed;
   };
 
-  // The resend countdown: one sleep per second left, interrupted when the
-  // count changes or the screen goes away.
   useQuery(
     () =>
       secondsLeft <= 0
@@ -68,7 +60,6 @@ export function AuthFlow({
     [secondsLeft],
   );
 
-  // A call that rejects counts as a failed call with the generic message.
   const [requestState, sendCode] = useAction<void, void, never>(() =>
     Effect.gen(function* () {
       setError(undefined);

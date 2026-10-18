@@ -11,7 +11,6 @@ import type { ProfileAttempt } from '@/components/settings/use-profile-settings'
 
 type PickedAvatar = Extract<AvatarPhase, { name: 'picked' }>;
 
-/** One avatar action; the picker, the save and the removal share one slot. */
 type AvatarOperation =
   | { readonly kind: 'pick' }
   | { readonly kind: 'save'; readonly ownerId: string; readonly picked: PickedAvatar }
@@ -19,23 +18,16 @@ type AvatarOperation =
 
 const PICK_ERROR = 'Could not pick that picture. Try again.';
 
-/** The avatar state and the three actions the profile screen offers. */
 export interface ProfileAvatar {
   readonly token: string | undefined;
   readonly phase: AvatarPhase;
   readonly busy: boolean;
-  /** Resets the phase and stores the bearer a profile load just fetched. */
   readonly reset: (token: string | undefined) => void;
   readonly pick: () => void;
   readonly savePicked: (ownerId: string) => void;
   readonly remove: (ownerId: string) => void;
 }
 
-/**
- * Owns the profile avatar: the picked picture, the upload, and the removal.
- * It is a leaf of the settings split, so the profile call wrapper arrives as
- * `attempt` and the profile it updates is written through `setAvatarUrl`.
- */
 export function useProfileAvatar(
   api: ProfileApi,
   attempt: ProfileAttempt,
@@ -45,9 +37,8 @@ export function useProfileAvatar(
   const [phase, setPhase] = useState<AvatarPhase>({ name: 'idle' });
   const [busy, setBusy] = useState(false);
 
-  // The avatar uploader the settings API calls with the upload url. Its
-  // failures reach `friendlyAvatarError` unchanged (runPromise rejects with
-  // the error value), so the same sentence shows as before.
+  // The uploader the settings API calls with the upload url; its failures reach
+  // `friendlyAvatarError` unchanged, so the same sentence shows as before.
   const uploaderFor =
     (picked: PickedAvatar) =>
     (url: string): Promise<unknown> => {
@@ -118,10 +109,9 @@ export function useProfileAvatar(
             progress: 0,
           });
         }).pipe(
-          // The settings API uploads a local file through `expo-file-system`
-          // (React Native's `fetch` cannot send binary bodies); the uploader
-          // reports progress back into the phase. In mock mode the mock
-          // answers without touching the file.
+          // The settings API uploads a local file through `expo-file-system` (React
+          // Native's `fetch` cannot send binary bodies); the uploader reports progress
+          // back into the phase. In mock mode the mock answers without touching the file.
           Effect.andThen(
             attempt(
               () =>

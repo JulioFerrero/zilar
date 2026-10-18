@@ -13,31 +13,25 @@ import { ApprovalsApiError, type ApprovalRule } from '@/lib/approvals-api';
 import { interruptFiber } from '@/lib/effect/timers';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
-/** Fixed user-facing line when the group's standing rules fail to load. */
 export const RULES_LOAD_FAILED_MESSAGE = 'Could not load the rules.';
 
-/** Fixed user-facing line when a revoke fails for any reason but "already gone". */
 export const REVOKE_FAILED_MESSAGE = 'Could not revoke the rule. Try again.';
 
 export type RulesStatus = 'loading' | 'ready' | 'error';
 
 /**
  * The group's always-allowed rules: the list, its load state and the revoke
- * flow. The Group info route calls it once so the root's count and the Always
- * allowed page read the same list (one request instead of two).
+ * flow. The route calls it once so the root's count and the page read the same
+ * list (one request instead of two).
  */
 export interface GroupRulesHandle {
   status: RulesStatus;
   rules: ApprovalRule[];
   error: string;
-  /** Loads the list again (the error state's Retry). */
   retry: () => void;
-  /** Whether a revoke is in flight; the confirm dialog's busy state. */
   revoking: boolean;
   revokeError: string;
-  /** The rule the confirm dialog is asking about, or null when it is closed. */
   confirmRule: ApprovalRule | null;
-  /** Opens the confirm dialog for one rule. */
   requestRevoke: (rule: ApprovalRule) => void;
   cancelRevoke: () => void;
   confirmRevoke: () => void;
@@ -139,12 +133,6 @@ export function useGroupRules(groupId: string, enabled = true): GroupRulesHandle
   };
 }
 
-/**
- * The Always allowed page of Group info (T-1573), after the web group panel and
- * the AI's approvals screen: the group's standing rules, owners and admins
- * only, each revocable after a confirm. The route owns the list (`useGroupRules`)
- * so its count and this page never disagree.
- */
 export function AllowedPage({ handle, onBack }: { handle: GroupRulesHandle; onBack: () => void }) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>

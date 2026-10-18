@@ -14,12 +14,6 @@ import { ToolsPage } from '@/components/group-info/tools-page';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The Group info pages and the Content group's sheets (T-1573). The route owns
- * the data and the `page` state; this module holds the page switch and the
- * media/pins state, so `[id].tsx` stays a composition and under 400 lines.
- */
-
 export type GroupInfoPage = 'root' | 'members' | 'tools' | 'activity' | 'allowed' | 'settings';
 
 type RootProps = ComponentProps<typeof GroupInfoRoot>;
@@ -27,10 +21,9 @@ type MembersProps = ComponentProps<typeof MembersPage>;
 type SettingsProps = ComponentProps<typeof SettingsPage>;
 
 /**
- * The Content rows' state: media and pins are chat-scoped (the group's own
- * chat row), so the sheets load for `chatId` exactly like the chat screen's.
- * `pinsCount` is `undefined` until the pins have loaded, so the root row shows
- * no number before then (the board's count rule).
+ * The Content rows' state: media and pins are chat-scoped to the group's own
+ * chat row, so the sheets load for `chatId` like the chat screen's. `pinsCount`
+ * is `undefined` until the pins load, so the root row shows no number before.
  */
 export interface GroupContent {
   chatId: string | undefined;
@@ -154,7 +147,6 @@ export function useGroupContent(groupChatId: string | undefined): GroupContent {
   };
 }
 
-/** The media and pins sheets, mounted beside the pages while `[id].tsx` runs. */
 export function GroupContentSheets({ content }: { content: GroupContent }) {
   return (
     <>
@@ -180,11 +172,6 @@ export function GroupContentSheets({ content }: { content: GroupContent }) {
   );
 }
 
-/**
- * The page switch (T-1569, T-1573, T-1574): one page per `page`, all full
- * screen with the root's back key. `root`, `members` and `settings` arrive
- * whole so the route only builds their props once.
- */
 export function GroupInfoPages({
   page,
   onBack,

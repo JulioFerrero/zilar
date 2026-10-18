@@ -71,19 +71,14 @@ export interface PackEditor {
   discard: () => void;
 }
 
-/**
- * The pack editor's state and handlers: the load, the delete and the back
- * guard, plus the sticker items and Save loop behind `use-pack-items.ts`.
- * The route keeps the default export, the shell and the load states.
- */
 export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const packId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { api, viewerId } = useStickersApi();
   const me = useAuthStore((state) => state.me);
-  // In mock mode the seeded viewer wins: a stored session from an earlier
-  // sign-in may still be present, and `me.id` would never match the seed owner.
+  // In mock mode the seeded viewer wins: a stored session from an earlier sign-in
+  // may still be present, and `me.id` would never match the seed owner.
   const viewer = viewerId ?? me?.id;
   const activePicker = useMemo(() => picker ?? createStickerImagePicker(), [picker]);
   const activePreparer = useMemo(() => preparer ?? createStickerPreparer(), [preparer]);
@@ -138,11 +133,11 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     if (packId === undefined) {
       return;
     }
-    // T-1978: a reload over a shown pack keeps it on screen while the fetch
-    // runs; only a load with nothing shown paints the loading state.
+    // A reload over a shown pack keeps it on screen; only a load with nothing
+    // shown paints the loading state.
     setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
-    // The raw error is kept (no ApiFailure mapping): lookupFailureKind
-    // checks StickersApiError by class.
+    // The raw error is kept (no ApiFailure mapping): lookupFailureKind checks
+    // StickersApiError by class.
     Effect.runFork(
       Effect.tryPromise({
         try: () => api.listStickerPacks(),

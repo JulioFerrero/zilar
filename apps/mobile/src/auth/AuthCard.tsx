@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 
-/** The shared phone auth screen shell: gradient, safe area, keyboard handling and card. */
 export function AuthCard({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <View className="flex-1">

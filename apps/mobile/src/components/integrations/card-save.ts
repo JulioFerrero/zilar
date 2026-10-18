@@ -4,23 +4,17 @@ import { runMobile } from '../../lib/effect/runtime';
 import { describeIntegrationsError } from './errors';
 
 export interface CardSaveOutcome {
-  /** The reloaded status, or null when the save or the reload failed. */
   status: IntegrationsStatus | null;
-  /** True only after the status reload proved the save stuck. */
   saved: boolean;
-  /** A fixed user-facing sentence, or empty on success. Never raw server text. */
   error: string;
-  /** The secret field's next value — empty on success (write-only), kept on failure for retry. */
   secretAfterSave: string;
 }
 
 /**
- * The Email card save behind the integrations screen. A pure async step so
- * the screen stays thin and the key handling is unit testable: the caller
- * hands over the typed values, and on success clears its own field state
- * (the Resend key is write-only — it travels only in the PUT body and never
- * comes back). The saved flag flips only after the status reload proves the
- * save stuck; a failed reload clears it so the success line never lies.
+ * The Email card save. A pure async step so the screen stays thin and the key
+ * handling is unit testable: the Resend key is write-only, it travels only in
+ * the PUT body and never comes back. `saved` flips only after the status reload
+ * proves the save stuck; a failed reload clears it so the success line never lies.
  */
 export function saveEmailCard(
   api: IntegrationsApi,
@@ -36,9 +30,9 @@ export function saveEmailCard(
 }
 
 /**
- * The Voice transcription card save. Same contract as the Email card: the
- * API key is write-only, and `saved` needs the reload. An empty model means
- * the server default `whisper-1`, mirroring web.
+ * The Voice transcription card save: same contract as the Email card, the API key
+ * is write-only and `saved` needs the reload. An empty model means the server
+ * default `whisper-1`, mirroring web.
  */
 export function saveVoiceCard(
   api: IntegrationsApi,
@@ -59,8 +53,7 @@ export function saveVoiceCard(
 }
 
 /**
- * The Telegram bot card save. Same contract: the token is write-only, and
- * `saved` needs the reload.
+ * The Telegram bot card save: the token is write-only, and `saved` needs the reload.
  */
 export function saveTelegramCard(
   api: IntegrationsApi,
@@ -72,18 +65,15 @@ export function saveTelegramCard(
 }
 
 export interface CardRemoveOutcome {
-  /** The reloaded status, or null when the remove or the reload failed. */
   status: IntegrationsStatus | null;
-  /** True only after the status reload proved the remove stuck. */
   removed: boolean;
-  /** A fixed user-facing sentence, or empty on success. Never raw server text. */
   error: string;
 }
 
 /**
- * The Telegram / Voice Remove behind the confirm dialog. Same reload rule
- * as the saves: the dialog closes only after the status reload proves the
- * remove stuck, and a failed Remove keeps the dialog open with the error.
+ * The Telegram / Voice Remove behind the confirm dialog: the dialog closes only
+ * after the status reload proves the remove stuck, and a failed Remove keeps it
+ * open with the error.
  */
 export function removeIntegrationCard(
   api: IntegrationsApi,
@@ -108,7 +98,6 @@ export function removeIntegrationCard(
   );
 }
 
-/** Runs one save; on success reloads the status, on failure keeps the typed secret for retry. */
 function saveThenReload(
   api: IntegrationsApi,
   typedSecret: string,

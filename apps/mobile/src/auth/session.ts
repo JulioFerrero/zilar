@@ -16,7 +16,6 @@ import { createAuthStore, toAuthError, type AuthApi, type AuthError } from './se
 
 const storage = createSecureSessionStorage();
 
-// A rejected call keeps the error it threw.
 const attempt = <A>(call: () => PromiseLike<A>): Effect.Effect<A, unknown> =>
   Effect.tryPromise({ try: call, catch: (error) => error });
 
@@ -55,9 +54,9 @@ const api: AuthApi = {
   verifyCode: (email, otp, inviteCode) => runMobile(verifyCode(email, otp, inviteCode)),
   signOut: () =>
     runMobile(
-      // Remove the device row while the bearer token is still valid (T-1139).
-      // The push module is dynamic, like `session-token.ts`: it loads
-      // `expo-notifications`, which Node (Vitest) cannot import.
+      // Remove the device row while the bearer token is still valid. The push
+      // module is dynamic, like `session-token.ts`: it loads `expo-notifications`,
+      // which Node (Vitest) cannot import.
       Effect.gen(function* () {
         yield* Effect.ignore(
           attempt(async () => {
@@ -72,10 +71,8 @@ const api: AuthApi = {
   updateMe: (token, name) => updateMe(API_URL, token, name),
 };
 
-/** The single app-wide session store. Screens read it through `useSession`. */
 export const useAuthStore = createAuthStore({ api, storage });
 
-/** Sends a sign-in code through the real server, carrying the invite when present. */
 export function requestSignInCode(
   email: string,
   inviteCode?: string,
@@ -90,7 +87,6 @@ export interface SessionView {
   signOut: () => Promise<void>;
 }
 
-/** The hook the chat screens will use once they move off mock data. */
 export function useSession(): SessionView {
   const status = useAuthStore((state) => state.status);
   const me = useAuthStore((state) => state.me);

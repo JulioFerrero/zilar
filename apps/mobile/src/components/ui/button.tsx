@@ -16,7 +16,6 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // `default` and `key` both render the glossy primary key (ui-style.md §4).
         default: '',
         key: '',
         destructive: cn(

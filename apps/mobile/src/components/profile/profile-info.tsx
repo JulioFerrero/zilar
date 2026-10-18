@@ -10,10 +10,6 @@ type ProfileInfoProps = {
   onCopyUsername: () => void;
 };
 
-/**
- * The profile info card (T-1308): the grouped list with the @handle (tap to
- * copy, the app's toast confirms it) and the bio when the person wrote one.
- */
 export function ProfileInfo({ handle, bio, onCopyUsername }: ProfileInfoProps) {
   return (
     <View className="gap-0 overflow-hidden rounded-xl border border-border bg-surface">

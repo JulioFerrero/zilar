@@ -8,14 +8,6 @@ import { NO_PERSON_MESSAGE, PEOPLE_RATE_LIMITED_MESSAGE, peopleHandleFor } from 
 import { PersonRow } from './person-row';
 import { usePeopleSearch } from './use-people-search';
 
-/**
- * The People section above the chat-list search results (T-0193): when the
- * trimmed search text starts with `@` and the rest is a valid handle, one
- * compact person row — avatar, name, `@handle` and a muted relation hint. An
- * unknown handle shows one muted line; a shorter or invalid handle shows
- * nothing. A contact's row opens the DM, the viewer's own row does nothing,
- * and every other relation opens `/u/<handle>` (T-1854).
- */
 export function PeopleSearchResult({
   api,
   text,
@@ -26,12 +18,9 @@ export function PeopleSearchResult({
 }: {
   api: ContactsApi;
   text: string;
-  /** The loaded chats, to resolve a contact's DM without a refetch. */
   chats: { id: string; kind: string }[];
-  /** The viewer's own bare JID, for the DM domain. */
   myJid: string | null | undefined;
   onMessage: (chatId: string) => void;
-  /** Bumped by the search field's Enter key to look up at once. */
   submitRequest?: number | undefined;
 }) {
   const router = useRouter();
@@ -93,7 +82,6 @@ export function PeopleSearchResult({
   );
 }
 
-/** The muted right-side hint for the relation, or none. */
 function relationHint(relation: ContactRelation): string | undefined {
   switch (relation) {
     case 'request_sent':

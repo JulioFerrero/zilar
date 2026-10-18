@@ -22,12 +22,6 @@ export interface ProfileViewHandlers {
   onCopyUsername?: (() => void) | undefined;
 }
 
-/**
- * The staged photo edit under the action keys: the picked preview with
- * explicit Save / Discard keys (picking never uploads on its own, the
- * `settings/profile.tsx` pattern), or the Remove key when there is a
- * current picture and nothing staged.
- */
 export interface PhotoEdit {
   stagedUri?: string | undefined;
   busy: boolean;
@@ -39,15 +33,13 @@ export interface PhotoEdit {
 
 type ProfileViewProps = ProfileViewHandlers & {
   profile: MyProfile;
-  /** The bearer for the same-origin picture load, if any. */
   token?: string | undefined;
 };
 
 /**
- * The Profile tab body: the centered avatar, name and online line, the
- * three action keys, and the info card. The content is hook-free, so Vitest
- * covers it without a simulator; the wrapper below owns the image-failed
- * flag and the `(tabs)/profile.tsx` screen owns the loading.
+ * The Profile tab body: the centered avatar, name and online line, the three
+ * action keys, and the info card. The content is hook-free, so Vitest covers it
+ * without a simulator; the wrapper owns the image-failed flag.
  */
 export function ProfileViewContent({
   profile,
@@ -69,7 +61,7 @@ export function ProfileViewContent({
     profile.avatarUrl === undefined || imageFailed
       ? null
       : avatarImageSource(profile.avatarUrl, API_URL, token);
-  // T-1334: the ball's colour and light come from the name.
+  // The ball's colour and light come from the name.
   const seed = nameSeed(profile.name) || profile.id;
   return (
     <View className="gap-4">
@@ -164,11 +156,6 @@ export function ProfileViewContent({
   );
 }
 
-/**
- * The staged photo edit: the picked `file://` preview with explicit Save /
- * Discard keys, or the Remove key when there is a current picture. Nothing
- * uploads until Save, so an accidental Set-photo tap stages only.
- */
 export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName: string }) {
   if (edit.stagedUri !== undefined) {
     return (
@@ -222,11 +209,9 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
   );
 }
 
-/** The stateful Profile tab body: the content plus the failed-url flag. */
 export function ProfileView(props: ProfileViewProps & { photoEdit?: PhotoEdit | undefined }) {
   // The failed url, not a boolean: a 404 for a stale url clears itself when
-  // `setProfile` carries the new `avatarUrl`, instead of sticking on the
-  // ball avatar until remount.
+  // `setProfile` carries the new `avatarUrl`, instead of sticking until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <ProfileViewContent

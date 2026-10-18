@@ -9,17 +9,10 @@ type HandleFieldProps = {
   value: string;
   availability: HandleAvailability;
   error?: string | undefined;
-  /** True while the screen's single Save runs, so the input stays read-only. */
   busy: boolean;
   onChange: (value: string) => void;
 };
 
-/**
- * The `@username` editor: the input, the debounced live-availability line and
- * the claim error. T-1329: the per-field Save key is gone; the screen's one
- * Save saves the fields that changed (keeping the username validation), so
- * this only renders.
- */
 export function HandleField({ value, availability, error, busy, onChange }: HandleFieldProps) {
   const line = handleAvailabilityText(availability);
   const unavailable = availability.state === 'unavailable';

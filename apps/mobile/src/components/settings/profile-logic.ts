@@ -1,9 +1,7 @@
 /**
- * The plain-logic half of the settings area, kept hook- and JSX-free so
- * Vitest covers it without a simulator: the friendly error texts (the same
- * words as web's `friendlyError`/`reasonText`), the handle availability
- * view model (loading, available, taken-with-reason), and the handle
- * suggestion builder (the same rules as web's `suggestHandleFor`).
+ * The plain-logic half of the settings area, kept hook- and JSX-free so Vitest
+ * covers it. Holds the friendly error texts (web's words), the handle
+ * availability view model and the handle suggestion builder.
  */
 
 import { handleSaveMessage, parseUrl } from '@zilar/chat-core';
@@ -12,7 +10,6 @@ import { ProfileApiError } from '../../lib/profile-api';
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
 
-/** The client-side reasons the live check can show: the server's three plus the rate limit. */
 export type HandleAvailabilityReason = HandleCheckReason | 'rate_limited';
 
 export type HandleAvailability =
@@ -21,7 +18,6 @@ export type HandleAvailability =
   | { state: 'available'; handle: string }
   | { state: 'unavailable'; reason: HandleAvailabilityReason };
 
-/** Folds a check result (or its failure) into the availability view model. */
 export function handleAvailabilityFor(
   trimmed: string,
   result:
@@ -39,12 +35,10 @@ export function handleAvailabilityFor(
   return { state: 'unavailable', reason: result.reason ?? 'taken' };
 }
 
-/** True when the error is the check rate limit (shown inline, not as a form error). */
 export function isHandleRateLimited(error: unknown): boolean {
   return error instanceof ProfileApiError && error.code === 'rate_limited';
 }
 
-/** The live-check line under the handle input, or null when it stays quiet. */
 export function handleAvailabilityText(view: HandleAvailability): string | null {
   switch (view.state) {
     case 'available':
@@ -69,7 +63,6 @@ export function reasonText(reason: HandleAvailabilityReason | undefined): string
   }
 }
 
-/** The claim failure in plain words, mirroring web's `friendlyError`. */
 export function friendlyClaimError(error: unknown): string {
   if (error instanceof ProfileApiError) {
     return (
@@ -82,7 +75,6 @@ export function friendlyClaimError(error: unknown): string {
   return 'Could not save your username. Try again.';
 }
 
-/** The avatar failure in plain words, mirroring web's `friendlyUploadError`. */
 export function friendlyAvatarError(error: unknown): string {
   if (error instanceof ProfileApiError) {
     switch (error.code) {
@@ -109,14 +101,12 @@ export function friendlyAvatarError(error: unknown): string {
   return 'Could not save the picture. Try again.';
 }
 
-// The handle rules live in @zilar/protocol, shared with the server and web.
 export {
   HANDLE_MAX_LENGTH,
   HANDLE_MIN_LENGTH,
   suggestHandle as suggestHandleFor,
 } from '@zilar/protocol';
 
-/** The phases of the profile avatar control (picked, uploading, failed, removed). */
 export type AvatarPhase =
   | { name: 'idle' }
   | { name: 'picked'; uri: string; mimeType: string }
@@ -126,10 +116,9 @@ export type AvatarPhase =
 
 /**
  * The `expo-image` source for an avatar url. The server's `avatarUrl` is a
- * relative `/api/avatars/<id>` path, so it resolves against the API origin
- * (the same way `stickerImageSource` resolves sticker paths). The bearer
- * rides only to that origin: a `file://` preview or a foreign url gets no
- * headers, so the session token can never leak cross-origin.
+ * relative `/api/avatars/<id>` path, so it resolves against the API origin. The
+ * bearer rides only to that origin, so a `file://` preview or a foreign url gets
+ * no headers and the token can never leak cross-origin.
  */
 export function avatarImageSource(
   url: string,

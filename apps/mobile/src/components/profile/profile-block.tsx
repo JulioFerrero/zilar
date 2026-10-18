@@ -17,10 +17,9 @@ type ProfileBlockProps = {
 };
 
 /**
- * The Block / Unblock row at the bottom of the profile (T-1308), in the
- * destructive red token. Block keeps the app's inline confirm (the card's
- * `shouldResetBlockConfirm` rule drops a stale confirm when the person or the
- * relation changes, e.g. right after a successful block).
+ * The Block / Unblock row at the bottom of the profile, in the destructive red
+ * token. The card's `shouldResetBlockConfirm` rule drops a stale confirm when
+ * the person or the relation changes, e.g. right after a successful block.
  */
 export function ProfileBlock({
   userId,

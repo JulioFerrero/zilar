@@ -10,11 +10,6 @@ type ChannelSettingsPageProps = {
   onOpenVisibility: () => void;
 };
 
-/**
- * The Settings page of a channel (T-1587), after web's channel panel
- * (`ChannelPanel.tsx:326-334`): the owner's Visibility row, which opens the
- * shared group visibility sheet. A channel has no other setting.
- */
 export function ChannelSettingsPage({ onBack, onOpenVisibility }: ChannelSettingsPageProps) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>

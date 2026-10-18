@@ -10,7 +10,6 @@ import type { PanelPack } from '@/lib/stickers-api';
 import { cn } from '@/lib/utils';
 import { packCountLabel } from '@/components/stickers/tile-size';
 
-/** The meta line under the pack name: the count, plus the source or owner. */
 function packMeta(pack: PanelPack, own: boolean): string {
   const count = packCountLabel(pack.stickers.length);
   if (own) {
@@ -21,11 +20,6 @@ function packMeta(pack: PanelPack, own: boolean): string {
     : `${count} · @${pack.ownerHandle}`;
 }
 
-/**
- * One lean pack row (T-1533): four 36 px thumbs, the name with a globe when
- * shared, the meta line and a trailing control. My packs, Added and Discover
- * all render it as a row inside one bordered list.
- */
 export function PackCard({
   pack,
   token,
@@ -38,17 +32,11 @@ export function PackCard({
 }: {
   pack: PanelPack;
   token: string | undefined;
-  /** The signed-in user id: own packs show "Telegram" instead of a handle. */
   meId?: string | undefined;
-  /** Makes the row pressable, adding a chevron unless `action` is given. */
   onPress?: (() => void) | undefined;
-  /** The trailing control; Discover passes Add/Remove. */
   action?: React.ReactNode;
-  /** Defaults to the pack title. */
   accessibilityLabel?: string;
-  /** A row inside a bordered list: no card of its own. */
   inList?: boolean;
-  /** Draw the hairline below the row. Defaults to true in list mode. */
   divider?: boolean;
 }) {
   const thumbs = pack.stickers.slice(0, 4);

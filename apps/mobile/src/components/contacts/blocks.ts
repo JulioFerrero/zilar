@@ -3,10 +3,9 @@ import { reloadBlockedJids } from '../../lib/blocked-users';
 import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
 
 /**
- * The block / unblock states (T-0244, mirrors the web `ContactProfileRow`
- * and `BlockedPage`): UI-free so the card and screen tests can drive them
- * with a fake API. Every error is a fixed sentence, never the server's raw
- * message.
+ * The block / unblock states, mirroring the web `ContactProfileRow` and
+ * `BlockedPage`: UI-free so the card and screen tests drive them with a fake
+ * API. Every error is a fixed sentence, never the server's raw message.
  */
 
 const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
@@ -17,7 +16,6 @@ function rateLimited(error: unknown): boolean {
   );
 }
 
-/** The inline failure for a block press. */
 export function blockFailure(error: unknown): string {
   if (rateLimited(error)) {
     return RATE_LIMIT_MESSAGE;
@@ -25,7 +23,6 @@ export function blockFailure(error: unknown): string {
   return 'Could not block. Try again.';
 }
 
-/** The inline failure for an unblock press (card or blocked screen). */
 export function unblockFailure(error: unknown): string {
   if (rateLimited(error)) {
     return RATE_LIMIT_MESSAGE;
@@ -33,7 +30,6 @@ export function unblockFailure(error: unknown): string {
   return 'Could not unblock. Try again.';
 }
 
-/** The failure for loading the blocked list. */
 export function blockedLoadFailure(error: unknown): string {
   if (rateLimited(error)) {
     return RATE_LIMIT_MESSAGE;
@@ -61,10 +57,6 @@ const unblockSteps = Effect.fnUntraced(function* (
   yield* Effect.try({ try: onUnblocked, catch: (cause) => cause });
 });
 
-/**
- * Blocks the user and runs `onBlocked` on success. Resolves null on success,
- * or the inline failure message. The caller updates the shown relation.
- */
 export const performBlockEffect = (
   api: ContactsApi,
   userId: string,
@@ -75,11 +67,6 @@ export const performBlockEffect = (
     Effect.catch((error: unknown) => Effect.succeed(blockFailure(error))),
   );
 
-/**
- * Unblocks the user and runs `onUnblocked` on success (the card updates the
- * relation, the blocked screen removes the row). Resolves null on success,
- * or the inline failure message (nothing changes so the user can retry).
- */
 export const performUnblockEffect = (
   api: ContactsApi,
   userId: string,

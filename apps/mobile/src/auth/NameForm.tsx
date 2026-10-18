@@ -11,7 +11,6 @@ import { AuthCard } from './AuthCard';
 import { safeTarget } from './guard';
 import { useAuthStore } from './session';
 
-/** The first sign-in name step; saves through `PATCH /api/me` before continuing. */
 export function NameForm() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
@@ -22,7 +21,6 @@ export function NameForm() {
   const [saveState, save] = useAction((trimmed: string) =>
     Effect.gen(function* () {
       setError(undefined);
-      // A rejected save is a failed save, shown with the same sentence.
       const result = yield* Effect.tryPromise({
         try: () => setName(trimmed),
         catch: (cause) => cause,
@@ -31,8 +29,6 @@ export function NameForm() {
         setError('Could not save your name. Try again.');
         return;
       }
-      // Callers (e.g. the join-by-link page) pass `from` to come back after
-      // the name step; the default chains into the handle step, like web.
       const from = safeTarget(params.from);
       router.replace(from !== '/' ? (from as Href) : ('/welcome/handle' as Href));
     }),

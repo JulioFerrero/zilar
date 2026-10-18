@@ -1,10 +1,9 @@
 import { IntegrationsApiError } from '../../lib/integrations-api';
 
 /**
- * Maps the integrations error codes to fixed plain sentences, mirroring
- * web's `friendlyError` in `apps/web/src/routes/IntegrationsPage.tsx`.
- * User-facing text is never the server's raw message; the `fallback` the
- * call site passes answers anything unknown.
+ * Maps the integrations error codes to fixed plain sentences, mirroring web's
+ * `friendlyError`. User-facing text is never the server's raw message; the
+ * `fallback` the call site passes answers anything unknown.
  */
 export function describeIntegrationsError(error: unknown, fallback: string): string {
   if (error instanceof IntegrationsApiError) {

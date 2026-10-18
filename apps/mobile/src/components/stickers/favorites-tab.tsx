@@ -8,7 +8,6 @@ import { API_URL } from '@/lib/auth';
 import { FOREGROUND } from '@/lib/colors';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
 
-/** The Favorites tab: the starred stickers grid with their Remove control. */
 export function FavoritesTab({
   favorites,
   tile,

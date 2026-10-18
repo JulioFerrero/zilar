@@ -5,11 +5,6 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import type { Contact } from '@/lib/contacts-api';
 
-/**
- * One contact row (T-1314): avatar with the online dot, the name and a second
- * line (status or `@handle`), plus an optional trailing node (the "⋯" menu on
- * the Contacts screen, the round checkbox in the New group picker).
- */
 export function ContactRow({
   person,
   subtitle,
@@ -20,7 +15,6 @@ export function ContactRow({
   trailing,
 }: {
   person: Contact;
-  /** The second line; an empty string renders only the name. */
   subtitle: string;
   online?: boolean;
   accessibilityLabel: string;

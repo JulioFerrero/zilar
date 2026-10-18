@@ -5,10 +5,9 @@ import { Text } from '@/components/ui/text';
 import { useClientVersionCheck } from '@/lib/use-client-version';
 
 /**
- * A thin bar at the top when this build is older than the server's minimum
- * client protocol (OPS-21). It sits in the layout flow (it pushes content down
- * rather than covering it), never blocks use, and renders nothing at the
- * current version.
+ * A thin bar when this build is older than the server's minimum client
+ * protocol. It sits in the layout flow rather than covering content, and never
+ * blocks use.
  */
 export function ClientVersionBanner() {
   const outdated = useClientVersionCheck();

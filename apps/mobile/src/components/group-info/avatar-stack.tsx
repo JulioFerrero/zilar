@@ -10,11 +10,6 @@ const STACK_OVERLAP = -7;
 
 export type StackPerson = { id: string; name: string; avatarUrl?: string | undefined };
 
-/**
- * The overlapping circles (T-1858, moved from the topics section), after
- * `PhoneGroup.dc.html`: up to a handful of people or AIs, each ringed in the
- * row's colour. The caller picks the order and the cap.
- */
 export function AvatarStack({ people }: { people: readonly StackPerson[] }) {
   return (
     <View

@@ -5,18 +5,11 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 
 type ProfileHeaderProps = {
-  /** The person shown: their name, fallback id and picture (T-1334). */
   person: AvatarPersonInput;
-  /** "online" / "last seen …" for a known DM, else the @handle. */
   status: string;
-  /** Draws the green dot beside the status (a DM that is online). */
   online: boolean;
 };
 
-/**
- * The Telegram-style profile top (T-1308): a large centred picture, the name
- * below it and the status under that.
- */
 export function ProfileHeader({ person, status, online }: ProfileHeaderProps) {
   return (
     <View className="items-center gap-1 pt-4">

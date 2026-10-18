@@ -7,7 +7,6 @@ import { ICON } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 export type ActionTile = {
-  /** A stable key for the row. */
   key: string;
   label: string;
   icon: LucideIcon;
@@ -15,11 +14,6 @@ export type ActionTile = {
   disabled?: boolean;
 };
 
-/**
- * One row of equal action tiles (ui-consistency.md §4.2): a 40 px `IconButton`
- * with a 12 px muted label below, shared by the own profile, the public profile
- * and the group and channel info pages.
- */
 export function ActionTiles({
   items,
   accessibilityLabel,

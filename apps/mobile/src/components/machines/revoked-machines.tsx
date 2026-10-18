@@ -6,10 +6,6 @@ import { Text } from '@/components/ui/text';
 import type { Machine } from '@/lib/machines-api';
 import { MachineCard } from './machine-card';
 
-/**
- * The revoked machines (T-1526), shown under the approved list when its
- * Revoked row is open. Each keeps today's Delete action.
- */
 export function RevokedMachines({
   machines,
   busyId,

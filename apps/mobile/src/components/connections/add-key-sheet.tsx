@@ -10,11 +10,6 @@ import { Text } from '@/components/ui/text';
 
 import { useKeyCheck } from './use-key-check';
 
-/**
- * The Connections page's Add key sheet: the same Provider and Key steps as the
- * New AI flow. Continue runs the key check (which creates the connection), then
- * Save closes the sheet; closing before Save abandons a connection this check made.
- */
 export function AddKeySheet({
   visible,
   onClose,
@@ -47,7 +42,6 @@ export function AddKeySheet({
       return;
     }
     if (keys.keyVerified) {
-      // The connection is the user's saved key now, so a dismissal must not delete it.
       keys.claim();
       onSaved();
       return;

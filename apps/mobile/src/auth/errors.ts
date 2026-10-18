@@ -1,6 +1,6 @@
 import type { AuthError } from './session-store';
 
-/** Mirrors the web copy for the errors the server can return (T-0015/T-0024). */
+/** Mirrors the web copy for the errors the server can return. */
 export function errorMessageFor(error: AuthError | undefined): string {
   const code = error?.code ?? '';
   if (code === 'invite_required') {

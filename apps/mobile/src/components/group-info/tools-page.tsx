@@ -18,27 +18,15 @@ import { mayManageRoles } from '@/lib/roles';
 import { ToolsApiError, type Routine, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
-/**
- * The Tools and routines page of Group info (T-1573), after `Phone.dc.html`
- * and the web group panel: the group-scoped tools and routines. The routines
- * are read only for a member, but a manager gets the AI page's own
- * Pause/Resume/Delete actions (T-1740), hidden when the API would refuse them
- * (`canManage`, like web's group panel). The rows and the loading/error/empty
- * states are the AI screen's own `ToolsSectionContent` / `RoutinesSectionContent`.
- */
-
-/** A 404 or an unparseable response: the list reads as empty, not an error. */
 const isEmptyListError = (error: unknown): boolean =>
   error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
 
-/** Loads the group's or topic's tools; a missing or unparseable list reads as empty. */
 const loadTools = (api: ToolsApi, groupId: string, topicId?: string) =>
   Effect.tryPromise({
     try: () => (topicId === undefined ? api.listGroupTools(groupId) : api.listTopicTools(topicId)),
     catch: (error) => error,
   }).pipe(Effect.catchIf(isEmptyListError, () => Effect.succeed<ToolListItem[]>([])));
 
-/** Loads the group's or topic's routines; a missing or unparseable list reads as empty. */
 const loadRoutines = (api: ToolsApi, groupId: string, topicId?: string) =>
   Effect.tryPromise({
     try: () =>
@@ -46,7 +34,6 @@ const loadRoutines = (api: ToolsApi, groupId: string, topicId?: string) =>
     catch: (cause) => cause,
   }).pipe(Effect.catchIf(isEmptyListError, () => Effect.succeed<Routine[]>([])));
 
-/** The routines body state; the tools side uses `sectionStateOf`. */
 function routinesStateOf(
   load: AsyncResult.AsyncResult<Routine[], unknown>,
   routines: Routine[],
@@ -66,7 +53,6 @@ export function ToolsPage({
   onBack,
 }: {
   groupId: string;
-  /** Set on the topic-scoped page: the lists then read the topic's own rows. */
   topicId?: string;
   onBack: () => void;
 }) {

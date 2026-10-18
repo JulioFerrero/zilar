@@ -12,28 +12,19 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { membersWithChips } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 
-/** The owner crown from the web `MemberRow` (`#e5b84b`); mobile has no token for it. */
+/** The owner crown color from web's `MemberRow`; mobile has no token for it. */
 const OWNER_COLOR = '#e5b84b';
 
 type MembersListProps = {
-  /** The members left after the search field's filter. */
   members: GroupMember[];
-  /** The fresh custom roles, once loaded, so a member's chips stay right. */
   roles: CustomGroupRole[] | undefined;
   me: string | undefined;
   isManager: boolean;
   isOwner: boolean;
-  /** A write is in flight, so the ⋮ keys wait. */
   busy: boolean;
   onOpenMenu: (member: GroupMember) => void;
 };
 
-/**
- * The member rows of Group info's People and AIs page (T-1569, moved out of
- * the page in T-1858): one rounded list of members, each with an avatar, name
- * and `@handle`, owner/admin as icons, role tags and a ⋮ key when the viewer
- * may remove them or hand over the group.
- */
 export function MembersList({
   members,
   roles,

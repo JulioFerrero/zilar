@@ -14,13 +14,9 @@ import type { PairingCode } from '@/lib/machines-api';
 import { MachineCallFailed } from './mutations';
 
 /**
- * The add flow (mirrors web's `AddMachineDialog`): shows the pairing code
- * big with a Copy button and the `zilar-runner pair <CODE>` command. The
- * code is minted by the parent's "Add machine" tap, so this sheet only
- * renders the result. The desktop runner is not published yet, so the sheet
- * says so honestly, exactly like web. On the kit bottom sheet (T-1443): the
- * error state puts Try again in the sticky footer; the code screen is done
- * (the close key ends it), so it has no footer.
+ * The add flow, mirroring web's `AddMachineDialog`: the pairing code and the
+ * `zilar-runner pair <CODE>` command. The parent mints the code, so this sheet
+ * only renders it; the runner is unpublished, so the sheet says so.
  */
 export function AddMachineSheet({
   visible,

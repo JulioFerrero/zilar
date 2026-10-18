@@ -10,11 +10,6 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { Contact } from '@/lib/contacts-api';
 
-/**
- * The New group flow's name step (T-1314): the picked members, the required
- * group name, and the shared visibility fields (the same public-group option
- * the old sheet carried). Create lives in the screen's header.
- */
 export function NewGroupName({
   members,
   title,
@@ -37,9 +32,7 @@ export function NewGroupName({
   onHandle: (next: string) => void;
   check: HandleCheckState | null;
   checking: boolean;
-  /** The local guard sentence (empty name, missing handle). */
   localError: string;
-  /** The create failure sentence from the server. */
   error: string;
 }) {
   return (

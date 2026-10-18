@@ -8,10 +8,6 @@ import type { PackTileSelection } from '@/components/stickers/pack-grid';
 import { API_URL } from '@/lib/auth';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
 
-/**
- * The tile the sheet holds, resolved against the live lists at render time so
- * an emoji change or a removal is reflected (and a removed row closes it).
- */
 function resolveTile(
   selection: PackTileSelection | null,
   visibleSaved: StickerItem[],
@@ -29,12 +25,6 @@ function resolveTile(
   return { saved: undefined, fresh: fresh.find((item) => item.key === selection.key) };
 }
 
-/**
- * The sheet one sticker tile opens (T-1548): the sticker at 96 px, then the
- * new-item controls (an Emoji field, Try again after a failed upload, Remove)
- * or the saved sticker's Remove. The tile is dropped on removal, so the sheet
- * closes itself once the row leaves the lists.
- */
 export function PackTileSheet({
   selection,
   visibleSaved,

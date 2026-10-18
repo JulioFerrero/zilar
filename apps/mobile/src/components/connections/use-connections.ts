@@ -12,7 +12,6 @@ import { useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/** Removes one key from a record without mutating it. */
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) {
     return record;
@@ -22,22 +21,11 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return rest;
 }
 
-/**
- * The connections screen's state and handlers: the loaded list, the page
- * status and the Test, Replace and Remove flows.
- *
- * The state stays in React `useState` as before; each network call is an
- * Effect run by `useAction`, which writes the results back into that state.
- * `useAction` also gives the single-flight guard (a second tap while one call
- * runs is ignored) and interrupts a running call on unmount.
- */
 export function useConnections({
   onTestFailed,
   onReplaced,
 }: {
-  /** Fires after a test finishes with a failure, so the caller can close its sheet. */
   onTestFailed?: () => void;
-  /** Fires after a key is replaced, so the caller can toast and close its sheet. */
   onReplaced?: () => void;
 } = {}) {
   const { api } = useConnectionsApi();
@@ -45,7 +33,7 @@ export function useConnections({
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   // `reload` keeps its identity, so a load reads the current status from here:
-  // only a screen with nothing shown yet gets the loading message (T-1971).
+  // only a screen with nothing shown yet gets the loading message.
   const statusRef = useRef<PageStatus>('loading');
   useEffect(() => {
     statusRef.current = status;
@@ -67,7 +55,7 @@ export function useConnections({
   const [, load] = useAction(
     (settled: Deferred.Deferred<void>) =>
       Effect.sync(() => {
-        // A reload over a ready list keeps the rows on screen (T-1971).
+        // A reload over a ready list keeps the rows on screen.
         if (statusRef.current !== 'ready') {
           setStatus('loading');
         }

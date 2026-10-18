@@ -17,7 +17,6 @@ import { useProfileAvatar } from '@/components/settings/use-profile-avatar';
 
 export type ProfileStatus = 'loading' | 'ready' | 'error';
 
-/** A failed profile call, carrying the fixed sentence the screen shows. */
 export class ProfileFailed extends Data.TaggedError('ProfileFailed')<{
   readonly message: string;
 }> {}
@@ -27,8 +26,8 @@ const BIO_SAVE_ERROR = 'Could not save your bio.';
 export const LOAD_ERROR = 'Could not load your profile.';
 
 /**
- * Runs one profile call. A rejection becomes `ProfileFailed` with the message
- * `message` gives for it, so the screen shows a fixed sentence.
+ * Runs one profile call. A rejection becomes `ProfileFailed` with the fixed
+ * sentence `message` gives for it.
  */
 function attempt<A>(run: () => Promise<A>, message: (cause: unknown) => string) {
   return Effect.tryPromise({
@@ -37,10 +36,8 @@ function attempt<A>(run: () => Promise<A>, message: (cause: unknown) => string) 
   });
 }
 
-/** The shape of the shared call wrapper, handed to `useProfileAvatar`. */
 export type ProfileAttempt = typeof attempt;
 
-/** What the one Save carries: the trimmed values plus which fields changed. */
 type SaveInput = {
   readonly handle: string;
   readonly name: string;
@@ -60,11 +57,6 @@ function bioFetch(mock: boolean): typeof fetch {
   return fetch;
 }
 
-/**
- * Owns the profile screen's state: the load, the debounced handle check, and
- * the name and handle saves. The avatar lives in `useProfileAvatar`, its bearer
- * coming back through the load.
- */
 export function useProfileSettings() {
   const { api, mock } = useProfileApi();
   const setName = useAuthStore((state) => state.setName);
@@ -83,14 +75,14 @@ export function useProfileSettings() {
   const [savedBio, setSavedBio] = useState('');
   const [bioError, setBioError] = useState<string | undefined>(undefined);
 
-  // T-1978: a focus reload must not overwrite a field the person edited and
-  // did not save. A flag clears when a Save lands for that field.
+  // A focus reload must not overwrite a field the person edited and did not
+  // save; a flag clears when a Save lands for that field.
   const nameDirty = useRef(false);
   const handleDirty = useRef(false);
   const bioDirty = useRef(false);
 
-  // T-1329: name, username and bio share one Save (the header action): one
-  // busy flag for the fields and one "Saved." confirmation for all three.
+  // Name, username and bio share one Save (the header action): one busy flag
+  // for the fields and one "Saved." confirmation for all three.
   const [saveBusy, setSaveBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -101,10 +93,9 @@ export function useProfileSettings() {
   const avatar = useProfileAvatar(api, attempt, setAvatarUrl);
 
   // Loads the profile (and the avatar bearer) into every section. It paints
-  // `loading` only when nothing is shown yet: the focus effect below runs it,
-  // so returning to the screen shows server truth without a loading flash and
-  // keeps fields the person has edited but not saved. A new load replaces one
-  // still running.
+  // `loading` only when nothing is shown yet, so a focus return shows server
+  // truth without a flash and keeps unsaved edits; a new load replaces one still
+  // running.
   const [, loadProfile] = useAction(
     (_input: void) =>
       Effect.sync(() => {
@@ -178,19 +169,15 @@ export function useProfileSettings() {
 
   const reload = load;
 
-  // The trimmed handle and the two flags the debounced check and the Save share.
   const trimmed = handle.trim();
   const current = profile?.handle ?? '';
   const ownHandle = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
   useHandleCheck({ api, trimmed, ownHandle, setAvailability });
 
   /**
-   * T-1329: one Save for the whole form, the mobile twin of web's `save()`.
-   * It saves the fields that changed, in an order the calls need: the username
-   * (`api.claimHandle`), then the name (`setName` → `PATCH /me`), then the bio
-   * (`updateBio`, which carries the freshly saved name). A failing field keeps
-   * its own error line and stops the run, so the bio never reverts a rename
-   * that did not land (the old name/bio guard, now implicit in the sequence).
+   * One Save for the whole form, saving the changed fields in the order the calls
+   * need: username, then name, then bio (`updateBio` carries the saved name). A
+   * failing field keeps its error and stops, so the bio never reverts a rename.
    */
   const [, saveRun] = useAction(
     (input: SaveInput) =>
@@ -302,8 +289,8 @@ export function useProfileSettings() {
     setSaved(false);
   };
 
-  // Which fields the one Save would send. A casing-only handle change counts
-  // as changed: the server applies it (interval rule, casing updated, nothing
+  // Which fields the one Save would send. A casing-only handle change counts as
+  // changed: the server applies it (interval rule, casing updated, nothing
   // retired), the same rule web uses.
   const nameChanged = name.trim() !== (profile?.name ?? '');
   const handleChanged = trimmed !== current;
@@ -311,8 +298,8 @@ export function useProfileSettings() {
   const changed = nameChanged || handleChanged || bioChanged;
 
   const saveAll = (): void => {
-    // Keep the username and name validation: clearing either is a reported
-    // error, not a silent no-op.
+    // Keep the username and name validation: clearing either is a reported error,
+    // not a silent no-op.
     if (handleChanged && trimmed === '') {
       setHandleError('Choose a username');
       return;

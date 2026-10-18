@@ -9,9 +9,7 @@ import { cn } from '@/lib/utils';
 export interface SegmentedOption {
   value: string;
   label: string;
-  /** An optional lucide icon, drawn at 15 px inline with the label. */
   icon?: LucideIcon;
-  /** A disabled option is not pressable and draws at `opacity-50`. */
   disabled?: boolean;
 }
 
@@ -21,24 +19,14 @@ export interface SegmentedControlProps {
   onChange: (value: string) => void;
   accessibilityLabel: string;
   mode?: 'tabs' | 'radio';
-  /**
-   * `tab` is the default: the active option is the dark raised segment.
-   * `choice` is the New AI look: the selected option is the light primary key
-   * with dark text, a 40 px row, and every option keeps the same weight.
-   */
   tone?: 'tab' | 'choice';
-  /** Extra classes for the well track. */
   className?: string;
 }
 
 /**
- * The mobile kit segmented control: a recessed well track with the active
- * segment raised (`ui-style.md` §5). Exactly one option is selected; the track
- * carries the `tablist` or `radiogroup` role and each option the matching one.
- * The option `key` carries the selected state on purpose, so the raised style
- * re-applies when the selection toggles (the Stickers tabs trick). With
- * `tone="choice"` the selected option is the light primary key instead
- * (`PhoneSetup.dc.html`), a 40 px row at 13/500 that can carry an inline icon.
+ * The mobile kit segmented control: a recessed well track with the active segment
+ * raised. The option `key` carries the selected state on purpose, so the raised
+ * style re-applies when the selection toggles (the Stickers tabs trick).
  */
 export function SegmentedControl({
   options,

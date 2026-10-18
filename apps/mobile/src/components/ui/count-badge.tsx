@@ -6,7 +6,6 @@ type CountBadgeProps = {
   count: number;
 };
 
-/** The accent count pill on a settings row; renders nothing at 0 or below. */
 export function CountBadge({ count }: CountBadgeProps) {
   if (count <= 0) {
     return null;

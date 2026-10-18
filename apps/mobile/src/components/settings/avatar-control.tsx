@@ -14,9 +14,7 @@ import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile
 type AvatarControlProps = {
   ownerId: string;
   ownerName: string;
-  /** The server's picture path (`/api/avatars/<id>`), if any. */
   currentUrl?: string | undefined;
-  /** The bearer token for the same-origin picture load, if any. */
   token?: string | undefined;
   phase: AvatarPhase;
   busy: boolean;
@@ -25,13 +23,6 @@ type AvatarControlProps = {
   onRemove: () => void;
 };
 
-/**
- * The profile picture row: the current picture (the relative server path
- * resolved against the API origin, bearer on same-origin only, like the
- * sticker images), Change / Remove keys, the picked preview with a
- * progress bar while it uploads, and the phase line (picked, uploading,
- * failed, removed). A failed image load falls back to the initials.
- */
 export function AvatarControl({
   ownerId,
   ownerName,
@@ -135,11 +126,6 @@ export function AvatarControl({
   );
 }
 
-/**
- * The picture itself: the resolved image, or the initials when there is no
- * picture or the image failed to load. Split out so tests cover the
- * fallback without a simulator (the parent only owns the failed flag).
- */
 export function AvatarPicture({
   source,
   ownerId,

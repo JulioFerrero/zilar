@@ -13,7 +13,6 @@ import { getSessionToken } from '@/lib/session-token';
 
 type PickedAvatar = Extract<AvatarPhase, { name: 'picked' }>;
 
-/** One picture action; the picker, the save and the removal share one slot. */
 type PictureOperation =
   | { readonly kind: 'pick' }
   | { readonly kind: 'save'; readonly picked: PickedAvatar }
@@ -23,17 +22,14 @@ const PICK_ERROR = 'Could not pick that picture. Try again.';
 const SAVE_ERROR = 'Could not save the picture. Try again.';
 const REMOVE_ERROR = 'Could not remove the picture. Try again.';
 
-/** The group's write slot: `PUT`/`DELETE /api/avatars/group/<id>`. */
 export function groupAvatarSlot(groupId: string): string {
   return `${API_URL}/api/avatars/group/${encodeURIComponent(groupId)}`;
 }
 
-/** The group picture state and the three actions the Settings page offers. */
 export interface GroupPicture {
   readonly token: string | undefined;
   readonly phase: AvatarPhase;
   readonly busy: boolean;
-  /** The url to show: the just-written one, else the detail's. */
   readonly shownUrl: string | undefined;
   readonly pick: () => void;
   readonly savePicked: () => void;
@@ -41,11 +37,9 @@ export interface GroupPicture {
 }
 
 /**
- * Owns the group Settings page's picture, in the style of
- * `use-profile-avatar.ts`: pick, upload the transcoded PNG to the group's
- * avatar slot, and remove it. `onChanged` runs after a successful write so the
- * page refreshes the group detail and the chat list (the phone's group header
- * picture comes from the chat row, so refreshing the list is what repaints it).
+ * The group Settings page's picture: pick, upload the transcoded PNG to the
+ * group's avatar slot, and remove it. `onChanged` refreshes the detail and the
+ * chat list, because the phone's group header picture comes from the chat row.
  */
 export function useGroupPicture(
   groupId: string,

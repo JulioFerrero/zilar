@@ -35,9 +35,7 @@ export interface UsePackItemsDeps {
   visibility: PackVisibility;
   initialTitle: string;
   initialVisibility: PackVisibility;
-  /** Guards a second pick or save while one runs (shared with the editor's delete). */
   busyRef: MutableRefObject<boolean>;
-  /** Closes the screen after a successful save (`router.back`). */
   onSaved: () => void;
 }
 
@@ -56,7 +54,6 @@ export interface PackItems {
   saving: boolean;
   progress: { done: number; total: number } | undefined;
   formError: string;
-  /** Set after a partial create save: the screen stays on the minted pack. */
   createdPackId: string | undefined;
   pickImages: () => void;
   retryItem: (key: string) => void;
@@ -66,12 +63,6 @@ export interface PackItems {
   save: () => void;
 }
 
-/**
- * The sticker items of the pack editor: the saved stickers, the removal
- * queue and the fresh picked rows, plus the pick/retry/remove handlers, the
- * session token and the Save/upload loop that runs over them. Split out of
- * `use-pack-editor.ts` to keep both hooks under 400 lines.
- */
 export function usePackItems({
   picker,
   preparer,
@@ -92,16 +83,13 @@ export function usePackItems({
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | undefined>(undefined);
-  // Create mode: the pack minted on the first save. Kept across Save clicks
-  // so a retry after a partial upload resumes into the same pack instead of
-  // minting a second one (web's `createdPackIdRef`).
+  // Create mode: the pack minted on the first save, kept across Save clicks so a
+  // retry after a partial upload resumes into the same pack.
   const createdPackIdRef = useRef<string | undefined>(undefined);
   const createdTitleRef = useRef<string | undefined>(undefined);
   const createdVisibilityRef = useRef<PackVisibility | undefined>(undefined);
-  // Brief §5: after a partial create save the screen stays open on the
-  // minted pack and the button reads `Save`. Kept as state (not derived
-  // from the ref during render) so the lint `react(refs)` rule holds and
-  // the re-render after save flips the label.
+  // Brief §5: after a partial create save the screen stays open on the minted pack
+  // and the button reads `Save`. State (not a ref) keeps the lint `react(refs)` rule.
   const [createdPackId, setCreatedPackId] = useState<string | undefined>(undefined);
 
   const visibleSaved = saved.filter((sticker) => !removedIds.includes(sticker.id));
@@ -117,7 +105,6 @@ export function usePackItems({
     }
     setFormError('');
     const take = slotsLeft;
-    // One image at a time, in order.
     const prepareEach = (picked: readonly PickedStickerImage[]): Effect.Effect<void> =>
       Effect.forEach(
         picked,
@@ -200,9 +187,8 @@ export function usePackItems({
       setFormError('');
       setFresh((previous) => {
         const removed = previous.find((item) => item.key === key);
-        // Any sticker with a server id is already on the server (an upload
-        // that landed before a partial failure), so it joins the removal
-        // queue and is deleted on the next Save instead of orphaned.
+        // Any sticker with a server id is already on the server, so a removal
+        // queues it for the next Save instead of orphaning it.
         if (removed?.stickerId !== undefined) {
           const stickerId = removed.stickerId;
           setRemovedIds((previousIds) =>
@@ -233,9 +219,8 @@ export function usePackItems({
     [setFresh],
   );
 
-  // Edit order on Save: patch title/visibility, then deletions, then
-  // uploads one by one (web order). A removed upload joins `removedIds`,
-  // so the save loop deletes it (create-mode retry and edit mode alike).
+  // Edit order on Save: patch title/visibility, then deletions, then uploads one
+  // by one (web order). A removed upload joins `removedIds`.
   const save = useCallback(() => {
     if (busyRef.current || saving) {
       return;
@@ -328,10 +313,6 @@ export function usePackItems({
             if (outcome.ok) {
               onSaved();
             } else if (outcome.partial) {
-              // Brief §5: create mode keeps the minted pack across the retry (no
-              // second pack) and the button flips to `Save`. The save stays
-              // enabled because the uploaded rows are still in `fresh` (they
-              // count as a change once the pack exists).
               if (outcome.created !== undefined) {
                 createdPackIdRef.current = outcome.created.id;
                 createdTitleRef.current = outcome.created.title;

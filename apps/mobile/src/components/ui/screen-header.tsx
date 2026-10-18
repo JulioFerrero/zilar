@@ -10,23 +10,15 @@ import { cn } from '@/lib/utils';
 export type ScreenHeaderProps = {
   variant: 'root' | 'sub';
   title: string;
-  /** One muted line under the title. Not drawn when `bare`. */
   subtitle?: string | undefined;
-  /** A sub-screen's back key. Required for app-chrome sub-screens. */
   onBack?: (() => void) | undefined;
-  /** A 40 px key or a small text button at the right end of the nav row. */
   right?: ReactNode;
-  /** Sub only: draw the 56 px nav row and let the body own the title. */
   bare?: boolean | undefined;
   testID?: string | undefined;
 };
 
 const TITLE_CLASS = 'text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground';
 
-/**
- * The phone header shared by the root tabs and every pushed screen (T-1948).
- * The caller owns the safe area.
- */
 export function ScreenHeader({
   variant,
   title,

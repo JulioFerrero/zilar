@@ -9,9 +9,7 @@ import { ENV_MOCK, ENV_NODE_ENV, isMockMode } from '@/mock/gate';
 import { guardDecision } from './guard';
 import { useSession } from './session';
 
-// The viewer mock mode opens as (Julio's Q1): the shared seed's `you@zilar.test`.
-// Mock mode is a dev build (or `EXPO_PUBLIC_ZILAR_MOCK`) only, so a release
-// build never takes this branch.
+// Mock mode is a dev build (or `EXPO_PUBLIC_ZILAR_MOCK`) only, so a release build never takes this branch.
 const MOCK_USER_NAME = 'You';
 
 export function LoadingScreen() {
@@ -23,11 +21,9 @@ export function LoadingScreen() {
   );
 }
 
-/** Requires a session, but not a display name (the `/welcome/name` step). */
 export function RequireUser({ children }: { children: ReactNode }) {
   const { status, me } = useSession();
-  // An offline session with no known user is still loading: the retry may
-  // bring one back (T-1304). With a user it renders like a signed-in one.
+  // An offline session with no known user is still loading: the retry may bring one back.
   if (status === 'loading' || (status === 'offline' && me === null)) {
     return <LoadingScreen />;
   }
@@ -37,13 +33,11 @@ export function RequireUser({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Requires a session and a display name; preserves the target for after login. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { status, me } = useSession();
   const pathname = usePathname();
   const params = useGlobalSearchParams();
-  // In mock mode nobody logs in, but the app opens straight into the tabs and
-  // reads the mock user, so the guard treats the session as authenticated.
+  // In mock mode nobody logs in, but the app opens straight into the tabs on the mock user.
   const mock = isMockMode(params, { dev: __DEV__, envMock: ENV_MOCK, nodeEnv: ENV_NODE_ENV });
   const decision = guardDecision({
     status: mock ? 'authenticated' : status,

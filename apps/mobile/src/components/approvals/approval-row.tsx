@@ -12,11 +12,6 @@ import { cn } from '@/lib/utils';
 
 import type { RowBusy } from './rows';
 
-/**
- * One pending approval in the inbox: the AI's picture, the summary and
- * "AI · chat", then Deny and Approve as icon keys. No "always allow", no
- * money, no expiry. It is one row of the list `PendingTab` wraps.
- */
 export function PendingApprovalRow({
   approval,
   aiName,
@@ -26,11 +21,9 @@ export function PendingApprovalRow({
   onDecide,
 }: {
   approval: PublicApproval;
-  /** The AI's display name when the list of AIs loaded; the id otherwise. */
   aiName: string;
   busy: RowBusy;
   actionError: string;
-  /** The last row of the list drops its bottom hairline. */
   last: boolean;
   onDecide: (id: string, decision: ApprovalDecision) => void;
 }) {
@@ -80,8 +73,7 @@ export function PendingApprovalRow({
 
 /**
  * The Approve key. The kit's `IconButton` is the dark icon key only, so this
- * uses the same 40 px, 12 radius recipe with the primary look, like the other
- * primary icon keys in the app (`depth.ts`).
+ * uses the same 40 px, 12 radius recipe with the primary look (`depth.ts`).
  */
 function PrimaryIconKey({
   label,

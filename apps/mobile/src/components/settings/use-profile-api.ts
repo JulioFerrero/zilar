@@ -15,9 +15,8 @@ import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gat
 const MOCK_AVATAR_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
 /**
- * Builds the mock-mode `ProfileApi` on the shared mock backend, behind a
- * literal build-time condition: Metro folds it to `false` in a release build,
- * so the mock module stays out of the bundle.
+ * Builds the mock-mode `ProfileApi` behind a literal build-time condition: Metro
+ * folds it to `false` in a release build, so the mock stays out of the bundle.
  */
 function createMockProfile(): ProfileApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
@@ -26,11 +25,10 @@ function createMockProfile(): ProfileApi {
     const api = createProfileApi(mockToken, mockFetch, API_URL);
     return {
       ...api,
-      // The settings screens pick a photo and hand a native uploader (an
-      // `expo-file-system` PUT) that no mock backend can serve, so in mock mode
-      // we skip it and PUT the bytes through the shared backend instead. The
-      // stored url's bytes are not a real picture, so the screens fall back to
-      // the ball avatar, like the old mock fell back to initials.
+      // The screens hand a native uploader (an `expo-file-system` PUT) that no
+      // mock backend can serve, so mock mode PUTs the bytes through the shared
+      // backend instead. The stored bytes are not a real picture, so the screens
+      // fall back to the ball avatar.
       async uploadAvatar(ownerId, blob, uploader) {
         if (uploader === undefined) {
           return api.uploadAvatar(ownerId, blob);
@@ -61,15 +59,9 @@ function createMockProfile(): ProfileApi {
 
 export interface ProfileApiHandle {
   api: ProfileApi;
-  /** True when the mock is active (used by tests/UI to skip the network). */
   mock: boolean;
 }
 
-/**
- * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
- * through `mockFetch`.
- */
 export function useProfileApi(): ProfileApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;

@@ -14,9 +14,9 @@ export const TAB_BAR_BOTTOM_GAP = 12;
 export const TAB_BAR_SIDE_MARGIN = 12;
 
 /**
- * Bottom padding for a screen's scroll body. A tab screen scrolls clear of the
- * floating tab bar, so its last row stays tappable; a pushed page with a back
- * key clears the gesture bar by adding the bottom inset to the plain 32.
+ * Bottom padding for a screen's scroll body: a tab screen scrolls clear of the
+ * floating bar, and a pushed page clears the gesture bar with the inset on
+ * top of the plain 32.
  */
 export function tabScreenBottomPadding(hasBack: boolean, insetBottom: number): number {
   return hasBack ? 32 + insetBottom : TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + insetBottom + 16;
@@ -35,7 +35,6 @@ export const FLOATING_TABS: FloatingTab[] = [
 ];
 
 type FloatingTabBarProps = {
-  /** Total unread of non-muted chats (the All folder total); hidden at 0. */
   unreadTotal: number;
 };
 
@@ -45,15 +44,14 @@ function TabIcon({ name }: { name: string }) {
 }
 
 /**
- * One tab of the floating bar. Split out so the segment face never swaps a
- * gradient style on a live view: the active and idle faces are different
- * elements, each keyed by its own look (gradient-swap.test.ts).
+ * One tab of the floating bar, split out so the face never swaps a gradient
+ * style on a live view: the active and idle faces are different elements,
+ * each keyed by its own look (gradient-swap.test.ts).
  */
 function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | undefined }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
   const selected = trigger?.isFocused ?? false;
-  // T-1969: tapping the tab you are already on scrolls its list to the top
-  // instead of navigating, like Telegram and WhatsApp.
+  // Tapping the tab you are already on scrolls its list to the top instead of navigating.
   const onPress = (event: GestureResponderEvent): void => {
     if (selected) {
       emitTabReselect(tab.name);
@@ -67,9 +65,8 @@ function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | 
       href={tab.href}
       accessibilityRole="tab"
       accessibilityState={{ selected }}
-      // The face swaps a gradient style (`segment` <-> none), so each face
-      // gets a key that changes with the look: Android builds a fresh view
-      // instead of swapping the gradient on the live one.
+      // The face swaps a gradient style (`segment` <-> none), so each face gets
+      // a key that changes with the look: Android then builds a fresh view.
       key={selected ? 'active' : 'idle'}
       style={[{ flex: 1 }, tab.name === 'index' ? { position: 'relative' } : {}]}
       {...triggerProps}
@@ -100,10 +97,9 @@ function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | 
 }
 
 /**
- * The floating bottom bar (Telegram-style): a dark raised 64 px pill with
- * three equal tabs. Rendered as the `TabList` of the `expo-router/ui` headless
- * `Tabs` in `(tabs)/_layout.tsx`, so `useTabTrigger` switches tabs without a
- * new dependency. Hides while the keyboard is open.
+ * The floating bottom bar: a dark raised 64 px pill with three equal tabs, the
+ * `TabList` of the `expo-router/ui` headless `Tabs`, so `useTabTrigger`
+ * switches tabs. Hides while the keyboard is open.
  */
 export function FloatingTabBar({ unreadTotal }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();

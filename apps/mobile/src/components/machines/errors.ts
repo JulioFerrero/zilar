@@ -1,14 +1,12 @@
 import { MachinesApiError } from '../../lib/machines-api';
 
 export interface MachinesErrorInfo {
-  /** A clear message for the user; never a raw code or a stack trace. */
   message: string;
 }
 
-// Maps the machine error codes in the T-0068 contract to fixed plain
-// sentences, mirroring web's `components/machines/errors.ts`. Unknown codes
-// answer the `fallback` the call site passes: user-facing text is never the
-// server's raw message.
+// Maps the machine error codes to fixed plain sentences, mirroring web's
+// `components/machines/errors.ts`. Unknown codes answer `fallback`, because
+// user-facing text is never the server's raw message.
 export function describeMachinesError(error: unknown, fallback: string): MachinesErrorInfo {
   if (error instanceof MachinesApiError) {
     switch (error.code) {

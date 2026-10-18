@@ -23,7 +23,6 @@ import { Text } from '@/components/ui/text';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
-/** The board's row stack: up to five circles. */
 const STACK_MAX = 5;
 
 const personOfMember = (member: GroupMember): StackPerson => ({
@@ -38,27 +37,18 @@ const personOfAi = (ai: GroupAi): StackPerson => ({
   ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
 });
 
-/** The one row's stack: the AIs first, then the people, up to five. */
 const stackOf = (members: readonly GroupMember[], ais: readonly GroupAi[]): StackPerson[] =>
   [...ais.map(personOfAi), ...members.map(personOfMember)].slice(0, STACK_MAX);
 
 type GroupInfoRootProps = {
-  /** The group's own chat row: the General topic, for the picture and Mute. */
   groupChatId: string;
-  /** Whether that chat row is loaded; until then Mute and Search are disabled. */
   chatReady: boolean;
   title: string;
-  /** People plus AIs, for the one People and AIs row; `undefined` while not loaded. */
   memberCount: number | undefined;
-  /** The group chat's pins, for the Pinned messages row; `undefined` when not loaded. */
   pinsCount: number | undefined;
-  /** The group's always-allowed rules; `undefined` when not loaded. */
   allowedCount: number | undefined;
-  /** The group's topic rows, for the Your/Other topics lists (T-1787). */
   topics: readonly ChatSummary[];
-  /** The signed-in user's id, for the joined split and the subtitle names. */
   currentUserId: string;
-  /** The group's people and AIs, for the subtitle names, the stacks and seeds. */
   groupMembers: readonly GroupMember[];
   groupAis: readonly GroupAi[];
   isManager: boolean;
@@ -82,17 +72,6 @@ type GroupInfoRootProps = {
 
 const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member' : 'members'}`;
 
-/**
- * The group info root page (T-1552), after `Phone.dc.html`: a back key, the
- * group picture, name and combined member count, the four keys, the People,
- * Content and Settings rows, and the red Leave group row for non-owners. Thin
- * view: the route mounts the sheets and owns the writes. T-1569 adds the AIs
- * row and disables the keys until the group's own chat row is loaded; T-1573
- * adds the Content group (Shared media, Pinned messages, Tools and routines,
- * and Activity and Always allowed for managers); T-1574 shows the Settings row
- * to managers, like web; T-1858 folds Members, AIs and Invite links into one
- * People and AIs row (stack, total, chevron) that opens one page.
- */
 export function GroupInfoRoot({
   groupChatId,
   chatReady,

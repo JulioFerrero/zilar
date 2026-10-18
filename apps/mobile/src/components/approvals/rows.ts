@@ -19,13 +19,11 @@ export interface ScreenRow {
 
 export type RowsById = Record<string, ScreenRow>;
 
-/** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`) but the row carries none. */
 export interface OwnedScreenRule {
   aiId: string;
   rule: ApprovalRule;
 }
 
-/** One `ScreenRow` per approval, keeping any in-flight decision state. */
 export function rowsForList(
   list: PublicApproval[],
   previous: RowsById,
@@ -36,10 +34,8 @@ export function rowsForList(
     const prior = previous[approval.id];
     next[approval.id] = {
       approval,
-      // A reload must not resurrect a stuck `busy`: only a row with a
-      // request still in flight keeps it, so a failed decision never wedges
-      // the buttons after the list refreshes. The inline `error` is kept so
-      // a failure stays visible until the next decision attempt.
+      // A reload must not resurrect a stuck `busy`: only a row with a request
+      // still in flight keeps it, so a failed decision never wedges the buttons.
       busy: prior !== undefined && inFlight.has(approval.id) ? prior.busy : null,
       error: prior?.error ?? '',
     };
@@ -47,17 +43,12 @@ export function rowsForList(
   return next;
 }
 
-/** Newest first, like the web inbox. */
 export function orderedRows(rows: RowsById): ScreenRow[] {
   return Object.values(rows).sort(
     (a, b) => new Date(b.approval.createdAt).getTime() - new Date(a.approval.createdAt).getTime(),
   );
 }
 
-/**
- * Groups owned rules per AI for the "Always allowed" section. Pure, so tests
- * pin it without rendering. (Also exported for the Approvals screen.)
- */
 export function groupRulesForScreen(
   owned: OwnedScreenRule[],
 ): { aiId: string; rules: ApprovalRule[] }[] {
@@ -74,10 +65,8 @@ export type RulesFanOut = PromiseSettledResult<{ aiId: string; rules: ApprovalRu
 
 /**
  * Merges one rules fetch per AI into the owned list. One AI's failure never
- * blanks the others: a failed AI (404 or other) is skipped. `null` means
- * every AI failed (with at least one result), so the caller shows the error
- * state with Retry; otherwise the merged successes come back, even when they
- * are empty.
+ * blanks the others (a failed AI is skipped); `null` means every AI failed, so
+ * the caller shows the error state with Retry.
  */
 export function mergeRulesFanOut(settled: RulesFanOut[]): OwnedScreenRule[] | null {
   if (settled.length > 0 && settled.every((result) => result.status === 'rejected')) {
@@ -96,7 +85,6 @@ export type DecideOutcome =
   | { kind: 'stale'; approval: PublicApproval }
   | { kind: 'error'; message: string };
 
-/** The short confirmation line shown where a decided row was. */
 export function confirmationForDecision(decision: ApprovalDecision): string {
   switch (decision) {
     case 'approve_once':
@@ -109,21 +97,16 @@ export function confirmationForDecision(decision: ApprovalDecision): string {
 }
 
 /**
- * Sends one decision through the card's `applyDecision`, so the screen
- * shares its 404/409 handling. A `reloaded` row means the request was
- * decided or expired elsewhere: when the fresh row is still pending the
- * decision did not land, so the row stays in the list with the refreshed
- * state (`stale`); otherwise the row drops from pending with the
- * "already decided" notice (`gone`). Any other failure (offline, 500,
- * 403, …) reports a fixed plain message — never the server's raw text —
- * so the screen can show it inline and let the person retry.
+ * Sends one decision through the card's `applyDecision`, so the screen shares
+ * its 404/409 handling: a `reloaded` row still pending stays as `stale`, an
+ * already-decided one drops as `gone`, and any other failure reports a fixed
+ * plain message, never the server's raw text.
  */
 export function decideScreenRow(
   api: ApprovalsApi,
   approvalId: string,
   decision: ApprovalDecision,
 ): Promise<DecideOutcome> {
-  // applyDecision folds every failure into its outcome, so it never rejects.
   return runMobile(
     Effect.promise(() => applyDecision(api, approvalId, decision)).pipe(
       Effect.map((outcome): DecideOutcome => {
@@ -147,10 +130,8 @@ export function revokeFailedMessage(error: unknown): string {
 }
 
 /**
- * Per-id in-flight guard for decisions. A second tap while the first POST
- * is running returns false (the caller does nothing); otherwise it claims
- * the id and returns true. The caller releases the id when the POST
- * settles. Pure over a `Set` so tests pin it without rendering.
+ * Per-id in-flight guard for decisions: a second tap while the first POST runs
+ * returns false, otherwise it claims the id until the caller releases it.
  */
 export function claimDecision(inFlight: Set<string>, id: string): boolean {
   if (inFlight.has(id)) {
@@ -161,8 +142,8 @@ export function claimDecision(inFlight: Set<string>, id: string): boolean {
 }
 
 /**
- * Drops a revoked rule from the list; a 404 means it is already gone
- * (revoked elsewhere), so the row drops quietly like a success.
+ * Drops a revoked rule from the list; a 404 means it is already gone, so the
+ * row drops quietly like a success.
  */
 export function revokeFailedOutcome(error: unknown): { dropped: boolean; message: string } {
   if (error instanceof ApprovalsApiError && error.status === 404) {

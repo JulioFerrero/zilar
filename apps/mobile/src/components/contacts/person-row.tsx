@@ -4,11 +4,6 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import type { HandleProfile } from '@/lib/contacts-api';
 
-/**
- * One compact person row: a 40 px avatar, the name, `@handle`, and an optional
- * muted hint on the right ("Requested", "Blocked", …). Shared by the People
- * list and the exact `@handle` search result (T-1854).
- */
 export function PersonRow({
   entry,
   hint,
@@ -16,7 +11,6 @@ export function PersonRow({
 }: {
   entry: HandleProfile;
   hint?: string | undefined;
-  /** Absent renders a static row: nothing to open (the viewer themself). */
   onOpen?: (() => void) | undefined;
 }) {
   const content = (

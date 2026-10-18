@@ -6,7 +6,6 @@ import { useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-/** What `useFocusList` hands a settings screen. */
 export type FocusList<T> = {
   readonly data: T | undefined;
   readonly setData: Dispatch<SetStateAction<T | undefined>>;
@@ -18,10 +17,9 @@ export type FocusList<T> = {
 };
 
 /**
- * The one list a settings screen reloads on focus (T-2057): `data` holds the
- * screen's own payload, `status` and `error` drive its states, and `refresh`
- * backs pull-to-refresh. A failed background refresh after the first success
- * keeps the rows and shows nothing; the first failure shows the error state.
+ * The one list a settings screen reloads on focus: `data` is the screen's own
+ * payload, `status` and `error` drive its states, and `refresh` backs
+ * pull-to-refresh. A failed background refresh keeps the rows.
  */
 export function useFocusList<T>(load: () => Effect.Effect<T, string>): FocusList<T> {
   const [data, setData] = useState<T | undefined>(undefined);
@@ -33,8 +31,8 @@ export function useFocusList<T>(load: () => Effect.Effect<T, string>): FocusList
   const [, reload] = useAction<void, void, never>(
     () =>
       Effect.sync(() => {
-        // A refresh with rows on screen keeps them: the spinner is only for a
-        // screen with nothing to show yet (T-1906).
+        // A refresh with rows on screen keeps them: the spinner is only for a screen
+        // with nothing to show yet.
         setStatus((current) => (current === 'ready' ? current : 'loading'));
         setError('');
       }).pipe(

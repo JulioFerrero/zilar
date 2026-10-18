@@ -4,7 +4,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { ICON } from '@/lib/colors';
 
-/** The screen's top bar: Back and the Add key, with the large title under them. */
 export function ConnectionsHeader({
   onBack,
   onAdd,

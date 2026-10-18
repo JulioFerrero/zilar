@@ -9,25 +9,21 @@ import { DANGER, FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 
-/** Which tile the caller opened; the sheet resolves it against the lists. */
 export type PackTileSelection =
   { kind: 'saved'; stickerId: string } | { kind: 'fresh'; key: string };
 
 /**
- * A moving file (GIF, video, animated WebP or APNG) keeps its bytes and
- * reports `width: 0, height: 0` (sticker-native.ts), so its first frame is
- * shown through `expo-image` with a repeat badge (T-1525). A failed row
- * reports the same zeros, so the error is checked first.
+ * A moving file (GIF, video, animated WebP or APNG) keeps its bytes and reports
+ * `width: 0, height: 0`, so its first frame is shown with a repeat badge. A
+ * failed row reports the same zeros, so the error is checked first.
  */
 function isMoving(item: EditorNewItem): boolean {
   return item.width === 0 && item.height === 0;
 }
 
-/** The square tile look the saved, new, preparing and Add tiles share. */
 const TILE =
   'items-center justify-center overflow-hidden rounded-[12px] border border-edge bg-surface';
 
-/** The spoken name of a new tile: its error, else its emoji, else its position. */
 function freshLabel(item: EditorNewItem, position: number): string {
   if (item.error !== undefined) {
     return item.error;
@@ -35,7 +31,6 @@ function freshLabel(item: EditorNewItem, position: number): string {
   return item.emoji === '' ? `Sticker ${position}` : item.emoji;
 }
 
-/** The 20 px emoji badge at a tile's lower right. */
 function EmojiBadge({ emoji }: { emoji: string }) {
   return (
     <View className="absolute bottom-1 right-1 h-5 w-5 items-center justify-center rounded-full border border-border bg-background">
@@ -50,12 +45,6 @@ function EmojiBadge({ emoji }: { emoji: string }) {
   );
 }
 
-/**
- * The pack's stickers as one grid (T-1548): the saved stickers, then the new
- * items with their status, then a spinner per image still preparing, ending in
- * the dashed Add tile. Tapping a tile opens `PackTileSheet`, which owns the
- * per-sticker actions, so no tile carries a Remove key.
- */
 export function PackGrid({
   visibleSaved,
   fresh,
@@ -69,7 +58,6 @@ export function PackGrid({
 }: {
   visibleSaved: StickerItem[];
   fresh: EditorNewItem[];
-  /** How many picked images are still preparing (one spinner tile each). */
   preparing: number;
   tile: number;
   token: string | undefined;

@@ -11,27 +11,15 @@ import { cn } from '@/lib/utils';
 
 type RoutineRowProps = {
   routine: MyRoutine;
-  /** True while any pause, resume or delete call is in flight. */
   busy: boolean;
-  /** True when this row's Delete key is showing. */
   revealed: boolean;
-  /** Draw the divider under the row (all but the last of a group). */
   divider: boolean;
-  /** Tapping the row toggles its Delete key, like web's RoutineRow. */
   onToggle: () => void;
-  /** Opens the chat the routine runs in; the row hides this key without a chat. */
   onAsk: () => void;
   onTogglePause: () => void;
   onAskDelete: () => void;
 };
 
-/**
- * One routine in Settings › Routines (T-1720, the phone twin of web's
- * `RoutineRow`): the AI's ball, the title with a status dot (green running,
- * grey paused), one muted line with the schedule in mono and the AI's name,
- * an Ask key that opens the chat and a Pause or Resume key. Tapping the row
- * reveals a red Delete key.
- */
 export function RoutineRow({
   routine,
   busy,

@@ -34,36 +34,24 @@ const WRITE_ERRORS: Record<MemberWriteKind, string> = {
 type MemberWrite = {
   kind: MemberWriteKind;
   call: () => Promise<unknown>;
-  /** Runs after the write settles successfully, e.g. closing its sheet. */
   after?: () => void;
 };
 
 type MembersPageProps = {
   groupId: string;
   members: GroupMember[];
-  /** The group's AIs, shown first on the combined page. */
   ais: GroupAi[];
-  /** The fresh custom roles, once loaded, so a member's chips stay right. */
   roles: CustomGroupRole[] | undefined;
   me: string | undefined;
   isManager: boolean;
   isOwner: boolean;
   contacts: Contact[];
-  /** T-1552: the root's Add key lands here with the picker already open. */
   openPickerOnMount?: boolean;
   onOpenLinks: () => void;
   onOpenRoles: () => void;
   onBack: () => void;
 };
 
-/**
- * The People and AIs page (T-1569, combined in T-1858), after
- * `PhoneGroup.dc.html:56-61`: the AIs first (with Add AI for managers), then a
- * People label, the search field, the Add members and Invite with a link rows
- * for managers, one rounded list of members and a Roles row at the end for
- * managers. Full screen with the root's back key; the write rules are web's,
- * the server is the enforcer.
- */
 export function MembersPage({
   groupId,
   members,

@@ -27,10 +27,6 @@ function SelectCircle({ checked }: { checked: boolean }) {
   );
 }
 
-/**
- * The New group picker's members step (T-1314): a search field, the selected
- * people as removable chips, and the contact list with round checkboxes.
- */
 export function NewGroupMembers({
   contacts,
   selected,

@@ -11,28 +11,15 @@ import { useChatStore } from '@/store/chat-store-provider';
 const MUTE_ERROR = 'Could not update notifications. Try again.';
 
 type InfoKeysProps = {
-  /** The group's own chat row: the General topic, the row Mute writes to. */
   groupChatId: string;
-  /** Managers (owner/admin) get the Add key, when the screen passes one. */
   canManage: boolean;
-  /** The owner gets the More key. */
   isOwner: boolean;
   onSearch: () => void;
-  /** Managers only. The channel root omits it, so no Add key shows. */
   onAdd?: (() => void) | undefined;
-  /** The channel's Share key: given only when the channel has a handle. */
   onShare?: (() => void) | undefined;
-  /** The owner's More key. The channel root omits it until T6. */
   onMore?: (() => void) | undefined;
 };
 
-/**
- * The group and channel info keys (T-1552), after `Phone.dc.html`: one
- * `ActionTiles` row of 40 px keys, with the group info actions from T-1569 and
- * the channel's Share key from T-1581. Mute flips the group's own chat row
- * (`setChatPref`), forever or unmute; a failure shows one line. Add is for
- * managers and More for the owner, so a member sees fewer keys.
- */
 export function InfoKeys({
   groupChatId,
   canManage,

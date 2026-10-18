@@ -9,19 +9,16 @@ import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { useAppUpdate, type AppUpdate } from '@/lib/use-app-update';
 
-/** The mono detail line: `0.2.3 → 0.2.4 · 67 MB`, or the version and size alone. */
 export function versionLine(installed: string | null, version: string, sizeBytes: number): string {
   const size = formatFileSize(sizeBytes);
   return installed === null ? `${version} · ${size}` : `${installed} → ${version} · ${size}`;
 }
 
-/** The download line: `41 of 67 MB`. */
 export function progressLine(progress: number, total: number): string {
   const clamped = Math.max(0, Math.min(1, progress));
   return `${formatFileSize(Math.round(clamped * total))} of ${formatFileSize(total)}`;
 }
 
-/** The recessed progress well: 8 px, a 1 px border and an accent fill. */
 function ProgressWell({ progress }: { progress: number }) {
   const percent = Math.round(Math.max(0, Math.min(1, progress)) * 100);
   return (
@@ -54,7 +51,6 @@ function promptContext(content: DialogContent): PromptContext {
   return { title, detail, message, progress };
 }
 
-/** Deep-equals the fields a `PromptContext` keeps (the actions are not stored). */
 function samePrompt(a: PromptContext | null, b: PromptContext | null): boolean {
   if (a === null || b === null) {
     return a === b;
@@ -67,7 +63,6 @@ function samePrompt(a: PromptContext | null, b: PromptContext | null): boolean {
   );
 }
 
-/** The prompt for one updater state, or `null` when no dialog should show. */
 function contentFor(update: AppUpdate): DialogContent | null {
   const { state, installed, later, download, install, cancel } = update;
   switch (state.status) {
@@ -105,11 +100,6 @@ function contentFor(update: AppUpdate): DialogContent | null {
   }
 }
 
-/**
- * The failure prompt: the last prompt's content, so it still names the version,
- * plus the alert line. With no prompt to keep (e.g. a check that failed while
- * nothing was offered) it falls back to a generic "Update failed" title.
- */
 function failedContent(
   last: PromptContext | null,
   message: string,
@@ -128,14 +118,6 @@ function failedContent(
   };
 }
 
-/**
- * The Android in-app updater's install prompt (T-1725), drawn from
- * `docs/design/mockups/updater/`: the `ConfirmDialog` shell with a download
- * `IconTile`, the title and a mono 12 px detail line. Mounted once at the app
- * root; it shows nothing on iOS, on a quiet download or in any state with no
- * prompt. A failure is prompted here only for a download or an install; a failed
- * check the user started is reported by the Settings row instead.
- */
 export function UpdateDialog() {
   const update = useAppUpdate();
   const [dismissedFailure, setDismissedFailure] = useState<string | null>(null);
@@ -145,10 +127,8 @@ export function UpdateDialog() {
     return null;
   }
   const { state } = update;
-  // Leaving `failed` clears the local dismissal, so a later failure that repeats
-  // the same message (e.g. after Try again) shows the dialog again. A store emit
-  // that keeps the failure, like the foreground return's `setLastCheckedAt`,
-  // does not, so a dismissed failure no longer pops back up on its own.
+  // Leaving `failed` clears the local dismissal, so a repeated failure (e.g. after
+  // Try again) shows the dialog again. A store emit that keeps the failure does not.
   if (state.status !== 'failed' && dismissedFailure !== null) {
     setDismissedFailure(null);
   }
@@ -160,8 +140,8 @@ export function UpdateDialog() {
       setLastPrompt(next);
     }
   } else if ((state.status === 'idle' || state.status === 'upToDate') && lastPrompt !== null) {
-    // Nothing is pending, so drop the remembered prompt: a later failure that
-    // never showed one falls back to the generic header.
+    // Nothing is pending, so drop the remembered prompt: a later failure without one
+    // falls back to the generic header.
     setLastPrompt(null);
   }
 

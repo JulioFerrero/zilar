@@ -8,9 +8,8 @@ import {
 } from '../../lib/contacts-api';
 
 /**
- * The add-contact states (T-0182, mirrors the web `AddContactDialog` found /
- * missing / error branches): UI-free so the screen tests can import them
- * without pulling in `react-native`.
+ * The add-contact states, mirroring the web `AddContactDialog`: UI-free so the
+ * screen tests can import them without pulling in `react-native`.
  */
 export type AddContactState =
   | { state: 'idle' }
@@ -22,13 +21,11 @@ export function addContactInitial(): AddContactState {
   return { state: 'idle' };
 }
 
-/** The typed handle, or null when the field is still empty. */
 export function addContactHandle(raw: string): string | null {
   const normalized = normalizeHandleInput(raw);
   return normalized === '' ? null : normalized;
 }
 
-/** Reduces a lookup failure to the next view state. */
 export function addContactLookupFailure(error: unknown): AddContactState {
   if (error instanceof ContactsApiError) {
     if (error.status === 404) {
@@ -45,7 +42,6 @@ export function addContactLookupFailure(error: unknown): AddContactState {
   return { state: 'error', message: 'Could not look up that username. Try again.' };
 }
 
-/** Reduces a send failure to its inline message. */
 export function addContactSendFailure(error: unknown): string {
   if (error instanceof ContactsApiError) {
     switch (error.code) {
@@ -68,15 +64,12 @@ export function addContactSendFailure(error: unknown): string {
   return 'Could not send the request. Try again.';
 }
 
-/** The single plain "no user" line for an unknown handle. */
 export const NO_USER_MESSAGE = 'No user with that username';
 
 /**
- * Runs a request action (Cancel, Accept, Decline) for the profile's pending
- * row, then re-fetches the profile inline in the same chain so the card shows
- * the new relation. The refresh must stay in this chain — never go through the
- * busy-guarded runner, which would drop it while the action still holds the
- * guard and leave the card stale. A rejection reaches the caller unchanged.
+ * Runs a request action and re-fetches the profile inline in the same chain: the
+ * refresh must not go through the busy-guarded runner, which would drop it while
+ * the action holds the guard; a rejection reaches the caller unchanged.
  */
 export const actOnProfileRequestEffect = Effect.fnUntraced(function* (
   api: ContactsApi,
@@ -114,10 +107,9 @@ export function actOnProfileRequest(
 }
 
 /**
- * Resolves a contact's DM chat id without a refetch: the loaded chats first
- * (the server lists every contact's DM), else the JID built from the user
- * id and the viewer's domain — only when that chat is also loaded, since a
- * guessed id that does not exist would open "Chat not found".
+ * Resolves a contact's DM chat id without a refetch: the loaded chats first,
+ * else the JID built from the user id and the viewer's domain — only when that
+ * chat is also loaded, since a guessed id would open "Chat not found".
  */
 export function resolveContactChat(
   chats: { id: string; kind: string }[],

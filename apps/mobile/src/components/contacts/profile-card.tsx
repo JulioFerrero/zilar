@@ -1,10 +1,9 @@
 import type { ContactRelation } from '@/lib/contacts-api';
 
 /**
- * True when the inline block confirm must be dropped because the card now
- * shows a different person or a different relation. A successful block or
- * unblock changes the relation, so resetting on that keeps the confirm from
- * reopening after an unblock (T-0244 review finding 1).
+ * True when the inline block confirm must be dropped because the card shows a
+ * different person or relation: a successful block or unblock changes the
+ * relation, so resetting on that keeps the confirm from reopening.
  */
 export function shouldResetBlockConfirm(
   previous: { userId: string; relation: ContactRelation },

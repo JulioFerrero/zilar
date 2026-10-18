@@ -1,7 +1,5 @@
-// effect-plain: the key-check flow is plain React state; its async is the shared
-// checkKey/abandon helpers over the injected connections promise API, the same
-// promise-edge adapter shape the AI screens already use. It is the mobile twin
-// of web's `apps/web/src/components/ais/new-ai/useKeyCheck.ts`.
+// effect-plain: the key-check flow is plain React state; its async work uses the
+// shared checkKey/abandon helpers over the injected connections promise API.
 import type { AiCatalog } from '@zilar/api-contract';
 import {
   checkKey,
@@ -32,7 +30,7 @@ function newestConnection(connections: readonly Connection[], provider: string):
   );
 }
 
-/** T-1445: a pick clears Base URL/Name; OpenAI-compatible never reuses a saved key. */
+/** A pick clears Base URL/Name; OpenAI-compatible never reuses a saved key. */
 export function providerSelection(connections: readonly Connection[], provider: string) {
   const saved = provider === 'openai-compatible' ? null : newestConnection(connections, provider);
   const keyState =
@@ -41,18 +39,15 @@ export function providerSelection(connections: readonly Connection[], provider: 
 }
 
 export interface UseKeyCheckOptions {
-  /** Called after the provider changes; the New AI flow drops its model draft. */
   onProviderChange?: () => void;
-  /** Called once a check verifies the key; the New AI flow moves to the model step. */
   onVerified?: () => void;
 }
 
 /**
  * The provider choice, the OpenAI-compatible fields and the key field shared by
- * the New AI flow and the Connections page's Add key sheet. The key travels to
- * the server only inside `checkKey`, which creates the connection on the first
- * check and keeps its id. `abandon` drops an unverified created connection; a
- * saved key and a verified one this check made are handled by the T-1445 rules.
+ * the New AI flow and the Add key sheet. The key travels to the server only
+ * inside `checkKey`, which creates the connection and keeps its id; `abandon`
+ * drops an unverified created connection.
  */
 export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions = {}) {
   const { api } = useAisApi();
@@ -108,8 +103,8 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     (!isCompatible || (baseUrl.trim() !== '' && connectionName.trim() !== ''));
 
   function selectProvider(id: string): void {
-    // T-1445: a switch drops our old connection (verified deleted, unverified abandoned)
-    // and stales an in-flight check.
+    // A switch drops our old connection (verified deleted, unverified
+    // abandoned) and stales an in-flight check.
     checkToken.current += 1;
     setChecking(false);
     void discardCreatedKey(connectionsApi, keyState);
@@ -125,15 +120,14 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     onProviderChange?.();
   }
 
-  // T-1445: a Base URL or Name edit drops our connection for the old endpoint and
-  // starts the key over empty; a saved key (`created: false`) is left to the user.
+  // A Base URL or Name edit drops our connection for the old endpoint and
+  // starts the key over empty; a saved key (`created: false`) is left alone.
   function editEndpoint(set: (value: string) => void, value: string): void {
     set(value);
     void discardCreatedKey(connectionsApi, keyState);
     setKeyState(keyStateAfterBaseUrlEdit(keyState));
   }
 
-  /** Continue on the provider step: true when the fields are ready to move on. */
   function continueProvider(): boolean {
     if (providerId === null) return false;
     if (isCompatible && (baseUrl.trim() === '' || connectionName.trim() === '')) {
@@ -144,7 +138,6 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     return true;
   }
 
-  /** Continue on the key step: a saved key moves on, otherwise it runs the check. */
   function continueKey(): void {
     if (keyState.verified && keyValue.trim() === '') {
       onVerified?.();
@@ -182,12 +175,12 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     });
   }
 
-  /** T-1445: the connection is now the AI's (or the user's saved key): it must not be deleted. */
+  /** The connection is now the AI's (or the user's saved key): it must not be deleted. */
   function claim(): void {
     setKeyState(EMPTY_KEY_STATE);
   }
 
-  /** T-1445: a close during Create must not discard, so a successful create can adopt the key. */
+  /** A close during Create must not discard, so a successful create can adopt the key. */
   function beginCreate(): void {
     creatingRef.current = true;
   }
@@ -198,7 +191,6 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
       claim();
       return;
     }
-    // The create failed after a close: drop the key it would have adopted.
     if (closedRef.current) void discardCreatedKey(connectionsApi, keyStateRef.current);
   }
 
@@ -239,5 +231,4 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
   };
 }
 
-/** The key-check state and actions shared by both add-key flows. */
 export type KeyCheck = ReturnType<typeof useKeyCheck>;

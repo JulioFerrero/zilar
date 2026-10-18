@@ -10,19 +10,12 @@ import { cn } from '@/lib/utils';
 type InfoRowProps = {
   icon: LucideIcon;
   label: string;
-  /** The mono number at the right; hidden when the screen has no loaded count. */
   count?: number | undefined;
-  /** The red bottom row: no tile, no count, no chevron. */
   danger?: boolean | undefined;
   onPress: () => void;
   accessibilityLabel?: string | undefined;
 };
 
-/**
- * One group info row (T-1552), after `Phone.dc.html`: a 48 px row with a 34 px
- * `IconTile`, the label, an optional mono count and a chevron. The `danger`
- * variant is the red Leave group row (an 18 px icon, no tile or chevron).
- */
 export function InfoRow({
   icon: Icon,
   label,
@@ -66,10 +59,6 @@ export function InfoRow({
   );
 }
 
-/**
- * The rounded list that holds rows (T-1552): a hairline between rows, none
- * after the last one, matching the app's grouped settings lists.
- */
 export function InfoRowGroup({ children }: { children: ReactNode }) {
   const items = Children.toArray(children);
   return (

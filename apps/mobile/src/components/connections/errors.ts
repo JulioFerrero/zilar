@@ -1,7 +1,6 @@
 import { ConnectionsApiError } from '../../lib/connections-api';
 
 export interface ConnectionsErrorInfo {
-  /** A clear message for the user; never a raw code or a stack trace. */
   message: string;
 }
 

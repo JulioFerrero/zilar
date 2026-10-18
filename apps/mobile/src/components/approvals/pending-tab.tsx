@@ -18,7 +18,6 @@ export function PendingTab({
   onRefresh,
 }: {
   rows: { approval: PublicApproval; busy: RowBusy; error: string }[];
-  /** Kept for the screen's call site; the row no longer shows a timer. */
   now: Date;
   nameFor: (aiId: string) => string;
   onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
@@ -52,7 +51,6 @@ export function PendingTab({
   );
 }
 
-/** One pending row with its own decision action, so a tap on one row never waits on another. */
 function DecidingRow({
   row,
   aiName,

@@ -10,11 +10,6 @@ import type { Machine } from '@/lib/machines-api';
 import { MachineRow, RevokedToggleRow } from './machine-row';
 import { MachineSheet } from './machine-sheet';
 
-/**
- * The approved machines in one rounded list (T-1526), each row opening a
- * sheet, plus the Revoked toggle row at the end when any machine is revoked.
- * The inline rename editor is today's; it replaces the row while renaming.
- */
 export function ApprovedMachines({
   machines,
   aisByMachine,
@@ -32,7 +27,6 @@ export function ApprovedMachines({
   onToggleRevoked,
 }: {
   machines: Machine[];
-  /** The owner's AIs by home machine id; empty when the AI read failed. */
   aisByMachine: Map<string, PublicAi[]>;
   busyId: string | null;
   actionErrors: Record<string, string>;

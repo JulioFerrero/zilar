@@ -5,11 +5,6 @@ import { AiActivity } from '@/components/ais/ai-activity';
 import { useAuditApi } from '@/components/ais/use-audit-api';
 import { ScreenHeader } from '@/components/ui/screen-header';
 
-/**
- * The Activity page of Group info (T-1573), after the web group panel: the
- * group's audit rows, read only. It reuses the AI screen's list (`AiActivity`)
- * with a group scope; the page's own 28 px title replaces the section heading.
- */
 export function ActivityPage({ groupId, onBack }: { groupId: string; onBack: () => void }) {
   const { api } = useAuditApi();
   return (

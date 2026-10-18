@@ -7,10 +7,8 @@ import { File, UploadType } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 
 /**
- * The seams the settings avatar control needs, kept in one place so tests
- * inject fakes and never touch the native modules. Only imported by the
- * settings screens (and tests through these interfaces), so Vitest never
- * loads the native modules uninvoked.
+ * The seams the settings avatar control needs, in one place so tests inject
+ * fakes and Vitest never loads the native modules.
  */
 
 export interface PickedPicture {
@@ -30,26 +28,19 @@ export interface PicturePicker {
 }
 
 /**
- * Re-encodes a picked picture into the upload bytes: a centred-square crop
- * and a 256 x 256 PNG. The server only accepts PNG or WebP bytes by magic
- * bytes, and phone photos are JPEG, so every pick goes through this before
- * the upload. Injected so tests use a fake and never touch the native
- * module.
+ * Re-encodes a picked picture into the upload bytes: a centred-square crop and
+ * a 256 x 256 PNG. The server accepts PNG or WebP by magic bytes and phone photos
+ * are JPEG, so every pick goes through this before the upload.
  */
 export interface AvatarTranscoder {
   transcode(uri: string, width: number, height: number): Promise<{ uri: string }>;
 }
 
-/** Reads the byte size of a local file, or undefined when unknown. */
 export interface AvatarSizeReader {
   sizeOf(uri: string): Promise<number | undefined>;
 }
 
 export interface AvatarFileUploader {
-  /**
-   * PUTs the local file to the avatar slot and resolves the server's
-   * `{ url }` body. `onProgress` reports 0–1 while the bytes go up.
-   */
   upload(
     url: string,
     file: PickedPicture,
@@ -72,10 +63,6 @@ export const AVATAR_UPLOAD_MAX_BYTES = 256 * 1024;
 /** The exported avatar size: the server wants 64–512 px square; 256 is web's export. */
 export const AVATAR_EXPORT_SIDE = 256;
 
-/**
- * The centred-square crop for the source dimensions, or null when the
- * dimensions are unusable (the resize still runs, keeping the ratio).
- */
 export function centeredSquareCrop(
   width: number,
   height: number,
@@ -92,7 +79,6 @@ export function centeredSquareCrop(
   };
 }
 
-/** The real transcoder: centred-square crop, 256 x 256, PNG bytes. */
 export function createAvatarTranscoder(
   manipulate: typeof manipulateAsync = manipulateAsync,
 ): AvatarTranscoder {
@@ -117,7 +103,6 @@ export function createAvatarTranscoder(
   };
 }
 
-/** The real size reader: `expo-file-system` stat of the transcoded file. */
 export function createAvatarSizeReader(
   getInfo: typeof LegacyFileSystem.getInfoAsync = LegacyFileSystem.getInfoAsync,
 ): AvatarSizeReader {
@@ -137,8 +122,8 @@ export function createAvatarSizeReader(
 }
 
 /**
- * The picker flow as one Effect. Each early return is a result, not an error:
- * a failed permission call or size read rejects as before, and the picker and
+ * The picker flow as one Effect. Each early return is a result, not an error; a
+ * failed permission call or size read still rejects, and the picker and
  * transcode failures become the fixed messages.
  */
 const pickPictureEffect = Effect.fnUntraced(function* (
@@ -149,10 +134,9 @@ const pickPictureEffect = Effect.fnUntraced(function* (
   if (!permission.granted) {
     return { status: 'error', message: DENIED_MESSAGE };
   }
-  // The system editor crops (`allowsEditing` + square aspect): the
-  // phone has no canvas crop dialog like web, so the OS sheet does it.
-  // The transcode below crops again from the asset dimensions, so a
-  // sheet without an editor still yields a square PNG.
+  // The system editor crops (`allowsEditing` + square aspect), because the phone
+  // has no canvas crop dialog like web; the transcode then crops again from the
+  // asset dimensions, so a sheet without an editor still yields a square PNG.
   const launched = yield* Effect.result(
     Effect.tryPromise({
       try: () =>
@@ -176,8 +160,8 @@ const pickPictureEffect = Effect.fnUntraced(function* (
   if (asset === undefined) {
     return { status: 'cancelled' };
   }
-  // Re-encode to the upload bytes (256 x 256 PNG): the server rejects
-  // JPEG by magic bytes, and phone photos are JPEG.
+  // Re-encode to the upload bytes (256 x 256 PNG): the server rejects JPEG by
+  // magic bytes, and phone photos are JPEG.
   const transcoded = yield* Effect.result(
     Effect.tryPromise({
       try: () => transcoder.transcode(asset.uri, asset.width, asset.height),
@@ -188,8 +172,8 @@ const pickPictureEffect = Effect.fnUntraced(function* (
     return { status: 'error', message: PREPARE_FAILED_MESSAGE };
   }
   const { uri } = transcoded.success;
-  // The caps apply to the real upload bytes, not the picked JPEG: an
-  // unknown size is not an empty file, but a real zero refuses.
+  // The caps apply to the real upload bytes, not the picked JPEG: an unknown size
+  // is not an empty file, but a real zero refuses.
   const size = yield* Effect.promise(() => reader.sizeOf(uri));
   if (size !== undefined && size === 0) {
     return { status: 'error', message: EMPTY_MESSAGE };
@@ -208,13 +192,10 @@ const pickPictureEffect = Effect.fnUntraced(function* (
   };
 });
 
-/** The real picture picker: the photo library, then the PNG transcode. */
 export function createPicturePicker(options?: {
   sizeReader?: AvatarSizeReader | undefined;
   transcoder?: AvatarTranscoder | undefined;
 }): PicturePicker {
-  // Production defaults to the real stat and the real manipulator; tests
-  // inject fakes.
   const reader = options?.sizeReader ?? createAvatarSizeReader();
   const transcoder = options?.transcoder ?? createAvatarTranscoder();
   return {
@@ -224,16 +205,10 @@ export function createPicturePicker(options?: {
   };
 }
 
-/**
- * Decodes a JSON text to its value, or none when it is not JSON. Synchronous,
- * so the parsers below keep their plain return values.
- */
 const decodeJsonBody = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
-/** The JSON value of a response body, or null when the body is not JSON. */
 const jsonBody = (body: string): unknown => Option.getOrNull(decodeJsonBody(body));
 
-/** Parses the upload response body into the avatar url, or null when unexpected. */
 export function parseAvatarUploadBody(body: string): { url: string } | null {
   const parsed = jsonBody(body);
   if (typeof parsed !== 'object' || parsed === null) {
@@ -243,7 +218,6 @@ export function parseAvatarUploadBody(body: string): { url: string } | null {
   return typeof url === 'string' ? { url } : null;
 }
 
-/** The real avatar file uploader: a binary-content PUT with the session bearer. */
 export function createAvatarFileUploader(): AvatarFileUploader {
   return {
     upload(url, file, token, onProgress) {
@@ -288,11 +262,10 @@ const uploadEffect = Effect.fnUntraced(function* (
 });
 
 /**
- * Maps a refused avatar PUT to a `ProfileApiError`, so `friendlyAvatarError`
- * can show the specific reason (`avatar_too_large`, `rate_limited`, ...)
- * instead of the generic failure. A parseable `{ code, message }` envelope
- * wins; otherwise the status decides (413 too large, 429 rate limited, 400
- * not an image); anything else is the generic upload failure.
+ * Maps a refused avatar PUT to a `ProfileApiError`, so `friendlyAvatarError` can
+ * show the specific reason (`avatar_too_large`, `rate_limited`, ...) instead of
+ * the generic failure. A parseable `{ code, message }` envelope wins; otherwise
+ * the status decides (413, 429, 400); anything else is generic.
  */
 export function toAvatarUploadError(status: number, body: string): ProfileApiError {
   const { code, message } = parseApiErrorBody(jsonBody(body));

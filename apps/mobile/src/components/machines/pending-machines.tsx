@@ -9,11 +9,6 @@ function groupFingerprint(value: string): string {
   return value.replace(/(.{4})(?=.)/g, '$1 ');
 }
 
-/**
- * The pending machines (T-1526): a card per machine with the amber waiting dot,
- * the fingerprint in a mono well and Deny / Approve sharing the width. No
- * status word: the dot is the status.
- */
 export function PendingMachines({
   machines,
   busyId,

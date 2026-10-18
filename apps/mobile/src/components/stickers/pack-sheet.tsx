@@ -30,11 +30,6 @@ import { packCountLabel } from '@/components/stickers/tile-size';
 
 const SHARE_THUMBS = 8;
 
-/**
- * The pack action sheet (T-1533, after `PhoneSheet.dc.html`): the pack's name,
- * count and Close key, a strip of its stickers, then Share, the owner-only
- * Edit, Make private/shared and Delete, the Move keys, and Remove from panel.
- */
 export function PackSheet({
   pack,
   token,

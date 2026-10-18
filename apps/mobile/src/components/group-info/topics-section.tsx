@@ -12,14 +12,6 @@ import { Text } from '@/components/ui/text';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { runInBackground } from '@/lib/effect/run-in-background';
 
-/**
- * The group screen's topic lists (T-1787), after `PhoneGroup.dc.html:64-107`:
- * Your topics (General and the joined ones, then New topic) and Other topics
- * (the group's public topics the caller has not joined, each with a Join key).
- * The rows come from the group's topic chat rows; the section is a thin view,
- * the route owns the data and the writes.
- */
-
 const STACK_MAX = 4;
 
 type SectionPerson = { id: string; name: string; avatarUrl?: string };
@@ -29,7 +21,6 @@ type SectionTopic = {
   title: string;
   muted: boolean;
   archived?: boolean | undefined;
-  /** The chat row's topic count, the subtitle's fallback when no ids are listed. */
   memberCount?: number | undefined;
   topic?: {
     isGeneral: boolean;
@@ -43,19 +34,15 @@ type SectionTopic = {
 type SectionMember = { userId: string; name: string; avatarUrl?: string | undefined };
 
 type TopicsSectionProps = {
-  /** The group's topic rows, sorted by `sortTopics`. */
   topics: readonly SectionTopic[];
   currentUserId: string;
-  /** The group's people, for the subtitle names, the General stack and seeds. */
   members: readonly SectionMember[];
-  /** The group's AIs, for the General stack. */
   ais: readonly { aiId: string; name: string; avatarUrl?: string | undefined }[];
   onOpenTopic: (chatId: string) => void;
   onNewTopic: () => void;
   onJoinTopic: (chatId: string) => Promise<void>;
 };
 
-/** The 34 px tile: a lock for a private topic, `#` otherwise. */
 function GlyphTile({ isPrivate }: { isPrivate: boolean }) {
   return (
     <View className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-border-strong bg-surface-raised">
@@ -78,7 +65,6 @@ function personOf(member: SectionMember): SectionPerson {
   };
 }
 
-/** The subtitle: "Everyone" for General; "N people · <AI>"; private names 2 people. */
 function subtitleFor(chat: SectionTopic, membersById: Map<string, SectionMember>): string {
   const info = chat.topic;
   if (info === undefined) {
@@ -102,7 +88,6 @@ function subtitleFor(chat: SectionTopic, membersById: Map<string, SectionMember>
   return ai === undefined ? people : `${people} · ${ai}`;
 }
 
-/** The row's stack: General reads the whole group; otherwise its members then AIs. */
 function stackFor(
   chat: SectionTopic,
   members: readonly SectionMember[],
@@ -129,7 +114,6 @@ function stackFor(
   return [...people, ...aiPeople].slice(0, STACK_MAX);
 }
 
-/** One of Your topics: glyph, name and subtitle, the muted mark, the stack, a chevron. */
 function YourTopicRow({
   chat,
   subtitle,
@@ -164,7 +148,6 @@ function YourTopicRow({
   );
 }
 
-/** One of Other topics: the same row, opening the topic, plus the Join key. */
 function OtherTopicRow({
   chat,
   subtitle,
@@ -222,7 +205,6 @@ function OtherTopicRow({
   );
 }
 
-/** The New topic key that ends Your topics, opening `NewTopicSheet`. */
 function NewTopicRow({ onPress }: { onPress: () => void }) {
   return (
     <Pressable

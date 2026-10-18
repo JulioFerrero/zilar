@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 
 import { OTP_LENGTH, applyOtpBackspace, applyOtpText, isOtpComplete, otpValue } from './otp';
 
-/** Six digit boxes: auto-advance, backspace, and paste the whole code. */
 export function OtpInput({
   value,
   onChange,

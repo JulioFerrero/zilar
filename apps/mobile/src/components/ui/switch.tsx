@@ -9,14 +9,12 @@ export interface SwitchProps {
   value: boolean;
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
-  /** Hides the visible label; `label` still names the control for screen readers. */
   hideLabel?: boolean;
 }
 
 /**
- * The mobile kit switch: a labelled row with the React Native switch drawn with
- * a grey track and a light thumb, so the thumb stands out from the dark card in
- * both states. The label names the control for screen readers even when hidden.
+ * The mobile kit switch: a grey track and a light thumb, so the thumb stands out
+ * from the dark card in both states. The label still names the control.
  */
 export function Switch({ label, value, onValueChange, disabled, hideLabel = false }: SwitchProps) {
   return (

@@ -1,9 +1,8 @@
 import { StickersApiError } from '../../lib/stickers-api';
 
 /**
- * The pure parts of the Telegram import sheet (T-0207): the error-to-state
- * mapping and the count sentences, tested without rendering. Copy follows
- * `docs/design/briefs/T-0207-telegram-import.md` section 6 exactly.
+ * The pure parts of the Telegram import sheet: the error-to-state mapping and
+ * the count sentences, tested without rendering.
  */
 
 export const EMPTY_INPUT_ERROR = 'Paste a pack link or name first.';

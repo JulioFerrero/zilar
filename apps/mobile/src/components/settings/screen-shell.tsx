@@ -9,13 +9,13 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useScrollToTopOnReselect } from '@/lib/tab-reselect';
 
-/** T-1971: how long the pull spinner stays up when `onRefresh` returns nothing. */
+/** How long the pull spinner stays up when `onRefresh` returns nothing. */
 const REFRESH_FALLBACK_MS = 600;
 
 /**
- * T-1971: the pull-to-refresh spinner. It stops when the reload returns a
- * promise that settles, and on a short beat when the reload returns nothing
- * (the data hooks' `reload` is synchronous, so there is nothing to await).
+ * The pull-to-refresh spinner. It stops when the reload returns a promise that
+ * settles, and on a short beat when the reload returns nothing (the data hooks'
+ * `reload` is synchronous, so there is nothing to await).
  */
 export function usePullToRefresh(onRefresh: (() => void | Promise<unknown>) | undefined): {
   refreshing: boolean;
@@ -70,16 +70,14 @@ type SettingsScreenShellProps = {
   title: string;
   subtitle?: string | undefined;
   onBack?: (() => void) | undefined;
-  /** A header action, e.g. the profile screen's save state. */
   right?: ReactNode;
-  /** T-1969: the root tab that scrolls this body to the top when re-tapped. */
+  /** The root tab that scrolls this body to the top when re-tapped. */
   tabName?: string | undefined;
-  /** T-1971: pull to refresh; the spinner stops when the returned promise settles. */
+  /** Pull to refresh; the spinner stops when the returned promise settles. */
   onRefresh?: (() => void | Promise<unknown>) | undefined;
   children: ReactNode;
 };
 
-/** The frame shared by the settings hub and every settings page. */
 export function SettingsScreenShell({
   title,
   subtitle,

@@ -9,11 +9,6 @@ type CheckboxProps = {
   disabled?: boolean;
 };
 
-/**
- * The visual checkbox box: the picker row owns the press handling and the
- * `checkbox` accessibility role, so this renders the box only — a Check
- * icon on accent when checked, an empty bordered box otherwise.
- */
 export function Checkbox({ checked, disabled = false }: CheckboxProps) {
   return (
     <View

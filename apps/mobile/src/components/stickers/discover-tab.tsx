@@ -10,11 +10,6 @@ import type { PanelPack } from '@/lib/stickers-api';
 import { PackCard } from '@/components/stickers/pack-card';
 import { DISCOVER_ERROR } from '@/components/stickers/use-stickers-panel';
 
-/**
- * The Discover tab: the shared-pack search and the lean pack rows, with an
- * add key or a check plus a remove key, inside the same bordered list as
- * My packs.
- */
 export function DiscoverTab({
   discover,
   discoverBusy,
@@ -44,7 +39,6 @@ export function DiscoverTab({
   onSearch: (search: string) => void;
   onAdd: (packId: string) => void;
   onRemove: (pack: PanelPack) => void;
-  /** Opens the pack link page (`/stickers/<id>`). */
   onOpenPackLink: (packId: string) => void;
 }) {
   return (

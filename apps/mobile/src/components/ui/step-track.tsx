@@ -9,26 +9,20 @@ import { cn } from '@/lib/utils';
 export interface StepTrackStep {
   value: string;
   label: string;
-  /** Marks a step the flow has already passed; defaults to the steps before `current`. */
   done?: boolean;
 }
 
 export interface StepTrackProps {
   steps: readonly StepTrackStep[];
-  /** The value of the step being shown now. */
   current: string;
-  /** Tapping a done step jumps back to it, when given. */
   onStepPress?: (value: string) => void;
-  /** Beats the built-in "Step N of M: <label>" announcement. */
   accessibilityLabel?: string;
 }
 
 /**
- * The New AI flow's step bar (approved 2026-10-15, `PhoneKey.dc.html`): a well
- * track of 34 px segments. The current step is the raised segment; a done step
- * shows a check and its value in the muted colour, and is pressable; later
- * steps are subtle and inert. The current segment carries the selected state in
- * its `key` so the raised style re-applies when the step changes.
+ * The New AI flow's step bar: a well track of 34 px segments. The current segment
+ * carries the selected state in its `key` so the raised style re-applies when the
+ * step changes; a done step shows a check and is pressable.
  */
 export function StepTrack({ steps, current, onStepPress, accessibilityLabel }: StepTrackProps) {
   const currentIndex = steps.findIndex((step) => step.value === current);

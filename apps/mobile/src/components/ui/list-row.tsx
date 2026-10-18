@@ -20,11 +20,6 @@ type ListRowProps = {
   className?: string;
 };
 
-/**
- * A settings-style row: an optional leading node (an `IconTile`), a title, a
- * one-line muted subtitle, an optional count pill and a chevron. It renders a
- * `Pressable` when it acts, a plain `View` otherwise.
- */
 export function ListRow({
   icon,
   title,

@@ -13,39 +13,22 @@ type ActionSheetProps = {
   visible: boolean;
   onClose: () => void;
   /**
-   * Fires after every native dismissal, whether a user dismissal or one the
-   * `visible` effect asked for. A caller that hands off to another sheet
-   * presents it here, so the two never present and dismiss in the same commit
-   * (which leaves the next sheet without its dimmed backdrop).
+   * Fires after every native dismissal, user or programmatic. A caller that hands
+   * off to another sheet presents it here, so the two never present and dismiss in
+   * the same commit (which leaves the next sheet without its dimmed backdrop).
    */
   onDismissed?: () => void;
-  /**
-   * The label for the sheet's drag handle (the kit used it for the backdrop).
-   * Kept so the call sites don't change; see the T-1348 Report.
-   */
   closeLabel: string;
-  /** A node rendered above the items. Beats `title` when both are set. */
   header?: ReactNode;
-  /** A plain title row, when there is no `header`. */
   title?: string;
   children?: ReactNode;
-  /** An alert line shown under the items, e.g. a failed action. */
   error?: string;
 };
 
 /**
- * The bottom action sheet shell (rebuilt on `@lodev09/react-native-true-sheet`
- * in T-1348): the platform's own sheet, so it slides up, drags down to close and
- * dims the backdrop (a tap outside closes it). The sheet owns the dividers so a
- * caller never manages borders by hand: a hairline between items, none after the
- * last one. `onDidDismiss` reports a user dismissal (drag, backdrop tap,
- * Android back) back to `onClose`; a dismissal the `visible` effect asks for is
- * not reported, so a caller that swaps one sheet for another (for example a
- * delete confirm) is not closed by its own dismiss. `onDismissed` fires after
- * every dismissal, user or programmatic, so a caller can present a follow-up
- * sheet only once this one has fully closed. The content's top padding
- * (`pt-6`) keeps its first row clear of the native grabber, which the library
- * draws inside the sheet's top edge and offers no content inset for.
+ * The bottom action sheet shell on `@lodev09/react-native-true-sheet`, with a
+ * hairline between items: `onDidDismiss` reports only user dismissals, `onDismissed`
+ * fires after any, and the content's `pt-6` clears the native grabber.
  */
 export function ActionSheet({
   visible,
@@ -59,9 +42,8 @@ export function ActionSheet({
 }: ActionSheetProps) {
   const sheet = useRef<TrueSheet>(null);
   const presented = useRef(false);
-  // Set when the `visible` effect dismisses the sheet itself, so `onDidDismiss`
-  // can tell a programmatic dismissal from a user one (drag, backdrop, Android
-  // back) and only report the latter to `onClose`.
+  // Set when the `visible` effect dismisses the sheet, so `onDidDismiss` can tell a
+  // programmatic dismissal from a user one and only report the latter.
   const dismissedByEffect = useRef(false);
   const items = Children.toArray(children);
   const hasError = error !== undefined && error !== '';
@@ -133,19 +115,14 @@ export function ActionSheet({
 
 type ActionSheetItemProps = {
   label: string;
-  /** Defaults to `label`. */
   accessibilityLabel?: string;
   onPress: () => void;
   disabled?: boolean;
-  /** A lucide component, drawn at 18 px in the muted colour of the scheme. */
   icon?: LucideIcon;
-  /** Renders the label in the danger colour. */
   destructive?: boolean;
-  /** Indents the label, for a submenu such as the mute durations. */
   inset?: boolean;
 };
 
-/** A tappable row inside an `ActionSheet`; the sheet draws its dividers. */
 export function ActionSheetItem({
   label,
   accessibilityLabel,

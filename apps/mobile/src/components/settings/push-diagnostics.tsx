@@ -16,12 +16,6 @@ function deviceName(device: PushDevice): string {
   return describeUserAgent(device.userAgent);
 }
 
-/**
- * The registered push devices (T-1356), mirroring the web `DevicesSection`:
- * name, last push or "No push yet", and the last failure with its reason. The
- * row of this phone is marked. No remove button: a phone unregisters on
- * sign-out (`native.ts`), and the web screen owns removal.
- */
 export function PushDevicesSection({
   devices,
   thisDeviceId,
@@ -62,7 +56,6 @@ export function PushDevicesSection({
   );
 }
 
-/** One line: when this phone last woke for a push, or that it never has. */
 export function LastPushReceivedLine({ at }: { at: string | null }) {
   const text =
     at === null

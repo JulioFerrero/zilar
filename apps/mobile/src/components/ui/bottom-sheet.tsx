@@ -14,26 +14,16 @@ import { cn } from '@/lib/utils';
 type BottomSheetProps = {
   visible: boolean;
   onClose: () => void;
-  /**
-   * The label for the sheet's drag handle (the kit used it for the backdrop).
-   * Kept so the call sites don't change; see the T-1348 Report.
-   */
   closeLabel: string;
-  /** The header title; it also announces the sheet to screen readers. */
   title?: string;
-  /** A dark back key on the header's left, when given. */
   onBack?: () => void;
-  /** Keys on the header's right. A titled sheet gets the default close key when this is `undefined`; `null` hides it. */
   headerRight?: ReactNode;
-  /** A sticky row under the scroll view, kept above the keyboard. */
   footer?: ReactNode;
   /**
-   * Whether a drag, a backdrop tap or Android back may dismiss the sheet.
-   * Defaults to `true`; a sheet that must not be dismissed mid-action (a busy
-   * import) passes `false` so the native dismissal cannot desync `visible`.
+   * Whether a drag, backdrop tap or Android back may dismiss; a busy sheet passes
+   * `false` so a native dismissal cannot desync `visible`.
    */
   dismissible?: boolean;
-  /** A `max-h-[NN%]` class; the panel is capped at that share of the screen. */
   maxHeightClassName?: string;
   children?: ReactNode;
 };
@@ -48,26 +38,11 @@ function maxHeightFraction(className: string): number {
 }
 
 /**
- * The kit bottom sheet shell (T-0313; rebuilt on `@lodev09/react-native-true-sheet`
- * in T-1348). It is the platform's own sheet — iOS `UISheetPresentationController`,
- * Android `BottomSheetDialog` — so it slides up, drags down to close, dims the
- * backdrop (a tap outside closes it) and keeps text inputs above the keyboard
- * natively. `visible` drives `present()` / `dismiss()`; `onDidDismiss` reports a
- * native dismissal (drag, backdrop tap, Android back) back to `onClose`.
- *
- * `detents={['auto']}` sizes the panel to its content, capped at the share of
- * the screen named by `maxHeightClassName` (via `maxContentHeight`). The library
- * does not support `auto` together with its `scrollable` mode, so the content is
- * bounded by the same cap and scrolls within it instead. The panel is the D24
- * `panel` colour with a top hairline and the 36×4 grabber (`ui-style.md` §2); the
- * header row (an optional back key, the title, optional right keys) and the
- * `footer` row sit outside the scroll view, so a long body scrolls between them.
- * A titled sheet gets the standard close key on the header's right by default
- * (T-1443); pass `headerRight={null}` to hide it or your own keys to replace it.
- * Pass `dismissible={false}` while an action runs, so a drag, a backdrop tap or
- * Android back cannot hide the sheet while its `visible` stays true.
- * The top padding keeps the header clear of the native grabber, which the
- * library draws inside the sheet's top edge and offers no content inset for.
+ * The kit bottom sheet shell on `@lodev09/react-native-true-sheet`: `auto`
+ * detents size the panel to its content within `maxHeightClassName` (the library
+ * cannot combine `auto` with `scrollable`, so the content scrolls in that cap).
+ * The header and footer sit outside the scroll view, the top padding clears the
+ * grabber, and `dismissible={false}` keeps a running action from hiding it.
  */
 export function BottomSheet({
   visible,
@@ -86,8 +61,7 @@ export function BottomSheet({
   const sheet = useRef<TrueSheet>(null);
   const presented = useRef(false);
   const maxHeight = Math.round(height * maxHeightFraction(maxHeightClassName));
-  // A sheet with no title, back key or right keys shows no header row, so the
-  // content starts at the top instead of under an empty block.
+  // No title, back key or right keys means no header row, so the content starts at the top.
   const hasHeader = title !== undefined || onBack !== undefined || headerRight !== undefined;
 
   useEffect(() => {

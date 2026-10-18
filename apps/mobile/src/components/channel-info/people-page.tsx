@@ -13,10 +13,9 @@ import { Text } from '@/components/ui/text';
 import type { GroupRole } from '@/lib/chat-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
-/** The owner crown from the web `MemberRow` (`#e5b84b`); mobile has no token for it. */
+/** The owner crown color from web's `MemberRow`; mobile has no token for it. */
 const OWNER_COLOR = '#e5b84b';
 
-/** One row of the Subscribers page: the id, the shown name and the role. */
 export type ChannelPerson = {
   userId: string;
   name: string;
@@ -27,13 +26,10 @@ export type ChannelPerson = {
 const RANK: Record<GroupRole, number> = { owner: 0, admin: 1, member: 2 };
 
 type ChannelPeoplePageProps = {
-  /** The audience a manager sees, or the admins slice a subscriber sees. */
   people: ChannelPerson[];
   me: string;
   isOwner: boolean;
-  /** The audience is not loaded yet. */
   loading: boolean;
-  /** The admins slice load failed (subscribers only). */
   loadFailed: boolean;
   roleBusy: boolean;
   roleError: string;
@@ -41,14 +37,6 @@ type ChannelPeoplePageProps = {
   onBack: () => void;
 };
 
-/**
- * The Subscribers page of channel info (T-1581), after
- * `WebChannelSubscribers.dc.html`: a search field, then the owner and admins
- * first and the subscribers next in one rounded list. Owner and admin show as
- * `Crown` and `Shield` icons. The owner's ⋮ turns a subscriber into an admin
- * and back, replacing the old Promote and Demote word keys; the write rules
- * are web's, the server is the enforcer.
- */
 export function ChannelPeoplePage({
   people,
   me,

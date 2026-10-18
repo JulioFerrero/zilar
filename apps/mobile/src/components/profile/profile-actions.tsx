@@ -14,13 +14,6 @@ import type { ActionTile } from '@/components/ui/action-tiles';
 
 export type ProfileAction = ActionTile;
 
-/**
- * The action row for the public profile's relation (T-1308): Message / Mute /
- * Search for a contact (the last two only once the DM exists), Send request
- * for a stranger, Cancel for a pending request, Accept / Decline when one
- * arrived. Reuses today's `api` calls and `openMessage` path; `[handle].tsx`
- * draws the result with `ActionTiles`.
- */
 export function buildActions({
   profile,
   sent,

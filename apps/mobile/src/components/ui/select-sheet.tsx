@@ -12,14 +12,11 @@ import { cn } from '@/lib/utils';
 export interface SelectSheetOption {
   readonly value: string;
   readonly label: string;
-  /** A trailing 8 px status dot, `online` being the green one. */
   readonly dot?: 'online';
 }
 
-/** A pinned row under the list, e.g. "OpenAI-compatible" with a plus icon. */
 export interface SelectSheetFooterOption {
   readonly label: string;
-  /** When the field's value equals this, the trigger shows `label`. */
   readonly value?: string;
   readonly onPress: () => void;
 }
@@ -32,15 +29,6 @@ const MAX_ROWS = 7;
 const ROW_HEIGHT = 48;
 const HAIRLINE = '#1a1a1a';
 
-/**
- * The mobile kit single-choice field: a row that shows the current value and
- * opens the native `BottomSheet` with the option list, a checkmark on the
- * selected row, and a search field once the list is longer than
- * `FILTER_THRESHOLD` options. Rows are 48 px with a hairline divider; a row can
- * carry a green status dot, the selected row is `surfaceRaised` plus a check,
- * the list caps at about seven rows and scrolls, and `footerOption` pins an
- * extra action (a plus icon, then the label) under a hairline.
- */
 export function SelectSheet({
   label,
   value,

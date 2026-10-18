@@ -11,13 +11,6 @@ import { TextField } from '@/components/ui/text-field';
 import type { ProviderConnection } from '@/lib/connections-api';
 import { cn } from '@/lib/utils';
 
-/**
- * A connection's key action sheet (T-1516): the status dot and the provider
- * name, then Test key, Replace key and Delete. Test shows a green check once
- * this screen's last test passed; Replace swaps the items for a secure key
- * field with Save and Cancel; Delete is destructive. The parent remounts it on
- * every open, so it always starts on the menu with no draft key.
- */
 export function ConnectionSheet({
   connection,
   working,
@@ -33,21 +26,14 @@ export function ConnectionSheet({
   onDelete,
 }: {
   connection: ProviderConnection | null;
-  /** The dot's state: active and no failed test in this screen. */
   working: boolean;
-  /** True once this screen's last test for the connection passed. */
   tested: boolean;
-  /** True while a test for the connection runs. */
   testing: boolean;
-  /** True while the key replacement is in flight. */
   replacing: boolean;
-  /** The last replacement failure, shown in the sheet's error slot. */
   replaceError: string;
   onClose: () => void;
-  /** Fires after the sheet has fully closed, so a follow-up dialog is safe. */
   onDismissed: () => void;
   onTest: () => void;
-  /** Clears the replacement failure when the form opens or cancels. */
   onReplaceStart: () => void;
   onReplace: (key: string) => void;
   onDelete: () => void;

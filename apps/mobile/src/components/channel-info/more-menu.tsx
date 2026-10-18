@@ -9,22 +9,14 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 
 type ChannelMoreMenuProps = {
-  /** The owner's More key opened the menu. */
   open: boolean;
   onClose: () => void;
-  /** The channel name: the typed-name gate and the confirm copy. */
   title: string;
   busy: boolean;
   error: string;
   onDelete: () => void;
 };
 
-/**
- * The owner's More menu for a channel (T-1587), after web's channel root: an
- * action sheet holding Delete channel, which opens the same typed-name
- * confirmation the group uses, worded for a channel. The screen runs the
- * delete and the navigation; this holds only the local menu/confirm state.
- */
 export function ChannelMoreMenu({
   open,
   onClose,

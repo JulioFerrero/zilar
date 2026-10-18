@@ -4,11 +4,8 @@ export type GuardDecision =
   { kind: 'loading' } | { kind: 'allow' } | { kind: 'login'; from: string } | { kind: 'name' };
 
 /**
- * Decides where a protected screen should send the user. A guest goes to
- * `/login` with `from` = the target so the flow can return there; a signed-in
- * user without a name goes to `/welcome/name`. An `offline` status is a
- * transient server failure, never a sign-out: with a known user the guard
- * allows the app through, otherwise it keeps waiting (T-1304).
+ * A guest goes to `/login` with `from` = the target; a signed-in user with no
+ * name goes to `/welcome/name`. An `offline` status never signs the user out.
  */
 export function guardDecision(input: {
   status: AuthStatus;

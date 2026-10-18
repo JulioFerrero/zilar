@@ -4,18 +4,14 @@ import { runMobile } from '../../lib/effect/runtime';
 import { describeMachinesError } from './errors';
 
 export interface MachineChangeOutcome {
-  /** The home machine id to show: the PUT answer, or the previous value on failure. */
   home: string | null;
-  /** A fixed user-facing sentence, or empty on success. Never raw server text. */
   error: string;
 }
 
 /**
- * The `changeMachine` flow behind the AI edit screen's home-machine picker.
- * A pure async step so the screen stays thin and the outcome is unit
- * testable: on success the PUT answer (the server is the source of truth)
- * becomes the shown machine; on failure the previous value is restored and
- * a fixed error sentence comes back.
+ * The `changeMachine` flow behind the AI edit screen's picker: on success the
+ * PUT answer is the shown machine (the server is the source of truth); on
+ * failure the previous value is restored and a fixed sentence comes back.
  */
 export function applyMachineChange(
   api: MachinesApi,

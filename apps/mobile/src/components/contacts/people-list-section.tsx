@@ -7,13 +7,6 @@ import type { ContactsApi } from '@/lib/contacts-api';
 import { PersonRow } from './person-row';
 import { usePeoplePrefixSearch } from './use-people-prefix-search';
 
-/**
- * The People section above the chat-list "Chats" results (T-1668): for a
- * search text that is not an exact `@handle`, it lists the people whose name
- * or `@username` starts with the 3+ character query. Tapping a row opens
- * `/u/<handle>`. It renders nothing while idle (a query under 3 characters),
- * and one muted line for loading, no results, rate limiting or any failure.
- */
 export function PeopleListSection({ api, text }: { api: ContactsApi; text: string }) {
   const router = useRouter();
   const state = usePeoplePrefixSearch(api, text);

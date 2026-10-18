@@ -6,15 +6,9 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 type TextFieldProps = React.ComponentProps<typeof TextInput> & {
-  /** An optional label rendered above the field. */
   label?: string;
 };
 
-/**
- * The mobile kit text field: a recessed well, with an optional label above it.
- * It passes every `TextInput` prop through and fills the placeholder colour
- * from the scheme, so screens never hard-code one.
- */
 export function TextField({
   label,
   className,

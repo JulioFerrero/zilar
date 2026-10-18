@@ -10,7 +10,6 @@ type IconButtonProps = Omit<React.ComponentProps<typeof Pressable>, 'style'> & {
   style?: StyleProp<ViewStyle>;
 };
 
-/** A dark, raised icon key (ui-style.md §4): 12 px radius on mobile. */
 export function IconButton({
   label,
   className,
