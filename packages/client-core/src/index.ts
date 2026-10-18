@@ -19,3 +19,10 @@ export {
   type MediaRetryOptions,
   type MediaRetryResult,
 } from './use-media-retry';
+export {
+  capStoredDrafts,
+  createComposerDrafts,
+  useComposerDraft,
+  type ComposerDrafts,
+  type DraftStorage,
+} from './composer-drafts';
