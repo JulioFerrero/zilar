@@ -5,6 +5,7 @@ import { runSql } from '../effect/sql';
 import { emitTopicAi } from '../groups/events';
 import {
   aiMayBeInTopic,
+  getGroupMembership,
   getTopic,
   requireManagedTopic,
   toMissingTopic,
@@ -104,6 +105,19 @@ export async function setTopicRoles(
   // The approver update rides the same transaction so access and approver
   // can never disagree.
   const approverChanged = (topic.approverRoleId ?? null) !== input.approverRoleId;
+  // T-1991: the approver role decides tier-2 requests, so only a current
+  // group owner or admin may pick it. A plain member who created the topic
+  // keeps changing the role access below.
+  if (approverChanged) {
+    const membership = await getGroupMembership(deps.db, topic.groupId, input.actorId);
+    if (membership === null || membership.role === 'member') {
+      throw new HttpError(
+        403,
+        'forbidden',
+        'Only group owners and admins can pick the approver role',
+      );
+    }
+  }
   const diff = await runSql(
     deps.db,
     Effect.gen(function* () {

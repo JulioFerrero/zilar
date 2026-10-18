@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { cancelPendingActionsForAi } from '../actions/topic-recheck';
 import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
@@ -183,6 +184,12 @@ export async function removeTopicAi(
   // T-0442: the AI's memory of this topic room dies with the membership
   // (plan §3.5). Its DM memory and other rooms are unaffected.
   await runSql(deps.db, deleteRoomMemoryEffect(aiId, [topic.roomLocalpart]));
+  // T-1991: the AI's waiting actions in this topic die with the membership.
+  await cancelPendingActionsForAi(
+    { db: deps.db, logger: deps.logger },
+    { aiId, groupId: topic.groupId, topicId: topic.id },
+    now,
+  );
   const updated = await getTopic(deps.db, topic.id);
   if (!updated) {
     throw toMissingTopic();

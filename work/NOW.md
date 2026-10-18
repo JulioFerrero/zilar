@@ -893,7 +893,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                     - **Julio's phone report, 16:34 local:**
                       - the AI ball in group chats used the name colour, not his chosen picture: T-1996 (web and phone);
                       - the chat scroll is janky and older messages load slowly: T-1997, an Opus audit that writes `docs/audit/chat-scroll-perf.md`; fix tasks follow.
-                    - **Iryna's iPhone:** v0.2.12 build running (`tmp/ios-0212.sh`).
+                    - **Iryna's iPhone:** v0.2.12 installed at 15:00 with the right version (`ZILAR_VERSION_*` must be set, now in RELEASING §8).
+                    - **Pushed `e0e2b2b7e`, live at 15:07.**
+                      - Web stopped in 3 s and the whole swap took about 21 s (it was about 50 s before).
+                      - `/api/auth/list-sessions` and `/api/auth/update-user` answer 404.
+                      - **Still to check live:**
+                        - a new session's IP is public;
+                        - a device sign-out empties `user_resources`;
+                        - @Deepseek answers in "cards test";
+                        - the sender avatars on web.
+                    - **Audit 4 ($13.31, 15 findings, 4 high):**
+                      - running: T-1999 merged and live; T-2000, T-2001, T-2002 (Sonnet 5.5, room rights) and T-2003;
+                      - waiting: T-2004, after T-1988 and T-2003 merge (shared files);
+                      - still to spec: stickers caps, web push endpoint, push component, baremetal block_strangers, JPEG trailing Exif, voice caps.
+                    - **Perf audit T-1997** (`docs/audit/chat-scroll-perf.md`) waits for its packet; then W1 (one store update per history page) and W2 (prefetch at 3 screens, no re-render fan-out).
                     - **Julio's pinned-bar report:**
                       - T-1979 (web): one focus ring, plus a calm not-found note with Unpin;
                       - T-1980 (`anthropic/claude-sonnet-5`): why the card pin's archive id doesn't match its row, plus a fix and a test.

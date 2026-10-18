@@ -64,11 +64,16 @@ export async function answerOnReply(
   }
   const answered = await Effect.runPromise(
     Effect.gen(function* () {
-      const question = yield* Effect.tryPromise(() => findOpenQuestionByMessage(db, replyTo.id));
+      // T-1991: a question belongs to one room. A reply in another room the
+      // AI is also in must not close it.
+      const roomJid = normBareJid(message.chatJid);
+      const question = yield* Effect.tryPromise(() =>
+        findOpenQuestionByMessage(db, replyTo.id, roomJid),
+      );
       if (question === null || question.aiId !== session.aiId) {
         return false;
       }
-      const nick = session.rooms.get(normBareJid(message.chatJid))?.nick;
+      const nick = session.rooms.get(roomJid)?.nick;
       return yield* Effect.tryPromise(() =>
         answerQuestion(db, question.id, {
           answer: answerText(message.body ?? '', nick),

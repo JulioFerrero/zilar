@@ -341,6 +341,116 @@ describe('group roles (T-0116)', () => {
     expect(context.adminClient.affiliationState.get(room)?.has(expectedJid(member.id))).toBe(false);
   });
 
+  it('refuses a role grant that opens a private topic the actor cannot see (T-1991)', async () => {
+    const { owner, admin, member, group } = await setup();
+    const promoted = await app.request(
+      `${TEST_BASE_URL}/api/groups/${group.id}/members/${admin.id}/role`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ role: 'admin' }),
+      },
+    );
+    expect(promoted.status).toBe(200);
+    const role = (await (
+      await createRole(owner.cookie, group.id, { name: 'Insiders' })
+    ).json()) as RoleBody;
+    const topic = (await (
+      await createTopic(owner.cookie, group.id, { name: 'Secret', visibility: 'private' })
+    ).json()) as TopicBody;
+    expect(
+      (await setTopicRoles(owner.cookie, topic.id, { roleIds: [role.id], approverRoleId: null }))
+        .status,
+    ).toBe(200);
+
+    // An admin who is not in the private topic may not hand the role to
+    // themselves or to anyone else: that would open the topic to them.
+    const hidden = await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+      headers: { cookie: admin.cookie },
+    });
+    expect(hidden.status).toBe(404);
+    const deniedSelf = await setMembers(admin.cookie, group.id, role.id, [admin.id]);
+    expect(deniedSelf.status).toBe(403);
+    expect(((await deniedSelf.json()) as { error: { message: string } }).error.message).toBe(
+      "You can't add people to a role that opens a private topic you're not in",
+    );
+    const deniedOther = await setMembers(admin.cookie, group.id, role.id, [member.id]);
+    expect(deniedOther.status).toBe(403);
+
+    // Nothing was written.
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+        }),
+      ),
+    ).toEqual([]);
+
+    // The owner sees the topic, so the same grant succeeds.
+    expect((await setMembers(owner.cookie, group.id, role.id, [admin.id])).status).toBe(200);
+    expect(
+      (
+        await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+          headers: { cookie: admin.cookie },
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('lets a plain member who created the topic change access but not the approver role (T-1991)', async () => {
+    const { owner, member, group } = await setup();
+    const allowed = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ membersCanCreateTopics: true }),
+    });
+    expect(allowed.status).toBe(200);
+    const role = (await (
+      await createRole(owner.cookie, group.id, { name: 'Approvers' })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+    const topic = (await (
+      await createTopic(member.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [owner.id],
+      })
+    ).json()) as TopicBody;
+
+    // The creator can still change the topic's role access...
+    expect(
+      (await setTopicRoles(member.cookie, topic.id, { roleIds: [role.id], approverRoleId: null }))
+        .status,
+    ).toBe(200);
+    // ...but as a plain member cannot name the role that approves in it.
+    const denied = await setTopicRoles(member.cookie, topic.id, {
+      roleIds: [role.id],
+      approverRoleId: role.id,
+    });
+    expect(denied.status).toBe(403);
+    expect(((await denied.json()) as { error: { message: string } }).error.message).toBe(
+      'Only group owners and admins can pick the approver role',
+    );
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicApproverRow>`SELECT approver_role_id FROM topics WHERE id = ${topic.id}`;
+        }),
+      ),
+    ).toEqual([{ approverRoleId: null }]);
+    // The group owner can.
+    expect(
+      (
+        await setTopicRoles(owner.cookie, topic.id, {
+          roleIds: [role.id],
+          approverRoleId: role.id,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
   it('refuses topic roles on public topics and foreign roles', async () => {
     const { owner, group } = await setup();
     const roleResponse = await createRole(owner.cookie, group.id, { name: 'Designers' });

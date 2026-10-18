@@ -7,6 +7,7 @@ import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { syncTopicRoom } from '../topics/rooms';
 import { requireGroupManager, requireRoleInGroup } from './access';
+import { assertRoleGrantAllowed } from './private-topic-guard';
 import { toRoleDetail } from './queries';
 import {
   MAX_ROLES_PER_GROUP,
@@ -292,6 +293,10 @@ export async function setRoleMembers(
             const wantedIds = new Set(wanted);
             const nextAdded = wanted.filter((id) => !currentIds.has(id));
             const nextRemoved = [...currentIds].filter((id) => !wantedIds.has(id));
+            // T-1991: whoever receives the role must be grantable by this
+            // actor. The check sits inside the transaction and before the
+            // insert, so a refusal writes nothing.
+            yield* assertRoleGrantAllowed(sql, role.id, actorId, nextAdded);
             if (nextAdded.length > 0) {
               yield* sql`INSERT INTO group_member_roles ${sql.insert(
                 nextAdded.map((userId) => ({

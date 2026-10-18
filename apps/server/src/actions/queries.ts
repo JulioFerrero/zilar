@@ -49,7 +49,7 @@ async function approvalSummary(
 export async function cancelPending(
   deps: ActionGatewayDependencies,
   row: PendingActionRow,
-  reason: 'denied' | 'ai_not_active',
+  reason: 'denied' | 'ai_not_active' | 'ai_not_in_topic',
   at: Date,
 ): Promise<void> {
   const updated = await runSql(
@@ -260,6 +260,17 @@ export async function runOnApprovalDecided(
   );
   if (!ai || ai.status !== 'active') {
     await cancelPending(deps, pending, 'ai_not_active', at);
+    return;
+  }
+
+  // T-1991: the AI must still be in the room the request came from. A
+  // removal after the request and before this decision cancels the action
+  // instead of running it in a room the AI has already left.
+  if (
+    pending.groupId !== null &&
+    !(await isAiInTopic(deps.db, pending.aiId, pending.groupId, pending.topicId ?? undefined))
+  ) {
+    await cancelPending(deps, pending, 'ai_not_in_topic', at);
     return;
   }
 

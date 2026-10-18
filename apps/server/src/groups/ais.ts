@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { findOwnedAi } from '../ais/service';
+import { cancelPendingActionsForAi } from '../actions/topic-recheck';
 import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
@@ -289,6 +290,14 @@ export async function removeGroupAi(
   } catch (error) {
     throw mapXmppError(error);
   }
+
+  // T-1991: the AI's waiting actions in the group die with the membership,
+  // so a later approval cannot run them in a room it has left.
+  await cancelPendingActionsForAi(
+    { db, logger: input.logger },
+    { aiId: input.aiId, groupId: input.groupId },
+    new Date(),
+  );
 
   // T-1455: every room whose owner AI was just removed drops its cached owner,
   // so a plain message cannot still wake the ex-owner within the cache window.

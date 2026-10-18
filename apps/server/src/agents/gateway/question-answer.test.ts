@@ -242,4 +242,38 @@ describe('a reply closes the question (T-1579)', () => {
       answeredBy: expectedJid(asked.ownerId),
     });
   });
+
+  it('ignores a reply sent in another room the AI is in (T-1991)', async () => {
+    const asked = await askQuestion();
+    const { session, stanzaId } = await rekey(asked);
+    const otherRoom = roomJid();
+    session.rooms.set(otherRoom, {
+      groupId: 'g',
+      topicId: 'other',
+      joinedAtMs: 0,
+      nick: 'Helper',
+    });
+
+    await answerOnReply(
+      context.db,
+      session,
+      replyTo(otherRoom, expectedJid(asked.ownerId), 'Friday', stanzaId),
+      silentLogger,
+    );
+
+    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
+    expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
+
+    // The same reply in the question's own room still closes it.
+    await answerOnReply(
+      context.db,
+      session,
+      replyTo(asked.room, expectedJid(asked.ownerId), 'Friday', stanzaId),
+      silentLogger,
+    );
+    expect(await storedAnswer(context, asked.questionId)).toMatchObject({
+      status: 'answered',
+      answer: 'Friday',
+    });
+  });
 });
