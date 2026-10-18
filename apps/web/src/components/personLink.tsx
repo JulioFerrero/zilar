@@ -1,4 +1,4 @@
-import { bareJid, jidLocal } from '@zilar/protocol';
+import { resolvePerson } from '@zilar/chat-core';
 import { type ReactNode, useMemo } from 'react';
 import { Link } from 'react-router';
 import type { GroupDetail } from '@/lib/api';
@@ -33,53 +33,35 @@ export function usePersonHref(target: PersonTarget): PersonHref | undefined {
   const { jid, userId, handle } = target;
 
   return useMemo(() => {
-    // A full JID carries a resource (room@conf/nick): it is the occupant form a
-    // group message uses when the sender is unknown, so it opens nothing.
-    if (jid !== undefined && jid.includes('/')) {
-      return undefined;
-    }
-    const bare = jid === undefined ? undefined : bareJid(jid).toLowerCase();
-    const me = currentUserId.toLowerCase();
-    if (userId !== undefined && userId.toLowerCase() === me) {
-      return undefined;
-    }
-    if (bare !== undefined && jidLocal(bare) === me) {
-      return undefined;
-    }
-
-    const contact = contacts.find(
-      (row) =>
-        (bare !== undefined && bareJid(row.jid).toLowerCase() === bare) ||
-        (userId !== undefined && row.userId === userId),
+    const destination = resolvePerson(
+      { jid, userId, handle },
+      {
+        contacts,
+        chats,
+        currentUserId,
+        memberHandle: (localpart) => memberHandle(groupInfos, localpart),
+      },
     );
-    if (contact !== undefined) {
-      return {
-        to: `/c/${encodeURIComponent(contact.jid)}`,
-        // The list may not have the new chat row yet; the shell opens the DM
-        // when it lands (the same hand-off as the global people search).
-        onOpen: () => {
-          if (!chats.some((chat) => chat.id === contact.jid)) {
-            storeApi.getState().refreshChats();
-          }
-        },
-      };
+    if (destination === undefined) {
+      return undefined;
     }
-
-    if (bare !== undefined) {
-      // An unresolved group sender carries the occupant JID room@conf/nick, so
-      // its bare form is the group room itself; opening that is not a person.
-      const chat = chats.find((row) => row.kind !== 'group' && row.id.toLowerCase() === bare);
-      if (chat !== undefined) {
-        return { to: `/c/${encodeURIComponent(chat.id)}`, onOpen: noop };
-      }
+    if (destination.kind === 'profile') {
+      return { to: `/u/${encodeURIComponent(destination.handle)}`, onOpen: noop };
     }
-
-    const knownHandle = handle ?? (bare === undefined ? undefined : memberHandle(groupInfos, bare));
-    if (knownHandle !== undefined && knownHandle !== null && knownHandle !== '') {
-      return { to: `/u/${encodeURIComponent(knownHandle)}`, onOpen: noop };
+    if (destination.kind === 'chat') {
+      return { to: `/c/${encodeURIComponent(destination.chatId)}`, onOpen: noop };
     }
-
-    return undefined;
+    const chatId = destination.chatId;
+    return {
+      to: `/c/${encodeURIComponent(chatId)}`,
+      // The list may not have the new chat row yet; the shell opens the DM
+      // when it lands (the same hand-off as the global people search).
+      onOpen: () => {
+        if (!chats.some((chat) => chat.id === chatId)) {
+          storeApi.getState().refreshChats();
+        }
+      },
+    };
   }, [jid, userId, handle, currentUserId, contacts, chats, groupInfos, storeApi]);
 }
 
@@ -88,8 +70,10 @@ export function usePersonHref(target: PersonTarget): PersonHref | undefined {
  * sender itself only carries a JID, so match its localpart to a member's user
  * id across the group details already loaded for the open chats.
  */
-function memberHandle(groupInfos: Record<string, GroupDetail>, bare: string): string | undefined {
-  const localpart = jidLocal(bare);
+function memberHandle(
+  groupInfos: Record<string, GroupDetail>,
+  localpart: string,
+): string | undefined {
   for (const info of Object.values(groupInfos)) {
     const member = info.members.find((row) => row.userId.toLowerCase() === localpart);
     if (member?.handle !== undefined && member.handle !== null && member.handle !== '') {

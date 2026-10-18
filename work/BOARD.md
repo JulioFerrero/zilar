@@ -2055,3 +2055,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2053](T-2053-shared-search-helpers.md) | message-search helpers shared in chat-core | 2026-10-18 |
 | [T-2054](T-2054-send-minted-id-and-cancel.md) | send returns its minted id; one phone cancel path | 2026-10-18 |
 | [T-2055](T-2055-search-snippet-markdown.md) | search snippets sent as plain text, marks remapped | 2026-10-18 |
+| [T-2052](T-2052-shared-person-link.md) | one person-link resolver in chat-core (best of both) | 2026-10-18 |

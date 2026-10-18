@@ -1,5 +1,5 @@
 import type { Contact } from '@zilar/api-contract';
-import { jidLocal, normalizeJid } from '@zilar/protocol';
+import { resolvePerson } from '@zilar/chat-core';
 
 import type { ChatSummary } from './types';
 
@@ -25,44 +25,20 @@ export type PersonLinkRoute =
   | { pathname: '/u/[handle]'; params: { handle: string } };
 
 /**
- * Where a tap on a person should go (T-1859; the phone twin of web T-1851):
- * myself and people with no chat and no handle have no route; a contact or an
- * existing chat (which covers my own AI) opens that DM; anyone else with a
- * handle opens their profile. The caller renders plain children for
- * `undefined`.
+ * Where a tap on a person should go on the phone (T-1859): the shared
+ * `resolvePerson` rule mapped to the two person routes. The caller renders
+ * plain children for `undefined`.
  */
 export function personTarget(
   target: PersonTarget,
   ctx: PersonLinkContext,
 ): PersonLinkRoute | undefined {
-  // A full JID is an occupant (`room@conference/nick`) from a sender the app
-  // has not resolved yet; it names a room, never a person.
-  const jid =
-    target.jid === undefined || target.jid.includes('/') ? undefined : normalizeJid(target.jid);
-  const userId = target.userId?.toLowerCase();
-  const me = ctx.currentUserId.toLowerCase();
-  if (userId === me || (jid !== undefined && jidLocal(jid) === me)) {
+  const destination = resolvePerson(target, ctx);
+  if (destination === undefined) {
     return undefined;
   }
-  const contact = ctx.contacts.find(
-    (entry) =>
-      (jid !== undefined && normalizeJid(entry.jid) === jid) ||
-      (userId !== undefined && entry.userId.toLowerCase() === userId),
-  );
-  if (contact !== undefined) {
-    return { pathname: '/chat/[id]', params: { id: contact.jid } };
+  if (destination.kind === 'profile') {
+    return { pathname: '/u/[handle]', params: { handle: destination.handle } };
   }
-  if (jid !== undefined) {
-    const chat = ctx.chats.find(
-      (entry) => entry.kind !== 'group' && normalizeJid(entry.id) === jid,
-    );
-    if (chat !== undefined) {
-      return { pathname: '/chat/[id]', params: { id: chat.id } };
-    }
-  }
-  const handle = target.handle?.trim();
-  if (handle !== undefined && handle !== '') {
-    return { pathname: '/u/[handle]', params: { handle } };
-  }
-  return undefined;
+  return { pathname: '/chat/[id]', params: { id: destination.chatId } };
 }

@@ -57,3 +57,4 @@ export * from './settings-items';
 export * from './approval-title';
 export * from './question-answer';
 export * from './sticker-recents';
+export * from './person-link';
