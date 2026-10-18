@@ -814,6 +814,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - **Julio's web report (10-18 morning), running:**
                   - T-1936: a dead Recent sticker (file 404) showed a broken image; it now drops out, and pack thumbnails fall back to their emoji (web and phone).
                   - T-1937: the web composer floats over the list, with no solid band. The phone twin isn't specced yet (keyboard risk); web first.
+                  - Both merged and held. **Julio: "wait for more reports"** before pushing.
+                - **Zero-downtime (Julio OK'd the re-audit and rehearsal, 10-18):**
+                  - T-1938 (two-servers re-audit) is running.
+                  - The split rehearsal is done and deleted. Both rolling deploys lost 0 API requests, and the leader lock hands over cleanly.
+                  - 5 must-fixes before the cutover, listed in `docs/deploy/zero-downtime-plan.md` § Split rehearsal; the main one is that `postgres` on the coolify network is Coolify's own database.
+                  - **Julio: "lets start"** (10-18). Running:
+                    - T-1939: `zilar-core.yml` and LAYOUT fixes (the postgres clash, ejabberd routes as labels, app-owned volumes, an external desk-socket, the order of creation);
+                    - T-1940: a CI job that asks Coolify to deploy server and web after main's images publish, and skips until Julio adds 4 secrets.
+                  - **Then:** re-rehearse with the fixed files (desk-socket tested with a dummy container, never a second desk-agent on the prod host), and write `docs/deploy/cutover-runbook.md`.
+                  - **Julio:** a cutover window of about 2 min; the secrets in Coolify; the GitHub secrets COOLIFY_URL, COOLIFY_DEPLOY_TOKEN, COOLIFY_SERVER_APP_UUID and COOLIFY_WEB_APP_UUID.
+                  - **Desks are live** (gVisor, 2 jails): the cutover must keep the server ↔ desk-agent socket working, and remove the old app (it owns `desk-net`) before the core starts.
               - **v0.2.10 released:** the APK embeds 0.2.10 / 210 (verified) and was posted in Zilar Updates. Live `a7932b7f1` since 21:38 UTC.
               - **21:32 UTC (Julio OK'd all three):**
                 - pushed `a7932b7f1` (T-1923 to T-1926; the deploy means about 50 s of Bad Gateway);

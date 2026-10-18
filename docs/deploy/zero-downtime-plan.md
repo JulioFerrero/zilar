@@ -49,5 +49,43 @@ Julio: "fix the problem with the deploy so it never goes down".
   - The clients' retry on a network error (T-1304 for auth; check the other GETs) covers what's left.
   - Re-run this test with the drain in place before the cutover.
 
+## Split rehearsal (2026-10-18)
+
+Julio approved it. It ran in the throwaway project `zdt-rehearsal` on `zdt.152.53.146.96.sslip.io`, with throwaway secrets, and was deleted afterwards (0 containers and 0 volumes left).
+- **The setup:**
+  - `zilar-core` from `deploy/coolify/zilar-core.yml`, without the desk services;
+  - `zilar-server` and `zilar-web` as Docker-image apps (`ghcr.io/julioferrero/*:latest`, commit `35c1805`).
+- **The 10-13 spike's echo apps were still running on that host,** in project `zdt-spike`; they are deleted now.
+
+### Results
+- **Server rolling deploy under load** (about 6 requests/s, 390 requests): 0 failed API requests; `/api/me` 130 × 401 and `/` 130 × 200.
+  - The only non-200s were 3 × `/health` → 503 from the old copy while it drained, which is what the drain is designed to do.
+  - Coolify's log showed "Rolling update started", then "New container is healthy", then "Rolling update completed".
+- **The leader lock hands over cleanly:** the new copy logged "listening", then took the lock about 14 s later, only after the old copy stopped. Only one copy ran the leader-only work at any time.
+- **Web rolling deploy under load** (231 requests): all succeeded.
+- **Routes:**
+  - `/` → web;
+  - `/health` and `/api/*` → server, unchanged;
+  - `/xmpp-ws/ws` → ejabberd (101 over HTTP/1.1).
+
+### Must fix before the cutover
+1. **`postgres` on the `coolify` network is Coolify's own database:** `coolify-db` carries the alias `postgres`.
+   - `zilar-core` needs "Connect to predefined network", so ejabberd's default `SQL_SERVER: postgres` (`deploy/ejabberd/ejabberd.yml:31`) reached Coolify's database. The login failed, and ejabberd was down.
+   - **Fix:** in `deploy/coolify/zilar-core.yml`, set `EJABBERD_MACRO_SQL_SERVER` to the core's unique name `postgres-<core uuid>`, or rename the services (for example `zilar-postgres`). With that, the rehearsal's ejabberd turned `ok`.
+   - **Production today is not affected:** its containers are only on their own network, where `postgres` resolves to Zilar's database.
+2. **Strip prefix can't be turned off through the API** for an app: the Coolify MCP drops `is_stripprefix_enabled`.
+   - The rehearsal used `custom_labels` (base64) without the stripprefix middleware, and `/api/...` arrived unchanged.
+   - At the cutover, either untick "Strip Prefixes" in the UI or keep the custom labels.
+3. **An app can't mount an existing named volume:**
+   - Coolify prefixes app storage with the app uuid (`<app uuid>-<name>`), and a `-v` in `custom_docker_run_options` was ignored.
+   - The core's `sticker-data` and `avatar-data` are never created, because no core service uses them.
+   - **Plan:** the cutover copies the live `qccydpow4rw0zcel9yisk44s_sticker-data` and `_avatar-data` into the server app's new volumes (`docker run --rm -v src:/a -v dst:/b alpine cp -a /a/. /b/`). The `desk-socket` sharing needs the same answer.
+4. **`/upload` breaks under the Service's strip prefix:** strip prefix is one flag per Service component, not per path. `/upload/x` arrived stripped and returned 404.
+   - **Fix:** custom labels on the ejabberd component: `/xmpp-ws` stripped, `/upload` not.
+5. **`/xmpp-ws` as a prefix exposes ejabberd's admin API path:** `/xmpp-ws/api/status` returned 403, from ejabberd's own permissions.
+   - **Fix:** the route matches only `Path(/xmpp-ws/ws)`, same custom labels as item 4.
+6. **To check:** `/health` reported `ejabberdSchema: "drift"` on the fresh database. The cutover restores live data, so check this right after the restore.
+7. **Health check:** Coolify's check logged `curl: not found` but still returned 0. Make sure the readiness check really runs (`wget` or a `node` probe) and is not passing by accident.
+
 ## Not in this plan
 Blue-green for postgres or ejabberd themselves: they now restart only when their own image or config changes, which is rare and can be scheduled.
