@@ -70,8 +70,11 @@ export function useStickersPanel() {
     };
   }, []);
 
+  // T-1978: a reload over shown data keeps that data, so returning to the
+  // screen never flashes the loading state; only a load with nothing shown
+  // paints it. A failed reload likewise keeps the list instead of blanking it.
   const reload = useCallback(() => {
-    setStatus('loading');
+    setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
     setActionError('');
     Effect.runFork(
       Effect.all(
@@ -89,7 +92,7 @@ export function useStickersPanel() {
         ),
         Effect.catch(() =>
           Effect.sync(() => {
-            setStatus('error');
+            setStatus((previous) => (previous === 'ready' ? previous : 'error'));
           }),
         ),
       ),

@@ -837,9 +837,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                         - a D24 folder track that still follows the swipe pager, the Explore segmented control, and 52 dp request rows (T-1965).
                       - **Web fix batches (each checked with Playwright):** one `ScreenHeader` with `backLabel` (T-1949, T-1962, T-1967), the folder track (T-1962), and `SectionLabel` everywhere (T-1949, T-1962, T-1967).
                       - **Combined gate on main vs origin/main:** 123 files, GATE PASS.
-                    - **Waits for Julio:**
-                      - the 6 Telegram/WhatsApp flow gaps in the audit's §6: pull to refresh, re-tap a tab to scroll to the top, Android edge swipe, Explore as a web page, swiping between tabs, and a row ⋯ key;
-                      - a push of the held merges.
+                    - **Pushed 13:05 UTC (Julio: "push but wait for a new apk release").** Live at `2423e7206`: healthy. No APK yet.
+                    - **Parity gaps (Julio picked all 4 offered):**
+                      - T-1969: re-tapping the active tab scrolls to the top;
+                      - T-1970 and T-1971: pull to refresh on the settings lists (T-1971 is in a fix round so a reload keeps the list);
+                      - T-1972: Explore is a web page at `/explore`.
+                      - Android edge swipe: it already works as the system back gesture (checked on the emulator, gesture navigation, API 36). No task.
+                      - Not built: swiping between tabs (clashes with the folder swipe) and a row ⋯ key (neither Telegram nor WhatsApp shows one on phones).
+                    - **Found and fixed since the push (all merged and held):**
+                      - T-1973: Caddy `grace_period 2s`. The live 44 s stop was the web Caddy waiting on open WebSockets until a 30 s force-kill; the rest took 11 s plus about 2 s.
+                      - T-1974: web Open on a joined channel now opens it.
+                      - T-1975: web request rows get avatars.
+                      - T-1976: the mock gets `GET /routines`.
+                      - T-1977: the phone Contact requests header and the Always allowed label.
+                    - **Running:**
+                      - T-1971;
+                      - T-1978: Edit profile, Stickers and the pack editor no longer flash a loading state on focus.
+                    - **Removed by Julio:** T-1594 (closed draft PR #1 and deleted its branch).
+                    - **Next live push:** capture `docker events` with lifecycle filters before pushing, to confirm the stop now takes a few seconds.
                     - **Seen on the emulator before the fixes:**
                       - three root title sizes;
                       - five sub-screen header patterns;

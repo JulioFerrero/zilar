@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { Data, Effect } from 'effect';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
@@ -83,6 +83,12 @@ export function useProfileSettings() {
   const [savedBio, setSavedBio] = useState('');
   const [bioError, setBioError] = useState<string | undefined>(undefined);
 
+  // T-1978: a focus reload must not overwrite a field the person edited and
+  // did not save. A flag clears when a Save lands for that field.
+  const nameDirty = useRef(false);
+  const handleDirty = useRef(false);
+  const bioDirty = useRef(false);
+
   // T-1329: name, username and bio share one Save (the header action): one
   // busy flag for the fields and one "Saved." confirmation for all three.
   const [saveBusy, setSaveBusy] = useState(false);
@@ -95,12 +101,14 @@ export function useProfileSettings() {
   const avatar = useProfileAvatar(api, attempt, setAvatarUrl);
 
   // Loads the profile (and the avatar bearer) into every section. It paints
-  // `loading` first; the focus effect below runs it, so returning to the
-  // screen always shows server truth. A new load replaces one still running.
+  // `loading` only when nothing is shown yet: the focus effect below runs it,
+  // so returning to the screen shows server truth without a loading flash and
+  // keeps fields the person has edited but not saved. A new load replaces one
+  // still running.
   const [, loadProfile] = useAction(
     (_input: void) =>
       Effect.sync(() => {
-        setStatus('loading');
+        setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
       }).pipe(
         Effect.andThen(
           Effect.all(
@@ -129,14 +137,20 @@ export function useProfileSettings() {
         Effect.tap(({ me, token, viewer }) =>
           Effect.sync(() => {
             setProfile(me);
-            setNameInput(me.name);
-            setNameError(undefined);
-            setHandle(me.handle ?? '');
-            setAvailability({ state: 'idle' });
-            setHandleError(undefined);
-            setBioInput(viewer.bio ?? '');
-            setSavedBio(viewer.bio ?? '');
-            setBioError(undefined);
+            if (!nameDirty.current) {
+              setNameInput(me.name);
+              setNameError(undefined);
+            }
+            if (!handleDirty.current) {
+              setHandle(me.handle ?? '');
+              setAvailability({ state: 'idle' });
+              setHandleError(undefined);
+            }
+            if (!bioDirty.current) {
+              setBioInput(viewer.bio ?? '');
+              setSavedBio(viewer.bio ?? '');
+              setBioError(undefined);
+            }
             setSaved(false);
             avatar.reset(token);
             setStatus('ready');
@@ -144,7 +158,8 @@ export function useProfileSettings() {
         ),
         Effect.catch(() =>
           Effect.sync(() => {
-            setStatus('error');
+            // A failed background reload keeps the shown profile.
+            setStatus((previous) => (previous === 'ready' ? previous : 'error'));
           }),
         ),
       ),
@@ -206,6 +221,7 @@ export function useProfileSettings() {
                 );
                 setHandle(claimed.handle);
                 setAvailability({ state: 'idle' });
+                handleDirty.current = false;
               });
             }
             if (input.nameChanged) {
@@ -224,6 +240,7 @@ export function useProfileSettings() {
                 setProfile((previous) =>
                   previous === null ? previous : { ...previous, name: input.name },
                 );
+                nameDirty.current = false;
               });
             }
             if (input.bioChanged) {
@@ -247,6 +264,7 @@ export function useProfileSettings() {
                 yield* Effect.sync(() => {
                   setSavedBio(input.bio);
                   setBioInput(input.bio);
+                  bioDirty.current = false;
                 });
               }
             }
@@ -267,16 +285,19 @@ export function useProfileSettings() {
   );
 
   const onNameChange = (value: string): void => {
+    nameDirty.current = true;
     setNameInput(value);
     setSaved(false);
   };
 
   const onHandleChange = (value: string): void => {
+    handleDirty.current = true;
     setHandle(value);
     setSaved(false);
   };
 
   const onBioChange = (value: string): void => {
+    bioDirty.current = true;
     setBioInput(value);
     setSaved(false);
   };

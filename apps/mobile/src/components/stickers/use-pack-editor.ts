@@ -138,7 +138,9 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
     if (packId === undefined) {
       return;
     }
-    setStatus('loading');
+    // T-1978: a reload over a shown pack keeps it on screen while the fetch
+    // runs; only a load with nothing shown paints the loading state.
+    setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
     // The raw error is kept (no ApiFailure mapping): lookupFailureKind
     // checks StickersApiError by class.
     Effect.runFork(
@@ -170,7 +172,12 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
         Effect.catch((error: unknown) =>
           Effect.sync(() => {
             const kind = lookupFailureKind(error);
-            setStatus(kind === 'not-found' ? 'not-found' : 'load-error');
+            if (kind === 'not-found') {
+              setStatus('not-found');
+              return;
+            }
+            // T-1978: a failed background reload keeps the shown pack.
+            setStatus((previous) => (previous === 'ready' ? previous : 'load-error'));
           }),
         ),
       ),
