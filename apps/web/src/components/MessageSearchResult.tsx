@@ -1,5 +1,5 @@
 import type { SearchItem } from '@/lib/api';
-import { formatListTime } from '@zilar/chat-core';
+import { formatListTime, searchResultTitle, snippetParts } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { EntityAvatar } from './EntityAvatar';
@@ -14,25 +14,7 @@ export function SearchSnippet({
   snippet: string;
   marks: Array<[number, number]>;
 }) {
-  const chars = [...snippet];
-  const sorted = [...marks]
-    .filter(([start, end]) => start < end && start >= 0 && end <= chars.length)
-    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const parts: Array<{ text: string; mark: boolean }> = [];
-  let cursor = 0;
-  for (const [start, end] of sorted) {
-    if (start < cursor) {
-      continue;
-    }
-    if (start > cursor) {
-      parts.push({ text: chars.slice(cursor, start).join(''), mark: false });
-    }
-    parts.push({ text: chars.slice(start, end).join(''), mark: true });
-    cursor = end;
-  }
-  if (cursor < chars.length) {
-    parts.push({ text: chars.slice(cursor).join(''), mark: false });
-  }
+  const parts = snippetParts(snippet, marks);
   return (
     <span className="truncate">
       {parts.map((part, index) =>
@@ -88,7 +70,7 @@ export function MessageSearchResult({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
           <span className="truncate text-[13px] leading-5 font-semibold text-foreground">
-            {topicLabel === undefined ? chatTitle : `${chatTitle} › ${topicLabel}`}
+            {searchResultTitle(chatTitle, topicLabel)}
           </span>
           <span className="ml-auto shrink-0 pl-1.5 font-mono text-[11px] text-subtle-foreground">
             {formatListTime(new Date(item.at), new Date())}

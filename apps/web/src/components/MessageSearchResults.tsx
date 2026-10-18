@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { groupSearchByChat, type SearchGroup } from '@zilar/chat-core';
 import { StateMessage } from '@/components/ui/state-message';
 import type { SearchItem } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -73,8 +74,6 @@ function SearchHit({
   );
 }
 
-type SearchGroup = ReturnType<typeof groupByChat>[number];
-
 // The rendered hit list with a highlighted row (WUX-23). It is keyed by the
 // query and scope in the parent, so a new search remounts it and the highlight
 // starts at the first hit again. Up/Down move the highlight, Enter opens it; a
@@ -85,7 +84,7 @@ function MessageHitList({
   onHitStart,
   onHitNotFound,
 }: {
-  groups: SearchGroup[];
+  groups: SearchGroup<SearchItem>[];
   notFound: boolean;
   onHitStart: () => void;
   onHitNotFound: (chatJid: string) => void;
@@ -232,9 +231,9 @@ export function MessageSearchResults({
   const items: SearchItem[] = search.status === 'ready' ? search.items : EMPTY_ITEMS;
   const groups = useMemo(
     () =>
-      groupByChat(
+      groupSearchByChat(
         items,
-        chats.map((chat) => ({ id: chat.id, title: chat.title })),
+        new Map(chats.map((chat): [string, string] => [chat.id, chat.title])),
       ),
     [items, chats],
   );
@@ -280,30 +279,4 @@ export function MessageSearchResults({
       onHitNotFound={onHitNotFound}
     />
   );
-}
-
-export function groupByChat(
-  items: SearchItem[],
-  chats: Array<{ id: string; title: string }>,
-): Array<{ chatJid: string; title: string; items: SearchItem[] }> {
-  const byId = new Map(chats.map((chat) => [chat.id, chat]));
-  const order: string[] = [];
-  const byChat = new Map<string, SearchItem[]>();
-  for (const item of items) {
-    const list = byChat.get(item.chatJid);
-    if (list === undefined) {
-      byChat.set(item.chatJid, [item]);
-      order.push(item.chatJid);
-    } else {
-      list.push(item);
-    }
-  }
-  return order.map((chatJid) => {
-    const chat = byId.get(chatJid);
-    return {
-      chatJid,
-      title: chat?.title ?? chatJid,
-      items: byChat.get(chatJid) ?? [],
-    };
-  });
 }

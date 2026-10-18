@@ -1,7 +1,7 @@
 import { Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useRef } from 'react';
-import { MESSAGE_SEARCH_DEBOUNCE_MS, MESSAGE_SEARCH_MIN_LENGTH } from '@zilar/chat-core';
+import { MESSAGE_SEARCH_DEBOUNCE_MS, MESSAGE_SEARCH_LIMIT, activeQuery } from '@zilar/chat-core';
 import { searchMessages, type SearchItem } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
@@ -37,7 +37,7 @@ const searchEffect = (input: SearchInput): Effect.Effect<SearchSettled> =>
         searchMessages({
           q: input.query,
           ...(input.chat === undefined || input.chat === '' ? {} : { chat: input.chat }),
-          limit: 20,
+          limit: MESSAGE_SEARCH_LIMIT,
           signal,
         }),
       ),
@@ -63,8 +63,7 @@ const searchEffect = (input: SearchInput): Effect.Effect<SearchSettled> =>
 // (`search_unavailable`). The hook never sends the query text anywhere
 // except the search endpoint.
 export function useMessageSearch(query: string, chat?: string): MessageSearchState {
-  const trimmed = query.trim();
-  const active = trimmed.length >= MESSAGE_SEARCH_MIN_LENGTH ? trimmed : null;
+  const active = activeQuery(query);
   const lastActive = useRef<string | null>(null);
   const [result, search, controls] = useAction(searchEffect, { mode: 'replace' });
 
