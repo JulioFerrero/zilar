@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Effect } from 'effect';
 import { Smile } from 'lucide-react';
 import type { RecentStickerEntry } from '@/lib/stickers';
@@ -9,10 +10,19 @@ import type { StickerChoice } from '../StickerPanel';
  * else (e.g. a hostile URL planted in localStorage recents) shows the
  * emoji tile so the browser never fetches it.
  */
-export function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: number }) {
+export function StickerThumb({
+  sticker,
+  size,
+  onBroken,
+}: {
+  sticker: StickerChoice;
+  size: number;
+  onBroken?: (() => void) | undefined;
+}) {
+  const [broken, setBroken] = useState(false);
   const trusted = isPanelStickerUrl(sticker.url);
   const label = sticker.emoji ?? 'Sticker';
-  if (!trusted) {
+  if (!trusted || broken) {
     return (
       <span
         role="img"
@@ -37,6 +47,10 @@ export function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: 
       height={size}
       style={{ maxWidth: size, maxHeight: size }}
       className="object-contain"
+      onError={() => {
+        setBroken(true);
+        onBroken?.();
+      }}
     />
   );
 }

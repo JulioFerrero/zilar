@@ -1945,3 +1945,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1930](T-1930-ios-voice-crash.md) | iOS voice recording no longer crashes the app | 2026-10-17 |
 | [T-1933](T-1933-web-reactions-any-emoji.md) | web reactions take any emoji | 2026-10-17 |
 | [T-1935](T-1935-web-sticker-select-mode.md) | web sticker click selects it in selection mode | 2026-10-17 |
+| [T-1936](T-1936-sticker-thumb-broken-file.md) | sticker thumbnails fall back to emoji; dead recents drop out | 2026-10-18 |

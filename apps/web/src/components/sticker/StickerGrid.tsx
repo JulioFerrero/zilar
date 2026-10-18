@@ -20,6 +20,7 @@ export interface StickerGridProps {
   onUndoFavorite: (sticker: StickerChoice, wasStarred: boolean) => void;
   onCreate: (() => void) | undefined;
   onManage: (() => void) | undefined;
+  onBrokenRecent?: ((stickerId: string) => void) | undefined;
 }
 
 // The sticker grid: 5 columns of fixed 56 px square tiles inside a
@@ -43,8 +44,11 @@ export function StickerGrid({
   onUndoFavorite,
   onCreate,
   onManage,
+  onBrokenRecent,
 }: StickerGridProps) {
   const [preview, setPreview] = useState<StickerChoice | undefined>(undefined);
+  const [failedPreviewUrl, setFailedPreviewUrl] = useState<string | undefined>(undefined);
+  const recentTab = activePackId === undefined || activePackId === 'recent';
 
   return (
     <>
@@ -159,7 +163,15 @@ export function StickerGrid({
                   style={{ width: TILE_PX, height: TILE_PX }}
                   className="flex items-center justify-center overflow-hidden rounded-[8px] p-1.5 focus-visible:bg-surface-raised hover:bg-surface-raised"
                 >
-                  <StickerThumb sticker={sticker} size={TILE_PX - 12} />
+                  <StickerThumb
+                    sticker={sticker}
+                    size={TILE_PX - 12}
+                    onBroken={
+                      recentTab && onBrokenRecent !== undefined
+                        ? () => onBrokenRecent(sticker.stickerId)
+                        : undefined
+                    }
+                  />
                 </button>
                 <FavoriteStar
                   sticker={sticker}
@@ -173,20 +185,23 @@ export function StickerGrid({
         </div>
       )}
 
-      {preview !== undefined && isPanelStickerUrl(preview.url) && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-2 right-0 flex -translate-y-full items-center justify-center rounded-[12px] border border-edge bg-surface p-2 shadow-lg"
-        >
-          <img
-            src={preview.url}
-            alt=""
-            width={160}
-            height={160}
-            className="max-h-[160px] max-w-[160px] object-contain"
-          />
-        </div>
-      )}
+      {preview !== undefined &&
+        isPanelStickerUrl(preview.url) &&
+        preview.url !== failedPreviewUrl && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-2 right-0 flex -translate-y-full items-center justify-center rounded-[12px] border border-edge bg-surface p-2 shadow-lg"
+          >
+            <img
+              src={preview.url}
+              alt=""
+              width={160}
+              height={160}
+              className="max-h-[160px] max-w-[160px] object-contain"
+              onError={() => setFailedPreviewUrl(preview.url)}
+            />
+          </div>
+        )}
 
       {onManage !== undefined && (
         <div className="border-t border-edge p-2">

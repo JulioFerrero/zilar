@@ -10,7 +10,7 @@ import type { Sticker, StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerFavorites, listStickerPacks } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
-import { rememberRecentSticker } from '@/lib/stickers';
+import { forgetRecentSticker, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { EmojiTab } from './sticker/EmojiTab';
@@ -290,6 +290,7 @@ export function StickerPanel({
           onUndoFavorite={undoFavorite}
           onCreate={onCreate}
           onManage={onManage}
+          onBrokenRecent={(id) => setRecents(forgetRecentSticker(panelStorage(), id))}
         />
       )}
     </div>

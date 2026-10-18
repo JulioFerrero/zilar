@@ -106,6 +106,7 @@ export function StickerGrid({
   // The grid measures its sheet (`onLayout`) instead of reading the window:
   // inside the half-height sheet the window is wider than the content.
   const [sheetWidth, setSheetWidth] = useState(DEFAULT_SHEET_WIDTH);
+  const [brokenRecentIds, setBrokenRecentIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(
     () =>
@@ -122,7 +123,9 @@ export function StickerGrid({
 
   const rows = packs ?? [];
   const activePackId = resolveActivePackId(activePackIdProp, rows, recents);
-  const recentChoices: StickerChoice[] = recents.map(recentChoiceFor);
+  const recentChoices: StickerChoice[] = recents
+    .filter((entry) => !brokenRecentIds.has(entry.stickerId))
+    .map(recentChoiceFor);
   const pack = rows.find((item) => item.id === activePackId);
   const choices: StickerChoice[] =
     activePackId === undefined
@@ -138,6 +141,8 @@ export function StickerGrid({
         })) ?? []);
   const cell = stickerCellSize(sheetWidth);
   const thumb = stickerThumbSize(sheetWidth);
+  const markRecentBroken = (stickerId: string): void =>
+    setBrokenRecentIds((previous) => new Set(previous).add(stickerId));
 
   return (
     <View
@@ -220,7 +225,14 @@ export function StickerGrid({
               className="items-center justify-center rounded-[8px] active:bg-surface-raised"
               style={{ width: cell, height: cell }}
             >
-              <StickerThumb sticker={item} token={token} size={thumb} />
+              <StickerThumb
+                sticker={item}
+                token={token}
+                size={thumb}
+                onBroken={
+                  activePackId === undefined ? () => markRecentBroken(item.stickerId) : undefined
+                }
+              />
             </Pressable>
           ))}
         </ScrollView>
@@ -309,13 +321,16 @@ function StickerThumb({
   sticker,
   token,
   size,
+  onBroken,
 }: {
   sticker: StickerChoice;
   token: string | undefined;
   size: number;
+  onBroken: (() => void) | undefined;
 }) {
+  const [broken, setBroken] = useState(false);
   const label = sticker.emoji ?? 'Sticker';
-  if (!isPanelStickerUrl(sticker.url, API_URL)) {
+  if (broken || !isPanelStickerUrl(sticker.url, API_URL)) {
     return (
       <Text accessibilityRole="image" accessibilityLabel={label} className="text-[26px]">
         {label === 'Sticker' ? '🙂' : label}
@@ -328,6 +343,10 @@ function StickerThumb({
       accessibilityLabel={label}
       style={{ width: size, height: size }}
       contentFit="contain"
+      onError={() => {
+        setBroken(true);
+        onBroken?.();
+      }}
     />
   );
 }

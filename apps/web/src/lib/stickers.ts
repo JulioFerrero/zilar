@@ -85,6 +85,20 @@ export function rememberRecentSticker(
   return next;
 }
 
+/** Drops a sticker from the recents (its file is gone); a blocked storage still returns the new list. */
+export function forgetRecentSticker(
+  storage: Storage | null,
+  stickerId: string,
+): RecentStickerEntry[] {
+  const next = readRecentStickers(storage).filter((item) => item.stickerId !== stickerId);
+  if (storage !== null) {
+    orFallback<void>(undefined, () => {
+      storage.setItem(RECENT_STICKERS_KEY, JSON.stringify(next));
+    });
+  }
+  return next;
+}
+
 /**
  * Whether a sticker payload `url` may be auto-loaded: only when it is on
  * the same origin as the Zilar API. A hostile sender's arbitrary URL shows

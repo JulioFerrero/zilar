@@ -806,8 +806,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - T-1931: the sheet queue (Delete leaving the menu stuck, Forward);
                 - T-1932 and T-1933: reactions take any emoji, no clipped tops;
                 - T-1934: archived chats scroll in the list.
-                - Each was checked on the emulator or the web mock. T-1935 (web sticker click in selection mode) is running.
-                - **Next:** the iOS 0.2.11 build for Iryna's phone (building), then ask Julio about the push (about 50 s outage) and a v0.2.11 tag.
+                - Each was checked on the emulator or the web mock, plus T-1935 (web: a sticker click in selection mode selects it).
+                - **22:41 UTC (Julio OK'd it):** pushed `35c180582` (about 50 s outage on deploy) and tagged **v0.2.11** (the Android release workflow).
+                - **iOS 0.2.11** (built from `077e94567`) is installed and launched on Iryna's iPhone (22:5x UTC). Live `35c180582` since 22:46 UTC: healthy, 0 errors.
+                - **v0.2.11 released:** the APK embeds 0.2.11 / 211 (verified) and was posted in Zilar Updates.
+                - **Waits for Julio:** his test report on the iPhone (voice, delete, forward, emoji panel, drag, reactions, stickers, archived).
+                - **Julio's web report (10-18 morning), running:**
+                  - T-1936: a dead Recent sticker (file 404) showed a broken image; it now drops out, and pack thumbnails fall back to their emoji (web and phone).
+                  - T-1937: the web composer floats over the list, with no solid band. The phone twin isn't specced yet (keyboard risk); web first.
               - **v0.2.10 released:** the APK embeds 0.2.10 / 210 (verified) and was posted in Zilar Updates. Live `a7932b7f1` since 21:38 UTC.
               - **21:32 UTC (Julio OK'd all three):**
                 - pushed `a7932b7f1` (T-1923 to T-1926; the deploy means about 50 s of Bad Gateway);
