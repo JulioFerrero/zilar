@@ -74,6 +74,7 @@ describe('getAiUsage', () => {
       perDayUsd: 2,
       perMonthUsd: 20,
       dailyLimitReached: false,
+      monthlyLimitReached: false,
       dailyWarning: false,
       monthlyWarning: false,
     });
@@ -104,6 +105,7 @@ describe('getAiUsage', () => {
       perDayUsd: null,
       perMonthUsd: null,
       dailyLimitReached: false,
+      monthlyLimitReached: false,
       dailyWarning: false,
       monthlyWarning: false,
     });
@@ -184,6 +186,22 @@ describe('getAiUsage', () => {
 
     expect(usage?.perMonthUsd).toBe(0);
     expect(usage?.monthlyWarning).toBe(false);
+  });
+
+  it('marks the monthly limit reached at or above the 30-day cap, with no warning', async () => {
+    const atCapAi = await seedAi(null, '20.00');
+    await addUsage(atCapAi, TODAY, '20.00');
+    const atCap = await getAiUsage(deps(), atCapAi);
+    expect(atCap?.perDayUsd).toBeNull();
+    expect(atCap?.monthlyLimitReached).toBe(true);
+    expect(atCap?.monthlyWarning).toBe(false);
+    expect(atCap?.dailyLimitReached).toBe(false);
+
+    const overAi = await seedAi(null, '20.00');
+    await addUsage(overAi, '2026-09-10', '25.00');
+    const over = await getAiUsage(deps(), overAi);
+    expect(over?.monthlyLimitReached).toBe(true);
+    expect(over?.monthlyWarning).toBe(false);
   });
 
   it('derives the UTC day from the clock', () => {

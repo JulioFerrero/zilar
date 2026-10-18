@@ -5,7 +5,12 @@ import { settlePendingUsage } from '../../ais/usage-store';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
-import { dailyLimitReply, dailyWarningReply, monthlyWarningReply } from '../reply';
+import {
+  dailyLimitReply,
+  dailyWarningReply,
+  monthlyLimitReply,
+  monthlyWarningReply,
+} from '../reply';
 import { loadAiOwnerId } from './db';
 import {
   toRedactedError,
@@ -72,11 +77,21 @@ function attempt<A>(
   );
 }
 
+// The fixed notice for a limited AI. The monthly cap wins when both are
+// reached: it is the one that keeps the AI stopped for the rest of the period.
+function limitReachedReply(usage: AiUsage): string {
+  if (usage.monthlyLimitReached) {
+    return monthlyLimitReply(usage.perMonthUsd ?? 0);
+  }
+  return dailyLimitReply(usage.perDayUsd ?? 0);
+}
+
 export function createBudgetGate(ctx: BudgetGateContext) {
   const { deps, logger, sessionIsLive, secretsFor } = ctx;
 
-  // One fixed notice per AI per chat per UTC day, in memory only. After a
-  // restart the map is empty, so a limited AI may notify once more.
+  // One fixed notice per AI per chat per UTC day, in memory only. Both the
+  // daily and the monthly limit share it. After a restart the map is empty, so
+  // a limited AI may notify once more.
   const dailyLimitNotices = new Map<string, string>();
   // One 80% heads-up per kind per AI per chat per UTC day, in memory only.
   // Daily and monthly warnings are independent; a restart may repeat one.
@@ -105,7 +120,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     );
   };
 
-  // The daily-limit check (T-0058), shared by DM and group turns. It runs
+  // The spend-limit check (T-0058), shared by DM and group turns. It runs
   // before any model call and a NULL daily bound (T-1408, no limit set) never
   // skips the turn. A usage-read failure is T-1437 (AI-15): when the AI has a
   // daily or monthly limit, the gate fails closed (the turn is skipped and the
@@ -163,7 +178,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
       return { limited: true, usage: null };
     }
     const usage = fetched;
-    if (usage === null || !usage.dailyLimitReached) {
+    if (usage === null || (!usage.dailyLimitReached && !usage.monthlyLimitReached)) {
       return { limited: false, usage };
     }
     const today = utcDay();
@@ -171,11 +186,10 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     if (dailyLimitNotices.get(key) === today) {
       return { limited: true, usage };
     }
-    // `perDayUsd` is non-null here: `dailyLimitReached` is only true for a set
-    // bound. The `?? 0` is an unreachable fallback that keeps the type checker
-    // happy without a non-null assertion.
+    // The reply reports whichever cap was reached, so the limit flags
+    // guarantee a non-null bound for the winning one.
     const sent = yield* attempt(
-      () => input.sendNotice(dailyLimitReply(usage.perDayUsd ?? 0)),
+      () => input.sendNotice(limitReachedReply(usage)),
       (error) => {
         logger.warn(
           { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
@@ -187,7 +201,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
       return { limited: true, usage };
     }
     dailyLimitNotices.set(key, today);
-    logger.info({ aiId: input.aiId }, 'AI daily spending limit reached; turn skipped');
+    logger.info({ aiId: input.aiId }, 'AI spending limit reached; turn skipped');
     return { limited: true, usage };
   });
 
@@ -203,7 +217,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     sendWarning: (text: string) => Promise<unknown>;
   }): Effect.fn.Return<void> {
     const usage = input.usage;
-    if (usage === null || usage.dailyLimitReached) {
+    if (usage === null || usage.dailyLimitReached || usage.monthlyLimitReached) {
       return;
     }
     const today = utcDay();
@@ -281,10 +295,10 @@ export function createBudgetGate(ctx: BudgetGateContext) {
       return { limited: true, reply: dailyLimitReply(perDayUsd) };
     }
     const usage = fetched;
-    if (usage === null || !usage.dailyLimitReached) {
+    if (usage === null || (!usage.dailyLimitReached && !usage.monthlyLimitReached)) {
       return null;
     }
-    return { limited: true, reply: dailyLimitReply(usage.perDayUsd ?? 0) };
+    return { limited: true, reply: limitReachedReply(usage) };
   });
 
   // T-1290 (AI-10): DMs the AI's owner the real reason a room turn failed, at

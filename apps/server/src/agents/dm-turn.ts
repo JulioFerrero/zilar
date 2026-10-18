@@ -25,6 +25,13 @@ export function dailyLimitReply(perDayUsd: number): string {
   return `I've reached today's spending limit ($${perDayUsd.toFixed(2)}). I'll be back after 00:00 UTC.`;
 }
 
+// The monthly-limit notice, sent under the same once-per-AI-per-chat-per-UTC-day
+// rule as the daily one. It wins over the daily text when both limits are
+// reached, so the owner hears about the cap that stops the AI for longer.
+export function monthlyLimitReply(perMonthUsd: number): string {
+  return `I've reached my spending limit for this period ($${perMonthUsd.toFixed(2)}). My owner can raise it in My AIs.`;
+}
+
 // The 80% heads-ups go out after the AI's reply for the turn that crossed
 // them, at most once per kind per AI per chat per UTC day. Fixed text except
 // for the formatted spend and cap.

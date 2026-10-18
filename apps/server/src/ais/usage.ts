@@ -14,6 +14,7 @@ export interface AiUsage {
   perDayUsd: number | null;
   perMonthUsd: number | null;
   dailyLimitReached: boolean;
+  monthlyLimitReached: boolean;
   dailyWarning: boolean;
   monthlyWarning: boolean;
 }
@@ -76,14 +77,17 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
   const todayUsd = Number(sums?.todayUsd ?? 0);
   const windowUsd = Number(sums?.windowUsd ?? 0);
   const dailyLimitReached = perDayUsd !== null && todayUsd >= perDayUsd;
+  const monthlyLimitReached = perMonthUsd !== null && windowUsd >= perMonthUsd;
   return {
     todayUsd,
     windowUsd,
     perDayUsd,
     perMonthUsd,
     dailyLimitReached,
+    monthlyLimitReached,
     dailyWarning: perDayUsd === null || dailyLimitReached ? false : dailyWarns(todayUsd, perDayUsd),
-    monthlyWarning: perMonthUsd === null ? false : monthlyWarns(windowUsd, perMonthUsd),
+    monthlyWarning:
+      perMonthUsd === null || monthlyLimitReached ? false : monthlyWarns(windowUsd, perMonthUsd),
   };
 }
 
