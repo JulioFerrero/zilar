@@ -21,7 +21,7 @@ import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { resolvePublic, validateBaseUrl } from './base-url';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
@@ -37,12 +37,8 @@ import {
 } from './service';
 
 // Each key test calls the provider with the stored key, so cap tests per user.
-export const CONNECTION_TEST_RATE_LIMIT_MAX = 5;
-export const CONNECTION_TEST_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 // Create resolves a host name the user chose, so both writes share one budget.
-export const CONNECTION_WRITE_RATE_LIMIT_MAX = 10;
-export const CONNECTION_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface ConnectionsRoutesDependencies {
   auth: Auth;
@@ -120,20 +116,8 @@ const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const probeImpl = deps.probe ?? createProviderProbe();
-  const testLimiter =
-    deps.testLimiter ??
-    createRateLimiter({
-      max: CONNECTION_TEST_RATE_LIMIT_MAX,
-      windowMs: CONNECTION_TEST_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const writeLimiter =
-    deps.writeLimiter ??
-    createRateLimiter({
-      max: CONNECTION_WRITE_RATE_LIMIT_MAX,
-      windowMs: CONNECTION_WRITE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const testLimiter = deps.testLimiter ?? limiter('connectionTest', now);
+  const writeLimiter = deps.writeLimiter ?? limiter('connectionWrite', now);
 
   // A warn-only test logger has no `error`; forward to `warn` so nothing is lost.
   const defectLogger = {

@@ -27,15 +27,11 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { isInstanceOwner } from '../setup/instance-owner';
 import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';
 import { voiceTranscriptionStatusFor } from '../voice-transcription/routes';
 import {
-  INTEGRATIONS_EMAIL_RATE_LIMIT_MAX,
-  INTEGRATIONS_EMAIL_RATE_LIMIT_WINDOW_MS,
-  INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX,
-  INTEGRATIONS_TELEGRAM_RATE_LIMIT_WINDOW_MS,
   deleteStoredTelegramToken,
   envMailConfigured,
   isInvalidToken,
@@ -127,20 +123,8 @@ const IntegrationsApi = HttpApi.make('integrations').add(IntegrationsGroup);
 export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const telegramLimiter =
-    deps.telegramLimiter ??
-    createRateLimiter({
-      max: INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX,
-      windowMs: INTEGRATIONS_TELEGRAM_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const emailLimiter =
-    deps.emailLimiter ??
-    createRateLimiter({
-      max: INTEGRATIONS_EMAIL_RATE_LIMIT_MAX,
-      windowMs: INTEGRATIONS_EMAIL_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const telegramLimiter = deps.telegramLimiter ?? limiter('integrationsTelegram', now);
+  const emailLimiter = deps.emailLimiter ?? limiter('integrationsEmail', now);
   const buildTelegram = deps.createTelegram ?? ((token: string) => createTelegramClient(token));
   const sendTestMail = deps.sendTestMail ?? sendWorkingTestMail;
   const swap = deps.swapMailer ?? ((mailer) => deps.mailer.use(mailer));

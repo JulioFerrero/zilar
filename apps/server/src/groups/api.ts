@@ -21,7 +21,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   addGroupAi,
   addGroupMembers,
@@ -40,14 +40,8 @@ import { joinPublicGroup } from './join';
 import { transferGroupOwner } from './ownership';
 import { deleteGroup } from './delete-group';
 
-export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
-export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 // Open joins of public groups: 30 per hour per user, so handles cannot be
 // farmed; directory and by-handle reads share the same clock.
-export const PUBLIC_JOIN_RATE_LIMIT_MAX = 30;
-export const PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-export const GROUP_CREATE_RATE_LIMIT_MAX = 20;
-export const GROUP_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 // Role changes hit ejabberd (one affiliation write per call), so they are
 // capped per owner; open joins share the shape. Both budgets run before the
@@ -77,27 +71,9 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
     listener: { ...group.listener, available: listenerAvailable },
   });
   const now = deps.now ?? Date.now;
-  const roleLimiter =
-    deps.roleLimiter ??
-    createRateLimiter({
-      max: ROLE_CHANGE_RATE_LIMIT_MAX,
-      windowMs: ROLE_CHANGE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const joinLimiter =
-    deps.joinLimiter ??
-    createRateLimiter({
-      max: PUBLIC_JOIN_RATE_LIMIT_MAX,
-      windowMs: PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const groupCreateLimiter =
-    deps.createLimiter ??
-    createRateLimiter({
-      max: GROUP_CREATE_RATE_LIMIT_MAX,
-      windowMs: GROUP_CREATE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const roleLimiter = deps.roleLimiter ?? limiter('roleChange', now);
+  const joinLimiter = deps.joinLimiter ?? limiter('publicJoin', now);
+  const groupCreateLimiter = deps.createLimiter ?? limiter('groupCreate', now);
 
   function auditVisibilityChange(groupId: string, actorId: string, visibility: string): void {
     if (deps.audit === undefined) {

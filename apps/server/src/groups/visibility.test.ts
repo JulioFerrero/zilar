@@ -9,7 +9,7 @@ import { SqlClient } from 'effect/sql';
 import { aiLocalpart } from '../ais/provisioning-xmpp';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
-import { DIRECTORY_RATE_LIMIT_MAX } from '../app/routes-messaging';
+import { RATE_LIMITS } from '../rate-limit';
 import {
   bootstrapUser,
   contactOf,
@@ -609,7 +609,7 @@ describe('public groups and channels', () => {
   it('answers 429 once the directory limiter is exhausted', async () => {
     const user = await bootstrapUser(context, app, 'directory-limit@example.com');
 
-    for (let attempt = 0; attempt < DIRECTORY_RATE_LIMIT_MAX; attempt += 1) {
+    for (let attempt = 0; attempt < RATE_LIMITS.directory.max; attempt += 1) {
       const response = await directoryRequest(user.cookie);
       expect(response.status).toBe(200);
       await response.text();

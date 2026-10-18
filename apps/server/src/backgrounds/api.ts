@@ -13,11 +13,9 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   BACKGROUND_MAX_BYTES,
-  BACKGROUND_UPLOAD_RATE_LIMIT_MAX,
-  BACKGROUND_UPLOAD_RATE_LIMIT_WINDOW_MS,
   deleteBackground,
   listBackgrounds,
   readBackgroundFile,
@@ -57,11 +55,7 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
   const injected = deps.uploadLimiter;
   const uploadLimiter: RateLimiter =
     injected === undefined
-      ? createRateLimiter({
-          max: BACKGROUND_UPLOAD_RATE_LIMIT_MAX,
-          windowMs: BACKGROUND_UPLOAD_RATE_LIMIT_WINDOW_MS,
-          now: deps.now ?? Date.now,
-        })
+      ? limiter('backgroundUpload', deps.now ?? Date.now)
       : { allow: (key) => injected.allow(key), size: 0 };
 
   const groupLayer = HttpApiBuilder.group(BackgroundsApi, 'backgrounds', (handlers) =>

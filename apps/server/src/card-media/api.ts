@@ -16,14 +16,11 @@ import type { CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter } from '../search/service';
 import { cardMediaPath, getCardMedia } from './service';
 
 // 600 per 10 min per user, charged before the lookup so ids cannot be probed for free.
-export const CARD_MEDIA_READ_RATE_LIMIT_MAX = 600;
-export const CARD_MEDIA_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export interface CardMediaApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -101,11 +98,7 @@ async function readBytes(deps: CardMediaApiDependencies, row: CardMediaRow): Pro
 export function createCardMediaApi(deps: CardMediaApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const readLimiter = createRateLimiter({
-    max: CARD_MEDIA_READ_RATE_LIMIT_MAX,
-    windowMs: CARD_MEDIA_READ_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const readLimiter = limiter('cardMediaRead', now);
 
   const groupLayer = HttpApiBuilder.group(CardMediaApi, 'card-media', (handlers) =>
     handlers.handle(

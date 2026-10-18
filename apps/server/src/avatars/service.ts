@@ -82,12 +82,6 @@ function toAvatarHttpError(check: AvatarCheck): HttpError {
 export { readAvatarFile } from './read';
 export type { AvatarFile } from './read';
 
-export const AVATAR_UPLOAD_RATE_LIMIT_MAX = 10;
-export const AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-// The read budget, charged per viewer inside `serve`.
-export const AVATAR_READ_RATE_LIMIT_MAX = 600;
-export const AVATAR_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
 

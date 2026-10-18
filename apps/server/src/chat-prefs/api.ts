@@ -6,7 +6,7 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import {
   handler,
   httpErrorResponse,
@@ -23,9 +23,6 @@ import {
   putChatPref,
   requireChatAccess,
 } from './service';
-
-export const CHAT_PREFS_WRITE_RATE_LIMIT_MAX = 60;
-export const CHAT_PREFS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 // A malformed percent escape is an unknown chat (404), not a server error.
 function decodePathJid(raw: string): string {
@@ -64,11 +61,7 @@ export interface ChatPrefsApiDependencies {
 export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter = createRateLimiter({
-    max: CHAT_PREFS_WRITE_RATE_LIMIT_MAX,
-    windowMs: CHAT_PREFS_WRITE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const writeLimiter = limiter('chatPrefsWrite', now);
 
   const groupLayer = HttpApiBuilder.group(ChatPrefsApi, 'chatPrefs', (handlers) =>
     handlers

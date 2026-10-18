@@ -13,21 +13,12 @@ import type { ServerConfig } from '../config/load';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { ServerDatabase } from '../db/client';
 import { mountApi, schemaErrorLayer, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import type { PushConfig } from './config';
 import { createPushGroupLayer } from './api-handlers';
 import type { WebPushDelivery } from './sender';
 import type { FcmSender } from './fcm';
-
-export const PUSH_SUBSCRIBE_RATE_LIMIT_MAX = 30;
-export const PUSH_SUBSCRIBE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-export const PUSH_SETTINGS_RATE_LIMIT_MAX = 60;
-export const PUSH_SETTINGS_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-export const PUSH_TEST_RATE_LIMIT_MAX = 5;
-export const PUSH_TEST_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-export const PUSH_PREVIEW_RATE_LIMIT_MAX = 120;
-export const PUSH_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface PushRoutesDependencies {
   auth: Auth;
@@ -59,34 +50,10 @@ const PushApi = HttpApi.make('push').add(PushGroup);
 export function createPushApi(deps: PushApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const subscribeLimiter =
-    deps.subscribeLimiter ??
-    createRateLimiter({
-      max: PUSH_SUBSCRIBE_RATE_LIMIT_MAX,
-      windowMs: PUSH_SUBSCRIBE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const settingsLimiter =
-    deps.settingsLimiter ??
-    createRateLimiter({
-      max: PUSH_SETTINGS_RATE_LIMIT_MAX,
-      windowMs: PUSH_SETTINGS_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const testLimiter =
-    deps.testLimiter ??
-    createRateLimiter({
-      max: PUSH_TEST_RATE_LIMIT_MAX,
-      windowMs: PUSH_TEST_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const previewLimiter =
-    deps.previewLimiter ??
-    createRateLimiter({
-      max: PUSH_PREVIEW_RATE_LIMIT_MAX,
-      windowMs: PUSH_PREVIEW_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const subscribeLimiter = deps.subscribeLimiter ?? limiter('pushSubscribe', now);
+  const settingsLimiter = deps.settingsLimiter ?? limiter('pushSettings', now);
+  const testLimiter = deps.testLimiter ?? limiter('pushTest', now);
+  const previewLimiter = deps.previewLimiter ?? limiter('pushPreview', now);
 
   const groupLayer = createPushGroupLayer(PushApi, deps, {
     subscribe: subscribeLimiter,

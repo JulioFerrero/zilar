@@ -8,7 +8,7 @@ import { listRoutinesForAi } from '../routines/queries';
 import type { RoutineServiceError } from '../routines/schemas';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, RATE_LIMITS, type RateLimiter } from '../rate-limit';
 import { ToolServiceError, approveToolHosts, getTool, listTools, revokeToolHosts } from './service';
 import {
   toolApproveHostsArgsSchema,
@@ -36,8 +36,8 @@ export interface BuildToolAdaptersDeps {
 }
 
 // At most 6 `tool.run` executions per AI per chat per hour; over it the adapter answers `run limit reached, try later`.
-export const TOOL_RUNS_PER_HOUR = 6;
-export const TOOL_RUN_WINDOW_MS = 60 * 60 * 1000;
+export const TOOL_RUNS_PER_HOUR = RATE_LIMITS.toolRunsPerHour.max;
+export const TOOL_RUN_WINDOW_MS = RATE_LIMITS.toolRunsPerHour.windowMs;
 
 // A `tool.run` post is `"<name>\n<text>"` cut at 4 000 chars.
 export const MAX_TOOL_POST_CHARS = 4_000;
@@ -62,11 +62,7 @@ export function createAdapterState(deps: BuildToolAdaptersDeps): AdapterState {
     post: deps.post,
     now,
     audit: deps.audit,
-    runLimiter: createRateLimiter({
-      max: TOOL_RUNS_PER_HOUR,
-      windowMs: TOOL_RUN_WINDOW_MS,
-      now: () => now().getTime(),
-    }),
+    runLimiter: limiter('toolRunsPerHour', () => now().getTime()),
   };
 }
 

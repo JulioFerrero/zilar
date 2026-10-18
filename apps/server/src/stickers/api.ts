@@ -16,12 +16,8 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import {
-  STICKER_UPLOAD_RATE_LIMIT_MAX,
-  STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
-  type StickersRoutesDependencies,
-} from './routes';
+import { limiter, type RateLimiter } from '../rate-limit';
+import type { StickersRoutesDependencies } from './routes';
 import { createStickersGroupLayer } from './api-handlers';
 import { renderSchemaError } from './api-decode';
 
@@ -39,11 +35,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
   // An injected limiter only has to say `allow`; `makeRateLimit` wants the full shape.
   const uploadLimiter: RateLimiter =
     injectedUploadLimiter === undefined
-      ? createRateLimiter({
-          max: STICKER_UPLOAD_RATE_LIMIT_MAX,
-          windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
-          now,
-        })
+      ? limiter('stickerUpload', now)
       : { allow: (key) => injectedUploadLimiter.allow(key), size: 0 };
 
   const groupLayer = createStickersGroupLayer(StickersApi, deps);

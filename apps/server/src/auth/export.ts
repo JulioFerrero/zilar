@@ -15,8 +15,7 @@ import { headersWithoutSessionCache } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { ownBareJid } from '../jid';
-import type { RateLimiter } from '../rate-limit';
-import { createRateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   allowedArchives,
   createArchivePool,
@@ -36,8 +35,6 @@ import {
 import { bioForUser } from './profile-bio';
 import { currentSession } from './sessions';
 
-export const EXPORT_RATE_LIMIT_MAX = 1;
-export const EXPORT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const EXPORT_MAX_MESSAGES = 200_000;
 export const EXPORT_MAX_BYTES = 250 * 1024 * 1024;
 export const EXPORT_PAGE_SIZE = 500;
@@ -83,11 +80,7 @@ export function createExportHandler(
   deps: ExportRouteDeps,
 ): (userId: string, headers: Headers) => Promise<HttpServerResponse.HttpServerResponse> {
   const now = deps.now ?? Date.now;
-  const limiter = createRateLimiter({
-    max: EXPORT_RATE_LIMIT_MAX,
-    windowMs: EXPORT_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const exportLimiter = limiter('export', now);
   const archive = deps.archive ?? createExportArchivePool(deps.config);
   return (userId, headers) =>
     runExport(
@@ -97,7 +90,7 @@ export function createExportHandler(
         auth: deps.auth,
         audit: deps.audit,
         logger: deps.logger,
-        limiter,
+        limiter: exportLimiter,
         now,
         ...(archive === undefined ? {} : { archive }),
       },

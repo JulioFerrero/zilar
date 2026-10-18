@@ -74,11 +74,6 @@ async function deleteStoredTelegramToken(db: ServerDatabase): Promise<void> {
     }),
   );
 }
-export const INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX = 10;
-export const INTEGRATIONS_TELEGRAM_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-export const INTEGRATIONS_EMAIL_RATE_LIMIT_MAX = 5;
-export const INTEGRATIONS_EMAIL_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export interface IntegrationsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;

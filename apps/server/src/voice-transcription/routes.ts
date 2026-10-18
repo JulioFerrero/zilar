@@ -18,11 +18,6 @@ import { settingsCipherFor } from '../setup/settings';
 import type { AudioFetcher, Transcriber } from './pipeline';
 import { getVoiceTranscriptionSettings, type VoiceTranscriptionSettings } from './settings';
 
-export const VOICE_TRANSCRIPT_RATE_LIMIT_MAX = 10;
-export const VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX = 10;
-export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS = 10 * 60 * 1000;
-
 export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES } from './pipeline';
 
 export interface VoiceTranscriptionRoutesDependencies {

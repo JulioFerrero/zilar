@@ -12,7 +12,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | --- | ---: |
 | 10-18 19:35 | 274,479 |
 | 10-18 21:35 | 249,272 |
-| latest | see the next update |
+| 10-18 23:11 | 244,647 (−29,832 since 19:35) |
 
 **Merged tonight:**
 
@@ -23,18 +23,34 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2099 | one shared API for chats, me, contacts, invites, folders, prefs | −350 |
 | T-2096 | one shared API for AIs and connections | −160 |
 | T-2097 | one shared API for stickers and GIFs | −164 |
-| T-2103 | 62 single-use web files folded into their only importer | −205 |
+| T-2098 | one shared API for pins, AI memory, media, link preview, search | −121 |
+| T-2093 | one shared key check (New AI and Add key) | −152 |
+| T-2100 | 14 server barrel files deleted | −381 |
+| T-2103, T-2102, T-2118 | single-use web files folded into their only importer | −205, −114, −198 |
+| T-2105, T-2106 | single-use phone files folded | −420, −446 |
+| T-2107, T-2108 | single-use server files folded | −309, −350 |
+| T-2109 | single-use package files folded | −182 |
+| T-2111, T-2113, T-2114 | old size splits merged back (web, phone) | −61, −415, −351 |
+| T-2110, T-2112 | `AGENTS.md` points at the new map; store phase 2 plan (docs) | — |
+
+- **Superseded:** T-2104, whose rebase conflicted on 26 files; it was redone on current main as T-2118.
+- **Safety nets run tonight:**
+  - every package typechecks on main (16/16);
+  - no file references any of the 307 files deleted tonight;
+  - live had 0 server errors after each server push.
 
 - **Checks:** every merge was checked in web mock mode (Playwright, all 25 routes for the folds), and on the emulator when it touched the phone.
 - **Live:** at `7a4d3e7a8`.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running or queued:**
-- shared key check (T-2093) and chat extras API (T-2098);
-- folds of single-use files: web (T-2102, T-2104), phone (T-2105, T-2106), packages (T-2109), and server next;
-- server barrels (T-2100: 14 files, 193 importers, rebased);
-- `AGENTS.md` points at the map (T-2110).
-- **Next:** merge back the old size splits where a hook's return object or a child's props list is pure plumbing (39 pairs, about −1.6k), and the New AI flow twin.
+**Running or queued (23:11):**
+- store phase 2 (`docs/audit/store-phase2-plan.md`):
+  - T-2115: group write-then-reload path;
+  - T-2116: prefs row;
+  - T-2117: pin rule, which also lets owners and admins pin in channels on the phone;
+  - T4: join loop, after T-2115.
+- T-2119: one server rate-limit table.
+- **Next:** T-2120, the New AI flow shared by web and phone, launched when a phone slot frees.
 
 **Plan after the canvas reviews (2026-10-15).** Every approved canvas's boards are in `docs/design/mockups/<name>/`. Julio's rules: up to 8 workers, at most 3 mobile; estimates are in worker minutes (about 35–60 min from launch to merge).
 

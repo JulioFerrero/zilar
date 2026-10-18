@@ -9,7 +9,7 @@ import {
   TEST_BASE_URL,
   type TestContext,
 } from '../test-support';
-import { AUTH_INVITE_RATE_LIMIT_MAX } from './api';
+import { RATE_LIMITS } from '../rate-limit';
 import {
   DEFAULT_INVITE_MAX_USES,
   consumeInvite,
@@ -116,7 +116,7 @@ describe('invites', () => {
     const app = testApp(context);
     const user = await bootstrapUser(context, app, 'invite-limit@example.com');
 
-    for (let attempt = 0; attempt < AUTH_INVITE_RATE_LIMIT_MAX; attempt += 1) {
+    for (let attempt = 0; attempt < RATE_LIMITS.authInvite.max; attempt += 1) {
       const response = await app.request(`${TEST_BASE_URL}/api/invites`, {
         method: 'POST',
         headers: { cookie: user.cookie },

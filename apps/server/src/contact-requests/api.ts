@@ -14,7 +14,7 @@ import { type ServerConfig } from '../config/load';
 import { type EjabberdAdminClient } from '../xmpp/admin/types';
 import { type Auth } from '../auth/auth';
 import { type ServerDatabase } from '../db/client';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
   handler,
@@ -108,15 +108,6 @@ export async function searchUsers(
   return entries;
 }
 
-export const CONTACT_REQUEST_CREATE_RATE_LIMIT_MAX = 20;
-export const CONTACT_REQUEST_CREATE_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-export const CONTACT_REQUEST_READ_RATE_LIMIT_MAX = 60;
-export const CONTACT_REQUEST_READ_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-export const BY_HANDLE_RATE_LIMIT_MAX = 30;
-export const BY_HANDLE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-export const USER_SEARCH_RATE_LIMIT_MAX = 120;
-export const USER_SEARCH_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
 const ContactRequestsApi = HttpApi.make('contactRequests').add(ContactRequestsGroup);
@@ -150,34 +141,10 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
   const now = deps.now ?? Date.now;
   const db = deps.db;
   const logger = deps.logger;
-  const createLimiter =
-    deps.createLimiter ??
-    createRateLimiter({
-      max: CONTACT_REQUEST_CREATE_RATE_LIMIT_MAX,
-      windowMs: CONTACT_REQUEST_CREATE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const readLimiter =
-    deps.readLimiter ??
-    createRateLimiter({
-      max: CONTACT_REQUEST_READ_RATE_LIMIT_MAX,
-      windowMs: CONTACT_REQUEST_READ_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const byHandleLimiter =
-    deps.byHandleLimiter ??
-    createRateLimiter({
-      max: BY_HANDLE_RATE_LIMIT_MAX,
-      windowMs: BY_HANDLE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const userSearchLimiter =
-    deps.userSearchLimiter ??
-    createRateLimiter({
-      max: USER_SEARCH_RATE_LIMIT_MAX,
-      windowMs: USER_SEARCH_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const createLimiter = deps.createLimiter ?? limiter('contactRequestCreate', now);
+  const readLimiter = deps.readLimiter ?? limiter('contactRequestRead', now);
+  const byHandleLimiter = deps.byHandleLimiter ?? limiter('byHandle', now);
+  const userSearchLimiter = deps.userSearchLimiter ?? limiter('userSearch', now);
 
   function service(): ContactRequestsDeps {
     return {

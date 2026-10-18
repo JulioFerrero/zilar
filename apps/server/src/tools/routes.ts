@@ -16,7 +16,7 @@ import {
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { findGroupMembership } from '../groups/access';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { canSeeTopic, getTopic } from '../topics/access';
 import type { ToolRunner } from './types';
 import {
@@ -51,9 +51,6 @@ import {
 } from './wire';
 
 // Manual runs are capped per user per minute.
-export const TOOL_RUN_RATE_LIMIT_MAX = 5;
-export const TOOL_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
 // `revert` and `run` declare payloads for the client but decode by hand, keeping the 400/404/429/501 order.
@@ -74,13 +71,7 @@ export interface ToolsApiDependencies {
 export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const runLimiter =
-    deps.runLimiter ??
-    createRateLimiter({
-      max: TOOL_RUN_RATE_LIMIT_MAX,
-      windowMs: TOOL_RUN_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const runLimiter = deps.runLimiter ?? limiter('toolRun', now);
 
   const groupLayer = HttpApiBuilder.group(ToolsApi, 'tools', (handlers) =>
     handlers

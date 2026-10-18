@@ -22,7 +22,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
 } from '../effect/http-core';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
@@ -66,17 +66,10 @@ function toConflict(error: unknown): unknown {
 const INVALID_JSON = Symbol('invalid-json');
 
 // Pairing codes are minted sparingly: 10 per hour per user.
-export const PAIRING_CODE_RATE_LIMIT_MAX = 10;
-export const PAIRING_CODE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 // The pair route is the brute-force target: 30/min across callers plus 10/min per IP.
-export const PAIR_GLOBAL_RATE_LIMIT_MAX = 30;
-export const PAIR_IP_RATE_LIMIT_MAX = 10;
-export const PAIR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 // Every owner write shares one per-user budget.
-export const MACHINE_WRITE_RATE_LIMIT_MAX = 30;
-export const MACHINE_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface MachinesApiDependencies {
   auth: Auth;
@@ -104,26 +97,10 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
   const isMachineOnline = deps.isMachineOnline;
   const machineRegistry = deps.registry ?? createDbMachineRegistry(deps.db);
 
-  const createCodeLimiter = createRateLimiter({
-    max: PAIRING_CODE_RATE_LIMIT_MAX,
-    windowMs: PAIRING_CODE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
-  const pairGlobalLimiter = createRateLimiter({
-    max: PAIR_GLOBAL_RATE_LIMIT_MAX,
-    windowMs: PAIR_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
-  const pairIpLimiter = createRateLimiter({
-    max: PAIR_IP_RATE_LIMIT_MAX,
-    windowMs: PAIR_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
-  const writeLimiter = createRateLimiter({
-    max: MACHINE_WRITE_RATE_LIMIT_MAX,
-    windowMs: MACHINE_WRITE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const createCodeLimiter = limiter('pairingCode', now);
+  const pairGlobalLimiter = limiter('pairGlobal', now);
+  const pairIpLimiter = limiter('pairIp', now);
+  const writeLimiter = limiter('machineWrite', now);
 
   function checkWriteLimit(userId: string): void {
     if (!writeLimiter.allow(userId)) {

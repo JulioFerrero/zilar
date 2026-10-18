@@ -18,7 +18,7 @@ import {
   requestIdOf,
   type SessionUser,
 } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { deleteOwnHandlers } from './delete-own';
 import { listChatsFor } from './list-handler';
 import { replyFor, kindFor } from './reply-handler';
@@ -103,9 +103,6 @@ async function markDeliveredFor(
     originIds: request.payload.originIds,
   });
 }
-export const CHAT_READ_RATE_LIMIT_MAX = 600;
-export const CHAT_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export type { ChatListEntry, ChatUnreadFields } from './list-handler';
 
 export interface ChatsApiDependencies {
@@ -128,13 +125,9 @@ const ChatsApi = HttpApi.make('chats').add(ChatsGroup);
 export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const readLimiter = createRateLimiter({
-    max: CHAT_READ_RATE_LIMIT_MAX,
-    windowMs: CHAT_READ_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const readLimiter = limiter('chatRead', now);
   // The notification reply has its own budget, checked before the claim.
-  const replyLimiter = createRateLimiter({ max: 60, windowMs: 10 * 60 * 1000, now });
+  const replyLimiter = limiter('chatReply', now);
   // Both DM delete handlers are built in `delete-own.ts`.
   const deleteOwn = deleteOwnHandlers(deps);
 

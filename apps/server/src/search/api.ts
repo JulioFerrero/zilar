@@ -6,7 +6,7 @@ import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { CurrentUser, SearchGroup, SearchGuards, SearchSchemaErrors } from '@zilar/api-contract';
 import { HttpError } from '../errors';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   handler,
   httpErrorResponse,
@@ -16,12 +16,7 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import {
-  SEARCH_RATE_LIMIT_MAX,
-  SEARCH_RATE_LIMIT_WINDOW_MS,
-  runSearchEffect,
-  type SearchRoutesDependencies,
-} from './routes';
+import { runSearchEffect, type SearchRoutesDependencies } from './routes';
 
 export type { SearchRoutesDependencies };
 
@@ -60,11 +55,7 @@ const SearchApi = HttpApi.make('search').add(SearchGroup);
 
 export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
-  const limiter = createRateLimiter({
-    max: SEARCH_RATE_LIMIT_MAX,
-    windowMs: SEARCH_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
+  const searchLimiter = limiter('search', deps.now ?? Date.now);
 
   const groupLayer = HttpApiBuilder.group(SearchApi, 'search', (handlers) =>
     handlers.handle(
@@ -84,7 +75,7 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
   const apiLayer = HttpApiBuilder.layer(SearchApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(guardsLayer(deps, limiter)),
+    Layer.provide(guardsLayer(deps, searchLimiter)),
     Layer.provide(schemaErrorLayerFor(SearchSchemaErrors, logger, 'Invalid search query')),
   );
 

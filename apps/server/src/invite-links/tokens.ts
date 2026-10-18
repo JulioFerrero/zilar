@@ -17,13 +17,6 @@ export {
 } from '@zilar/api-contract';
 export const MAX_ACTIVE_INVITE_LINKS = 10;
 
-export const JOIN_RATE_LIMIT_MAX_PER_USER = 20;
-export const JOIN_RATE_LIMIT_MAX_PER_IP = 60;
-export const JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-// Probing tokens at full speed must be expensive: 120 previews per hour.
-export const JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER = 120;
-export const JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
 export type { GroupInviteLinkRow };
 
 export interface InviteLinkView {

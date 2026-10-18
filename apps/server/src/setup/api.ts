@@ -18,7 +18,7 @@ import {
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   deleteMailSettingsEffect,
   needsSetup,
@@ -156,9 +156,6 @@ async function sendSetupTestCode(input: {
   await input.mailer.sendOtp(input.email, otp, 'sign-in');
 }
 
-export const SETUP_RATE_LIMIT_MAX = 5;
-export const SETUP_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export interface SetupApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -194,9 +191,7 @@ function notFound(): HttpError {
 
 export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
   const logger = deps.logger;
-  const limiter =
-    deps.limiter ??
-    createRateLimiter({ max: SETUP_RATE_LIMIT_MAX, windowMs: SETUP_RATE_LIMIT_WINDOW_MS });
+  const setupLimiter = deps.limiter ?? limiter('setup');
   // Same client-IP rule as the join limiter: behind Coolify every visitor must not share
   // one budget.
   const clientIp =
@@ -236,7 +231,7 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
             if (!(yield* Effect.promise(() => needsSetup(deps.db)))) {
               throw notFound();
             }
-            if (!limiter.allow(clientIp(request.request))) {
+            if (!setupLimiter.allow(clientIp(request.request))) {
               throw new HttpError(429, 'rate_limited', 'Too many setup attempts, try again later');
             }
             // An unparseable or empty body is `null`, which fails the struct decode below.

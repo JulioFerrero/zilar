@@ -15,14 +15,12 @@ import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '.
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
-import { createRateLimiter } from '../rate-limit';
+import { createRateLimiter, limiter, RATE_LIMITS } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
 import { indexChatOnDemand } from '../media/indexer';
 import { toInternalUploadUrl } from '../voice-transcription/routes';
 import { defaultInternalFetch, type InternalFetch } from './internal-fetch';
 
-export const FILES_RATE_LIMIT_MAX = 600;
-export const FILES_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const FILES_FETCH_TIMEOUT_MS = 30 * 1000;
 
 export interface FilesRoutesDependencies {
@@ -148,11 +146,10 @@ const FilesApi = HttpApi.make('files').add(FilesGroup);
 export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const limiter = createRateLimiter({
-    max: deps.rateLimitMax ?? FILES_RATE_LIMIT_MAX,
-    windowMs: FILES_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const fileLimiter =
+    deps.rateLimitMax === undefined
+      ? limiter('files', now)
+      : createRateLimiter({ ...RATE_LIMITS.files, max: deps.rateLimitMax, now });
   const internalFetch = deps.internalFetch ?? defaultInternalFetch;
   // ejabberd resolves the upload vhost from the Host header, so the internal fetch carries
   // the public host, not `ejabberd:5280`.
@@ -166,7 +163,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           if (deps.archive === undefined) {
             throw new HttpError(501, 'files_unavailable', 'Files are not configured');
           }
-          if (!limiter.allow(user.id)) {
+          if (!fileLimiter.allow(user.id)) {
             throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
           }
           const decoded = Schema.decodeUnknownOption(

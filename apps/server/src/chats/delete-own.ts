@@ -12,13 +12,9 @@ import type { ServerDatabase } from '../db/client';
 import { handler, httpErrorResponse, requestIdOf, type SessionUser } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
-
-// The two delete-for-me writes share one budget; access is checked first, so a probe costs no token.
-export const CHAT_HISTORY_WRITE_RATE_LIMIT_MAX = 60;
-export const CHAT_HISTORY_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface DeleteOwnDependencies {
   db: ServerDatabase;
@@ -162,11 +158,7 @@ export function deleteOwnHandlers(deps: DeleteOwnHandlerDependencies) {
   const logger = deps.logger;
   // A failed audit write is logged, never thrown.
   const audit = createAuditRecorder({ db: deps.db, logger });
-  const limiter = createRateLimiter({
-    max: CHAT_HISTORY_WRITE_RATE_LIMIT_MAX,
-    windowMs: CHAT_HISTORY_WRITE_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
+  const historyLimiter = limiter('chatHistoryWrite', deps.now ?? Date.now);
   const service: DeleteOwnDependencies = { db: deps.db, archive: deps.archive, audit };
   const { domain, mucDomain } = deps.config.xmpp;
   return {
@@ -177,7 +169,7 @@ export function deleteOwnHandlers(deps: DeleteOwnHandlerDependencies) {
         domain,
         mucDomain,
       });
-      if (!limiter.allow(user.id)) {
+      if (!historyLimiter.allow(user.id)) {
         return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
       }
       await clearOwnHistory(service, { userId: user.id, bare });
@@ -189,7 +181,7 @@ export function deleteOwnHandlers(deps: DeleteOwnHandlerDependencies) {
         domain,
         mucDomain,
       });
-      if (!limiter.allow(user.id)) {
+      if (!historyLimiter.allow(user.id)) {
         return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
       }
       const deleted = await deleteOwnArchiveRow(service, {

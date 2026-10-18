@@ -21,17 +21,14 @@ import {
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import { GIPHY_MEDIA_HOSTS, createGiphyProvider } from './giphy';
 import type { GifItem, GifPage, GifProvider } from './provider';
 import {
-  GIF_MEDIA_RATE_LIMIT_MAX,
   GIF_MEDIA_TYPES,
   GIF_PAGE_LIMIT,
   GIF_PROXY_MAX_BYTES,
   GIF_PROXY_TIMEOUT_MS,
-  GIF_RATE_LIMIT_MAX,
-  GIF_RATE_LIMIT_WINDOW_MS,
   fetchProxiedMedia,
   type GifsRoutesDependencies,
   type MediaFetch,
@@ -160,16 +157,8 @@ interface ShapedGifItem {
 export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const searchLimiter = createRateLimiter({
-    max: GIF_RATE_LIMIT_MAX,
-    windowMs: GIF_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
-  const mediaLimiter = createRateLimiter({
-    max: GIF_MEDIA_RATE_LIMIT_MAX,
-    windowMs: GIF_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const searchLimiter = limiter('gif', now);
+  const mediaLimiter = limiter('gifMedia', now);
 
   const issuer: GifTokenIssuer = createGifTokenIssuer({ secret: tokenSecret(deps.config), now });
   const mediaFetcher: MediaFetch =

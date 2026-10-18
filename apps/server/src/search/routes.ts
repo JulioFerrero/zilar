@@ -138,8 +138,6 @@ function exactInCodeMarks(
     ),
   };
 }
-export const SEARCH_RATE_LIMIT_MAX = 30;
-export const SEARCH_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export { SEARCH_MAX_LIMIT } from '@zilar/api-contract';
 export const SEARCH_DEFAULT_LIMIT = 20;
 // No expression index is possible in ejabberd, so a search scans 12 months and at

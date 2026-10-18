@@ -17,11 +17,8 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { respondToCard, myPicks, type CorrectCardInput } from './respond';
-
-export const BLOCKS_RESPOND_RATE_LIMIT_MAX = 120;
-export const BLOCKS_RESPOND_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 /** The one live-gateway call this module needs; no XMPP types leak here. */
 export interface CardCorrector {
@@ -58,13 +55,7 @@ export interface MessageBlocksApiDependencies {
 
 export function createMessageBlocksApi(deps: MessageBlocksApiDependencies): EffectApiMount {
   const logger = deps.logger;
-  const respondLimiter =
-    deps.respondLimiter ??
-    createRateLimiter({
-      max: BLOCKS_RESPOND_RATE_LIMIT_MAX,
-      windowMs: BLOCKS_RESPOND_RATE_LIMIT_WINDOW_MS,
-      now: deps.now ?? Date.now,
-    });
+  const respondLimiter = deps.respondLimiter ?? limiter('blocksRespond', deps.now ?? Date.now);
 
   const groupLayer = HttpApiBuilder.group(MessageBlocksApi, 'message-blocks', (handlers) =>
     handlers

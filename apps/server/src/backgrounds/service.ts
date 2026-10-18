@@ -14,9 +14,6 @@ export const BACKGROUND_MAX_BYTES = 1024 * 1024;
 export const BACKGROUND_MAX_SIDE = 2048;
 export const BACKGROUND_MIN_SIDE = 64;
 export const BACKGROUND_MAX_PER_USER = 20;
-export const BACKGROUND_UPLOAD_RATE_LIMIT_MAX = 20;
-export const BACKGROUND_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
 // 2048 x 2048 x 4 is the largest decoded frame a wallpaper may claim.
 const BACKGROUND_PROBE_LIMITS = {
   maxBytes: BACKGROUND_MAX_BYTES,

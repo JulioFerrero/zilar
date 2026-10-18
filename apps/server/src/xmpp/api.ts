@@ -6,7 +6,7 @@ import type { Auth } from '../auth/auth';
 import { syncRoster } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { xmppUnavailable } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import type { EjabberdAdminClient } from './admin/types';
@@ -17,8 +17,6 @@ import { issueXmppToken } from './token';
 export const TOKEN_TTL_SECONDS = 300;
 // Every page load, tab and reconnect mints one token. 30 per 10 min locked a real
 // user out; 120 still stops a runaway loop (one token every 5 s on average).
-export const TOKEN_RATE_LIMIT_MAX = 120;
-export const TOKEN_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 export interface XmppApiDependencies {
   auth: Auth;
@@ -37,11 +35,7 @@ const XmppApi = HttpApi.make('xmpp').add(XmppGroup);
 export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const limiter = createRateLimiter({
-    max: TOKEN_RATE_LIMIT_MAX,
-    windowMs: TOKEN_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const tokenLimiter = limiter('token', now);
 
   const groupLayer = HttpApiBuilder.group(XmppApi, 'xmpp', (handlers) =>
     handlers.handle(
@@ -87,7 +81,7 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(XmppApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(rateLimitLayer(XmppTokenRateLimit, limiter, RATE_LIMIT_MESSAGE)),
+    Layer.provide(rateLimitLayer(XmppTokenRateLimit, tokenLimiter, RATE_LIMIT_MESSAGE)),
   );
 
   return mountApi(XmppApi, apiLayer);

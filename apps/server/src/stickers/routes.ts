@@ -4,11 +4,6 @@ import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import type { StickerConverter } from './convert';
 
-export const STICKER_UPLOAD_RATE_LIMIT_MAX = 60;
-export const STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-export const TELEGRAM_IMPORT_RATE_LIMIT_MAX = 3;
-export const TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
 export interface StickersRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;

@@ -23,7 +23,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import {
   listTopicAis,
@@ -187,12 +187,6 @@ async function listGeneralAis(db: ServerDatabase, groupId: string): Promise<Topi
     ),
   );
 }
-export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
-export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-export const TOPIC_JOIN_RATE_LIMIT_MAX = 60;
-export const TOPIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-export const TOPIC_PREVIEW_RATE_LIMIT_MAX = 120;
-export const TOPIC_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 const TopicsApi = HttpApi.make('topics').add(TopicsGroup);
 
@@ -214,21 +208,9 @@ export interface TopicsApiDependencies {
 export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const mucDomain = deps.config.xmpp.mucDomain;
-  const createLimiter = createRateLimiter({
-    max: TOPIC_CREATE_RATE_LIMIT_MAX,
-    windowMs: TOPIC_CREATE_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
-  const joinLimiter = createRateLimiter({
-    max: TOPIC_JOIN_RATE_LIMIT_MAX,
-    windowMs: TOPIC_JOIN_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
-  const previewLimiter = createRateLimiter({
-    max: TOPIC_PREVIEW_RATE_LIMIT_MAX,
-    windowMs: TOPIC_PREVIEW_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
+  const createLimiter = limiter('topicCreate', deps.now ?? Date.now);
+  const joinLimiter = limiter('topicJoin', deps.now ?? Date.now);
+  const previewLimiter = limiter('topicPreview', deps.now ?? Date.now);
 
   function serviceDeps(): TopicServiceDeps {
     return {

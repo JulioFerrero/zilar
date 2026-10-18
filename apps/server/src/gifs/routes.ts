@@ -5,11 +5,8 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config/load';
 import type { GifProvider } from './provider';
 
-export const GIF_RATE_LIMIT_MAX = 30;
-export const GIF_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 // Media previews fan out per search, so the proxy gets its own high budget. The token
 // already binds user, URL and expiry; the limiter only caps volume.
-export const GIF_MEDIA_RATE_LIMIT_MAX = 600;
 export const GIF_PAGE_LIMIT = 25;
 export const GIF_PROXY_MAX_BYTES = 8 * 1024 * 1024;
 export const GIF_PROXY_TIMEOUT_MS = 10_000;

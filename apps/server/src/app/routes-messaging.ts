@@ -51,7 +51,7 @@ import { type ServerConfig } from '../config/load';
 import { type EjabberdAdminClient } from '../xmpp/admin/types';
 import { type Auth } from '../auth/auth';
 import { type ServerDatabase } from '../db/client';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { listContacts, removeContact, type RemoveContactDeps } from '../contacts/service';
 import { publicGroupForHandle, searchDirectory, type GroupKind } from '../directory/service';
@@ -252,11 +252,6 @@ function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
   return mountApi(RolesApi, apiLayer);
 }
 
-const BLOCK_WRITE_RATE_LIMIT_MAX = 30;
-const BLOCK_WRITE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-const BLOCK_READ_RATE_LIMIT_MAX = 120;
-const BLOCK_READ_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
 interface BlocksRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -289,20 +284,8 @@ function blocksServiceFor(deps: BlocksRoutesDependencies): BlocksDeps {
 function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter =
-    deps.writeLimiter ??
-    createRateLimiter({
-      max: BLOCK_WRITE_RATE_LIMIT_MAX,
-      windowMs: BLOCK_WRITE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const readLimiter =
-    deps.readLimiter ??
-    createRateLimiter({
-      max: BLOCK_READ_RATE_LIMIT_MAX,
-      windowMs: BLOCK_READ_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const writeLimiter = deps.writeLimiter ?? limiter('blockWrite', now);
+  const readLimiter = deps.readLimiter ?? limiter('blockRead', now);
   const service = blocksServiceFor(deps);
 
   // Roster cleanup after a block warns, never fails; the warn needs the request logger.
@@ -337,9 +320,6 @@ function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
   return mountApi(BlocksApi, apiLayer);
 }
 
-const PINS_WRITE_RATE_LIMIT_MAX = 60;
-const PINS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
 const PinsApi = HttpApi.make('pins').add(PinsGroup);
 
 interface PinsApiDependencies {
@@ -360,13 +340,7 @@ const PINS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
 
 function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
   const logger = deps.logger;
-  const writeLimiter =
-    deps.writeLimiter ??
-    createRateLimiter({
-      max: PINS_WRITE_RATE_LIMIT_MAX,
-      windowMs: PINS_WRITE_RATE_LIMIT_WINDOW_MS,
-      now: deps.now ?? Date.now,
-    });
+  const writeLimiter = deps.writeLimiter ?? limiter('pinsWrite', deps.now ?? Date.now);
 
   function serviceDeps(): PinsServiceDeps {
     return {
@@ -418,9 +392,6 @@ function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
   return { handler: effectHandler, routes: PINS_API_ROUTES };
 }
 
-export const DIRECTORY_RATE_LIMIT_MAX = 30;
-const DIRECTORY_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 interface DirectoryApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -456,13 +427,7 @@ const DirectoryApi = HttpApi.make('directory').add(DirectoryGroup);
 function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const limiter =
-    deps.limiter ??
-    createRateLimiter({
-      max: DIRECTORY_RATE_LIMIT_MAX,
-      windowMs: DIRECTORY_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const directoryLimiter = deps.limiter ?? limiter('directory', now);
 
   const groupLayer = HttpApiBuilder.group(DirectoryApi, 'directory', (handlers) =>
     handlers
@@ -492,7 +457,7 @@ function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMount {
     // The read budget runs before the query is decoded: an invalid query still spends
     // budget.
     Layer.provide(
-      rateLimitLayer(DirectoryRateLimit, limiter, 'Too many attempts, try again later'),
+      rateLimitLayer(DirectoryRateLimit, directoryLimiter, 'Too many attempts, try again later'),
     ),
     Layer.provide(schemaErrorLayer(logger)),
   );
@@ -502,9 +467,6 @@ function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMount {
 
 // The same write budget as the blocks API: removing a contact deletes the pair and
 // touches ejabberd.
-const CONTACTS_WRITE_RATE_LIMIT_MAX = 30;
-const CONTACTS_WRITE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 interface ContactsApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -530,13 +492,7 @@ function serviceFor(deps: ContactsApiDependencies): RemoveContactDeps {
 function createContactsApi(deps: ContactsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const config = deps.config;
-  const writeLimiter =
-    deps.writeLimiter ??
-    createRateLimiter({
-      max: CONTACTS_WRITE_RATE_LIMIT_MAX,
-      windowMs: CONTACTS_WRITE_RATE_LIMIT_WINDOW_MS,
-      now: deps.now ?? Date.now,
-    });
+  const writeLimiter = deps.writeLimiter ?? limiter('contactsWrite', deps.now ?? Date.now);
   const service = serviceFor(deps);
 
   // Roster cleanup after a removal warns, never fails; the warn needs the request logger.

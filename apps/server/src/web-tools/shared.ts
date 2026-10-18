@@ -1,6 +1,6 @@
 // effect-plain: the shared state, constants and helpers for the web adapters.
 import type { ActionContext, ActionResult } from '../actions/registry';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { serverVersion } from '../version';
 import {
   guardedGet,
@@ -9,11 +9,6 @@ import {
   type PinnedFetcher,
 } from './guarded-fetch';
 import { duckduckgoUrl, parseDuckDuckGo, SEARCH_HOST, type WebSearchProvider } from './search';
-
-// A plain safety limit against runaway loops, not usage or cost tracking; the
-// window is in memory only.
-export const WEB_ACTIONS_PER_HOUR = 30;
-export const WEB_ACTION_WINDOW_MS = 60 * 60 * 1000;
 
 export const MAX_FETCH_URL_CHARS = 2048;
 export const MAX_FETCH_CHARS = 16000;
@@ -53,11 +48,7 @@ export interface WebToolsState {
 
 export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsState {
   return {
-    webLimiter: createRateLimiter({
-      max: WEB_ACTIONS_PER_HOUR,
-      windowMs: WEB_ACTION_WINDOW_MS,
-      now: deps.rateLimitNow ?? Date.now,
-    }),
+    webLimiter: limiter('webActionsPerHour', deps.rateLimitNow ?? Date.now),
     dnsLookup: deps.dnsLookup,
     fetcher: deps.fetcher,
     searchProviderName: deps.searchProviderName ?? 'duckduckgo-html',

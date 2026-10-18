@@ -5,13 +5,9 @@ import { type Logger } from 'pino';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import {
   AVATAR_MAX_BYTES,
-  AVATAR_READ_RATE_LIMIT_MAX,
-  AVATAR_READ_RATE_LIMIT_WINDOW_MS,
-  AVATAR_UPLOAD_RATE_LIMIT_MAX,
-  AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS,
   avatarOwnerKindSchema,
   checkAvatarWritePermission,
   deleteAvatar,
@@ -85,19 +81,9 @@ function decodeAvatarKind(raw: string): AvatarKind {
 export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const uploadLimiter =
-    deps.uploadLimiter ??
-    createRateLimiter({
-      max: AVATAR_UPLOAD_RATE_LIMIT_MAX,
-      windowMs: AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const uploadLimiter = deps.uploadLimiter ?? limiter('avatarUpload', now);
   // The read budget, charged per viewer in `serve`.
-  const readLimiter = createRateLimiter({
-    max: AVATAR_READ_RATE_LIMIT_MAX,
-    windowMs: AVATAR_READ_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const readLimiter = limiter('avatarRead', now);
 
   function serviceDeps(): AvatarsServiceDeps {
     return {

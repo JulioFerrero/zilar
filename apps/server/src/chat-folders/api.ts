@@ -6,7 +6,7 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config/load';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import {
   handler,
   httpErrorResponse,
@@ -24,9 +24,6 @@ import {
   updateChatFolder,
 } from './service';
 
-export const CHAT_FOLDERS_WRITE_RATE_LIMIT_MAX = 60;
-export const CHAT_FOLDERS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
 const ChatFoldersApi = HttpApi.make('chatFolders').add(ChatFoldersGroup);
 
 export interface ChatFoldersApiDependencies {
@@ -40,11 +37,7 @@ export interface ChatFoldersApiDependencies {
 export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter = createRateLimiter({
-    max: CHAT_FOLDERS_WRITE_RATE_LIMIT_MAX,
-    windowMs: CHAT_FOLDERS_WRITE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const writeLimiter = limiter('chatFoldersWrite', now);
 
   function checkWriteLimit(userId: string, requestId: string) {
     if (writeLimiter.allow(userId)) {

@@ -21,7 +21,7 @@ import {
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   allowedArchives,
   resolveChatFilter,
@@ -106,13 +106,9 @@ function toMediaItem(row: MediaItemRow, senderName: string): MediaItem {
     ...(row.linkHost === null ? {} : { linkHost: row.linkHost }),
   };
 }
-export const MEDIA_RATE_LIMIT_MAX = 30;
-export const MEDIA_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const MEDIA_DEFAULT_LIMIT = 50;
 export const MEDIA_MAX_LIMIT = 100;
 // The link-preview budget, a read route capped per user like the gallery.
-export const LINK_PREVIEW_RATE_LIMIT_MAX = 60;
-export const LINK_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const LINK_PREVIEW_MAX_URL_CHARS = 2000;
 
 export const MEDIA_TYPES = ['media', 'files', 'links', 'voice'] as const;
@@ -166,20 +162,8 @@ const MediaApi = HttpApi.make('media').add(MediaGroup, LinkPreviewGroup);
 export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const limiter =
-    deps.limiter ??
-    createRateLimiter({
-      max: MEDIA_RATE_LIMIT_MAX,
-      windowMs: MEDIA_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const linkPreviewLimiter =
-    deps.linkPreviewLimiter ??
-    createRateLimiter({
-      max: LINK_PREVIEW_RATE_LIMIT_MAX,
-      windowMs: LINK_PREVIEW_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const mediaLimiter = deps.limiter ?? limiter('media', now);
+  const linkPreviewLimiter = deps.linkPreviewLimiter ?? limiter('linkPreview', now);
 
   const groupLayer = HttpApiBuilder.group(MediaApi, 'media', (handlers) =>
     handlers.handle(
@@ -189,7 +173,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
           if (deps.archive === undefined) {
             throw new HttpError(501, 'media_unavailable', 'Media gallery is not configured');
           }
-          if (!limiter.allow(user.id)) {
+          if (!mediaLimiter.allow(user.id)) {
             throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
           }
           const decoded = Schema.decodeUnknownOption(

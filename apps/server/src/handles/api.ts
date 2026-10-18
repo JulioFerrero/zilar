@@ -7,7 +7,7 @@ import type { AuditRecorder } from '../audit/recorder';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
   handler,
@@ -26,11 +26,6 @@ import {
   handleForUser,
   reapExpiredRetiredHandles,
 } from './store';
-
-export const HANDLE_CHECK_RATE_LIMIT_MAX = 30;
-export const HANDLE_CHECK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-export const HANDLE_CLAIM_RATE_LIMIT_MAX = 10;
-export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Applied to the group so a bad decode renders the module's typed envelope.
 const renderSchemaError: SchemaErrorRender = (error) =>
@@ -62,20 +57,8 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const db = deps.db;
   const logger = deps.logger;
-  const checkLimiter =
-    deps.checkLimiter ??
-    createRateLimiter({
-      max: HANDLE_CHECK_RATE_LIMIT_MAX,
-      windowMs: HANDLE_CHECK_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const claimLimiter =
-    deps.claimLimiter ??
-    createRateLimiter({
-      max: HANDLE_CLAIM_RATE_LIMIT_MAX,
-      windowMs: HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const checkLimiter = deps.checkLimiter ?? limiter('handleCheck', now);
+  const claimLimiter = deps.claimLimiter ?? limiter('handleClaim', now);
 
   const groupLayer = HttpApiBuilder.group(HandlesApi, 'handles', (handlers) =>
     handlers

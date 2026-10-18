@@ -7,14 +7,7 @@ import type { AuditRecorder } from '../audit/recorder';
 import type { ServerConfig } from '../config/load';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { createInviteLink, listInviteLinks, revokeInviteLink } from './queries';
-import {
-  JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
-  JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
-  JOIN_RATE_LIMIT_MAX_PER_IP,
-  JOIN_RATE_LIMIT_MAX_PER_USER,
-  JOIN_RATE_LIMIT_WINDOW_MS,
-  toInvalidLink,
-} from './tokens';
+import { toInvalidLink } from './tokens';
 import { joinByInviteLink, previewInviteLink } from './join';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
@@ -29,7 +22,7 @@ import {
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { clientIpFrom } from '../http/client-ip';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 
 export interface InviteLinksApiDependencies {
   auth: Auth;
@@ -71,28 +64,10 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
     ...(deps.audit === undefined ? {} : { audit: deps.audit }),
   };
 
-  const userJoinLimiter =
-    deps.joinLimiters?.user ??
-    createRateLimiter({
-      max: JOIN_RATE_LIMIT_MAX_PER_USER,
-      windowMs: JOIN_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const ipJoinLimiter =
-    deps.joinLimiters?.ip ??
-    createRateLimiter({
-      max: JOIN_RATE_LIMIT_MAX_PER_IP,
-      windowMs: JOIN_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const userJoinLimiter = deps.joinLimiters?.user ?? limiter('joinPerUser', now);
+  const ipJoinLimiter = deps.joinLimiters?.ip ?? limiter('joinPerIp', now);
   // A generous per-user budget keeps unrated GETs from probing tokens at full speed.
-  const previewLimiter =
-    deps.joinLimiters?.preview ??
-    createRateLimiter({
-      max: JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
-      windowMs: JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const previewLimiter = deps.joinLimiters?.preview ?? limiter('joinPreviewPerUser', now);
 
   const clientIp =
     deps.getClientIp ??

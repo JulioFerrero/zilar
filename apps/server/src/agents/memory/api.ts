@@ -11,7 +11,7 @@ import { renderMemoryBlock } from './render';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { HttpError } from '../../errors';
-import { createRateLimiter } from '../../rate-limit';
+import { limiter } from '../../rate-limit';
 import { resolvePinChat } from '../../pins/access';
 import { canManageTopic } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
@@ -23,9 +23,6 @@ import {
   type EffectApiMount,
 } from '../../effect/http-core';
 import { rateLimitLayer } from '../../effect/rate-limit-middleware';
-
-export const AI_MEMORY_WRITE_RATE_LIMIT_MAX = 60;
-export const AI_MEMORY_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface AiMemoryApiDependencies {
   auth: Auth;
@@ -123,11 +120,7 @@ const AiMemoryApi = HttpApi.make('aiMemory').add(AiMemoryGroup);
 export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter = createRateLimiter({
-    max: AI_MEMORY_WRITE_RATE_LIMIT_MAX,
-    windowMs: AI_MEMORY_WRITE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const writeLimiter = limiter('aiMemoryWrite', now);
 
   const groupLayer = HttpApiBuilder.group(AiMemoryApi, 'aiMemory', (handlers) =>
     handlers

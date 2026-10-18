@@ -16,7 +16,7 @@ import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { firstIssueMessage } from '../effect/schema-issues';
-import { createRateLimiter } from '../rate-limit';
+import { limiter } from '../rate-limit';
 import {
   handler,
   mountApi,
@@ -115,11 +115,6 @@ async function sessionUserById(
   }
   return sessionUser;
 }
-export const AUTH_INVITE_RATE_LIMIT_MAX = 10;
-export const AUTH_INVITE_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-export const AUTH_ME_RATE_LIMIT_MAX = 10;
-export const AUTH_ME_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
 export interface AuthApiDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -165,16 +160,8 @@ const AuthApi = HttpApi.make('auth').add(AuthGroup, AuthInvitesPublicGroup);
 export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const inviteLimiter = createRateLimiter({
-    max: AUTH_INVITE_RATE_LIMIT_MAX,
-    windowMs: AUTH_INVITE_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
-  const meLimiter = createRateLimiter({
-    max: AUTH_ME_RATE_LIMIT_MAX,
-    windowMs: AUTH_ME_RATE_LIMIT_WINDOW_MS,
-    now,
-  });
+  const inviteLimiter = limiter('authInvite', now);
+  const meLimiter = limiter('authMe', now);
   const audit = createAuditRecorder({ db: deps.db, logger });
   const exportHandler = createExportHandler({ ...deps, audit });
 

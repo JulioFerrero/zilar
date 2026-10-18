@@ -5,8 +5,7 @@ import { ImportTelegramPayload, StickersGroup, type StickerPackDetail } from '@z
 import { handler, requestIdOf } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import { createRateLimiter } from '../rate-limit';
-import { TELEGRAM_IMPORT_RATE_LIMIT_MAX, TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS } from './routes';
+import { limiter } from '../rate-limit';
 import { addFavorite, listFavorites, removeFavorite } from './favorites';
 import { addPanelPack, removePanelPack, reorderPanelPacks } from './panel';
 import { createPack, deletePack, discoverPacks, listPanelPacks, patchPack } from './packs';
@@ -185,13 +184,7 @@ export function createStickersGroupLayer(
       const token = deps.config.TELEGRAM_BOT_TOKEN;
       return token === undefined || token === '' ? null : token;
     });
-  const telegramImportLimiter =
-    deps.importLimiter ??
-    createRateLimiter({
-      max: TELEGRAM_IMPORT_RATE_LIMIT_MAX,
-      windowMs: TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const telegramImportLimiter = deps.importLimiter ?? limiter('telegramImport', now);
 
   function serviceDeps(): StickersServiceDeps {
     return {

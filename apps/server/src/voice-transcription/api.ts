@@ -19,7 +19,7 @@ import {
   requestIdOf,
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   defaultAudioFetcher,
   defaultTranscriber,
@@ -31,10 +31,6 @@ import {
   normalizeBaseUrl,
   toInternalUploadUrl,
   voiceTranscriptUrlHash,
-  VOICE_TRANSCRIPT_RATE_LIMIT_MAX,
-  VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX,
-  VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS,
-  VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS,
   type VoiceTranscriptionRoutesDependencies,
 } from './routes';
 import {
@@ -112,20 +108,8 @@ export function createVoiceTranscriptionApi(
 ): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
-  const transcriptLimiter =
-    deps.transcriptLimiter ??
-    createRateLimiter({
-      max: VOICE_TRANSCRIPT_RATE_LIMIT_MAX,
-      windowMs: VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const settingsLimiter =
-    deps.settingsLimiter ??
-    createRateLimiter({
-      max: VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX,
-      windowMs: VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS,
-      now,
-    });
+  const transcriptLimiter = deps.transcriptLimiter ?? limiter('voiceTranscript', now);
+  const settingsLimiter = deps.settingsLimiter ?? limiter('voiceTranscriptOwner', now);
   const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
   const transcribe = deps.transcribe ?? defaultTranscriber();
   // ejabberd resolves the upload vhost from the Host header, so the internal fetch carries
