@@ -5,6 +5,7 @@ import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import type { CoreState } from './ctx';
 import { openHistory, type HistoryCtx } from './history';
+import { handleMessage } from './incoming';
 import {
   createMessageLedger,
   type LedgerSet,
@@ -13,7 +14,7 @@ import {
   type StoreMessage,
 } from './ledger';
 import { advanceStatus, moveChatToTop, sortMessages } from './rows';
-import { ANA, testCtx } from './test-ctx';
+import { ANA, NOW, TEAM, testCtx } from './test-ctx';
 
 const ME = 'me@zilar.test';
 const BOB = 'bob@zilar.test';
@@ -459,6 +460,49 @@ describe('the message ledger: one bubble per origin id', () => {
 
     expect(shown()).toHaveLength(2);
     expect(ctx.k.sameMessage('stanza-a', 'stanza-b')).toBe(false);
+  });
+});
+
+describe('the message ledger: first author wins in the id ledger (T-2000)', () => {
+  const MALLORY = 'mallory@zilar.test';
+
+  // A group stanza, the room the origin ids in the spec come from.
+  const incoming = (fields: Partial<ChatMessage> & { id: string }): ChatMessage => ({
+    kind: 'groupchat',
+    chatJid: TEAM,
+    fromJid: ANA,
+    fromResolved: true,
+    body: fields.id,
+    timestamp: NOW,
+    outgoing: false,
+    ...fields,
+  });
+
+  it('keeps another sender from linking to my stanza id, and ignores their retraction', () => {
+    const { ctx } = testCtx();
+    handleMessage(ctx, incoming({ id: 'S', originId: 'ana-origin', body: 'Ana here' }));
+    handleMessage(ctx, incoming({ id: 'S2', fromJid: MALLORY, originId: 'S', body: 'Mallory' }));
+
+    // Mallory's message is separate: it is not aliased to S, not dropped as a
+    // resend, and S keeps Ana as its author.
+    const shown = ctx.get().messagesByChat[TEAM] ?? [];
+    expect(shown.map((item) => [item.id, item.text])).toEqual([
+      ['S', 'Ana here'],
+      ['S2', 'Mallory'],
+    ]);
+    expect(ctx.k.sameMessage('S', 'S2')).toBe(false);
+    expect(ctx.k.authorFor('S')).toEqual({ jid: ANA, resolved: true });
+
+    // Mallory's retraction names S, but she is not its author: Ana keeps it.
+    handleMessage(
+      ctx,
+      incoming({ id: 'retract-1', fromJid: MALLORY, retraction: { targetId: 'S' } }),
+    );
+    const after = ctx.get().messagesByChat[TEAM] ?? [];
+    expect(after.map((item) => [item.id, item.deleted === true, item.text])).toEqual([
+      ['S', false, 'Ana here'],
+      ['S2', false, 'Mallory'],
+    ]);
   });
 });
 

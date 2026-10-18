@@ -1993,3 +1993,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1982](T-1982-revoke-ends-xmpp.md) | signing a device out ends its live XMPP sessions | 2026-10-18 |
 | [T-1999](T-1999-trust-live-sender.md) | trust only the server for who sent a message | 2026-10-18 |
 | [T-1991](T-1991-roles-approvals-edges.md) | role, approver, approval and question permission edges | 2026-10-18 |
+| [T-2000](T-2000-ledger-first-author.md) | first author wins in the message id ledger | 2026-10-18 |

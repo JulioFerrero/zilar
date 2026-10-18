@@ -4,7 +4,7 @@
 // reaction must name. Moved unchanged from `store/ledger.ts` (size split); the
 // maps themselves stay in `createMessageLedger` and arrive through `deps.maps`.
 import type { ChatSummary, EditAuthor, EditsState, ReactionsState } from '@zilar/chat-core';
-import { mergeEdits, mergeTargets } from '@zilar/chat-core';
+import { isSameAuthor, mergeEdits, mergeTargets } from '@zilar/chat-core';
 import { listFor } from './ledger-signatures';
 import type { LedgerMaps, LedgerSet, LedgerState } from './ledger-types';
 
@@ -56,9 +56,24 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
       migrateEditTargets(rootRight, rootLeft);
       migrateCardEntries(rootRight, rootLeft);
       migrateIdMap(messageOriginIds, rootRight, rootLeft);
-      migrateIdMap(messageAuthors, rootRight, rootLeft);
+      migrateAuthor(rootRight, rootLeft);
       migrateIdMap(messageBaseTexts, rootRight, rootLeft);
     }
+  }
+
+  // The first author recorded for a message wins: an origin id can name
+  // another sender's message, and linking must not hand that message over.
+  function migrateAuthor(from: string, to: string): void {
+    const value = messageAuthors.get(from);
+    if (value === undefined) {
+      return;
+    }
+    const existing = messageAuthors.get(to);
+    if (existing !== undefined && !isSameAuthor(existing, value)) {
+      return;
+    }
+    messageAuthors.set(to, value);
+    messageAuthors.set(from, value);
   }
 
   // Copies the value stored under `from` (when any) onto `to`, keeping both
@@ -203,7 +218,18 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     const key = `${chatId}|${originId}`;
     const claim = messageOriginClaims.get(key);
     if (claim === undefined) {
-      // The first message of this origin id in this chat: link its two ids.
+      // The first message of this origin id in this chat. An origin id is
+      // client-generated, so it may name another sender's message id: linking
+      // then would attach its author to this message, and a later correction
+      // or retraction could take that message over. Keep them separate.
+      const originAuthor = authorFor(originId);
+      if (
+        originAuthor !== undefined &&
+        !isSameAuthor(originAuthor, { jid: sender, resolved: true })
+      ) {
+        return;
+      }
+      // Link its two ids.
       if (originId !== messageId) {
         linkMessageIds(originId, messageId);
       }
