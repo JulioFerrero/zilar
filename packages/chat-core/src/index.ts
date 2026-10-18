@@ -45,6 +45,7 @@ export * from './new-ai';
 export * from './connection-check';
 export * from './ai-templates';
 export * from './ai-errors';
+export * from './handle-errors';
 export * from './ai-activity';
 export * from './topics';
 export * from './topic-activity';

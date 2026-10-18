@@ -128,6 +128,7 @@ class DirectoryRequestError extends Data.TaggedError('DirectoryRequestError')<{
   readonly status: number;
   readonly code: string;
   readonly message: string;
+  readonly detail: Record<string, unknown>;
 }> {}
 class DirectoryUnauthorized extends Data.TaggedError('DirectoryUnauthorized') {}
 class DirectoryInvalidResponse extends Data.TaggedError('DirectoryInvalidResponse') {}
@@ -160,10 +161,13 @@ const requestEffect = Effect.fnUntraced(function* (
 
   if (!response.ok) {
     const error = errorFieldsOf(body);
+    const rawError = isRecord(body) && isRecord(body.error) ? body.error : undefined;
+    const nextChangeAt = rawError?.nextChangeAt;
     return yield* new DirectoryRequestError({
       status: response.status,
       code: error.code ?? 'request_failed',
       message: error.message ?? `Request failed (${response.status})`,
+      detail: typeof nextChangeAt === 'string' ? { nextChangeAt } : {},
     });
   }
   return body;
@@ -216,7 +220,9 @@ export function createDirectoryApi(
           DirectoryNetworkError: () =>
             Effect.fail(new DirectoryApiError(0, 'network_error', 'Could not reach the server')),
           DirectoryRequestError: (error) =>
-            Effect.fail(new DirectoryApiError(error.status, error.code, error.message)),
+            Effect.fail(
+              new DirectoryApiError(error.status, error.code, error.message, error.detail),
+            ),
           DirectoryInvalidResponse: () =>
             Effect.fail(
               new DirectoryApiError(

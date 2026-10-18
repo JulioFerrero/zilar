@@ -1,3 +1,4 @@
+import { handleSaveMessage } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
@@ -184,20 +185,18 @@ function friendlyError(error: ClaimFailure): string {
       return 'Choose a username';
     case 'SaveFailed':
       return 'Could not save your username. Try again.';
-    case 'ApiFailure':
-      switch (error.code) {
-        case 'handle_invalid':
-          return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-        case 'handle_reserved':
-          return 'That username is reserved. Try another.';
-        case 'handle_taken':
-          return 'That username was just taken. Try another.';
-        case 'handle_change_too_soon':
-          return error.message;
-        case 'rate_limited':
-          return 'Too many tries — wait a little and try again.';
-        default:
-          return error.message;
-      }
+    case 'ApiFailure': {
+      const next = error.detail.nextChangeAt;
+      return (
+        handleSaveMessage(
+          {
+            code: error.code,
+            message: error.message,
+            nextChangeAt: typeof next === 'string' ? next : undefined,
+          },
+          'username',
+        ) ?? error.message
+      );
+    }
   }
 }

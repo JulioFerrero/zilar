@@ -6,7 +6,7 @@
  * suggestion builder (the same rules as web's `suggestHandleFor`).
  */
 
-import { parseUrl } from '@zilar/chat-core';
+import { handleSaveMessage, parseUrl } from '@zilar/chat-core';
 
 import { ProfileApiError } from '../../lib/profile-api';
 
@@ -72,29 +72,12 @@ export function reasonText(reason: HandleAvailabilityReason | undefined): string
 /** The claim failure in plain words, mirroring web's `friendlyError`. */
 export function friendlyClaimError(error: unknown): string {
   if (error instanceof ProfileApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That username is reserved. Try another.';
-      case 'handle_taken':
-        return 'That username was just taken. Try another.';
-      case 'handle_change_too_soon': {
-        // The server sends the next-change date as `nextChangeAt` in the
-        // 409 error body; the message is only the fallback.
-        if (error.nextChangeAt !== undefined) {
-          const date = new Date(error.nextChangeAt);
-          if (!Number.isNaN(date.getTime())) {
-            return `Next change possible on ${date.toLocaleDateString()}`;
-          }
-        }
-        return error.message;
-      }
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
+    return (
+      handleSaveMessage(
+        { code: error.code, message: error.message, nextChangeAt: error.nextChangeAt },
+        'username',
+      ) ?? error.message
+    );
   }
   return 'Could not save your username. Try again.';
 }

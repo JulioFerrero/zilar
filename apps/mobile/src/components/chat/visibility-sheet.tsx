@@ -1,3 +1,4 @@
+import { handleSaveMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -36,24 +37,23 @@ export function visibilityReasonText(reason: string | undefined): string {
 
 export function visibilitySaveError(error: unknown): string {
   if (error instanceof DirectoryApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That handle is reserved. Try another.';
-      case 'handle_taken':
-        return 'That handle was just taken. Try another.';
-      case 'handle_change_too_soon':
-        return 'That handle changed recently. Try again later.';
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      case 'not_found':
-        return 'That group is no longer available.';
-      default:
-        break;
+    if (error.code === 'not_found') {
+      return 'That group is no longer available.';
     }
     if (error.status === 0 || error.code === 'network_error') {
       return 'Could not reach the server. Check your connection and try again.';
+    }
+    const next = error.detail.nextChangeAt;
+    const message = handleSaveMessage(
+      {
+        code: error.code,
+        message: error.message,
+        nextChangeAt: typeof next === 'string' ? next : undefined,
+      },
+      'handle',
+    );
+    if (message !== undefined) {
+      return message;
     }
   }
   return 'Could not save the visibility. Try again.';

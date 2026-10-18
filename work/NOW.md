@@ -1031,11 +1031,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - **Found:** `files/routes.test.ts`'s "404 for a retracted row" fails on main.
                         - **Cause:** the fixture's retract has no `from` (since T-1994).
                         - **Fix:** T-2058's fix round, which adds a foreign-retract case. The merge gate refuses T-2058 until then.
-                      - **Running at 19:36:**
+                      - **Julio, 19:35:** "I don't see that we reduce code" on the code map.
+                        - **Measured:** source lines went from 270,536 (10-17) to 274,479 now. Today's reduce tasks cut 1,970, but 70 other merges added 5,110.
+                        - **His choice:** a Claude big-cut audit (server, phone, web). Three read-only auditors are running. The plan goes to `docs/audit/big-cut-plan.md`, then worker waves. User-visible removals need his OK.
+                      - **Merged:** T-2066 twin logic (−57; web Steps panel and computer choices checked), T-2062.
+                      - **Running at 19:55:**
                         - T-2058: the fixture fix round;
-                        - T-2066: twin logic (steps, invite code, computer choices);
-                        - T-2067: one handle-error wording. It fixes phone and `HandlePage` drift.
-                        - T-2068: server clones 4.
+                        - T-2067: handle wording. Its fix round keeps `nextChangeAt` in the phone directory-api.
+                        - T-2068: server clones 4;
+                        - T-2069: web mute toggle ×5.
                       - **Next:**
                         - W3-f: locals and `finishDraftTurn`;
                         - the phone member-handle fallback for person links;

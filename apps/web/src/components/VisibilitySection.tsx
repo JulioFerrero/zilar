@@ -1,3 +1,4 @@
+import { handleSaveMessage } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
@@ -259,26 +260,15 @@ function friendlyError(error: ApiFailure | StoreFailed): string {
   if (error.code === 'unknown_error') {
     return 'Could not save the visibility. Try again.';
   }
-  switch (error.code) {
-    case 'handle_invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'handle_reserved':
-      return 'That handle is reserved. Try another.';
-    case 'handle_taken':
-      return 'That handle was just taken. Try another.';
-    case 'handle_change_too_soon': {
-      const next = error.detail.nextChangeAt;
-      if (typeof next === 'string' && next !== '') {
-        const date = new Date(next);
-        if (!Number.isNaN(date.getTime())) {
-          return `Next change possible on ${date.toLocaleDateString()}`;
-        }
-      }
-      return error.message;
-    }
-    case 'rate_limited':
-      return 'Too many tries — wait a little and try again.';
-    default:
-      return error.message;
-  }
+  const next = error.detail.nextChangeAt;
+  return (
+    handleSaveMessage(
+      {
+        code: error.code,
+        message: error.message,
+        nextChangeAt: typeof next === 'string' ? next : undefined,
+      },
+      'handle',
+    ) ?? error.message
+  );
 }
