@@ -940,6 +940,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                       - APKs are in `tmp/apks/`. Next: measure W3a (T-2018, merged), W3b (T-2022, running), then W4 (row leaves, after T-2001).
                     - **Share plan wave 1:** merged T-2019 (message cache; phone `editedAt` fix) and T-2021 (smooth text, −77 lines). T-2020 (drafts) was sent back for being +45 lines.
                     - **Julio's 4 share decisions:** memory `decisions-1018-share`.
+                    - **Live since 17:46:** `d8523011e`, with 0 server errors.
+                      - **Includes:**
+                        - T-2014: server room senders come from `bare_peer`;
+                        - T-2024, T-2029, T-2028, T-2030, T-2023 and T-2020: shared code.
+                      - **Read-only checks in Julio's browser:**
+                        - `/api/search`: 30 group hits, all with real names (Claude Test, Deepseek, Julio);
+                        - `/api/media` for 2 rooms: 200, with real names.
+                      - **Not yet checked live:** an AI progress card update, and the topic join preview.
                     - **Deploy fixed at 17:17:** `0486d505f` is live, with 0 server errors and room reconcile 5/0.
                       - **What broke:** the 16:11 build of `6ab3d50f0` failed because T-2016 had removed `@xmpp/client`.
                       - **The fix:** T-2025 restored it, and the gate now builds the server bundle.
