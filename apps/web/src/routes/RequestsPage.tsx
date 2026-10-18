@@ -12,6 +12,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
@@ -125,8 +126,16 @@ function ContactRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+      <EntityAvatar
+        person={{
+          id: request.other.userId,
+          name: request.other.name,
+          avatarUrl: request.other.image ?? undefined,
+        }}
+        size={36}
+      />
       <span className="min-w-0 flex-1 basis-40 text-[14px]">
-        <span className="block truncate text-[15px] font-medium">
+        <span className="block truncate text-[14px] font-medium">
           {request.other.name}{' '}
           {request.other.handle !== null && (
             <span className="font-normal text-muted-foreground">@{request.other.handle}</span>
