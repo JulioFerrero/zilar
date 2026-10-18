@@ -144,6 +144,8 @@ EXPO_PUBLIC_ZILAR_API_URL=https://<domain> NODE_ENV=production \
 xcrun devicectl device install app --device <coredevice-id> <dir>/Build/Products/Release-iphoneos/Zilar.app
 ```
 
+Set `ZILAR_VERSION_NAME=<x.y.z> ZILAR_VERSION_CODE=<n>` on both the `expo prebuild` and the `xcodebuild` lines, as the Android release workflow does. Without them the app reports `app.json`'s 0.1.0.
+
 Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140-…`), `devicectl` wants the CoreDevice id (a UUID); `expo prebuild --no-install` skips CocoaPods, so run `pod install`; the Whistle transcription module is Android only and does nothing on iOS.
 
 ## 9. Auto-deploy from main
