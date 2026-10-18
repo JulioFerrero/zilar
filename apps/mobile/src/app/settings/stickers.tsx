@@ -154,7 +154,6 @@ function StickersBody() {
   return (
     <SettingsScreenShell
       title="Stickers"
-      largeTitle
       onBack={() => router.back()}
       right={
         <IconButton label="New pack" onPress={() => router.push('/settings/sticker-pack')}>

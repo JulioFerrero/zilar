@@ -1,8 +1,7 @@
-import { ChevronLeft, Plus } from 'lucide-react-native';
-import { View } from 'react-native';
+import { Plus } from 'lucide-react-native';
 
 import { IconButton } from '@/components/ui/icon-button';
-import { Text } from '@/components/ui/text';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { ICON } from '@/lib/colors';
 
 /**
@@ -19,20 +18,17 @@ export function MachinesHeader({
   showAdd: boolean;
 }) {
   return (
-    <View className="px-4">
-      <View className="-mx-2 flex-row items-center justify-between py-2">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        {showAdd ? (
+    <ScreenHeader
+      variant="sub"
+      title="Machines"
+      onBack={onBack}
+      right={
+        showAdd ? (
           <IconButton label="Add machine" onPress={onAdd}>
             <Plus size={22} color={ICON} />
           </IconButton>
-        ) : null}
-      </View>
-      <Text className="mb-4 mt-1 text-[28px] font-semibold leading-8 text-foreground">
-        Machines
-      </Text>
-    </View>
+        ) : undefined
+      }
+    />
   );
 }

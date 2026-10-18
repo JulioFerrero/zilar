@@ -11,8 +11,6 @@ type SettingsScreenShellProps = {
   onBack?: (() => void) | undefined;
   /** A header action, e.g. the profile screen's save state. */
   right?: ReactNode;
-  // T-1948: every sub screen now has the large title.
-  largeTitle?: boolean;
   children: ReactNode;
 };
 

@@ -2,15 +2,7 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ChevronLeft,
-  Copy,
-  Globe,
-  Link as LinkIcon,
-  Plus,
-  Share2,
-  Sticker,
-} from 'lucide-react-native';
+import { Copy, Globe, Link as LinkIcon, Plus, Share2, Sticker } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, Share, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +12,7 @@ import { favoriteTileSize, packCountLabel } from '@/components/stickers/tile-siz
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
@@ -154,16 +147,19 @@ function StickerPackLinkBody() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center justify-between px-4 py-2">
-        <IconButton label="Back" onPress={() => goBackOrHome(router)}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        {pack !== undefined ? (
-          <IconButton label={`Share ${pack.title}`} onPress={() => share()}>
-            <Share2 size={20} color={ICON} />
-          </IconButton>
-        ) : null}
-      </View>
+      <ScreenHeader
+        variant="sub"
+        bare
+        title={pack?.title ?? ''}
+        onBack={() => goBackOrHome(router)}
+        right={
+          pack !== undefined ? (
+            <IconButton label={`Share ${pack.title}`} onPress={() => share()}>
+              <Share2 size={20} color={ICON} />
+            </IconButton>
+          ) : undefined
+        }
+      />
 
       {loading ? <StateMessage kind="loading" title="Loading…" /> : null}
 

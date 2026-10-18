@@ -46,7 +46,6 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
   return (
     <SettingsScreenShell
       title={editor.packId === undefined ? 'New pack' : 'Edit pack'}
-      largeTitle
       onBack={editor.onBack}
     >
       {editor.status === 'loading' ? <StateMessage kind="loading" title="Loading pack…" /> : null}
