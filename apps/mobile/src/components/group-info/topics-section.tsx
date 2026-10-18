@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 import { AvatarStack } from '@/components/group-info/avatar-stack';
 import { InfoRowGroup } from '@/components/group-info/info-row';
 import { Button } from '@/components/ui/button';
+import { SectionLabel } from '@/components/ui/card';
 import { IconTile } from '@/components/ui/icon-tile';
 import { Text } from '@/components/ui/text';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
@@ -264,7 +265,7 @@ export function TopicsSection({
     <>
       {your.length > 0 ? (
         <View className="gap-2">
-          <Text className="px-1 text-[13px] font-semibold text-muted-foreground">Your topics</Text>
+          <SectionLabel>Your topics</SectionLabel>
           <InfoRowGroup>
             {your.map((chat) => (
               <YourTopicRow
@@ -282,7 +283,7 @@ export function TopicsSection({
 
       {other.length > 0 ? (
         <View className="gap-2">
-          <Text className="px-1 text-[13px] font-semibold text-muted-foreground">Other topics</Text>
+          <SectionLabel>Other topics</SectionLabel>
           <InfoRowGroup>
             {other.map((chat) => (
               <OtherTopicRow

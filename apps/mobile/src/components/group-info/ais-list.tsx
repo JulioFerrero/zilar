@@ -7,6 +7,7 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
+import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -64,7 +65,7 @@ export function GroupAisList({ groupId, ais, isManager }: GroupAisListProps) {
   return (
     <View className="gap-2 px-4">
       <View className="flex-row items-center justify-between px-1">
-        <Text className="text-[13px] font-semibold text-muted-foreground">AIs</Text>
+        <SectionLabel>AIs</SectionLabel>
         <Text className="font-mono text-[13px] text-muted-foreground">{ais.length}</Text>
       </View>
 

@@ -1,4 +1,4 @@
-import { ChevronLeft, Crown, MoreVertical, Shield } from 'lucide-react-native';
+import { Crown, MoreVertical, Shield } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { InfoRowGroup } from '@/components/group-info/info-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import type { GroupRole } from '@/lib/chat-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
@@ -74,14 +75,7 @@ export function ChannelPeoplePage({
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="h-14 flex-row items-center gap-2 px-3">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={18} color={ICON} />
-        </IconButton>
-        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
-          Subscribers
-        </Text>
-      </View>
+      <ScreenHeader variant="sub" title="Subscribers" onBack={onBack} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="px-4 pb-3">
