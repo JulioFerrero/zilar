@@ -13,6 +13,12 @@ export type { ActionControls, ActionMode, ActionState, UseActionOptions } from '
 export { makeUseQuery } from './use-query';
 export { useSmoothText } from './use-smooth-text';
 export {
+  readMinClientProtocol,
+  useClientVersionCheck,
+  useContactRequestsPoll,
+  type OnForeground,
+} from './foreground-hooks';
+export {
   isLocalPreviewUrl,
   useMediaRetry,
   MEDIA_RETRY_DELAYS_MS,
