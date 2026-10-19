@@ -1,4 +1,4 @@
-import { canDeleteMessage, type ChatSummary, type UiMessage } from '@zilar/chat-core';
+import { deleteActionFor, type ChatSummary, type UiMessage } from '@zilar/chat-core';
 import { useEffect, useMemo, useState } from 'react';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from './ui/button';
@@ -7,21 +7,6 @@ import { copyText } from '@/lib/clipboard';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const EMPTY_MESSAGES: UiMessage[] = [];
-
-/** Which delete action one selected message allows, mirroring MessageMenu. */
-function deleteActionFor(
-  message: UiMessage,
-  meId: string,
-  isDm: boolean,
-): 'everyone' | 'me' | 'none' {
-  if (message.status === 'sending') {
-    return 'none';
-  }
-  if (canDeleteMessage(message, meId)) {
-    return 'everyone';
-  }
-  return isDm && message.deleted !== true ? 'me' : 'none';
-}
 
 export function SelectionBar({
   chat,

@@ -1,4 +1,5 @@
 import type { Attachment } from '@zilar/protocol';
+import { isGifVideoName, isLoadableMediaUrl } from '@zilar/chat-core';
 import { Effect, Fiber } from 'effect';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Video, Play } from 'lucide-react-native';
@@ -11,7 +12,6 @@ import { isApiOriginUrl, mediaUrl } from '@/lib/attachment-common';
 import { getSessionToken } from '@/lib/session-token';
 import { ICON } from '@/lib/colors';
 
-import { isLoadableMediaUrl } from './attachment-message';
 import { UploadFailed, UploadOverlay, type MediaUploadProps } from './media-shared';
 import { LONG_PRESS_MS } from './message-bubble-decor';
 import { useOpenMessageMenu } from './message-menu-context';
@@ -68,7 +68,7 @@ export function AttachmentVideo({
       Effect.runSync(Fiber.interrupt(fiber));
     };
   }, [needsToken, uri]);
-  const gif = isGifOrigin(attachment);
+  const gif = isGifVideoName(attachment);
   const player = useVideoPlayer(
     // The native player is built once per source; an API-origin URL waits for the
     // token so the first request already carries the bearer.
@@ -181,16 +181,6 @@ export function AttachmentVideo({
       ) : null}
     </View>
   );
-}
-
-function isGifOrigin(attachment: Attachment): boolean {
-  if (attachment.kind !== 'file') {
-    return false;
-  }
-  if (attachment.mime !== 'video/mp4' && attachment.mime !== 'video/webm') {
-    return false;
-  }
-  return attachment.name.startsWith('gif-');
 }
 
 function VideoFullscreen({

@@ -1,5 +1,6 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
-import { createContext, useContext, type MouseEvent, type ReactNode } from 'react';
+import { useAlbumMembers } from '@zilar/client-core';
+import { type MouseEvent } from 'react';
 import { useMediaRetry } from '@/lib/media-retry';
 import { cn } from '@/lib/utils';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -10,22 +11,6 @@ interface AlbumPhoto {
   messageId: string;
   url: string;
   alt: string;
-}
-
-const AlbumMembersContext = createContext<readonly UiMessage[] | null>(null);
-
-export function useAlbumMembers(): readonly UiMessage[] | null {
-  return useContext(AlbumMembersContext);
-}
-
-export function AlbumMembersProvider({
-  messages,
-  children,
-}: {
-  messages: readonly UiMessage[] | null;
-  children: ReactNode;
-}) {
-  return <AlbumMembersContext.Provider value={messages}>{children}</AlbumMembersContext.Provider>;
 }
 
 /**

@@ -23,8 +23,9 @@ import { mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
 import {
   canAct,
-  canDeleteMessage,
+  deleteActionFor,
   isMentionOfMe,
+  jidLocalpart,
   mentionInTopic,
   type MentionMember,
   type UiMessage,
@@ -318,20 +319,6 @@ function SelectionDeleteConfirm({
 
 const EMPTY_MESSAGES: UiMessage[] = [];
 
-function deleteActionFor(
-  message: UiMessage,
-  meId: string,
-  isDm: boolean,
-): 'everyone' | 'me' | 'none' {
-  if (message.status === 'sending') {
-    return 'none';
-  }
-  if (canDeleteMessage(message, meId)) {
-    return 'everyone';
-  }
-  return isDm && message.deleted !== true ? 'me' : 'none';
-}
-
 // The bar shown while several messages are selected: "N selected", Cancel, Delete, Copy and Forward. Delete and Copy follow the single-message rules; Android back leaves select mode, or closes the open confirm.
 function SelectionBar({
   chat,
@@ -473,11 +460,6 @@ function makeMockGifs(): GifsApi {
     return makeGifsApi(apiCall(transport), transport);
   }
   throw new Error('The mock API is not part of this build');
-}
-
-function jidLocalpart(jid: string): string {
-  const at = jid.indexOf('@');
-  return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
 }
 
 export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProps) {

@@ -1,4 +1,4 @@
-import { formatFileSize } from '@zilar/chat-core';
+import { fileExtension, formatFileSize } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
 import { ArrowDown, FileText, RotateCcw } from 'lucide-react-native';
 import { useState } from 'react';
@@ -112,14 +112,6 @@ export function AttachmentFileRow({
 }
 
 function sizeTypeOf(attachment: Attachment): string {
-  const extension = extensionOf(attachment.name);
+  const extension = fileExtension(attachment.name);
   return [formatFileSize(attachment.size), extension].filter((part) => part !== '').join(' ');
-}
-
-function extensionOf(name: string): string {
-  const dot = name.lastIndexOf('.');
-  if (dot <= 0 || dot === name.length - 1) {
-    return '';
-  }
-  return name.slice(dot + 1).toUpperCase();
 }

@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useContactRequestsPoll } from '@zilar/client-core';
+import { withoutId } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { onForeground } from '@/lib/foreground';
 
@@ -35,12 +36,6 @@ const UNDO_MS = 5000;
 
 const ACCEPT_FAILED = 'Could not accept that request. Try again.';
 const DECLINE_FAILED = 'Could not decline that request. Try again.';
-
-function without(id: string, ids: ReadonlySet<string>): ReadonlySet<string> {
-  const next = new Set(ids);
-  next.delete(id);
-  return next;
-}
 
 export function RequestRows({ isWide }: { isWide: boolean }) {
   const activeFolderId = useChatSelector((s) => s.activeFolder);
@@ -110,7 +105,7 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
     void declineContactRequest(request.id)
       .then(() => reload())
       .catch(() => {
-        setHidden((ids) => without(request.id, ids));
+        setHidden((ids) => withoutId(request.id, ids));
         setError(DECLINE_FAILED);
       });
   };
@@ -141,7 +136,7 @@ export function RequestRows({ isWide }: { isWide: boolean }) {
     pendingRef.current = undefined;
     setPendingDecline(undefined);
     if (request !== undefined) {
-      setHidden((ids) => without(request.id, ids));
+      setHidden((ids) => withoutId(request.id, ids));
     }
   };
 

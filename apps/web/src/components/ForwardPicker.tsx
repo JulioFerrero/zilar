@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import { canPostTo, targetLabel, type UiMessage } from '@zilar/chat-core';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { EntityAvatar } from './EntityAvatar';
 import { Button } from './ui/button';
@@ -7,20 +7,6 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { SearchField } from './ui/search-field';
 import { TextArea } from './ui/text-input';
-
-function targetLabel(chat: ChatSummary): string {
-  return chat.topic !== undefined && chat.groupTitle !== undefined
-    ? `${chat.groupTitle} › ${chat.title}`
-    : chat.title;
-}
-
-/** A channel is offered only where the caller may post; an unknown role has no voice. */
-function canPostTo(chat: ChatSummary): boolean {
-  if (chat.chatKind !== 'channel') {
-    return true;
-  }
-  return chat.myRole === 'owner' || chat.myRole === 'admin';
-}
 
 /** Picks one or more targets; archived chats and non-postable channels are never offered. */
 export function ForwardPicker({

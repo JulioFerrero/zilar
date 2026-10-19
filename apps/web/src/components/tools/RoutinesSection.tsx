@@ -9,7 +9,12 @@ import {
   resumeRoutine,
   type Routine,
 } from '@/lib/tools';
-import { describeRoutineSchedule, pausedReasonText } from '@zilar/chat-core';
+import {
+  describeRoutineSchedule,
+  pausedReasonText,
+  routineLastText,
+  routineStatusText,
+} from '@zilar/chat-core';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -24,26 +29,8 @@ interface Notice {
   readonly hint: string;
 }
 
-function statusText(routine: Routine): string {
-  if (routine.status === 'needs_approval') {
-    return 'needs approval';
-  }
-  if (routine.status === 'paused') {
-    return 'paused';
-  }
-  return 'active';
-}
-
 function nextRunText(routine: Routine): string {
   return `next ${new Date(routine.nextRunAt).toLocaleString()}`;
-}
-
-function lastStatusText(routine: Routine): string {
-  if (routine.lastStatus === null) {
-    return 'never run';
-  }
-  const at = routine.lastRunAt === null ? '' : ` · ${new Date(routine.lastRunAt).toLocaleString()}`;
-  return `last ${routine.lastStatus}${at}`;
 }
 
 /**
@@ -238,10 +225,11 @@ function RoutineRow({
           <p className="truncate text-[14px] font-medium">{current.title}</p>
           <p className="truncate text-[12px] text-muted-foreground">
             {describeRoutineSchedule(current.schedule)} · runs{' '}
-            {current.kind === 'prompt' ? 'a prompt' : current.toolName} · {statusText(current)}
+            {current.kind === 'prompt' ? 'a prompt' : current.toolName} ·{' '}
+            {routineStatusText(current)}
           </p>
           <p className="truncate text-[12px] text-muted-foreground">
-            {nextRunText(current)} · {lastStatusText(current)}
+            {nextRunText(current)} · {routineLastText(current)}
           </p>
           {explanation !== null && (
             <p className="text-[12px] text-muted-foreground">{explanation}</p>

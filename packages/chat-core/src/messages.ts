@@ -1,5 +1,7 @@
+import { canDeleteMessage } from './edits';
 import { formatDuration } from './format';
-import type { RenderItem, ReplyRef, UiMessage } from './types';
+import { splitLinks } from './links';
+import type { ChatSummary, RenderItem, ReplyRef, UiMessage, UiReaction } from './types';
 
 export const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
@@ -329,4 +331,63 @@ export function unreadDividerIndex(
     return null;
   }
   return positions[earliestOther] ?? null;
+}
+
+// Only https is unfurled (the server refuses anything else); a message that
+// already carries an image or attachment has no link card.
+export function previewUrl(message: UiMessage, text: string): string | undefined {
+  if (message.image !== undefined || message.attachment !== undefined) {
+    return undefined;
+  }
+  for (const segment of splitLinks(text)) {
+    if (segment.kind === 'link' && segment.href.startsWith('https://')) {
+      return segment.href;
+    }
+  }
+  return undefined;
+}
+
+export function chipLabel(reaction: UiReaction): string {
+  return reaction.mine
+    ? `${reaction.emoji} ${reaction.count}, including you`
+    : `${reaction.emoji} ${reaction.count}`;
+}
+
+/** Which delete action one selected message allows, mirroring MessageMenu. */
+export function deleteActionFor(
+  message: UiMessage,
+  meId: string,
+  isDm: boolean,
+): 'everyone' | 'me' | 'none' {
+  if (message.status === 'sending') {
+    return 'none';
+  }
+  if (canDeleteMessage(message, meId)) {
+    return 'everyone';
+  }
+  return isDm && message.deleted !== true ? 'me' : 'none';
+}
+
+/** A channel row is offered only where the caller may post; a plain member or an unknown role has no voice in the feed room. */
+export function canPostTo(chat: ChatSummary): boolean {
+  if (chat.chatKind !== 'channel') {
+    return true;
+  }
+  return chat.myRole === 'owner' || chat.myRole === 'admin';
+}
+
+export function withoutId(id: string, ids: ReadonlySet<string>): ReadonlySet<string> {
+  const next = new Set(ids);
+  next.delete(id);
+  return next;
+}
+
+export function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
+  const next = new Set(keys);
+  if (on) {
+    next.add(key);
+  } else {
+    next.delete(key);
+  }
+  return next;
 }

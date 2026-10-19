@@ -33,7 +33,13 @@ import { ACCENT, DANGER, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { bubbleStyle } from '@/lib/depth';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { answeredOption, formatClock, isQuestionAnswer, routineCardTitle } from '@zilar/chat-core';
+import {
+  answeredOption,
+  elapsedFor,
+  formatClock,
+  isQuestionAnswer,
+  routineCardTitle,
+} from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -364,22 +370,6 @@ function DecidedIcon({ status }: { status: ApprovalStatus }) {
 /** A card without a terminal state is still working. */
 function isLive(state: Progress['state']): boolean {
   return state === undefined || state === 'working';
-}
-
-// The elapsed time: from `started_at` to now while working, so it ticks; the frozen `elapsed_ms` once over.
-function elapsedFor(progress: Progress, now: number): number | undefined {
-  const parsed = progress.started_at === undefined ? undefined : Date.parse(progress.started_at);
-  const started = parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined;
-  if (isLive(progress.state)) {
-    if (started !== undefined) {
-      return Math.max(0, now - started);
-    }
-    return progress.elapsed_ms;
-  }
-  if (progress.elapsed_ms !== undefined) {
-    return progress.elapsed_ms;
-  }
-  return started === undefined ? undefined : Math.max(0, now - started);
 }
 
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {

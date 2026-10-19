@@ -6,6 +6,7 @@ import { ChatList } from '@/components/chat/chat-list';
 import { ChatPeopleResults, ChatSearchResults } from '@/components/chat/chat-search-results';
 import { NewChatButton } from '@/components/chat/new-chat-button';
 import { interruptFiber, peopleHandleFor, useDelayed } from '@zilar/client-core';
+import { withKey } from '@zilar/chat-core';
 import { Effect, type Fiber } from 'effect';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
@@ -27,16 +28,6 @@ import { ChatActionsSheet } from '@/components/chat/chat-actions-sheet';
 // How long a failed swipe keeps its line above the chat list.
 const SWIPE_ERROR_MS = 4000;
 const DELETE_ERROR = 'Could not delete. Try again.';
-
-function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
-  const next = new Set(keys);
-  if (on) {
-    next.add(key);
-  } else {
-    next.delete(key);
-  }
-  return next;
-}
 
 // The chats screen's header: the title and search well when search is closed, the autofocused field with Cancel when open. The screen owns the search state.
 function SearchHeader({

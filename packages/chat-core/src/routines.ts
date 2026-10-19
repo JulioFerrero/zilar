@@ -118,3 +118,49 @@ export function truncateOutput(output: string): { preview: string; truncated: bo
   }
   return { preview: `${output.slice(0, MAX_OUTPUT_PREVIEW_CHARS)}…`, truncated: true };
 }
+
+export function routineStatusText(routine: {
+  status: 'active' | 'paused' | 'needs_approval';
+}): string {
+  if (routine.status === 'needs_approval') {
+    return 'needs approval';
+  }
+  if (routine.status === 'paused') {
+    return 'paused';
+  }
+  return 'active';
+}
+
+export function routineLastText(routine: {
+  lastStatus: 'ok' | 'error' | 'skipped' | null;
+  lastRunAt: string | null;
+}): string {
+  if (routine.lastStatus === null) {
+    return 'never run';
+  }
+  const at = routine.lastRunAt === null ? '' : ` · ${new Date(routine.lastRunAt).toLocaleString()}`;
+  return `last ${routine.lastStatus}${at}`;
+}
+
+export function toolLastRunText(tool: {
+  updatedAt: string;
+  lastRunStatus: 'ok' | 'error' | null;
+}): string {
+  const at = new Date(tool.updatedAt);
+  const status = tool.lastRunStatus === null ? 'never run' : `last run ${tool.lastRunStatus}`;
+  return `${status} · ${at.toLocaleDateString()}`;
+}
+
+/** A run's status line, e.g. `ok · v3 · manual · 120 ms · <date>`. */
+export function runStatusText(run: {
+  createdAt: string;
+  status: 'ok' | 'error';
+  errorKind: string | null;
+  version: number;
+  trigger: 'manual' | 'routine' | 'ai';
+  durationMs: number;
+}): string {
+  const at = new Date(run.createdAt);
+  const label = run.status === 'ok' ? 'ok' : `error (${run.errorKind ?? 'failed'})`;
+  return `${label} · v${run.version} · ${run.trigger} · ${run.durationMs} ms · ${at.toLocaleString()}`;
+}

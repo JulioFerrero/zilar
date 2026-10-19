@@ -12,6 +12,7 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
   canEditMessage,
   composerPlaceholder,
+  jidLocalpart,
   mentionInTopic,
   type ReplyRef,
   type UiMention,
@@ -91,11 +92,6 @@ interface TopicNotIn {
   kind: 'person' | 'ai';
   id: string;
   avatarUrl?: string;
-}
-
-function jidLocalpart(jid: string): string {
-  const at = jid.indexOf('@');
-  return (at === -1 ? jid : jid.slice(0, at)).toLowerCase();
 }
 
 type TopicNotInState = 'idle' | 'busy' | 'failed';

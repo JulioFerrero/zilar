@@ -1,5 +1,5 @@
 // effect-plain: a presentational control; the block card owns the request.
-import { formatTime } from '@zilar/chat-core';
+import { chosenAnswer, formatTime, type ChoiceAnswer as Answer } from '@zilar/chat-core';
 import type { ButtonsBlock as ButtonsBlockData } from '@zilar/protocol';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
@@ -18,30 +18,6 @@ const KEY_DARK_STYLE = {
   background: 'linear-gradient(180deg,#1c1c1c,#121212)',
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
 };
-
-type Answer = {
-  actionId?: string;
-  label: string;
-  at: Date;
-  by?: string | undefined;
-  mine: boolean;
-};
-
-function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
-  const chosen = block.chosen;
-  const action =
-    chosen === undefined ? undefined : block.actions.find((item) => item.id === chosen.actionId);
-  if (chosen === undefined || action === undefined) {
-    return undefined;
-  }
-  return {
-    actionId: action.id,
-    label: action.label,
-    at: new Date(chosen.at),
-    by: chosen.by,
-    mine: false,
-  };
-}
 
 export function ButtonsBlock({
   block,

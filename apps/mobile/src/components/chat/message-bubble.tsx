@@ -1,6 +1,7 @@
 import {
   canDeleteMessage,
   canEditMessage,
+  chipLabel,
   isBigEmoji,
   QUICK_REACTIONS,
   UiMessage,
@@ -13,7 +14,6 @@ import { senderAvatarUrl } from '@zilar/client-core/store';
 import { memo, useState, useMemo, type ReactNode, useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import { useAlbumMembers } from '@/components/chat/album-members';
 import { useChatRowFacts } from '@/components/chat/chat-row-facts';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { openMessageMenu } from '@/components/chat/message-bubble-actions';
@@ -42,15 +42,14 @@ import { WELL_BACKGROUND, bubbleStyle, raisedPill } from '@/lib/depth';
 import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-import { Effect } from 'effect';
-import * as Haptics from 'expo-haptics';
+import { tap as tapHaptic } from './haptics';
 import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-handler';
 import { Text } from '@/components/ui/text';
 import { type ActiveSource, useSmoothText } from '@/lib/use-smooth-text';
 import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
 import { ArrowRight } from 'lucide-react-native';
 import type { Contact } from '@/lib/chat-api';
-import { interruptFiber, runLater } from '@zilar/client-core';
+import { interruptFiber, runLater, useAlbumMembers } from '@zilar/client-core';
 
 /** How long the "who reacted" line stays under the chips. */
 const REACTORS_VISIBLE_MS = 3000;
@@ -59,12 +58,6 @@ interface ReactionChipsProps {
   reactions: UiReaction[];
   outgoing: boolean;
   onToggle?: (emoji: string) => void;
-}
-
-function chipLabel(reaction: UiReaction): string {
-  return reaction.mine
-    ? `${reaction.emoji} ${reaction.count}, including you`
-    : `${reaction.emoji} ${reaction.count}`;
 }
 
 // The raised reaction pills under a bubble. Mine use a brighter accent. With `onToggle` a chip is a toggle: tapping one I already reacted with clears it.
@@ -289,14 +282,6 @@ function MessageTombstone({
   );
 }
 
-function lightHaptic(): void {
-  Effect.runFork(
-    Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
-      Effect.ignore,
-    ),
-  );
-}
-
 type BubbleGestureProps = {
   message: UiMessage;
   onReact?: ((message: UiMessage, emoji: string) => void) | undefined;
@@ -322,7 +307,7 @@ function BubbleGesture({
       .enabled(canReact)
       .runOnJS(true)
       .onEnd(() => {
-        lightHaptic();
+        tapHaptic();
         onReact?.(message, QUICK_REACTIONS[0]);
       });
     return rowPan === null ? tap : tap.simultaneousWithExternalGesture(rowPan);

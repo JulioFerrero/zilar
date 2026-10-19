@@ -1,10 +1,10 @@
 import { CircleCheck, Search } from 'lucide-react-native';
-import { Children, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { aiOwnerLabel } from '@/components/chat/topic-info-sheet';
+import { aiOwnerLabel, InfoGroup } from '@/components/chat/topic-info-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
@@ -25,19 +25,6 @@ function SectionLabel({ label }: { label: string }) {
     <Text className="px-1 font-mono text-[11px] tracking-[0.06em] text-muted-foreground">
       {label}
     </Text>
-  );
-}
-
-function AddGroup({ children }: { children: ReactNode }) {
-  const items = Children.toArray(children);
-  return (
-    <View className="overflow-hidden rounded-[14px] border border-border bg-surface">
-      {items.map((child, index) => (
-        <View key={index} className={cn(index > 0 && 'border-t border-divider')}>
-          {child}
-        </View>
-      ))}
-    </View>
   );
 }
 
@@ -233,7 +220,7 @@ export function TopicAddContent({
             {peopleInGroup.length > 0 ? (
               <View className="gap-2">
                 <SectionLabel label={`IN ${groupTitle.toUpperCase()}`} />
-                <AddGroup>
+                <InfoGroup>
                   {peopleInGroup.map((person) => (
                     <AddRow
                       key={person.userId}
@@ -245,13 +232,13 @@ export function TopicAddContent({
                       onAdd={() => addPerson(person.userId)}
                     />
                   ))}
-                </AddGroup>
+                </InfoGroup>
               </View>
             ) : null}
             {contactsOutside.length > 0 ? (
               <View className="gap-2">
                 <SectionLabel label="YOUR CONTACTS" />
-                <AddGroup>
+                <InfoGroup>
                   {contactsOutside.map((contact) => (
                     <AddRow
                       key={contact.userId}
@@ -264,7 +251,7 @@ export function TopicAddContent({
                       onAdd={() => addPerson(contact.userId)}
                     />
                   ))}
-                </AddGroup>
+                </InfoGroup>
               </View>
             ) : null}
           </View>
@@ -276,7 +263,7 @@ export function TopicAddContent({
           {aisInGroup.length > 0 ? (
             <View className="gap-2">
               <SectionLabel label={`IN ${groupTitle.toUpperCase()}`} />
-              <AddGroup>
+              <InfoGroup>
                 {aisInGroup.map((ai) => {
                   const owner = aiOwnerLabel(ai.aiId, detail, myUserId, null);
                   return (
@@ -293,13 +280,13 @@ export function TopicAddContent({
                     />
                   );
                 })}
-              </AddGroup>
+              </InfoGroup>
             </View>
           ) : null}
           {aisOutside.length > 0 ? (
             <View className="gap-2">
               <SectionLabel label="YOUR OTHER AIS" />
-              <AddGroup>
+              <InfoGroup>
                 {aisOutside.map((ai) => (
                   <AddRow
                     key={ai.id}
@@ -312,7 +299,7 @@ export function TopicAddContent({
                     onAdd={() => addTopicAi(ai.id)}
                   />
                 ))}
-              </AddGroup>
+              </InfoGroup>
             </View>
           ) : null}
         </View>

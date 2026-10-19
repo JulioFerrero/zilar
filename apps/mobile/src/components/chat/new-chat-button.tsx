@@ -1,3 +1,4 @@
+import { matchesContactFilter } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useRouter } from 'expo-router';
@@ -42,23 +43,6 @@ import { SearchField } from '@/components/ui/search-field';
 import { Text, TextField } from '@/components/ui/text';
 import type { Contact } from '@/lib/contacts-api';
 
-// Case-insensitive prefix match on any word of the name, or on the handle.
-function matchesFilter(contact: Contact, needle: string): boolean {
-  if (needle === '') {
-    return true;
-  }
-  if (
-    contact.name
-      .toLowerCase()
-      .split(/\s+/)
-      .some((word) => word.startsWith(needle))
-  ) {
-    return true;
-  }
-  const handle = contact.handle;
-  return handle != null && handle.toLowerCase().startsWith(needle);
-}
-
 // The new-message box, the phone twin of web's `NewMessageDialog`: with no contacts it keeps the invite sentence; otherwise a search field lists contacts and a tap opens the DM, reloading the chat list when the chat is missing. `Invite a friend` is the one sticky footer key.
 function NewMessageSheet({
   visible,
@@ -83,7 +67,7 @@ function NewMessageSheet({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return contacts.filter((contact) => matchesFilter(contact, needle));
+    return contacts.filter((contact) => matchesContactFilter(contact, needle));
   }, [contacts, query]);
 
   // The DM already exists server-side; the chat list only has to catch up.

@@ -13,6 +13,7 @@ export * from './emoji-names';
 export * from './links';
 export * from './light-markdown';
 export * from './markdown';
+export * from './markdown-ast';
 export * from './mentions';
 export * from './reactions';
 export * from './edits';

@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@zilar/chat-core';
+import { canPostTo, targetLabel, type ChatSummary } from '@zilar/chat-core';
 import { Check } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -8,21 +8,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { FOREGROUND } from '@/lib/colors';
-
-function targetLabel(chat: ChatSummary): string {
-  return chat.topic !== undefined && chat.groupTitle !== undefined
-    ? `${chat.groupTitle} › ${chat.title}`
-    : chat.title;
-}
-
-/** A channel row is offered only where the caller may post; a plain member or
- *  an unknown role has no voice in the feed room. */
-function canPostTo(chat: ChatSummary): boolean {
-  if (chat.chatKind !== 'channel') {
-    return true;
-  }
-  return chat.myRole === 'owner' || chat.myRole === 'admin';
-}
 
 export function forwardTargets(chats: ChatSummary[], query: string): ChatSummary[] {
   const search = query.trim().toLowerCase();

@@ -1,16 +1,8 @@
-import { topicActivityView, type TopicAiActivity } from '@zilar/chat-core';
+import { personOf, topicActivityView, type TopicAiActivity } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { EntityAvatar } from '../EntityAvatar';
 
 const MAX_MARKS = 3;
-
-function personOf(entry: TopicAiActivity) {
-  return {
-    id: entry.aiId,
-    name: entry.name,
-    ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-  };
-}
 
 export function DoneCheck({ size = 16 }: { size?: number }) {
   return (

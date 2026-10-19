@@ -1,5 +1,5 @@
 import type { UiMessage } from '@zilar/chat-core';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, createElement, useContext, type ReactNode } from 'react';
 
 /** The row's grouped members, not re-derived by `album.id`, which would merge
  *  a peer's colliding id or a far sibling the grouping kept apart. */
@@ -12,7 +12,7 @@ export function AlbumMembersProvider({
   messages: readonly UiMessage[] | null;
   children: ReactNode;
 }) {
-  return <AlbumMembersContext.Provider value={messages}>{children}</AlbumMembersContext.Provider>;
+  return createElement(AlbumMembersContext.Provider, { value: messages }, children);
 }
 
 export function useAlbumMembers(): readonly UiMessage[] | null {

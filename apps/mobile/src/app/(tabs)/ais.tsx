@@ -7,6 +7,7 @@ import {
   type AiErrorInfo,
   type AiHealthState,
   type ChatSummary,
+  withKey,
 } from '@zilar/chat-core';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
@@ -124,16 +125,6 @@ function DeleteConfirmDialog({
 }
 
 type PageStatus = 'loading' | 'ready' | 'error';
-
-function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
-  const next = new Set(keys);
-  if (on) {
-    next.add(key);
-  } else {
-    next.delete(key);
-  }
-  return next;
-}
 
 // These keep their own error class: describeAisError and the 409 check read ApiError.
 const apiCall = <A,>(call: () => Promise<A>) =>

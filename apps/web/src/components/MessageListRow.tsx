@@ -12,7 +12,7 @@ import { ArrowRight } from 'lucide-react';
 import { Fragment, useState, type RefObject, type Ref } from 'react';
 import { EntityAvatar } from './EntityAvatar';
 import { MessageBubble } from './MessageBubble';
-import { AlbumMembersProvider } from './message/AlbumGrid';
+import { AlbumMembersProvider } from '@zilar/client-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 
 function personFor(

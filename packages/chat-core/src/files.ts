@@ -1,5 +1,5 @@
 import type { Attachment } from '@zilar/protocol';
-import { formatFileSize } from './media';
+import { formatFileSize, isTrustedMediaUrl } from './media';
 import { parseUrl } from './url';
 
 // Hard cap on an attachment: the ejabberd `mod_http_upload` `max_size`.
@@ -55,4 +55,13 @@ export function safeHttpUrl(url: string): string | undefined {
 
 export function mimeOrOctetStream(mime: string | undefined): string {
   return mime === undefined || mime === '' ? 'application/octet-stream' : mime;
+}
+
+/** Trusted-host gate: http(s) on one of the store's media hosts, so a hostile
+ *  URL, `javascript:`, `data:` or garbage never loads. */
+export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
+  if (safeHttpUrl(url) === undefined) {
+    return false;
+  }
+  return isTrustedMediaUrl(url, trustedHosts);
 }

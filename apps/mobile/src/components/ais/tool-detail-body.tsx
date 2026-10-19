@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
 import { hostsLine, truncateOutput } from '@/lib/routines-format';
+import { runStatusText } from '@zilar/chat-core';
 import type {
   ToolDetail,
   ToolListItem,
@@ -407,13 +408,6 @@ export function ToolDetailBody({
       </View>
     </View>
   );
-}
-
-/** A run's status line, e.g. `ok · v3 · manual · 120 ms · <date>`. */
-function runStatusText(run: ToolRun): string {
-  const at = new Date(run.createdAt);
-  const label = run.status === 'ok' ? 'ok' : `error (${run.errorKind ?? 'failed'})`;
-  return `${label} · v${run.version} · ${run.trigger} · ${run.durationMs} ms · ${at.toLocaleString()}`;
 }
 
 /** Missing `approvedHosts` reads as none approved, like web. */

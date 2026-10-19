@@ -175,7 +175,7 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
   );
 }
 
-function InfoGroup({ children }: { children: ReactNode }) {
+export function InfoGroup({ children }: { children: ReactNode }) {
   const items = Children.toArray(children);
   return (
     <View className="overflow-hidden rounded-[14px] border border-border bg-surface">

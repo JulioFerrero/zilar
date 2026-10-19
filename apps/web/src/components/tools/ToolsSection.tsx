@@ -7,6 +7,7 @@ import {
   listTopicToolDetails,
   type ToolListItem,
 } from '@/lib/tools';
+import { toolLastRunText } from '@zilar/chat-core';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -19,12 +20,6 @@ type ListStatus = 'loading' | 'ready' | 'error';
 
 function hostsLine(hosts: readonly string[]): string {
   return hosts.length === 0 ? 'no sites' : hosts.join(', ');
-}
-
-function lastRunText(tool: ToolListItem): string {
-  const at = new Date(tool.updatedAt);
-  const status = tool.lastRunStatus === null ? 'never run' : `last run ${tool.lastRunStatus}`;
-  return `${status} · ${at.toLocaleDateString()}`;
 }
 
 export function ToolsSection({
@@ -106,7 +101,7 @@ export function ToolsSection({
                 {tool.approvedHosts !== undefined && tool.hosts.length > 0
                   ? ` · approved: ${hostsLine(tool.approvedHosts)}`
                   : ''}{' '}
-                · {lastRunText(tool)}
+                · {toolLastRunText(tool)}
               </p>
             </div>
           </button>

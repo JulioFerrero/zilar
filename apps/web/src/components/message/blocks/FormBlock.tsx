@@ -1,12 +1,10 @@
 // effect-plain: a presentational control; the block card owns the request.
-import { formatTime } from '@zilar/chat-core';
+import { formatTime, sentAnswer, type FormAnswer as Answer } from '@zilar/chat-core';
 import type { FormBlock as FormBlockData } from '@zilar/protocol';
 import { Calendar, Check, Minus, Plus } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useBlockReply, useBlockRespond } from './BlockRespond';
 import { ICON_KEY_STYLE, LIGHT_KEY_STYLE, MAX_FIELD_CHARS, WELL_STYLE } from './choiceStyles';
-
-type Answer = { at: Date; by?: string | undefined; mine: boolean };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,14 +22,6 @@ function valueOf(field: FormBlockData['fields'][number]): string {
 
 function valuesOf(block: FormBlockData): Record<string, string> {
   return Object.fromEntries(block.fields.map((field) => [field.id, valueOf(field)]));
-}
-
-function sentAnswer(block: FormBlockData): Answer | undefined {
-  const sent = block.sent;
-  if (sent === undefined) {
-    return undefined;
-  }
-  return { at: new Date(sent.at), by: sent.by, mine: false };
 }
 
 export function FormBlock({ block, showHeading }: { block: FormBlockData; showHeading: boolean }) {

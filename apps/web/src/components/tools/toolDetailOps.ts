@@ -32,12 +32,6 @@ export function hostsLine(hosts: readonly string[]): string {
   return hosts.length === 0 ? 'no sites' : hosts.join(', ');
 }
 
-export function runStatusText(run: ToolRun): string {
-  const at = new Date(run.createdAt);
-  const label = run.status === 'ok' ? 'ok' : `error (${run.errorKind ?? 'failed'})`;
-  return `${label} · v${run.version} · ${run.trigger} · ${run.durationMs} ms · ${at.toLocaleString()}`;
-}
-
 export function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
     return fallback;

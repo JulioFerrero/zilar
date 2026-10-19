@@ -1,4 +1,5 @@
 import {
+  previewUrl,
   splitCodeBlocks,
   splitLinks,
   type UiMessage,
@@ -230,19 +231,6 @@ export function BubbleInlineMeta({
       ) : null}
     </Text>
   );
-}
-
-// The first https link in the text, unless an image or attachment already fills the bubble; only https is unfurled.
-function previewUrl(message: UiMessage, text: string): string | undefined {
-  if (message.image !== undefined || message.attachment !== undefined) {
-    return undefined;
-  }
-  for (const segment of splitLinks(text)) {
-    if (segment.kind === 'link' && segment.href.startsWith('https://')) {
-      return segment.href;
-    }
-  }
-  return undefined;
 }
 
 export function PlainBubbleBody({

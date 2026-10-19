@@ -1,9 +1,9 @@
+import { isLoadableMediaUrl } from '@zilar/chat-core';
 import { Effect, type Effect as EffectType } from 'effect';
 import type { VoiceMeta } from '@zilar/protocol';
 
 import { API_URL } from './auth';
 import { getSessionToken } from './session-token';
-import { isTrustedMediaUrl, safeHttpUrl } from './attachments';
 
 export const VOICE_SPEEDS = [1, 1.5, 2] as const;
 export type VoiceSpeed = (typeof VOICE_SPEEDS)[number];
@@ -54,16 +54,6 @@ export function createVoicePlayback(): {
 export type VoicePlayback = ReturnType<typeof createVoicePlayback>;
 
 /**
- * http(s) on one of the store's trusted media hosts, the same gate as images; an untrusted voice shows its waveform but never loads.
- */
-export function isPlayableVoiceUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  if (safeHttpUrl(url) === undefined) {
-    return false;
-  }
-  return isTrustedMediaUrl(url, trustedHosts);
-}
-
-/**
  * The bearer goes only to the API origin, never to the upload host; undefined when there is nothing to play.
  */
 export function voiceAudioSource(input: {
@@ -83,7 +73,8 @@ const voiceAudioSourceEffect = Effect.fnUntraced(function* (
     return { uri: input.localUri };
   }
   const url = input.voice.url;
-  if (url === undefined || !isPlayableVoiceUrl(url, input.trustedHosts)) {
+  // The same gate as images; an untrusted voice shows its waveform but never loads.
+  if (url === undefined || !isLoadableMediaUrl(url, input.trustedHosts)) {
     return undefined;
   }
   const apiUrl = input.apiUrl ?? API_URL;

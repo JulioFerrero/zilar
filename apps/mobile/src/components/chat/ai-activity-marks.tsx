@@ -1,4 +1,4 @@
-import { topicActivityView, type TopicAiActivity } from '@zilar/chat-core';
+import { personOf, topicActivityView, type TopicAiActivity } from '@zilar/chat-core';
 import { palette } from '@zilar/ui-tokens';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, View } from 'react-native';
@@ -17,14 +17,6 @@ const SPIN_MS = 2400;
 const AMBER = '#f59e0b';
 const GREEN = '#22c55e';
 const TICK = '#0a0a0a';
-
-function personOf(entry: TopicAiActivity) {
-  return {
-    id: entry.aiId,
-    name: entry.name,
-    ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-  };
-}
 
 function WorkingRing({ size }: { size: number }) {
   const reduceMotion = useReducedMotion();

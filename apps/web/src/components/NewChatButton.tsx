@@ -1,5 +1,5 @@
 import type { Contact } from '@zilar/api-contract';
-import { mayCreateTopic } from '@zilar/chat-core';
+import { matchesContactFilter, mayCreateTopic } from '@zilar/chat-core';
 import { Bot, Compass, Hash, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react';
 import {
   useEffect,
@@ -245,22 +245,6 @@ export function NewChatButton({
   );
 }
 
-function matchesFilter(contact: Contact, needle: string): boolean {
-  if (needle === '') {
-    return true;
-  }
-  if (
-    contact.name
-      .toLowerCase()
-      .split(/\s+/)
-      .some((word) => word.startsWith(needle))
-  ) {
-    return true;
-  }
-  const handle = contact.handle;
-  return handle != null && handle.toLowerCase().startsWith(needle);
-}
-
 /** Picks one contact and opens the DM; the DM already exists on the server, so the list only catches up. */
 function NewMessageDialog({ onClose, onInvite }: { onClose: () => void; onInvite: () => void }) {
   const contacts = useChatSelector((s) => s.contacts);
@@ -270,7 +254,7 @@ function NewMessageDialog({ onClose, onInvite }: { onClose: () => void; onInvite
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return contacts.filter((contact) => matchesFilter(contact, needle));
+    return contacts.filter((contact) => matchesContactFilter(contact, needle));
   }, [contacts, query]);
 
   const openContact = (contact: Contact): void => {

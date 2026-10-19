@@ -11,7 +11,6 @@ import {
 } from '@zilar/chat-core';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
-import { AlbumMembersProvider } from '@/components/chat/album-members';
 import { ChatRowFactsProvider } from '@/components/chat/chat-row-facts';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageBubble } from '@/components/chat/message-bubble';
@@ -24,7 +23,7 @@ import { useStableHandler, useStableReact } from '@/components/chat/use-stable-h
 import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
-import { makeAisApi, runLater } from '@zilar/client-core';
+import { makeAisApi, runLater, AlbumMembersProvider } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
 import { ChevronDown, MessageSquare } from 'lucide-react-native';

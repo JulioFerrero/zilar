@@ -1,4 +1,5 @@
 import type { Attachment } from '@zilar/protocol';
+import { isLoadableMediaUrl } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { UploadFailed, UploadOverlay, type MediaUploadProps } from '@/components
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { Text } from '@/components/ui/text';
-import { imageAttachmentRender, isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
+import { imageAttachmentRender } from '@/lib/attachments';
 import { imageGradient } from '@/lib/image-presets';
 import { useMediaSource } from '@/lib/media-source';
 
@@ -17,15 +18,6 @@ export { AttachmentViewer } from './image-viewer';
 
 const IMAGE_WIDTH = 240;
 const MAX_IMAGE_HEIGHT = 320;
-
-/** Trusted-host gate: http(s) on one of the store's media hosts, so a hostile
- *  URL, `javascript:`, `data:` or garbage never loads. */
-export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  if (safeHttpUrl(url) === undefined) {
-    return false;
-  }
-  return isTrustedMediaUrl(url, trustedHosts);
-}
 
 type AttachmentImageProps = MediaUploadProps & {
   attachment: Attachment;

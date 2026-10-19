@@ -1,4 +1,5 @@
 import type { VoiceMeta } from '@zilar/protocol';
+import { isLoadableMediaUrl } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -21,12 +22,7 @@ import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { interruptFiber } from '@zilar/client-core';
 import { mobileUploadOf, type UiMessage } from '@/lib/types';
-import {
-  isPlayableVoiceUrl,
-  voiceAudioSource,
-  type VoicePlayback,
-  type VoiceSpeed,
-} from '@/lib/voice-playback';
+import { voiceAudioSource, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-playback';
 import {
   readTranscripts,
   saveTranscript,
@@ -165,7 +161,7 @@ export function VoiceMessage({
       ? false
       : upload.localUri !== undefined && upload.localUri !== ''
         ? true
-        : voice.url !== undefined && isPlayableVoiceUrl(voice.url, hosts);
+        : voice.url !== undefined && isLoadableMediaUrl(voice.url, hosts);
 
   // The voice bubble's transcription half: on-device state, the stored transcript read, and the transcribe/confirm flow. The bubble and bars only render.
   const [showTranscript, setShowTranscript] = useState(false);

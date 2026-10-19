@@ -1,11 +1,11 @@
-import { type UiMessage, formatTime } from '@zilar/chat-core';
+import { type UiMessage, formatTime, isLoadableMediaUrl } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
-import { AttachmentViewer, isLoadableMediaUrl } from '@/components/chat/attachment-message';
+import { AttachmentViewer } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { UploadFailed, UploadOverlay, useAttachmentViewer } from '@/components/chat/media-shared';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';

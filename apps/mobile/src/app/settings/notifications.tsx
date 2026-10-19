@@ -28,18 +28,7 @@ import {
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
-import { describeUserAgent, formatRelativeAudit } from '@zilar/chat-core';
-
-/** The native apps' user agents say nothing useful, so name them by kind. */
-function deviceName(device: PushDevice): string {
-  if (device.kind === 'fcm') {
-    return 'Android app';
-  }
-  if (device.kind === 'apns') {
-    return 'iPhone app';
-  }
-  return describeUserAgent(device.userAgent);
-}
+import { deviceName, formatRelativeAudit } from '@zilar/chat-core';
 
 function PushDevicesSection({
   devices,

@@ -1,4 +1,5 @@
 import type { FormBlock as FormBlockData } from '@zilar/protocol';
+import { sentAnswer, type FormAnswer as Answer } from '@zilar/chat-core';
 import { Calendar, Check, Minus, Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -13,8 +14,6 @@ type Field = FormBlockData['fields'][number];
 /** The server accepts at most 120 characters per answer. */
 const VALUE_MAX = 120;
 
-type Answer = { at: Date; by?: string | undefined; mine: boolean };
-
 function valueOf(field: Field): string {
   const value = field.value ?? '';
   return field.kind === 'number' && value === '' ? '0' : value;
@@ -22,15 +21,6 @@ function valueOf(field: Field): string {
 
 function initialValues(fields: readonly Field[]): Record<string, string> {
   return Object.fromEntries(fields.map((field) => [field.id, valueOf(field)]));
-}
-
-/** The sent row the server merged in; `undefined` when the form is open. */
-function sentAnswer(block: FormBlockData): Answer | undefined {
-  const sent = block.sent;
-  if (sent === undefined) {
-    return undefined;
-  }
-  return { at: new Date(sent.at), by: sent.by, mine: false };
 }
 
 /** The board's `17:41` answer time: a fixed 24-hour clock. */

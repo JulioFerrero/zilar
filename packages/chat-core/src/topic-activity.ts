@@ -61,3 +61,11 @@ export function liveStageFor(
   }
   return undefined;
 }
+
+export function personOf(entry: TopicAiActivity) {
+  return {
+    id: entry.aiId,
+    name: entry.name,
+    ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+  };
+}

@@ -1,6 +1,5 @@
-import { Effect } from 'effect';
-import * as Haptics from 'expo-haptics';
 import { Reply } from 'lucide-react-native';
+import { tap } from './haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector, type PanGesture } from 'react-native-gesture-handler';
@@ -15,15 +14,6 @@ import Animated, {
 const REPLY_THRESHOLD = 60;
 const MAX_TRANSLATE_X = 96;
 const SPRING_BACK = { damping: 1000, stiffness: 700, overshootClamping: true } as const;
-
-// A failed haptic is ignored: the swipe or the reaction still works without it.
-function lightHaptic(): void {
-  Effect.runFork(
-    Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
-      Effect.ignore,
-    ),
-  );
-}
 
 // A rightward drag moves the row up to 96 px; past 60 px it replies on release, and it always springs back.
 function makePan(
@@ -79,7 +69,7 @@ export function RowGesture({ color, onReply, swipeEnabled = true, children }: Ro
   const translateX = useSharedValue(0);
   // The pan keeps its identity across renders by reading the reply through a stable function.
   const fireReply = useStableVoidCallback(() => {
-    lightHaptic();
+    tap();
     onReply();
   });
 

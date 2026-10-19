@@ -1,4 +1,12 @@
-import type { CalloutBlock, Change, ChecklistBlock, StatusBlock } from '@zilar/protocol';
+import type {
+  ButtonsBlock,
+  CalloutBlock,
+  Change,
+  ChecklistBlock,
+  FormBlock,
+  Progress,
+  StatusBlock,
+} from '@zilar/protocol';
 
 export type BlockTone = 'positive' | 'negative' | 'neutral' | 'warning' | 'info';
 
@@ -69,4 +77,60 @@ export function checklistCount(block: ChecklistBlock): { done: number; total: nu
 export function linkHost(url: string): string {
   const host = /^https:\/\/(?:[^@/?#]*@)?([^:/?#]+)/.exec(url)?.[1];
   return host === undefined ? '' : host.replace(/^www\./, '');
+}
+
+export interface ChoiceAnswer {
+  actionId?: string;
+  label: string;
+  at: Date;
+  by?: string | undefined;
+  mine: boolean;
+}
+
+/** The answered row the server merged in; `undefined` when the card is open. */
+export function chosenAnswer(block: ButtonsBlock): ChoiceAnswer | undefined {
+  const chosen = block.chosen;
+  const action =
+    chosen === undefined ? undefined : block.actions.find((item) => item.id === chosen.actionId);
+  if (chosen === undefined || action === undefined) {
+    return undefined;
+  }
+  return {
+    actionId: action.id,
+    label: action.label,
+    at: new Date(chosen.at),
+    by: chosen.by,
+    mine: false,
+  };
+}
+
+export interface FormAnswer {
+  at: Date;
+  by?: string | undefined;
+  mine: boolean;
+}
+
+/** The sent row the server merged in; `undefined` when the form is open. */
+export function sentAnswer(block: FormBlock): FormAnswer | undefined {
+  const sent = block.sent;
+  if (sent === undefined) {
+    return undefined;
+  }
+  return { at: new Date(sent.at), by: sent.by, mine: false };
+}
+
+// The elapsed time: from `started_at` to now while working, so it ticks; the frozen `elapsed_ms` once over.
+export function elapsedFor(progress: Progress, now: number): number | undefined {
+  const parsed = progress.started_at === undefined ? undefined : Date.parse(progress.started_at);
+  const started = parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined;
+  if (progress.state === undefined || progress.state === 'working') {
+    if (started !== undefined) {
+      return Math.max(0, now - started);
+    }
+    return progress.elapsed_ms;
+  }
+  if (progress.elapsed_ms !== undefined) {
+    return progress.elapsed_ms;
+  }
+  return started === undefined ? undefined : Math.max(0, now - started);
 }

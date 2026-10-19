@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router';
 import { listAis, stopAiTurn } from '@/lib/api/ais';
 import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
-import { formatClock } from '@zilar/chat-core';
+import { elapsedFor, formatClock } from '@zilar/chat-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
@@ -15,22 +15,6 @@ import { StepStateIcon } from './StepsPanel';
 
 function isLive(state: Progress['state']): boolean {
   return state === undefined || state === 'working';
-}
-
-/** Elapsed: ticks from `started_at` while working, frozen `elapsed_ms` after. */
-function elapsedFor(progress: Progress, now: number): number | undefined {
-  const parsed = progress.started_at === undefined ? undefined : Date.parse(progress.started_at);
-  const started = parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined;
-  if (isLive(progress.state)) {
-    if (started !== undefined) {
-      return Math.max(0, now - started);
-    }
-    return progress.elapsed_ms;
-  }
-  if (progress.elapsed_ms !== undefined) {
-    return progress.elapsed_ms;
-  }
-  return started === undefined ? undefined : Math.max(0, now - started);
 }
 
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {

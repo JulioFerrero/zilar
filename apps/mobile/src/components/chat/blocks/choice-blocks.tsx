@@ -7,6 +7,7 @@ import type {
   RatingBlock as RatingBlockData,
   ChoiceBlock as ChoiceBlockData,
 } from '@zilar/protocol';
+import { chosenAnswer, type ChoiceAnswer as Answer } from '@zilar/chat-core';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { FormBlock } from '@/components/chat/blocks/form-block';
 import { Bell, ChartColumn, Check, Star } from 'lucide-react-native';
@@ -341,31 +342,6 @@ function AlertBlock({ block }: { block: AlertBlockData }) {
 }
 
 type Action = ButtonsBlockData['actions'][number];
-
-type Answer = {
-  actionId?: string;
-  label: string;
-  at: Date;
-  by?: string | undefined;
-  mine: boolean;
-};
-
-/** The answered row the server merged in; `undefined` when the card is open. */
-function chosenAnswer(block: ButtonsBlockData): Answer | undefined {
-  const chosen = block.chosen;
-  const action =
-    chosen === undefined ? undefined : block.actions.find((item) => item.id === chosen.actionId);
-  if (chosen === undefined || action === undefined) {
-    return undefined;
-  }
-  return {
-    actionId: action.id,
-    label: action.label,
-    at: new Date(chosen.at),
-    by: chosen.by,
-    mine: false,
-  };
-}
 
 /** The board's `17:41` answer time: a fixed 24-hour clock. */
 function clockTime(date: Date): string {

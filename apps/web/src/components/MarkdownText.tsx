@@ -1,18 +1,9 @@
 import { memo } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { parseUrl } from '@zilar/chat-core';
-
-const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+import { safeMarkdownUrl } from '@zilar/chat-core';
 
 /** Only `http:`, `https:` and `mailto:` links render; any other scheme stays plain text. */
-function safeUrl(url: string): string | undefined {
-  const parsed = parseUrl(url);
-  if (parsed === undefined) {
-    return undefined;
-  }
-  return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;
-}
 
 const components: Components = {
   a({ href, children }) {
@@ -45,7 +36,7 @@ export const MarkdownText = memo(function MarkdownText({ text }: { text: string 
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}
-      urlTransform={(url) => safeUrl(url) ?? ''}
+      urlTransform={(url) => safeMarkdownUrl(url) ?? ''}
       components={components}
     >
       {text}

@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { withoutId } from '@zilar/chat-core';
 import { useContactRequestsPoll } from '@zilar/client-core';
 import { Effect } from 'effect';
 
@@ -40,12 +41,6 @@ const UNDO_MS = 5000;
 
 const ACCEPT_FAILED = 'Could not accept that request. Try again.';
 const DECLINE_FAILED = 'Could not decline that request. Try again.';
-
-function without(id: string, ids: ReadonlySet<string>): ReadonlySet<string> {
-  const next = new Set(ids);
-  next.delete(id);
-  return next;
-}
 
 // One row per incoming contact request at the top of the chat list. Accept adds the contact and opens the DM; Decline drops the row for a 5-second Undo window before the call reaches the server. More than three collapse into "See all N requests".
 export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage) => void }) {
@@ -122,7 +117,7 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
       .declineContactRequest(request.id)
       .then(() => reload())
       .catch(() => {
-        setHidden((ids) => without(request.id, ids));
+        setHidden((ids) => withoutId(request.id, ids));
         setError(DECLINE_FAILED);
       });
   };
@@ -152,7 +147,7 @@ export function ContactRequestRows({ onToast }: { onToast: (toast: ToastMessage)
     pendingRef.current = undefined;
     setPendingDecline(undefined);
     if (request !== undefined) {
-      setHidden((ids) => without(request.id, ids));
+      setHidden((ids) => withoutId(request.id, ids));
     }
   };
 

@@ -1,4 +1,5 @@
 export { makeFromApi, runApiAbortable } from './api-effect';
+export * from './album-members';
 export {
   NO_PERSON_MESSAGE,
   PEOPLE_LOOKUP_ERROR_MESSAGE,

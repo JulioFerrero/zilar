@@ -18,7 +18,7 @@ import { EmojiTab } from '../sticker/EmojiTab';
 import { Dialog } from '../ui/dialog';
 import { Menu, MenuEntry, MenuItem } from '../ui/menu';
 import { useToast } from '../ui/toast';
-import { useAlbumMembers } from './AlbumGrid';
+import { useAlbumMembers } from '@zilar/client-core';
 import type { MessageMenuState } from './use-message-menu';
 import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { copyText } from '@/lib/clipboard';

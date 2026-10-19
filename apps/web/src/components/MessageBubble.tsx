@@ -1,7 +1,8 @@
 import {
+  chipLabel,
+  previewUrl,
   replyQuoteContent,
   senderColor,
-  splitLinks,
   type ChatSummary,
   type UiMessage,
   type UiReaction,
@@ -100,12 +101,6 @@ interface ReactionChipsProps {
   own: boolean;
   className?: string;
   onToggle: (emoji: string) => void;
-}
-
-function chipLabel(reaction: UiReaction): string {
-  return reaction.mine
-    ? `${reaction.emoji} ${reaction.count}, including you`
-    : `${reaction.emoji} ${reaction.count}`;
 }
 
 function ReactionChips({ reactions, own, className, onToggle }: ReactionChipsProps) {
@@ -363,20 +358,6 @@ export function LinkPreviewCard({ url }: { url: string }) {
 const MarkdownText = lazy(() =>
   import('./MarkdownText').then((m) => ({ default: m.MarkdownText })),
 );
-
-// Only https is unfurled (the server refuses anything else); a message that
-// already carries an image or attachment has no link card.
-function previewUrl(message: UiMessage, text: string): string | undefined {
-  if (message.image !== undefined || message.attachment !== undefined) {
-    return undefined;
-  }
-  for (const segment of splitLinks(text)) {
-    if (segment.kind === 'link' && segment.href.startsWith('https://')) {
-      return segment.href;
-    }
-  }
-  return undefined;
-}
 
 function BubbleMeta({
   message,

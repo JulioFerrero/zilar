@@ -11,7 +11,7 @@ import type { StoredDevice } from '@/lib/push/deviceStorage';
 import { usePushEnable } from '@/lib/push/usePushEnable';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
-  describeUserAgent,
+  deviceName,
   formatRelativeAudit,
   type ChatSummary,
   formatListTime,
@@ -120,16 +120,6 @@ function PreviewsSection({
       </p>
     </section>
   );
-}
-
-function deviceName(device: PushDevice): string {
-  if (device.kind === 'fcm') {
-    return 'Android app';
-  }
-  if (device.kind === 'apns') {
-    return 'iPhone app';
-  }
-  return describeUserAgent(device.userAgent);
 }
 
 function DevicesSection({
