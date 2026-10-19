@@ -1,12 +1,7 @@
 import { Effect } from 'effect';
 import { Plus, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  GifPanel,
-  gifsAvailability,
-  probeGifsAvailabilityEffect,
-  type GifChoice,
-} from './GifPanel';
+import { GifPanel, type GifChoice } from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
   addStickerFavorite,
@@ -14,11 +9,12 @@ import {
   listStickerFavorites,
   listStickerPacks,
   removeStickerFavorite,
+  trendingGifs,
 } from '@/lib/api';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, probeGifsAvailability } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { isStickerFileUrl } from '@zilar/chat-core';
+import { gifsAvailability, isStickerFileUrl } from '@zilar/chat-core';
 import { forgetRecentSticker, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
@@ -376,7 +372,7 @@ export function StickerPanel({
   useQuery(
     () =>
       gifsProbeNeeded
-        ? probeGifsAvailabilityEffect().pipe(
+        ? probeGifsAvailability(trendingGifs).pipe(
             Effect.tap((available) => Effect.sync(() => setGifsEnabled(available))),
           )
         : Effect.void,

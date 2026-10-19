@@ -1,11 +1,7 @@
 import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { GIF_SEARCH_DEBOUNCE_MS, gifsAvailability, setGifsAvailability } from '@zilar/chat-core';
-import { gifMediaUrl, searchGifs, trendingGifs, type GifPage, type GifResult } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import { useEffect, useRef, useState } from 'react';
+import { gifMediaUrl, searchGifs, trendingGifs, type GifResult } from '@/lib/api';
+import { useGifSearch } from '@zilar/client-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { SearchField } from '@/components/ui/search-field';
@@ -27,44 +23,8 @@ export interface GifPanelProps {
   onPick: (gif: GifChoice) => void;
 }
 
-interface MorePages {
-  readonly items: GifResult[];
-  readonly nextPos: string | undefined;
-}
-
 const ATTRIBUTION = 'Powered by Giphy';
 const LOAD_ERROR = 'Could not load GIFs. Try again.';
-
-export { gifsAvailability };
-
-const probeProvider = (): Effect.Effect<boolean> =>
-  fromApi(() => trendingGifs(undefined, undefined)).pipe(
-    Effect.map(() => {
-      setGifsAvailability(true);
-      return true;
-    }),
-    Effect.catchTag('ApiFailure', (failure) => {
-      if (failure.code === 'gifs_unavailable') {
-        setGifsAvailability(false);
-        return Effect.succeed(false);
-      }
-      return Effect.succeed(true);
-    }),
-  );
-
-export function probeGifsAvailabilityEffect(): Effect.Effect<boolean> {
-  return Effect.suspend(() => {
-    const cached = gifsAvailability();
-    return cached === undefined ? probeProvider() : Effect.succeed(cached);
-  });
-}
-
-function pageOf(search: string, pos: string | undefined): Effect.Effect<GifPage, ApiFailure> {
-  const term = search.trim();
-  return fromApi((signal) =>
-    term === '' ? trendingGifs(pos, signal) : searchGifs(term, pos, signal),
-  );
-}
 
 /**
  * Bytes load through the same-origin proxy; mock `data:image/` placeholders
@@ -142,55 +102,15 @@ function GifCell({
 }
 
 export function GifPanel({ onPick }: GifPanelProps) {
-  const [typed, setTyped] = useState('');
-  const [searched, setSearched] = useState('');
-  const [more, setMore] = useState<MorePages | undefined>(undefined);
   const [visibleIds, setVisibleIds] = useState<ReadonlySet<string>>(() => new Set());
   const cellRefs = useRef(new Map<string, HTMLDivElement | null>());
-
-  const [moreState, loadMorePage, moreControls] = useAction((pos: string) =>
-    pageOf(searched, pos).pipe(
-      Effect.tap((page) =>
-        Effect.sync(() =>
-          setMore((previous) => ({
-            items: [...(previous?.items ?? []), ...page.items],
-            nextPos: page.nextPos,
-          })),
-        ),
-      ),
-    ),
+  const { query, setQuery, items, loading, loadingMore, failure, loadMore, retry } = useGifSearch(
+    { searchGifs, trendingGifs },
+    { enabled: true },
   );
 
-  // Each keystroke restarts the 300 ms wait; a stale wait does nothing.
-  const latestTyped = useRef('');
-  useQuery(
-    () =>
-      Effect.sleep(GIF_SEARCH_DEBOUNCE_MS).pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            if (latestTyped.current !== typed) {
-              return;
-            }
-            setSearched(typed);
-            setMore(undefined);
-            moreControls.reset();
-          }),
-        ),
-      ),
-    [typed],
-  );
-
-  const [firstState, reloadFirst] = useQuery(() => pageOf(searched, undefined), [searched]);
-  const page = AsyncResult.isSuccess(firstState) ? firstState.value : undefined;
-  const firstSettled = AsyncResult.isNotInitial(firstState) && !isWaiting(firstState);
-  const loading = !firstSettled;
-  const loadingMore = isWaiting(moreState);
-  const failure = shownFailure(firstState) ?? shownFailure(moreState);
-  const unavailable = failure?.code === 'gifs_unavailable';
+  const unavailable = failure === 'unavailable';
   const error = failure !== undefined && !unavailable ? LOAD_ERROR : undefined;
-
-  const items = useMemo(() => [...(page?.items ?? []), ...(more?.items ?? [])], [page, more]);
-  const nextPos = more !== undefined ? more.nextPos : page?.nextPos;
 
   // Only visible cells play; without IntersectionObserver all count as visible.
   const observerUnavailable = typeof IntersectionObserver === 'undefined';
@@ -226,18 +146,6 @@ export function GifPanel({ onPick }: GifPanelProps) {
     return () => observer.disconnect();
   }, [items, observerUnavailable]);
 
-  const loadMore = (): void => {
-    if (nextPos !== undefined && !loadingMore && !loading) {
-      loadMorePage(nextPos);
-    }
-  };
-
-  const retry = (): void => {
-    setMore(undefined);
-    moreControls.reset();
-    reloadFirst();
-  };
-
   if (unavailable) {
     return (
       <div className="flex h-[220px] flex-col items-center justify-center gap-1 px-4 text-center">
@@ -251,11 +159,8 @@ export function GifPanel({ onPick }: GifPanelProps) {
     <div className="flex max-h-[300px] flex-col">
       <div className="p-2">
         <SearchField
-          value={typed}
-          onChange={(event) => {
-            latestTyped.current = event.target.value;
-            setTyped(event.target.value);
-          }}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="Search GIFs"
           aria-label="Search GIFs"
         />
@@ -271,7 +176,7 @@ export function GifPanel({ onPick }: GifPanelProps) {
       ) : items.length === 0 ? (
         <div className="flex h-[180px] flex-col items-center justify-center gap-1 px-4 text-center">
           <p className="text-[13px] text-muted-foreground">
-            {typed.trim() === ''
+            {query.trim() === ''
               ? 'No trending GIFs right now.'
               : 'No GIFs found. Try another search.'}
           </p>

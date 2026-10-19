@@ -39,6 +39,15 @@ export * from './settings-api';
 export * from './devices';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
+  probeGifsAvailability,
+  useGifSearch,
+  type GifSearchClient,
+  type GifSearchFailure,
+  type GifSearchOptions,
+  type GifSearchState,
+  type TrendingGifs,
+} from './gif-search';
+export {
   makeTopicsApi,
   type CreateTopicInput,
   type PatchTopicInput,

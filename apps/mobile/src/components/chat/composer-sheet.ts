@@ -1,10 +1,11 @@
 import { StickerSchema, isValid } from '@zilar/protocol';
+import { probeGifsAvailability } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Keyboard } from 'react-native';
 
 import { step } from '@/components/chat/composer-media';
-import { probeGifsAvailability } from '@/components/chat/gif-panel';
+import { defaultGifsApi } from '@/components/chat/gif-panel';
 import { loadStickerPacks, persistRecent } from '@/components/chat/sticker-panel';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import { useAction } from '@/lib/effect/use-action';
@@ -99,7 +100,7 @@ export function useComposerSheet({
             Effect.ignore,
           ),
           probeGifs
-            ? step(() => probeGifsAvailability(gifsApi)).pipe(
+            ? probeGifsAvailability((gifsApi ?? defaultGifsApi()).trendingGifs).pipe(
                 Effect.tap((available) => Effect.sync(() => setGifAvailable(available))),
                 Effect.ignore,
               )
