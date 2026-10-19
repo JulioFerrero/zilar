@@ -5,11 +5,11 @@ import type { AiToolRow, AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { PublicTool, PublicToolVersion, ToolDetail, ToolVersionDetail } from './service';
 
-export function toToolDetail(
+function toPublicTool(
   tool: AiToolRow,
-  current: AiToolVersionRow,
+  hosts: string[],
   lastRunStatus: 'ok' | 'error' | null,
-): ToolDetail {
+): PublicTool {
   return {
     id: tool.id,
     aiId: tool.aiId,
@@ -18,12 +18,19 @@ export function toToolDetail(
     name: tool.name,
     description: tool.description,
     currentVersion: tool.currentVersion,
-    hosts: current.hosts,
+    hosts,
     approvedHosts: [...(tool.approvedHosts ?? [])],
-    source: current.source,
     lastRunStatus,
     updatedAt: tool.updatedAt,
   };
+}
+
+export function toToolDetail(
+  tool: AiToolRow,
+  current: AiToolVersionRow,
+  lastRunStatus: 'ok' | 'error' | null,
+): ToolDetail {
+  return { ...toPublicTool(tool, current.hosts, lastRunStatus), source: current.source };
 }
 
 function toPublicVersion(row: AiToolVersionRow): PublicToolVersion {
@@ -95,34 +102,15 @@ export async function listTools(
       return yield* listViewExtras(sql, rows);
     }),
   );
-  const result: PublicTool[] = [];
-  for (const tool of rows) {
-    result.push({
-      id: tool.id,
-      aiId: tool.aiId,
-      groupId: tool.groupId,
-      topicId: tool.topicId,
-      name: tool.name,
-      description: tool.description,
-      currentVersion: tool.currentVersion,
-      hosts: extras.hosts.get(tool.id) ?? [],
-      approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus: extras.status.get(tool.id) ?? null,
-      updatedAt: tool.updatedAt,
-    });
-  }
+  const result: PublicTool[] = rows.map((tool) =>
+    toPublicTool(tool, extras.hosts.get(tool.id) ?? [], extras.status.get(tool.id) ?? null),
+  );
   return result;
 }
 
 // One non-deleted tool with its current source, or null.
 export async function getTool(db: ServerDatabase, id: string): Promise<ToolDetail | null> {
-  const tool = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* getToolRow(sql, id);
-    }),
-  );
+  const tool = await loadTool(db, id);
   if (!tool) {
     return null;
   }
@@ -153,13 +141,7 @@ export async function listVersions(
   db: ServerDatabase,
   toolId: string,
 ): Promise<PublicToolVersion[] | null> {
-  const tool = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* getToolRow(sql, toolId);
-    }),
-  );
+  const tool = await loadTool(db, toolId);
   if (!tool) {
     return null;
   }
@@ -180,13 +162,7 @@ export async function getVersion(
   toolId: string,
   version: number,
 ): Promise<ToolVersionDetail | null> {
-  const tool = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* getToolRow(sql, toolId);
-    }),
-  );
+  const tool = await loadTool(db, toolId);
   if (!tool) {
     return null;
   }
@@ -207,13 +183,7 @@ export async function listRuns(
   toolId: string,
   limit = 20,
 ): Promise<AiToolRunRow[] | null> {
-  const tool = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* getToolRow(sql, toolId);
-    }),
-  );
+  const tool = await loadTool(db, toolId);
   if (!tool) {
     return null;
   }
@@ -275,6 +245,16 @@ export function getToolRow(
     }
     return tool;
   });
+}
+
+async function loadTool(db: ServerDatabase, toolId: string): Promise<AiToolRow | null> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, toolId);
+    }),
+  );
 }
 
 export function latestRunStatus(
@@ -351,22 +331,9 @@ export async function listToolsForAi(
       return yield* listViewExtras(sql, rows);
     }),
   );
-  const result: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
-  for (const tool of rows) {
-    result.push({
-      id: tool.id,
-      aiId: tool.aiId,
-      groupId: tool.groupId,
-      topicId: tool.topicId,
-      name: tool.name,
-      description: tool.description,
-      currentVersion: tool.currentVersion,
-      hosts: extras.hosts.get(tool.id) ?? [],
-      approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus: extras.status.get(tool.id) ?? null,
-      updatedAt: tool.updatedAt,
-      scope: tool.groupId === null ? 'personal' : 'group',
-    });
-  }
+  const result: Array<PublicTool & { scope: 'personal' | 'group' }> = rows.map((tool) => ({
+    ...toPublicTool(tool, extras.hosts.get(tool.id) ?? [], extras.status.get(tool.id) ?? null),
+    scope: tool.groupId === null ? 'personal' : 'group',
+  }));
   return result;
 }

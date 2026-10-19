@@ -2158,3 +2158,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2156](T-2156-phone-finish-up.md) | phone: merge text field, last alias modules gone | 2026-10-19 |
 | [T-2157](T-2157-type-aliases.md) | one name per type: drop 21 rename aliases | 2026-10-19 |
 | [T-2159](T-2159-intra-dedupe-clients.md) | one copy of blocks repeated in a file (clients) | 2026-10-19 |
+| [T-2158](T-2158-intra-dedupe-server.md) | server: one copy of blocks repeated in a file | 2026-10-19 |

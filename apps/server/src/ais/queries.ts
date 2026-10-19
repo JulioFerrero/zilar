@@ -6,27 +6,29 @@ import { runSql } from '../effect/sql';
 import type { PublicAi } from './persona';
 import type { AiTemplate } from './templates';
 
+const publicAiColumns = (sql: SqlClient.SqlClient) => sql`
+  ais.id,
+  ais.name,
+  ais.template,
+  ais.persona,
+  ais.model,
+  ais.jid,
+  ais.status,
+  ais.provider_connection_id,
+  ais.machine_id,
+  ais.computer_mode,
+  ais.created_at,
+  ai_limits.per_day_usd,
+  ai_limits.per_month_usd,
+  ais.can_delegate,
+  ais.accepts_delegation`;
+
 export async function listAis(db: ServerDatabase, ownerId: string): Promise<PublicAi[]> {
   const rows = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PublicAiRow>`SELECT
-        ais.id,
-        ais.name,
-        ais.template,
-        ais.persona,
-        ais.model,
-        ais.jid,
-        ais.status,
-        ais.provider_connection_id,
-        ais.machine_id,
-        ais.computer_mode,
-        ais.created_at,
-        ai_limits.per_day_usd,
-        ai_limits.per_month_usd,
-        ais.can_delegate,
-        ais.accepts_delegation
+      return yield* sql<PublicAiRow>`SELECT ${publicAiColumns(sql)}
       FROM ais
       INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
       WHERE ais.owner = ${ownerId}
@@ -111,27 +113,11 @@ export async function findOwnedAi(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const [row] = yield* sql<AiRecord>`SELECT
-        ais.id,
-        ais.name,
-        ais.template,
-        ais.persona,
-        ais.model,
-        ais.jid,
-        ais.status,
-        ais.provider_connection_id,
-        ais.machine_id,
-        ais.computer_mode,
-        ais.created_at,
-        ai_limits.per_day_usd,
-        ai_limits.per_month_usd,
-        ais.can_delegate,
-        ais.accepts_delegation,
-        ais.localpart
-      FROM ais
-      INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
-      WHERE ais.id = ${id} AND ais.owner = ${ownerId}
-      LIMIT 1`;
+      const [row] = yield* sql<AiRecord>`SELECT ${publicAiColumns(sql)}, ais.localpart
+        FROM ais
+        INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
+        WHERE ais.id = ${id} AND ais.owner = ${ownerId}
+        LIMIT 1`;
       return row ?? null;
     }),
   );

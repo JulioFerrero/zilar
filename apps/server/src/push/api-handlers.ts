@@ -202,26 +202,7 @@ function createSubscribeHandler(
         // MUC/Sub events reach them offline. Best effort: the sync's own reads can
         // throw after the row committed, so a failure logs ids only and answers
         // success (S2).
-        yield* Effect.promise(() =>
-          syncPushSubscriptionsForUser(
-            {
-              db: deps.db,
-              adminClient: deps.adminClient,
-              domain: deps.config.xmpp.domain,
-              logger: deps.logger,
-            },
-            user.id,
-          ),
-        ).pipe(
-          Effect.catchDefect((defect) =>
-            Effect.sync(() => {
-              deps.logger.warn(
-                { userId: user.id, err: errorClassName(defect) },
-                'push room sync failed after registration; membership changes re-sync later',
-              );
-            }),
-          ),
-        );
+        yield* syncRoomsBestEffort(deps, user.id, 'after registration');
         return { id: row.id, node: row.node, jid: pushJid };
       }
       throw new HttpError(503, 'push_unavailable', 'Could not register the push device');
@@ -235,6 +216,33 @@ function endpointOf(raw: unknown): string | undefined {
   }
   const endpoint = (raw as { endpoint?: unknown }).endpoint;
   return typeof endpoint === 'string' ? endpoint : undefined;
+}
+
+function syncRoomsBestEffort(
+  deps: PushApiDependencies,
+  userId: string,
+  reason: string,
+): Effect.Effect<void> {
+  return Effect.promise(() =>
+    syncPushSubscriptionsForUser(
+      {
+        db: deps.db,
+        adminClient: deps.adminClient,
+        domain: deps.config.xmpp.domain,
+        logger: deps.logger,
+      },
+      userId,
+    ),
+  ).pipe(
+    Effect.catchDefect((defect) =>
+      Effect.sync(() => {
+        deps.logger.warn(
+          { userId, err: errorClassName(defect) },
+          `push room sync failed ${reason}; membership changes re-sync later`,
+        );
+      }),
+    ),
+  );
 }
 
 export { TEST_WAKE_CHAT_ID } from './api-util';
@@ -311,26 +319,7 @@ export function createPushGroupLayer(
             // stops publishing. Best effort after the committed delete.
             const remaining = yield* Effect.promise(() => devicesForUser(deps.db, user.id));
             if (remaining.length === 0) {
-              yield* Effect.promise(() =>
-                syncPushSubscriptionsForUser(
-                  {
-                    db: deps.db,
-                    adminClient: deps.adminClient,
-                    domain: deps.config.xmpp.domain,
-                    logger: deps.logger,
-                  },
-                  user.id,
-                ),
-              ).pipe(
-                Effect.catchDefect((defect) =>
-                  Effect.sync(() => {
-                    deps.logger.warn(
-                      { userId: user.id, err: errorClassName(defect) },
-                      'push room sync failed after device removal; membership changes re-sync later',
-                    );
-                  }),
-                ),
-              );
+              yield* syncRoomsBestEffort(deps, user.id, 'after device removal');
             }
             return { removed: true };
           }),

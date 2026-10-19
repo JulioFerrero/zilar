@@ -38,6 +38,14 @@ export function toPushDeviceView(row: PushSubscriptionRow, now: Date): PushDevic
   };
 }
 
+function requireSaved(
+  row: PushSubscriptionRow | undefined,
+): Effect.Effect<PushSubscriptionRow, HttpError> {
+  return row === undefined
+    ? Effect.fail(new HttpError(500, 'internal_error', 'Could not save the push device'))
+    : Effect.succeed(row);
+}
+
 export async function devicesForUser(
   db: ServerDatabase,
   userId: string,
@@ -325,12 +333,7 @@ export async function saveDevice(
                 ${input.now}
               )
               RETURNING *`;
-            if (!saved) {
-              return yield* Effect.fail(
-                new HttpError(500, 'internal_error', 'Could not save the push device'),
-              );
-            }
-            return saved;
+            return yield* requireSaved(saved);
           }
           yield* sql`DELETE FROM push_subscriptions
             WHERE endpoint = ${input.subscription.endpoint} AND user_id <> ${input.userId}`;
@@ -385,12 +388,7 @@ export async function saveDevice(
               ${input.now}
             )
             RETURNING *`;
-          if (!saved) {
-            return yield* Effect.fail(
-              new HttpError(500, 'internal_error', 'Could not save the push device'),
-            );
-          }
-          return saved;
+          return yield* requireSaved(saved);
         }),
       );
     }),

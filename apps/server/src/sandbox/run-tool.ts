@@ -332,6 +332,24 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
         }
         const message = event;
         fetchCount = message.fetchCount;
+        const invalidOutput = (): void => {
+          settle(
+            fail(
+              'invalid_output',
+              'tool must return a string or { text, data?, blocks?, card? }',
+              message.fetchCount,
+            ),
+          );
+        };
+        const settleOutput = (output: ToolOutput): void => {
+          settle({
+            ok: true,
+            output,
+            logs: finishLogs(),
+            durationMs: Date.now() - startedAt,
+            fetchCount: message.fetchCount,
+          });
+        };
         if (message.type === 'error') {
           settle(fail(message.kind, message.message, message.fetchCount));
           return;
@@ -340,65 +358,29 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
         try {
           parsedOutput = JSON.parse(message.outputJson) as unknown;
         } catch {
-          settle(
-            fail(
-              'invalid_output',
-              'tool must return a string or { text, data?, blocks?, card? }',
-              message.fetchCount,
-            ),
-          );
+          invalidOutput();
           return;
         }
         if (typeof parsedOutput === 'string') {
           const output = parseToolOutput({ text: parsedOutput }, limits.maxOutputBytes);
           if (output === null) {
-            settle(
-              fail(
-                'invalid_output',
-                'tool must return a string or { text, data?, blocks?, card? }',
-                message.fetchCount,
-              ),
-            );
+            invalidOutput();
             return;
           }
-          settle({
-            ok: true,
-            output,
-            logs: finishLogs(),
-            durationMs: Date.now() - startedAt,
-            fetchCount: message.fetchCount,
-          });
+          settleOutput(output);
           return;
         }
         const shaped = Schema.decodeUnknownOption(outputJsonSchema)(parsedOutput);
         if (Option.isNone(shaped)) {
-          settle(
-            fail(
-              'invalid_output',
-              'tool must return a string or { text, data?, blocks?, card? }',
-              message.fetchCount,
-            ),
-          );
+          invalidOutput();
           return;
         }
         const output = parseToolOutput(shaped.value, limits.maxOutputBytes);
         if (output === null) {
-          settle(
-            fail(
-              'invalid_output',
-              'tool must return a string or { text, data?, blocks?, card? }',
-              message.fetchCount,
-            ),
-          );
+          invalidOutput();
           return;
         }
-        settle({
-          ok: true,
-          output,
-          logs: finishLogs(),
-          durationMs: Date.now() - startedAt,
-          fetchCount: message.fetchCount,
-        });
+        settleOutput(output);
       };
 
       const onError = (): void => {

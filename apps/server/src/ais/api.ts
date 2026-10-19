@@ -252,6 +252,26 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     }
   }
 
+  async function recordAiChange(
+    userId: string,
+    ai: PublicAi,
+    action: 'ai.stopped' | 'ai.resumed' | 'ai.machine_assigned',
+    detail: Record<string, unknown> | null = null,
+  ): Promise<void> {
+    await recordAudit({
+      actorUserId: userId,
+      aiId: ai.id,
+      groupId: null,
+      action,
+      subjectId: ai.id,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail,
+    });
+  }
+
   const groupLayer = HttpApiBuilder.group(AisApi, 'ais', (handlers) =>
     handlers
       .handle(
@@ -342,18 +362,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           const before = await getOwnedAi(deps.db, id, user.id);
           const ai = await stopAi({ db: deps.db }, id, user.id);
           if (before !== null && before.status !== ai.status) {
-            await recordAudit({
-              actorUserId: user.id,
-              aiId: ai.id,
-              groupId: null,
-              action: 'ai.stopped',
-              subjectId: ai.id,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: null,
-            });
+            await recordAiChange(user.id, ai, 'ai.stopped');
           }
           return toWire(ai);
         }),
@@ -365,18 +374,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           const before = await getOwnedAi(deps.db, id, user.id);
           const ai = await resumeAi({ db: deps.db }, id, user.id);
           if (before !== null && before.status !== ai.status) {
-            await recordAudit({
-              actorUserId: user.id,
-              aiId: ai.id,
-              groupId: null,
-              action: 'ai.resumed',
-              subjectId: ai.id,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: null,
-            });
+            await recordAiChange(user.id, ai, 'ai.resumed');
           }
           return toWire(ai);
         }),
@@ -409,17 +407,8 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             },
           );
           if (before !== null && before.machineId !== ai.machineId) {
-            await recordAudit({
-              actorUserId: user.id,
-              aiId: ai.id,
-              groupId: null,
-              action: 'ai.machine_assigned',
-              subjectId: ai.id,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: { machineId: ai.machineId },
+            await recordAiChange(user.id, ai, 'ai.machine_assigned', {
+              machineId: ai.machineId,
             });
           }
           return toWire(ai);
@@ -435,31 +424,33 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   });
 }
 // Owner-only and DB-only, so the kill switch works when the cipher or XMPP are
-// down. A foreign id answers the same 404; idempotent on `stopped`; `disabled`
-// answers 409 so a resume cannot flip a half-built AI. The conditional update
-// loses to a racing delete or second stop.
-async function stopAi(
+// down. A foreign id answers the same 404; idempotent on the target status;
+// `disabled` answers 409 so a resume cannot flip a half-built AI. The conditional
+// update loses to a racing stop, resume or delete.
+async function setAiStatus(
   deps: Pick<AiServiceDeps, 'db'>,
   id: string,
   ownerId: string,
+  next: 'active' | 'stopped',
 ): Promise<PublicAi> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
     throw new HttpError(404, 'not_found', 'AI not found');
   }
-  if (ai.status === 'stopped') {
+  if (ai.status === next) {
     return toPublicAi(ai);
   }
   if (ai.status === 'disabled') {
     throw new HttpError(409, 'not_active', 'AI is not active');
   }
+  const previous = next === 'active' ? 'stopped' : 'active';
   const updated = await runSql(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ id: string }>`UPDATE ais
-        SET status = 'stopped', updated_at = ${new Date()}
-        WHERE id = ${ai.id} AND status = 'active'
+        SET status = ${next}, updated_at = ${new Date()}
+        WHERE id = ${ai.id} AND status = ${previous}
         RETURNING id`;
     }),
   );
@@ -470,18 +461,26 @@ async function stopAi(
     if (fresh === null) {
       throw new HttpError(404, 'not_found', 'AI not found');
     }
-    if (fresh.status === 'stopped') {
+    if (fresh.status === next) {
       return toPublicAi(fresh);
     }
     throw new HttpError(409, 'not_active', 'AI is not active');
   }
-  emitAiLifecycle({ type: 'stopped', aiId: ai.id });
+  emitAiLifecycle({ type: next === 'active' ? 'resumed' : 'stopped', aiId: ai.id });
   const reloaded = await findOwnedAi(deps.db, ai.id, ownerId);
   if (reloaded === null) {
     // Deleted between the update and the read; the caller gets a 404.
     throw new HttpError(404, 'not_found', 'AI not found');
   }
   return toPublicAi(reloaded);
+}
+
+async function stopAi(
+  deps: Pick<AiServiceDeps, 'db'>,
+  id: string,
+  ownerId: string,
+): Promise<PublicAi> {
+  return setAiStatus(deps, id, ownerId, 'stopped');
 }
 
 // Mirror of `stopAi`: accepts only `stopped`, idempotent on `active`, 409 on
@@ -491,42 +490,7 @@ async function resumeAi(
   id: string,
   ownerId: string,
 ): Promise<PublicAi> {
-  const ai = await findOwnedAi(deps.db, id, ownerId);
-  if (!ai) {
-    throw new HttpError(404, 'not_found', 'AI not found');
-  }
-  if (ai.status === 'active') {
-    return toPublicAi(ai);
-  }
-  if (ai.status === 'disabled') {
-    throw new HttpError(409, 'not_active', 'AI is not active');
-  }
-  const updated = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`UPDATE ais
-        SET status = 'active', updated_at = ${new Date()}
-        WHERE id = ${ai.id} AND status = 'stopped'
-        RETURNING id`;
-    }),
-  );
-  if (updated.length === 0) {
-    const fresh = await findOwnedAi(deps.db, ai.id, ownerId);
-    if (fresh === null) {
-      throw new HttpError(404, 'not_found', 'AI not found');
-    }
-    if (fresh.status === 'active') {
-      return toPublicAi(fresh);
-    }
-    throw new HttpError(409, 'not_active', 'AI is not active');
-  }
-  emitAiLifecycle({ type: 'resumed', aiId: ai.id });
-  const reloaded = await findOwnedAi(deps.db, ai.id, ownerId);
-  if (reloaded === null) {
-    throw new HttpError(404, 'not_found', 'AI not found');
-  }
-  return toPublicAi(reloaded);
+  return setAiStatus(deps, id, ownerId, 'active');
 }
 
 interface AssignMachineInput {

@@ -38,6 +38,20 @@ interface RetiredHandleRow {
   reservedUntil: Date;
 }
 
+function assertChangeAllowed(live: LiveHandleRow, now: Date): Effect.Effect<void, HttpError> {
+  const nextChangeAt = new Date(
+    live.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  if (now.getTime() >= nextChangeAt.getTime()) {
+    return Effect.void;
+  }
+  return Effect.fail(
+    new HttpError(409, 'handle_change_too_soon', 'You can change it again', {
+      nextChangeAt: nextChangeAt.toISOString(),
+    }),
+  );
+}
+
 // Makes a group public (with a handle) or private, in one transaction under
 // a per-group advisory lock, so the handle rows the decision depends on are
 // read INSIDE the transaction (never check-then-insert). Only the owner may
@@ -83,6 +97,21 @@ export async function setGroupVisibility(
             WHERE group_id = ${input.groupId} LIMIT 1`;
           const currentVisibility: GroupVisibility = group.visibility;
 
+          const retireLiveHandle = (row: LiveHandleRow) =>
+            Effect.gen(function* () {
+              yield* sql`DELETE FROM handles WHERE handle_lower = ${row.handleLower}`;
+              const reservedUntil = new Date(
+                now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000,
+              );
+              yield* sql`INSERT INTO retired_handles
+                  (handle_lower, former_user_id, former_group_id, reserved_until)
+                VALUES (${row.handleLower}, ${null}, ${input.groupId}, ${reservedUntil})
+                ON CONFLICT (handle_lower) DO UPDATE SET
+                  former_user_id = EXCLUDED.former_user_id,
+                  former_group_id = EXCLUDED.former_group_id,
+                  reserved_until = EXCLUDED.reserved_until`;
+            });
+
           if (input.visibility === 'private') {
             if (input.handle !== undefined) {
               return yield* Effect.fail(
@@ -90,17 +119,7 @@ export async function setGroupVisibility(
               );
             }
             if (live) {
-              yield* sql`DELETE FROM handles WHERE handle_lower = ${live.handleLower}`;
-              const reservedUntil = new Date(
-                now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000,
-              );
-              yield* sql`INSERT INTO retired_handles
-                  (handle_lower, former_user_id, former_group_id, reserved_until)
-                VALUES (${live.handleLower}, ${null}, ${input.groupId}, ${reservedUntil})
-                ON CONFLICT (handle_lower) DO UPDATE SET
-                  former_user_id = EXCLUDED.former_user_id,
-                  former_group_id = EXCLUDED.former_group_id,
-                  reserved_until = EXCLUDED.reserved_until`;
+              yield* retireLiveHandle(live);
             }
             if (currentVisibility !== 'private') {
               yield* sql`UPDATE groups SET visibility = 'private' WHERE id = ${input.groupId}`;
@@ -129,16 +148,7 @@ export async function setGroupVisibility(
 
           if (live && live.handleLower === lower) {
             if (live.handle !== trimmed) {
-              const nextChangeAt = new Date(
-                live.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
-              );
-              if (now.getTime() < nextChangeAt.getTime()) {
-                return yield* Effect.fail(
-                  new HttpError(409, 'handle_change_too_soon', 'You can change it again', {
-                    nextChangeAt: nextChangeAt.toISOString(),
-                  }),
-                );
-              }
+              yield* assertChangeAllowed(live, now);
               yield* sql`UPDATE handles SET handle = ${trimmed}, changed_at = ${now}
                 WHERE handle_lower = ${live.handleLower}`;
             }
@@ -149,16 +159,7 @@ export async function setGroupVisibility(
           }
 
           if (live) {
-            const nextChangeAt = new Date(
-              live.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
-            );
-            if (now.getTime() < nextChangeAt.getTime()) {
-              return yield* Effect.fail(
-                new HttpError(409, 'handle_change_too_soon', 'You can change it again', {
-                  nextChangeAt: nextChangeAt.toISOString(),
-                }),
-              );
-            }
+            yield* assertChangeAllowed(live, now);
           }
 
           // A live row owned by someone else is taken; a retired reservation belongs
@@ -182,17 +183,7 @@ export async function setGroupVisibility(
           }
 
           if (live) {
-            yield* sql`DELETE FROM handles WHERE handle_lower = ${live.handleLower}`;
-            const reservedUntil = new Date(
-              now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000,
-            );
-            yield* sql`INSERT INTO retired_handles
-                (handle_lower, former_user_id, former_group_id, reserved_until)
-              VALUES (${live.handleLower}, ${null}, ${input.groupId}, ${reservedUntil})
-              ON CONFLICT (handle_lower) DO UPDATE SET
-                former_user_id = EXCLUDED.former_user_id,
-                former_group_id = EXCLUDED.former_group_id,
-                reserved_until = EXCLUDED.reserved_until`;
+            yield* retireLiveHandle(live);
           }
 
           const [row] = yield* sql<{ handleLower: string }>`INSERT INTO handles

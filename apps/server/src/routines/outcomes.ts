@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import { type Payload } from '@zilar/protocol';
 import { type ServerDatabase } from '../db/client';
 import { type RoutineRow } from '../db/rows';
@@ -53,6 +53,19 @@ async function auditPaused(
 
 export const MAX_POST_TEXT_CHARS = 4_000;
 export const MAX_CONSECUTIVE_FAILURES = 3;
+
+function updateRoutine(
+  db: ServerDatabase,
+  write: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>,
+): Promise<void> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* write(sql);
+    }),
+  );
+}
 
 export const FAILURE_PAUSE_NOTICE = (title: string): string =>
   `The routine "${title}" was paused after 3 failed runs. Ask me to fix it.`;
@@ -122,14 +135,11 @@ export async function markSkipped(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await runSql(
+  await updateRoutine(
     db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE routines
-        SET last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
-        WHERE id = ${row.id}`;
-    }),
+    (sql) => sql`UPDATE routines
+    SET last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
+    WHERE id = ${row.id}`,
   );
   await auditRun(options, row, 'skipped', startedAt);
 }
@@ -141,14 +151,11 @@ export async function markOk(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await runSql(
+  await updateRoutine(
     db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE routines
-        SET last_run_at = ${at}, last_status = 'ok', consecutive_failures = 0, updated_at = ${at}
-        WHERE id = ${row.id}`;
-    }),
+    (sql) => sql`UPDATE routines
+    SET last_run_at = ${at}, last_status = 'ok', consecutive_failures = 0, updated_at = ${at}
+    WHERE id = ${row.id}`,
   );
   await auditRun(options, row, 'ok', startedAt);
 }
@@ -176,20 +183,14 @@ export async function pauseForFailures(
 ): Promise<void> {
   const failures = deleted ? MAX_CONSECUTIVE_FAILURES : row.consecutiveFailures + 1;
   const pausing = failures >= MAX_CONSECUTIVE_FAILURES;
-  await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      if (pausing) {
-        yield* sql`UPDATE routines
-          SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, status = 'paused', paused_reason = 'failures', updated_at = ${at}
-          WHERE id = ${row.id}`;
-      } else {
-        yield* sql`UPDATE routines
-          SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, updated_at = ${at}
-          WHERE id = ${row.id}`;
-      }
-    }),
+  await updateRoutine(db, (sql) =>
+    pausing
+      ? sql`UPDATE routines
+        SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, status = 'paused', paused_reason = 'failures', updated_at = ${at}
+        WHERE id = ${row.id}`
+      : sql`UPDATE routines
+        SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, updated_at = ${at}
+        WHERE id = ${row.id}`,
   );
   await auditRun(options, row, 'error', startedAt);
   if (pausing) {
@@ -206,14 +207,11 @@ export async function pauseForHostsChanged(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await runSql(
+  await updateRoutine(
     db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE routines
-        SET status = 'needs_approval', paused_reason = 'hosts_changed', last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
-        WHERE id = ${row.id}`;
-    }),
+    (sql) => sql`UPDATE routines
+    SET status = 'needs_approval', paused_reason = 'hosts_changed', last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
+    WHERE id = ${row.id}`,
   );
   await auditRun(options, row, 'skipped', startedAt);
   await auditPaused(options, row, 'hosts_changed');

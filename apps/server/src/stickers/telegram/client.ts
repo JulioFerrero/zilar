@@ -82,13 +82,11 @@ const discardBody = (response: Response): EffectType.Effect<void> =>
     ),
   );
 
-// The file download: no body means empty, and passing the cap cancels the
-// reader and signals `file_too_large`.
-async function readDownloadBody(response: Response, maxBytes: number): Promise<Uint8Array> {
-  const body = response.body;
-  if (body === null) {
-    return new Uint8Array();
-  }
+async function readCappedBody(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  onTooLarge: () => Error,
+): Promise<Uint8Array> {
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -102,7 +100,7 @@ async function readDownloadBody(response: Response, maxBytes: number): Promise<U
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => {});
-        throw new TelegramFileTooLarge();
+        throw onTooLarge();
       }
       chunks.push(value);
     }
@@ -118,6 +116,16 @@ async function readDownloadBody(response: Response, maxBytes: number): Promise<U
   return merged;
 }
 
+// The file download: no body means empty, and passing the cap cancels the
+// reader and signals `file_too_large`.
+async function readDownloadBody(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const body = response.body;
+  if (body === null) {
+    return new Uint8Array();
+  }
+  return readCappedBody(body, maxBytes, () => new TelegramFileTooLarge());
+}
+
 // Reads one Bot API method envelope with the 256 KiB cap: past it the
 // response is pathological and dropped as `try_later` instead of buffered.
 async function readEnvelopeBody(response: Response): Promise<TelegramApiEnvelope> {
@@ -131,32 +139,11 @@ async function readEnvelopeBody(response: Response): Promise<TelegramApiEnvelope
     }
     return parseTelegramEnvelope(text);
   }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read().catch(() => {
-        throw new TelegramUnreachable();
-      });
-      if (done) break;
-      if (value === undefined) continue;
-      total += value.byteLength;
-      if (total > TELEGRAM_JSON_MAX_BYTES) {
-        await reader.cancel().catch(() => {});
-        throw new TelegramUnreachable();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const merged = await readCappedBody(
+    body,
+    TELEGRAM_JSON_MAX_BYTES,
+    () => new TelegramUnreachable(),
+  );
   return parseTelegramEnvelope(new TextDecoder().decode(merged));
 }
 
