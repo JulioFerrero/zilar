@@ -2203,3 +2203,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2204](T-2204-store-core-context.md) | store phase 3 T2: one core context for both stores | 2026-10-19 |
 | [T-2200](T-2200-ai-turn-one-loop.md) | AI turns T3: group turns use the one tool loop | 2026-10-19 |
 | [T-2203](T-2203-server-tests-cut-b.md) | server tests B: search, media, hands cut to essentials | 2026-10-19 |
+| [T-2206](T-2206-phone-history-state.md) | store phase 3 T3a: phone uses the core history state | 2026-10-19 |

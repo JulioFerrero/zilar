@@ -3,6 +3,7 @@ import type {
   ChatStoreActions,
   ChatStoreCommonState,
   DeleteOutcome,
+  HistoryLoad,
   SendStickerInput,
   SendTextOptions,
 } from '@zilar/client-core/store';
@@ -161,7 +162,7 @@ export function chatsListView(load: LoadState, chatCount: number): ChatsListView
 type MessagesListView = 'skeleton' | 'error' | 'empty' | 'messages';
 
 /** The message list's view state; live messages override loading. */
-export function messagesListView(load: LoadState, messageCount: number): MessagesListView {
+export function messagesListView(load: HistoryLoad, messageCount: number): MessagesListView {
   if (messageCount > 0) {
     return 'messages';
   }
@@ -199,7 +200,7 @@ export interface ChatStoreState extends ChatStoreGroups, ChatStoreActions, ChatS
   me?: Me;
   /** `error` keeps chats already shown: a failed refresh never blanks the list. */
   chatsLoad: LoadState;
-  historyLoad: Record<string, LoadState>;
+  historyState: Record<string, HistoryLoad>;
   /** Lets the editor tell "not loaded yet" from "the folder no longer exists". */
   foldersLoaded: boolean;
   activeChatId: string | null;

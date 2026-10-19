@@ -422,7 +422,7 @@ export function MessageList({
   );
   const clearJumpTarget = useChatStore((state) => state.clearJumpTarget);
   // No data yet means never requested, so the first paint before `openChat` is loading, never empty.
-  const historyLoad = useChatStore((state) => state.historyLoad[chat.id] ?? 'loading');
+  const historyState = useChatStore((state) => state.historyState[chat.id] ?? 'loading');
   const retryHistory = useChatStore((state) => state.retryHistory);
   const draft = useChatStore((state) => state.drafts[chat.id]);
   const finishedDraftMessages = useChatStore((state) => state.finishedDraftMessages);
@@ -557,7 +557,7 @@ export function MessageList({
   );
 
   // Empty text and Retry appear once the first page settles; live messages render immediately.
-  const view = messagesListView(historyLoad, entries.length);
+  const view = messagesListView(historyState, entries.length);
   if (view !== 'messages') {
     if (view === 'skeleton') {
       return <MessageListSkeleton />;

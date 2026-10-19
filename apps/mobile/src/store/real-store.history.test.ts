@@ -101,7 +101,7 @@ describe('the first page', () => {
     const { store, xmpp } = await historySetup(60);
 
     store.getState().openChat(ANA);
-    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyState[ANA] === 'ready');
 
     expect(messageIds(store)).toEqual(ids(50, 10));
     expect(store.getState().hasMore(ANA)).toBe(true);
@@ -114,7 +114,7 @@ describe('older pages', () => {
   it('pages back 50 at a time until history is complete', async () => {
     const { store } = await historySetup(120);
     store.getState().openChat(ANA);
-    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyState[ANA] === 'ready');
 
     store.getState().loadOlder(ANA);
     await waitFor(() => messageIds(store).length === 100);
@@ -232,7 +232,7 @@ describe('an image attachment loaded from history', () => {
     await waitFor(() => store.getState().status === 'online');
 
     store.getState().openChat(ANA);
-    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyState[ANA] === 'ready');
 
     expect(store.getState().messages(ANA)[0]?.attachment?.kind).toBe('image');
     expect([...(store.getState().mediaTrustedHosts ?? [])].sort()).toEqual([

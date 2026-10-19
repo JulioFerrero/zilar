@@ -133,6 +133,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2199 | 7 types declared twice with the same fields become one-line aliases | −31 |
 | T-2201 | `lead batch` removed (Julio's call); the rest of the lead CLI unchanged | −970 |
 | T-2202 | server tests wave A: routines, questions, blocks and message blocks, from 61 to 23 cases (kept: ownership, permissions, caps, delivery, sanitising) | −1,463 test |
+| T-2204 | store phase 3 T2: one core context (core locals, ledger wiring, `nickFor`, typed `bridgeLocals`) for web and phone | −52 |
+| T-2200 | AI turns T3: group turns run through the one tool loop; the second plain path is gone (live-checked) | −30 |
+| T-2203 | server tests wave B: search, media, link preview, markup and hands, from 93 to 33 cases (all SSRF, sanitising, caps and permission cases kept) | −1,087 test |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -159,10 +162,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Remove `lead batch`.
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
-  - **T-2200:** AI turns T3, one loop for group turns.
-  - **T-2203:** server tests wave B (search, media, card media, link preview, markup, hands).
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2204:** store phase 3 T2, the core context.
+  - **T-2206:** store phase 3 T3a. The phone keeps history load in the core's `historyState`, and its two state adapters go.
+  - **T-2207:** AI turns T5/T6. DM and group turn inputs share one wiring helper (stop rule: at least −30).
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
@@ -174,7 +176,15 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `2cf648410` (07:40; the later pushes up to `5600e5207` change only phone code and tests): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `24764738e` (08:25), with AI turns T3 and store T2. Lead live checks as Julio in "ai test › General":
+- an @mention got its answer in about 10 s;
+- a text-only request got one full text reply;
+- a web-search task stopped from the card's Stop button froze at 0:10 in the stopped state, with no reply posted;
+- after a reload, the chat list, the cards topic and General loaded normally (read-only).
+
+**Observation:** after that stop, General's sidebar preview still reads "Deepseek: Reading the page". It is not checked whether this is older behaviour.
+
+Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

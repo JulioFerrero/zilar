@@ -105,7 +105,7 @@ describe('mobile offline chat cache (T-1313)', () => {
     await waitFor(() => store.getState().chatsLoad === 'loaded');
 
     store.getState().openChat(ANA);
-    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyState[ANA] === 'ready');
 
     const list = store.getState().messages(ANA);
     const ids = list.map((message) => message.id);

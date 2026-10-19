@@ -10,9 +10,6 @@ import {
   startStore as coreStartStore,
   stopStore as coreStopStore,
   suspendStore as coreSuspendStore,
-  type HistoryLoad,
-  type HistoryPatch,
-  type HistoryState,
   type LifecycleCtx,
   type StoreAppHooks,
   decodeChatListCache,
@@ -25,7 +22,6 @@ import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { dismissChatNotifications, syncBadge } from '../../lib/push/badge';
 import { markCachePainted } from '../../lib/startup-paint';
-import type { ChatStoreState, LoadState } from '../types';
 import type { StoreCtx } from './runtime';
 
 const CHAT_LIST_CACHE_FILE_NAME = 'zilar-chat-list.json';
@@ -104,34 +100,11 @@ export interface Lifecycle {
   finishDraftTurn(chatId: string, turnId: string): void;
 }
 
-const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
-const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
-
 // Background longer than 10 s suspends the session so ejabberd pushes; brief switches keep the socket.
 export const BACKGROUND_SUSPEND_GRACE_MS = 10_000;
 
 export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   const { get, set, s, life, h, coreCtx, offline } = ctx;
-
-  const asHistoryState = (state: ChatStoreState): HistoryState => ({
-    ...state,
-    historyState: Object.fromEntries(
-      Object.entries(state.historyLoad).map(([chatId, load]) => [chatId, toCoreLoad(load)]),
-    ),
-  });
-
-  const asMobilePatch = (patch: HistoryPatch): Partial<ChatStoreState> => {
-    if (patch.historyState === undefined) {
-      return patch;
-    }
-    const { historyState, ...rest } = patch;
-    return {
-      ...rest,
-      historyLoad: Object.fromEntries(
-        Object.entries(historyState).map(([chatId, load]) => [chatId, toMobileLoad(load)]),
-      ),
-    };
-  };
 
   // Separate from `s.core`: a closed attempt clears this one, so a resume after a failed connect boots a fresh core.
   let lifecycleCore: XmppCore | undefined;
@@ -274,17 +247,8 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   };
 
   lifecycleCtx = {
-    get: () => asHistoryState(get()),
-    set: (update) => {
-      set((state) => {
-        const previous = asHistoryState(state);
-        const patch = typeof update === 'function' ? update(previous) : update;
-        if (patch === previous) {
-          return state;
-        }
-        return asMobilePatch(patch);
-      });
-    },
+    get,
+    set,
     ports: coreCtx.ports,
     rt: life.lifetime,
     k: coreCtx.k,

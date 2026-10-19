@@ -93,7 +93,7 @@ describe('sign-out clears the user scoped store state (T-0901)', () => {
     store.getState().start();
     await flushUntil(() => store.getState().chatsLoad === 'loaded');
     store.getState().openChat(PEER);
-    await flushUntil(() => store.getState().historyLoad[PEER] === 'loaded');
+    await flushUntil(() => store.getState().historyState[PEER] === 'ready');
     store.getState().setFolders([
       {
         id: 'f-1',
@@ -126,7 +126,7 @@ describe('sign-out clears the user scoped store state (T-0901)', () => {
     expect(after.messagesByChat).toEqual({});
     expect(after.me).toBeUndefined();
     expect(after.currentUserId).toBe(initial.currentUserId);
-    expect(after.historyLoad).toEqual({});
+    expect(after.historyState).toEqual({});
     expect(after.historyComplete).toEqual({});
     expect(after.hasMore(PEER)).toBe(false);
     expect(after.activeChatId).toBeNull();
@@ -145,7 +145,7 @@ describe('sign-out clears the user scoped store state (T-0901)', () => {
     store.getState().start();
     await flushUntil(() => store.getState().chatsLoad === 'loaded');
     store.getState().openChat(PEER);
-    await flushUntil(() => store.getState().historyLoad[PEER] === 'loaded');
+    await flushUntil(() => store.getState().historyState[PEER] === 'ready');
     expect(bodiesOf(store.getState())).toContain('secret for A');
     store.getState().stop();
 
@@ -161,7 +161,7 @@ describe('sign-out clears the user scoped store state (T-0901)', () => {
     expect(bodiesOf(store.getState())).not.toContain('secret for A');
 
     store.getState().openChat(PEER);
-    await flushUntil(() => store.getState().historyLoad[PEER] === 'loaded');
+    await flushUntil(() => store.getState().historyState[PEER] === 'ready');
     const bodies = bodiesOf(store.getState());
     expect(bodies).toContain('hello B');
     expect(bodies).not.toContain('secret for A');

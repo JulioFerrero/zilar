@@ -3,6 +3,7 @@ import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import {
   applyChatDelivery,
+  bridgeLocals,
   clearSupersededMarker,
   flushPending as flushCore,
   loadOlder as loadOlderCore,
@@ -12,10 +13,6 @@ import {
   openHistory,
   pruneInactiveChats,
   type HistoryCtx,
-  type HistoryLoad,
-  type HistoryPatch,
-  type HistorySet,
-  type HistoryState,
 } from '@zilar/client-core/store';
 
 import type { ChatEntry } from '../../lib/chat-api';
@@ -24,84 +21,30 @@ import { TOPIC_GONE_NOTICE } from '../../lib/topics';
 import { clearUnreadMarkOnOpen } from './events';
 import { Ports } from './ports';
 import { detached, isClosed, lift, orElse, recover, type StoreCtx } from './runtime';
-import type { ChatStoreState, LoadState } from '../types';
-
-const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
-const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
 
 function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
   const { get, set, s } = ctx;
 
-  const asHistoryState = (state: ChatStoreState): HistoryState => ({
-    ...state,
-    historyState: Object.fromEntries(
-      Object.entries(state.historyLoad).map(([chatId, load]) => [chatId, toCoreLoad(load)]),
-    ),
-  });
-
-  const asMobilePatch = (patch: HistoryPatch): Partial<ChatStoreState> => {
-    if (patch.historyState === undefined) {
-      return patch;
-    }
-    const { historyState, ...rest } = patch;
-    return {
-      ...rest,
-      historyLoad: Object.fromEntries(
-        Object.entries(historyState).map(([chatId, load]) => [chatId, toMobileLoad(load)]),
-      ),
-    };
-  };
-
-  const historySet: HistorySet = (update) => {
-    set((state) => {
-      const previous = asHistoryState(state);
-      const patch = typeof update === 'function' ? update(previous) : update;
-      // `clearSupersededMarker` returns the state it was given to skip the write; keep the store's "same object" convention.
-      if (patch === previous) {
-        return state;
-      }
-      return asMobilePatch(patch);
-    });
-  };
-
-  // `rt`, `k`, `fx`, the ports, `lastRead` and the bookkeeping are the same objects the rest of the core uses, so a read mark or cursor written here is visible everywhere.
+  // `rt`, `k`, `fx`, the ports and the bookkeeping are the same objects the rest of the core uses, so a read mark or cursor written here is visible everywhere.
   const historyCtx: HistoryCtx = {
-    get: () => asHistoryState(get()),
-    set: historySet,
+    get,
+    set,
     ports: ctx.coreCtx.ports,
     rt: ctx.coreCtx.rt,
     k: ctx.coreCtx.k,
     fx: ctx.coreCtx.fx,
-    get core() {
-      return s.core;
-    },
-    set core(value) {
-      s.core = value;
-    },
-    get lastRead() {
-      return s.lastRead;
-    },
-    set lastRead(value) {
-      s.lastRead = value;
-    },
+    core: s.core,
+    lastRead: s.lastRead,
     lastReadUserId: ctx.coreCtx.lastReadUserId,
     pendingOutgoing: s.pendingOutgoing,
-    get groupsJoined() {
-      return s.groupsJoined;
-    },
-    set groupsJoined(value) {
-      s.groupsJoined = value;
-    },
-    get pendingOpenChatId() {
-      return s.pendingOpenChatId;
-    },
-    set pendingOpenChatId(value) {
-      s.pendingOpenChatId = value;
-    },
+    groupsJoined: s.groupsJoined,
+    pendingOpenChatId: s.pendingOpenChatId,
     cursors: s.cursors,
     loadingHistory: s.loadingHistory,
     loadingOlder: s.loadingOlder,
   };
+
+  bridgeLocals(s, historyCtx, ['core', 'lastRead', 'groupsJoined', 'pendingOpenChatId']);
 
   return historyCtx;
 }

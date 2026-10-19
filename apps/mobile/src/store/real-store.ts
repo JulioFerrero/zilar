@@ -56,7 +56,7 @@ interface UserState {
     | 'chats'
     | 'contacts'
     | 'messagesByChat'
-    | 'historyLoad'
+    | 'historyState'
     | 'activeChatId'
     | 'historyComplete'
     | 'search'
@@ -85,7 +85,7 @@ function makeUserState(deps: UserStateDeps): UserState {
     chats: [],
     contacts: [],
     messagesByChat: {},
-    historyLoad: {},
+    historyState: {},
     activeChatId: null,
     historyComplete: {},
     search: '',
@@ -405,10 +405,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // A deferred open must not fire later for a chat that was left: drop the pending open and its `loading` marker.
         if (locals.pendingOpenChatId === chatId) {
           locals.pendingOpenChatId = undefined;
-          if (!locals.loadingHistory.has(chatId) && get().historyLoad[chatId] === 'loading') {
-            const next = { ...get().historyLoad };
+          if (!locals.loadingHistory.has(chatId) && get().historyState[chatId] === 'loading') {
+            const next = { ...get().historyState };
             delete next[chatId];
-            set({ historyLoad: next });
+            set({ historyState: next });
           }
         }
       },
