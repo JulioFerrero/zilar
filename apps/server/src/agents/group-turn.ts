@@ -3,11 +3,11 @@ import type { Payload, HandoffLine } from '@zilar/protocol';
 import type { SendMessageOptions, ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
-import { ChatCompletionError, type ChatUsage } from '../ai/model-client';
+import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './tool-rounds';
 import { GROUP_FAILURE_REPLY, cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
-import { actionOfCall, executeToolCalls, followUpMessages } from './tool-exec';
+import { actionOfCall } from './tool-exec';
 import {
   finishProgressQuietly,
   finishTurnFailure,
@@ -117,10 +117,11 @@ export interface GroupTurnDeps {
   onUsage?: (usage: ChatUsage) => void;
   signal?: AbortSignal;
   /**
-   * Tools to advertise to the model. Absent (or empty) = the plain
-   * `completeChat` path. A group turn always carries the memory tools; persona
-   * tools are never offered in a group, and `request_action` appears only when
-   * the trigger is allowed to ask for one.
+   * Tools to advertise to the model. Absent or empty: no tools are advertised,
+   * and an improvised call is answered `invalid: unknown tool`. A group turn
+   * always carries the memory tools; persona tools are never offered in a
+   * group, and `request_action` appears only when the trigger is allowed to ask
+   * for one.
    */
   tools?: ChatToolDefinition[];
   executeTool?: ExecuteToolCall;
@@ -235,42 +236,11 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     });
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
-    if (deps.tools !== undefined && deps.tools.length > 0 && deps.executeTool !== undefined) {
-      return await runGroupToolTurn(deps, completionInput, secrets, wire, failTurn);
-    }
-    const first = await requestCompletion({
-      ...completionInput,
-      messages: deps.messages,
-    });
-    if (first.toolCalls.length === 0) {
-      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-      if (first.content === null) {
-        throw new ChatCompletionError(200, 'empty reply from the model');
-      }
-      return await sendGroupReply(deps, secrets, wire(first.content, true));
-    }
-    // No tools were advertised, so any tool call the model improvised is
-    // invalid: answer `invalid: unknown tool` for each call and make one
-    // follow-up call. `executeTool` is deliberately not invoked, so a
-    // plain member can never reach the action gateway even when the model
-    // tries. A follow-up with no text falls back to the honest failure
-    // text, exactly like the tool loop.
-    const { toolMessages } = await executeToolCalls({
-      toolCalls: first.toolCalls,
-      aiId: deps.aiId,
-      logger: deps.logger,
-      secrets,
-    });
-    const second = await requestCompletion({
-      ...completionInput,
-      messages: followUpMessages(deps.messages, first, toolMessages),
-    });
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    return await sendGroupReply(
-      deps,
-      secrets,
-      wire(second.content ?? TRANSIENT_FAILURE_REPLY, second.content !== null),
-    );
+    // Without an executor no tool may run, so the turn advertises none: an
+    // improvised call is answered `invalid: unknown tool` by the loop and a
+    // plain member can never reach the action gateway.
+    const toolTurn = deps.executeTool === undefined ? { ...deps, tools: [] } : deps;
+    return await runGroupToolTurn(toolTurn, completionInput, secrets, wire, failTurn);
   } catch (error) {
     return await failTurn({ error }, false);
   } finally {
