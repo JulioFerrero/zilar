@@ -6,7 +6,18 @@ import {
   type MentionMember,
   type UiMention,
 } from '@zilar/chat-core';
-import { ArrowUp, Check, Keyboard, Paperclip, Pencil, Smile, X } from 'lucide-react-native';
+import {
+  ArrowUp,
+  Check,
+  Film,
+  Keyboard,
+  Paperclip,
+  Pencil,
+  Smile,
+  Sticker as StickerIcon,
+  X,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,14 +25,26 @@ import { AttachSheet } from '@/components/chat/attach-sheet';
 import { useComposerMedia } from '@/components/chat/composer-media';
 import { PickedStrip } from '@/components/chat/composer-picked-strip';
 import { useComposerSheet } from '@/components/chat/composer-sheet';
-import { EmojiSheet } from '@/components/chat/emoji-sheet';
+import {
+  backspaceMention,
+  caretAfterChange,
+  isSingleCharBackspace,
+  mentionCandidates,
+  mentionStateForChange,
+  pickMentionMember,
+  resetMentionStateForChatKey,
+} from '@/components/chat/composer-mentions';
+import { EmojiTab } from '@/components/chat/emoji-tab';
+import type { EmojiSheetTab } from '@/components/chat/emoji-sheet';
+import { GifPanel } from '@/components/chat/gif-panel';
 import { tap } from '@/components/chat/haptics';
-import { useComposerMentions } from '@/components/chat/use-composer-mentions';
+import { StickerGrid } from '@/components/chat/sticker-panel';
 import { useBackCancel } from '@/components/chat/use-back-cancel';
 import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
@@ -182,6 +205,18 @@ function useDraftText(chatId: string | undefined): [string, (next: string) => vo
   return chatId === undefined ? [local, setValue] : [stored, setValue];
 }
 
+const PANEL_HEIGHT = 320;
+
+function resolveSheetTab(
+  remembered: EmojiSheetTab | undefined,
+  gifsVisible: boolean,
+): EmojiSheetTab {
+  if (remembered === 'gifs' && !gifsVisible) {
+    return 'emoji';
+  }
+  return remembered ?? 'emoji';
+}
+
 type ComposerProps = {
   onSend: (text: string, mentions?: UiMention[]) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
@@ -255,22 +290,105 @@ export function Composer({
     inputRef.current?.focus();
   }, [replyId, editingId]);
 
-  const mentions = useComposerMentions({
-    chatKey,
-    mentionMembers,
-    editing: editTarget !== undefined,
-    text,
-    setText,
-    selection,
-    setSelection,
-    onTyping:
-      onTyping === undefined
-        ? undefined
-        : () => {
-            typingActiveRef.current = true;
-            onTyping();
-          },
-  });
+  const notifyTyping =
+    onTyping === undefined
+      ? undefined
+      : () => {
+          typingActiveRef.current = true;
+          onTyping();
+        };
+
+  const [mentions, setMentions] = useState<UiMention[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | undefined>(
+    undefined,
+  );
+  // A chat switch resets the mentions and query (a picked mention must never leak into another chat) but keeps the draft; seeding from `chatKey` skips the reset on the first render.
+  const [trackedChatKey, setTrackedChatKey] = useState<string | undefined>(chatKey);
+  if (chatKey !== undefined && trackedChatKey !== chatKey) {
+    const reset = resetMentionStateForChatKey(trackedChatKey, chatKey, {
+      mentions,
+      query: mentionQuery,
+    });
+    setTrackedChatKey(reset.trackedChatKey);
+    setMentions(reset.state.mentions);
+    setMentionQuery(reset.state.query);
+  }
+
+  // The picker appears only when the screen passes members (groups, never DMs) and never while editing.
+  const mentionsEnabled = mentionMembers !== undefined && editTarget === undefined;
+  const candidates =
+    mentionsEnabled && mentionQuery !== undefined
+      ? mentionCandidates(mentionMembers, { mentions, query: mentionQuery })
+      : [];
+  const pickerOpen = candidates.length > 0;
+
+  const handleChange = (value: string) => {
+    // Deleting one character inside or right after a mention removes the whole token, like web (RN has no reliable backspace signal). Only a single-character delete at a collapsed caret takes that path; any other change retracks the ranges.
+    const caret = caretAfterChange(text, value, selection?.start);
+    if (mentionsEnabled && mentions.length > 0 && isSingleCharBackspace(text, value, selection)) {
+      const removed = backspaceMention(
+        text,
+        selection?.start ?? 0,
+        { mentions, query: mentionQuery },
+        true,
+      );
+      if (removed !== undefined) {
+        setText(removed.text);
+        setMentions(removed.state.mentions);
+        setMentionQuery(removed.state.query);
+        setSelection({ start: removed.caret, end: removed.caret });
+        return;
+      }
+    }
+    setText(value);
+    if (mentionsEnabled) {
+      const next = mentionStateForChange(
+        text,
+        value,
+        caret,
+        { mentions, query: mentionQuery },
+        true,
+      );
+      setMentions(next.mentions);
+      setMentionQuery(next.query);
+    }
+    if (editTarget === undefined && value.trim().length > 0) {
+      notifyTyping?.();
+    }
+  };
+
+  // A picker row replaces the `@query` with the token and puts the caret after it; the field is controlled by `selection`.
+  const pickMention = (member: MentionMember) => {
+    const caret = selection?.start ?? text.length;
+    const picked = pickMentionMember(text, caret, member, { mentions, query: mentionQuery });
+    if (picked === undefined) {
+      return;
+    }
+    setText(picked.text);
+    setMentions(picked.state.mentions);
+    setMentionQuery(undefined);
+    setSelection({ start: picked.caret, end: picked.caret });
+  };
+
+  const trackEmojiChange = (previousText: string, nextText: string, caret: number) => {
+    if (!mentionsEnabled) {
+      return;
+    }
+    const state = mentionStateForChange(
+      previousText,
+      nextText,
+      caret,
+      { mentions, query: mentionQuery },
+      true,
+    );
+    setMentions(state.mentions);
+    setMentionQuery(state.query);
+  };
+
+  const clearMentions = () => {
+    setMentions([]);
+    setMentionQuery(undefined);
+  };
 
   useEffect(() => {
     if (text.trim().length > 0 || !typingActiveRef.current) {
@@ -288,7 +406,7 @@ export function Composer({
     stickersApi,
     gifsApi,
     onSendSticker,
-    trackEmojiChange: mentions.trackEmojiChange,
+    trackEmojiChange,
   });
 
   const clearDraft = () => {
@@ -330,11 +448,11 @@ export function Composer({
       setInputHeight(MIN_INPUT_HEIGHT);
       return;
     }
-    onSend(text, mentions.mentions.length === 0 ? undefined : [...mentions.mentions]);
+    onSend(text, mentions.length === 0 ? undefined : [...mentions]);
     // The dock already sent the paused stanza; drop the flag so the effect sends no second one.
     typingActiveRef.current = false;
     setText('');
-    mentions.clearMentions();
+    clearMentions();
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
@@ -349,6 +467,12 @@ export function Composer({
     sheet.closeSheet();
     inputRef.current?.focus();
   };
+  const visible = resolveSheetTab(sheet.sheetTab, sheet.gifAvailable !== false);
+  const tabs: { id: EmojiSheetTab; label: string; icon: LucideIcon }[] = [
+    { id: 'emoji', label: 'Emoji', icon: Smile },
+    { id: 'stickers', label: 'Stickers', icon: StickerIcon },
+    ...(sheet.gifAvailable !== false ? [{ id: 'gifs' as const, label: 'GIFs', icon: Film }] : []),
+  ];
 
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
@@ -368,9 +492,7 @@ export function Composer({
           <Text className="text-[13px] text-[#f87171]">{media.attachError}</Text>
         </Pressable>
       ) : null}
-      {mentions.pickerOpen ? (
-        <MentionPicker members={mentions.candidates} onSelect={mentions.pickMention} />
-      ) : null}
+      {pickerOpen ? <MentionPicker members={candidates} onSelect={pickMention} /> : null}
       <PickedStrip previews={pickedPreviews} onRemove={media.removePick} />
       <View
         className="flex-row items-end gap-1 rounded-[14px] p-2"
@@ -388,7 +510,7 @@ export function Composer({
             <TextInput
               ref={inputRef}
               value={text}
-              onChangeText={mentions.handleChange}
+              onChangeText={handleChange}
               multiline
               placeholder={placeholder}
               placeholderTextColor="#a1a1a1"
@@ -458,25 +580,55 @@ export function Composer({
           />
         )}
       </View>
-      <EmojiSheet
-        open={sheet.sheetOpen}
-        tab={sheet.sheetTab}
-        onSelectTab={sheet.setSheetTab}
-        gifsVisible={sheet.gifAvailable !== false}
-        emojiRecents={sheet.emojiRecents}
-        emojiCategory={sheet.emojiCategory}
-        onSelectEmojiCategory={sheet.setEmojiCategory}
-        onPickEmoji={sheet.pickEmoji}
-        packs={sheet.packs}
-        panelState={sheet.panelState}
-        stickerRecents={sheet.recents}
-        activePackId={sheet.activePackId}
-        onSelectPack={sheet.setActivePackId}
-        onPickSticker={sheet.pickSticker}
-        onRetryStickers={sheet.loadPanel}
-        gifsApi={gifsApi}
-        onPickGif={media.pickGif}
-      />
+      {sheet.sheetOpen ? (
+        <View
+          accessibilityRole="menu"
+          accessibilityLabel="Emoji, stickers and GIFs"
+          className="mt-1.5 border-t border-border bg-surface px-3 pt-2"
+          style={{ height: PANEL_HEIGHT }}
+        >
+          <View className="pb-2">
+            <SegmentedControl
+              accessibilityLabel="Panel tabs"
+              options={tabs.map((item) => ({
+                value: item.id,
+                label: item.label,
+                icon: item.icon,
+              }))}
+              value={visible}
+              onChange={(value) => {
+                const next = tabs.find((item) => item.id === value);
+                if (next !== undefined) {
+                  sheet.setSheetTab(next.id);
+                }
+              }}
+            />
+          </View>
+          <View className="min-h-0 flex-1">
+            {visible === 'emoji' ? (
+              <EmojiTab
+                open={sheet.sheetOpen}
+                recents={sheet.emojiRecents}
+                activeCategory={sheet.emojiCategory}
+                onSelectCategory={sheet.setEmojiCategory}
+                onPick={sheet.pickEmoji}
+              />
+            ) : visible === 'stickers' ? (
+              <StickerGrid
+                packs={sheet.packs}
+                state={sheet.panelState}
+                recents={sheet.recents}
+                activePackId={sheet.activePackId}
+                onSelectPack={sheet.setActivePackId}
+                onPick={sheet.pickSticker}
+                onRetry={sheet.loadPanel}
+              />
+            ) : (
+              <GifPanel open={sheet.sheetOpen} api={gifsApi} onPick={media.pickGif} />
+            )}
+          </View>
+        </View>
+      ) : null}
       <AttachSheet
         open={media.attachOpen}
         busy={media.attachBusy}
