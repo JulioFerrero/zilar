@@ -1,4 +1,5 @@
 import { Effect, type Effect as EffectType } from 'effect';
+import type { PushSubscriptionRow } from '../db/rows';
 import { markPushFailed, markPushSent } from '../health';
 import { albumKey } from './album-key';
 import { newestMessageForUserEffect } from './archive-scan';
@@ -20,7 +21,6 @@ import {
   openNativeDevice,
   removeDeviceByNode,
   showPreviewsForUser,
-  type PushDeviceRow,
 } from './store';
 
 type DeliveryError = Undecryptable | ArchiveUnavailable | SendFailed;
@@ -29,7 +29,7 @@ type DroppedReason = Extract<PushOutcome, { kind: 'dropped' }>['reason'];
 
 type OpenDevice = ReturnType<typeof openDevice>;
 
-function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
+function dropped(device: PushSubscriptionRow, reason: DroppedReason): PushOutcome {
   return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
 }
 
@@ -90,7 +90,7 @@ export async function handleIncomingPush(
 
 const openDeviceEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
-  device: PushDeviceRow,
+  device: PushSubscriptionRow,
 ): EffectType.fn.Return<OpenDevice, Undecryptable> {
   return yield* Effect.try({
     try: () => openDevice(deps.cipher, device),
@@ -101,7 +101,7 @@ const openDeviceEffect = Effect.fnUntraced(function* (
 // Opens a native device: the token is in the clear, so nothing to decrypt.
 // A row whose kind and token disagree is unusable and dropped.
 const openNativeDeviceEffect = Effect.fnUntraced(function* (
-  device: PushDeviceRow,
+  device: PushSubscriptionRow,
 ): EffectType.fn.Return<ReturnType<typeof openNativeDevice>, Undecryptable> {
   return yield* Effect.try({
     try: () => openNativeDevice(device),
@@ -117,7 +117,7 @@ export interface ScanResult {
 
 const resolveAndSendEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
-  device: PushDeviceRow,
+  device: PushSubscriptionRow,
   node: string,
 ): EffectType.fn.Return<PushOutcome, DeliveryError> {
   const scan = yield* newestMessageForUserEffect(deps, device.userId, node).pipe(
@@ -128,7 +128,7 @@ const resolveAndSendEffect = Effect.fnUntraced(function* (
 
 export const deliverToDevice = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
-  device: PushDeviceRow,
+  device: PushSubscriptionRow,
   scan: ScanResult,
 ): EffectType.fn.Return<PushOutcome, DeliveryError> {
   const newest = scan.newest;
@@ -185,7 +185,7 @@ export const deliverToDevice = Effect.fnUntraced(function* (
 // `SendFailed`. Returns `true` when gone, so the caller forgets the node.
 const sendWithCleanupEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
-  device: PushDeviceRow,
+  device: PushSubscriptionRow,
   send: () => Promise<{ gone: boolean }>,
 ): EffectType.fn.Return<boolean, SendFailed> {
   const now = (deps.now ?? (() => new Date()))();

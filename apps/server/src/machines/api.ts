@@ -72,15 +72,13 @@ const INVALID_JSON = Symbol('invalid-json');
 // Every owner write shares one per-user budget.
 
 export interface MachinesApiDependencies extends Pick<ServerCore, 'auth' | 'db'> {
-  logger: MachinesLogger;
+  logger: Logger;
   audit?: AuditRecorder;
   /** Shared with the tunnel hub so revokes close live connections. */
   registry?: DbMachineRegistry;
   now?: () => number;
   isMachineOnline?: (machineId: string) => boolean;
 }
-
-export type MachinesLogger = Logger;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 

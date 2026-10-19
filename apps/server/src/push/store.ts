@@ -8,8 +8,6 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { PushCipher } from './crypto';
 
-export type PushDeviceRow = PushSubscriptionRow;
-
 // A device that received nothing for this long is listed as inactive. A
 // device that never received anything counts from its registration.
 export const PUSH_INACTIVE_AFTER_DAYS = 90;
@@ -25,7 +23,7 @@ export interface PushDeviceView {
   inactive: boolean;
 }
 
-export function toPushDeviceView(row: PushDeviceRow, now: Date): PushDeviceView {
+export function toPushDeviceView(row: PushSubscriptionRow, now: Date): PushDeviceView {
   const last = row.lastUsedAt ?? row.createdAt;
   const inactiveDays = (now.getTime() - last.getTime()) / (24 * 3600 * 1000);
   return {
@@ -40,12 +38,15 @@ export function toPushDeviceView(row: PushDeviceRow, now: Date): PushDeviceView 
   };
 }
 
-export async function devicesForUser(db: ServerDatabase, userId: string): Promise<PushDeviceRow[]> {
+export async function devicesForUser(
+  db: ServerDatabase,
+  userId: string,
+): Promise<PushSubscriptionRow[]> {
   const rows = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PushDeviceRow>`SELECT * FROM push_subscriptions
+      return yield* sql<PushSubscriptionRow>`SELECT * FROM push_subscriptions
         WHERE user_id = ${userId}`;
     }),
   );
@@ -87,12 +88,12 @@ export async function removeDevice(
 export async function deviceByNode(
   db: ServerDatabase,
   node: string,
-): Promise<PushDeviceRow | undefined> {
+): Promise<PushSubscriptionRow | undefined> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PushDeviceRow>`SELECT * FROM push_subscriptions
+      return yield* sql<PushSubscriptionRow>`SELECT * FROM push_subscriptions
         WHERE node = ${node} LIMIT 1`;
     }),
   );
@@ -181,7 +182,7 @@ export async function setShowPreviewsForUser(
 
 export function openDevice(
   cipher: PushCipher,
-  row: PushDeviceRow,
+  row: PushSubscriptionRow,
 ): { endpoint: string; keys: { p256dh: string; auth: string } } {
   if (row.endpoint === null || row.p256dh === null || row.auth === null) {
     throw new Error('The push device is not a Web Push device');
@@ -192,7 +193,10 @@ export function openDevice(
   };
 }
 
-export function openNativeDevice(row: PushDeviceRow): { kind: 'fcm' | 'apns'; token: string } {
+export function openNativeDevice(row: PushSubscriptionRow): {
+  kind: 'fcm' | 'apns';
+  token: string;
+} {
   if (row.kind === 'webpush' || row.token === null) {
     throw new Error('The push device is not a native device');
   }

@@ -40,8 +40,6 @@ export type UnregisterNativePushDeps = Omit<NativePushDeps, 'setPushPair'>;
 
 type Registration = typeof RegisteredDevice.Type;
 
-export type StoredPushRegistration = Registration;
-
 function parseRegistration(raw: string | null): Registration | undefined {
   if (raw === null || raw === '') {
     return undefined;
@@ -71,7 +69,7 @@ async function clearRegistration(): Promise<void> {
 /**
  * Best effort: a SecureStore failure answers undefined.
  */
-export async function readStoredRegistration(): Promise<StoredPushRegistration | undefined> {
+export async function readStoredRegistration(): Promise<Registration | undefined> {
   try {
     return parseRegistration(await SecureStore.getItemAsync(PUSH_REGISTRATION_KEY));
   } catch {

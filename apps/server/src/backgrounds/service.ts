@@ -21,8 +21,6 @@ const BACKGROUND_PROBE_LIMITS = {
   maxDecodedBytes: BACKGROUND_MAX_SIDE * BACKGROUND_MAX_SIDE * 4,
 };
 
-export type BackgroundRow = ChatBackgroundRow;
-
 export interface BackgroundView {
   id: string;
   url: string;
@@ -166,7 +164,7 @@ export async function uploadBackground(
   return { id, url: backgroundUrlFor(id), width: info.width, height: info.height };
 }
 
-function toBackgroundView(row: BackgroundRow): BackgroundView {
+function toBackgroundView(row: ChatBackgroundRow): BackgroundView {
   return {
     id: row.id,
     url: backgroundUrlFor(row.id),
@@ -184,7 +182,7 @@ export async function listBackgrounds(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<BackgroundRow>`SELECT * FROM chat_backgrounds
+      return yield* sql<ChatBackgroundRow>`SELECT * FROM chat_backgrounds
         WHERE user_id = ${userId}
         ORDER BY created_at DESC, id DESC`;
     }),
@@ -210,7 +208,7 @@ export async function readBackgroundFile(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<BackgroundRow>`SELECT * FROM chat_backgrounds
+      return yield* sql<ChatBackgroundRow>`SELECT * FROM chat_backgrounds
         WHERE id = ${backgroundId} LIMIT 1`;
     }),
   );

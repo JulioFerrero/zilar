@@ -95,8 +95,6 @@ function createGifTokenIssuer(options: { secret: string; now?: () => number }): 
     },
   };
 }
-export type GifsApiDependencies = GifsRoutesDependencies;
-
 // `q` is 1..100 characters, `pos?` at most 128; values arrive as strings from the query
 // string (first value wins).
 const GifSearchQuery = Schema.Struct({
@@ -149,7 +147,7 @@ interface ShapedGifItem {
   sizeBytes?: number | undefined;
 }
 
-export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
+export function createGifsApi(deps: GifsRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const searchLimiter = limiter('gif', now);

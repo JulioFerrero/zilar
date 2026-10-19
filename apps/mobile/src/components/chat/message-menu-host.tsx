@@ -14,8 +14,6 @@ import {
 } from '@/components/chat/message-bubble-actions';
 import type { MessageHandler, ReactHandler } from '@/components/chat/use-stable-handlers';
 
-export type MessageMenuTarget = BubbleActionsTarget;
-
 // The list-level handlers the one sheet acts through: a bubble only names the message, the actions stay the list's.
 type MessageMenuHandlers = {
   onReply: MessageHandler;
@@ -29,7 +27,7 @@ type MessageMenuHandlers = {
 };
 
 type MessageMenu = {
-  open: (target: MessageMenuTarget) => void;
+  open: (target: BubbleActionsTarget) => void;
 };
 
 const MessageMenuContext = createContext<MessageMenu | null>(null);
@@ -48,7 +46,7 @@ export function MessageMenuHost({
   react,
   children,
 }: MessageMenuHandlers & { children: ReactNode }) {
-  const [target, setTarget] = useState<MessageMenuTarget | null>(null);
+  const [target, setTarget] = useState<BubbleActionsTarget | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Outside state, so `open` stays stable and a press reads the committed value without re-rendering every bubble.
@@ -60,7 +58,7 @@ export function MessageMenuHost({
     setMenuOpen(next);
   }, []);
   const open = useCallback(
-    (next: MessageMenuTarget) => {
+    (next: BubbleActionsTarget) => {
       setTarget(next);
       setConfirmOpen(false);
       if (menuVisible.current) {

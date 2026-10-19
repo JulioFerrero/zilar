@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
+import type { AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import {
   getToolRow,
@@ -10,10 +11,8 @@ import {
   MAX_RUNS_PER_TOOL,
   toPublicRun,
   ToolServiceError,
-  type RunRow,
-  type VersionRow,
 } from './queries';
-import type { PublicToolRun, RunToolVersionDeps, RunToolVersionInput } from './service';
+import type { RunToolVersionDeps, RunToolVersionInput } from './service';
 import type { ToolRunResult } from './types';
 
 // Runs one version through the runner port and records an `ai_tool_runs` row in the same step.
@@ -23,7 +22,7 @@ export async function runToolVersion(
   deps: RunToolVersionDeps,
   input: RunToolVersionInput,
   now: Date,
-): Promise<{ result: ToolRunResult; run: PublicToolRun }> {
+): Promise<{ result: ToolRunResult; run: AiToolRunRow }> {
   const tool = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -39,7 +38,7 @@ export async function runToolVersion(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      const [row] = yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
         WHERE tool_id = ${tool.id} AND version = ${wantVersion} LIMIT 1`;
       return row ?? null;
     }),
@@ -117,9 +116,9 @@ export async function recordSaveAudit(
 export function insertVersion(
   sql: SqlClient.SqlClient,
   input: InsertVersionInput,
-): Effect.Effect<VersionRow, SqlError.SqlError> {
+): Effect.Effect<AiToolVersionRow, SqlError.SqlError> {
   return Effect.gen(function* () {
-    const [row] = yield* sql<VersionRow>`INSERT INTO ai_tool_versions
+    const [row] = yield* sql<AiToolVersionRow>`INSERT INTO ai_tool_versions
         (id, tool_id, version, source, hosts, message, created_by, created_at)
       VALUES (
         ${randomUUID()},
@@ -148,7 +147,7 @@ interface RecordRunInput {
 }
 
 // Inserts the run row and prunes beyond the newest 50 in one transaction; output is truncated to 2 KiB.
-function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<PublicToolRun> {
+function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<AiToolRunRow> {
   return runSql(
     db,
     Effect.gen(function* () {
@@ -156,7 +155,7 @@ function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<PublicToo
       return yield* sql.withTransaction(
         Effect.gen(function* () {
           const outputText = input.result.ok ? input.result.output.text : null;
-          const [row] = yield* sql<RunRow>`INSERT INTO ai_tool_runs
+          const [row] = yield* sql<AiToolRunRow>`INSERT INTO ai_tool_runs
               (id, tool_id, version, trigger, status, error_kind, duration_ms,
                 fetch_count, output_text, created_at)
             VALUES (

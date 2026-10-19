@@ -208,8 +208,6 @@ export interface RequestParams {
   unattended?: boolean;
 }
 
-export type DeniedReason = PolicyDenialReason;
-
 export function createActionGateway(deps: ActionGatewayDependencies): ActionGateway {
   const now = deps.now ?? (() => new Date());
 

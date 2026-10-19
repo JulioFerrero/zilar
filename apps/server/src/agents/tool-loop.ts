@@ -118,9 +118,7 @@ export interface CompleteChatInput {
   signal?: AbortSignal;
 }
 
-export type ChatCompletionResult = ModelCallResult;
-
-export async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
+export async function requestCompletion(input: CompleteChatInput): Promise<ModelCallResult> {
   const startedMs = Date.now();
   try {
     const result = await chat({

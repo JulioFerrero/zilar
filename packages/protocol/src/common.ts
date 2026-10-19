@@ -92,8 +92,6 @@ export const MoneySchema = struct({
   amount: Schema.Number.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
-export type Money = typeof MoneySchema.Type;
-
 export const BudgetSchema = struct({
   currency: CurrencySchema,
   max: Schema.Number.pipe(Schema.check(Schema.isGreaterThan(0))),

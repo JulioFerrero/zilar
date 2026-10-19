@@ -1,15 +1,10 @@
 import { Exit, Schema } from 'effect';
 import { ApiError, Sticker as ContractSticker } from '@zilar/api-contract';
-import {
-  makeStickersApi as makeSharedStickersApi,
-  type Sticker,
-  type TelegramImportResult as SharedTelegramImportResult,
-} from '@zilar/client-core';
+import { makeStickersApi as makeSharedStickersApi, type Sticker } from '@zilar/client-core';
 
 import { errorFieldsOf } from './api-error-body';
 import type { ApiCall, ApiTransport } from './effect/api-client';
 
-export type TelegramImportResult = SharedTelegramImportResult;
 export type { PanelPack, StickerPack, StickerPackDetail } from '@zilar/client-core';
 
 export type TokenProvider = () => Promise<string | undefined>;

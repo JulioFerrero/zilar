@@ -10,14 +10,9 @@ import { deliverToDevice, handleIncomingPush, type ScanResult } from './delivery
 import { FcmSendError, type FcmSender, type FcmWakeData } from './fcm';
 import type { ResolvedPushMessage } from './payload';
 import { createWebPushSender } from './sender';
+import type { PushSubscriptionRow } from '../db/rows';
 import type { PushServiceDeps } from './service';
-import {
-  deviceByNode,
-  removeDevice,
-  saveDevice,
-  type PushDeviceRow,
-  type SaveDeviceInput,
-} from './store';
+import { deviceByNode, removeDevice, saveDevice, type SaveDeviceInput } from './store';
 
 // A fixed storage key and clock, matching `store.test.ts`: the cipher only
 // needs any 32+ character string, and the exact timestamps never matter.
@@ -139,7 +134,7 @@ function fcmInput(userId: string, token = 'fcm-token-1'): SaveDeviceInput {
   };
 }
 
-function run(deps: PushServiceDeps, device: PushDeviceRow, scan: ScanResult) {
+function run(deps: PushServiceDeps, device: PushSubscriptionRow, scan: ScanResult) {
   return Effect.runPromise(deliverToDevice(deps, device, scan));
 }
 

@@ -7,8 +7,6 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { ProviderId } from './providers';
 
-export type ConnectionRow = ProviderConnectionRow;
-
 // The create route answers 409 `limit_reached` at this cap.
 export const CONNECTIONS_MAX_PER_USER = 50;
 
@@ -32,7 +30,7 @@ export interface CreateConnectionInput {
 // `provider` is a validated ProviderId on every write, so the cast is safe. The
 // plaintext key never enters this shape; callers that need it use the gateway
 // seam below.
-function toPublicConnection(row: ConnectionRow): PublicConnection {
+function toPublicConnection(row: ProviderConnectionRow): PublicConnection {
   return {
     id: row.id,
     provider: row.provider as ProviderId,
@@ -51,7 +49,7 @@ export async function listConnections(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ConnectionRow>`SELECT * FROM provider_connections
+      return yield* sql<ProviderConnectionRow>`SELECT * FROM provider_connections
         WHERE owner = ${owner}
         ORDER BY created_at ASC`;
     }),
@@ -84,7 +82,7 @@ export async function createConnection(
               ),
             );
           }
-          return yield* sql<ConnectionRow>`INSERT INTO provider_connections
+          return yield* sql<ProviderConnectionRow>`INSERT INTO provider_connections
             (id, owner, provider, encrypted_key, label, base_url)
             VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label}, ${input.baseUrl})
             RETURNING *`;
@@ -116,7 +114,7 @@ export async function updateConnectionKey(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          const [updated] = yield* sql<ConnectionRow>`UPDATE provider_connections
+          const [updated] = yield* sql<ProviderConnectionRow>`UPDATE provider_connections
             SET encrypted_key = ${input.encryptedKey}, updated_at = now()
             WHERE id = ${input.id} AND owner = ${input.owner}
             RETURNING *`;
@@ -136,12 +134,12 @@ export async function findOwnedConnection(
   db: ServerDatabase,
   id: string,
   owner: string,
-): Promise<ConnectionRow | null> {
+): Promise<ProviderConnectionRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ConnectionRow>`SELECT * FROM provider_connections
+      return yield* sql<ProviderConnectionRow>`SELECT * FROM provider_connections
         WHERE id = ${id} AND owner = ${owner}
         LIMIT 1`;
     }),

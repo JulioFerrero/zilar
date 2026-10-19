@@ -121,8 +121,6 @@ export interface CardRespondDeps extends Pick<ServerCore, 'db' | 'logger'> {
   audit?: AuditRecorder;
 }
 
-export type RespondInput = BlocksRespondPayload;
-
 function cardNotFound(): HttpError {
   return new HttpError(404, 'card_not_found', 'Card not found');
 }
@@ -359,7 +357,7 @@ export async function myPicks(
 export async function respondToCard(
   deps: CardRespondDeps,
   userId: string,
-  input: RespondInput,
+  input: BlocksRespondPayload,
 ): Promise<{ data: BlocksData }> {
   const card = await findCard(deps.db, input.messageId);
   if (card === null) {

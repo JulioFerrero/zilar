@@ -3,17 +3,11 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { AiToolRow, AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import type {
-  PublicTool,
-  PublicToolRun,
-  PublicToolVersion,
-  ToolDetail,
-  ToolVersionDetail,
-} from './service';
+import type { PublicTool, PublicToolVersion, ToolDetail, ToolVersionDetail } from './service';
 
 export function toToolDetail(
-  tool: ToolRow,
-  current: VersionRow,
+  tool: AiToolRow,
+  current: AiToolVersionRow,
   lastRunStatus: 'ok' | 'error' | null,
 ): ToolDetail {
   return {
@@ -32,7 +26,7 @@ export function toToolDetail(
   };
 }
 
-function toPublicVersion(row: VersionRow): PublicToolVersion {
+function toPublicVersion(row: AiToolVersionRow): PublicToolVersion {
   return {
     id: row.id,
     toolId: row.toolId,
@@ -44,11 +38,11 @@ function toPublicVersion(row: VersionRow): PublicToolVersion {
   };
 }
 
-export function toVersionDetail(row: VersionRow): ToolVersionDetail {
+export function toVersionDetail(row: AiToolVersionRow): ToolVersionDetail {
   return { ...toPublicVersion(row), source: row.source };
 }
 
-export function toPublicRun(row: RunRow): PublicToolRun {
+export function toPublicRun(row: AiToolRunRow): AiToolRunRow {
   return {
     id: row.id,
     toolId: row.toolId,
@@ -78,10 +72,6 @@ export class ToolServiceError extends Error {
   }
 }
 
-export type ToolRow = AiToolRow;
-export type VersionRow = AiToolVersionRow;
-export type RunRow = AiToolRunRow;
-
 // Lists the non-deleted tools of one AI in one topic, without source.
 export async function listTools(
   db: ServerDatabase,
@@ -93,7 +83,7 @@ export async function listTools(
       const sql = yield* SqlClient.SqlClient;
       const topic =
         input.topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${input.topicId}`;
-      return yield* sql<ToolRow>`SELECT * FROM ai_tools
+      return yield* sql<AiToolRow>`SELECT * FROM ai_tools
         WHERE ai_id = ${input.aiId} AND ${topic} AND deleted_at IS NULL
         ORDER BY name ASC`;
     }),
@@ -140,7 +130,7 @@ export async function getTool(db: ServerDatabase, id: string): Promise<ToolDetai
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      const [row] = yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
         WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
       return row ?? null;
     }),
@@ -177,7 +167,7 @@ export async function listVersions(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      return yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
         WHERE tool_id = ${toolId}
         ORDER BY version DESC`;
     }),
@@ -204,7 +194,7 @@ export async function getVersion(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      return yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
         WHERE tool_id = ${toolId} AND version = ${version} LIMIT 1`;
     }),
   );
@@ -216,7 +206,7 @@ export async function listRuns(
   db: ServerDatabase,
   toolId: string,
   limit = 20,
-): Promise<PublicToolRun[] | null> {
+): Promise<AiToolRunRow[] | null> {
   const tool = await runSql(
     db,
     Effect.gen(function* () {
@@ -231,7 +221,7 @@ export async function listRuns(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<RunRow>`SELECT * FROM ai_tool_runs
+      return yield* sql<AiToolRunRow>`SELECT * FROM ai_tool_runs
         WHERE tool_id = ${toolId}
         ORDER BY created_at DESC, id DESC
         LIMIT ${Math.max(1, Math.min(limit, 50))}`;
@@ -245,10 +235,10 @@ export function findActiveTool(
   aiId: string,
   topicId: string | null,
   name: string,
-): Effect.Effect<ToolRow | null, SqlError.SqlError> {
+): Effect.Effect<AiToolRow | null, SqlError.SqlError> {
   return Effect.gen(function* () {
     const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
-    const [row] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+    const [row] = yield* sql<AiToolRow>`SELECT * FROM ai_tools
       WHERE ai_id = ${aiId} AND ${topic} AND name = ${name} AND deleted_at IS NULL
       LIMIT 1`;
     return row ?? null;
@@ -277,9 +267,9 @@ export function enforceToolLimit(
 export function getToolRow(
   sql: SqlClient.SqlClient,
   toolId: string,
-): Effect.Effect<ToolRow | null, SqlError.SqlError> {
+): Effect.Effect<AiToolRow | null, SqlError.SqlError> {
   return Effect.gen(function* () {
-    const [tool] = yield* sql<ToolRow>`SELECT * FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
+    const [tool] = yield* sql<AiToolRow>`SELECT * FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
     if (!tool || tool.deletedAt !== null) {
       return null;
     }
@@ -303,7 +293,7 @@ export function latestRunStatus(
 // The list views of many tools in two queries, whatever the count.
 export function listViewExtras(
   sql: SqlClient.SqlClient,
-  tools: readonly ToolRow[],
+  tools: readonly AiToolRow[],
 ): Effect.Effect<
   { hosts: Map<string, string[]>; status: Map<string, 'ok' | 'error'> },
   SqlError.SqlError
@@ -349,7 +339,7 @@ export async function listToolsForAi(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ToolRow>`SELECT * FROM ai_tools
+      return yield* sql<AiToolRow>`SELECT * FROM ai_tools
         WHERE ai_id = ${aiId} AND deleted_at IS NULL
         ORDER BY name ASC`;
     }),

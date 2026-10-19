@@ -21,21 +21,15 @@ import {
 export const PINS_MAX_PER_CHAT = 20;
 export { PIN_MESSAGE_ID_MAX, PIN_SENDER_NAME_MAX, PIN_TEXT_MAX } from '@zilar/api-contract';
 
-export type PinRow = PinnedMessageRow;
-
-export type PinView = Pin;
-
 // The snapshot is display-only: never trusted for authorization. Requests are validated
 // at the HTTP boundary.
-export type CreatePinBody = CreatePinPayload;
-
 export interface PinsServiceDeps extends Pick<ServerCore, 'db'> {
   domain: string;
   mucDomain: string;
   audit?: AuditRecorder;
 }
 
-export function toPinView(row: PinRow, chat: string): PinView {
+export function toPinView(row: PinnedMessageRow, chat: string): Pin {
   return {
     id: row.id,
     chat,
@@ -53,7 +47,7 @@ export async function listPins(
   deps: PinsServiceDeps,
   chatParam: string,
   userId: string,
-): Promise<PinView[]> {
+): Promise<Pin[]> {
   const chat = await resolvePinChat(deps.db, {
     chatJid: chatParam,
     userId,
@@ -64,7 +58,7 @@ export async function listPins(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PinRow>`SELECT * FROM pinned_messages
+      return yield* sql<PinnedMessageRow>`SELECT * FROM pinned_messages
         WHERE chat_jid = ${chat.chatJid}
         ORDER BY pinned_at DESC, id DESC`;
     }),
@@ -72,11 +66,11 @@ export async function listPins(
   return rows.map((row) => toPinView(row, chatParam));
 }
 
-export interface PinMessageInput extends CreatePinBody {
+export interface PinMessageInput extends CreatePinPayload {
   actorId: string;
 }
 
-export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput): Promise<PinView> {
+export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput): Promise<Pin> {
   const chat = await resolvePinChat(deps.db, {
     chatJid: input.chat,
     userId: input.actorId,
@@ -129,7 +123,7 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${id} LIMIT 1`;
+      return yield* sql<PinnedMessageRow>`SELECT * FROM pinned_messages WHERE id = ${id} LIMIT 1`;
     }),
   );
   if (!row) {
@@ -145,12 +139,12 @@ export async function unpinMessage(
   deps: PinsServiceDeps,
   pinId: string,
   userId: string,
-): Promise<PinView> {
+): Promise<Pin> {
   const [row] = await runSql(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${pinId} LIMIT 1`;
+      return yield* sql<PinnedMessageRow>`SELECT * FROM pinned_messages WHERE id = ${pinId} LIMIT 1`;
     }),
   );
   // A missing pin and one in an invisible chat are the same 404, so ids cannot be told apart.
@@ -185,7 +179,7 @@ function echoChat(chat: PinChat, userId: string, domain: string): string {
 // Audit detail carries ids only — never snapshot text or sender name — and no topic name
 // for private topics. Private-topic pins carry no groupId, so a group admin who cannot see
 // the topic never learns a pin happened.
-function toAuditEntry(chat: PinChat, action: string, actorUserId: string, row: PinRow) {
+function toAuditEntry(chat: PinChat, action: string, actorUserId: string, row: PinnedMessageRow) {
   const groupId =
     chat.kind === 'room' && chat.topic.visibility !== 'private' ? chat.topic.groupId : null;
   return {

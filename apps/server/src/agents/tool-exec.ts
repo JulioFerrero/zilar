@@ -1,4 +1,5 @@
 // effect-plain: this module's public edge stays Promise-shaped.
+import type { ModelCallResult } from '../ai/model-client';
 import { REQUEST_ACTION_TOOL } from './tools/schemas';
 import { stripTaskTitle } from './tools/parse';
 import { QUIET_TOOLS, stageForToolCall } from './tool-guide';
@@ -14,7 +15,6 @@ import {
   TOOL_CAPPED_RESULT,
   TOOL_REPEAT_RESULT,
   TOOL_RESULT_MAX_CHARS,
-  type ChatCompletionResult,
   type ExecuteToolCall,
   type ModelRequestMessage,
   ChatCompletionError,
@@ -102,7 +102,7 @@ export function mapFailureToReply(error: unknown): string {
 
 export function followUpMessages(
   history: ModelRequestMessage[],
-  first: ChatCompletionResult,
+  first: ModelCallResult,
   toolMessages: ModelRequestMessage[],
 ): ModelRequestMessage[] {
   return [
@@ -136,7 +136,7 @@ function truncateToolContent(content: string): string {
 export async function runLoopRound(input: {
   aiId: string;
   messages: ModelRequestMessage[];
-  result: ChatCompletionResult;
+  result: ModelCallResult;
   previousSignature: string | null;
   executedCalls: number;
   maxCalls: number;

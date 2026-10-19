@@ -3,12 +3,13 @@ import { Clock, Info } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { ApiError } from '@zilar/api-contract';
+import type { TelegramImportResult } from '@zilar/client-core';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text, TextField } from '@/components/ui/text';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
-import type { StickersApi, TelegramImportResult } from '@/lib/stickers-api';
+import type { StickersApi } from '@/lib/stickers-api';
 
 /**
  * The pure parts of the Telegram import sheet: the error-to-state mapping and

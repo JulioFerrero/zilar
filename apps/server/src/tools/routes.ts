@@ -1,4 +1,5 @@
 import type { ServerCore } from '../app/deps';
+import type { AiToolRunRow } from '../db/rows';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -22,7 +23,6 @@ import {
   runToolVersion,
   ToolServiceError,
   type PublicTool,
-  type PublicToolRun,
   type PublicToolVersion,
   type ToolDetail,
   type ToolVersionDetail,
@@ -410,7 +410,7 @@ export function toVersionDetailWire(version: ToolVersionDetail) {
   };
 }
 
-export function toRunListWire(run: PublicToolRun) {
+export function toRunListWire(run: AiToolRunRow) {
   return {
     id: run.id,
     toolId: run.toolId,

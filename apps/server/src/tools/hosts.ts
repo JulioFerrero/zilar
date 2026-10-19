@@ -2,15 +2,9 @@ import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
+import type { AiToolRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import {
-  getToolRow,
-  latestRunStatus,
-  toToolDetail,
-  ToolServiceError,
-  type ToolRow,
-  type VersionRow,
-} from './queries';
+import { getToolRow, latestRunStatus, toToolDetail, ToolServiceError } from './queries';
 import { toolHostsSchema } from './schemas';
 import type { ToolDetail } from './service';
 
@@ -44,7 +38,7 @@ async function setToolHosts(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      const [row] = yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
         WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
       return row ?? null;
     }),
@@ -56,7 +50,7 @@ async function setToolHosts(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ToolRow>`UPDATE ai_tools
+      return yield* sql<AiToolRow>`UPDATE ai_tools
         SET approved_hosts = ${JSON.stringify(hosts)}::jsonb, updated_at = ${now.toISOString()}
         WHERE id = ${tool.id}
         RETURNING *`;

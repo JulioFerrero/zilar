@@ -1,11 +1,10 @@
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRunRow, ToolIdentity } from '../db/rows';
+import type { AiToolRow, ToolIdentity } from '../db/rows';
 import type { ToolRunner } from './types';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { runSql } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/deletes';
-import type { ToolRow } from './queries';
 
 // Soft-deletes one tool and its routines; a missing or already deleted id returns `deleted: false` and writes nothing.
 export async function deleteTool(
@@ -17,7 +16,7 @@ export async function deleteTool(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ToolRow>`UPDATE ai_tools
+      return yield* sql<AiToolRow>`UPDATE ai_tools
         SET deleted_at = ${now.toISOString()}, updated_at = ${now.toISOString()}
         WHERE id = ${toolId} AND deleted_at IS NULL
         RETURNING *`;
@@ -102,8 +101,6 @@ export interface PublicToolVersion {
 export interface ToolVersionDetail extends PublicToolVersion {
   source: string;
 }
-
-export type PublicToolRun = AiToolRunRow;
 
 export interface SaveToolVersionResult {
   tool: ToolDetail;

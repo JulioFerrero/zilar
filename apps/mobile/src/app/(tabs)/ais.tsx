@@ -4,6 +4,7 @@ import {
   formatLimit,
   formatUsd,
   spendFraction,
+  type AiErrorInfo,
   type AiHealthState,
   type ChatSummary,
 } from '@zilar/chat-core';
@@ -14,7 +15,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
-import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
+import { describeAisError } from '@/components/ais/errors';
 import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { makeAisApi, type PublicAi } from '@zilar/client-core';
@@ -153,7 +154,7 @@ function AisList() {
 
   const [ais, setAis] = useState<PublicAi[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
-  const [errorInfo, setErrorInfo] = useState<AisErrorInfo>({ message: '', unavailable: false });
+  const [errorInfo, setErrorInfo] = useState<AiErrorInfo>({ message: '', unavailable: false });
 
   const [actionAi, setActionAi] = useState<PublicAi | null>(null);
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);

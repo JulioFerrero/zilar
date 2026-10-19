@@ -1,7 +1,7 @@
 import { Effect, type Fiber } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
-import type { ActionGateway, DeniedReason } from '../../actions/gateway';
+import type { ActionGateway, PolicyDenialReason } from '../../actions/gateway';
 import { redactSecrets, type FetchLike } from '../../ai/http';
 import type { ModelTarget } from '../../ai/providers';
 import type { KeyCipher } from '../../connections/crypto';
@@ -262,7 +262,7 @@ export function errorName(error: unknown): string {
 
 // The model-facing wording for a `denied` outcome. We never echo the
 // adapter's reason beyond the stable enum below.
-export function denialReasonForModel(reason: DeniedReason): string {
+export function denialReasonForModel(reason: PolicyDenialReason): string {
   switch (reason) {
     case 'unknown_action':
       return 'unknown action';

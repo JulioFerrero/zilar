@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
+import type { AiToolRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { hostsEqual } from './hosts';
 import {
@@ -13,8 +14,6 @@ import {
   toToolDetail,
   toVersionDetail,
   ToolServiceError,
-  type ToolRow,
-  type VersionRow,
 } from './queries';
 import { insertVersion, recordSaveAudit } from './runner';
 import { parseToolVersionInput } from './schemas';
@@ -68,7 +67,7 @@ export async function saveToolVersion(
         return yield* sql.withTransaction(
           Effect.gen(function* () {
             yield* enforceToolLimit(sql, input.aiId, input.topicId);
-            const [inserted] = yield* sql<ToolRow>`INSERT INTO ai_tools
+            const [inserted] = yield* sql<AiToolRow>`INSERT INTO ai_tools
                 (id, ai_id, group_id, topic_id, name, description, current_version,
                   created_by, created_at, updated_at)
               VALUES (
@@ -142,7 +141,7 @@ export async function saveToolVersion(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          const [locked] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+          const [locked] = yield* sql<AiToolRow>`SELECT * FROM ai_tools
             WHERE id = ${existing.id} LIMIT 1 FOR UPDATE`;
           if (!locked || locked.deletedAt !== null) {
             return yield* Effect.fail(new ToolServiceError('not_found', 'Tool not found'));
@@ -178,7 +177,7 @@ export async function saveToolVersion(
 }
 
 interface AppendVersionInput {
-  tool: ToolRow;
+  tool: AiToolRow;
   description: string;
   source: string;
   hosts: string[];
@@ -193,7 +192,7 @@ function appendVersion(
   input: AppendVersionInput,
 ): Effect.Effect<AppendVersionResult, SqlError.SqlError | ToolServiceError> {
   return Effect.gen(function* () {
-    const [current] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+    const [current] = yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
       WHERE tool_id = ${input.tool.id} AND version = ${input.tool.currentVersion}
       LIMIT 1`;
     if (!current) {
@@ -225,7 +224,7 @@ function appendVersion(
       createdBy: input.userId,
       now: input.now,
     });
-    const [updated] = yield* sql<ToolRow>`UPDATE ai_tools
+    const [updated] = yield* sql<AiToolRow>`UPDATE ai_tools
       SET description = ${input.description}, current_version = ${next}, updated_at = ${input.now.toISOString()}
       WHERE id = ${input.tool.id}
       RETURNING *`;
@@ -264,12 +263,12 @@ export async function revertTool(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
-          const [tool] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+          const [tool] = yield* sql<AiToolRow>`SELECT * FROM ai_tools
             WHERE id = ${input.toolId} LIMIT 1 FOR UPDATE`;
           if (!tool || tool.deletedAt !== null) {
             return yield* Effect.fail(new ToolServiceError('not_found', 'Tool not found'));
           }
-          const [old] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+          const [old] = yield* sql<AiToolVersionRow>`SELECT * FROM ai_tool_versions
             WHERE tool_id = ${tool.id} AND version = ${input.toVersion} LIMIT 1`;
           if (!old) {
             return yield* Effect.fail(new ToolServiceError('not_found', 'Tool version not found'));
@@ -292,7 +291,7 @@ export async function revertTool(
             createdBy: input.userId,
             now,
           });
-          const [updated] = yield* sql<ToolRow>`UPDATE ai_tools
+          const [updated] = yield* sql<AiToolRow>`UPDATE ai_tools
             SET current_version = ${next}, updated_at = ${now.toISOString()}
             WHERE id = ${tool.id}
             RETURNING *`;

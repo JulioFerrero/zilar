@@ -245,9 +245,7 @@ const LOAD_ERROR = 'Could not load this pack.';
 const NOT_FOUND = 'This pack was not found.';
 const FORBIDDEN = 'You can only edit your own packs.';
 
-export type StickerPackScreenDeps = PackEditorDeps;
-
-function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
+function StickerPackBody({ picker, preparer }: PackEditorDeps) {
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const editor = usePackEditor({ picker, preparer });
