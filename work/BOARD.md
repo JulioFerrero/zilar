@@ -2222,3 +2222,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2222](T-2222-phone-groups-api-shared.md) | phone groups API on the shared client-core one | 2026-10-19 |
 | [T-2220](T-2220-web-search-keys-web.md) | web search keys W2b: shared helpers and web screens | 2026-10-19 |
 | [T-2224](T-2224-web-kit-base-ui.md) | web kit on Base UI: switch, checkbox, toast, tabs | 2026-10-19 |
+| [T-2227](T-2227-server-http-audit.md) | server HTTP layer boilerplate audit | 2026-10-19 |
