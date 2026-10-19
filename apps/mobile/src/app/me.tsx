@@ -1,6 +1,6 @@
 import { avatarSvg, nameSeed } from '@zilar/chat-core';
 import { Image } from 'expo-image';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Camera, Copy, Pencil, Settings } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
@@ -12,6 +12,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { createPicturePicker, createAvatarFileUploader } from '@/components/settings/avatar-native';
 import type { PickedPicture } from '@/components/settings/avatar-native';
 import { avatarImageSource, friendlyAvatarError } from '@/components/settings/profile-logic';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { ActionTiles } from '@/components/ui/action-tiles';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -25,8 +26,6 @@ import { goBackOrHome } from '@/lib/navigation';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
-
-type ProfileStatus = 'loading' | 'ready' | 'error';
 
 // One photo run at a time: a tap while one is waiting is dropped.
 type PhotoJob =
@@ -51,38 +50,21 @@ function OwnProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { api } = useProfileApi();
-  const [status, setStatus] = useState<ProfileStatus>('loading');
-  const [profile, setProfile] = useState<MyProfile | null>(null);
-  const [token, setToken] = useState<string | undefined>(undefined);
   const [photoError, setPhotoError] = useState('');
   // Staged pick: only the explicit Save uploads.
   const [staged, setStaged] = useState<PickedPicture | null>(null);
 
-  const load = useCallback(() => {
-    setStatus((current) => (current === 'ready' ? current : 'loading'));
-    Effect.runFork(
+  const load = useCallback(
+    () =>
       Effect.all([fromApi(() => api.getMe()), sessionTokenEffect], {
         concurrency: 'unbounded',
-      }).pipe(
-        Effect.tap(([me, sessionToken]) =>
-          Effect.sync(() => {
-            setProfile(me);
-            setToken(sessionToken);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch(() =>
-          Effect.sync(() => setStatus((current) => (current === 'ready' ? current : 'error'))),
-        ),
-      ),
-    );
-  }, [api]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
+      }).pipe(Effect.map(([me, token]) => ({ me, token }))),
+    [api],
   );
+
+  const { data, setData, status, reload } = useFocusList(load);
+  const profile = data?.me ?? null;
+  const token = data?.token;
 
   const uploadEffect = (url: string, picked: PickedPicture): Effect.Effect<unknown, unknown> =>
     (token === undefined ? sessionTokenEffect : Effect.succeed(token)).pipe(
@@ -138,7 +120,11 @@ function OwnProfile() {
         }).pipe(
           Effect.tap((saved) =>
             Effect.sync(() => {
-              setProfile({ ...job.profile, avatarUrl: saved.url });
+              setData((current) =>
+                current === undefined
+                  ? current
+                  : { ...current, me: { ...job.profile, avatarUrl: saved.url } },
+              );
               setStaged(null);
             }),
           ),
@@ -153,7 +139,11 @@ function OwnProfile() {
         }).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
-              setProfile({ ...job.profile, avatarUrl: undefined });
+              setData((current) =>
+                current === undefined
+                  ? current
+                  : { ...current, me: { ...job.profile, avatarUrl: undefined } },
+              );
             }),
           ),
           Effect.catch(catchAvatarError),
@@ -212,7 +202,7 @@ function OwnProfile() {
             <StateMessage
               kind="error"
               title="Could not load your profile."
-              action={{ label: 'Retry', onPress: load }}
+              action={{ label: 'Retry', onPress: reload }}
             />
           ) : null}
           {status === 'ready' && profile !== null ? (

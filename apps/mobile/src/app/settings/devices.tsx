@@ -5,7 +5,7 @@ import { makeDevicesApi, useDevices } from '@zilar/client-core';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MonitorSmartphone } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
+import { View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 import { useApi } from '@/lib/use-mockable-api';
 
 type Confirm = { kind: 'one'; session: AuthSession } | { kind: 'all' } | null;
@@ -47,7 +47,6 @@ function DevicesList() {
     bulkBusy,
   } = useDevices(api);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,16 +81,7 @@ function DevicesList() {
       subtitle="Where you are signed in. Sign out a device you no longer use."
       onBack={() => router.back()}
       contentPaddingBottom={32}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          tintColor={MUTED_FOREGROUND}
-          onRefresh={() => {
-            setRefreshing(true);
-            void refresh().finally(() => setRefreshing(false));
-          }}
-        />
-      }
+      onRefresh={refresh}
       after={
         <>
           {mock ? (
