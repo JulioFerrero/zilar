@@ -65,6 +65,7 @@ export function createRequestActionRunner(
     call: RequestActionCall,
     chat?: RequestActionChat,
     unattended?: boolean,
+    signal?: AbortSignal,
   ): Effect.fn.Return<ToolExecution> {
     if (actions === undefined) {
       return { content: 'invalid: unknown tool: request_action' };
@@ -79,6 +80,8 @@ export function createRequestActionRunner(
         // A scheduled (unattended) run runs tier 0/1 and refuses a tier-2
         // request without a standing rule instead of parking a card.
         ...(unattended === true ? { unattended: true } : {}),
+        // The turn's abort signal cancels an adapter call that is still running.
+        ...(signal === undefined ? {} : { signal }),
       }),
     ).pipe(
       Effect.catchDefect((error) =>
@@ -127,8 +130,9 @@ export function createRequestActionRunner(
     call: RequestActionCall,
     chat?: RequestActionChat,
     unattended?: boolean,
+    signal?: AbortSignal,
   ): Promise<ToolExecution> =>
-    Effect.runPromise(runRequestActionEffect(session, call, chat, unattended));
+    Effect.runPromise(runRequestActionEffect(session, call, chat, unattended, signal));
 
   return { runRequestAction, runRequestActionEffect };
 }
@@ -215,7 +219,7 @@ export function createToolExec(ctx: ToolExecContext) {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
-    options?: { unattended?: boolean; dmJid?: string },
+    options?: { unattended?: boolean; dmJid?: string; signal?: AbortSignal },
   ): ExecuteToolCall {
     const aiId = session.aiId;
     // One desk runner per turn, created only when the turn offered the desk
@@ -403,6 +407,7 @@ export function createToolExec(ctx: ToolExecContext) {
             ? undefined
             : { groupId: context.groupId, topicId: context.topicId },
           unattended,
+          options?.signal,
         );
       }
       const outcome = yield* Effect.promise(() => revertPersonaFromChat(deps.db, aiId));

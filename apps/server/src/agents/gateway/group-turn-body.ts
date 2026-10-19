@@ -329,7 +329,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           // A scheduled trigger's turn is unattended, so the action gateway
           // runs tier 0/1 and refuses a tier-2 request without a standing rule
           // instead of parking a card.
-          { unattended: scheduledTrigger },
+          { unattended: scheduledTrigger, signal },
         ),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         onFailure: (reason) => notifyOwnerOfFailure(ctx, session, roomJid, reason),

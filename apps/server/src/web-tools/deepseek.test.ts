@@ -114,4 +114,34 @@ describe('DeepSeek web tools', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(fetchImpl.mock.calls.some(([url]) => String(url) === DEEPSEEK_SEARCH_URL)).toBe(false);
   });
+
+  it('stops an in-flight fetch when the turn aborts, without recording a cost', async () => {
+    const fetchImpl = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        }),
+    );
+    const recordToolCost = vi.fn();
+    const tools = adapters({
+      deepseekKeyFor: async () => KEY,
+      deepseekFetch: fetchImpl,
+      recordToolCost,
+    });
+    const controller = new AbortController();
+    const ctx: ActionContext = { ...context('ai-abort'), signal: controller.signal };
+
+    const pending = tools['web.fetch']?.execute(ctx, { url: 'https://example.com/slow' });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    const abortedAt = Date.now();
+    controller.abort();
+    const result = await pending;
+
+    expect(Date.now() - abortedAt).toBeLessThan(1000);
+    expect(result?.summary).toBe('fetch failed');
+    expect(result?.modelText).toBeUndefined();
+    expect(recordToolCost).not.toHaveBeenCalled();
+  });
 });

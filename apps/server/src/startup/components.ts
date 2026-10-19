@@ -275,6 +275,7 @@ function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
         const maxChars = parsed.maxChars ?? DEFAULT_FETCH_CHARS;
         const fetched = await deepseekFetch(key, parsed.url, {
           ...(state.deepseekFetch === undefined ? {} : { fetchImpl: state.deepseekFetch }),
+          ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
           logger: state.logger,
         });
         if (!fetched.ok) {
@@ -338,6 +339,7 @@ function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
       if (key !== null) {
         const found = await deepseekSearch(key, parsed.query, {
           ...(state.deepseekFetch === undefined ? {} : { fetchImpl: state.deepseekFetch }),
+          ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
           logger: state.logger,
         });
         if (!found.ok) {

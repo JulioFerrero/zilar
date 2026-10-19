@@ -63,6 +63,7 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
         executeTool: ctx.executeToolCall(session, chatKey, undefined, deskOptions, {
           unattended: scheduled === true,
           dmJid: ownerJid,
+          signal,
         }),
         tools: buildTools(ctx.deps.actions?.listActions() ?? [], { desk: deskEnabled }),
         onDelta: (textSoFar) => {

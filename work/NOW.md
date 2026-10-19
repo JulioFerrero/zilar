@@ -49,6 +49,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 07:27 | 235,604 source, 65,098 test (T-2192 cut 669 test lines) |
 | 10-19 07:47 | 235,404 source, 64,003 test |
 | 10-19 08:36 | 234,229 source, 61,273 test (the `lead batch` removal, store T2/T3a, AI T3, server test waves A and B) |
+| 10-19 10:05 | 234,448 source (+214 from the DeepSeek search feature), 58,658 test |
 
 **Merged tonight:**
 
@@ -141,6 +142,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2217 | store phase 3 T3b: one `openChatCore` (prune, read mark, unread-mark clear, marker swap, `openHistory`) for web and phone | −15 |
+| T-2216 | AI turns T8: `completionInputOf` + `runTyped`; the DM catch uses `finishTurnFailure`. **The AI turn plan is done.** | −21 |
 | T-2213 | server tests wave D: agent side-modules, from 91 to 33 cases (kept: permissions, delivery, caps, key redaction; 2 restored in a fix round) | −1,360 test |
 | T-2215 | chat list: an AI task card previews its summary (closed), title or stage instead of "Attachment" (web and phone) | +7 |
 | T-2210 | store phase 3 T4: one chat-list merge (`mergeFreshChats`) and row adoption (`adoptNewRows`) in client-core; the phone's import aliases and re-exports are gone | −22 |
@@ -174,8 +177,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2217:** store phase 3 T3b. The shared half of `openChat` (prune, read mark, unread-mark clear, marker swap, `openHistory`) moves into client-core (stop rule: at least −15).
-  - **T-2216:** AI turns T8, the last step. One completion-input builder and one typing-plus-failure shell; the DM catch uses `finishTurnFailure` (stop rule: at least −20).
+  - **T-2218:** Stop cancels an in-flight DeepSeek `web.search`/`web.fetch`. The turn's abort signal travels through the action gateway; a live stop took about 20 s at 10:00.
   - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
   - **Web search W2 canvas, waiting for Julio:** https://claude.ai/artifact/9wDLt9GpmXNZZ2s2JWNu85. A "Web search" provider group in Add key (Brave, Exa, Firecrawl, Jina, Tavily), and Connections split into Models and Web search.
@@ -210,6 +212,10 @@ Lead live checks as Julio in "ai test › General" (09:19–09:24):
 **`6f015f5c4`** (09:38, store T4): routes the same, 0 errors. A read-only look at Julio's real chats after a reload: the list, Financial and JULITO open normally with history and media. After the reload the card preview read "Attachment" (history cards carry no body).
 
 **`a20f28e08`** (09:53, T-2215 and T-2213): routes the same, 0 errors. The T-2215 deploy at 09:43 failed on a Docker Hub TLS timeout pulling `pgvector`, not on code; the next push redeployed. After a reload, "ai test › General" now previews "Deepseek: Stopped after 10s".
+
+**`83e27024a`** (09:58, AI turns T8): routes the same, 0 errors. Live checks:
+- a DM hello was answered ("Here and working, Julio, live check three is fine.");
+- a stopped multi-page fetch task ended "Stopped after 29s" with no reply. Stop pressed at about 0:05 only landed when the in-flight DeepSeek fetch returned, so T-2218 passes the abort signal to web tools.
 
 Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 

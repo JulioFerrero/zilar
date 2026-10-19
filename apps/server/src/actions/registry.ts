@@ -26,6 +26,8 @@ export interface ActionContext {
   groupId: string | null;
   topicId: string | null;
   requestId: string;
+  // The turn's abort signal, so a Stop cancels an in-flight adapter call.
+  signal?: AbortSignal;
   logger?: ActionContextLogger;
 }
 

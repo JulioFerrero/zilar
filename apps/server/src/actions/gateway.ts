@@ -205,6 +205,8 @@ export interface RequestParams {
   requestedBy: string;
   // A scheduled run has no approver: tier 0/1 unchanged, tier 2 without a rule is denied `needs_approval`.
   unattended?: boolean;
+  // The turn's abort signal; stops an in-flight adapter call, never audited or hashed.
+  signal?: AbortSignal;
 }
 
 export function createActionGateway(deps: ActionGatewayDependencies): ActionGateway {
@@ -356,6 +358,7 @@ async function executeAction(
     groupId: params.groupId ?? null,
     topicId: params.topicId ?? null,
     requestId: ruleId === null ? 'allow-' + randomUUID() : 'rule-' + ruleId,
+    ...(params.signal === undefined ? {} : { signal: params.signal }),
     logger: deps.logger,
   };
   return {

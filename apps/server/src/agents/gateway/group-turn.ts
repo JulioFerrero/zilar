@@ -145,7 +145,7 @@ export interface GroupTurnContext {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
-    options?: { unattended?: boolean },
+    options?: { unattended?: boolean; signal?: AbortSignal },
   ) => ExecuteToolCall;
   withToolGuide: (messages: ChatCompletionMessage[]) => ChatCompletionMessage[];
   nowMs: () => number;
