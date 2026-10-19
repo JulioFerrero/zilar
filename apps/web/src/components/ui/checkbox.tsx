@@ -1,5 +1,5 @@
+import { Checkbox as CheckboxPrimitive } from '@base-ui/react/checkbox';
 import { Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 export interface CheckboxProps {
   checked: boolean;
@@ -9,32 +9,21 @@ export interface CheckboxProps {
 }
 
 /**
- * A screen-reader-only native input plus a visual box. It renders no `<label>`
- * itself: callers keep their row `<label>`, so clicking the row toggles it.
+ * A Base UI checkbox box. It renders no `<label>` itself: callers keep their row
+ * `<label>`, so clicking the row toggles it.
  */
 export function Checkbox({ checked, onCheckedChange, disabled = false, label }: CheckboxProps) {
   return (
-    <>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        aria-label={label}
-        onChange={() => onCheckedChange(!checked)}
-        className="peer sr-only"
-      />
-      <span
-        aria-hidden="true"
-        className={cn(
-          'flex size-4 shrink-0 items-center justify-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ring',
-          checked
-            ? 'border-transparent bg-accent text-accent-foreground'
-            : 'border-border-strong bg-transparent',
-          disabled && 'opacity-40',
-        )}
-      >
-        {checked && <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />}
-      </span>
-    </>
+    <CheckboxPrimitive.Root
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      aria-label={label}
+      className="flex size-4 shrink-0 items-center justify-center rounded border border-border-strong bg-transparent transition-colors focus-visible:ring-2 focus-visible:ring-ring data-[checked]:border-transparent data-[checked]:bg-accent data-[checked]:text-accent-foreground data-[disabled]:opacity-40"
+    >
+      <CheckboxPrimitive.Indicator>
+        <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
   );
 }

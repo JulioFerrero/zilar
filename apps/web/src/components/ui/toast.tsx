@@ -1,61 +1,62 @@
-// effect-plain: a short UI timer for a presentational toast; no I/O or ports.
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { Toast } from '@base-ui/react/toast';
+import { createContext, useCallback, useContext, type ReactNode } from 'react';
 
 /** How long a toast stays on screen. */
 const TOAST_MS = 2000;
 
-type Toast = (text: string) => void;
+/** Reusing one id makes a new toast replace the visible one and restart its timer. */
+const TOAST_ID = 'zilar-toast';
 
-const ToastContext = createContext<Toast | null>(null);
+type ToastFn = (text: string) => void;
 
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [text, setText] = useState<string | null>(null);
-  const timerRef = useRef<number | undefined>(undefined);
+const ToastContext = createContext<ToastFn | null>(null);
 
-  const show = useCallback<Toast>((next) => {
-    setText(next);
-    if (timerRef.current !== undefined) {
-      window.clearTimeout(timerRef.current);
-    }
-    timerRef.current = window.setTimeout(() => setText(null), TOAST_MS);
-  }, []);
+function ToastViewport() {
+  const { toasts } = Toast.useToastManager();
+  return (
+    <Toast.Viewport className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+      {toasts.map((toast) => (
+        <Toast.Root
+          key={toast.id}
+          toast={toast}
+          swipeDirection={[]}
+          className="animate-in fade-in slide-in-from-bottom-2 rounded-full border border-border-strong bg-surface px-4 py-2 text-[13px] text-foreground shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)] duration-150 motion-reduce:animate-none"
+        >
+          <Toast.Title />
+        </Toast.Root>
+      ))}
+    </Toast.Viewport>
+  );
+}
 
-  useEffect(
-    () => () => {
-      if (timerRef.current !== undefined) {
-        window.clearTimeout(timerRef.current);
-      }
+function ToastHost({ children }: { children: ReactNode }) {
+  const { add } = Toast.useToastManager();
+  const show = useCallback<ToastFn>(
+    (text) => {
+      add({ id: TOAST_ID, title: text, timeout: TOAST_MS });
     },
-    [],
+    [add],
   );
 
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div
-        role="status"
-        aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
-      >
-        {text !== null && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 rounded-full border border-border-strong bg-surface px-4 py-2 text-[13px] text-foreground shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)] duration-150 motion-reduce:animate-none">
-            {text}
-          </div>
-        )}
-      </div>
+      <Toast.Portal>
+        <ToastViewport />
+      </Toast.Portal>
     </ToastContext.Provider>
   );
 }
 
-export function useToast(): Toast {
+export function ToastProvider({ children }: { children: ReactNode }) {
+  return (
+    <Toast.Provider timeout={TOAST_MS}>
+      <ToastHost>{children}</ToastHost>
+    </Toast.Provider>
+  );
+}
+
+export function useToast(): ToastFn {
   const show = useContext(ToastContext);
   if (show === null) {
     throw new Error('useToast must be used inside a ToastProvider');

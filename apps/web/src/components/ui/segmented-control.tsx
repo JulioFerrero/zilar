@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
-import { useRef, type KeyboardEvent } from 'react';
+import { Radio } from '@base-ui/react/radio';
+import { RadioGroup } from '@base-ui/react/radio-group';
+import { Tabs } from '@base-ui/react/tabs';
 import { Badge } from './badge';
 import { cn } from '@/lib/utils';
 
@@ -28,110 +30,81 @@ export function SegmentedControl({
   mode = 'tabs',
   tone = 'tab',
 }: SegmentedControlProps) {
-  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  const firstEnabled = (): number | undefined => {
-    const index = options.findIndex((option) => option.disabled !== true);
-    return index === -1 ? undefined : index;
-  };
-
-  const lastEnabled = (): number | undefined => {
-    for (let index = options.length - 1; index >= 0; index -= 1) {
-      if (options[index]?.disabled !== true) {
-        return index;
-      }
-    }
-    return undefined;
-  };
-
-  const enabledFrom = (from: number, direction: 1 | -1): number | undefined => {
-    const last = options.length - 1;
-    let index = from;
-    for (let step = 0; step < options.length; step += 1) {
-      index = direction === 1 ? (index >= last ? 0 : index + 1) : index <= 0 ? last : index - 1;
-      if (options[index]?.disabled !== true) {
-        return index;
-      }
-    }
-    return undefined;
-  };
-
-  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    let next: number | undefined;
-    if (event.key === 'ArrowRight') {
-      next = enabledFrom(index, 1);
-    } else if (event.key === 'ArrowLeft') {
-      next = enabledFrom(index, -1);
-    } else if (event.key === 'Home') {
-      next = firstEnabled();
-    } else if (event.key === 'End') {
-      next = lastEnabled();
-    }
-    if (next === undefined) {
-      return;
-    }
-    event.preventDefault();
-    const option = options[next];
-    if (option === undefined) {
-      return;
-    }
-    if (option.value !== value) {
-      onChange(option.value);
-    }
-    optionRefs.current[next]?.focus();
-  };
-
   const isRadio = mode === 'radio';
   const isChoice = tone === 'choice';
 
-  return (
-    <div
-      role={isRadio ? 'radiogroup' : 'tablist'}
+  const itemClassName = cn(
+    'flex flex-1 items-center justify-center font-medium transition-colors',
+    isChoice
+      ? 'h-[34px] gap-[7px] rounded-[7px] px-3 text-[13px] leading-none'
+      : 'h-[30px] gap-1.5 rounded-[7px] px-3 text-[13px]',
+    isChoice
+      ? 'text-muted-foreground hover:text-foreground data-[checked]:segment-choice data-[active]:segment-choice'
+      : 'text-muted-foreground hover:text-foreground data-[checked]:segment-raised data-[checked]:text-foreground data-[active]:segment-raised data-[active]:text-foreground',
+    'data-[disabled]:text-subtle-foreground data-[disabled]:opacity-50',
+  );
+
+  const trackClassName = cn(
+    'well-surface flex rounded-[10px] p-[3px]',
+    isChoice ? 'gap-0.5' : 'gap-1',
+  );
+
+  return isRadio ? (
+    <RadioGroup
+      value={value}
+      onValueChange={(next: string) => {
+        if (next !== value) {
+          onChange(next);
+        }
+      }}
       aria-label={ariaLabel}
-      className={cn('well-surface flex rounded-[10px] p-[3px]', isChoice ? 'gap-0.5' : 'gap-1')}
+      className={trackClassName}
     >
-      {options.map((option, index) => {
+      {options.map((option) => {
         const active = option.value === value;
-        const disabled = option.disabled === true;
         const Icon = option.icon;
         return (
-          <button
+          <Radio.Root
             key={option.value}
-            ref={(element) => {
-              optionRefs.current[index] = element;
-            }}
-            type="button"
-            role={isRadio ? 'radio' : 'tab'}
-            {...(isRadio ? { 'aria-checked': active } : { 'aria-selected': active })}
-            {...(disabled ? { 'aria-disabled': true } : {})}
-            disabled={disabled}
-            tabIndex={disabled ? -1 : active ? 0 : -1}
-            onClick={() => {
-              if (!disabled && option.value !== value) {
-                onChange(option.value);
-              }
-            }}
-            onKeyDown={(event) => move(event, index)}
-            className={cn(
-              'flex flex-1 items-center justify-center font-medium transition-colors',
-              isChoice
-                ? 'h-[34px] gap-[7px] rounded-[7px] px-3 text-[13px] leading-none'
-                : 'h-[30px] gap-1.5 rounded-[7px] px-3 text-[13px]',
-              disabled
-                ? 'text-subtle-foreground opacity-50'
-                : active
-                  ? isChoice
-                    ? 'segment-choice'
-                    : 'segment-raised text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-            )}
+            value={option.value}
+            disabled={option.disabled === true}
+            className={itemClassName}
           >
             {Icon === undefined ? null : <Icon className="size-4" aria-hidden="true" />}
             {option.label}
             {option.count === undefined ? null : <Badge count={option.count} muted={!active} />}
-          </button>
+          </Radio.Root>
         );
       })}
-    </div>
+    </RadioGroup>
+  ) : (
+    <Tabs.Root
+      value={value}
+      onValueChange={(next) => {
+        if (typeof next === 'string' && next !== value) {
+          onChange(next);
+        }
+      }}
+      className="contents"
+    >
+      <Tabs.List aria-label={ariaLabel} activateOnFocus className={trackClassName}>
+        {options.map((option) => {
+          const active = option.value === value;
+          const Icon = option.icon;
+          return (
+            <Tabs.Tab
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled === true}
+              className={itemClassName}
+            >
+              {Icon === undefined ? null : <Icon className="size-4" aria-hidden="true" />}
+              {option.label}
+              {option.count === undefined ? null : <Badge count={option.count} muted={!active} />}
+            </Tabs.Tab>
+          );
+        })}
+      </Tabs.List>
+    </Tabs.Root>
   );
 }

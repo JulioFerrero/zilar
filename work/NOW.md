@@ -142,6 +142,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2220 | web search W2b (shared + web): grouped Add key picker with tags, Models and Web search sections, "used for" line (`webUseText`), mock seed rows | +245 (feature) |
 | T-2222 | the phone groups API on the shared client-core one: one `createGroup` (group or channel) for both apps; the phone `lib/groups-api.ts` is gone (held) | −88 |
 | T-2219 | web search W2a (server): Brave, Exa, Firecrawl, Jina and Tavily as connections with key tests; one `web-tools/sources.ts` table; `loadWebSource` (DeepSeek key, or else the owner's first capable key) | +321 (feature) |
 | T-2221 | server tests wave E: the AI turn tests (gateway-group, gateway-stop, reply, group-turn-card, context) cut to the crucial cases | −896 test |
@@ -189,7 +190,16 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
     Brainstorm with him before any canvas or spec.
   - **Next:** the phone `chat-api` and `profile-api` wrappers onto the shared API (plan B1).
-  - **T-2220 (launched 10:50):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
+  - **T-2223 (launched 11:03):** web search W2c, the phone twin: a grouped provider sheet with tags, and Models and Web search sections. In a lead fix round since 11:20: the provider list does not scroll on Android (nested ScrollView inside TrueSheet; already broken on main, where the 7-row cap hid xAI), so `BottomSheet` gets an opt-in TrueSheet `scrollable` mode.
+  - **Julio 11:10, the 200k talk:** go for server route boilerplate, list libraries and Base UI for the web kit; no Expo web (memory `decisions-1019-cuts`).
+    - **T-2224:** web kit on Base UI (Switch, Checkbox, Toast, SegmentedControl).
+    - **T-2225:** one `limit` option on the server `handler()`.
+      - Real net −28, accepted: most checks run after an access or availability check, so they stay.
+      - The lead's −2k to −3k server guess was too high.
+    - **T-2227:** a server HTTP layer audit (no code), measuring payload copying, repeated access checks, mounts and response shaping before any more server specs.
+    - **T-2226:** the web message list on virtua (tested in the Viernes room's 800-message backlog).
+    - **Next:** the phone list on LegendList, after T-2226 proves out.
+  - **T-2220 (merged 11:02):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
