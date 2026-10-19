@@ -7,7 +7,7 @@ Trimming a file keeps its shape. A rewrite gives the feature a new, smaller shap
 ## The process (rewrite tasks)
 
 1. **Start from the behaviour list in the spec, not from the old code.** The spec lists what a user sees and does, and what the server must guarantee. Read the old code only to answer a question the list leaves open. Never copy it across, and never translate it line by line.
-2. **The budget is the limit, not a target.** The spec gives a line budget per new file and in total. Count with `wc -l` before you set `status: review`. If the budget cannot hold a listed behaviour, stop and say which one in the Report. Do not drop the behaviour silently, and do not overrun quietly.
+2. **The budget is the limit, not a target.** The spec gives a line budget per new file and in total. Count with `wc -l` before you set `status: review`. If the budget cannot hold a listed behaviour, stop and say which one in the Report. Do not drop the behaviour silently, and do not overrun quietly. **Every file you touch counts:** moving code into a file outside the budget table, or into a neighbour file, does not meet a budget. The net over `apps/` and `packages/` is what the lead checks.
 3. **Delete the old code in the same task.** No compatibility shim, no second path behind a flag, no "kept for now" file. Callers move to the new code in the same commit.
 4. **Report lines before and after for every file you touched or deleted**, plus the total.
 
