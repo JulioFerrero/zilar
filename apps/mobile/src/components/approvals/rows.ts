@@ -1,10 +1,10 @@
-import { ApiError } from '@zilar/api-contract';
-import type {
-  ApprovalDecision,
-  ApprovalRule,
-  ApprovalsApi,
-  PublicApproval,
-} from '@/lib/approvals-api';
+import {
+  ApiError,
+  type ApprovalDecision,
+  type ApprovalRule,
+  type PublicApproval,
+} from '@zilar/api-contract';
+import type { makeApprovalsApi } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { applyDecision } from '@/lib/approval-state';
 import { runMobile } from '@/lib/effect/runtime';
@@ -103,7 +103,7 @@ export function confirmationForDecision(decision: ApprovalDecision): string {
  * plain message, never the server's raw text.
  */
 export function decideScreenRow(
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
   decision: ApprovalDecision,
 ): Promise<DecideOutcome> {

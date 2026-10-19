@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Connection } from '@/lib/ais-api';
+import type { Connection } from '@zilar/client-core';
 
 import { providerSelection } from './use-key-check';
 

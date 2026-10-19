@@ -11,7 +11,7 @@ import type {
   ToolRun,
   ToolRunResult,
   ToolVersion,
-} from '@/lib/tools-api';
+} from '@zilar/api-contract';
 import { fetchCountText } from './tool-actions';
 
 function ShowMoreButton({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {

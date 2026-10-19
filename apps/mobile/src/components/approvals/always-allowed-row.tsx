@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
-import type { ApprovalRule } from '@/lib/approvals-api';
+import type { ApprovalRule } from '@zilar/api-contract';
 
 export function AlwaysAllowedRow({
   rule,

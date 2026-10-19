@@ -1,5 +1,4 @@
-import { ApiError } from '@zilar/api-contract';
-import type { DirectoryEntry } from '@/lib/directory-api';
+import { ApiError, type DirectoryEntry } from '@zilar/api-contract';
 import { describeDirectoryError } from './explore-helpers';
 
 /**

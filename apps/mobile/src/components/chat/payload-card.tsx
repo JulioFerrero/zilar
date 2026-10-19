@@ -27,12 +27,7 @@ import { StepsSheet } from '@/components/chat/steps-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useApi } from '@/lib/use-mockable-api';
-import type {
-  ApprovalDecision,
-  ApprovalStatus,
-  ApprovalsApi,
-  PublicApproval,
-} from '@/lib/approvals-api';
+import type { ApprovalDecision, ApprovalStatus, PublicApproval } from '@zilar/api-contract';
 import { applyDecision, loadApprovalCardState, type ApprovalCardState } from '@/lib/approval-state';
 import { ACCENT, DANGER, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { bubbleStyle } from '@/lib/depth';
@@ -181,7 +176,7 @@ export function isRenderedCard(card: { type: string }): boolean {
 }
 
 interface DecidedCard {
-  readonly api: ApprovalsApi;
+  readonly api: ReturnType<typeof makeApprovalsApi>;
   readonly id: string;
   readonly approval: PublicApproval;
 }

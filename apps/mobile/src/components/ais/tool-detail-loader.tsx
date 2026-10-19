@@ -8,17 +8,10 @@ import { X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, type makeToolsApi } from '@zilar/client-core';
 import { type ActionState, failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import type {
-  ToolActionsApi,
-  ToolDetail,
-  ToolDetailsApi,
-  ToolRun,
-  ToolRunResult,
-  ToolVersion,
-} from '@/lib/tools-api';
+import type { ToolDetail, ToolRun, ToolRunResult, ToolVersion } from '@zilar/api-contract';
 
 import { ToolDetailBody, type ToolDetailBodyState } from './tool-detail-body';
 import {
@@ -64,7 +57,7 @@ export function ToolDetailLoader({
   onClose,
   onDeleted,
 }: {
-  api: ToolDetailsApi & ToolActionsApi;
+  api: ReturnType<typeof makeToolsApi>;
   toolId: string;
   onClose: () => void;
   onDeleted: (toolId: string) => void;

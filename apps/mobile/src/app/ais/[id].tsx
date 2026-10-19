@@ -14,7 +14,6 @@ import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
 import { ToolsSection } from '@/components/ais/tools-section';
-import { makeAiMemoryApi } from '@/lib/ai-memory-api';
 import { makeMachinesApi } from '@/lib/machines-api';
 import { useApi } from '@/lib/use-mockable-api';
 import {
@@ -27,19 +26,20 @@ import {
   modelSuggestionsFor,
 } from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
-import { makeAisApi, makeAuditApi, makeToolsApi } from '@zilar/client-core';
+import {
+  makeAisApi,
+  makeAuditApi,
+  makeChatExtrasApi,
+  makeToolsApi,
+  type Connection,
+  type PublicAi,
+  type UpdateAiInput,
+} from '@zilar/client-core';
 import { applyMachineChange } from '@/components/machines/machine-change';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type {
-  Connection as AisConnection,
-  PublicAi,
-  UpdateAiInput,
-  Connection,
-  AisApi,
-} from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -242,7 +242,10 @@ interface ComputerModeControls {
   change: (mode: ComputerMode) => void;
 }
 
-function useComputerMode(api: AisApi, aiId: string | null): ComputerModeControls {
+function useComputerMode(
+  api: ReturnType<typeof makeAisApi>,
+  aiId: string | null,
+): ComputerModeControls {
   const [mode, setMode] = useState<ComputerMode>('off');
   const [error, setError] = useState('');
   // A failed options read keeps the cloud option disabled, the safe default.
@@ -350,7 +353,7 @@ function EditAi() {
   const { api: machinesApi } = useApi(makeMachinesApi);
   const { api: toolsApi } = useApi(makeToolsApi);
   const { api: auditApi } = useApi(makeAuditApi);
-  const { api: memoryApi } = useApi(makeAiMemoryApi);
+  const { api: memoryApi } = useApi(makeChatExtrasApi);
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
 
@@ -362,7 +365,7 @@ function EditAi() {
   const [persona, setPersona] = useState('');
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
-  const [connections, setConnections] = useState<AisConnection[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [modelDraft, setModelDraft] = useState('');
   const [machines, setMachines] = useState<Machine[]>([]);

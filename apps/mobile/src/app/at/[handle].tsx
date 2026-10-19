@@ -13,11 +13,11 @@ import {
   postJoinTarget,
   type HandleView,
 } from '@/components/directory/handle-helpers';
-import { makeDirectoryApi } from '@/lib/directory-api';
+import { makeDirectoryApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import type { DirectoryEntry } from '@/lib/directory-api';
+import type { DirectoryEntry } from '@zilar/api-contract';
 import { useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 

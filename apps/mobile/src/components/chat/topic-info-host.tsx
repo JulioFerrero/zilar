@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
-import type { AiMemoryApi } from '@/lib/ai-memory-api';
+import type { makeChatExtrasApi } from '@zilar/client-core';
 import { TopicAddSheet } from '@/components/chat/topic-add-sheet';
 import { TopicInfoSheet } from '@/components/chat/topic-info-sheet';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
@@ -296,7 +296,7 @@ function AiMemorySheet({
   ai,
   onClose,
 }: {
-  api: AiMemoryApi;
+  api: ReturnType<typeof makeChatExtrasApi>;
   chat: string;
   ai: { id: string; name: string } | null;
   onClose: () => void;

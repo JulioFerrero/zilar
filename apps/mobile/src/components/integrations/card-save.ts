@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
-import type { IntegrationsApi, IntegrationsStatus } from '../../lib/integrations-api';
 import { runMobile } from '../../lib/effect/runtime';
-import { ApiError } from '@zilar/api-contract';
+import { ApiError, type IntegrationsStatus } from '@zilar/api-contract';
+import type { IntegrationsApi } from '@zilar/client-core';
 
 /**
  * Maps the integrations error codes to fixed plain sentences, mirroring web's

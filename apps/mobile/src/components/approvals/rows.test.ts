@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ApprovalRule } from '@/lib/approvals-api';
+import type { ApprovalRule } from '@zilar/api-contract';
 
 import { mergeRulesFanOut, type RulesFanOut } from './rows';
 

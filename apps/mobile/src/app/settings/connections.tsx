@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { providerLabel } from '@zilar/chat-core';
 import { ApiError } from '@zilar/api-contract';
-import { makeAisApi } from '@zilar/client-core';
+import { makeAisApi, type Connection } from '@zilar/client-core';
 import { KeyStep } from '@/components/ais/new-ai/key-step';
 import { ProviderStep } from '@/components/ais/new-ai/provider-step';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';
@@ -23,7 +23,6 @@ import { StepTrack, type StepTrackStep } from '@/components/ui/step-track';
 import { Text } from '@/components/ui/text';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { MUTED_FOREGROUND, ICON } from '@/lib/colors';
-import type { ProviderConnection } from '@/lib/connections-api';
 import { useAction } from '@/lib/effect/use-action';
 import { IconButton } from '@/components/ui/icon-button';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -91,7 +90,7 @@ function ConnectionRow({
   last,
   onPress,
 }: {
-  connection: ProviderConnection;
+  connection: Connection;
   working: boolean;
   reason: string | undefined;
   last: boolean;
@@ -181,7 +180,7 @@ function ConnectionsList() {
 
   const { api } = useApi(makeAisApi);
 
-  const [connections, setConnections] = useState<ProviderConnection[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   // `reload` keeps its identity, so a load reads the current status from here:
   // only a screen with nothing shown yet gets the loading message.
@@ -381,10 +380,10 @@ function ConnectionsList() {
     setSheetId(id);
   };
 
-  const isWorking = (connection: ProviderConnection): boolean =>
+  const isWorking = (connection: Connection): boolean =>
     connection.status === 'active' && testErrors[connection.id] === undefined;
 
-  const reasonOf = (connection: ProviderConnection): string | undefined =>
+  const reasonOf = (connection: Connection): string | undefined =>
     isWorking(connection)
       ? undefined
       : connection.status !== 'active'

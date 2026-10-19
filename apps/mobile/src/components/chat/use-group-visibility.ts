@@ -4,9 +4,8 @@ import { useState } from 'react';
 
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import { visibilitySaveError } from '@/components/chat/visibility-sheet';
-import { makeDirectoryApi } from '@/lib/directory-api';
+import { makeDirectoryApi, type GroupVisibility } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
-import type { GroupVisibility } from '@/lib/directory-api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';

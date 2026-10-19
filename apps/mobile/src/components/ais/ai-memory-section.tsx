@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import type { AiMemory, AiMemoryApi } from '@/lib/ai-memory-api';
-import { interruptFiber } from '@zilar/client-core';
-import { ApiError } from '@zilar/api-contract';
+import { interruptFiber, type makeChatExtrasApi } from '@zilar/client-core';
+import { ApiError, type AiMemoryView } from '@zilar/api-contract';
 
 const MEMORY_LOAD_FAILED_MESSAGE = 'Could not load the memory';
 
@@ -22,7 +21,7 @@ type AiMemoryStatus = 'loading' | 'ready' | 'error';
 interface AiMemorySectionState {
   open: boolean;
   status: AiMemoryStatus;
-  memory: AiMemory | null;
+  memory: AiMemoryView | null;
   forgetError: string;
   forgettingId: string | null;
   clearError: string;
@@ -39,14 +38,19 @@ interface AiMemorySectionActions {
   onConfirmClear: () => void;
 }
 
-function removeFact(memory: AiMemory, factId: string): AiMemory {
+function removeFact(memory: AiMemoryView, factId: string): AiMemoryView {
   return { ...memory, facts: memory.facts.filter((fact) => fact.id !== factId) };
 }
 
 /** A 404 means the fact is already gone, which the caller treats as success. */
-const requestForgetFactEffect = (api: AiMemoryApi, chat: string, aiId: string, factId: string) =>
+const requestForgetFactEffect = (
+  api: ReturnType<typeof makeChatExtrasApi>,
+  chat: string,
+  aiId: string,
+  factId: string,
+) =>
   Effect.tryPromise({
-    try: () => api.forgetFact(chat, aiId, factId),
+    try: () => api.forgetAiMemoryFact(chat, aiId, factId),
     catch: (cause) => cause,
   }).pipe(
     Effect.catch((error) =>
@@ -54,10 +58,14 @@ const requestForgetFactEffect = (api: AiMemoryApi, chat: string, aiId: string, f
     ),
   );
 
-const clearAiMemoryEffect = (api: AiMemoryApi, chat: string, aiId: string) =>
-  Effect.tryPromise({ try: () => api.clear(chat, aiId), catch: (cause) => cause }).pipe(
+const clearAiMemoryEffect = (
+  api: ReturnType<typeof makeChatExtrasApi>,
+  chat: string,
+  aiId: string,
+) =>
+  Effect.tryPromise({ try: () => api.clearAiMemory(chat, aiId), catch: (cause) => cause }).pipe(
     Effect.flatMap(() =>
-      Effect.tryPromise({ try: () => api.getMemory(chat, aiId), catch: (cause) => cause }),
+      Effect.tryPromise({ try: () => api.getAiMemory(chat, aiId), catch: (cause) => cause }),
     ),
   );
 
@@ -223,7 +231,7 @@ export function AiMemorySection({
   aiName,
   initiallyOpen = false,
 }: {
-  api: AiMemoryApi;
+  api: ReturnType<typeof makeChatExtrasApi>;
   chat: string;
   aiId: string;
   aiName: string;
@@ -231,7 +239,7 @@ export function AiMemorySection({
 }) {
   const [open, setOpen] = useState(initiallyOpen);
   const [status, setStatus] = useState<AiMemoryStatus>('loading');
-  const [memory, setMemory] = useState<AiMemory | null>(null);
+  const [memory, setMemory] = useState<AiMemoryView | null>(null);
   const [forgetError, setForgetError] = useState('');
   const [forgettingId, setForgettingId] = useState<string | null>(null);
   const [clearError, setClearError] = useState('');
@@ -243,7 +251,7 @@ export function AiMemorySection({
       return;
     }
     const load = Effect.tryPromise({
-      try: () => api.getMemory(chat, aiId),
+      try: () => api.getAiMemory(chat, aiId),
       catch: (cause) => cause,
     }).pipe(
       Effect.matchEffect({

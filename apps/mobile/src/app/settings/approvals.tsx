@@ -14,7 +14,7 @@ import { MUTED_FOREGROUND, ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors'
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/ui/card';
-import type { ApprovalRule, ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
+import type { ApprovalRule, ApprovalDecision, PublicApproval } from '@zilar/api-contract';
 import { useApi } from '@/lib/use-mockable-api';
 import {
   claimDecision,

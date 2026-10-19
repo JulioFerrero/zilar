@@ -14,7 +14,7 @@ import {
   directorySubtitle,
   exploreActionTitle,
 } from '@/components/directory/explore-helpers';
-import { makeDirectoryApi } from '@/lib/directory-api';
+import { makeDirectoryApi, type SearchDirectoryInput } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -22,7 +22,7 @@ import { SearchField } from '@/components/ui/search-field';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import type { DirectoryEntry, DirectoryKind, SearchDirectoryInput } from '@/lib/directory-api';
+import type { DirectoryEntry, DirectoryKind } from '@zilar/api-contract';
 import { useAction } from '@/lib/effect/use-action';
 import { postJoinTarget } from '@/components/directory/handle-helpers';
 import { useChatStore } from '@/store/chat-store-provider';

@@ -10,13 +10,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
-import type {
-  AiToolsApi,
-  ToolListItem,
-  ToolsApi,
-  ToolActionsApi,
-  ToolDetailsApi,
-} from '@/lib/tools-api';
+import type { ToolListItem } from '@zilar/api-contract';
+import type { makeToolsApi } from '@zilar/client-core';
 import { ToolDetailLoader } from './tool-detail-loader';
 import { SectionError } from './routines-section';
 
@@ -26,7 +21,7 @@ function ToolDetailSheet({
   onClose,
   onDeleted,
 }: {
-  api: ToolDetailsApi & ToolActionsApi;
+  api: ReturnType<typeof makeToolsApi>;
   toolId: string | null;
   onClose: () => void;
   onDeleted: (toolId: string) => void;
@@ -72,7 +67,7 @@ const isEmptyListError = (error: unknown): boolean =>
   error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response');
 
 export const loadAiToolsEffect = (
-  api: ToolsApi,
+  api: ReturnType<typeof makeToolsApi>,
   aiId: string,
 ): Effect.Effect<ToolListItem[], unknown> =>
   Effect.tryPromise({ try: () => api.listAiTools(aiId), catch: (error) => error }).pipe(
@@ -156,7 +151,13 @@ export function withoutTool(tools: ToolListItem[], toolId: string): ToolListItem
   return tools.filter((tool) => tool.id !== toolId);
 }
 
-export function ToolsSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
+export function ToolsSection({
+  api,
+  aiId,
+}: {
+  api: ReturnType<typeof makeToolsApi>;
+  aiId: string;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<ReadonlyArray<string>>([]);
   // A refresh keeps the rows on screen until the reload answers; loading shows only before the first list.

@@ -30,7 +30,7 @@ import { StepTrack, type StepTrackStep } from '@/components/ui/step-track';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { ICON } from '@/lib/colors';
-import type { PublicAi } from '@/lib/ais-api';
+import type { PublicAi } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import { LimitsFields } from '@/components/ais/limits-fields';
 import type { ComputerMode } from '@/components/ais/computer-picker';

@@ -4,13 +4,13 @@ import { RefreshCw } from 'lucide-react-native';
 import { Effect } from 'effect';
 
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
+import type { PublicAuditEntry } from '@zilar/api-contract';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { ICON } from '@/lib/colors';
-import { interruptFiber } from '@zilar/client-core';
+import { interruptFiber, type AuditApi } from '@zilar/client-core';
 
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';
 

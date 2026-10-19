@@ -24,16 +24,15 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { ICON } from '@/lib/colors';
+import { useAction } from '@/lib/effect/use-action';
+import { useApi } from '@/lib/use-mockable-api';
 import {
   type EmailIntegrationStatus,
-  type IntegrationsApi,
   type IntegrationsStatus,
   type TelegramIntegrationStatus,
   type VoiceIntegrationStatus,
-} from '@/lib/integrations-api';
-import { useAction } from '@/lib/effect/use-action';
-import { useApi } from '@/lib/use-mockable-api';
-import { makeIntegrationsApi } from '@zilar/client-core';
+} from '@zilar/api-contract';
+import { makeIntegrationsApi, type IntegrationsApi } from '@zilar/client-core';
 
 type PageStatus = 'loading' | 'ready' | 'forbidden' | 'error';
 

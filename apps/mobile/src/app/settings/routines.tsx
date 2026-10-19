@@ -1,4 +1,4 @@
-import { ApiError } from '@zilar/api-contract';
+import { ApiError, type MyRoutine } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { Repeat, MessageCircle, Pause, Play, Trash2 } from 'lucide-react-native';
@@ -20,7 +20,6 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, DANGER, ICON } from '@/lib/colors';
 import { interruptFiber, makeToolsApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import type { AiToolsApi, MyRoutine } from '@/lib/tools-api';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
 import { describeRoutineSchedule } from '@/lib/routines-format';
@@ -130,7 +129,9 @@ function RoutineRow({
 const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';
 
 /** A 404 or an unparseable response reads as an empty list, not an error, like the per-AI routines section. */
-function loadMyRoutinesEffect(api: AiToolsApi): Effect.Effect<MyRoutine[], unknown> {
+function loadMyRoutinesEffect(
+  api: ReturnType<typeof makeToolsApi>,
+): Effect.Effect<MyRoutine[], unknown> {
   return Effect.tryPromise({ try: () => api.listMyRoutines(), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
       error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response')

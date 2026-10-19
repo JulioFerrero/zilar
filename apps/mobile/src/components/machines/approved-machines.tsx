@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { PublicAi } from '@/lib/ais-api';
+import type { PublicAi } from '@zilar/client-core';
 import type { Machine } from '@/lib/machines-api';
 import { MachineRow, RevokedToggleRow } from './machine-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';

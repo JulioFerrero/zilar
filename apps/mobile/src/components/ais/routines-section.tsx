@@ -18,8 +18,8 @@ import {
   routineLastText,
   routineStatusText,
 } from '@/lib/routines-format';
-import { interruptFiber } from '@zilar/client-core';
-import type { AiToolsApi, Routine, ToolsApi } from '@/lib/tools-api';
+import type { Routine } from '@zilar/api-contract';
+import { interruptFiber, type makeToolsApi } from '@zilar/client-core';
 
 export {
   routineActionMessage,
@@ -39,7 +39,7 @@ export type RoutinesSectionState = {
 };
 
 /** A 404 or an unparseable response reads as an empty list, not an error (web does the same) */
-export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
+export const loadAiRoutinesEffect = (api: ReturnType<typeof makeToolsApi>, aiId: string) =>
   Effect.tryPromise({ try: () => api.listAiRoutines(aiId), catch: (cause) => cause }).pipe(
     Effect.catch((error) =>
       error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response')
@@ -178,7 +178,13 @@ export function RoutinesSectionContent({
 /**
  * While an action runs every action button is disabled; failures show one fixed line under the list, never server text.
  */
-export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
+export function RoutinesSection({
+  api,
+  aiId,
+}: {
+  api: ReturnType<typeof makeToolsApi>;
+  aiId: string;
+}) {
   const [state, setState] = useState<RoutinesSectionState>({
     status: 'loading',
     routines: [],

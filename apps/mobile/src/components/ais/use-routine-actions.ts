@@ -1,8 +1,7 @@
-import { ApiError } from '@zilar/api-contract';
+import { ApiError, type Routine } from '@zilar/api-contract';
+import type { makeToolsApi } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
-
-import type { AiToolsApi, Routine } from '@/lib/tools-api';
 
 export const ROUTINE_NEEDS_APPROVAL_MESSAGE =
   'This routine needs re-approval. Ask the AI to schedule it again.';
@@ -36,7 +35,7 @@ export type RoutineActionOutcome = {
 
 /** A failure keeps the list with the fixed message. A new call clears the previous message (success carries `action: null`). */
 export const applyRoutineActionEffect = (
-  api: AiToolsApi,
+  api: ReturnType<typeof makeToolsApi>,
   routines: Routine[],
   id: string,
   action: RoutineAction,
@@ -80,7 +79,7 @@ export function useRoutineActions({
   routines,
   onRoutines,
 }: {
-  api: AiToolsApi;
+  api: ReturnType<typeof makeToolsApi>;
   routines: Routine[];
   onRoutines: (routines: Routine[]) => void;
 }): RoutineActions {

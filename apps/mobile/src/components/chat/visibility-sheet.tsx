@@ -8,9 +8,8 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { HandleCheckField, VisibilityChoice } from '@/components/chat/visibility-fields';
-import type { GroupVisibility } from '@/lib/directory-api';
 import type { useGroupVisibility } from '@/components/chat/use-group-visibility';
-import { interruptFiber } from '@zilar/client-core';
+import { interruptFiber, type GroupVisibility } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
 // The same rules as web's `VisibilitySection`: only the owner may change visibility; everyone else never sees the sheet.

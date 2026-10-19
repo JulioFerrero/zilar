@@ -12,24 +12,24 @@ import {
 } from '@/components/ais/routines-section';
 import { ToolsSectionContent, sectionStateOf } from '@/components/ais/tools-section';
 import { useRoutineActions } from '@/components/ais/use-routine-actions';
+import type { Routine, ToolListItem } from '@zilar/api-contract';
 import { makeToolsApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { useQuery } from '@/lib/effect/use-query';
 import { mayManageRoles } from '@/lib/roles';
-import type { Routine, ToolListItem, ToolsApi } from '@/lib/tools-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
 const isEmptyListError = (error: unknown): boolean =>
   error instanceof ApiError && (error.status === 404 || error.code === 'invalid_response');
 
-const loadTools = (api: ToolsApi, groupId: string, topicId?: string) =>
+const loadTools = (api: ReturnType<typeof makeToolsApi>, groupId: string, topicId?: string) =>
   Effect.tryPromise({
     try: () => (topicId === undefined ? api.listGroupTools(groupId) : api.listTopicTools(topicId)),
     catch: (error) => error,
   }).pipe(Effect.catchIf(isEmptyListError, () => Effect.succeed<ToolListItem[]>([])));
 
-const loadRoutines = (api: ToolsApi, groupId: string, topicId?: string) =>
+const loadRoutines = (api: ReturnType<typeof makeToolsApi>, groupId: string, topicId?: string) =>
   Effect.tryPromise({
     try: () =>
       topicId === undefined ? api.listGroupRoutines(groupId) : api.listTopicRoutines(topicId),

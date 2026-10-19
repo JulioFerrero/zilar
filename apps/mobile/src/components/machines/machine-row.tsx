@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
-import type { PublicAi } from '@/lib/ais-api';
+import type { PublicAi } from '@zilar/client-core';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { Machine } from '@/lib/machines-api';
 import { cn } from '@/lib/utils';

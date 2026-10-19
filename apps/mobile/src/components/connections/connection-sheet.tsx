@@ -8,7 +8,7 @@ import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { ProviderConnection } from '@/lib/connections-api';
+import type { Connection } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 
 export function ConnectionSheet({
@@ -25,7 +25,7 @@ export function ConnectionSheet({
   onReplace,
   onDelete,
 }: {
-  connection: ProviderConnection | null;
+  connection: Connection | null;
   working: boolean;
   tested: boolean;
   testing: boolean;

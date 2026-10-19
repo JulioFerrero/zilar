@@ -13,7 +13,7 @@ import {
   VisibilityFields,
   type HandleCheckState,
 } from '@/components/chat/visibility-fields';
-import { makeDirectoryApi } from '@/lib/directory-api';
+import { makeDirectoryApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { NewGroupMembers } from '@/components/group/new-group-members';
 import { Button } from '@/components/ui/button';

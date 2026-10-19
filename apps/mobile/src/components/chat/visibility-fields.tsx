@@ -1,11 +1,10 @@
-import { ApiError } from '@zilar/api-contract';
+import { ApiError, type HandleCheck } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { HandleCheck } from '@/lib/directory-api';
 import { interruptFiber } from '@zilar/client-core';
 
 export type CreateVisibility = 'private' | 'public';

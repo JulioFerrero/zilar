@@ -26,13 +26,11 @@ import {
 } from '@/components/chat/visibility-fields';
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
-import { makeDirectoryApi } from '@/lib/directory-api';
 import { runMobile } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { apiCall } from '@/lib/effect/api-client';
 import { useQuery } from '@/lib/effect/use-query';
-import { makeInvitesApi, type InvitesApi } from '@/lib/invites-api';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, makeChatsApi, makeDirectoryApi } from '@zilar/client-core';
 import { realApiTransport, useApi } from '@/lib/use-mockable-api';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
@@ -211,7 +209,7 @@ export function NewChatButton() {
       ? createErrorText(channelFailure.reason, 'channel')
       : '';
   // The invite box talks to the real session API: a personal invite link is meaningless offline.
-  const invitesApi = useMemo(() => makeInvitesApi(apiCall(realApiTransport)), []);
+  const invitesApi = useMemo(() => makeChatsApi(apiCall(realApiTransport)), []);
 
   const inviteShare = useMemo(
     () => ({
@@ -504,7 +502,7 @@ function InviteSheet({
   onClose,
 }: {
   visible: boolean;
-  api: InvitesApi;
+  api: ReturnType<typeof makeChatsApi>;
   copyText: (text: string) => Promise<void>;
   shareText: (text: string) => Promise<void>;
   onClose: () => void;
