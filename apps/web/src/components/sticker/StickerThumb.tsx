@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Effect } from 'effect';
 import { Smile } from 'lucide-react';
+import { isStickerFileUrl } from '@zilar/chat-core';
 import type { RecentStickerEntry } from '@/lib/stickers';
-import { isPanelStickerUrl, readRecentStickers } from '@/lib/stickers';
+import { readRecentStickers } from '@/lib/stickers';
 import type { StickerChoice } from '../StickerPanel';
 
 /**
@@ -20,7 +21,7 @@ export function StickerThumb({
   onBroken?: (() => void) | undefined;
 }) {
   const [broken, setBroken] = useState(false);
-  const trusted = isPanelStickerUrl(sticker.url);
+  const trusted = isStickerFileUrl(sticker.url, window.location.origin);
   const label = sticker.emoji ?? 'Sticker';
   if (!trusted || broken) {
     return (

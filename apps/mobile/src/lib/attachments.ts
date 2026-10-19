@@ -2,18 +2,11 @@
  * Dependency-free, so components import it without the API client or native modules.
  */
 
-import {
-  classifyMime,
-  cleanFilename,
-  isGifVideoName,
-  isTrustedMediaUrl,
-  mimeOrOctetStream,
-} from '@zilar/chat-core';
-import type { Attachment } from '@zilar/protocol';
-
+import { classifyMime, cleanFilename, mimeOrOctetStream } from '@zilar/chat-core';
 export {
   cleanFilename,
   formatFileSize,
+  isGifVideoAttachment,
   isTrustedMediaUrl,
   MAX_ATTACHMENT_BYTES,
   safeHttpUrl,
@@ -72,19 +65,6 @@ export function attachmentDataFor(
     data.height = file.height;
   }
   return data;
-}
-
-/**
- * The URL must be trusted, so a hostile sender's URL never auto-loads even past the store sanitizer that renames untrusted `gif-` attachments (this is the second layer).
- */
-export function isGifVideoAttachment(
-  attachment: Attachment,
-  trustedHosts: ReadonlySet<string>,
-): boolean {
-  if (!isGifVideoName(attachment)) {
-    return false;
-  }
-  return isTrustedMediaUrl(attachment.url, trustedHosts);
 }
 
 /**

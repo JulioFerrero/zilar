@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { Smile } from 'lucide-react';
 import { Link } from 'react-router';
 import type { Sticker } from '@zilar/protocol';
-import { isSameOriginStickerUrl } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { MessageTicks } from './MessageTicks';
 import type { UiMessage } from '@zilar/chat-core';
-import { formatFullDateTime, formatTime } from '@zilar/chat-core';
+import { formatFullDateTime, formatTime, isStickerFileUrl } from '@zilar/chat-core';
 
 export interface StickerMessageProps {
   sticker: Sticker;
@@ -21,7 +20,7 @@ export interface StickerMessageProps {
  */
 export function StickerMessage({ sticker, message, own, selecting = false }: StickerMessageProps) {
   const [broken, setBroken] = useState(false);
-  const trusted = isSameOriginStickerUrl(sticker.url);
+  const trusted = isStickerFileUrl(sticker.url, window.location.origin);
   const alt = sticker.emoji !== undefined && sticker.emoji !== '' ? sticker.emoji : 'Sticker';
   const ratio = `${sticker.width} / ${sticker.height}`;
   const image =

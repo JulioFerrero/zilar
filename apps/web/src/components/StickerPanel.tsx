@@ -18,7 +18,8 @@ import {
 import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { forgetRecentSticker, isPanelStickerUrl, rememberRecentSticker } from '@/lib/stickers';
+import { isStickerFileUrl } from '@zilar/chat-core';
+import { forgetRecentSticker, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -308,7 +309,7 @@ function StickerGrid({
       )}
 
       {preview !== undefined &&
-        isPanelStickerUrl(preview.url) &&
+        isStickerFileUrl(preview.url, window.location.origin) &&
         preview.url !== failedPreviewUrl && (
           <div
             aria-hidden="true"

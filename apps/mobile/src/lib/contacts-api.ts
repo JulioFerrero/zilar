@@ -1,8 +1,6 @@
 import { bareJid } from '@zilar/protocol';
-import { runApi } from '@zilar/api-contract';
 import { makeContactsApi, type HandleProfile } from '@zilar/client-core';
-import { API_URL } from './auth';
-import { createApiClient } from './effect/api-client';
+import type { ApiCall } from './effect/api-client';
 /** Errors are the shared `ApiError`: screens branch on `code` and `status` (404 unknown handle, 429 rate limited). */
 export type {
   BlockedPerson,
@@ -41,12 +39,7 @@ export function contactChatId(userId: string, domain: string): string {
   return `${userId.toLowerCase()}@${domain}`;
 }
 
-export function createContactsApi(
-  getToken: () => Promise<string | undefined>,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): ContactsApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeContactsApi((call) => runApi(call(client)));
+export function makePhoneContactsApi(call: ApiCall): ContactsApi {
+  const api = makeContactsApi(call);
   return { ...api, searchUsers: (q) => api.searchUsers(q).then(({ entries }) => [...entries]) };
 }

@@ -3,7 +3,6 @@
 import { Effect } from 'effect';
 import {
   addRecentSticker,
-  isStickerFileUrl,
   MAX_RECENT_STICKERS,
   parseRecentStickers,
   RECENT_STICKERS_KEY,
@@ -58,19 +57,4 @@ function writeRecentStickers(
   orFallback<void>(undefined, () => {
     storage.setItem(RECENT_STICKERS_KEY, JSON.stringify(recents));
   });
-}
-
-/** Whether a sticker payload url may be auto-loaded: only on the Zilar API's own origin.
- * A hostile sender's URL shows a placeholder instead, so nobody's browser fetches it. */
-export function isSameOriginStickerUrl(url: string, apiBase: string = '/api'): boolean {
-  // An unparsable base is not same-origin: the placeholder shows.
-  return orFallback(false, () =>
-    isStickerFileUrl(url, new URL(apiBase, window.location.origin).origin),
-  );
-}
-
-/** Whether the panel may show a thumbnail inline: same-origin file URLs only. Anything else
- * (a hostile URL in localStorage recents) shows the emoji tile, so the browser never fetches it. */
-export function isPanelStickerUrl(url: string): boolean {
-  return isSameOriginStickerUrl(url);
 }

@@ -51,11 +51,6 @@ export const DEFAULT_SHEET_WIDTH = 360;
 
 export type StickerPanelState = 'loading' | 'ready' | 'error' | 'empty';
 
-// Same-origin file URLs only: anything else (a hostile URL in recents storage) shows the emoji tile, so the device never fetches it.
-export function isPanelStickerUrl(url: string, apiUrl: string): boolean {
-  return isSameOriginStickerUrl(url, apiUrl);
-}
-
 // Runs an Effect for the component's lifetime; the cleanup interrupts it so a late answer never reaches an unmounted or re-keyed view.
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);
@@ -304,7 +299,7 @@ function StickerThumb({
 }) {
   const [broken, setBroken] = useState(false);
   const label = sticker.emoji ?? 'Sticker';
-  if (broken || !isPanelStickerUrl(sticker.url, API_URL)) {
+  if (broken || !isSameOriginStickerUrl(sticker.url, API_URL)) {
     return (
       <Text accessibilityRole="image" accessibilityLabel={label} className="text-[26px]">
         {label === 'Sticker' ? '🙂' : label}

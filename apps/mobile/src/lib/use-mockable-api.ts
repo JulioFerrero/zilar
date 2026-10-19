@@ -17,30 +17,6 @@ export const realApiTransport: ApiTransport = {
 export type ApiMake<A> = (call: ApiCall, transport: ApiTransport) => A;
 
 /**
- * The `require` sits behind a literal build-time condition, so Metro folds it to `false` in a release build and the mock stays out of the bundle.
- */
-export function useMockableApi<A>(
-  real: () => A,
-  mock: (mockFetch: typeof fetch) => A,
-): { api: A; mock: boolean } {
-  const params = useGlobalSearchParams();
-  const envMock = ENV_MOCK;
-  const active = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(() => {
-    if (!active) {
-      return real();
-    }
-    if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-      return mock(mockFetch);
-    }
-    throw new Error('The mock API is not part of this build');
-  }, [active, real, mock]);
-  return { api, mock: active };
-}
-
-/**
  * Builds an API from the real or the mock transport; `make` must be module-level so the memo keeps one object across renders.
  */
 export function useApi<A>(make: ApiMake<A>): { api: A; mock: boolean } {

@@ -1,3 +1,4 @@
+import { formatDuration as formatDurationMs } from '@zilar/chat-core';
 import type { MediaItem, MediaTab } from '@/lib/api';
 import { formatFileSize } from '@/lib/attachments';
 
@@ -23,11 +24,7 @@ function formatDate(at: string): string {
 }
 
 export function formatDuration(ms: number | undefined): string {
-  if (ms === undefined || !Number.isFinite(ms)) {
-    return '';
-  }
-  const total = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  return ms === undefined || !Number.isFinite(ms) ? '' : formatDurationMs(ms);
 }
 
 export function byline(item: MediaItem): string {

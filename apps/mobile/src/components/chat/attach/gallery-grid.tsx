@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Camera } from 'lucide-react-native';
 import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
+import { formatDuration } from '@zilar/chat-core';
 
 import { Text } from '@/components/ui/text';
 import type { GalleryAsset } from '@/lib/attachment-picker';
@@ -9,16 +10,6 @@ import { primaryKey } from '@/lib/depth';
 
 /** A grid cell: the live camera tile first, then one recent asset. */
 type GalleryCell = { kind: 'camera' } | { kind: 'asset'; asset: GalleryAsset };
-
-/** The video duration as `m:ss`, or `h:mm:ss` past an hour. */
-export function formatDuration(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${minutes}:${pad(secs)}`;
-}
 
 /**
  * The Gallery tab's 3-column grid (T-1320): the camera tile first, then the
@@ -127,7 +118,9 @@ function AssetCell({
       />
       {asset.mediaType === 'video' && asset.duration > 0 ? (
         <View className="absolute bottom-1 right-1 rounded-[4px] bg-black/60 px-1 py-0.5">
-          <Text className="text-[11px] text-white">{formatDuration(asset.duration)}</Text>
+          <Text className="text-[11px] text-white">
+            {formatDuration(asset.duration * 1000, { hours: true })}
+          </Text>
         </View>
       ) : null}
       <View

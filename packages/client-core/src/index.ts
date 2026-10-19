@@ -73,6 +73,9 @@ export {
 } from './store/ai-cards';
 export * from './task-steps';
 
+export { makeBlockedJidsStore } from './blocked-jids';
+export type { BlockedJidPerson, BlockedJidsStore } from './blocked-jids';
+
 export * from './key-check';
 
 export * from './new-ai-flow';

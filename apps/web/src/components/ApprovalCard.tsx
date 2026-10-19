@@ -333,7 +333,7 @@ function useApprovalPolling(request: ApprovalRequest) {
   );
 
   useEffect(() => {
-    // The id or the reset key changed: drop the cached outcome and start fresh.
+    // The request id changed: drop the cached outcome and start fresh.
     latestRef.current = { kind: 'loading' };
 
     // One read that checks the latest state when it runs, so each tick sees the previous one.

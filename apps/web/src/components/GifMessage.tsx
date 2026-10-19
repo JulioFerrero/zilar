@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { isGifVideoAttachment as isSharedGifVideoAttachment } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/chat-core';
-import { isTrustedMediaUrl, mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 export interface GifMessageProps {
@@ -66,25 +67,5 @@ export function isGifVideoAttachment(
   attachment: Attachment,
   trustedHosts: ReadonlySet<string>,
 ): boolean {
-  if (attachment.kind !== 'file') {
-    return false;
-  }
-  if (attachment.mime !== 'video/mp4' && attachment.mime !== 'video/webm') {
-    return false;
-  }
-  if (!attachment.name.startsWith('gif-')) {
-    return false;
-  }
-  return isTrustedGifUrl(attachment.url, trustedHosts);
-}
-
-/**
- * `/api/` paths are same-origin by construction; absolute URLs need a trusted
- * media host, everything else renders as a file card.
- */
-function isTrustedGifUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  if (url.startsWith('/api/')) {
-    return true;
-  }
-  return isTrustedMediaUrl(url, trustedHosts);
+  return isSharedGifVideoAttachment(attachment, trustedHosts, true);
 }

@@ -49,10 +49,13 @@ export function formatDateSeparator(date: Date, now: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'long', day: 'numeric' }).format(date);
 }
 
-export function formatDuration(durationMs: number): string {
+export function formatDuration(durationMs: number, options?: { hours?: boolean }): string {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
+  if (options?.hours === true && minutes >= 60) {
+    return `${Math.floor(minutes / 60)}:${pad(minutes % 60)}:${pad(seconds)}`;
+  }
   return `${minutes}:${pad(seconds)}`;
 }
 

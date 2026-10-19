@@ -1,90 +1,40 @@
+import { makeBlockedJidsStore } from '@zilar/client-core';
+import { isBlockedSender, type ChatSummary, type UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { isBlockedSender, localpartOf, type ChatSummary, type UiMessage } from '@zilar/chat-core';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import type { ContactsApi } from './contacts-api';
 
-// Kept outside React so every chat row and MessageList reads the same set; a failed load keeps the last good set, so a flaky network never unhides messages.
-let blocked: ReadonlySet<string> = new Set();
-// True while a load is in flight, so a second caller does not start another.
-let loading = false;
-let appStateListening = false;
 let currentApi: ContactsApi | undefined;
-const listeners = new Set<() => void>();
 
-function emit(): void {
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-const loadEffect = (api: ContactsApi): Effect.Effect<void> =>
-  Effect.tryPromise({ try: () => api.listBlockedUsers(), catch: (error) => error }).pipe(
-    Effect.flatMap((people) =>
-      Effect.try({
-        try: () => {
-          const next = new Set<string>();
-          for (const person of people) {
-            if (person.jid !== null && person.jid.trim() !== '') {
-              next.add(localpartOf(person.jid.trim()));
-            }
-          }
-          blocked = next;
-          emit();
-        },
+const store = makeBlockedJidsStore({
+  load: () =>
+    Effect.runPromise(
+      Effect.tryPromise({
+        try: () => currentApi?.listBlockedUsers() ?? Promise.resolve([]),
         catch: (error) => error,
       }),
     ),
-    // Keep the last good set.
-    Effect.catch(() => Effect.void),
-  );
-
-function ensureAppStateListener(): void {
-  if (appStateListening) {
-    return;
-  }
-  appStateListening = true;
-  AppState.addEventListener('change', (state) => {
-    if (state === 'active' && currentApi !== undefined) {
-      Effect.runFork(loadEffect(currentApi));
-    }
-  });
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function getSnapshot(): ReadonlySet<string> {
-  return blocked;
-}
+  watchRefresh: (refresh) => {
+    AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refresh();
+      }
+    });
+  },
+});
 
 export function useBlockedJids(api: ContactsApi): ReadonlySet<string> {
   useEffect(() => {
     currentApi = api;
-    ensureAppStateListener();
-    if (!loading) {
-      loading = true;
-      Effect.runFork(
-        loadEffect(api).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              loading = false;
-            }),
-          ),
-        ),
-      );
-    }
   }, [api]);
-  return useSyncExternalStore(subscribe, getSnapshot);
+  return store.useBlockedJids();
 }
 
 export function reloadBlockedJids(api: ContactsApi): Promise<void> {
-  return Effect.runPromise(loadEffect(api));
+  currentApi = api;
+  return store.refresh();
 }
 
 /**
@@ -106,14 +56,11 @@ export function filterBlockedMessages(
 
 /** Test-only: reset the module state between tests. */
 export function resetBlockedJidsForTests(): void {
-  blocked = new Set();
-  loading = false;
-  appStateListening = false;
+  store.resetForTests();
   currentApi = undefined;
-  listeners.clear();
 }
 
 /** Test-only: the lowercased localparts currently loaded. */
 export function blockedJidsSnapshot(): ReadonlySet<string> {
-  return blocked;
+  return store.snapshot();
 }

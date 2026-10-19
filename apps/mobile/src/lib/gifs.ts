@@ -2,9 +2,14 @@
  * Dependency-free, so components import it without the API client or native modules.
  */
 
-import { gifBlobType, parseUrl } from '@zilar/chat-core';
+import { parseUrl } from '@zilar/chat-core';
 
-export { gifBlobType };
+export {
+  gifBlobType,
+  gifsAvailability,
+  resetGifsAvailability,
+  setGifsAvailability,
+} from '@zilar/chat-core';
 
 export interface GifItem {
   id: string;
@@ -32,23 +37,6 @@ export function isGifMediaType(contentType: string): boolean {
  */
 export function gifFileName(id: string, extension: string): string {
   return `gif-${id.slice(0, 16)}.${extension}`;
-}
-
-/**
- * A network error keeps the answer unknown (the panel shows Retry), so a transient outage does not permanently hide the tab.
- */
-const gifsAvailabilityCache: { value: boolean | undefined } = { value: undefined };
-
-export function gifsAvailability(): boolean | undefined {
-  return gifsAvailabilityCache.value;
-}
-
-export function setGifsAvailability(value: boolean): void {
-  gifsAvailabilityCache.value = value;
-}
-
-export function resetGifsAvailability(): void {
-  gifsAvailabilityCache.value = undefined;
 }
 
 export { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';

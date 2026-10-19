@@ -1,13 +1,5 @@
-import { API_URL } from '@/lib/auth';
-import { createContactsApi, type ContactsApi } from '@/lib/contacts-api';
-import { getSessionToken } from '@/lib/session-token';
-import { useMockableApi } from '@/lib/use-mockable-api';
-import { mockToken } from '@/mock/gate';
-
-const realContactsApi = () => createContactsApi(getSessionToken);
-
-const mockContactsApi = (mockFetch: typeof fetch) =>
-  createContactsApi(mockToken, mockFetch, API_URL);
+import { useApi } from '@/lib/use-mockable-api';
+import { makePhoneContactsApi, type ContactsApi } from '@/lib/contacts-api';
 
 export interface ContactsApiHandle {
   api: ContactsApi;
@@ -15,5 +7,5 @@ export interface ContactsApiHandle {
 }
 
 export function useContactsApi(): ContactsApiHandle {
-  return useMockableApi(realContactsApi, mockContactsApi);
+  return useApi(makePhoneContactsApi);
 }

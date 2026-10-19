@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
+import { GIF_SEARCH_DEBOUNCE_MS, gifsAvailability, setGifsAvailability } from '@zilar/chat-core';
 import { gifMediaUrl, searchGifs, trendingGifs, type GifPage, type GifResult } from '@/lib/api';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
@@ -35,25 +35,17 @@ interface MorePages {
 const ATTRIBUTION = 'Powered by Giphy';
 const LOAD_ERROR = 'Could not load GIFs. Try again.';
 
-/**
- * Probes availability once per session: `false` only on a 501, while network
- * errors stay `undefined` so a transient outage does not hide the tab.
- */
-const gifsAvailabilityCache: { value: boolean | undefined } = { value: undefined };
-
-export function gifsAvailability(): boolean | undefined {
-  return gifsAvailabilityCache.value;
-}
+export { gifsAvailability };
 
 const probeProvider = (): Effect.Effect<boolean> =>
   fromApi(() => trendingGifs(undefined, undefined)).pipe(
     Effect.map(() => {
-      gifsAvailabilityCache.value = true;
+      setGifsAvailability(true);
       return true;
     }),
     Effect.catchTag('ApiFailure', (failure) => {
       if (failure.code === 'gifs_unavailable') {
-        gifsAvailabilityCache.value = false;
+        setGifsAvailability(false);
         return Effect.succeed(false);
       }
       return Effect.succeed(true);
@@ -62,7 +54,7 @@ const probeProvider = (): Effect.Effect<boolean> =>
 
 export function probeGifsAvailabilityEffect(): Effect.Effect<boolean> {
   return Effect.suspend(() => {
-    const cached = gifsAvailabilityCache.value;
+    const cached = gifsAvailability();
     return cached === undefined ? probeProvider() : Effect.succeed(cached);
   });
 }

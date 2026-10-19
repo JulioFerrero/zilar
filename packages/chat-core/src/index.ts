@@ -30,6 +30,7 @@ export * from './files';
 export * from './photos';
 export * from './smooth-text';
 export * from './stickers';
+export * from './gifs';
 export * from './sticker-motion';
 export type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';
 export * from './store/ledger';
