@@ -24,6 +24,11 @@ type BottomSheetProps = {
    * `false` so a native dismissal cannot desync `visible`.
    */
   dismissible?: boolean;
+  /**
+   * Lets TrueSheet drive the content scroll view on Android. The library cannot
+   * combine this mode with an `auto` detent, so the sheet takes one fixed detent.
+   */
+  scrollable?: boolean;
   maxHeightClassName?: string;
   children?: ReactNode;
 };
@@ -39,10 +44,11 @@ function maxHeightFraction(className: string): number {
 
 /**
  * The kit bottom sheet shell on `@lodev09/react-native-true-sheet`: `auto`
- * detents size the panel to its content within `maxHeightClassName` (the library
- * cannot combine `auto` with `scrollable`, so the content scrolls in that cap).
- * The header and footer sit outside the scroll view, the top padding clears the
- * grabber, and `dismissible={false}` keeps a running action from hiding it.
+ * detents size the panel to its content within `maxHeightClassName`. A long
+ * list passes `scrollable`, which needs one fixed detent because the library
+ * cannot combine its Android scroll mode with `auto`. The header and footer sit
+ * outside the scroll view, the top padding clears the grabber, and
+ * `dismissible={false}` keeps a running action from hiding it.
  */
 export function BottomSheet({
   visible,
@@ -53,6 +59,7 @@ export function BottomSheet({
   headerRight,
   footer,
   dismissible = true,
+  scrollable = false,
   maxHeightClassName = 'max-h-[85%]',
   children,
 }: BottomSheetProps) {
@@ -81,7 +88,8 @@ export function BottomSheet({
   return (
     <TrueSheet
       ref={sheet}
-      detents={['auto']}
+      detents={scrollable ? [maxHeightFraction(maxHeightClassName)] : ['auto']}
+      scrollable={scrollable}
       maxContentHeight={maxHeight}
       backgroundColor={palette.panel}
       cornerRadius={16}
@@ -95,7 +103,10 @@ export function BottomSheet({
         onClose();
       }}
     >
-      <View className="border-t border-border bg-panel" style={{ maxHeight }}>
+      <View
+        className="border-t border-border bg-panel"
+        style={scrollable ? { flex: 1 } : { maxHeight }}
+      >
         {hasHeader ? (
           <View className="flex-row items-center gap-2 px-4 pt-[22px]">
             {onBack !== undefined ? (
@@ -124,7 +135,7 @@ export function BottomSheet({
         <ScrollView
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
-          style={{ flexShrink: 1 }}
+          style={scrollable ? { flex: 1 } : { flexShrink: 1 }}
           contentContainerStyle={{ paddingBottom: footer !== undefined ? 12 : 16 }}
           className={cn('px-4', hasHeader ? 'pt-3.5' : 'pt-[22px]')}
         >

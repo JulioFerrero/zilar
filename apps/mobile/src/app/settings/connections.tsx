@@ -6,8 +6,8 @@ import { View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { providerLabel } from '@zilar/chat-core';
-import { ApiError } from '@zilar/api-contract';
-import { makeAisApi, type Connection } from '@zilar/client-core';
+import { ApiError, WEB_SEARCH_PROVIDER_IDS } from '@zilar/api-contract';
+import { makeAisApi, webUseText, type Connection } from '@zilar/client-core';
 import { KeyStep } from '@/components/ais/new-ai/key-step';
 import { ProviderStep } from '@/components/ais/new-ai/provider-step';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';
@@ -80,14 +80,18 @@ function addedDate(createdAt: string): string {
   );
 }
 
+const WEB_SEARCH_PROVIDERS: readonly string[] = WEB_SEARCH_PROVIDER_IDS;
+
 function ConnectionRow({
   connection,
+  useText,
   working,
   reason,
   last,
   onPress,
 }: {
   connection: Connection;
+  useText: string | undefined;
   working: boolean;
   reason: string | undefined;
   last: boolean;
@@ -116,11 +120,54 @@ function ConnectionRow({
           {reason !== undefined ? ' · ' : ''}
           {connection.label !== null ? `${connection.label} · ` : ''}
           {connection.baseUrl !== null ? `${hostOf(connection.baseUrl)} · ` : ''}
+          {useText !== undefined ? `${useText} · ` : ''}
           {addedDate(connection.createdAt)}
         </Text>
       </View>
       <MoreHorizontal size={18} color={MUTED_FOREGROUND} />
     </Pressable>
+  );
+}
+
+function ConnectionSurface({
+  title,
+  hint,
+  connections,
+  all,
+  isWorking,
+  reasonOf,
+  onOpen,
+}: {
+  title: string;
+  hint?: string;
+  connections: readonly Connection[];
+  all: readonly Connection[];
+  isWorking: (connection: Connection) => boolean;
+  reasonOf: (connection: Connection) => string | undefined;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <View>
+      <Text className="px-5 pb-2 text-[14px] font-medium text-foreground">
+        {title}
+        {hint !== undefined ? (
+          <Text className="font-normal text-subtle-foreground"> · {hint}</Text>
+        ) : null}
+      </Text>
+      <View className="mx-4 overflow-hidden rounded-2xl border border-divider bg-surface">
+        {connections.map((connection, index) => (
+          <ConnectionRow
+            key={connection.id}
+            connection={connection}
+            useText={webUseText(connection, all)}
+            working={isWorking(connection)}
+            reason={reasonOf(connection)}
+            last={index === connections.length - 1}
+            onPress={() => onOpen(connection.id)}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -321,6 +368,12 @@ function ConnectionsList() {
         : testErrors[connection.id];
 
   const sheetConnection = connections.find((connection) => connection.id === sheetId) ?? null;
+  const modelConnections = connections.filter(
+    (connection) => !WEB_SEARCH_PROVIDERS.includes(connection.provider),
+  );
+  const webConnections = connections.filter((connection) =>
+    WEB_SEARCH_PROVIDERS.includes(connection.provider),
+  );
   const confirmingConnection =
     connections.find((connection) => connection.id === confirmingId) ?? null;
   const confirmingLabel =
@@ -445,17 +498,28 @@ function ConnectionsList() {
       ) : null}
 
       {status === 'ready' && connections.length > 0 ? (
-        <View className="mx-4 overflow-hidden rounded-2xl border border-divider bg-surface">
-          {connections.map((connection, index) => (
-            <ConnectionRow
-              key={connection.id}
-              connection={connection}
-              working={isWorking(connection)}
-              reason={reasonOf(connection)}
-              last={index === connections.length - 1}
-              onPress={() => openSheet(connection.id)}
+        <View className="gap-6">
+          {modelConnections.length > 0 ? (
+            <ConnectionSurface
+              title="Models"
+              connections={modelConnections}
+              all={connections}
+              isWorking={isWorking}
+              reasonOf={reasonOf}
+              onOpen={openSheet}
             />
-          ))}
+          ) : null}
+          {webConnections.length > 0 ? (
+            <ConnectionSurface
+              title="Web search"
+              hint="for AIs whose model has none"
+              connections={webConnections}
+              all={connections}
+              isWorking={isWorking}
+              reasonOf={reasonOf}
+              onOpen={openSheet}
+            />
+          ) : null}
         </View>
       ) : null}
     </SettingsScreenShell>
@@ -533,7 +597,7 @@ function AddKeySheet({
             if (!keys.checkingKey) setStep(0);
           }}
         />
-        {step === 0 ? <ProviderStep keys={keys} /> : null}
+        {step === 0 ? <ProviderStep keys={keys} withWebSearch /> : null}
         {step === 1 ? <KeyStep keys={keys} /> : null}
       </View>
     </BottomSheet>

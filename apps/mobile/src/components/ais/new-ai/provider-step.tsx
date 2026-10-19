@@ -5,14 +5,34 @@ import { Text, TextField } from '@/components/ui/text';
 
 import type { KeyCheck } from '@/components/connections/use-key-check';
 
-export function ProviderStep({ keys }: { keys: KeyCheck }) {
-  const options: SelectSheetOption[] = keys.choices
+export function ProviderStep({
+  keys,
+  withWebSearch = false,
+}: {
+  keys: KeyCheck;
+  withWebSearch?: boolean;
+}) {
+  const modelOptions: SelectSheetOption[] = keys.choices
     .filter((choice) => choice.id !== 'openai-compatible')
     .map((choice) => ({
       value: choice.id,
       label: choice.label,
+      ...(withWebSearch ? { group: 'Models' } : {}),
+      ...(withWebSearch && choice.tag !== undefined ? { tag: choice.tag } : {}),
       ...(choice.hasKey ? { dot: 'online' as const } : {}),
     }));
+  const options: SelectSheetOption[] = withWebSearch
+    ? [
+        ...modelOptions,
+        ...keys.webChoices.map((choice) => ({
+          value: choice.id,
+          label: choice.label,
+          group: 'Web search',
+          tag: choice.tag,
+          ...(choice.hasKey ? { dot: 'online' as const } : {}),
+        })),
+      ]
+    : modelOptions;
 
   return (
     <View className="gap-4">

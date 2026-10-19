@@ -199,9 +199,30 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
     - **T-2227 merged:** `docs/audit/server-http-boilerplate.md`.
       - Only about −425 lines are low-risk across the 45 route files, plus about −300 from one shared `HttpApi` (high risk, last).
       - The server's size is breadth, not boilerplate.
-      - The low-risk follow-ups launch after T-2225 merges, since they share files with it.
+    - **T-2225 merged (−26) and T-2224 merged (−46),** both live at `111269421` (routes identical, 0 errors).
     - **T-2226:** the web message list on virtua (tested in the Viernes room's 800-message backlog).
     - **Next:** the phone list on LegendList, after T-2226 proves out.
+  - **Julio 11:40: "240.000 of slop code… we need something a skill a tool or a better model"** (memory `rewrite-not-trim-1019`).
+    - **New way:** stop small trim tasks and rewrite feature by feature to a line budget. DeepSeek workers with `docs/LEAN_CODE.md` (committed `354a0f19f`).
+    - **Pilot:** the messages core, 44.8k lines in five areas. One map task per area (behaviour list, twin logic, slop with `file:line`, a lean target with budgets, at least −40%), then rewrite specs from the maps:
+
+      | Task | Area | Lines |
+      | --- | --- | ---: |
+      | T-2229 | composer | 4,454 |
+      | T-2230 | list and bubble | 7,468 |
+      | T-2231 | chat list, requests, folders, prefs, unread | 6,743 |
+      | T-2232 | chat screen, header, search, pins | 7,351 |
+      | T-2233 | shared client-core store | 7,504 |
+      | T-2234 | web and phone store layers | 5,591 |
+
+    - **T-2228** (server payload pass-through, −100) is parked: small-trim kind.
+    - **Lines by feature (11:40, 232k source):**
+      - messages 44.3k; AI 37.9k; groups and topics 27.7k; plumbing and kits 18.8k;
+      - stickers, emoji and GIFs 14.1k; runner and desk 14.1k; media 11.9k; devtools 11.9k;
+      - settings 10.9k; cards 10.1k; auth 10.0k; push 6.3k; XMPP 6.2k; voice 5.3k.
+    - **Later:**
+      - a gate budget per feature;
+      - jscpd and knip runs for duplication and dead code.
   - **T-2220 (merged 11:02):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
