@@ -3,7 +3,7 @@ import { type DeskStopFrame } from './desk-frames.ts';
 import { DeskServer } from './desk-server.ts';
 import type { StreamMux } from './mux.ts';
 import { parseControlMessage, type ControlMessage } from './protocol.ts';
-import { dropConn, type ServerConn, type ServerRuntime } from './server/conn.ts';
+import { dropConn, type ServerConn, type ServerRuntime } from './server.ts';
 
 function fakeMux(sent: ControlMessage[]): StreamMux {
   return {

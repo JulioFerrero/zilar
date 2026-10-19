@@ -2178,3 +2178,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2178](T-2178-intra-dedupe-server-3.md) | server: in-file repeats become helpers, wave 3 | 2026-10-19 |
 | [T-2176](T-2176-client-copies-2.md) | web and phone copies, wave 2: one home each | 2026-10-19 |
 | [T-2180](T-2180-merge-devtools.md) | devtools: size-split folders merged back into their files | 2026-10-19 |
+| [T-2179](T-2179-merge-runner-tunnel.md) | runner-tunnel: size-split folders merged back | 2026-10-19 |
