@@ -3,6 +3,7 @@ import { Duration, Effect, Fiber, Schedule } from 'effect';
 import { type ServerDatabase } from '../db/client';
 import { serializeError } from '../effect/error-utils';
 import { type RunnerDesk } from '../hands/runner-hands';
+import { type RoutineLogger } from '../routines/scheduler';
 import { listApprovedMachineKeys } from './service';
 /**
  * Binds the desk server to one runner, so a turn's `RunnerDesk` never carries
@@ -15,16 +16,10 @@ function bindRunnerDesk(desk: DeskServer, runnerId: string): RunnerDesk {
   };
 }
 
-export interface HubLogger {
-  info: (fields: Record<string, unknown>, message: string) => void;
-  warn: (fields: Record<string, unknown>, message: string) => void;
-  error: (fields: Record<string, unknown>, message: string) => void;
-}
-
 export interface CreateHubKeyRegistryOptions {
   db: ServerDatabase;
   registry: HubRegistrySource;
-  logger: HubLogger;
+  logger: RoutineLogger;
   refreshMs?: number;
   /** Off in tests so they leak no timers; the hub sets it to true. */
   autoStartTimer?: boolean;
@@ -192,7 +187,7 @@ export function createHubKeyRegistry({
 export interface StartRunnerHubOptions {
   db: ServerDatabase;
   registry: HubMachineLookup;
-  logger: HubLogger;
+  logger: RoutineLogger;
   port: number;
   heartbeatIntervalMs?: number;
   heartbeatTimeoutMs?: number;

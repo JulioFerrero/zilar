@@ -19,7 +19,7 @@ export interface ModelRequestMessage {
   tool_call_id?: string;
 }
 
-export interface ModelToolDefinition {
+export interface ChatToolDefinition {
   type: 'function';
   function: {
     name: string;
@@ -105,7 +105,7 @@ export function toPrompt(messages: readonly ModelRequestMessage[]): Prompt.Promp
 // A dynamic tool needs no handler: the agent loop validates and executes every
 // call itself (`disableToolCallResolution`), so the one here is never invoked.
 export function toToolkit(
-  definitions: readonly ModelToolDefinition[],
+  definitions: readonly ChatToolDefinition[],
 ): Toolkit.WithHandler<Record<string, Tool.Any>> | undefined {
   if (definitions.length === 0) {
     return undefined;
@@ -255,7 +255,7 @@ export interface ModelCallResult {
 export interface ModelCallInput {
   target: ModelTarget;
   messages: ModelRequestMessage[];
-  tools?: ModelToolDefinition[];
+  tools?: ChatToolDefinition[];
   /** Called with the cumulative text every time the stream grows. */
   onDelta?: (textSoFar: string) => void;
   onUsage?: (usage: ChatUsage) => void;

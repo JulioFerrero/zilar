@@ -28,7 +28,7 @@ import {
   type DeskToolName,
   type SaveTextMediaFormat,
 } from './tools/schemas';
-import type { ChatToolDefinition } from './tools/definitions';
+import type { ChatToolDefinition } from '../ai/model-client';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
 export const REPLY_MAX_TOKENS = 4096;

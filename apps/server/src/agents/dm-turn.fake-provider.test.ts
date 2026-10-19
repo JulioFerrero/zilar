@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import type { ChatUsage, ModelTarget } from '../ai/model-client';
 import { runDmTurn } from './dm-turn';
-import type { ChatToolDefinition } from './tools/definitions';
+import type { ChatToolDefinition } from '../ai/model-client';
 import type { ExecuteToolCall } from './tool-loop';
 
 const API_KEY = 'sk-fake-provider-key';

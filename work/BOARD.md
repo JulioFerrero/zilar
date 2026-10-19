@@ -2171,3 +2171,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2172](T-2172-webpkg-fn-copies.md) | web and packages: one copy of each twice-written function | 2026-10-19 |
 | [T-2169](T-2169-server-fn-copies.md) | server: one copy of each twice-written function | 2026-10-19 |
 | [T-2173](T-2173-server-fn-copies-2.md) | server and packages: one copy of each helper, wave 2 | 2026-10-19 |
+| [T-2174](T-2174-server-type-copies.md) | server: one declaration per type shape | 2026-10-19 |

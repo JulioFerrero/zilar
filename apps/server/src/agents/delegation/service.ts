@@ -61,6 +61,8 @@ export interface DelegationView {
   objective: string;
   resultSummary: string | null;
   artifacts: string[];
+  // The column is a `timestamptz`; the driver returns it as a `Date`, as the
+  // other converted services rely on (`pins/service.ts`, `contact-requests`).
   updatedAt: Date;
 }
 
@@ -213,19 +215,6 @@ export async function createDelegation(
   return { ok: true, delegation: { id, toAiId: input.toAiId, objective, status: 'working' } };
 }
 
-// `updated_at` is a `timestamptz`; the driver returns it as a `Date`, as the
-// other converted services rely on (`pins/service.ts`, `contact-requests`).
-interface DelegationRow {
-  id: string;
-  fromAiId: string;
-  toAiId: string;
-  status: DelegationStatus;
-  objective: string;
-  resultSummary: string | null;
-  artifacts: string[];
-  updatedAt: Date;
-}
-
 // Read one delegation for one AI. A third AI sees null, the same as a missing
 // id, so nothing leaks across AIs.
 export async function getDelegationForAi(
@@ -237,7 +226,7 @@ export async function getDelegationForAi(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<DelegationRow>`SELECT id, from_ai_id, to_ai_id, status, objective,
+      return yield* sql<DelegationView>`SELECT id, from_ai_id, to_ai_id, status, objective,
           result_summary, artifacts, updated_at
         FROM ai_delegations
         WHERE id = ${id} AND (from_ai_id = ${aiId} OR to_ai_id = ${aiId})

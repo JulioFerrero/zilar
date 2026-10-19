@@ -30,6 +30,7 @@ import { createSearchApi } from '../search/api';
 import { createSetupApi } from '../setup/api';
 import { createTopicsApi } from '../topics/api';
 import { turnWatcherOf } from '../topics/ai-activity';
+import type { TopicServiceDeps } from '../topics/schemas';
 import { type RouteWiring } from './deps';
 import { opt } from './opt';
 import { Layer, Duration, Effect, Queue, Schema, Stream } from 'effect';
@@ -58,14 +59,7 @@ import { publicGroupForHandle, searchDirectory, type GroupKind } from '../direct
 import { HttpServer, HttpRouter, HttpServerResponse } from 'effect/http';
 import { listPins, pinMessage, unpinMessage, type PinsServiceDeps } from '../pins/service';
 import { blockUser, listBlockedUsers, unblockUser, type BlocksDeps } from '../blocks/service';
-import {
-  createRole,
-  deleteRole,
-  listRoles,
-  renameRole,
-  setRoleMembers,
-  type RolesServiceDeps,
-} from '../roles/service';
+import { createRole, deleteRole, listRoles, renameRole, setRoleMembers } from '../roles/service';
 import { type DraftHubEvent } from '../drafts/events';
 import { sharedDraftHub, type DraftHub } from '../drafts/hub';
 // A comment line this often keeps the connection (and any proxy buffer) alive between
@@ -179,7 +173,7 @@ interface RolesApiDependencies extends Pick<
 function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
   const logger = deps.logger;
 
-  function serviceDeps(): RolesServiceDeps {
+  function serviceDeps(): TopicServiceDeps {
     return {
       db: deps.db,
       adminClient: deps.adminClient,

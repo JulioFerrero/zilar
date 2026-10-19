@@ -1,9 +1,5 @@
-import type { ServerCore } from '../app/deps';
-import type { AuditRecorder } from '../audit/recorder';
-
 import type { GroupRoleRow } from '../db/rows';
 import { HttpError } from '../errors';
-import type { InviteLogger } from '../groups/service';
 
 export const MAX_ROLES_PER_GROUP = 20;
 
@@ -17,12 +13,6 @@ export interface GroupRoleView {
 export interface GroupRoleDetail extends GroupRoleView {
   /** The holders, sorted by name. Role membership is not secret. */
   members: Array<{ userId: string; name: string }>;
-}
-
-export interface RolesServiceDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
-  domain: string;
-  logger: InviteLogger;
-  audit?: AuditRecorder;
 }
 
 export const GROUP_NOT_FOUND = {

@@ -149,7 +149,8 @@ export interface PatchGroupInput {
   listenerEagerness?: GroupListenerEagerness | undefined;
 }
 
-interface BackgroundFieldsInput {
+/** `undefined` keeps the stored value; `null` clears it. */
+export interface BackgroundFieldsInput {
   backgroundPreset?: string | null | undefined;
   backgroundImageId?: string | null | undefined;
   backgroundDim?: number | null | undefined;

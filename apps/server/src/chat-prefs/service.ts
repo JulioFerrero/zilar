@@ -4,6 +4,7 @@ import type { ServerDatabase } from '../db/client';
 import type { ChatPrefRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import type { BackgroundFieldsInput, GroupBackground } from '../groups/schemas';
 
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
@@ -12,7 +13,7 @@ export { CHAT_BACKGROUND_PRESET_IDS } from '@zilar/api-contract';
 
 export type { ChatPrefRow };
 
-export interface ChatPrefView extends BackgroundFields {
+export interface ChatPrefView extends GroupBackground {
   chatJid: string;
   mutedUntil: string | null;
   archived: boolean;
@@ -173,27 +174,14 @@ export async function putChatPref(
   }
   return toChatPrefView(row);
 }
-interface BackgroundFields {
-  backgroundPreset: string | null;
-  backgroundImageId: string | null;
-  backgroundDim: number | null;
-}
-
-/** `undefined` keeps the stored value; `null` clears it. */
-interface BackgroundFieldsInput {
-  backgroundPreset?: string | null | undefined;
-  backgroundImageId?: string | null | undefined;
-  backgroundDim?: number | null | undefined;
-}
-
 // An image id that does not exist and one owned by another user answer the same error,
 // so ids cannot be probed.
 async function resolveBackgroundFields(
   db: ServerDatabase,
   userId: string,
-  existing: BackgroundFields | undefined,
+  existing: GroupBackground | undefined,
   input: BackgroundFieldsInput,
-): Promise<BackgroundFields> {
+): Promise<GroupBackground> {
   const backgroundPreset =
     input.backgroundPreset === undefined
       ? (existing?.backgroundPreset ?? null)
@@ -234,12 +222,12 @@ interface PutChatBackgroundDefaultInput extends BackgroundFieldsInput {
 export async function getChatBackgroundDefault(
   db: ServerDatabase,
   userId: string,
-): Promise<BackgroundFields> {
+): Promise<GroupBackground> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<BackgroundFields>`SELECT background_preset, background_image_id, background_dim
+      return yield* sql<GroupBackground>`SELECT background_preset, background_image_id, background_dim
         FROM chat_background_defaults WHERE user_id = ${userId} LIMIT 1`;
     }),
   );
@@ -253,12 +241,12 @@ export async function putChatBackgroundDefault(
   db: ServerDatabase,
   userId: string,
   input: PutChatBackgroundDefaultInput,
-): Promise<BackgroundFields> {
+): Promise<GroupBackground> {
   const [existing] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<BackgroundFields>`SELECT * FROM chat_background_defaults
+      return yield* sql<GroupBackground>`SELECT * FROM chat_background_defaults
         WHERE user_id = ${userId} LIMIT 1`;
     }),
   );
@@ -286,7 +274,7 @@ export async function putChatBackgroundDefault(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<BackgroundFields>`INSERT INTO chat_background_defaults
+      return yield* sql<GroupBackground>`INSERT INTO chat_background_defaults
           (user_id, background_preset, background_image_id, background_dim, updated_at)
         VALUES (
           ${userId},

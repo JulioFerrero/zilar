@@ -7,6 +7,7 @@ import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { syncTopicRoom } from '../topics/rooms';
+import type { TopicServiceDeps } from '../topics/schemas';
 import {
   holdersOfRole,
   requireGroupManager,
@@ -19,7 +20,6 @@ import {
   type GroupRoleDetail,
   type GroupRoleRow,
   type GroupRoleView,
-  type RolesServiceDeps,
 } from './schemas';
 
 // A role is a way into every private topic that lists it, so a group manager who
@@ -70,7 +70,7 @@ function assertRoleGrantAllowed(
 // Re-syncs every non-archived topic room granting access to any `roleIds`. Best
 // effort per room, logged with the group id and never a topic name.
 async function syncTopicsWithRoles(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   roleIds: string[],
 ): Promise<void> {
@@ -109,7 +109,7 @@ async function syncTopicsWithRoles(
   }
 }
 export { GROUP_NOT_FOUND, MAX_ROLES_PER_GROUP, ROLE_NOT_FOUND } from './schemas';
-export type { GroupRoleDetail, GroupRoleRow, GroupRoleView, RolesServiceDeps } from './schemas';
+export type { GroupRoleDetail, GroupRoleRow, GroupRoleView } from './schemas';
 export { holdsTopicRole, topicRoleHolderIds } from './access';
 
 function mapRoleError(error: unknown): HttpError {
@@ -147,7 +147,7 @@ function auditEntry(
 }
 
 export async function createRole(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   actorId: string,
   name: string,
@@ -212,7 +212,7 @@ export async function createRole(
 }
 
 export async function renameRole(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   roleId: string,
   actorId: string,
@@ -261,7 +261,7 @@ export async function renameRole(
 // Deletes the role everywhere (assignments and topic access cascade, approver
 // columns fall back to null) and re-syncs the topics that granted it access.
 export async function deleteRole(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   roleId: string,
   actorId: string,
@@ -330,7 +330,7 @@ export async function deleteRole(
 // Every id must be a group member. Affected rooms re-sync, so a removed holder
 // leaves a private topic reached only through this role.
 export async function setRoleMembers(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   roleId: string,
   actorId: string,
@@ -418,7 +418,7 @@ export async function setRoleMembers(
 // through a role. Scoped to this group's roles; never throws for no roles.
 // Returns the removed ids for the caller's audit.
 export async function dropMemberRoles(
-  deps: RolesServiceDeps,
+  deps: TopicServiceDeps,
   groupId: string,
   userId: string,
 ): Promise<string[]> {

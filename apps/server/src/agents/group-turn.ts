@@ -27,7 +27,7 @@ import {
 import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
 import type { ChatCompletionMessage } from './context';
-import type { ChatToolDefinition } from './tools/definitions';
+import type { ChatToolDefinition } from '../ai/model-client';
 import { escapeRegExp } from './gateway/addressing';
 
 const HANDOFF_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;

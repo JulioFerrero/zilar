@@ -39,6 +39,7 @@ import {
 } from './schemas';
 import { toolParameters } from './tool-params';
 import { cardGuide } from '../../message-blocks/guide';
+import type { ChatToolDefinition } from '../../ai/model-client';
 
 const DESK_TOOLS: ChatToolDefinition[] = [
   toolDefinition(
@@ -119,15 +120,6 @@ export const POST_BLOCKS_TOOL_DEF = toolDefinition(
     cardGuide({ interactive: true }),
   toolParameters(PostBlocksArgsSchema),
 );
-export interface ChatToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
 export function toolDefinition(
   name: string,
   description: string,

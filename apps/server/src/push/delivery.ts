@@ -2,7 +2,7 @@ import { Effect, type Effect as EffectType } from 'effect';
 import type { PushSubscriptionRow } from '../db/rows';
 import { markPushFailed, markPushSent } from '../health';
 import { albumKey } from './album-key';
-import { newestMessageForUserEffect } from './archive-scan';
+import { newestMessageForUserEffect, type ScanResult } from './archive-scan';
 import { FcmSendError } from './fcm';
 import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
@@ -108,12 +108,6 @@ const openNativeDeviceEffect = Effect.fnUntraced(function* (
     catch: () => new Undecryptable(),
   });
 });
-
-export interface ScanResult {
-  newest: { message: ResolvedPushMessage } | undefined;
-  notify: string[];
-  saw: 'muted' | 'hidden' | 'duplicate' | 'no-message';
-}
 
 const resolveAndSendEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,

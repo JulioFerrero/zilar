@@ -29,7 +29,7 @@ export interface ArchiveCandidate {
   xml: string;
 }
 
-interface NewestScan {
+export interface ScanResult {
   newest: { message: ResolvedPushMessage } | undefined;
   notify: string[];
   saw: 'muted' | 'hidden' | 'duplicate' | 'no-message';
@@ -45,7 +45,7 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   userId: string,
   node: string,
-): EffectType.fn.Return<NewestScan, ArchiveUnavailable> {
+): EffectType.fn.Return<ScanResult, ArchiveUnavailable> {
   const allowed = yield* Effect.tryPromise({
     try: () => cachedAllowedArchives(deps.db, deps.config, userId),
     catch: () => new ArchiveUnavailable(),

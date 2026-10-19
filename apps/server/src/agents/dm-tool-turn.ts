@@ -13,7 +13,7 @@ import {
   turnStopped,
   type TurnFailure,
 } from './turn';
-import type { ChatToolDefinition } from './tools/definitions';
+import type { ChatToolDefinition } from '../ai/model-client';
 
 export { runToolLoop } from './tool-rounds';
 

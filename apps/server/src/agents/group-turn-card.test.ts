@@ -10,7 +10,8 @@ import type { AiSession } from './gateway/contracts';
 import { createRequestActionRunner } from './gateway/tool-exec';
 import { runGroupTurn } from './group-turn';
 import { REQUEST_ACTION_TOOL } from './tools/schemas';
-import { buildRequestActionTool, type ChatToolDefinition } from './tools/definitions';
+import { buildRequestActionTool } from './tools/definitions';
+import type { ChatToolDefinition } from '../ai/model-client';
 
 const TARGET: ModelTarget = {
   provider: 'deepseek',
