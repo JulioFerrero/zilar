@@ -21,5 +21,4 @@ export const DraftEndEventSchema = Schema.Struct({
 export const DraftHubEventSchema = Schema.Union([DraftEventSchema, DraftEndEventSchema]);
 
 export type DraftEvent = typeof DraftEventSchema.Type;
-export type DraftEndEvent = typeof DraftEndEventSchema.Type;
 export type DraftHubEvent = typeof DraftHubEventSchema.Type;

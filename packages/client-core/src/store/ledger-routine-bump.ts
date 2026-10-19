@@ -61,5 +61,3 @@ export function createRoutineBump(deps: RoutineBumpDeps) {
 
   return { bumpRoutineChat };
 }
-
-export type RoutineBump = ReturnType<typeof createRoutineBump>;

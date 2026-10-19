@@ -13,9 +13,6 @@ import type { TopicView } from '../topics/access';
 import type { DeliveredNotice } from './delivered-notice';
 import type { ChatUnread } from './unread';
 
-export const DELIVERED_IDS_MAX = 50;
-export const DELIVERED_ID_MAX_LENGTH = 128;
-
 interface ArchiveDeliveryRow {
   timestamp: number | string | bigint;
   kind: string;

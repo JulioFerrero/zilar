@@ -221,8 +221,6 @@ export function createLedgerBatch(store: LedgerBatchView) {
   return { get, set, collect };
 }
 
-export type LedgerBatch = ReturnType<typeof createLedgerBatch>;
-
 /**
  * Merges an older page into the loaded list in O(page + loaded): an already loaded message
  * keeps its copy, and the list is sorted only when the concatenation is not in order.

@@ -1,4 +1,4 @@
-import { Context, Effect, Exit, Layer, Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { Context, Effect, Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
 import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 
 // Mail transport and GitHub App cross-field rules. Every issue names the variable and
@@ -179,10 +179,6 @@ export type ServerConfig = ReturnType<typeof finalizeConfig>;
 // The tag other services ask for; the live layer builds it from `process.env` at
 // provision time, so importing this module never parses the environment.
 export const ServerConfig = Context.Service<ServerConfig>('ServerConfig');
-
-export const ServerConfigLive: Layer.Layer<ServerConfig> = Layer.sync(ServerConfig, () =>
-  loadServerConfig(process.env),
-);
 
 export function loadServerConfig(rawEnv: Record<string, string | undefined>): ServerConfig {
   const env = emptyMailSettingsAsUnset(rawEnv);

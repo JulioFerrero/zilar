@@ -42,10 +42,6 @@ export const {
 export type { ApprovalDecision, ApprovalStatus } from '@zilar/api-contract';
 export type { ApprovalRule, PublicApproval };
 
-// Old names for schemas that decode a payload from an older server.
-export const publicApprovalSchema = PublicApproval;
-export const approvalRuleSchema = ApprovalRule;
-
 const approvals = makeApprovalsApi(callApi);
 
 export const {

@@ -42,8 +42,6 @@ const PolicyFileSchema = Schema.Struct({
   maxRunning: Schema.optional(positive),
 });
 
-export type PolicyFile = typeof PolicyFileSchema.Type;
-
 export function parsePolicy(text: string): LocalPolicy {
   let parsed: unknown;
   try {

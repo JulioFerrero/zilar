@@ -66,23 +66,6 @@ export function providerChoices(
   );
 }
 
-// A case-insensitive match on label or id; OpenAI-compatible always stays.
-export function filterProviderChoices(
-  choices: readonly ProviderChoice[],
-  query: string,
-): ProviderChoice[] {
-  const needle = query.trim().toLowerCase();
-  if (needle === '') {
-    return [...choices];
-  }
-  return choices.filter(
-    (choice) =>
-      choice.id === COMPATIBLE_ID ||
-      choice.label.toLowerCase().includes(needle) ||
-      choice.id.toLowerCase().includes(needle),
-  );
-}
-
 const KEY_PAGES: Record<string, string> = {
   openai: 'https://platform.openai.com/api-keys',
   anthropic: 'https://platform.claude.com/settings/keys',

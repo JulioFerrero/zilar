@@ -17,8 +17,6 @@ const DELETION_GRACE_DAYS = 7;
 // Whole-account routes demand a session at most 30 minutes old, stricter than Better Auth's 24 h.
 export const FRESH_SESSION_MS = 30 * 60 * 1000;
 
-export const DELETION_FRESH_SESSION_MS = FRESH_SESSION_MS;
-
 export function assertFreshSession(createdAt: Date, nowMs: number, message: string): void {
   if (nowMs - createdAt.getTime() > FRESH_SESSION_MS) {
     throw new HttpError(403, 'reauth_required', message);

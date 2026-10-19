@@ -6,10 +6,6 @@ import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import { loadState, stateFilePath } from './state.js';
 import { parseTaskFrontMatter, reviewSessionModel } from './task-file.js';
 
-// The pre-review is always Muse, the strongest reader (§5.1); the exported default
-// keeps tests honest, the live call site uses reviewSessionModel().
-export const PREREVIEW_MODEL = { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
-
 export interface PrereviewDeps {
   client: OpenCodeClient;
   promptsDirPath: string;

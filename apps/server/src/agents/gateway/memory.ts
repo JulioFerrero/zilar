@@ -150,9 +150,6 @@ const compactMemoryEffect = Effect.fnUntraced(function* (
   return { built, withheld };
 });
 
-export function compactMemory(input: CompactMemoryInput): Promise<CompactMemoryResult> {
-  return Effect.runPromise(compactMemoryEffect(input));
-}
 export interface MemoryRunnerContext {
   deps: Pick<AgentGatewayDeps, 'db' | 'archive' | 'fetchImpl'>;
   logger: GatewayLogger;

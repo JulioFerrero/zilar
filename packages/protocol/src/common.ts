@@ -57,8 +57,6 @@ export const JidSchema = Schema.String.pipe(
   ),
 );
 
-export type Jid = typeof JidSchema.Type;
-
 export const IdSchema = Schema.String.pipe(
   Schema.check(
     Schema.isMinLength(1),

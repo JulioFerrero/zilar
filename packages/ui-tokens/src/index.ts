@@ -33,8 +33,6 @@ export const palette = {
   iconColor: '#d4d4d4',
 } as const;
 
-export type PaletteKey = keyof typeof palette;
-
 export const radius = {
   base: '0.75rem',
   sm: 'calc(var(--radius) - 4px)',

@@ -157,5 +157,3 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     markAttachmentFailed,
   };
 }
-
-export type LedgerMutators = ReturnType<typeof createLedgerMutators>;

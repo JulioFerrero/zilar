@@ -10,13 +10,7 @@ import {
   saveIdentity,
   summarizeIdentity,
 } from './identity.ts';
-import {
-  ConnectError,
-  hubUrlFromServer,
-  runRunner,
-  validateHubUrl,
-  type RunResult,
-} from './connect.ts';
+import { ConnectError, runRunner, validateHubUrl, type RunResult } from './connect.ts';
 import { pairRunner, PairError, type PairOptions, type PairResult } from './pair.ts';
 
 const EXIT_OK = 0;
@@ -319,8 +313,6 @@ function describeError(err: unknown): { exitCode: number; message: string } {
 }
 
 export { CapabilitiesSchema };
-
-export const __test_helpers = { hubUrlFromServer };
 
 const entry = process.argv[1];
 const isMain =

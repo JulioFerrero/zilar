@@ -106,23 +106,6 @@ export {
   revokeMachine,
 } from './machines';
 
-export async function countActivePairingCodes(
-  db: ServerDatabase,
-  ownerUserId: string,
-  now: Date,
-): Promise<number> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
-        FROM machine_pairing_codes
-        WHERE owner_user_id = ${ownerUserId} AND used_at IS NULL AND expires_at > ${now}`;
-    }),
-  );
-  return Number(row?.total ?? 0);
-}
-
 export async function createPairingCode(
   db: ServerDatabase,
   ownerUserId: string,

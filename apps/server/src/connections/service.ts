@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { ProviderConnectionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
 export type ConnectionRow = ProviderConnectionRow;
@@ -182,34 +181,4 @@ export async function countAisUsingConnection(
     }),
   );
   return Number(row?.total ?? 0);
-}
-
-// The gateway seam: decrypts a key in memory for one request. Outside `crypto`
-// this is the only place the plaintext exists, and it never crosses a route or
-// a response.
-export function decryptForGatewayUseEffect(
-  cipher: KeyCipher,
-  connectionId: string,
-): Effect.Effect<string, SqlError.SqlError | Error, SqlClient.SqlClient> {
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const [row] = yield* sql<{ encryptedKey: string }>`SELECT encrypted_key
-      FROM provider_connections WHERE id = ${connectionId} LIMIT 1`;
-    if (!row) {
-      return yield* Effect.fail(new Error('Connection not found'));
-    }
-    return yield* Effect.try({
-      try: () => cipher.decrypt(row.encryptedKey),
-      catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-    });
-  });
-}
-
-// Model transactions use the Effect directly so the read rides theirs.
-export async function decryptForGatewayUse(
-  db: ServerDatabase,
-  cipher: KeyCipher,
-  connectionId: string,
-): Promise<string> {
-  return runSql(db, decryptForGatewayUseEffect(cipher, connectionId));
 }

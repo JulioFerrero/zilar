@@ -34,5 +34,3 @@ declare module './types' {
     on(event: 'unacked', cb: (e: StreamAckEvent) => void): () => void;
   }
 }
-
-export type AckEventName = 'acked' | 'unacked';

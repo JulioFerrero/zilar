@@ -7,8 +7,6 @@ import {
   UPDATE_PERSONA_TOOL,
 } from './tools/schemas';
 
-export const TOOL_GUIDE_MAX_CHARS = 6000;
-
 const TOOL_GUIDE_LINES = [
   'You can act with tools through the `request_action` tool. Work in small steps and report what was done.',
   'Before writing anything, check what already exists with `tool.list` (and `tool.read` for the source). Never rebuild a tool that already does the job.',

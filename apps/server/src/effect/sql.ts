@@ -109,35 +109,6 @@ export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
   await runtime.dispose();
 }
 
-// A fresh PGlite per use, started from a snapshot of a migrated database, so a
-// module test can ask for a client without `createTestContext`.
-let migratedSnapshot: Promise<Blob> | undefined;
-
-async function snapshotOfMigratedDatabase(): Promise<Blob> {
-  const { PGlite } = await import('@electric-sql/pglite');
-  const template = new PGlite();
-  await migratePglite(template);
-  const snapshot = await template.dumpDataDir('none');
-  await template.close();
-  return snapshot;
-}
-
-export async function freshMigratedPglite(): Promise<PGlite> {
-  migratedSnapshot ??= snapshotOfMigratedDatabase();
-  const { PGlite } = await import('@electric-sql/pglite');
-  return new PGlite({ loadDataDir: await migratedSnapshot });
-}
-
-export const SqlTest: Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> = Layer.unwrap(
-  Effect.gen(function* () {
-    const client = yield* Effect.acquireRelease(
-      Effect.promise(() => freshMigratedPglite()),
-      (pglite) => Effect.promise(() => pglite.close()),
-    );
-    return pgliteLayer(client);
-  }),
-);
-
 // Reads the committed `.sql` files (the core loader only imports modules) and
 // runs each statement between the `--> statement-breakpoint` markers.
 export function sqlFileLoader(directory: string): Migrator.Loader {
