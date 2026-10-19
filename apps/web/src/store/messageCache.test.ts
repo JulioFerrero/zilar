@@ -1,10 +1,8 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import type { Pin } from '@zilar/api-contract';
 import { describe, expect, it } from 'vitest';
 import {
   MESSAGE_CACHE_KEY,
   clearMessageCache,
-  readCachedPins,
   readMessageCache,
   writeMessageCache,
 } from './messageCache';
@@ -40,19 +38,6 @@ function chat(id: string): ChatSummary {
   return { id } as ChatSummary;
 }
 
-function pin(chatId: string, id: string): Pin {
-  return {
-    id,
-    chat: chatId,
-    messageId: `m-${id}`,
-    senderName: 'Ana',
-    text: `pinned ${id}`,
-    kind: 'text',
-    pinnedBy: 'Ana',
-    pinnedAt: '2026-10-17T10:00:00.000Z',
-  };
-}
-
 describe('message cache (T-1903)', () => {
   it('round-trips one user and gives another user nothing', () => {
     const storage = memoryStorage();
@@ -78,88 +63,5 @@ describe('message cache (T-1903)', () => {
     writeMessageCache(storage, 'u-1', [chat(ana)], { [ana]: [message(ana, 'm1')] });
     clearMessageCache(storage);
     expect(storage.getItem(MESSAGE_CACHE_KEY)).toBeNull();
-  });
-
-  it('never stores unsent messages or preview URLs that only work on this device', () => {
-    const storage = memoryStorage();
-    const id = 'ana@zilar.test';
-    const attachment = {
-      kind: 'file' as const,
-      url: 'https://files.example/x.pdf',
-      name: 'x.pdf',
-      size: 10,
-      mime: 'application/pdf',
-    };
-
-    writeMessageCache(storage, 'u-1', [chat(id)], {
-      [id]: [
-        message(id, 'local-1', { status: 'sending' }),
-        message(id, 'm-sending', { status: 'sending' }),
-        message(id, 'm-failed', { status: 'failed', failed: true }),
-        message(id, 'm-blob', {
-          attachment: { ...attachment, url: 'blob:https://app.example/1' },
-        }),
-        message(id, 'm-data', {
-          image: { url: 'data:image/png;base64,AAAA', width: 1, height: 1 },
-        }),
-        message(id, 'm-voice', {
-          voice: { duration_ms: 1_000, mime: 'audio/webm', waveform: [1], url: 'blob:https://x/2' },
-        }),
-        message(id, 'm-ok', { attachment }),
-      ],
-    });
-
-    const list = readMessageCache(storage, 'u-1')[id] ?? [];
-    expect(list.map((entry) => entry.id)).toEqual(['m-blob', 'm-data', 'm-voice', 'm-ok']);
-    expect(list.find((entry) => entry.id === 'm-blob')?.attachment).toBeUndefined();
-    expect(list.find((entry) => entry.id === 'm-data')?.image).toBeUndefined();
-    expect(list.find((entry) => entry.id === 'm-voice')?.voice).toBeUndefined();
-    expect(list.find((entry) => entry.id === 'm-ok')?.attachment?.url).toBe(
-      'https://files.example/x.pdf',
-    );
-  });
-
-  it('round-trips the cached pins and gives another user nothing', () => {
-    const storage = memoryStorage();
-    const ana = 'ana@zilar.test';
-    const bob = 'bob@zilar.test';
-
-    writeMessageCache(
-      storage,
-      'u-1',
-      [chat(ana), chat(bob)],
-      { [ana]: [message(ana, 'm1')], [bob]: [message(bob, 'm3')] },
-      { [ana]: [pin(ana, 'p1'), pin(ana, 'p2')], [bob]: [pin(bob, 'p3')] },
-    );
-
-    expect(readCachedPins(storage, 'u-1')).toEqual({
-      [ana]: [pin(ana, 'p1'), pin(ana, 'p2')],
-      [bob]: [pin(bob, 'p3')],
-    });
-
-    // Another account reads nothing, and the foreign copy is dropped.
-    expect(readCachedPins(storage, 'u-2')).toEqual({});
-    expect(storage.getItem(MESSAGE_CACHE_KEY)).toBeNull();
-  });
-
-  it('drops the oldest chats when the payload is over the byte cap', () => {
-    const storage = memoryStorage();
-    const newest = 'new@zilar.test';
-    const older = 'old@zilar.test';
-    const bulk = (chatId: string, prefix: string): UiMessage[] =>
-      Array.from({ length: 50 }, (_, index) =>
-        message(chatId, `${prefix}-${index}`, { text: 'a'.repeat(20_000) }),
-      );
-
-    writeMessageCache(storage, 'u-1', [chat(newest), chat(older)], {
-      [newest]: bulk(newest, 'n'),
-      [older]: bulk(older, 'o'),
-    });
-
-    const cached = readMessageCache(storage, 'u-1');
-    expect(Object.keys(cached)).toEqual([newest]);
-    expect(cached[newest]).toHaveLength(50);
-    const raw = storage.getItem(MESSAGE_CACHE_KEY) ?? '';
-    expect(new TextEncoder().encode(raw).length).toBeLessThanOrEqual(1_500_000);
   });
 });

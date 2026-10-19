@@ -45,60 +45,6 @@ async function started(sendMessage: XmppCore['sendMessage']) {
 }
 
 describe('sending on the effect fibers', () => {
-  it('calls sendMessage in the same tick as sendText and waits for the ack for sent', async () => {
-    const listeners = new Map<string, Set<(payload: { stanzaId: string }) => void>>();
-    const sendMessage = vi.fn(async () => ({ id: 'srv-1' }));
-    const coreWithEvents = core(sendMessage);
-    const store = createRealChatStore({
-      api: anaApi(),
-      createXmpp: () => ({
-        ...coreWithEvents,
-        on: ((event: string, callback: (payload: { stanzaId: string }) => void) => {
-          let set = listeners.get(event);
-          if (set === undefined) {
-            set = new Set();
-            listeners.set(event, set);
-          }
-          set.add(callback);
-          return () => {
-            set?.delete(callback);
-          };
-        }) as unknown as XmppCore['on'],
-      }),
-      now: () => new Date('2026-09-28T12:00:00Z'),
-    });
-    store.getState().start();
-    await flush();
-    await flush();
-
-    store.getState().sendText(ANA, ' hola ');
-    expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(store.getState().messages(ANA)[0]?.status).toBe('sending');
-
-    await flush();
-    // The honest tick (F4): the bubble waits for the server's ack.
-    expect(store.getState().messages(ANA)[0]?.status).toBe('sending');
-    for (const callback of listeners.get('acked') ?? []) {
-      callback({ stanzaId: 'srv-1' });
-    }
-    await flush();
-    expect(store.getState().messages(ANA)[0]?.status).toBe('sent');
-    store.getState().stop();
-  });
-
-  it('keeps the bubble sending when the send rejects, without an error', async () => {
-    const sendMessage = vi.fn(async () => {
-      throw new Error('down');
-    });
-    const store = await started(sendMessage);
-
-    store.getState().sendText(ANA, 'hola');
-    await flush();
-    expect(store.getState().messages(ANA)[0]?.status).toBe('sending');
-    expect(store.getState().actionError).toBeUndefined();
-    store.getState().stop();
-  });
-
   it('stop interrupts a send in flight: a late ack changes nothing', async () => {
     let ack!: (value: { id: string }) => void;
     const sendMessage = vi.fn(

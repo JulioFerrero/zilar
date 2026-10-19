@@ -2,7 +2,7 @@
 // pin: reading a live message in the open chat and `sendTyping`.
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { createFakeXmppCore, type FakeXmppCore } from '@zilar/xmpp-core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
 import { createRealChatStore, type AppStateLike } from './real-store';
@@ -66,10 +66,6 @@ const chatOf = (store: Awaited<ReturnType<typeof setup>>['store'], chatId: strin
   store.getState().chats.find((chat) => chat.id === chatId);
 
 describe('mobile incoming events, actions and reads', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('reads a live message in the open chat while the app is active and sends a marker', async () => {
     const { store, core } = await setup();
     store.getState().openChat(ANA);

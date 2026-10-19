@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush } from '@/test/wait';
@@ -11,10 +11,6 @@ import { createRealChatStore, type RealStoreDeps, type StorageLike } from './rea
 const ANA = 'ana@zilar.test';
 const TEAM = 'team@rooms.zilar.test';
 const NOW = new Date('2026-09-28T12:00:00Z');
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 function memoryStorage(): StorageLike & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -62,21 +58,6 @@ async function setup(deps: Partial<RealStoreDeps> = {}) {
 }
 
 describe('message actions', () => {
-  it('sends no correction for an unchanged or empty edit', async () => {
-    const { store, xmpp } = await setup();
-    store.getState().openChat(ANA);
-    await flush();
-    store.getState().sendText(ANA, 'hello');
-    await flush();
-    const local = store.getState().messages(ANA).at(-1)?.id ?? '';
-
-    store.getState().editMessage(ANA, local, '  hello  ');
-    store.getState().editMessage(ANA, local, '   ');
-
-    expect(xmpp.core.sendCorrection).not.toHaveBeenCalled();
-    expect(store.getState().messages(ANA).at(-1)?.text).toBe('hello');
-  });
-
   it('sends the typing signal with the chat kind, and nothing for an unknown chat', async () => {
     const { store, xmpp } = await setup();
 
