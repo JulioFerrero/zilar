@@ -7,13 +7,13 @@ import { View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
+import { describeMachinesError } from '@/components/machines/errors';
 import { LimitsFields } from '@/components/ais/limits-fields';
-import { ComputerPicker } from '@/components/ais/computer-picker';
 import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
 import { ToolsSection } from '@/components/ais/tools-section';
-import { makeMachinesApi } from '@/lib/machines-api';
+import { makeMachinesApi, type MachinesApi } from '@/lib/machines-api';
 import { useApi } from '@/lib/use-mockable-api';
 import {
   defaultModelFor,
@@ -24,6 +24,7 @@ import {
   formatModelPrices,
   modelSuggestionsFor,
   buildPatch,
+  computerChoices,
 } from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import {
@@ -36,7 +37,6 @@ import {
   type UpdateAiInput,
   failureOf,
 } from '@zilar/client-core';
-import { applyMachineChange } from '@/components/machines/machine-change';
 import { rawCall } from '@/components/chat/group-action';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -44,10 +44,12 @@ import { Text, TextField } from '@/components/ui/text';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { OptionGlyph, OptionRow } from '../../components/ais/option-row';
-import { Wrench } from 'lucide-react-native';
+import { Cloud, Laptop, PowerOff, Sparkles, Wrench, type LucideIcon } from 'lucide-react-native';
 import type { AiCatalogModel, Machine } from '@zilar/api-contract';
-import { ACCENT } from '@/lib/colors';
+import { ACCENT, ACCENT_FOREGROUND } from '@/lib/colors';
 import type { ComputerMode } from '@zilar/chat-core';
+import { runMobile } from '@/lib/effect/runtime';
+import { cn } from '@/lib/utils';
 
 function ModelPicker({
   provider,
@@ -625,7 +627,6 @@ function EditAi() {
             </View>
 
             <ComputerPicker
-              label="Computer"
               value={computer.mode}
               cloud={computer.cloud}
               hasMachine={homeMachineId !== null}
@@ -651,5 +652,92 @@ function EditAi() {
         )}
       </AisScreenShell>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * The `changeMachine` flow behind the picker: the PUT answer is the shown machine; on failure the previous value is restored with a fixed sentence.
+ */
+function applyMachineChange(
+  api: MachinesApi,
+  aiId: string,
+  next: string | null,
+  previous: string | null,
+): Promise<{ home: string | null; error: string }> {
+  return runMobile(
+    Effect.tryPromise({
+      try: () => api.setAiMachine(aiId, next),
+      catch: (cause: unknown) => cause,
+    }).pipe(
+      Effect.match({
+        onSuccess: (fresh) => ({ home: fresh, error: '' }),
+        onFailure: (cause) => ({
+          home: previous,
+          error: describeMachinesError(cause, 'Could not update the home machine.').message,
+        }),
+      }),
+    ),
+  );
+}
+
+const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
+  off: PowerOff,
+  cloud: Cloud,
+  runner: Laptop,
+  auto: Sparkles,
+};
+
+function ComputerPicker({
+  value,
+  cloud,
+  hasMachine,
+  disabled,
+  error,
+  onChange,
+}: {
+  value: ComputerMode;
+  cloud: boolean;
+  hasMachine: boolean;
+  disabled?: boolean;
+  error?: string;
+  onChange: (mode: ComputerMode) => void;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-[14px] font-medium text-foreground">Computer</Text>
+      {computerChoices(cloud, hasMachine).map((choice) => {
+        const selected = choice.mode === value;
+        const Icon = COMPUTER_ICONS[choice.mode];
+        return (
+          <OptionRow
+            key={choice.mode}
+            selected={selected}
+            disabled={choice.disabled || disabled === true}
+            accessibilityLabel={choice.label}
+            onPress={() => onChange(choice.mode)}
+          >
+            <View
+              className={cn(
+                'h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                selected ? 'bg-accent' : 'bg-surface',
+              )}
+            >
+              <Icon size={16} color={selected ? ACCENT_FOREGROUND : ACCENT} />
+            </View>
+            <View className="min-w-0 flex-1">
+              <Text className="text-[15px] font-medium text-foreground">{choice.label}</Text>
+              <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+                {choice.description}
+              </Text>
+            </View>
+          </OptionRow>
+        );
+      })}
+      {error !== undefined && error !== '' ? (
+        <Text accessibilityRole="alert" className="text-[13px] text-danger">
+          {error}
+        </Text>
+      ) : null}
+    </View>
   );
 }

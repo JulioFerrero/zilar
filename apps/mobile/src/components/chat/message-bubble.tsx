@@ -11,9 +11,25 @@ import {
   type UiReaction,
 } from '@zilar/chat-core';
 import { senderAvatarUrl } from '@zilar/client-core/store';
-import { memo, useState, useMemo, type ReactNode, useEffect, useRef } from 'react';
+import {
+  createContext,
+  memo,
+  useContext,
+  useState,
+  useMemo,
+  type ReactNode,
+  useEffect,
+  useRef,
+} from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useChatRowFacts } from '@/components/chat/chat-row-facts';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { openMessageMenu } from '@/components/chat/message-bubble-actions';
@@ -35,7 +51,6 @@ import { useMessageMenu } from '@/components/chat/message-menu-host';
 import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { PersonPressable } from '@/components/chat/person-pressable';
-import { RowGesture, useRowPan } from '@/components/chat/row-gesture';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle, raisedPill } from '@/lib/depth';
@@ -43,10 +58,15 @@ import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 import { tap as tapHaptic } from './haptics';
-import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-handler';
+import {
+  Gesture,
+  GestureDetector,
+  type PanGesture,
+  type TapGesture,
+} from 'react-native-gesture-handler';
 import { Text } from '@/components/ui/text';
 import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
-import { ArrowRight } from 'lucide-react-native';
+import { ArrowRight, Reply } from 'lucide-react-native';
 import type { Contact } from '@/lib/chat-api';
 import { interruptFiber, runLater, useAlbumMembers, useSmoothText } from '@zilar/client-core';
 import type { ActiveSource } from '@zilar/chat-core';
@@ -298,7 +318,7 @@ function BubbleGesture({
   className,
   children,
 }: BubbleGestureProps) {
-  const rowPan = useRowPan();
+  const rowPan = useContext(RowPanContext);
   const canReact =
     onReact !== undefined && enabled && message.status !== 'sending' && message.status !== 'failed';
   const doubleTap = useMemo(() => {
@@ -629,3 +649,101 @@ function MessageBubbleImpl({
 
 // Memoised: a bubble re-renders only when its own message, selection or flags change.
 export const MessageBubble = memo(MessageBubbleImpl);
+
+const SPRING_BACK = { damping: 1000, stiffness: 700, overshootClamping: true } as const;
+
+// A rightward drag moves the row up to 96 px; past 60 px it replies on release, and it always springs back.
+function makePan(
+  enabled: boolean,
+  translateX: SharedValue<number>,
+  fireReply: () => void,
+): PanGesture {
+  return (
+    Gesture.Pan()
+      .enabled(enabled)
+      // Only the activation distance, so the pan starts after a 12 px rightward drag.
+      .activeOffsetX(12)
+      .failOffsetY([-10, 10])
+      .onUpdate((event) => {
+        translateX.value = Math.min(Math.max(event.translationX, 0), 96);
+      })
+      .onEnd((_event, success) => {
+        if (success && translateX.value >= 60) {
+          runOnJS(fireReply)();
+        }
+      })
+      .onFinalize(() => {
+        translateX.value = withSpring(0, SPRING_BACK);
+      })
+  );
+}
+
+// A stable callback: the pan keeps its identity across renders while calling this render's reply.
+function useStableVoidCallback(callback: () => void): () => void {
+  const latest = useRef(callback);
+  useEffect(() => {
+    latest.current = callback;
+  }, [callback]);
+  return useMemo(() => () => latest.current(), []);
+}
+
+// The bubble's double-tap lives in its own detector but must not cancel the row's swipe, so it finds the pan here and runs beside it.
+const RowPanContext = createContext<PanGesture | null>(null);
+
+// Swipe-to-reply without `ReanimatedSwipeable`: one pan, one shared value. It starts only on a rightward drag and fails on vertical movement, so a fling never swipes a row; past 60 px a haptic fires and replies, and the row always springs back.
+function RowGesture({
+  color,
+  onReply,
+  swipeEnabled = true,
+  children,
+}: {
+  color: string;
+  onReply: () => void;
+  swipeEnabled?: boolean;
+  children: ReactNode;
+}) {
+  const translateX = useSharedValue(0);
+  // The pan keeps its identity across renders by reading the reply through a stable function.
+  const fireReply = useStableVoidCallback(() => {
+    tapHaptic();
+    onReply();
+  });
+
+  const pan = useMemo(
+    () => makePan(swipeEnabled, translateX, fireReply),
+    [fireReply, swipeEnabled, translateX],
+  );
+
+  const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
+  const replyStyle = useAnimatedStyle(() => {
+    const value = Math.min(translateX.value / 60, 1);
+    return { opacity: value, transform: [{ scale: 0.7 + 0.3 * value }] };
+  });
+
+  return (
+    <RowPanContext.Provider value={pan}>
+      <GestureDetector gesture={pan}>
+        <View style={{ overflow: 'hidden' }}>
+          <Reanimated.View
+            pointerEvents="none"
+            style={[
+              replyStyle,
+              {
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: 72,
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            ]}
+          >
+            <Reply size={22} color={color} />
+          </Reanimated.View>
+          <Reanimated.View style={rowStyle}>{children}</Reanimated.View>
+        </View>
+      </GestureDetector>
+    </RowPanContext.Provider>
+  );
+}

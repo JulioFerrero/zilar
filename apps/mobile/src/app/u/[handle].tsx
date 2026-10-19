@@ -28,7 +28,6 @@ import {
 } from '@/components/contacts/add-contact';
 import { performBlock, performUnblock } from '@/components/contacts/blocks';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import type { ProfilePerson } from '@/components/profile/profile-person';
 import { ActionTiles, type ActionTile } from '@/components/ui/action-tiles';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -46,7 +45,7 @@ import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { Button } from '@/components/ui/button';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
 import { fromThrown } from '@zilar/client-core';
-import type { ContactRelation } from '@zilar/client-core';
+import type { ContactRelation, HandleProfile } from '@zilar/client-core';
 
 type UseProfileDmOptions = {
   profile: ProfilePerson | null;
@@ -678,3 +677,6 @@ function describeLoad(error: unknown): string {
   const failure = addContactLookupFailure(error);
   return failure.state === 'error' ? failure.message : 'Could not load that profile. Try again.';
 }
+
+/** The phone's `HandleProfile` drops the server's `bio`; widen it here to read it. */
+type ProfilePerson = HandleProfile & { bio?: string };

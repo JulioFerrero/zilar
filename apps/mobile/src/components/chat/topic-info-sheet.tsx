@@ -10,20 +10,21 @@ import {
   RotateCcw,
   Bell,
   LogOut,
+  Link,
+  Pencil,
 } from 'lucide-react-native';
 import { Children, type ReactNode, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
-import { TopicLinkRow } from '@/components/chat/topic-link-row';
 import { memberPerson } from '@/components/chat/topic-people-line';
-import type { AvatarStackEntry, ChatSummary } from '@zilar/chat-core';
+import type { AvatarStackEntry, ChatSummary, TopicInfo } from '@zilar/chat-core';
 import { InfoRow } from '@/components/group-info/info-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
+import { Text, TextField } from '@/components/ui/text';
 import type { GroupDetail } from '@/lib/chat-api';
 import {
   ACCENT_FOREGROUND,
@@ -38,8 +39,9 @@ import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/topics-api';
 import { cn } from '@/lib/utils';
 import { IconTile } from '@/components/ui/icon-tile';
+import { IconButton } from '@/components/ui/icon-button';
 import { ListRow } from '@/components/ui/list-row';
-import { isTopicJoined, mutedUntilFor } from '@zilar/chat-core';
+import { httpsTopicUrl, isTopicJoined, mutedUntilFor, topicLinkText } from '@zilar/chat-core';
 import { rawCall } from '@/components/chat/group-action';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -629,5 +631,132 @@ export function TopicInfoSheet({
         </View>
       ) : null}
     </BottomSheet>
+  );
+}
+
+// The topic's link as an editable row: the label (or host) opens the URL, the pencil edits it, the form keeps the https check and the 40-character label. Without a link the row adds one; an existing one can be removed.
+function TopicLinkRow({
+  topic,
+  patch,
+  onError,
+}: {
+  topic: TopicInfo;
+  patch: (input: PatchTopicInput) => void;
+  onError: (message: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [url, setUrl] = useState('');
+  const [label, setLabel] = useState('');
+  const href = httpsTopicUrl(topic.linkUrl);
+
+  const startEdit = (): void => {
+    onError('');
+    setUrl(topic.linkUrl ?? '');
+    setLabel(topic.linkLabel ?? '');
+    setEditing(true);
+  };
+
+  const save = (): void => {
+    onError('');
+    const trimmed = url.trim();
+    if (trimmed !== '' && httpsTopicUrl(trimmed) === undefined) {
+      onError('Link must be an https URL.');
+      return;
+    }
+    setEditing(false);
+    const nextLabel = label.trim() === '' ? null : label.trim().slice(0, 40);
+    patch({ linkUrl: trimmed === '' ? null : trimmed, linkLabel: nextLabel });
+  };
+
+  const remove = (): void => {
+    onError('');
+    setEditing(false);
+    patch({ linkUrl: null, linkLabel: null });
+  };
+
+  if (editing) {
+    return (
+      <View className="mx-2 gap-2 rounded-xl border border-border-strong p-3">
+        <TextField
+          value={url}
+          onChangeText={setUrl}
+          placeholder="https://…"
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Topic link URL"
+          className="text-[13px]"
+        />
+        <TextField
+          value={label}
+          onChangeText={setLabel}
+          placeholder="Label (optional)"
+          maxLength={40}
+          accessibilityLabel="Topic link label"
+          className="text-[13px]"
+        />
+        <View className="flex-row items-center justify-end gap-1.5">
+          {href === undefined ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mr-auto"
+              accessibilityLabel="Remove topic link"
+              onPress={remove}
+            >
+              <Text>Remove</Text>
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            accessibilityLabel="Cancel link edit"
+            onPress={() => setEditing(false)}
+          >
+            <Text>Cancel</Text>
+          </Button>
+          <Button size="sm" accessibilityLabel="Save link" onPress={save}>
+            <Text>Save</Text>
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  if (href === undefined) {
+    return (
+      <ListRow
+        icon={
+          <IconTile>
+            <Link size={16} color={ICON} />
+          </IconTile>
+        }
+        title="Add a link"
+        chevron={false}
+        onPress={startEdit}
+      />
+    );
+  }
+
+  return (
+    <View className="flex-row items-center gap-1">
+      <View className="min-w-0 flex-1">
+        <ListRow
+          icon={
+            <IconTile>
+              <Link size={16} color={ICON} />
+            </IconTile>
+          }
+          title={topicLinkText(topic)}
+          chevron={false}
+          accessibilityLabel={`Open ${topicLinkText(topic)}`}
+          onPress={() => {
+            void Linking.openURL(href);
+          }}
+        />
+      </View>
+      <IconButton label="Edit topic link" className="mr-1" onPress={startEdit}>
+        <Pencil size={16} color={ICON} />
+      </IconButton>
+    </View>
   );
 }
