@@ -1,4 +1,4 @@
-import { makeToolsApi, type Routine, type ToolListItem, type ToolRun } from '@zilar/client-core';
+import { makeToolsApi, type Routine } from '@zilar/client-core';
 
 export type {
   MyRoutine,
@@ -11,9 +11,6 @@ export type {
   ToolVersionDetail,
 } from '@zilar/client-core';
 
-export type ToolLastRunStatus = NonNullable<ToolListItem['lastRunStatus']>;
-export type ToolRunTrigger = ToolRun['trigger'];
-export type ToolRunStatus = ToolRun['status'];
 export type RoutinePausedReason = NonNullable<Routine['pausedReason']>;
 export type RoutineLastStatus = NonNullable<Routine['lastStatus']>;
 export type RoutineStatus = Routine['status'];
@@ -34,6 +31,4 @@ export type ToolDetailsApi = Pick<
   'getTool' | 'listToolVersions' | 'getToolVersion' | 'listToolRuns'
 >;
 export type ToolActionsApi = Pick<Tools, 'revertTool' | 'runToolNow' | 'deleteTool'>;
-export type RoutineActionsApi = Pick<Tools, 'pauseRoutine' | 'resumeRoutine' | 'deleteRoutine'>;
-export type MyRoutinesApi = Pick<Tools, 'listMyRoutines'>;
 export type AiToolsApi = Tools;

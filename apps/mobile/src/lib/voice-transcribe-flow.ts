@@ -151,18 +151,6 @@ const defaultFiles: Effect.Effect<TranscribeFileDeps> = Effect.gen(function* () 
   };
 });
 
-function destinationName(id: string): string {
-  return `voice-transcribe-${id}.m4a`;
-}
-
-export function transcribeCacheName(id: string): string {
-  return destinationName(sanitizeId(id));
-}
-
-function sanitizeId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'note';
-}
-
 /**
  * A served URL is downloaded to the cache with its headers, and the cached file is always deleted; an empty text resolves to the "nothing heard" error.
  */

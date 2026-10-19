@@ -1,5 +1,4 @@
 export const CURRENT_USER_ID = 'me';
-export const CURRENT_USER_NAME = 'You';
 
 /**
  * Only backs the older `topicInFolder` helper; server folders match through `chat-core`'s `ChatFolder`.

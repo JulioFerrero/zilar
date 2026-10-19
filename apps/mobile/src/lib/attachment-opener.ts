@@ -171,7 +171,3 @@ export function createAttachmentOpener(options?: {
     },
   };
 }
-
-export function cacheDestinationFor(name: string): string {
-  return cleanFilename(name);
-}

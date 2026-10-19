@@ -36,15 +36,6 @@ export const recover = <A, B, E, R>(
     Effect.catchDefect((defect) => onFail(defect)),
   );
 
-export const failAfter = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  cleanup: (error: unknown) => Effect.Effect<void, never, R>,
-): Effect.Effect<A, unknown, R> =>
-  effect.pipe(
-    Effect.catch((error) => Effect.andThen(cleanup(error), Effect.fail<unknown>(error))),
-    Effect.catchDefect((defect) => Effect.andThen(cleanup(defect), Effect.fail<unknown>(defect))),
-  );
-
 export const orElse = <A, B, E, R>(
   effect: Effect.Effect<A, E, R>,
   fallback: B,

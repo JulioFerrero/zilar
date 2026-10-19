@@ -28,10 +28,6 @@ export function createMemoryRecentsBackend(initial?: string): RecentsStorageBack
 
 let backend: RecentsStorageBackend = createMemoryRecentsBackend();
 
-export function setRecentsBackend(next: RecentsStorageBackend): void {
-  backend = next;
-}
-
 export const RECENTS_STORAGE = {
   read: (): Promise<string | null> => backend.read(),
   write: (raw: string): Promise<void> => backend.write(raw),

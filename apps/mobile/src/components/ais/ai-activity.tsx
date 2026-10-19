@@ -45,12 +45,6 @@ export const loadActivityEffect = (api: AuditApi, scope: AuditScope) =>
     Effect.map((page) => ({ entries: page.entries, next: page.next })),
   );
 
-export const loadActivity = (
-  api: AuditApi,
-  scope: AuditScope,
-): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
-  Effect.runPromise(loadActivityEffect(api, scope));
-
 /** The server cursor is inclusive on retries, so rows are de-duplicated by id. */
 export const appendActivityEffect = (
   api: AuditApi,
@@ -74,14 +68,6 @@ export const appendActivityEffect = (
       return { entries, next: page.next };
     }),
   );
-
-export const appendActivity = (
-  api: AuditApi,
-  scope: AuditScope,
-  before: string,
-  current: PublicAuditEntry[],
-): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
-  Effect.runPromise(appendActivityEffect(api, scope, before, current));
 
 function ActivityRow({ entry, now }: { entry: PublicAuditEntry; now: Date }) {
   const at = new Date(entry.at);

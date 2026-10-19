@@ -1,11 +1,6 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect, type Effect as EffectType } from 'effect';
-import {
-  contactChatId,
-  normalizeHandleInput,
-  type ContactsApi,
-  type HandleProfile,
-} from '../../lib/contacts-api';
+import { contactChatId, type ContactsApi, type HandleProfile } from '../../lib/contacts-api';
 
 /**
  * The add-contact states, mirroring the web `AddContactDialog`: UI-free so the
@@ -16,15 +11,6 @@ export type AddContactState =
   | { state: 'found'; sent: boolean }
   | { state: 'missing' }
   | { state: 'error'; message: string };
-
-export function addContactInitial(): AddContactState {
-  return { state: 'idle' };
-}
-
-export function addContactHandle(raw: string): string | null {
-  const normalized = normalizeHandleInput(raw);
-  return normalized === '' ? null : normalized;
-}
 
 export function addContactLookupFailure(error: unknown): AddContactState {
   if (error instanceof ApiError) {

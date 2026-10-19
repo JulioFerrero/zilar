@@ -251,7 +251,3 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
     },
   };
 }
-
-export function createVoicePlayerHostForTest(createPlayer: () => HostPlayer): VoicePlayerHost {
-  return createVoicePlayerHost(createPlayer);
-}

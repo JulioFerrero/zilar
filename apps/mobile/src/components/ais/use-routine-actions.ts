@@ -61,14 +61,6 @@ export const applyRoutineActionEffect = (
     Effect.catch((error) => Effect.succeed({ routines, action: routineActionMessage(error) })),
   );
 
-export const applyRoutineAction = (
-  api: AiToolsApi,
-  routines: Routine[],
-  id: string,
-  action: RoutineAction,
-): Promise<RoutineActionOutcome> =>
-  Effect.runPromise(applyRoutineActionEffect(api, routines, id, action));
-
 export type RoutineRowActions = {
   busyId: string | null;
   confirmingId: string | null;

@@ -15,11 +15,6 @@ import { useAction } from '@/lib/effect/use-action';
 
 // The same rules as web's `VisibilitySection`: only the owner may change visibility; everyone else never sees the sheet.
 
-/** The owner only may change visibility (same rule as web `GroupPanel`). */
-export function mayChangeVisibility(role: string | undefined): boolean {
-  return role === 'owner';
-}
-
 export function visibilitySaveError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'not_found') {

@@ -6,14 +6,6 @@ import type { ChatFolder } from './types';
  * Each visible topic is its own chat keyed by its room JID, General keeps the group's old chat id, and an older server without `topics` keeps one row per group.
  */
 
-export function isTopicChat(chat: ChatSummary): boolean {
-  return chat.topic !== undefined;
-}
-
-export function isLegacyGroupChat(chat: ChatSummary): boolean {
-  return chat.kind === 'group' && chat.topic === undefined;
-}
-
 export { sortTopics };
 
 export function topicsOfGroup(chats: readonly ChatSummary[], groupId: string): ChatSummary[] {

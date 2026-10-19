@@ -4,5 +4,3 @@ import type { PublicAuditEntry } from '@zilar/api-contract';
 
 export type { PublicAuditEntry };
 export type { AuditApi, ListAuditPage as AuditPage } from '@zilar/client-core';
-export type AuditResult = PublicAuditEntry['result'];
-export type AuditCost = NonNullable<PublicAuditEntry['cost']>;

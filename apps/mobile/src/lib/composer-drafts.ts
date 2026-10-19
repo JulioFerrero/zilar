@@ -74,7 +74,6 @@ const storage: core.DraftStorage = {
 const drafts = core.createComposerDrafts(storage, { writeDelayMs: 500 });
 
 export const { getDraft, setDraft, subscribe, scopeToUser } = drafts;
-export const loadScopedDrafts = (userId: string): Promise<void> => drafts.hydrate(userId);
 
 export function useComposerDraft(chatId: string | undefined): string {
   return core.useComposerDraft(

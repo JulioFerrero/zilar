@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { runMobile } from '@/lib/effect/runtime';
 import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
 import type {
@@ -79,9 +78,6 @@ export const loadAiToolsEffect = (
   Effect.tryPromise({ try: () => api.listAiTools(aiId), catch: (error) => error }).pipe(
     Effect.catchIf(isEmptyListError, () => Effect.succeed([])),
   );
-
-export const loadAiTools = (api: ToolsApi, aiId: string): Promise<ToolListItem[]> =>
-  runMobile(loadAiToolsEffect(api, aiId));
 
 export function sectionStateOf(
   load: AsyncResult.AsyncResult<ToolListItem[], unknown>,

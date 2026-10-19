@@ -1,4 +1,4 @@
-import { makeApprovalsApi, type ApprovalRule, type PublicApproval } from '@zilar/client-core';
+import { makeApprovalsApi, type ApprovalRule } from '@zilar/client-core';
 
 export type {
   ApprovalDecision,
@@ -7,6 +7,5 @@ export type {
   PublicApproval,
 } from '@zilar/client-core';
 
-export type ApprovalWorstCase = NonNullable<PublicApproval['worstCase']>;
 export type ApprovalRuleScope = ApprovalRule['scope'];
 export type ApprovalsApi = ReturnType<typeof makeApprovalsApi>;

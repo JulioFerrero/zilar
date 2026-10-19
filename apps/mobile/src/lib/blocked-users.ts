@@ -59,8 +59,3 @@ export function resetBlockedJidsForTests(): void {
   store.resetForTests();
   currentApi = undefined;
 }
-
-/** Test-only: the lowercased localparts currently loaded. */
-export function blockedJidsSnapshot(): ReadonlySet<string> {
-  return store.snapshot();
-}

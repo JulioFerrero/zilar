@@ -51,22 +51,6 @@ export function channelDescription(
   return detail?.description ?? null;
 }
 
-export function channelAdminsOf(
-  members: readonly { userId: string; name: string; role: GroupRole }[],
-): { userId: string; name: string; role: 'owner' | 'admin' }[] {
-  const admins: { userId: string; name: string; role: 'owner' | 'admin' }[] = [];
-  for (const member of members) {
-    if (member.role === 'owner' || member.role === 'admin') {
-      admins.push({ userId: member.userId, name: member.name, role: member.role });
-    }
-  }
-  return admins;
-}
-
 export function mayManageChannel(role: 'owner' | 'admin' | 'member' | undefined): boolean {
   return role === 'owner' || role === 'admin';
-}
-
-export function channelInfoSubtitle(count: number): string {
-  return channelSubscriberLabel(count);
 }

@@ -48,9 +48,6 @@ export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
     ),
   );
 
-export const loadAiRoutines = (api: ToolsApi, aiId: string): Promise<Routine[]> =>
-  Effect.runPromise(loadAiRoutinesEffect(api, aiId));
-
 function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineRowActions }) {
   const explanation = pausedReasonText(routine.pausedReason, routine.status);
   const busy = actions?.busyId === routine.id;

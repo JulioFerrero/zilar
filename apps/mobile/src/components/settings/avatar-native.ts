@@ -283,11 +283,3 @@ export function toAvatarUploadError(status: number, body: string): ProfileApiErr
       return new ProfileApiError(status, 'request_failed', UPLOAD_FAILED_MESSAGE);
   }
 }
-
-/** The cache copy of a picked picture, so the preview survives a library move. */
-export function stagedAvatarName(mimeType: string): string {
-  const lower = mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
-  if (lower === 'image/png') return 'avatar-staged.png';
-  if (lower === 'image/webp') return 'avatar-staged.webp';
-  return 'avatar-staged.jpg';
-}

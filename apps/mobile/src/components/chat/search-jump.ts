@@ -40,13 +40,6 @@ export function openSearchHitEffect(
   );
 }
 
-export const openSearchHit = (
-  deps: SearchJumpDeps,
-  chatId: string,
-  messageId: string,
-): Promise<'landed' | 'not-found'> =>
-  Effect.runPromise(openSearchHitEffect(deps, chatId, messageId));
-
 function isMessageNotFound(error: unknown): boolean {
   return error instanceof Error && error.message === 'message_not_found';
 }

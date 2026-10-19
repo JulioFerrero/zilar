@@ -171,21 +171,6 @@ export function emitPlayerStatusForTest(player: HostPlayer, status: PlayerStatus
   }
 }
 
-export function resetVoicePlayerForTest(): void {
-  attempt(() => sharedPlayer?.remove());
-  sharedPlayer = undefined;
-  activeMessageId = undefined;
-  injectedStatus.clear();
-  listeners.clear();
-  progressListeners.clear();
-  playErrorListeners.clear();
-  for (const playback of livePlaybacks) {
-    playback.stopAll();
-  }
-  livePlaybacks.clear();
-  playerPlaybacks.clear();
-}
-
 export function subscribeVoiceState(
   messageId: string,
   listener: (update: { playing: boolean; rate: VoiceSpeed }) => void,

@@ -2149,3 +2149,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2144](T-2144-ai-turn-send-prompt.md) | AI turns: one prompt assembly for DM and group | 2026-10-19 |
 | [T-2150](T-2150-phone-folds-3.md) | phone: fold 7 more single-use files into their importer | 2026-10-19 |
 | [T-2148](T-2148-dead-exports-server-web.md) | delete 22 unused exports (server, web, packages) | 2026-10-19 |
+| [T-2149](T-2149-dead-exports-phone.md) | phone: delete 34 unused exports | 2026-10-19 |

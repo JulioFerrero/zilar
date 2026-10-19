@@ -161,25 +161,3 @@ export async function clearTranscripts(file?: TranscriptFile): Promise<void> {
     }
   });
 }
-
-export async function deleteTranscript(id: string, file?: TranscriptFile): Promise<void> {
-  return chainWrite(async () => {
-    const backend = file ?? defaultTranscriptFile();
-    let current: TranscriptMap = {};
-    try {
-      current = parseTranscripts(await backend.read());
-    } catch {
-      return;
-    }
-    if (current[id] === undefined) {
-      return;
-    }
-    const next: TranscriptMap = { ...current };
-    delete next[id];
-    try {
-      await backend.write(JSON.stringify(next));
-    } catch {
-      // A blocked storage must never break the chat.
-    }
-  });
-}
