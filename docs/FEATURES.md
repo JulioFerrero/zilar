@@ -143,7 +143,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 |---|---|---|---|---|
 | Monorepo | pnpm + Turborepo; apps and shared packages | repo | ✅ | T-0001, T-0012 |
 | Local infrastructure | Postgres 18 with pgvector and ejabberd in Docker Compose; `pnpm infra:up`, `infra:smoke`, `xmpp:e2e` | infra | ✅ Live | T-0002, T-1413 |
-| Server foundation | Effect Schema config (`apps/server/src/config/server-schema.ts`), redacted logs, JSON errors, request ids, hand-written SQL migrations run at startup by `migrateSql` (`apps/server/src/effect/sql.ts`), PGlite tests | server | ✅ Live | T-0014, T-1457 |
+| Server foundation | Effect Schema config (`apps/server/src/config/load.ts`), redacted logs, JSON errors, request ids, hand-written SQL migrations run at startup by `migrateSql` (`apps/server/src/effect/sql.ts`), PGlite tests | server | ✅ Live | T-0014, T-1457 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
 | Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/zilar init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |

@@ -2151,3 +2151,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2148](T-2148-dead-exports-server-web.md) | delete 22 unused exports (server, web, packages) | 2026-10-19 |
 | [T-2149](T-2149-dead-exports-phone.md) | phone: delete 34 unused exports | 2026-10-19 |
 | [T-2152](T-2152-test-only-code.md) | delete test-only product code; name test helpers | 2026-10-19 |
+| [T-2151](T-2151-docs-stale-paths.md) | docs: living docs point at today's files | 2026-10-19 |

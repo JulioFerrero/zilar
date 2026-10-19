@@ -18,6 +18,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 00:41 | 241,495 |
 | 10-19 01:17 | 240,678 (−33,801 since 19:35, including the 849 reclassified) |
 | 10-19 01:54 | 240,018 (−34,461 since 19:35, including the 849 reclassified) |
+| 10-19 02:33 | 238,938, of which T-2152 moved 516 test-helper lines into the test class; real cuts since 19:35 are about −34,180 |
 
 **Merged tonight:**
 
@@ -61,6 +62,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2141, T-2145 | phone: 38 more single-use files folded | −165, −129 |
 | T-2143, T-2147 | packages and web: 13 more single-use files folded | −51, −31 |
 | T-2142 | one shared copy of the sticker URL rule, GIF helpers, duration format and blocked-list store; `useMockableApi` gone | −113 |
+| T-2144 | AI turns T4: one prompt assembly for DM and group (T2 dropped: the shared send added lines) | −3 |
+| T-2150 | phone: 7 more single-use files folded | −67 |
+| T-2148, T-2149 | 56 exported names nothing used, deleted (server, web, packages, phone) | −139, −215 |
+| T-2152 | 11 product functions only tests called, deleted with their tests; 3 test helpers named as tests (516 lines reclassified, not counted as a cut) | −140 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -78,11 +83,11 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (02:10):**
-- **T-2144:** AI turns T2 + T4. The first try grew the code (+33): the shared reply send needed a wrapper in each caller, and the merged prompt loader cost more than the two blocks it replaced. The fix round reverts the send part and shrinks the prompt loader's input. If it cannot reach net ≤ 0, the lead holds it and folds it into T5.
-- **T-2148, T-2149:** delete about 55 exported names that nothing in the repo uses (server, web, packages, phone).
-- **T-2150:** phone, 7 more single-use files folded.
+**Running (02:35):**
 - **T-2151:** docs, pointing `SERVER_CONFIG`, `FEATURES`, the Effect guide and brief, and the parity roadmap at files that exist today. The lead fixed `AGENTS.md`, the API recipe and `LEAD_HANDOFF`.
+- **T-2153:** phone, nine API modules that only rename the shared client are deleted. Screens use `useApi(make<Area>Api)` and the contract's own type names, one name per thing.
+
+**Live:** `3509d5601` (02:22): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **Checked and left alone:**
 - **Comments** (12.6k lines, 5% of source): what is left is mostly the "why" the rules keep (privacy, injection, lock order). A second pass would cut useful lines.
@@ -90,7 +95,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Group create/patch:** both apps write it by hand. It goes through store ports, so it waits for store phase 3.
 
 **Waiting for Julio (daytime, needs live checks):**
-- **AI turn plan** (`docs/audit/agent-turns-plan.md`): T3 and T5–T8, about −450. T1 is live; T2 and T4 run tonight under tests. The live check in "ai test › General" (DM "hello", an @mention, remember a fact) covers T1–T4.
+- **AI turn plan** (`docs/audit/agent-turns-plan.md`): T3 and T5–T8, which the plan estimated at about −450. Measured so far: T1 −127 (estimate −120), T4 −3 (estimate −80); T2 was dropped because it grew the code. The remaining estimates are likely high. T1 and T4 are live. The live check in "ai test › General" (DM "hello", an @mention, remember a fact) covers them.
 - **`lead batch` (837 lines of devtools)** has been unused since 10-10, when workers went back to OpenCode. Removing it is your call (`docs/audit/simplify-2026-10-09/H-tooling.md` F7).
 - **Store phase 3** (`docs/audit/store-phase3-plan.md`): T2–T6, about −270. These touch the message path, sign-out and cold start.
 - **Phone auth API:** the shared sign-in calls (auth is crucial; it needs a live sign-in check).

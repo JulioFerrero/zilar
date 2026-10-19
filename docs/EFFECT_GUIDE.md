@@ -19,7 +19,7 @@ v3).
 - **Coverage:** Effect lines / (Effect lines + needs-effect lines).
 - **The ratchet:** the gate fails on a new or regressed needs-effect file (R6, T-0768).
 - **Tier B:** a Promise edge inside an Effect file (`Effect.runPromise` at a library callback, `await` inside `Effect.promise`). It is tracked, not failing.
-- **Exempt by decision:** `packages/devtools/**`, `apps/site`, and the dev-only mock backends (`apps/web/src/store/mockStore.ts`, `apps/mobile/src/store/chat-store.ts`).
+- **Exempt by decision:** `packages/devtools/`, `apps/site`, and the dev-only mock backends (`apps/web/src/mock/`, `apps/mobile/src/mock/`).
 
 **Web and mobile UI:**
 - **Actions:** one `useAction` per action and per row (keyed by the row id), never one guard for the whole screen. `useQuery` loads data; a reload keeps the old rows on screen until the answer arrives.
@@ -196,7 +196,7 @@ Each item was hit by a worker in a merged task; trust these over memory of v3.
 - **Scoped resources:** `Effect.acquireRelease` inside `Effect.scoped` guarantees cleanup on every exit path. The sandbox worker thread is always terminated this way (T-0489 `sandbox/run-tool.ts`).
 - **Background loops:** `Effect.repeat(effect, Schedule.spaced(d))` runs the effect **once immediately**, then spaces the repeats. For "first run after one interval", wrap the whole repeated program in a single `Effect.delay(d)`; don't delay the inner effect, or each cycle waits twice (T-0486). Run the loop with `Effect.runFork` and stop it with `Fiber.interrupt`, which returns an `Effect`: use `runFork` for a sync `close()` and `runPromise` for an async one.
 - **A loop must survive a throw:** a bare `repeat` stops at the first defect, with no log. Wrap the inner effect in `Effect.catchDefect(...)` and log there. Do **not** use `catchCause`: it also sees the normal interruption at `close()` and logs a false error. `catchAllCause` does not exist in v4 (T-0486, T-0488).
-- **Timers keep the process alive:** Effect's sleep uses a plain `setTimeout` without `unref`. A loop fiber must be interrupted on shutdown (`index.ts` already calls each `close`/`stop`), or the process won't exit (T-0486).
+- **Timers keep the process alive:** Effect's sleep uses a plain `setTimeout` without `unref`. A loop fiber must be interrupted on shutdown (the server's shutdown in `apps/server/src/startup/lifecycle.ts` calls each `close`/`stop`), or the process won't exit (T-0486).
 - **Schema, strict objects:** zod's `z.strictObject` becomes a decode with `{ onExcessProperty: 'error' }`. `Schema.is` ignores excess keys, so don't use it for strict checks (T-0494). A plain `z.object` strips unknown keys, which is the Effect default. `.passthrough()` becomes `Schema.StructWithRest`.
 - **Schema, custom messages:** in effect 4.0.2 the `{ message }` option on `isMinLength` and `isMaxLength` does **not** reach the issue annotations, so code that walks the issues for a message falls back to its generic text. A `Schema.makeFilter` that returns the text does carry it, and so does the first line of the `SchemaError` message. When a zod message must stay byte-identical, prove each text with a test or a quick check (T-0561 pre-review).
 - **Schema, numbers:** `z.number()` rejects `NaN` and `±Infinity`; `Schema.Number` accepts them. Use `Schema.Finite` (and `Schema.isInt()`, which also rejects `NaN`) wherever the zod schema had `z.number()` (T-0565, T-0569).
@@ -206,20 +206,14 @@ Each item was hit by a worker in a merged task; trust these over memory of v3.
 
 ## Server runtime and logging (T-0495)
 
-- **One runtime per process.** `makeServerRuntime(layer)` in `apps/server/src/effect/runtime.ts` builds a `ManagedRuntime` that shares one memo map, so a resource layer is built once per process. Only the edge (`index.ts`) creates it and disposes it on shutdown.
+- **One runtime per process.** `serveEdgeOnNode` in `apps/server/src/effect/node-serve.ts` builds a `ManagedRuntime` that serves the edge layer, so a resource layer is built once per process. Startup creates it in `apps/server/src/startup/components.ts` and stores its `close` on the running server; `stopServer` in `apps/server/src/startup/lifecycle.ts` calls it on shutdown. `index.ts` is only the `NodeRuntime.runMain` entry point.
 - **Domain modules export Effects**, or plain Promise functions that run through a runtime they are handed. `Effect.runPromise` and `runFork` belong at the edge; the small converted modules (mailer, Giphy, Telegram import) still run at their own edge until the services lane wires them into the runtime.
-- **Tests build their own runtime** from test layers (`runtime.test.ts`), never the process one.
-- **Logging:** provide `makePinoLoggerLayer(logger)` from `apps/server/src/effect/logger.ts`. `Effect.log*` then goes to our pino instance:
-  - string parts become `msg`;
-  - **object parts become top-level fields, so pino's `redactPaths` censor them** (`Effect.log({ password })` comes out as `[redacted]`);
-  - an `Error` part or a failure `Cause` becomes `err: { name, message }`, never a stack or extra props;
-  - annotations and spans become fields too.
-  
-  Log secrets-bearing objects as objects, never interpolated into the message string: pino cannot redact free text.
+- **Tests build their own runtime** from test layers, never the process one.
+- **Logging:** `createLogger` in `apps/server/src/logger.ts` builds the pino instance and the modules it is passed to log through it; its `redactPaths` censor secret-named fields at the top level and one level deep. There is no Effect `Logger` bridge: `Effect.log*` uses Effect's default console logger and does not get pino's redaction, so keep secrets out of Effect log calls. Log secrets-bearing objects as objects, never interpolated into the message string: pino cannot redact free text.
 
 ## Moving a server route module onto Effect HTTP (T-0498)
 
-Hono stays the outer edge until every module has moved. Each module becomes an `HttpApi` group mounted under Hono by `apps/server/src/effect/http.ts`; `apps/server/src/handles/api.ts` is the worked example.
+Hono stays the outer edge until every module has moved. Each module becomes an `HttpApi` group mounted under Hono by `apps/server/src/effect/edge.ts`; `apps/server/src/handles/api.ts` is the worked example.
 
 1. **Group:** in `<module>/api.ts`, `HttpApiGroup.make('<id>').add(<endpoints>).middleware(Session).prefix('/api')` and `HttpApi.make('<id>').add(group)`. The `/api` prefix is required, because the adapter forwards the full Hono path.
 2. **Schemas:** Effect `Schema.Struct`s replace zod for the query and payload. Map decode failures to the module's old answers with a module-local `HttpApiMiddleware.layerSchemaErrorTransform`; usually that is `400 invalid_request` through `failureResponse(...)`. A strict body uses the `HttpApi.PayloadParseOptions: { onExcessProperty: 'error' }` annotation.
@@ -243,7 +237,7 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
-The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps/server/src/pins/service.ts`, `apps/server/src/blocks/service.ts` and `apps/server/src/contact-requests/service.ts`.
+The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps/server/src/pins/service.ts`, `apps/server/src/blocks/service.ts` and `apps/server/src/contact-requests/api.ts`.
 - **Signatures:** keep the exported signatures. `db: ServerDatabase` stays the key for `sqlRuntimeFor(db).runPromise(...)`. `createApp` registers the runtime once (T-0510).
 - **Transactions:** `sql.withTransaction`, with the same raw `pg_advisory_xact_lock(hashtext(...))` statements in the same order. Lock order across modules: `contact-sender:` before `user-block:`.
 - **Unique violations:** check `SqlError.SqlError` with `reason._tag === 'UniqueViolation'`. It exposes the constraint name. Keep the raw `code === '23505'` fallback, and never match message text.

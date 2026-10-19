@@ -35,4 +35,4 @@ Open: T-0186 notification settings (blocked on server push); the @mention picker
 - Same layering as the existing mobile code: `src/lib/<area>-api.ts` (zod at the boundary, an error class with `status` and `code`), a hook that picks the real API or the mock, screens under `src/app`, components under `src/components/<area>`.
 - Lucide icons only, no emoji in UI chrome; follow `docs/design/ui-style.md`.
 - Phone-only concerns: pickers use `expo-image-picker`, the keyboard never hides the input, every list has loading, empty and error states.
-- Each task adds exactly one row to `apps/mobile/src/lib/settings-items.ts` when it adds a settings page (created by T-0181).
+- Each task adds exactly one row to `packages/chat-core/src/settings-items.ts` when it adds a settings page (created by T-0181).

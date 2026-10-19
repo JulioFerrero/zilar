@@ -16,7 +16,7 @@ This page is the short version for conversion workers. Read it, your task file a
 | `await promise` | `Effect.tryPromise({ try: (signal) => …, catch: (e) => new MyError(...) })`, or `Effect.promise` when a rejection is a defect (DB) | `voice-transcription/pipeline.ts` |
 | callback or event API (`onload`, `on('data')`, MediaRecorder) | `Effect.callback((resume) => { …; return Effect.sync(removeListeners) })` | `web-tools/guarded-fetch.ts` |
 | `setTimeout` | `Effect.sleep` in a forked fiber; `Fiber.interrupt` where `clearTimeout` was | `packages/xmpp-core/src/timers.ts`, `drafts/hub.ts` |
-| `setInterval` or polling | `Effect.repeat(e, Schedule.spaced(d))`, which runs once at once, then spaces | `apps/web/src/lib/useApprovalPolling.ts` |
+| `setInterval` or polling | `Effect.repeat(e, Schedule.spaced(d))`, which runs once at once, then spaces | `apps/web/src/components/ApprovalCard.tsx` |
 | `void x().catch(log)` | `Effect.runFork(e.pipe(Effect.catchCause(logIt)))` with the same log text and fields | `drafts/hub.ts` |
 | a pending Promise settled later | `Deferred.make`, then `Deferred.doneUnsafe` in the handler | `packages/xmpp-core/src/client.ts` (T-0777) |
 | `try { new URL(x) } catch` | `parseUrl` / `safeDecode` from `@zilar/chat-core` | `packages/chat-core/src/url.ts` |
@@ -35,7 +35,7 @@ This page is the short version for conversion workers. Read it, your task file a
 
 ## Server
 
-- **Logging:** `Effect.log*` goes to pino (`effect/logger.ts`). Log objects as objects so redaction works; never put secrets or message bodies in text.
+- **Logging:** the pino logger is `createLogger` in `logger.ts`, passed explicitly to the modules that log; log objects as objects so its redaction works. `Effect.log*` uses Effect's default logger, which does not redact, so never put secrets or message bodies in its text.
 - **DB failures** stay defects with the original error (`Effect.promise`), never wrapped.
 - **Loops:** a loop survives a throw only with `Effect.catchDefect` inside the repeat. Every loop fiber is interrupted on shutdown.
 
