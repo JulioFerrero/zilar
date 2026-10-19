@@ -3,6 +3,7 @@ import { AsyncResult } from 'effect/reactivity';
 import { useRouter } from 'expo-router';
 import { Server, Plus, Check, Copy } from 'lucide-react-native';
 import { makeAisApi } from '@zilar/client-core';
+import { groupFingerprint } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -131,11 +132,6 @@ function AddMachineSheet({
       ) : null}
     </BottomSheet>
   );
-}
-
-/** Groups the raw fingerprint in fours for display (`a1b2 c3d4 e5f6 0718`). */
-function groupFingerprint(value: string): string {
-  return value.replace(/(.{4})(?=.)/g, '$1 ');
 }
 
 function PendingMachines({

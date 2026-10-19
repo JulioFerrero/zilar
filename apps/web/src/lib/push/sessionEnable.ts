@@ -4,17 +4,9 @@
 import { Duration, Effect } from 'effect';
 import type { PushConfig } from '@/lib/api';
 import { getPushConfig } from '@/lib/api';
-import type { StoreApi } from '@zilar/client-core';
+import type { PushPairInput, SetPushPair, StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import { readStoredDevice, writeStoredDevice, type StoredDevice } from './deviceStorage';
-
-export interface PushPairInput {
-  pushJid: string;
-  node: string;
-  enable: boolean;
-}
-
-export type SetPushPair = (input: PushPairInput) => Promise<void>;
 
 export interface SessionEnableDeps {
   setPushPair?: SetPushPair;

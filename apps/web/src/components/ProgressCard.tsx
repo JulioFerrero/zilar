@@ -7,15 +7,11 @@ import { useSearchParams } from 'react-router';
 import { listAis, stopAiTurn } from '@/lib/api/ais';
 import { fromApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
-import { elapsedFor, formatClock } from '@zilar/chat-core';
+import { elapsedFor, formatClock, isLive } from '@zilar/chat-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { StepStateIcon } from './StepsPanel';
-
-function isLive(state: Progress['state']): boolean {
-  return state === undefined || state === 'working';
-}
 
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {
   const className = 'size-4 shrink-0';

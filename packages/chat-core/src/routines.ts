@@ -151,6 +151,14 @@ export function toolLastRunText(tool: {
   return `${status} · ${at.toLocaleDateString()}`;
 }
 
+export function hostsLine(hosts: readonly string[]): string {
+  return hosts.length === 0 ? 'no sites' : hosts.join(', ');
+}
+
+export function nextRunText(routine: { nextRunAt: string }): string {
+  return `next ${new Date(routine.nextRunAt).toLocaleString()}`;
+}
+
 /** A run's status line, e.g. `ok · v3 · manual · 120 ms · <date>`. */
 export function runStatusText(run: {
   createdAt: string;

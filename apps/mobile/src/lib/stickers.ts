@@ -7,6 +7,7 @@ import {
   parseRecentStickers,
   parseUrl,
   type RecentStickerEntry as SharedRecentStickerEntry,
+  type StickerChoice,
 } from '@zilar/chat-core';
 
 export { addRecentSticker as rememberRecentSticker, MAX_RECENT_STICKERS } from '@zilar/chat-core';
@@ -30,16 +31,6 @@ export interface StickerItem {
   packId: string;
   url: string;
   emoji: string | null;
-  width: number;
-  height: number;
-  mime: 'image/webp' | 'image/png';
-}
-
-export interface StickerChoice {
-  stickerId: string;
-  packId: string;
-  url: string;
-  emoji?: string | undefined;
   width: number;
   height: number;
   mime: 'image/webp' | 'image/png';

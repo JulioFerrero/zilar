@@ -7,7 +7,7 @@ import {
 } from '@zilar/client-core';
 
 import { createApiClient, type ApiCall, type ApiTransport } from './effect/api-client';
-import type { GifItem } from './gifs';
+import type { GifItem } from '@zilar/chat-core';
 
 /**
  * Results carry opaque `mediaToken`s, never provider URLs, and previews load through the same-origin proxy. Queries are never logged.

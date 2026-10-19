@@ -5,7 +5,7 @@ import type {
   TimelineBlock as TimelineBlockData,
 } from '@zilar/protocol';
 import { type ReactNode, useEffect, useState } from 'react';
-import { ratioPercent, countdownParts } from '@zilar/chat-core';
+import { ratioPercent, countdownParts, pad } from '@zilar/chat-core';
 import { CloudUpload, Clock, Check, Package } from 'lucide-react-native';
 import { View, ViewStyle } from 'react-native';
 import { TABULAR } from '@/components/chat/blocks/figure-block';
@@ -114,10 +114,6 @@ const TILE: ViewStyle = {
 };
 
 // The board prints each tile two digits wide ("02 hours · 14 min · 09 sec").
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
 function Tile({ value, unit }: { value: number; unit: string }) {
   return (
     <View className="flex-1 items-center gap-0.5 rounded-[12px] bg-[#0c0c0c] py-2" style={TILE}>

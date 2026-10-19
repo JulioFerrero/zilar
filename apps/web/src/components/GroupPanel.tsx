@@ -19,7 +19,7 @@ import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { AvatarUploader } from './AvatarUploader';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
-import type { AvatarStackEntry } from './group-info/AvatarStack';
+import type { AvatarStackEntry } from '@zilar/chat-core';
 import { GroupInfoPage } from './group-info/GroupInfoPage';
 import { GROUP_INFO_TITLES, GroupInfoRoot, type GroupInfoPageId } from './group-info/GroupInfoRoot';
 import { InviteLinksSection } from './InviteLinksSection';

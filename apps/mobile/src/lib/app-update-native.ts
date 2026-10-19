@@ -10,6 +10,7 @@ import * as Network from 'expo-network';
 
 import { parseLatestRelease, RELEASES_LATEST_URL, type LatestRelease } from './app-update';
 import { fetchWithTimeout } from './effect/fetch-timeout';
+import { secureStore } from './push/last-received';
 
 const CHECK_TIMEOUT_MS = 10_000;
 
@@ -37,10 +38,6 @@ export interface SnoozedUpdate {
 export interface ApkDownload {
   result: Promise<string | null>;
   cancel: () => void;
-}
-
-function secureStore(): Promise<typeof import('expo-secure-store')> {
-  return import('expo-secure-store');
 }
 
 function apkFile(): File {

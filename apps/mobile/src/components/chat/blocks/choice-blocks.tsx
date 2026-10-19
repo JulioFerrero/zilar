@@ -7,7 +7,7 @@ import type {
   RatingBlock as RatingBlockData,
   ChoiceBlock as ChoiceBlockData,
 } from '@zilar/protocol';
-import { chosenAnswer, type ChoiceAnswer as Answer } from '@zilar/chat-core';
+import { chosenAnswer, formatTime, type ChoiceAnswer as Answer } from '@zilar/chat-core';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { FormBlock } from '@/components/chat/blocks/form-block';
 import { Bell, ChartColumn, Check, Star } from 'lucide-react-native';
@@ -343,11 +343,6 @@ function AlertBlock({ block }: { block: AlertBlockData }) {
 
 type Action = ButtonsBlockData['actions'][number];
 
-/** The board's `17:41` answer time: a fixed 24-hour clock. */
-function clockTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 /**
  * 13 · BUTTONS: the text, then up to four keys — light or dark per the
  * action's `style`. A press answers the card and, once the route succeeds,
@@ -431,7 +426,7 @@ function ButtonsBlock({ block }: { block: ButtonsBlockData }) {
             <Text className="text-[#ededed]">{answered.label}</Text>
           </Text>
           <Text className="font-mono text-[12px] text-[#8a8a8a]" style={TABULAR}>
-            {clockTime(answered.at)}
+            {formatTime(answered.at)}
           </Text>
         </View>
       )}

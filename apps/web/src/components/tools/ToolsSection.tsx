@@ -7,7 +7,7 @@ import {
   listTopicToolDetails,
   type ToolListItem,
 } from '@/lib/tools';
-import { toolLastRunText } from '@zilar/chat-core';
+import { hostsLine, toolLastRunText } from '@zilar/chat-core';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -17,10 +17,6 @@ import { ToolDetailPanel } from './ToolDetailPanel';
 import { failureText } from './toolDetailOps';
 
 type ListStatus = 'loading' | 'ready' | 'error';
-
-function hostsLine(hosts: readonly string[]): string {
-  return hosts.length === 0 ? 'no sites' : hosts.join(', ');
-}
 
 export function ToolsSection({
   scope,

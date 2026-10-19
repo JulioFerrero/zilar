@@ -11,7 +11,7 @@ import type { ContactsApi } from '../../lib/contacts-api';
 
 const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
 
-function rateLimited(error: unknown): boolean {
+export function rateLimited(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 429 || error.code === 'rate_limited');
 }
 

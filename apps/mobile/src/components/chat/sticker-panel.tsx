@@ -12,6 +12,7 @@ import { useSheetMotion } from '@/components/chat/sheet-motion';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
 import { interruptFiber } from '@zilar/client-core';
+import type { StickerChoice } from '@zilar/chat-core';
 import {
   isSameOriginStickerUrl,
   recentChoiceFor,
@@ -19,7 +20,6 @@ import {
   resolveActivePackId,
   stickerImageSource,
   type RecentStickerEntry,
-  type StickerChoice,
   type StickerItem,
   type StickerPack,
 } from '@/lib/stickers';

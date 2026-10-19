@@ -5,15 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text, TextField } from '@/components/ui/text';
 import type { PublicAi } from '@zilar/client-core';
+import { groupFingerprint } from '@zilar/chat-core';
 import type { Machine } from '@/lib/machines-api';
 import { MachineRow, RevokedToggleRow } from './machine-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { cn } from '@/lib/utils';
-
-/** Groups the raw fingerprint in fours for display (`a1b2 c3d4 e5f6 0718`). */
-function groupFingerprint(value: string): string {
-  return value.replace(/(.{4})(?=.)/g, '$1 ');
-}
 
 function MachineSheet({
   machine,

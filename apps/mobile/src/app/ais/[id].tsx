@@ -36,6 +36,7 @@ import {
   type UpdateAiInput,
 } from '@zilar/client-core';
 import { applyMachineChange } from '@/components/machines/machine-change';
+import { rawCall } from '@/components/chat/group-action';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
@@ -227,11 +228,6 @@ function MachinePicker({
   );
 }
 
-/** The raw rejection is kept, not mapped, so `describeAisError` sees it. */
-function computerRawCall<A>(call: () => Promise<A>) {
-  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
-}
-
 interface ComputerModeControls {
   mode: ComputerMode;
   cloud: boolean;
@@ -252,7 +248,7 @@ function useComputerMode(
 
   useQuery(
     () =>
-      computerRawCall(() => api.getComputerOptions()).pipe(
+      rawCall(() => api.getComputerOptions()).pipe(
         Effect.tap((options) => Effect.sync(() => setCloud(options.cloud))),
         Effect.catch(() => Effect.sync(() => setCloud(false))),
       ),
@@ -267,7 +263,7 @@ function useComputerMode(
       setMode(change.next);
       setError('');
     }).pipe(
-      Effect.andThen(computerRawCall(() => api.updateAi(aiId, { computerMode: change.next }))),
+      Effect.andThen(rawCall(() => api.updateAi(aiId, { computerMode: change.next }))),
       Effect.tap((fresh) => Effect.sync(() => setMode(fresh.computerMode ?? 'off'))),
       Effect.asVoid,
       Effect.catch(({ cause }) =>
@@ -330,11 +326,6 @@ function ProviderPicker({
         })}
     </View>
   );
-}
-
-// The raw rejection is kept, not mapped, so describeAisError and the machine helper see their own error classes.
-function rawCall<A>(call: () => Promise<A>) {
-  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
 }
 
 export default function EditAiScreen() {

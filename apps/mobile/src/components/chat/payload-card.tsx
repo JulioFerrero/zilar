@@ -37,6 +37,7 @@ import {
   answeredOption,
   elapsedFor,
   formatClock,
+  isLive,
   isQuestionAnswer,
   routineCardTitle,
 } from '@zilar/chat-core';
@@ -365,11 +366,6 @@ function DecidedIcon({ status }: { status: ApprovalStatus }) {
     return <X size={14} color={DANGER} aria-hidden />;
   }
   return <Check size={14} color={SEEN} aria-hidden />;
-}
-
-/** A card without a terminal state is still working. */
-function isLive(state: Progress['state']): boolean {
-  return state === undefined || state === 'working';
 }
 
 function StateIcon({ state, reduceMotion }: { state: Progress['state']; reduceMotion: boolean }) {

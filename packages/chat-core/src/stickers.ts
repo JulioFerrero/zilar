@@ -1,3 +1,13 @@
+export interface StickerChoice {
+  stickerId: string;
+  packId: string;
+  url: string;
+  emoji?: string | undefined;
+  width: number;
+  height: number;
+  mime: 'image/webp' | 'image/png';
+}
+
 export const STICKER_PREP_MAX_DIM = 512;
 
 export function fitStickerSize(width: number, height: number): { width: number; height: number } {

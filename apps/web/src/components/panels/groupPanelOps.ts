@@ -8,7 +8,7 @@ import { describeAiError } from '../ais/errors';
 
 export class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
 
-function apiFailureText(failure: ApiFailure, fallback: string): string {
+export function apiFailureText(failure: ApiFailure, fallback: string): string {
   return failure.code === 'unknown_error' ? fallback : failure.message;
 }
 

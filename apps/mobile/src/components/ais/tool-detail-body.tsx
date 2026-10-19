@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
-import { hostsLine, truncateOutput } from '@/lib/routines-format';
+import { hostsLine, truncateOutput } from '@zilar/chat-core';
 import { runStatusText } from '@zilar/chat-core';
 import type {
   ToolDetail,

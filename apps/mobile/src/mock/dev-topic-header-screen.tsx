@@ -14,7 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
 import { TopicAddContent, type AddTab } from '@/components/chat/topic-add-sheet';
-import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
+import { TopicPeopleLine } from '@/components/chat/topic-people-line';
+import type { AvatarStackEntry } from '@zilar/chat-core';
 import { TopicsSection } from '@/components/group-info/root-page';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -27,14 +28,14 @@ const TOPIC = 'Financial';
 const GROUP = 'ai test';
 
 // The board's stack: four people, then the topic's AI.
-const PEOPLE: readonly TopicLinePerson[] = [
+const PEOPLE: readonly AvatarStackEntry[] = [
   { id: 'p1', name: 'JULITO' },
   { id: 'p2', name: 'Marta' },
   { id: 'p3', name: 'Luis' },
   { id: 'p4', name: 'Ana' },
 ];
 
-const AIS: readonly TopicLinePerson[] = [{ id: 'ai-deepseek', name: 'Deepseek' }];
+const AIS: readonly AvatarStackEntry[] = [{ id: 'ai-deepseek', name: 'Deepseek' }];
 
 // T-1787: the group screen's topic lists, the board's sample data
 // (`PhoneGroup.dc.html:64-107`): General, two joined topics and two others.

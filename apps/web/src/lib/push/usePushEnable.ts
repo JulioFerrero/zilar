@@ -24,7 +24,7 @@ import {
 import { readStoredDevice, writeStoredDevice, type StoredDevice } from '@/lib/push/deviceStorage';
 import { setInTabPreviews } from '@/lib/push/inTab';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { fromApi, ApiFailure } from '@zilar/client-core';
+import { fromApi, ApiFailure, fromThrown } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { useState } from 'react';
 
@@ -54,10 +54,6 @@ export interface PushEnable {
   removeOtherDevice: (id: string) => void;
   togglePreviews: (value: boolean) => void;
   sendTest: () => void;
-}
-
-function attempt<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (error: unknown) => error });
 }
 
 /** Best effort: a failure here never reaches the page message. */
@@ -222,7 +218,7 @@ export function usePushEnable(): PushEnable {
     runPageAction(
       Effect.gen(function* () {
         const config = yield* fromApi(() => getPushConfig());
-        const subscribed = yield* attempt(() =>
+        const subscribed = yield* fromThrown(() =>
           subscribeBrowser(asked, config.vapidPublicKey),
         ).pipe(Effect.catchIf(isPushServiceError, () => Effect.succeed(undefined)));
         if (subscribed === undefined) {
@@ -243,9 +239,9 @@ export function usePushEnable(): PushEnable {
           }),
         ).pipe(
           // Remove the live browser subscription so a failed registration leaves no orphan.
-          Effect.tapError(() => quietly(attempt(() => unsubscribeBrowser(browser)))),
+          Effect.tapError(() => quietly(fromThrown(() => unsubscribeBrowser(browser)))),
         );
-        yield* attempt(() =>
+        yield* fromThrown(() =>
           storeApi
             .getState()
             .setPushPair({ pushJid: registered.jid, node: registered.node, enable: true }),
@@ -254,7 +250,7 @@ export function usePushEnable(): PushEnable {
           // so roll the server row and the browser subscription back instead of orphaning them.
           Effect.tapError(() =>
             quietly(fromApi(() => removePushDevice(registered.id))).pipe(
-              Effect.andThen(quietly(attempt(() => unsubscribeBrowser(browser)))),
+              Effect.andThen(quietly(fromThrown(() => unsubscribeBrowser(browser)))),
             ),
           ),
         );
@@ -288,14 +284,14 @@ export function usePushEnable(): PushEnable {
           if (config !== null) {
             // Best effort: the row is removed below either way.
             yield* quietly(
-              attempt(() =>
+              fromThrown(() =>
                 storeApi
                   .getState()
                   .setPushPair({ pushJid: config.pushJid, node: device.node, enable: false }),
               ),
             );
           }
-          yield* quietly(attempt(() => unsubscribeBrowser(browser)));
+          yield* quietly(fromThrown(() => unsubscribeBrowser(browser)));
         }
         yield* fromApi(() => removePushDevice(device.id)).pipe(
           Effect.catchIf(

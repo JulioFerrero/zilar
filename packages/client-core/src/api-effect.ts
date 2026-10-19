@@ -1,6 +1,10 @@
 import { Effect } from 'effect';
 import type { ApiFailure } from './errors';
 
+/** Lifts a promise call into an Effect that fails with the thrown error itself, so the describe helpers read its class, status and code. */
+export const fromThrown = <A>(call: () => Promise<A>): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({ try: call, catch: (cause) => cause });
+
 /** Lifts one api Promise call into an Effect that fails with the app's `toApiFailure`. */
 export const makeFromApi =
   (toApiFailure: (cause: unknown) => ApiFailure) =>

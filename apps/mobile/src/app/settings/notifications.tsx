@@ -16,14 +16,13 @@ import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { API_URL } from '@/lib/auth';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { createApiClient } from '@/lib/effect/api-client';
-import { fromApi, interruptFiber } from '@zilar/client-core';
+import { fromApi, interruptFiber, type SetPushPair } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { readLastPushReceived } from '@/lib/push/last-received';
 import {
   NATIVE_PUSH_USER_AGENT,
   readStoredRegistration,
   registerNativePush,
-  type SetPushPair,
 } from '@/lib/push/native';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';

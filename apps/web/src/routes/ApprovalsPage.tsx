@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ShieldCheck, Check, X } from 'lucide-react';
 import { decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
-import { fromApi, type ApiFailure, useDelayed } from '@zilar/client-core';
+import { fromApi, isStaleDecision, type ApiFailure, useDelayed } from '@zilar/client-core';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
@@ -248,10 +248,6 @@ function PendingApproval({
       onDeny={() => start('deny')}
     />
   );
-}
-
-function isStaleDecision(failure: ApiFailure): boolean {
-  return failure.code === 'not_pending' || failure.code === 'expired';
 }
 
 function listMessage(failure: ApiFailure): string {

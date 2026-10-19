@@ -11,6 +11,7 @@ import {
 } from '@/lib/tools';
 import {
   describeRoutineSchedule,
+  nextRunText,
   pausedReasonText,
   routineLastText,
   routineStatusText,
@@ -27,10 +28,6 @@ type RoutineWork = 'pause' | 'resume' | 'delete';
 interface Notice {
   readonly error: string;
   readonly hint: string;
-}
-
-function nextRunText(routine: Routine): string {
-  return `next ${new Date(routine.nextRunAt).toLocaleString()}`;
 }
 
 /**

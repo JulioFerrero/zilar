@@ -1,4 +1,4 @@
-import { writingLabel } from '@zilar/chat-core';
+import { writingLabel, type AvatarStackEntry } from '@zilar/chat-core';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -13,17 +13,11 @@ const STACK_MAX = 4;
 const PULSE_MS = 700;
 const DOT_SIZE = 6;
 
-export type TopicLinePerson = {
-  id: string;
-  name: string;
-  avatarUrl?: string;
-};
-
 // The person behind one `memberIds` id when the group detail knows them; an unloaded id has no person, but the header still counts it in N.
 export function memberPerson(
   memberId: string,
   detail: GroupDetail | undefined,
-): TopicLinePerson | undefined {
+): AvatarStackEntry | undefined {
   const member = detail?.members.find((entry) => entry.userId === memberId);
   if (member === undefined) {
     return undefined;
@@ -36,8 +30,8 @@ export function memberPerson(
 }
 
 type TopicPeopleLineProps = {
-  people: readonly TopicLinePerson[];
-  ais: readonly TopicLinePerson[];
+  people: readonly AvatarStackEntry[];
+  ais: readonly AvatarStackEntry[];
   count: number;
   writers: readonly string[];
   /** The group's name, shown before `· N`; pressable when `onOpenGroup` is set. */

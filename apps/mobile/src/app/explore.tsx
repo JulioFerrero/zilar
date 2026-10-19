@@ -14,7 +14,7 @@ import {
   directorySubtitle,
   exploreActionTitle,
 } from '@/components/directory/explore-helpers';
-import { makeDirectoryApi, type SearchDirectoryInput } from '@zilar/client-core';
+import { fromThrown, makeDirectoryApi, type SearchDirectoryInput } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -28,11 +28,6 @@ import { postJoinTarget } from '@/components/directory/handle-helpers';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type KindFilter = 'all' | DirectoryKind;
-
-/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the describe helpers read its class, status and code. */
-function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
-}
 
 const KIND_OPTIONS: readonly { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'All' },

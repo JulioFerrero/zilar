@@ -10,10 +10,16 @@ function calendarDayDiff(date: Date, now: Date): number {
   return Math.round((startOfDay(now).getTime() - startOfDay(date).getTime()) / DAY_MS);
 }
 
-function pad(value: number): string {
+export function pad(value: number): string {
   return String(value).padStart(2, '0');
 }
 
+/** Groups the raw fingerprint in fours for display (`a1b2 c3d4 e5f6 0718`). */
+export function groupFingerprint(value: string): string {
+  return value.replace(/(.{4})(?=.)/g, '$1 ');
+}
+
+/** The board's `17:41` answer time: a fixed 24-hour clock. */
 export function formatTime(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

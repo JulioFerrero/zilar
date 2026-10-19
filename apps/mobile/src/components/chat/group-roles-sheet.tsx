@@ -12,16 +12,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
 import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
-import type { GroupRole } from '@/lib/chat-api';
-import { deleteRoleConfirmText } from '@/lib/roles';
+import { deleteRoleConfirmText, type MemberWithChips } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
-
-export interface RolesSheetMember {
-  userId: string;
-  name: string;
-  role: GroupRole;
-  chips: { id: string; name: string }[];
-}
 
 export function GroupRolesSheet({
   visible,
@@ -42,7 +34,7 @@ export function GroupRolesSheet({
 }: {
   visible: boolean;
   groupTitle: string;
-  members: RolesSheetMember[];
+  members: MemberWithChips[];
   roles: CustomGroupRole[] | undefined;
   rolesError: string;
   isManager: boolean;

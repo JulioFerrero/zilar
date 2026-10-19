@@ -11,8 +11,8 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelInfoRoot } from '@/components/channel-info/root-page';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { useGroupManage } from '@/components/chat/group-manage-section';
-import type { CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
+import type { CreateGroupInviteLinkInput } from '@zilar/client-core';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { GroupVisibilitySheet } from '@/components/chat/visibility-sheet';
 import { ActivityPage } from '@/components/group-info/activity-page';
@@ -400,7 +400,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
     [],
   );
 
-  const onCreateLink = (input: CreateInviteLinkForm) => {
+  const onCreateLink = (input: CreateGroupInviteLinkInput) => {
     setLinksBusy(true);
     setLinksError('');
     Effect.runFork(

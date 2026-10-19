@@ -22,16 +22,12 @@ import {
   type Connection,
   type ConnectionTestResult,
 } from '@/lib/api';
+import { apiFailureText } from '@/components/panels/groupPanelOps';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { providerLabel } from '@zilar/chat-core';
-
-/** The server's words for a failure, or the fixed fallback for a call that never reached the server. */
-function messageOf(failure: ApiFailure, fallback: string): string {
-  return failure.code === 'unknown_error' ? fallback : failure.message;
-}
 
 export function ConnectionsPage() {
   const navigate = useNavigate();
@@ -68,7 +64,7 @@ export function ConnectionsPage() {
         {loadError !== undefined && (
           <StateMessage
             kind="error"
-            title={messageOf(loadError, 'Could not load connections')}
+            title={apiFailureText(loadError, 'Could not load connections')}
             action={{ label: 'Retry', onClick: () => refresh() }}
           />
         )}
@@ -205,7 +201,7 @@ function testOutcome(
 ): TestOutcome | undefined {
   const failure = failureOf(state);
   if (failure !== undefined) {
-    return { ok: false, message: messageOf(failure, 'Could not test the key') };
+    return { ok: false, message: apiFailureText(failure, 'Could not test the key') };
   }
   if (!AsyncResult.isSuccess(state)) {
     return undefined;
@@ -247,7 +243,7 @@ function ReplaceKeyForm({
       ? ''
       : failure._tag === 'KeyMissing'
         ? 'Paste your API key'
-        : messageOf(failure, 'Could not replace the key');
+        : apiFailureText(failure, 'Could not replace the key');
 
   return (
     <div className="mt-2 flex flex-col gap-2">
@@ -353,7 +349,7 @@ function ConnectionRow({
         </p>
         {removeFailure !== undefined && (
           <p role="alert" className="text-[13px] text-danger">
-            {messageOf(removeFailure, 'Could not remove the connection')}
+            {apiFailureText(removeFailure, 'Could not remove the connection')}
           </p>
         )}
         {replacing && (

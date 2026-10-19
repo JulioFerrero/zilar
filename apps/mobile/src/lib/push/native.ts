@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { RegisteredDevice, runApi } from '@zilar/api-contract';
+import type { SetPushPair } from '@zilar/client-core';
 
 import { API_URL } from '../auth';
 import { createApiClient } from '../effect/api-client';
@@ -20,14 +21,6 @@ export const PUSH_REGISTRATION_KEY = 'zilar.push.registration';
 
 /** The sign-out DELETE is best effort: never block the sign-out longer. */
 const UNREGISTER_TIMEOUT_MS = 3000;
-
-export interface PushPairInput {
-  pushJid: string;
-  node: string;
-  enable: boolean;
-}
-
-export type SetPushPair = (input: PushPairInput) => Promise<void>;
 
 export interface NativePushDeps {
   setPushPair: SetPushPair;

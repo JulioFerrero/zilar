@@ -24,11 +24,8 @@ import { Pressable, View } from 'react-native';
 import { AiActivityMark, AiActivityMarks } from '@/components/chat/ai-activity-marks';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import {
-  TopicPeopleLine,
-  memberPerson,
-  type TopicLinePerson,
-} from '@/components/chat/topic-people-line';
+import { TopicPeopleLine, memberPerson } from '@/components/chat/topic-people-line';
+import type { AvatarStackEntry } from '@zilar/chat-core';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { IconButton } from '@/components/ui/icon-button';
@@ -108,8 +105,8 @@ export function ChatHeader({
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
   const topicPeople = (topic?.memberIds ?? [])
     .map((memberId) => memberPerson(memberId, groupDetail))
-    .filter((person): person is TopicLinePerson => person !== undefined);
-  const topicAis: TopicLinePerson[] = (topic?.ais ?? []).map((ai) => ({
+    .filter((person): person is AvatarStackEntry => person !== undefined);
+  const topicAis: AvatarStackEntry[] = (topic?.ais ?? []).map((ai) => ({
     id: ai.id,
     name: ai.name,
     ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),

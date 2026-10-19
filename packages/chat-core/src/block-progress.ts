@@ -1,3 +1,5 @@
+import type { Progress } from '@zilar/protocol';
+
 export interface CountdownParts {
   readonly days: number;
   readonly hours: number;
@@ -25,6 +27,11 @@ export function countdownParts(targetAt: string, nowMs: number): CountdownParts 
     seconds: Math.floor((remaining % MINUTE_MS) / SECOND_MS),
     past: false,
   };
+}
+
+/** A card without a terminal state is still working. */
+export function isLive(state: Progress['state']): boolean {
+  return state === undefined || state === 'working';
 }
 
 export function ratioPercent(ratio: number): string {

@@ -1,7 +1,8 @@
 import { Effect } from 'effect';
 import { Plus, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { GifPanel, type GifChoice } from './GifPanel';
+import { GifPanel } from './GifPanel';
+import type { GifItem, StickerChoice } from '@zilar/chat-core';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
   addStickerFavorite,
@@ -23,21 +24,11 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { EmojiTab } from './sticker/EmojiTab';
 import { panelStorage, readStoredRecents, StickerThumb } from './sticker/StickerThumb';
 
-export interface StickerChoice {
-  stickerId: string;
-  packId: string;
-  url: string;
-  emoji?: string | undefined;
-  width: number;
-  height: number;
-  mime: 'image/webp' | 'image/png';
-}
-
 export interface StickerPanelProps {
   onPick: (sticker: StickerChoice) => void;
   onClose: () => void;
   onEmoji: (emoji: string) => void;
-  onGifPick: (gif: GifChoice) => void;
+  onGifPick: (gif: GifItem) => void;
   onManage?: (() => void) | undefined;
   onCreate?: (() => void) | undefined;
   gifsTab?: 'show' | 'hide' | undefined;

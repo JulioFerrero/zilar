@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { useQuery } from '@/lib/effect/use-query';
-import { hostsLine, toolLastRunText } from '@/lib/routines-format';
+import { hostsLine, toolLastRunText } from '@zilar/chat-core';
 import type { ToolListItem } from '@zilar/api-contract';
 import type { makeToolsApi } from '@zilar/client-core';
 import { ToolDetailLoader } from './tool-detail-loader';

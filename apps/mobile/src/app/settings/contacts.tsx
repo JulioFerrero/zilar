@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
+import { rateLimited } from '@/components/contacts/blocks';
 import {
   contactOnline,
   contactPresence,
@@ -42,10 +43,6 @@ import { ApiError } from '@zilar/api-contract';
  */
 
 const RATE_LIMIT_MESSAGE = 'Too many tries — wait a little and try again.';
-
-function rateLimited(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 429 || error.code === 'rate_limited');
-}
 
 function contactsLoadFailure(error: unknown): string {
   if (rateLimited(error)) {

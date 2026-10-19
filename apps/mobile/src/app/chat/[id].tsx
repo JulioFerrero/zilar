@@ -33,7 +33,8 @@ import { Text, TextField } from '@/components/ui/text';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useEffect, useRef, useState } from 'react';
 import { MediaSheet } from '@/components/chat/media-sheet';
-import { PinsSheet, type SheetPin } from '@/components/chat/pins-sheet';
+import { PinsSheet } from '@/components/chat/pins-sheet';
+import type { BannerPin } from '@/components/chat/pinned-banner';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { bubbleStyle } from '@/lib/depth';
@@ -103,7 +104,7 @@ function ChatOverlays({ screen, chat }: ChatOverlaysProps) {
   const [unpinningId, setUnpinningId] = useState<string | null>(null);
   const [pinsSheetError, setPinsSheetError] = useState('');
 
-  const sheetUnpin = (pin: SheetPin) => {
+  const sheetUnpin = (pin: BannerPin) => {
     setUnpinningId(pin.id);
     setPinsSheetError('');
     runInBackground(() => unpinMessage(chat.id, pin.id), {

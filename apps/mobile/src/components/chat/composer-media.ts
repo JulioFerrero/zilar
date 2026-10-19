@@ -9,13 +9,8 @@ import { createAttachmentPicker } from '@/lib/attachment-picker';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { classifyMobileFile, cleanFilename, MAX_ATTACHMENT_BYTES } from '@/lib/attachments';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import {
-  type GifItem,
-  gifBlobType,
-  gifFileName,
-  isGifMediaType,
-  isLoadableGifPreviewUrl,
-} from '@/lib/gifs';
+import { gifBlobType, type GifItem } from '@zilar/chat-core';
+import { gifFileName, isGifMediaType, isLoadableGifPreviewUrl } from '@/lib/gifs';
 import { randomUuid } from '@/lib/polyfills';
 import type { ReplyRef } from '@/lib/types';
 import type { SendAttachmentOptions } from '@/store/types';
@@ -23,11 +18,9 @@ import { API_URL } from '../../lib/auth';
 import { getSessionToken } from '../../lib/session-token';
 import { authHeadersFor, NativeFailure, orErrorResult } from '../../lib/attachment-common';
 
-const GIF_DOWNLOAD_FAILED_MESSAGE = 'Could not load that GIF. Try another.';
+import { isRecord } from '@/lib/app-update';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const GIF_DOWNLOAD_FAILED_MESSAGE = 'Could not load that GIF. Try another.';
 
 function headerMimeType(headers: Record<string, string>): string {
   for (const [name, value] of Object.entries(headers)) {

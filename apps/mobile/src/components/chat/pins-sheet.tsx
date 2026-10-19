@@ -4,15 +4,8 @@ import { Pressable, View } from 'react-native';
 import { Text } from '../ui/text';
 import { Button } from '../ui/button';
 import { BottomSheet } from '../ui/bottom-sheet';
-import { pinLabel, type SnapshotPinKind } from '../../lib/pin-snapshot';
-
-export interface SheetPin {
-  id: string;
-  messageId: string;
-  senderName: string;
-  text: string;
-  kind: SnapshotPinKind;
-}
+import { pinLabel } from '../../lib/pin-snapshot';
+import type { BannerPin } from './pinned-banner';
 
 // The pins list sheet: every pin with jump, and Unpin for people who may pin (disabled per row while its unpin is in flight). Pure view (no hooks) so it stays render-testable; the screen subscribes the pins and owns the unpin flight.
 export function PinsSheet({
@@ -26,12 +19,12 @@ export function PinsSheet({
   onClose,
 }: {
   open: boolean;
-  pins: SheetPin[];
+  pins: BannerPin[];
   canUnpin: boolean;
   unpinningId: string | null;
   error: string;
-  onUnpin: (pin: SheetPin) => void;
-  onJump: (pin: SheetPin) => void;
+  onUnpin: (pin: BannerPin) => void;
+  onJump: (pin: BannerPin) => void;
   onClose: () => void;
 }) {
   return (

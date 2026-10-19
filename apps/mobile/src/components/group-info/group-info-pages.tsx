@@ -3,7 +3,8 @@ import { Effect } from 'effect';
 import { type ComponentProps, useEffect, useState } from 'react';
 
 import { MediaSheet } from '@/components/chat/media-sheet';
-import { PinsSheet, type SheetPin } from '@/components/chat/pins-sheet';
+import { PinsSheet } from '@/components/chat/pins-sheet';
+import type { BannerPin } from '@/components/chat/pinned-banner';
 import { openSearchHitEffect } from '@/components/chat/search-jump';
 import { ActivityPage } from '@/components/group-info/activity-page';
 import { AllowedPage, type GroupRulesHandle } from '@/components/group-info/allowed-page';
@@ -32,13 +33,13 @@ export interface GroupContent {
   openPins: () => void;
   mediaOpen: boolean;
   pinsOpen: boolean;
-  pins: SheetPin[];
+  pins: BannerPin[];
   canUnpin: boolean;
   unpinningId: string | null;
   pinsError: string;
   closeMedia: () => void;
   closePins: () => void;
-  unpin: (pin: SheetPin) => void;
+  unpin: (pin: BannerPin) => void;
   jump: (messageId: string) => void;
 }
 
@@ -117,7 +118,7 @@ export function useGroupContent(groupChatId: string | undefined): GroupContent {
     });
   };
 
-  const unpin = (pin: SheetPin) => {
+  const unpin = (pin: BannerPin) => {
     if (groupChatId === undefined) {
       return;
     }

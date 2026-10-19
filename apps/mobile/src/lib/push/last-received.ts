@@ -6,7 +6,7 @@ import { Effect } from 'effect';
 
 export const PUSH_LAST_RECEIVED_KEY = 'zilar.push.lastReceived';
 
-function secureStore(): Promise<typeof import('expo-secure-store')> {
+export function secureStore(): Promise<typeof import('expo-secure-store')> {
   return import('expo-secure-store');
 }
 

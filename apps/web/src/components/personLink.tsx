@@ -1,15 +1,9 @@
-import { resolvePerson } from '@zilar/chat-core';
+import { resolvePerson, type PersonLinkTarget } from '@zilar/chat-core';
 import { type ReactNode, useMemo } from 'react';
 import { Link } from 'react-router';
 import type { GroupDetail } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-
-export type PersonTarget = {
-  jid?: string;
-  userId?: string;
-  handle?: string | null | undefined;
-};
 
 type PersonHref = {
   to: string;
@@ -18,7 +12,7 @@ type PersonHref = {
 
 const noop = (): void => undefined;
 
-export function usePersonHref(target: PersonTarget): PersonHref | undefined {
+export function usePersonHref(target: PersonLinkTarget): PersonHref | undefined {
   const currentUserId = useChatSelector((state) => state.currentUserId);
   const contacts = useChatSelector((state) => state.contacts);
   const chats = useChatSelector((state) => state.chats);
@@ -78,7 +72,7 @@ export function PersonLink({
   className,
   children,
 }: {
-  target: PersonTarget;
+  target: PersonLinkTarget;
   name: string;
   className?: string;
   children: ReactNode;

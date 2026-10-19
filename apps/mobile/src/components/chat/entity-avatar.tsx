@@ -1,18 +1,9 @@
-import { avatarIdentity, type AvatarChatInput, type AvatarPersonInput } from '@zilar/chat-core';
+import { avatarIdentity } from '@zilar/chat-core';
+import type { EntityAvatarProps } from '@zilar/client-core';
 
 import { useAuthStore } from '@/auth/session';
 import { Avatar } from '@/components/chat/avatar';
 import { useChatStore } from '@/store/chat-store-provider';
-
-type EntityAvatarProps = {
-  person?: AvatarPersonInput | null | undefined;
-  chat?: AvatarChatInput | null | undefined;
-  me?: boolean | undefined;
-  size?: number | undefined;
-  online?: boolean | undefined;
-  ai?: boolean | undefined;
-  className?: string | undefined;
-};
 
 export function EntityAvatar({
   person,

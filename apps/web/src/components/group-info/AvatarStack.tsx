@@ -1,10 +1,5 @@
 import { Avatar } from '../Avatar';
-
-export interface AvatarStackEntry {
-  id: string;
-  name: string;
-  avatarUrl?: string;
-}
+import type { AvatarStackEntry } from '@zilar/chat-core';
 
 export function AvatarStack({
   entries,

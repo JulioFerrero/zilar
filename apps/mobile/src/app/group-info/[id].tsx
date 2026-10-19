@@ -6,7 +6,8 @@ import { Share, View } from 'react-native';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useGroupManage } from '@/components/chat/group-manage-section';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
-import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
+import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
+import type { CreateGroupInviteLinkInput } from '@zilar/client-core';
 import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
@@ -204,7 +205,7 @@ function GroupInfo() {
     setLinksOpen(true);
     loadLinks(groupId);
   };
-  const [linkCreate, runLinkCreate] = useAction((input: CreateInviteLinkForm) =>
+  const [linkCreate, runLinkCreate] = useAction((input: CreateGroupInviteLinkInput) =>
     groupAction(
       rawCall(() => createInviteLink(groupId, input)).pipe(
         Effect.tap((created) =>
@@ -225,7 +226,7 @@ function GroupInfo() {
       () => setRevokingId(undefined),
     ),
   );
-  const createLink = (input: CreateInviteLinkForm) => {
+  const createLink = (input: CreateGroupInviteLinkInput) => {
     setLinksError('');
     runLinkCreate(input);
   };

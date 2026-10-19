@@ -1,6 +1,6 @@
-import type { UploadSlot } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import type { HttpClient } from 'effect/http';
+import type { UploadSlotRequester } from '@zilar/client-core';
 import { runWeb } from '@/lib/effect/runtime';
 import { API_BASE } from '../api';
 import { VOICE_FILENAME, VOICE_MAX_BYTES, VOICE_MIME, VoiceError } from './recorder';
@@ -71,14 +71,6 @@ export const convertVoiceEffect = Effect.fnUntraced(function* (
 });
 
 /** Anything that can hand out a XEP-0363 upload slot. */
-export interface UploadSlotRequester {
-  requestUploadSlot(request: {
-    filename: string;
-    size: number;
-    contentType: string;
-  }): Promise<UploadSlot>;
-}
-
 export function uploadVoice(
   requester: UploadSlotRequester,
   audio: Blob,

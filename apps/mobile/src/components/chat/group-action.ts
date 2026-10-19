@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 
+/** The raw rejection is kept, not mapped, so callers see their own error classes. */
 export function rawCall<A>(call: () => Promise<A>) {
   return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
 }

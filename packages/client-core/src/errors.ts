@@ -43,4 +43,7 @@ export const isApiFailureCode =
   (failure: ApiFailure): boolean =>
     failure.code === code;
 
+export const isStaleDecision = (failure: ApiFailure): boolean =>
+  failure.code === 'not_pending' || failure.code === 'expired';
+
 export const fromApi = makeFromApi(toApiFailure);

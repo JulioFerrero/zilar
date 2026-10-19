@@ -28,10 +28,6 @@ export interface LoadedTool {
   readonly runs: ToolRun[];
 }
 
-export function hostsLine(hosts: readonly string[]): string {
-  return hosts.length === 0 ? 'no sites' : hosts.join(', ');
-}
-
 export function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
     return fallback;

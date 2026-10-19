@@ -1,6 +1,6 @@
 /** The last 30 sent, kept in localStorage as ids; the shared parser drops hostile data. */
 
-import { Effect } from 'effect';
+import { orFallback } from './emojiRecents';
 import {
   addRecentSticker,
   MAX_RECENT_STICKERS,
@@ -11,11 +11,6 @@ import {
 
 export { MAX_RECENT_STICKERS, RECENT_STICKERS_KEY };
 export type { RecentStickerEntry };
-
-/** A throw gives fallback, so hostile or blocked input never breaks the caller. */
-function orFallback<A>(fallback: A, step: () => A): A {
-  return Effect.runSync(Effect.try(step).pipe(Effect.orElseSucceed(() => fallback)));
-}
 
 export function readRecentStickers(storage: Storage | null): RecentStickerEntry[] {
   if (storage === null) {

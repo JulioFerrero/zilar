@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 import { auditApi, type AuditScope, type PublicAuditEntry } from '@/lib/api';
-import { toApiFailure, useAuditActivity, useDelayed, type ApiFailure } from '@zilar/client-core';
+import { toApiFailure, useAuditActivity, useDelayed } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { Button } from '@/components/ui/button';
+import { failureText } from '@/components/sticker/pageActions';
 import { FieldError } from './AiPageShell';
 
 export { describeAuditEntry, formatRelativeAudit };
@@ -17,12 +18,6 @@ const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   minute: '2-digit',
 });
 
-// A failure without a server status did not come from api.ts: it shows the
-// component's fixed sentence, never the thrown text (AGENTS.md).
-function auditFailureText(failure: ApiFailure, fallback: string): string {
-  return failure.status === 0 ? fallback : failure.message;
-}
-
 export function ActivitySection({ scope }: { scope: AuditScope }) {
   const { status, entries, next, loadingMore, failure, refresh, loadMore } = useAuditActivity(
     auditApi,
@@ -32,7 +27,7 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
   const message =
     failure === undefined
       ? ''
-      : auditFailureText(
+      : failureText(
           toApiFailure(failure.error),
           failure.kind === 'load' ? 'Could not load activity.' : 'Could not load more activity.',
         );

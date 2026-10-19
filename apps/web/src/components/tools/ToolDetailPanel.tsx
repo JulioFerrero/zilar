@@ -1,13 +1,12 @@
 import {
   failureText,
-  hostsLine,
   inputErrorText,
   loadDetail,
   runErrorText,
   runToolWithInput,
   settledFailure,
 } from './toolDetailOps';
-import { runStatusText } from '@zilar/chat-core';
+import { hostsLine, runStatusText } from '@zilar/chat-core';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StateMessage } from '@/components/ui/state-message';

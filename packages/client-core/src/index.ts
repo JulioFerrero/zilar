@@ -1,4 +1,4 @@
-export { makeFromApi, runApiAbortable } from './api-effect';
+export { fromThrown, makeFromApi, runApiAbortable } from './api-effect';
 export * from './album-members';
 export {
   NO_PERSON_MESSAGE,
@@ -13,6 +13,9 @@ export {
   type PeopleSearchView,
 } from './people-handle-search';
 export * from './ais-api';
+export type { EntityAvatarProps } from './entity-avatar';
+export type { PushPairInput, SetPushPair } from './push';
+export type { UploadSlotRequester } from './voice';
 export * from './tools-api';
 export {
   createAtomStore,
@@ -23,7 +26,7 @@ export {
   type UseBoundStore,
 } from './atom-store';
 export * from './stickers-api';
-export { ApiFailure, fromApi, isApiFailureCode, toApiFailure } from './errors';
+export { ApiFailure, fromApi, isApiFailureCode, isStaleDecision, toApiFailure } from './errors';
 export { failureOf, isWaiting, makeUseAction, shownFailure } from './use-action';
 export type { ActionControls, ActionMode, ActionState, UseActionOptions } from './use-action';
 export { makeUseQuery } from './use-query';

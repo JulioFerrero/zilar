@@ -1,6 +1,6 @@
 import { Effect, Schedule } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { approvalSentBy, fromApi, type ApiFailure } from '@zilar/client-core';
+import { approvalSentBy, fromApi, isStaleDecision, type ApiFailure } from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
@@ -236,10 +236,6 @@ function DecidedIcon({ status }: { status: ApprovalStatus }) {
     );
   }
   return <Check className="size-[15px] shrink-0 text-online" role="img" aria-label="Approved" />;
-}
-
-function isStaleDecision(failure: ApiFailure): boolean {
-  return failure.code === 'not_pending' || failure.code === 'expired';
 }
 
 function isAlwaysRefusal(failure: ApiFailure): boolean {

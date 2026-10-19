@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Text, TextField } from '@/components/ui/text';
 import { useAction } from '@/lib/effect/use-action';
 
+import { fromThrown } from '@zilar/client-core';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import {
   friendlyClaimError,
@@ -20,11 +21,6 @@ import {
   suggestHandleFor,
   type HandleAvailability,
 } from '@/components/settings/profile-logic';
-
-/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the handle helpers read its class and code. */
-function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
-}
 
 export default function HandleRoute() {
   return (

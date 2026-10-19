@@ -11,8 +11,8 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
-import type { GifChoice } from '../GifPanel';
-import type { StickerChoice } from '../StickerPanel';
+import type { GifItem } from '@zilar/chat-core';
+import type { StickerChoice } from '@zilar/chat-core';
 import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
 import {
@@ -68,7 +68,7 @@ export interface ComposerAttachments {
   acceptFiles: (files: readonly File[], options?: { media?: boolean }) => void;
   sendPending: (options?: SendPendingOptions) => void;
   sendSticker: (sticker: StickerChoice) => void;
-  sendGif: (gif: GifChoice) => void;
+  sendGif: (gif: GifItem) => void;
   reset: () => void;
 }
 
@@ -235,7 +235,7 @@ export function useComposerAttachments({
   // keeps working if the provider disappears. The mime and extension come from
   // the proxied blob's real content type, never from the search result's kind.
   const sendGif = useCallback(
-    (gif: GifChoice): void => {
+    (gif: GifItem): void => {
       const caption = value.trim();
       setStickerOpen(false);
       onCancelReply();

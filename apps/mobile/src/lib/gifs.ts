@@ -11,16 +11,6 @@ export {
   setGifsAvailability,
 } from '@zilar/chat-core';
 
-export interface GifItem {
-  id: string;
-  title: string;
-  url: string;
-  kind: 'image' | 'video';
-  width: number;
-  height: number;
-  sizeBytes?: number | undefined;
-}
-
 const GIF_MEDIA_TYPES: ReadonlySet<string> = new Set([
   'image/gif',
   'image/webp',

@@ -12,7 +12,7 @@ import { copyText } from '@/lib/clipboard';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import type { Sticker } from '@/lib/api';
-import type { StickerChoice } from '@/components/StickerPanel';
+import type { StickerChoice } from '@zilar/chat-core';
 import { StickerThumb } from '@/components/sticker/StickerThumb';
 import {
   addPackToPanel,

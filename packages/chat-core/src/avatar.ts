@@ -73,6 +73,12 @@ export function nameSeed(name: string): string {
   return wellFormed(name).normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+export interface AvatarStackEntry {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+}
+
 export interface AvatarPersonInput {
   name: string;
   id?: string | undefined;

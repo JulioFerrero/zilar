@@ -1,5 +1,5 @@
 import type { FormBlock as FormBlockData } from '@zilar/protocol';
-import { sentAnswer, type FormAnswer as Answer } from '@zilar/chat-core';
+import { formatTime, sentAnswer, type FormAnswer as Answer } from '@zilar/chat-core';
 import { Calendar, Check, Minus, Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -21,11 +21,6 @@ function valueOf(field: Field): string {
 
 function initialValues(fields: readonly Field[]): Record<string, string> {
   return Object.fromEntries(fields.map((field) => [field.id, valueOf(field)]));
-}
-
-/** The board's `17:41` answer time: a fixed 24-hour clock. */
-function clockTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function numberValue(text: string | undefined): number {
@@ -113,7 +108,7 @@ export function FormBlock({ block }: { block: FormBlockData }) {
             : `${answered.by} sent this`}
       </Text>
       <Text className="font-mono text-[12px] text-[#8a8a8a]" style={TABULAR}>
-        {clockTime(answered.at)}
+        {formatTime(answered.at)}
       </Text>
     </View>
   );

@@ -17,7 +17,8 @@ import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
-import { memberPerson, type TopicLinePerson } from '@/components/chat/topic-people-line';
+import { memberPerson } from '@/components/chat/topic-people-line';
+import type { AvatarStackEntry } from '@zilar/chat-core';
 import { InfoRow } from '@/components/group-info/info-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -317,19 +318,19 @@ export function TopicInfoSheet({
           ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
         }))
       : (topic?.ais ?? []);
-  const groupMembers: TopicLinePerson[] = (detail?.members ?? []).map((member) => ({
+  const groupMembers: AvatarStackEntry[] = (detail?.members ?? []).map((member) => ({
     id: member.userId,
     name: member.name,
     ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
   }));
   const handles = new Map((detail?.members ?? []).map((m) => [m.userId, m.handle] as const));
   // General lists the whole group; any other topic lists its own `memberIds`, skipping ids the detail has not loaded.
-  const people: TopicLinePerson[] =
+  const people: AvatarStackEntry[] =
     topic?.isGeneral === true
       ? groupMembers
       : (topic?.memberIds ?? [])
           .map((memberId) => memberPerson(memberId, detail))
-          .filter((person): person is TopicLinePerson => person !== undefined);
+          .filter((person): person is AvatarStackEntry => person !== undefined);
   const rows = people.map((person) => ({ ...person, handle: handles.get(person.id) }));
   return (
     <BottomSheet

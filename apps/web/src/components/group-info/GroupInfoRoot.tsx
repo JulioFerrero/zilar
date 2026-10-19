@@ -34,7 +34,7 @@ import { PanelKey } from '../ui/panel-key';
 import { ContentNav } from './ContentNav';
 import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
 import { AvatarStack } from './AvatarStack';
-import type { AvatarStackEntry } from './AvatarStack';
+import type { AvatarStackEntry } from '@zilar/chat-core';
 
 export type GroupInfoPageId =
   'root' | 'people' | 'links' | 'tools' | 'activity' | 'allowed' | 'settings';

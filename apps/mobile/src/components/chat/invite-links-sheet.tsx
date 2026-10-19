@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
 import { useAction } from '@/lib/effect/use-action';
+import type { CreateGroupInviteLinkInput } from '@zilar/client-core';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 
 export type InviteLinkState = 'active' | 'expired' | 'exhausted' | 'revoked';
@@ -42,17 +43,11 @@ export interface InviteLinkShareBridge {
   shareText: (text: string) => Promise<void>;
 }
 
-export type CreateInviteLinkForm = {
-  label?: string;
-  expiresInHours?: number;
-  maxUses?: number;
-};
-
 export function validateInviteLinkForm(input: {
   label: string;
   expiry: string;
   maxUses: string;
-}): { error: string } | { input: CreateInviteLinkForm } {
+}): { error: string } | { input: CreateGroupInviteLinkInput } {
   const trimmed = input.label.trim();
   if (trimmed.length > 60) {
     return { error: 'The label must be at most 60 characters.' };
@@ -103,7 +98,7 @@ export function InviteLinksSheet({
    *  the `Modal` stays mounted. */
   now: number;
   share: InviteLinkShareBridge;
-  onCreate: (input: CreateInviteLinkForm) => void;
+  onCreate: (input: CreateGroupInviteLinkInput) => void;
   onRevoke: (linkId: string) => void;
   onDismissCreated: () => void;
   onClose: () => void;

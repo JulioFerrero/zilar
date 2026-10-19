@@ -2,6 +2,18 @@ import type { Attachment } from '@zilar/protocol';
 
 import { isGifVideoName, isTrustedMediaUrl } from './media';
 
+export interface GifItem {
+  /** Attribution only; the id is never fetched from the provider. */
+  id: string;
+  title: string;
+  /** Same-origin proxy, never the provider. */
+  url: string;
+  kind: 'image' | 'video';
+  width: number;
+  height: number;
+  sizeBytes?: number | undefined;
+}
+
 const availability: { value: boolean | undefined } = { value: undefined };
 
 // `undefined` means unknown: a network error keeps the answer unknown so a transient outage does not permanently hide the tab.

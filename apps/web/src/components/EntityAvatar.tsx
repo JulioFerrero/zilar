@@ -1,18 +1,9 @@
-import { avatarIdentity, type AvatarChatInput, type AvatarPersonInput } from '@zilar/chat-core';
+import { avatarIdentity } from '@zilar/chat-core';
+import type { EntityAvatarProps } from '@zilar/client-core';
 
 import { useAuth } from '@/auth/AuthProvider';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
-
-interface EntityAvatarProps {
-  person?: AvatarPersonInput | null | undefined;
-  chat?: AvatarChatInput | null | undefined;
-  me?: boolean | undefined;
-  size?: number | undefined;
-  online?: boolean | undefined;
-  ai?: boolean | undefined;
-  className?: string | undefined;
-}
 
 /** Fills a missing picture from the stores the app already holds; no call site picks a URL. */
 export function EntityAvatar({

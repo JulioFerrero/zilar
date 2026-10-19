@@ -20,7 +20,8 @@ import {
 import { gifsAvailability } from '@/lib/gifs';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
-import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
+import type { RecentStickerEntry, StickerPack } from '@/lib/stickers';
+import type { StickerChoice } from '@zilar/chat-core';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import type { SendStickerChoice } from '@/store/types';
 

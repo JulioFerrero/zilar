@@ -1,4 +1,4 @@
-import { countdownParts, ratioPercent } from '@zilar/chat-core';
+import { countdownParts, pad, ratioPercent } from '@zilar/chat-core';
 import type {
   CountdownBlock as CountdownBlockData,
   ProgressBlock as ProgressBlockData,
@@ -15,10 +15,6 @@ const TRACK_SHADOW = 'inset 0 1px 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.
 const FILL_GRADIENT = 'linear-gradient(180deg,#f5f5f5,#b5b5b5)';
 
 type Step = TimelineBlockData['steps'][number];
-
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
-}
 
 function Tile({ value, unit }: { value: number; unit: string }) {
   return (

@@ -17,7 +17,7 @@ import {
   pausedReasonText,
   routineLastText,
   routineStatusText,
-} from '@/lib/routines-format';
+} from '@zilar/chat-core';
 import type { Routine } from '@zilar/api-contract';
 import { interruptFiber, type makeToolsApi } from '@zilar/client-core';
 

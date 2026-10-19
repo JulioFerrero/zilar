@@ -1,26 +1,15 @@
 import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { gifMediaUrl, searchGifs, trendingGifs, type GifResult } from '@/lib/api';
+import type { GifItem } from '@zilar/chat-core';
 import { useGifSearch } from '@zilar/client-core';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 
-export interface GifChoice {
-  /** Attribution only; the id is never fetched from the provider. */
-  id: string;
-  title: string;
-  /** Same-origin proxy, never the provider. */
-  url: string;
-  kind: 'image' | 'video';
-  width: number;
-  height: number;
-  sizeBytes?: number | undefined;
-}
-
 export interface GifPanelProps {
-  onPick: (gif: GifChoice) => void;
+  onPick: (gif: GifItem) => void;
 }
 
 const ATTRIBUTION = 'Powered by Giphy';
@@ -44,7 +33,7 @@ function GifCell({
   visible,
 }: {
   item: GifResult;
-  onPick: (gif: GifChoice) => void;
+  onPick: (gif: GifItem) => void;
   visible: boolean;
 }) {
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -64,7 +53,7 @@ function GifCell({
     }
   }, [visible, reduceMotion]);
 
-  const choice: GifChoice = {
+  const choice: GifItem = {
     id: item.id,
     title: item.title,
     url,

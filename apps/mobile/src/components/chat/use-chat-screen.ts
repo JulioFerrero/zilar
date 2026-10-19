@@ -10,7 +10,6 @@ import { selectedInOrder, toggleSelected } from '@/lib/selection';
 import { mayArchiveTopic } from '@/lib/topics';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 import type { BannerPin } from '@/components/chat/pinned-banner';
-import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 
 export function useChatScreen() {
@@ -166,7 +165,7 @@ export function useChatScreen() {
     setJumpError('Message not found');
   };
 
-  const jumpToPin = (pin: BannerPin | SheetPin) => {
+  const jumpToPin = (pin: BannerPin) => {
     jumpTo(pin.messageId);
   };
 

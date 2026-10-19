@@ -19,12 +19,8 @@ import { Text } from '@/components/ui/text';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
 import { extractJoinToken, type JoinPreview } from '@/lib/invite-links-api';
+import { fromThrown } from '@zilar/client-core';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
-
-/** Lifts a store call into an Effect that fails with the thrown error itself: the join helpers read its status and code. */
-function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
-}
 
 /**
  * `zilar://join/<token>` and `/join/<token>`: signed-out users sign in and return here. Invalid, expired, revoked and full links all show the same neutral message, and the token never appears in any message.

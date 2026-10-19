@@ -2,8 +2,8 @@
  * Web records WebM/ogg and converts through `POST /api/voice`; `expo-audio` records M4A/AAC directly, so the call is skipped for that — but an Android preset may still produce another container, and then it is needed as on web.
  */
 
-import type { UploadSlot } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
+import type { UploadSlotRequester } from '@zilar/client-core';
 
 export const VOICE_MAX_BYTES = 10 * 1024 * 1024;
 export const VOICE_MIN_MS = 1000;
@@ -187,14 +187,6 @@ export function voicePostBody(bytes: Uint8Array): BodyInit {
     return bytes as unknown as BodyInit;
   }
   return bytes.slice().buffer as ArrayBuffer;
-}
-
-export interface UploadSlotRequester {
-  requestUploadSlot(request: {
-    filename: string;
-    size: number;
-    contentType: string;
-  }): Promise<UploadSlot>;
 }
 
 export interface VoiceUploader {

@@ -2,18 +2,12 @@ import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable } from 'react-native';
 import type { Contact } from '@zilar/api-contract';
-import { resolvePerson } from '@zilar/chat-core';
+import { resolvePerson, type PersonLinkTarget } from '@zilar/chat-core';
 
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { ChatSummary } from '../../lib/types';
-
-type PersonTarget = {
-  jid?: string;
-  userId?: string;
-  handle?: string | null | undefined;
-};
 
 type PersonLinkContext = {
   contacts: readonly Contact[];
@@ -28,7 +22,10 @@ type PersonLinkRoute =
 /**
  * The shared `resolvePerson` rule mapped to the two person routes; the caller renders plain children for `undefined`.
  */
-function personTarget(target: PersonTarget, ctx: PersonLinkContext): PersonLinkRoute | undefined {
+function personTarget(
+  target: PersonLinkTarget,
+  ctx: PersonLinkContext,
+): PersonLinkRoute | undefined {
   const destination = resolvePerson(target, ctx);
   if (destination === undefined) {
     return undefined;
@@ -39,7 +36,7 @@ function personTarget(target: PersonTarget, ctx: PersonLinkContext): PersonLinkR
   return { pathname: '/chat/[id]', params: { id: destination.chatId } };
 }
 
-export function usePersonRoute(target: PersonTarget): PersonLinkRoute | undefined {
+export function usePersonRoute(target: PersonLinkTarget): PersonLinkRoute | undefined {
   const contacts = useChatStore((state) => state.contacts);
   const chats = useChatStore((state) => state.chats);
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -53,7 +50,7 @@ export function PersonPressable({
   className,
   children,
 }: {
-  target: PersonTarget;
+  target: PersonLinkTarget;
   name: string;
   className?: string;
   children: ReactNode;

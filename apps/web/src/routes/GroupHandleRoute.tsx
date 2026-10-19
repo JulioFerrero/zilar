@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { ApiError, lookupGroupByHandle, type DirectoryEntry } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, fromThrown, type ApiFailure } from '@zilar/client-core';
 import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -20,10 +20,6 @@ type LookupState = AsyncResult.AsyncResult<Lookup, ApiFailure>;
 
 type LookupView =
   Lookup | { readonly state: 'checking' } | { readonly state: 'error'; readonly message: string };
-
-function attempt<A>(run: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: run, catch: (error: unknown) => error });
-}
 
 /** One lookup of the handle. The zero-delay sleep is the old setTimeout(0): the lookup
  * starts on the next turn, and a change of the handle or the session interrupts it. */
@@ -154,7 +150,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
     if (entry.joined) {
       onClose();
       Effect.runFork(
-        attempt(() => storeApi.getState().refreshGeneralTopic(entry.id)).pipe(
+        fromThrown(() => storeApi.getState().refreshGeneralTopic(entry.id)).pipe(
           Effect.orElseSucceed(() => undefined),
           Effect.flatMap((chatId) =>
             Effect.sync(() => {
@@ -168,7 +164,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
     setBusy(true);
     setError(undefined);
     Effect.runFork(
-      attempt(() => storeApi.getState().joinPublicGroup(entry.id)).pipe(
+      fromThrown(() => storeApi.getState().joinPublicGroup(entry.id)).pipe(
         Effect.flatMap((chatId) =>
           Effect.sync(() => {
             storeApi.getState().refreshChats();

@@ -1,3 +1,4 @@
+import { groupFingerprint } from '@zilar/chat-core';
 import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { Button } from '@/components/ui/button';
@@ -96,10 +97,6 @@ export function PendingMachineCard({
       )}
     </div>
   );
-}
-
-function groupFingerprint(value: string): string {
-  return value.replace(/(.{4})(?=.)/g, '$1 ');
 }
 
 export function hardwareLine(machine: Machine): string {

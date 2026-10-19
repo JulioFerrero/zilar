@@ -10,7 +10,7 @@ export const MAX_RECENT_EMOJI = 24;
 const decodeRecents = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Unknown)));
 
 /** A throw gives fallback, so a blocked storage never breaks the panel. */
-function orFallback<A>(fallback: A, step: () => A): A {
+export function orFallback<A>(fallback: A, step: () => A): A {
   return Effect.runSync(Effect.try(step).pipe(Effect.orElseSucceed(() => fallback)));
 }
 

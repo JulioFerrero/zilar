@@ -13,18 +13,13 @@ import {
   postJoinTarget,
   type HandleView,
 } from '@/components/directory/handle-helpers';
-import { makeDirectoryApi } from '@zilar/client-core';
+import { fromThrown, makeDirectoryApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import type { DirectoryEntry } from '@zilar/api-contract';
 import { useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
-
-/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the describe helpers read its class, status and code. */
-function attempt<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
-}
 
 /**
  * `zilar://at/<handle>`: an unknown handle and a private group answer the same 404, so both read the same neutral not-found line.
@@ -60,7 +55,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
     (value: string) =>
       Effect.sleep(0).pipe(
         Effect.andThen(Effect.sync(() => setView({ state: 'checking' }))),
-        Effect.andThen(attempt(() => api.lookupGroupByHandle(value))),
+        Effect.andThen(fromThrown(() => api.lookupGroupByHandle(value))),
         Effect.tap((entry) => Effect.sync(() => setView({ state: 'ready', entry }))),
         Effect.tapError((error) => Effect.sync(() => setView(handleRouteViewFor(error)))),
       ),
@@ -85,7 +80,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
 
   // The store refresh has not landed when the join resolves, so the group screen opens from the id the server answered, never from a synchronous list read.
   const [, joinPublic] = useAction((entry: DirectoryEntry) =>
-    attempt(() => api.joinPublicGroup(entry.id)).pipe(
+    fromThrown(() => api.joinPublicGroup(entry.id)).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           reloadChats();

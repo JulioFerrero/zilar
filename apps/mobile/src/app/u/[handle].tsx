@@ -45,15 +45,8 @@ import { openSearchHitEffect } from '@/components/chat/search-jump';
 import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { Button } from '@/components/ui/button';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
+import { fromThrown } from '@zilar/client-core';
 import { mutedUntilFor } from '@/lib/chat-prefs';
-
-/**
- * Lifts a *-api.ts call into an Effect that fails with the thrown error itself:
- * the failure helpers read its class, status and code.
- */
-function profileDmFromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
-}
 
 type UseProfileDmOptions = {
   profile: ProfilePerson | null;
@@ -98,7 +91,7 @@ function useProfileDm({ profile, domain, runPref, setActionError, setToast }: Us
     const input = muted
       ? { mutedUntil: null }
       : { mutedUntil: mutedUntilFor('forever', new Date()) };
-    runPref(profileDmFromThrown(() => setChatPref(dmChatId, input)));
+    runPref(fromThrown(() => setChatPref(dmChatId, input)));
   };
 
   const openSearch = (): void => {
@@ -414,11 +407,6 @@ function ProfileHeader({ person, status, online }: ProfileHeaderProps) {
       </View>
     </View>
   );
-}
-
-/** Lifts a *-api.ts call into an Effect that fails with the thrown error itself: the failure helpers read its class, status and code. */
-function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
-  return Effect.tryPromise({ try: call, catch: (cause) => cause });
 }
 
 export default function HandleScreen() {
