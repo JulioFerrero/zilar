@@ -33,6 +33,7 @@ export const {
   addGroupAi,
   addGroupMembers,
   changeGroupMemberRole,
+  createGroup,
   createGroupInviteLink,
   createGroupRole,
   deleteGroup,
@@ -50,26 +51,6 @@ export const {
   setGroupRoleMembers,
   transferGroupOwner,
 } = api;
-
-export function createGroup(input: {
-  title: string;
-  memberIds: string[];
-  // channel creates the broadcast feed (moderated room).
-  kind?: 'group' | 'channel';
-  // The channel's short blurb (≤ 300).
-  description?: string;
-}): Promise<GroupDetail> {
-  // The contract encodes the trimmed form, so the client trims before sending.
-  return callApi((client) =>
-    client.groups.create({
-      payload: {
-        ...omitUndefined(input),
-        title: input.title.trim(),
-        ...(input.description === undefined ? {} : { description: input.description.trim() }),
-      },
-    }),
-  );
-}
 
 // Owners and admins switch whether plain members may create topics.
 export function setMembersCanCreateTopics(

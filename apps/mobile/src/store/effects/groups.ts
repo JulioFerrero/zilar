@@ -21,7 +21,7 @@ import { lift, orElse, type StoreCtx } from './runtime';
 
 export type GroupWrite = (
   groupId: string,
-  call: (groupId: string) => Promise<void>,
+  call: (groupId: string) => Promise<unknown>,
   notAvailable?: string,
 ) => Promise<void>;
 
@@ -281,7 +281,8 @@ export function makeGroups(ctx: StoreCtx): Groups {
         },
         groupId,
         notAvailable,
-        call,
+        // The fresh detail is dropped; `reloadDetail` re-reads it, so the cache is one source.
+        (id) => call(id).then(() => undefined),
         true,
       ),
     );

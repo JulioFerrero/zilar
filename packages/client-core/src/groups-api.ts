@@ -9,8 +9,21 @@ import {
   type InviteLink,
   type JoinPreview,
   type JoinResult,
+  type PatchGroupPayload,
   type ZilarClient,
 } from '@zilar/api-contract';
+
+export interface CreateGroupInput {
+  title: string;
+  memberIds?: string[];
+  // channel creates the broadcast feed (moderated room).
+  kind?: 'group' | 'channel';
+  // The channel's short blurb (≤ 300).
+  description?: string;
+  // Private is the server default, so only a public group with a handle sends it.
+  visibility?: 'private' | 'public';
+  handle?: string;
+}
 
 export interface CreateGroupInviteLinkInput {
   label?: string;
@@ -22,10 +35,37 @@ type GroupsCall = <A, E>(call: (client: ZilarClient) => Effect.Effect<A, E>) => 
 
 /**
  * The groups API shared by both apps, over the caller's `call`; the web-only calls
- * (create, settings, background, directory, public join) stay in the apps.
+ * (background, directory, public join) stay in the apps.
  */
 export function makeGroupsApi(call: GroupsCall) {
   return {
+    // The contract encodes the trimmed title and description, so the client trims before
+    // sending; `omitUndefined` keeps an untouched field out of the payload.
+    createGroup: (input: CreateGroupInput): Promise<GroupDetail> =>
+      call((client) => {
+        const description = input.description?.trim();
+        return client.groups.create({
+          payload: {
+            title: input.title.trim(),
+            ...omitUndefined({
+              memberIds: input.memberIds,
+              kind: input.kind,
+              description: description === '' ? undefined : description,
+            }),
+            ...(input.visibility === 'public' && input.handle !== undefined
+              ? { visibility: 'public' as const, handle: input.handle }
+              : {}),
+          },
+        });
+      }),
+
+    // Callers send only the keys they set; the payload drops the undefined ones, so an
+    // untouched field is never cleared.
+    patchGroupSettings: (groupId: string, patch: PatchGroupPayload): Promise<void> =>
+      call((client) =>
+        client.groups.patch({ params: { id: groupId }, payload: omitUndefined(patch) }),
+      ).then(() => undefined),
+
     getGroup: (groupId: string): Promise<GroupDetail> =>
       call((client) => client.groups.detail({ params: { id: groupId } })),
 

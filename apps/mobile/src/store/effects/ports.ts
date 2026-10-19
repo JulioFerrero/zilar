@@ -3,7 +3,7 @@ import { Context, Layer, Effect } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
 import { createSessionCheck } from '@zilar/client-core/store';
-import { makeChatExtrasApi, makeTopicsApi } from '@zilar/client-core';
+import { makeChatExtrasApi, makeGroupsApi, makeTopicsApi } from '@zilar/client-core';
 
 import type { OfflineCachePort } from '../offline-cache';
 import { makeChatApi, type ChatApi, type TokenProvider } from '../../lib/chat-api';
@@ -16,7 +16,6 @@ import { apiCall } from '../../lib/effect/api-client';
 import { makeInviteLinksApi, type InviteLinksApi } from '../../lib/invite-links-api';
 import type { TopicsApi } from '../../lib/topics-api';
 import { makeRolesApi, type RolesApi } from '../../lib/roles-api';
-import { makeGroupsApi, type GroupsApi } from '../../lib/groups-api';
 import { DRAFT_STREAM_PATH, subscribeToDrafts } from '../../lib/drafts';
 import { type OpenDraftStream } from '@zilar/client-core/store';
 import { getSessionToken } from '../../lib/session-token';
@@ -29,6 +28,8 @@ import {
   type RecordedVoice,
 } from '../../lib/voice';
 import { attachmentDataFor, classifyMobileFile } from '../../lib/attachments';
+
+type GroupsApi = ReturnType<typeof makeGroupsApi>;
 
 function voicePortFor(deps: RealStoreDeps): VoicePort {
   if (deps.voice !== undefined) {

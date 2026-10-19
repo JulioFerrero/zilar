@@ -12,7 +12,6 @@ import {
 
 import type { GroupDetail } from '../../lib/chat-api';
 import type { CreateTopicInput, PatchTopicInput, Topic } from '../../lib/topics-api';
-import type { ChannelMemberRole } from '../../lib/groups-api';
 import type { GroupRolesActions } from './group-roles-actions';
 import type { GroupActions, GroupWrite } from './groups';
 import { Ports } from './ports';
@@ -193,8 +192,9 @@ export function makeGroupActions(
               if (input.description !== undefined && input.description.length > 300) {
                 throw new Error('The description must be at most 300 characters.');
               }
-              return groupsApi.createChannel({
+              return groupsApi.createGroup({
                 title: trimmed,
+                kind: 'channel',
                 ...(input.description === undefined || input.description.trim() === ''
                   ? {}
                   : { description: input.description.trim() }),
@@ -260,9 +260,22 @@ export function makeGroupActions(
         }),
       ),
     // The full audience for managers, the owner/admins slice for subscribers (never the audience); the server enforces it.
-    listChannelMembers: (groupId) => ctx.run(lift(() => groupsApi.listGroupMembers(groupId))),
+    listChannelMembers: (groupId) =>
+      ctx.run(
+        lift(() => groupsApi.listGroupMembers(groupId)).pipe(
+          // `roles` is optional in the contract; every member row carries a list here.
+          Effect.map((members) =>
+            members.map((member) => ({
+              userId: member.userId,
+              name: member.name,
+              role: member.role,
+              roles: member.roles ?? [],
+            })),
+          ),
+        ),
+      ),
     // Owner only; the last-admin demotion rejects with 409 `channel_needs_admin`.
-    changeChannelRole: (chatId, userId, role: ChannelMemberRole) =>
+    changeChannelRole: (chatId, userId, role: 'admin' | 'member') =>
       writeGroup(
         h.groupIdForChat(chatId) ?? '',
         (groupId) => groupsApi.changeGroupMemberRole(groupId, userId, role),
