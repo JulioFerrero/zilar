@@ -1,7 +1,9 @@
 import type { UiMessage } from '@zilar/chat-core';
 import {
+  bridgeLocals,
   clearFailure,
   coreKind,
+  createCoreLedger,
   createTextOutbox,
   recordRead,
   signatureFor,
@@ -184,15 +186,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
   const store = createAtomStore<ChatStoreState>((set, get) => {
     const locals = createStoreLocals();
+    const ledger = createCoreLedger({
+      get,
+      set,
+      locals,
+      memberName: (chatId, localpart) => locals.groupMembers.get(chatId)?.get(localpart),
+    });
 
     const life = makeLife();
     const s: StoreState = {
-      get core() {
-        return locals.core;
-      },
-      set core(value) {
-        locals.core = value;
-      },
+      core: locals.core,
+      joinedRooms: locals.joinedRooms,
       started: false,
       firstToken: undefined,
       boot: undefined,
@@ -214,45 +218,24 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       topicRolesById: locals.topicRolesById,
       loadingTopicRoles: locals.loadingTopicRoles,
       groupMembers: locals.groupMembers,
-      get groupsJoined() {
-        return locals.groupsJoined;
-      },
-      set groupsJoined(value) {
-        locals.groupsJoined = value;
-      },
-      get pendingOpenChatId() {
-        return locals.pendingOpenChatId;
-      },
-      set pendingOpenChatId(value) {
-        locals.pendingOpenChatId = value;
-      },
-      get mediaToken() {
-        return locals.mediaToken;
-      },
-      set mediaToken(value) {
-        locals.mediaToken = value;
-      },
-      get mediaTrustedHosts() {
-        return locals.mediaTrustedHosts;
-      },
-      set mediaTrustedHosts(value) {
-        locals.mediaTrustedHosts = value;
-      },
-      get lastRead() {
-        return locals.lastRead;
-      },
-      set lastRead(value) {
-        locals.lastRead = value;
-      },
-      get chatPrefRows() {
-        return locals.chatPrefRows;
-      },
-      set chatPrefRows(value) {
-        locals.chatPrefRows = value;
-      },
+      groupsJoined: locals.groupsJoined,
+      pendingOpenChatId: locals.pendingOpenChatId,
+      mediaToken: locals.mediaToken,
+      mediaTrustedHosts: locals.mediaTrustedHosts,
+      lastRead: locals.lastRead,
+      chatPrefRows: locals.chatPrefRows,
     };
+    bridgeLocals(locals, s, [
+      'core',
+      'groupsJoined',
+      'pendingOpenChatId',
+      'mediaToken',
+      'mediaTrustedHosts',
+      'lastRead',
+      'chatPrefRows',
+    ]);
 
-    const helpers = makeStoreHelpers({ locals, get, set, appState });
+    const helpers = makeStoreHelpers({ locals, get, set, appState, ledger });
 
     let userState!: UserState;
 
@@ -306,7 +289,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set,
       ports: corePorts,
       rt: life.lifetime,
-      k: helpers.ledger,
+      k: ledger,
       fx: {
         syncBadge: () => {
           Effect.runFork(syncBadge(coreCtx.get().chats));
@@ -326,23 +309,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         },
         joinedRooms: locals.joinedRooms,
       },
-      get core() {
-        return locals.core;
-      },
-      set core(value) {
-        locals.core = value;
-      },
-      get lastRead() {
-        return locals.lastRead;
-      },
-      set lastRead(value) {
-        locals.lastRead = value;
-      },
+      core: locals.core,
+      lastRead: locals.lastRead,
       lastReadUserId: undefined,
       pendingOutgoing: locals.pendingOutgoing,
       // Texts stay `sending` until the server's stream-management ack marks them `sent`; `teardown()` clears the outbox on sign-out, so one user's queue never goes out as another user.
       outbox: createTextOutbox(),
     };
+    bridgeLocals(locals, coreCtx, ['core', 'lastRead']);
 
     const ctx: StoreCtx = {
       ports,
@@ -405,7 +379,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       s,
       set,
       ownedAis: ports.ownedAis,
-      ledger: helpers.ledger,
+      ledger,
       events,
       clearPins: () => pins.clear(),
     });

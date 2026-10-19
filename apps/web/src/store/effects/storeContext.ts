@@ -1,9 +1,11 @@
 import {
-  createMessageLedger,
+  bridgeLocals,
+  createCoreLedger,
   createTextOutbox,
+  nickFor,
   type MessageLedger,
 } from '@zilar/client-core/store';
-import type { ChatEntry, Me } from '@/lib/api';
+import type { ChatEntry } from '@/lib/api';
 import { loadInTabPreviews, showInTabNotification } from '@/lib/push/inTab';
 import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../store';
@@ -42,15 +44,11 @@ export function makeStoreContext(deps: StoreContextDeps): {
 } {
   const { locals, ports, rt, set, get } = deps;
 
-  const ledger = createMessageLedger({
+  const ledger = createCoreLedger({
     get,
     set,
+    locals,
     memberName: (chatId, localpart) => locals.groupMembers.get(chatId)?.get(localpart)?.name,
-    occupantNick: (chatId, fromJid) =>
-      locals.core
-        ?.occupants(chatId)
-        .find((item) => item.realJid === fromJid || item.jid === fromJid)?.nick,
-    mediaToken: () => locals.mediaToken,
   });
 
   // Removes a failed local bubble together with its kept bytes.
@@ -70,14 +68,6 @@ export function makeStoreContext(deps: StoreContextDeps): {
     }
   }
 
-  function nick(me: Me): string {
-    const name = me.name.trim();
-    if (name.length > 0) {
-      return name;
-    }
-    return me.jid?.split('@')[0] ?? 'me';
-  }
-
   // What the Effect modules share; the accessors read and write the closure variables.
   const ctx: StoreCtx = {
     get,
@@ -88,7 +78,7 @@ export function makeStoreContext(deps: StoreContextDeps): {
       ...ledger,
       removeFailedMessage,
       rememberGroupIds,
-      nick,
+      nick: nickFor,
     },
     fx: {
       syncBadge: () => ports.notifications.syncBadge(get().chats),
@@ -128,48 +118,13 @@ export function makeStoreContext(deps: StoreContextDeps): {
       setMediaTrustedHosts: (hosts) => set({ mediaTrustedHosts: hosts }),
       applyStop: () => applyStop(ctx),
     },
-    get core() {
-      return locals.core;
-    },
-    set core(value) {
-      locals.core = value;
-    },
-    get groupsJoined() {
-      return locals.groupsJoined;
-    },
-    set groupsJoined(value) {
-      locals.groupsJoined = value;
-    },
-    get joinedRooms() {
-      return locals.joinedRooms;
-    },
-    set joinedRooms(value) {
-      locals.joinedRooms = value;
-    },
-    get pendingOpenChatId() {
-      return locals.pendingOpenChatId;
-    },
-    set pendingOpenChatId(value) {
-      locals.pendingOpenChatId = value;
-    },
-    get mediaToken() {
-      return locals.mediaToken;
-    },
-    set mediaToken(value) {
-      locals.mediaToken = value;
-    },
-    get lastRead() {
-      return locals.lastRead;
-    },
-    set lastRead(value) {
-      locals.lastRead = value;
-    },
-    get lastReadUserId() {
-      return locals.lastReadUserId;
-    },
-    set lastReadUserId(value) {
-      locals.lastReadUserId = value;
-    },
+    core: locals.core,
+    groupsJoined: locals.groupsJoined,
+    joinedRooms: locals.joinedRooms,
+    pendingOpenChatId: locals.pendingOpenChatId,
+    mediaToken: locals.mediaToken,
+    lastRead: locals.lastRead,
+    lastReadUserId: locals.lastReadUserId,
     cachedUserId: undefined,
     started: false,
     boot: undefined,
@@ -198,6 +153,15 @@ export function makeStoreContext(deps: StoreContextDeps): {
     // queue never goes out as another user's.
     outbox: createTextOutbox(),
   };
+  bridgeLocals(locals, ctx, [
+    'core',
+    'groupsJoined',
+    'joinedRooms',
+    'pendingOpenChatId',
+    'mediaToken',
+    'lastRead',
+    'lastReadUserId',
+  ]);
 
   return { ctx, ledger };
 }

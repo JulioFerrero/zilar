@@ -131,6 +131,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2197 | store test twins, wave 2 (web echo-edit file, web message cache, phone send effects) | −256 test |
 | T-2198 | 4 client tests outside the crucial areas (people-search text, media retry state, a media row parser) | −180 test |
 | T-2199 | 7 types declared twice with the same fields become one-line aliases | −31 |
+| T-2201 | `lead batch` removed (Julio's call); the rest of the lead CLI unchanged | −970 |
+| T-2202 | server tests wave A: routines, questions, blocks and message blocks, from 61 to 23 cases (kept: ownership, permissions, caps, delivery, sanitising) | −1,463 test |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -158,9 +160,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2200:** AI turns T3, one loop for group turns.
-  - **T-2201:** remove `lead batch`.
-  - **T-2202:** server tests wave A (routines, questions, blocks, message blocks).
   - **T-2203:** server tests wave B (search, media, card media, link preview, markup, hands).
+  - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
   - **T-2204:** store phase 3 T2, the core context.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;

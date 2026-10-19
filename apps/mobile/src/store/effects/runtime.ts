@@ -1,6 +1,7 @@
 import {
   makeLifetime,
   type CoreCtx,
+  type CoreLocals,
   type JoinGroupsHooks,
   type Lifetime,
   type SendRun,
@@ -12,7 +13,6 @@ import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 
 import type { PickedFile } from '../../lib/attachment-ports';
 import type { OfflineCacheSync } from '../offline-cache-sync';
-import type { MediaTokenShape } from '../../lib/attachments';
 import type { RecordedVoice } from '../../lib/voice';
 import type { VoiceFailureReason } from '../../lib/voice-failure';
 import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
@@ -90,26 +90,16 @@ export function makeLife(): Life {
   };
 }
 
-export interface StoreState {
-  core: XmppCore | undefined;
+export interface StoreState extends CoreLocals {
   started: boolean;
   firstToken: { jid: string; token: string } | undefined;
   /** The boot in flight, one per generation, so a resume can wait for it. */
   boot: { scope: Scope.Scope; fiber: Fiber.Fiber<void> | undefined } | undefined;
-  groupsJoined: boolean;
-  pendingOpenChatId: string | undefined;
-  mediaToken: MediaTokenShape | undefined;
   mediaTrustedHosts: ReadonlySet<string>;
-  lastRead: Record<string, string>;
   chatPrefRows: ChatPref[];
-  readonly cursors: Record<string, string | undefined>;
   /** Done turns, so a late `draft` is ignored. */
   readonly finishedTurns: Set<string>;
   readonly finishedTurnOrder: string[];
-  readonly loadingHistory: Set<string>;
-  readonly loadingOlder: Set<string>;
-  readonly groupIds: Map<string, string>;
-  readonly pendingOutgoing: Map<string, string[]>;
   sequence: number;
   readonly sendRuns: Map<string, SendRun>;
   readonly pendingUploads: Map<string, PickedFile>;

@@ -1,7 +1,8 @@
 import { Effect } from 'effect';
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { ChatSummary, MediaTokenShape, UiMessage } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore } from '@zilar/xmpp-core';
-import type { LedgerPatch, LedgerState, MessageLedger } from './ledger';
+import { createMessageLedger } from './ledger';
+import type { LedgerPatch, LedgerState, MessageLedger, MessageLedgerDeps } from './ledger';
 import type { Lifetime } from './lifetime';
 import type { CoreContact, CoreMe, CorePorts } from './ports';
 
@@ -118,6 +119,97 @@ export interface CoreCtx {
    * never goes out as another user.
    */
   outbox?: import('./send/outbox').TextOutbox | undefined;
+}
+
+/** The mutable locals both stores own and bridge onto their context. */
+export interface CoreLocals {
+  core: XmppCore | undefined;
+  lastRead: Record<string, string>;
+  cursors: Record<string, string | undefined>;
+  pendingOutgoing: Map<string, string[]>;
+  groupIds: Map<string, string>;
+  loadingOlder: Set<string>;
+  loadingHistory: Set<string>;
+  pendingOpenChatId: string | undefined;
+  groupsJoined: boolean;
+  joinedRooms: Set<string>;
+  mediaToken: MediaTokenShape | undefined;
+}
+
+export function createCoreLocals(): CoreLocals {
+  return {
+    core: undefined,
+    lastRead: {},
+    cursors: {},
+    pendingOutgoing: new Map(),
+    groupIds: new Map(),
+    loadingOlder: new Set(),
+    loadingHistory: new Set(),
+    pendingOpenChatId: undefined,
+    groupsJoined: false,
+    joinedRooms: new Set(),
+    mediaToken: undefined,
+  };
+}
+
+export interface CoreLedgerDeps {
+  readonly get: () => LedgerState;
+  readonly set: MessageLedgerDeps['set'];
+  readonly locals: CoreLocals;
+  readonly memberName: MessageLedgerDeps['memberName'];
+}
+
+/** The ledger every store shares; `memberName` stays the app's own map shape. */
+export function createCoreLedger({ get, set, locals, memberName }: CoreLedgerDeps): MessageLedger {
+  return createMessageLedger({
+    get,
+    set,
+    memberName,
+    occupantNick: (chatId, fromJid) =>
+      locals.core
+        ?.occupants(chatId)
+        .find((item) => item.realJid === fromJid || item.jid === fromJid)?.nick,
+    mediaToken: () => locals.mediaToken,
+  });
+}
+
+export const nickFor = (me: {
+  readonly name: string;
+  readonly jid?: string | null | undefined;
+}): string => {
+  const name = me.name.trim();
+  if (name.length > 0) {
+    return name;
+  }
+  return me.jid?.split('@')[0] ?? 'me';
+};
+
+type SameType<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+/** The keys two objects share with the same type, so a bridge cannot widen one side. */
+export type SharedLocalKeys<L extends object, C extends object> = {
+  [K in keyof L & keyof C]: SameType<L[K] | undefined, C[K] | undefined> extends true ? K : never;
+}[keyof L & keyof C];
+
+/**
+ * Defines a getter and a setter for each key, both reading and writing the local, so a
+ * context field and its local never drift apart.
+ */
+export function bridgeLocals<L extends object, C extends object>(
+  locals: L,
+  ctx: C,
+  keys: readonly SharedLocalKeys<L, C>[],
+): void {
+  for (const key of keys) {
+    Object.defineProperty(ctx, key, {
+      get: () => locals[key],
+      set: (value: L[typeof key]) => {
+        Reflect.set(locals, key, value);
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  }
 }
 
 export const fromPromise = <A>(thunk: () => Promise<A>): Effect.Effect<A, unknown> =>

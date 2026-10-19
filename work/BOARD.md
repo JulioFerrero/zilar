@@ -2200,3 +2200,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2199](T-2199-type-twins.md) | one type per shape: 7 twin types become aliases | 2026-10-19 |
 | [T-2201](T-2201-remove-lead-batch.md) | lead: remove the unused batch command | 2026-10-19 |
 | [T-2202](T-2202-server-tests-cut-a.md) | server tests A: routines, questions, blocks cut to essentials | 2026-10-19 |
+| [T-2204](T-2204-store-core-context.md) | store phase 3 T2: one core context for both stores | 2026-10-19 |

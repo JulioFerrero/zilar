@@ -1,7 +1,7 @@
 import type { MentionMember, UiMessage } from '@zilar/chat-core';
-import { clearFailure, createMessageLedger } from '@zilar/client-core/store';
+import { clearFailure, nickFor, type MessageLedger } from '@zilar/client-core/store';
 
-import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
+import type { ChatEntry, GroupDetail } from '../../lib/chat-api';
 import type { Topic } from '../../lib/topics-api';
 import type { VoiceFailureReason } from '../../lib/voice-failure';
 import type { SetState } from '@zilar/client-core';
@@ -15,25 +15,16 @@ export interface StoreHelpersDeps {
   readonly get: () => ChatStoreState;
   readonly set: SetState<ChatStoreState>;
   readonly appState: AppStateLike;
+  readonly ledger: MessageLedger;
 }
 
 export function makeStoreHelpers(deps: StoreHelpersDeps) {
-  const { locals, get, set, appState } = deps;
+  const { locals, get, set, appState, ledger } = deps;
 
   function isVisible(): boolean {
     return appState.current() === 'active';
   }
 
-  const ledger = createMessageLedger({
-    get,
-    set,
-    memberName: (chatId, localpart) => locals.groupMembers.get(chatId)?.get(localpart),
-    occupantNick: (chatId, fromJid) =>
-      locals.core
-        ?.occupants(chatId)
-        .find((item) => item.realJid === fromJid || item.jid === fromJid)?.nick,
-    mediaToken: () => locals.mediaToken,
-  });
   const { listFor, myJid, sameMessage } = ledger;
 
   function clearAttachmentFailure(chatId: string, messageId: string): void {
@@ -135,14 +126,6 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     }
   }
 
-  function nick(me: Me): string {
-    const name = me.name.trim();
-    if (name.length > 0) {
-      return name;
-    }
-    return me.jid?.split('@')[0] ?? 'me';
-  }
-
   return {
     ...ledger,
     isVisible,
@@ -155,6 +138,6 @@ export function makeStoreHelpers(deps: StoreHelpersDeps) {
     rememberMembers,
     mentionMembersFor,
     setChatMessage,
-    nick,
+    nick: nickFor,
   };
 }
