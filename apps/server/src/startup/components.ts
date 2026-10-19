@@ -15,7 +15,7 @@ import {
   type ArgsSchema,
 } from '../actions/registry';
 import { createAgentGateway } from '../agents/gateway';
-import { loadModelTarget } from '../agents/gateway/model-target';
+import { loadWebSource } from '../agents/gateway/model-target';
 import { createApp } from '../app';
 import { createAuditRecorder } from '../audit/recorder';
 import { recordToolCost } from '../ais/usage-store';
@@ -68,7 +68,7 @@ import {
   MAX_FEED_LIMIT,
 } from '../web-tools/shared';
 import { webWikipediaAdapter } from '../web-tools/wikipedia-adapter';
-import { deepseekFetch, deepseekSearch } from '../web-tools/deepseek';
+import type { WebSource } from '../web-tools/sources';
 import { truncateChars } from '../text';
 import {
   formatSearchResults,
@@ -223,19 +223,21 @@ const webFetchArgsSchema = Schema.Struct({
   ),
 });
 
-const DEEPSEEK_TOOL_COST_USD = 0.00075;
-
-// A DeepSeek key exists only for a direct DeepSeek connection; every other AI
-// keeps the keyless provider.
-function deepseekKeyOf(state: WebToolsState, ctx: ActionContext): Promise<string | null> {
-  return state.deepseekKeyFor === undefined
+// The source is the model provider's own web tools or one of the owner's keys;
+// without one, `web.fetch` falls back to the guarded fetch.
+function webSourceOf(
+  state: WebToolsState,
+  ctx: ActionContext,
+  need: 'search' | 'read',
+): Promise<WebSource | null> {
+  return state.webSourceFor === undefined
     ? Promise.resolve(null)
-    : state.deepseekKeyFor(ctx.aiId);
+    : state.webSourceFor(ctx.aiId, need);
 }
 
-// DeepSeek Fetch takes the URL from the same boundary as `web.fetch`: http(s),
+// A source read takes the URL from the same boundary as `web.fetch`: http(s),
 // a host, and no credentials in the authority.
-function deepseekTargetHost(raw: string): string | null {
+function sourceTargetHost(raw: string): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -266,22 +268,25 @@ function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     },
     execute: withWebRateLimit(state, async (args, ctx) => {
       const parsed = args as { url: string; maxChars?: number };
-      const key = await deepseekKeyOf(state, ctx);
-      if (key !== null) {
-        const host = deepseekTargetHost(parsed.url);
+      const source = await webSourceOf(state, ctx, 'read');
+      const read = source?.read;
+      if (source !== null && read !== undefined) {
+        const host = sourceTargetHost(parsed.url);
         if (host === null) {
           return { summary: 'invalid url' };
         }
         const maxChars = parsed.maxChars ?? DEFAULT_FETCH_CHARS;
-        const fetched = await deepseekFetch(key, parsed.url, {
-          ...(state.deepseekFetch === undefined ? {} : { fetchImpl: state.deepseekFetch }),
+        const fetched = await read(parsed.url, {
+          ...(state.sourceFetch === undefined ? {} : { fetchImpl: state.sourceFetch }),
           ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
           logger: state.logger,
         });
         if (!fetched.ok) {
           return { summary: fetched.summary };
         }
-        state.recordToolCost?.(ctx.aiId, DEEPSEEK_TOOL_COST_USD);
+        if (source.costUsd !== undefined) {
+          state.recordToolCost?.(ctx.aiId, source.costUsd);
+        }
         return {
           summary: `fetched ${host} (${Math.min(fetched.content.length, maxChars)} chars)`,
           modelText: truncateChars(fetched.content, maxChars),
@@ -335,10 +340,11 @@ function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     },
     execute: withWebRateLimit(state, async (args, ctx) => {
       const parsed = args as { query: string };
-      const key = await deepseekKeyOf(state, ctx);
-      if (key !== null) {
-        const found = await deepseekSearch(key, parsed.query, {
-          ...(state.deepseekFetch === undefined ? {} : { fetchImpl: state.deepseekFetch }),
+      const source = await webSourceOf(state, ctx, 'search');
+      const search = source?.search;
+      if (source !== null && search !== undefined) {
+        const found = await search(parsed.query, {
+          ...(state.sourceFetch === undefined ? {} : { fetchImpl: state.sourceFetch }),
           ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
           logger: state.logger,
         });
@@ -348,10 +354,12 @@ function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
         if (found.results.length === 0) {
           return { summary: 'search unavailable right now', modelText: searchUnavailableText() };
         }
-        state.recordToolCost?.(ctx.aiId, DEEPSEEK_TOOL_COST_USD);
+        if (source.costUsd !== undefined) {
+          state.recordToolCost?.(ctx.aiId, source.costUsd);
+        }
         return {
           summary: `search results for "${truncateChars(parsed.query, 80)}" (${found.results.length})`,
-          modelText: formatSearchResults(parsed.query, found.results, 'DeepSeek'),
+          modelText: formatSearchResults(parsed.query, found.results, source.label),
         };
       }
       // One attempt: the provider returns `[]` on failure and the adapter answers
@@ -566,7 +574,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
     // tool adapters. They are separate from the sandbox: AI-written tools still fetch only
     // their approved hosts through `host-fetch`.
     // The key cipher decrypts an AI's provider key for the gateway and for the
-    // DeepSeek web tools; without it both stay off.
+    // keyed web tools; without it both stay off.
     const gatewayCipher =
       config.ZILAR_KEY_ENCRYPTION_KEY === undefined
         ? undefined
@@ -576,12 +584,11 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
         ? buildWebToolsAdapters({
             searchProviderName: config.WEB_SEARCH_PROVIDER,
             logger,
-            deepseekKeyFor: async (aiId) => {
+            webSourceFor: async (aiId, need) => {
               if (gatewayCipher === undefined) {
                 return null;
               }
-              const target = await loadModelTarget(db, gatewayCipher, aiId);
-              return target !== null && target.provider === 'deepseek' ? target.apiKey : null;
+              return loadWebSource(db, gatewayCipher, aiId, need);
             },
             recordToolCost: (aiId, costUsd) => {
               void recordToolCost({ db, logger }, aiId, costUsd, new Date());

@@ -2,7 +2,7 @@ import { Data, Duration, Effect } from 'effect';
 import { catalogBaseUrl } from '../ai/catalog';
 import { redactSecrets } from '../ai/http';
 import { createPinnedFetch } from './pinned-fetch';
-import { type ProviderId } from '@zilar/api-contract';
+import { type ProviderId, WEB_SEARCH_PROVIDER_IDS } from '@zilar/api-contract';
 
 // Each provider gets one cheap GET that returns 2xx only when the key is valid.
 // The key goes only to the provider's own API, never stored or returned, and
@@ -22,6 +22,8 @@ const PROBE_TIMEOUT_MS = 10_000;
 interface Endpoint {
   buildUrl: (key: string, baseUrl: string | null) => string;
   buildHeaders: (key: string) => Record<string, string>;
+  /** A POST body; its presence makes the probe a POST. */
+  body?: Record<string, unknown>;
 }
 
 const ENDPOINTS: Record<ProviderId, Endpoint> = {
@@ -58,6 +60,27 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
       'x-github-api-version': '2022-11-28',
     }),
   },
+  brave: {
+    buildUrl: () => 'https://api.search.brave.com/res/v1/web/search?q=zilar&count=1',
+    buildHeaders: (key) => ({ 'x-subscription-token': key, accept: 'application/json' }),
+  },
+  exa: {
+    buildUrl: () => 'https://api.exa.ai/contents',
+    buildHeaders: (key) => ({ 'x-api-key': key, 'content-type': 'application/json' }),
+    body: { urls: ['https://example.com'] },
+  },
+  firecrawl: {
+    buildUrl: () => 'https://api.firecrawl.dev/v2/team/credit-usage',
+    buildHeaders: (key) => ({ authorization: `Bearer ${key}` }),
+  },
+  jina: {
+    buildUrl: () => 'https://r.jina.ai/https://example.com',
+    buildHeaders: (key) => ({ authorization: `Bearer ${key}`, accept: 'application/json' }),
+  },
+  tavily: {
+    buildUrl: () => 'https://api.tavily.com/usage',
+    buildHeaders: (key) => ({ authorization: `Bearer ${key}` }),
+  },
   'openai-compatible': {
     buildUrl: (_key, baseUrl) => `${baseUrl ?? ''}/models`,
     buildHeaders: (key) => ({ authorization: `Bearer ${key}` }),
@@ -66,11 +89,17 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
 
 // A catalog provider probes exactly like the user's own OpenAI-compatible
 // endpoint, through the pinned fetch.
+// The five web search keys have their own probe even if a catalog ever names them.
+function isWebSearchProvider(provider: string): boolean {
+  return (WEB_SEARCH_PROVIDER_IDS as readonly string[]).includes(provider);
+}
+
 function usesCompatiblePath(provider: string): boolean {
   return (
-    provider === 'openai-compatible' ||
-    catalogBaseUrl(provider) !== null ||
-    !Object.hasOwn(ENDPOINTS, provider)
+    !isWebSearchProvider(provider) &&
+    (provider === 'openai-compatible' ||
+      catalogBaseUrl(provider) !== null ||
+      !Object.hasOwn(ENDPOINTS, provider))
   );
 }
 
@@ -84,7 +113,8 @@ function endpointFor(provider: string): Endpoint {
 class ProbeUnreachable extends Data.TaggedError('ProbeUnreachable') {}
 
 function outcomeFor(response: Response): ProbeOutcome {
-  if (response.status === 401 || response.status === 403) {
+  // Brave reports an invalid subscription token as 422, not 401.
+  if (response.status === 401 || response.status === 403 || response.status === 422) {
     return { ok: false, message: 'The provider rejected the key' };
   }
   if (response.status === 429) {
@@ -124,8 +154,9 @@ export function testKeyEffect(
     const probe = Effect.tryPromise({
       try: (signal) =>
         fetchImpl(endpoint.buildUrl(key, baseUrl), {
-          method: 'GET',
+          method: endpoint.body === undefined ? 'GET' : 'POST',
           headers: endpoint.buildHeaders(key),
+          ...(endpoint.body === undefined ? {} : { body: JSON.stringify(endpoint.body) }),
           signal,
         }),
       catch: () => new ProbeUnreachable(),

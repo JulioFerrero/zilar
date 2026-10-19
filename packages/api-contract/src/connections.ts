@@ -15,10 +15,27 @@ export const PROVIDER_IDS = [
   'xai',
   'openrouter',
   'github',
+  'brave',
+  'exa',
+  'firecrawl',
+  'jina',
+  'tavily',
   'openai-compatible',
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
+
+export const WEB_SEARCH_PROVIDER_IDS = ['brave', 'exa', 'firecrawl', 'jina', 'tavily'] as const;
+
+// What a key can do for an AI's web tools; the UI shows it as tags.
+export const WEB_CAPABILITIES: Readonly<Record<string, { search: boolean; read: boolean }>> = {
+  deepseek: { search: true, read: true },
+  brave: { search: true, read: false },
+  exa: { search: true, read: true },
+  firecrawl: { search: true, read: true },
+  jina: { search: true, read: true },
+  tavily: { search: true, read: true },
+};
 
 // An id may be any models.dev-shaped id; the server only accepts one it knows from the catalog.
 const CATALOG_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/;

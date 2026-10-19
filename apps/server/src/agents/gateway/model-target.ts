@@ -1,9 +1,11 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { WEB_CAPABILITIES, WEB_SEARCH_PROVIDER_IDS } from '@zilar/api-contract';
 import { isModelProvider, type ModelTarget } from '../../ai/providers';
 import type { KeyCipher } from '../../connections/crypto';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
+import { webSource, type WebSource } from '../../web-tools/sources';
 
 interface ModelTargetRow {
   model: string;
@@ -65,4 +67,42 @@ export async function loadModelTarget(
     model: row.model,
     ...(row.baseUrl === null ? {} : { apiUrl: row.baseUrl }),
   };
+}
+
+interface WebKeyRow {
+  provider: string;
+  encryptedKey: string;
+}
+
+// A DeepSeek AI uses its model provider's own web tools. Every other AI uses
+// the owner's first active web search key that has the needed capability,
+// oldest connection first. Only that one key is decrypted.
+export async function loadWebSource(
+  db: ServerDatabase,
+  cipher: KeyCipher,
+  aiId: string,
+  need: 'search' | 'read',
+): Promise<WebSource | null> {
+  const target = await loadModelTarget(db, cipher, aiId);
+  if (target !== null && target.provider === 'deepseek') {
+    return webSource('deepseek', target.apiKey);
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<WebKeyRow>`SELECT pc.provider, pc.encrypted_key
+        FROM ais
+        INNER JOIN provider_connections pc ON pc.owner = ais.owner
+        WHERE ais.id = ${aiId} AND pc.status = 'active'
+          AND pc.provider IN ${sql.in(WEB_SEARCH_PROVIDER_IDS)}
+        ORDER BY pc.created_at ASC`;
+    }),
+  );
+  for (const row of rows) {
+    if (WEB_CAPABILITIES[row.provider]?.[need] === true) {
+      return webSource(row.provider, cipher.decrypt(row.encryptedKey));
+    }
+  }
+  return null;
 }

@@ -10,6 +10,7 @@ import {
   type PinnedFetcher,
 } from './guarded-fetch';
 import { duckduckgoUrl, parseDuckDuckGo, SEARCH_HOST, type WebSearchProvider } from './search';
+import type { WebSource } from './sources';
 
 export const MAX_FETCH_URL_CHARS = 2048;
 export const MAX_FETCH_CHARS = 16000;
@@ -36,8 +37,8 @@ export interface BuildWebToolsAdaptersDeps {
   searchProviderName?: WebSearchProviderName;
   searchProvider?: WebSearchProvider;
   logger?: WebToolsLogger;
-  deepseekKeyFor?: (aiId: string) => Promise<string | null>;
-  deepseekFetch?: FetchLike;
+  webSourceFor?: (aiId: string, need: 'search' | 'read') => Promise<WebSource | null>;
+  sourceFetch?: FetchLike;
   recordToolCost?: (aiId: string, costUsd: number) => void;
 }
 
@@ -48,8 +49,8 @@ export interface WebToolsState {
   searchProviderName: WebSearchProviderName;
   searchProvider: WebSearchProvider;
   logger: WebToolsLogger;
-  deepseekKeyFor: ((aiId: string) => Promise<string | null>) | undefined;
-  deepseekFetch: FetchLike | undefined;
+  webSourceFor: ((aiId: string, need: 'search' | 'read') => Promise<WebSource | null>) | undefined;
+  sourceFetch: FetchLike | undefined;
   recordToolCost: ((aiId: string, costUsd: number) => void) | undefined;
 }
 
@@ -61,8 +62,8 @@ export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsSt
     searchProviderName: deps.searchProviderName ?? 'duckduckgo-html',
     searchProvider: deps.searchProvider ?? duckduckgoProvider(deps.fetcher, deps.dnsLookup),
     logger: deps.logger ?? { warn: () => {} },
-    deepseekKeyFor: deps.deepseekKeyFor,
-    deepseekFetch: deps.deepseekFetch,
+    webSourceFor: deps.webSourceFor,
+    sourceFetch: deps.sourceFetch,
     recordToolCost: deps.recordToolCost,
   };
 }

@@ -142,6 +142,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2221 | server tests wave E: the AI turn tests (gateway-group, gateway-stop, reply, group-turn-card, context) cut to the crucial cases | −896 test |
 | T-2214 | the import rule everywhere: no pass-through re-exports outside index files and no rename aliases without a clash (126 files; held, deploys with the next push) | −36 |
 | T-2218 | Stop cancels an in-flight DeepSeek web tool: the abort signal goes through the action gateway (`ActionContext.signal`) | +18 |
 | T-2217 | store phase 3 T3b: one `openChatCore` (prune, read mark, unread-mark clear, marker swap, `openHistory`) for web and phone | −15 |
@@ -179,7 +180,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2219:** web search W2a, the server half (approved 10:08; boards in `docs/design/mockups/web-search/`).
+  - **T-2219:** web search W2a, the server half (approved 10:08; boards in `docs/design/mockups/web-search/`). A lead size round took `sources.ts` from 708 to 450 lines as one provider table; its pre-review is pending.
     - Brave, Exa, Firecrawl, Jina and Tavily become connections with key tests.
     - One `web-tools/sources.ts`.
     - `loadWebSource` picks the AI's DeepSeek key, or else the owner's first web search key.
@@ -190,8 +191,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
     - open repositories of them, "even mcps of mcps or mcps of skills".
 
     Brainstorm with him before any canvas or spec.
-  - **T-2221:** server tests wave E. The AI turn tests (gateway-group, gateway-stop, reply, group-turn-card, context) are cut to the crucial cases, at least −700.
-  - **T-2222:** the phone groups API moves onto the shared client-core one. There is one `createGroup` (group or channel, public handle) for both apps, and the phone's hand-written `GroupsApi` goes (stop rule at least −60). Next in that line: the phone `chat-api` and `profile-api` wrappers (plan B1), after T-2222, because they share `ports.ts`.
+  - **T-2222 (approved 10:47; web and phone create and member checks passed):** waiting on a rebase conflict in `ports.ts` against T-2214, which the worker is resolving. The phone groups API moves onto the shared client-core one. There is one `createGroup` (group or channel, public handle) for both apps, and the phone's hand-written `GroupsApi` goes (stop rule at least −60). Next in that line: the phone `chat-api` and `profile-api` wrappers (plan B1), after T-2222, because they share `ports.ts`.
   - **T-2220 (written, launches after T-2219):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
