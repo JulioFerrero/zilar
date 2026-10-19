@@ -3,11 +3,9 @@ import type { ActiveAiForGateway } from '../../ais/queries';
 import { runGroupTurn } from '../group-turn';
 import { buildGroupTools } from '../tools/definitions';
 import type { AiUsage } from '../../ais/usage';
-import { recordUsage } from '../../ais/usage-store';
 import type { KeyCipher } from '../../connections/crypto';
 import { DM_HISTORY_MESSAGE_LIMIT, normBareJid } from '../context';
 import { finishDelegation } from '../delegation/service';
-import { TOOL_STAGE_THINKING } from '../tool-guide';
 import {
   rememberRoomSentId,
   type AiSession,
@@ -16,18 +14,15 @@ import {
   type ScheduledTurnOutcome,
 } from './contracts';
 import { type RoomGateState, loadDelegationFlags, loadRoomGateState } from './db';
-import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER, type TurnDesk } from './desk-exec';
 import { answerOpenQuestionsOnTurn } from './question-answer';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { loadModelTarget } from './model-target';
-import { createRoutineSend } from './routine-send';
-import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
-import { turnLimits } from './turn-rounds';
 import type { ServerDatabase } from '../../db/client';
 import { loadTurnPrompt } from './turn-prompt';
 import { errorName } from '../../effect/error-utils';
+import { prepareTurn } from './turn-wiring';
 
 export interface HandoffTarget {
   aiId: string;
@@ -227,14 +222,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
   const {
     deps,
     logger,
-    turnLogger,
     sessions,
     liveSendMessage,
-    liveSendTyping,
-    liveProgressReporter,
     budgetGate,
     startCompaction,
-    secretsFor,
     executeToolCall,
     withToolGuide,
   } = ctx;
@@ -283,13 +274,21 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         answerOpenQuestionsOnTurn(deps.db, session, trigger, roomJid, logger),
       );
     }
-    // Resolve the AI's computer for this turn (cloud or its runner). A plain
-    // member's or another AI's mention must not use the owner's computer, so
-    // the desk is not even resolved for those turns.
-    const turnDesk: TurnDesk = allowDesk
-      ? yield* Effect.promise(() => resolveTurnDesk(deps, ai))
-      : { waiting: false };
-    const deskEnabled = turnDesk.client !== undefined;
+    // A plain member's or another AI's mention must not use the owner's
+    // computer, so the desk is not even resolved for those turns.
+    const { routineSend, signal, common, deskOptions, deskEnabled, ensureCleared } =
+      yield* prepareTurn({
+        ctx,
+        session,
+        ai,
+        target,
+        chatJid: roomJid,
+        kind: 'groupchat',
+        log,
+        isLive: (candidate) => !candidate.stopped && sessions.get(candidate.aiId) === candidate,
+        useDesk: allowDesk,
+        ...(trigger.scheduled === undefined ? {} : { routineId: trigger.scheduled.routineId }),
+      });
     const groupTools = buildGroupTools(allowActions ? actionsList : [], delegateTargets, {
       desk: deskEnabled,
       askPeople,
@@ -299,31 +298,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // The room reply uses the shared group tool loop, with the guide on the
     // last user turn when tools are on; a scheduled run posts one message per
     // routine and edits it, while a live turn keeps a progress card.
-    const routineSend =
-      trigger.scheduled === undefined
-        ? null
-        : createRoutineSend({
-            db: deps.db,
-            session,
-            routineId: trigger.scheduled.routineId,
-            isLive: (candidate) => !candidate.stopped && sessions.get(candidate.aiId) === candidate,
-            now: deps.now ?? (() => new Date()),
-            logger,
-          });
-    const groupProgress =
-      routineSend === null
-        ? liveProgressReporter(session, roomJid, 'groupchat', ai.jid, log)
-        : null;
-    if (turnDesk.waiting && groupProgress !== null) {
-      yield* Effect.promise(() =>
-        groupProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
-      );
-    }
-    const groupMessages =
-      deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
-    const groupAbort = registerTurnAbort(session, roomJid);
     const turnOutcome = yield* Effect.promise(() =>
       runGroupTurn({
+        ...common,
         aiId: session.aiId,
         aiJid: ai.jid,
         roomJid,
@@ -331,10 +308,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         ...(trigger.synthetic === true ? { syntheticTrigger: true } : {}),
         senderJid: normBareJid(trigger.fromJid),
         senderName,
-        messages: groupMessages,
+        messages: deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages,
         target,
-        signal: groupAbort.signal,
-        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        signal,
         tools: groupTools,
         executeTool: executeToolCall(
           session,
@@ -349,39 +325,14 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             askPeople,
             delegateTargetIds: new Set(delegateTargets?.map((entry) => entry.id) ?? []),
           },
-          deskEnabled
-            ? { ownerUserId: ai.owner, client: turnDesk.client, signal: groupAbort.signal }
-            : undefined,
+          deskOptions,
           // A scheduled trigger's turn is unattended, so the action gateway
           // runs tier 0/1 and refuses a tier-2 request without a standing rule
           // instead of parking a card.
           { unattended: scheduledTrigger },
         ),
-        ...turnLimits(deps.toolMaxRounds, deskEnabled),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
-        checkRoundGate: () => budgetGate.checkDmRoundGate(session),
         onFailure: (reason) => notifyOwnerOfFailure(ctx, session, roomJid, reason),
-        ...(groupProgress === null
-          ? {}
-          : {
-              reportProgress: groupProgress.reportProgress,
-              finishProgress: groupProgress.finishProgress,
-            }),
-        // The per-turn counts line (ids and counts only), like the
-        // DM path below.
-        turnLogger,
-        // Every model call adds its tokens and cost to the AI's `ai_usage` row,
-        // best effort and fire and forget; it can never fail the turn.
-        onUsage: (usage) => {
-          void recordUsage(
-            { db: deps.db, logger },
-            session.aiId,
-            target.usageProvider ?? target.provider,
-            target.model,
-            usage,
-            (deps.now ?? (() => new Date()))(),
-          );
-        },
         sendMessage: async (to, kind, text, opts) => {
           const sent =
             routineSend === null
@@ -390,20 +341,8 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           rememberRoomSentId(session, roomJid, sent.id);
           return sent;
         },
-        sendTyping: (to, kind, state) => {
-          liveSendTyping(
-            session,
-            to,
-            kind,
-            state,
-            state === 'composing' ? TOOL_STAGE_THINKING : undefined,
-          );
-        },
-        logger,
-        secrets: secretsFor(),
-        log,
       }),
-    ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, roomJid, groupAbort))));
+    ).pipe(Effect.ensuring(ensureCleared));
     // Report the turn's outcome for a scheduled routine's trigger exactly
     // once; a non-scheduled batch has nothing to settle. A `replied` turn whose
     // session stopped before the send settles `stopped`.

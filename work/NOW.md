@@ -139,6 +139,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2203 | server tests wave B: search, media, link preview, markup and hands, from 93 to 33 cases (all SSRF, sanitising, caps and permission cases kept) | −1,087 test |
 | T-2206 | store phase 3 T3a: the phone keeps history load in the core's `historyState`; two whole-state adapters gone | −92 |
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
+| T-2208 | store phase 3 T6: one debounced message-cache writer and snapshot builder in client-core; sign-out clears through the writer's fence (web cache checks identical to main) | −31 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -167,7 +168,6 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
   - **T-2207:** AI turns T5/T6. DM and group turn inputs share one wiring helper (stop rule: at least −30).
-  - **T-2208:** store phase 3 T6. One message-cache writer and snapshot builder in client-core (stop rule: at least −30).
   - **T-2209:** web search W1. A DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch with its own key; each costs $0.00075 in usage (plan `docs/audit/web-search-plan.md`, Julio 10-19).
   - **T-2210:** store phase 3 T4. The chat-list refresh's merge step and new-row adoption move into client-core; the phone's import aliases and jump-constant re-exports go (stop rule: at least −20).
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.

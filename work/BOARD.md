@@ -2206,3 +2206,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2206](T-2206-phone-history-state.md) | store phase 3 T3a: phone uses the core history state | 2026-10-19 |
 | [T-2205](T-2205-server-tests-cut-c.md) | server tests C: topics, AI client, tools cut to essentials | 2026-10-19 |
 | [T-2208](T-2208-cache-writer.md) | store phase 3 T6: one message-cache writer for web and phone | 2026-10-19 |
+| [T-2207](T-2207-ai-turn-wiring.md) | AI turns T5/T6: DM and group turns share one wiring helper | 2026-10-19 |
