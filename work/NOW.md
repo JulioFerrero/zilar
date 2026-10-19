@@ -140,6 +140,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2206 | store phase 3 T3a: the phone keeps history load in the core's `historyState`; two whole-state adapters gone | −92 |
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
+| T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
 | T-2208 | store phase 3 T6: one debounced message-cache writer and snapshot builder in client-core; sign-out clears through the writer's fence (web cache checks identical to main) | −31 |
 
 - **Two phone fixes came with the store work:**
@@ -168,8 +169,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2209:** web search W1. A DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch with its own key; each costs $0.00075 in usage (plan `docs/audit/web-search-plan.md`, Julio 10-19).
   - **T-2210:** store phase 3 T4. The chat-list refresh's merge step and new-row adoption move into client-core; the phone's import aliases and jump-constant re-exports go (stop rule: at least −20).
+  - **T-2212:** a closed AI card's body becomes its summary ("Stopped after 12s"), so previews stop showing "Reading the page"; plus the stale `batch merge` comment.
+  - **T-2211:** AI turns T7. The DM and group loop turns share one runner in `turn.ts` (stop rule: at least −35).
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
   - **Web search W2 canvas, waiting for Julio:** https://claude.ai/artifact/9wDLt9GpmXNZZ2s2JWNu85. A "Web search" provider group in Add key (Brave, Exa, Firecrawl, Jina, Tavily), and Connections split into Models and Web search.
 - **Docs (lead, 07:25):**
@@ -183,13 +185,17 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `24764738e` (08:25), with AI turns T3 and store T2. Lead live checks as Julio in "ai test › General":
-- an @mention got its answer in about 10 s;
-- a text-only request got one full text reply;
-- a web-search task stopped from the card's Stop button froze at 0:10 in the stopped state, with no reply posted;
-- after a reload, the chat list, the cards topic and General loaded normally (read-only).
+**Live:** `dfd20813c` (09:18): AI turns T3, T5/T6, store T2, T3a, T6, and web search W1. Routes are the same and the server logged 0 errors.
 
-**Observation:** after that stop, General's sidebar preview still reads "Deepseek: Reading the page". It is not checked whether this is older behaviour.
+Lead live checks as Julio in "ai test › General" (09:19–09:24):
+- **Search:** "two newest Rust releases" was answered with links. A provider check showed the tool result header "Search results for … (from DeepSeek)", so search goes through DeepSeek's API with the AI's own key.
+- **Fetch:** reading rust-lang.org returned the right headline.
+- **Stop:** a long task froze at 0:12 in the stopped state, with no reply.
+- **DM:** "hello" in the Deepseek DM was answered in about 10 s.
+- **Reload:** the chat list and topics loaded normally (read-only).
+- **Usage:** today's cost went from $0.0057 to $0.0088 after the first search turn (tokens plus search).
+
+**Bug found:** after a stop, the topic's chat-list preview keeps the last step's text ("Deepseek: Reading the page"). The closing card body is the step text instead of the summary (`agents/gateway/live.ts:177`); T-2212 fixes it.
 
 Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 

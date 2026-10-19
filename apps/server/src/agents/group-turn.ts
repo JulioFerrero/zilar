@@ -5,23 +5,9 @@ import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
-import { runToolLoop } from './tool-rounds';
-import { GROUP_FAILURE_REPLY, cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
-import { actionOfCall } from './tool-exec';
-import {
-  finishProgressQuietly,
-  finishTurnFailure,
-  remainingTurnBudgetMs,
-  sendGroupReply,
-  stoppedTurn,
-  turnStopped,
-} from './turn';
-import {
-  requestCompletion,
-  type CompleteChatInput,
-  type ExecuteToolCall,
-  type TurnCaps,
-} from './tool-loop';
+import { GROUP_FAILURE_REPLY } from './replies';
+import { finishTurnFailure, runLoopTurn, sendGroupReply } from './turn';
+import { type CompleteChatInput, type ExecuteToolCall, type TurnCaps } from './tool-loop';
 import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
 import type { ChatCompletionMessage } from './context';
@@ -256,10 +242,6 @@ async function runGroupToolTurn(
   failTurn: (failure: { error?: unknown; reason?: string }) => Promise<DmTurnOutcome>,
 ): Promise<DmTurnOutcome> {
   const tools = deps.tools ?? [];
-  const maxRounds = deps.maxRounds ?? 1;
-  const startedAt = deps.turnStartMs ?? (deps.nowMs ?? Date.now)();
-  const nowMs = deps.nowMs ?? Date.now;
-  const turnLogger = deps.turnLogger ?? { info: () => undefined };
   // Only a tool that was advertised may run: anything else the model
   // improvises (a persona tool, say) is answered `invalid: unknown tool`.
   // `task_status` is the one exception: it is a read-only group tool and
@@ -274,74 +256,13 @@ async function runGroupToolTurn(
           advertised.has(call.tool) || call.tool === TASK_STATUS_TOOL
             ? execute(call)
             : Promise.resolve({ content: 'invalid: unknown tool' });
-  let loop: Awaited<ReturnType<typeof runToolLoop>>;
-  try {
-    loop = await runToolLoop({
-      aiId: deps.aiId,
-      messages: deps.messages,
-      tools,
-      completionInput,
-      maxRounds,
-      ...(deps.caps === undefined ? {} : { caps: deps.caps }),
-      ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
-      logger: deps.logger,
-      turnLogger,
-      secrets,
-      ...(deps.checkRoundGate === undefined ? {} : { checkRoundGate: deps.checkRoundGate }),
-      turnStartMs: startedAt,
-      nowMs,
-      ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
-      actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
-      ...(deps.log === undefined ? {} : { log: deps.log }),
-    });
-  } catch (error) {
-    return await failTurn({ error });
-  }
-  if (loop.failure !== null) return await failTurn({ reason: loop.failure.reply });
-  // A call already posted the answer into the room (a `blocks` card),
-  // so the room gets no echo reply. The card still finishes `done`, exactly
-  // like a normal reply would.
-  if (loop.postedToRoom) {
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    await finishProgressQuietly(deps, secrets, 'done');
-    return { kind: 'replied', text: '' };
-  }
-  if (loop.text === null) {
-    // The caps stopped the loop with no text: one last call so the AI must
-    // answer in text. The single-round shape offers tools on that
-    // call and answers from its text alone; longer turns go tool-free.
-    // The gate runs first: a stop or budget trip before the last call drops
-    // the turn with the gate's fixed reply instead of another model call.
-    if (deps.checkRoundGate !== undefined) {
-      const gate = await deps.checkRoundGate();
-      // A stop that landed while the gate was awaited wins over a budget trip:
-      // the turn posts no reply and the card ends `stopped`.
-      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-      if (gate !== null && gate.limited) return await failTurn({ reason: gate.reply });
-    }
-    let text: string;
-    let modelText = false;
-    try {
-      const last = await requestCompletion({
-        ...completionInput,
-        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs, deps.caps?.wallClockMs),
-        messages: loop.messages,
-        ...(maxRounds <= 1 ? { tools } : {}),
-      });
-      if (last.content === null) {
-        text = TRANSIENT_FAILURE_REPLY + loop.notices.join('');
-      } else {
-        text = last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
-        modelText = true;
-      }
-    } catch (error) {
-      return await failTurn({ error });
-    }
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    await finishProgressQuietly(deps, secrets, 'done');
-    return await sendGroupReply(deps, secrets, wire(text, modelText));
-  }
-  if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-  await finishProgressQuietly(deps, secrets, 'done');
-  return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join(''), true));
+  return runLoopTurn(deps, {
+    completionInput,
+    secrets,
+    tools,
+    ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
+    postedToRoom: true,
+    fail: (failure) => failTurn(failure),
+    reply: (text, fromModel) => sendGroupReply(deps, secrets, wire(text, fromModel)),
+  });
 }

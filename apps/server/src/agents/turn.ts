@@ -1,10 +1,19 @@
 // effect-plain: the shared failure, send and stop helpers stay Promise-shaped over the turn deps.
 import type { SendMessageOptions } from '@zilar/xmpp-core';
+import type { ChatToolDefinition } from '../ai/model-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
 import { byteLength } from './log/append';
-import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
-import { MODEL_CALL_MAX_MS, TOOL_TURN_WALL_CLOCK_MS } from './tool-loop';
+import { cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
+import { actionOfCall, failureLogFields, mapFailureToReply, redactError } from './tool-exec';
+import {
+  MODEL_CALL_MAX_MS,
+  TOOL_TURN_WALL_CLOCK_MS,
+  requestCompletion,
+  type CompleteChatInput,
+  type ExecuteToolCall,
+} from './tool-loop';
+import { runToolLoop } from './tool-rounds';
 
 export const TOOL_TURN_MIN_CALL_MS = 5_000;
 
@@ -136,4 +145,109 @@ export async function finishTurnFailure(
     return { kind: 'failed', text: '' };
   }
   return { kind: 'failed', text };
+}
+
+export interface LoopTurnFailure {
+  error?: unknown;
+  reason?: string;
+}
+
+export interface LoopTurnOptions {
+  completionInput: Omit<CompleteChatInput, 'messages'>;
+  secrets: string[];
+  tools: ChatToolDefinition[];
+  executeTool?: ExecuteToolCall;
+  /** True when the caller handles a loop that already posted into the room. */
+  postedToRoom?: boolean;
+  fail: (failure: LoopTurnFailure, notices: string[]) => Promise<DmTurnOutcome>;
+  reply: (text: string, fromModel: boolean) => Promise<DmTurnOutcome>;
+}
+
+export async function runLoopTurn(
+  deps: TurnDeps,
+  options: LoopTurnOptions,
+): Promise<DmTurnOutcome> {
+  const { completionInput, secrets, tools, executeTool, postedToRoom, fail, reply } = options;
+  const startedAt = deps.turnStartMs ?? (deps.nowMs ?? Date.now)();
+  const nowMs = deps.nowMs ?? Date.now;
+  const turnLogger = deps.turnLogger ?? { info: () => undefined };
+  const maxRounds = deps.maxRounds ?? 1;
+  let loop: Awaited<ReturnType<typeof runToolLoop>>;
+  try {
+    loop = await runToolLoop({
+      aiId: deps.aiId,
+      messages: deps.messages,
+      tools,
+      completionInput,
+      maxRounds,
+      ...(deps.caps === undefined ? {} : { caps: deps.caps }),
+      ...(executeTool === undefined ? {} : { executeTool }),
+      logger: deps.logger,
+      turnLogger,
+      secrets,
+      ...(deps.checkRoundGate === undefined ? {} : { checkRoundGate: deps.checkRoundGate }),
+      turnStartMs: startedAt,
+      nowMs,
+      ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
+      actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
+      ...(deps.log === undefined ? {} : { log: deps.log }),
+    });
+  } catch (error) {
+    // The loop throws only for an empty first reply or a failed model
+    // call: the failure text goes out like any other model failure, with
+    // no notices (none were earned yet).
+    return await fail({ error }, []);
+  }
+  if (loop.failure !== null) {
+    return await fail({ reason: loop.failure.reply }, loop.notices);
+  }
+  // A call already posted the answer into the room (a `blocks` card),
+  // so the room gets no echo reply. The card still finishes `done`, exactly
+  // like a normal reply would.
+  if (loop.postedToRoom && postedToRoom === true) {
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
+    await finishProgressQuietly(deps, secrets, 'done');
+    return { kind: 'replied', text: '' };
+  }
+  if (loop.text === null) {
+    // The caps stopped the loop with no text: one last call so the AI must
+    // answer in text. The single-round shape offers tools on that
+    // call and answers from its text alone; longer turns go tool-free.
+    // The gate runs first: a stop or budget trip before the last call sends
+    // the gate's fixed reply instead of another model call.
+    if (deps.checkRoundGate !== undefined) {
+      const gate = await deps.checkRoundGate();
+      // A stop that landed while the gate was awaited wins over a budget trip:
+      // the turn posts no reply and the card ends `stopped`.
+      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
+      if (gate !== null && gate.limited) {
+        return await fail({ reason: gate.reply }, loop.notices);
+      }
+    }
+    let text: string;
+    let fromModel = false;
+    try {
+      const last = await requestCompletion({
+        ...completionInput,
+        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs, deps.caps?.wallClockMs),
+        messages: loop.messages,
+        ...(maxRounds <= 1 ? { tools } : {}),
+      });
+      if (last.content === null) {
+        text = TRANSIENT_FAILURE_REPLY + loop.notices.join('');
+      } else {
+        text = last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
+        fromModel = true;
+      }
+    } catch (error) {
+      return await fail({ error }, loop.notices);
+    }
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
+    await finishProgressQuietly(deps, secrets, 'done');
+    return await reply(text, fromModel);
+  }
+
+  if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
+  await finishProgressQuietly(deps, secrets, 'done');
+  return await reply(loop.text + loop.notices.join(''), true);
 }
