@@ -4,6 +4,7 @@
 
 import { Effect, type Effect as EffectType } from 'effect';
 import { Platform } from 'react-native';
+import type { RecordedVoice } from './voice';
 
 export const MIC_DENIED_MESSAGE =
   'Zilar needs access to your microphone to record voice messages. You can allow it in Settings.';
@@ -11,12 +12,7 @@ export const MIC_FAILED_MESSAGE = 'Could not start recording. Try again.';
 export const RECORD_TOO_LONG_MESSAGE = 'That recording is too long to send.';
 export const RECORD_FAILED_MESSAGE = 'Could not save the recording, try again.';
 
-export interface FinishedRecording {
-  uri: string;
-  mimeType: string;
-  size: number;
-  durationMs: number;
-}
+export type FinishedRecording = RecordedVoice;
 
 export type RecordResult =
   | { status: 'recorded'; recording: FinishedRecording }

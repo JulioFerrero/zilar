@@ -7,7 +7,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 Julio's words: "dont stop working, try to reduce the lines and make a better codebase for other ais and humans". No feature was removed.
 
 **Morning summary (written 06:55 UTC; the tables below have the details):**
-- **Lines:** source went from 274,479 to 235,404 (07:47). Real cuts are about −37,700; the rest is 1,365 test-helper lines moved into the test class. Tests went from 65,769 to 64,003 after 07:00, as tests that repeated a client-core store test or covered display-only helpers were deleted (your 10-10 rule).
+- **Lines:** source went from 274,479 to 235,404 (07:47). Real cuts are about −37,700; the rest is 1,365 test-helper lines moved into the test class. Tests went from 65,769 to about 63,820 after 07:00, as tests that repeated a client-core store test or covered display-only helpers were deleted (your 10-10 rule).
 - **Since 03:00, for readers (people and AIs):**
   - every helper and type written twice has one home (server, web, phone, packages);
   - every pass-through re-export is gone, so each import names the module that defines it (server and both apps);
@@ -129,6 +129,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2195 | phone: an AI's home machine is set through the shared contract call; the hand-written request and `lib/machines-api.ts` are gone | −85 |
 | T-2196 | phone: profile and avatar calls fail with the shared `ApiError`; `ProfileApiError` and its own body parsing are gone | −65 |
 | T-2197 | store test twins, wave 2 (web echo-edit file, web message cache, phone send effects) | −256 test |
+| T-2198 | 4 client tests outside the crucial areas (people-search text, media retry state, a media row parser) | −180 test |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -149,7 +150,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 **Running (06:50):**
 
-- **T-2198 (07:50):** delete 4 client tests outside the crucial areas: people-search text, the media retry view state, and a media row parser (180 test lines).
+- **T-2199 (08:00):** types declared twice with the same fields become one (voice files, stored server images, group AI input, profile fields, composer mentions).
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
@@ -175,6 +176,20 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **`lead batch` (837 lines of devtools)** has been unused since 10-10, when workers went back to OpenCode. Removing it is your call (`docs/audit/simplify-2026-10-09/H-tooling.md` F7).
 - **Store phase 3** (`docs/audit/store-phase3-plan.md`): T2–T6, about −270. These touch the message path, sign-out and cold start.
 - **Phone auth API:** the shared sign-in calls (auth is crucial; it needs a live sign-in check).
+- **Server tests outside your three crucial areas** (counted 07:58): about 12,000 of the server's ~42,000 test lines. By area:
+  - AI agents 6,470;
+  - routines 1,689;
+  - hands 775;
+  - message blocks 716;
+  - card media 511;
+  - search 537;
+  - media index 485;
+  - questions 328;
+  - blocks 208;
+  - link preview 176;
+  - markup 168.
+
+  Tonight I only cut client tests that repeated a client-core test or covered display-only code. Should the server's AI and feature tests be cut to a few each? That changes how much the AI turn path is pinned, so it is your call.
 
 **Plan after the canvas reviews (2026-10-15).** Every approved canvas's boards are in `docs/design/mockups/<name>/`. Julio's rules: up to 8 workers, at most 3 mobile; estimates are in worker minutes (about 35–60 min from launch to merge).
 

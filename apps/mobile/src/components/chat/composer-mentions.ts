@@ -128,11 +128,7 @@ export function pickMentionMember(
   };
 }
 
-export interface BackspaceMention {
-  text: string;
-  caret: number;
-  state: MentionState;
-}
+export type BackspaceMention = PickedMention;
 
 export function backspaceMention(
   text: string,

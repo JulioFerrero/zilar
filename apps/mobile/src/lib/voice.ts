@@ -79,12 +79,7 @@ export function validateRecordingEffect(
   return Effect.void;
 }
 
-export interface ConvertedVoice {
-  uri: string;
-  mimeType: string;
-  size: number;
-  durationMs: number;
-}
+export type ConvertedVoice = RecordedVoice;
 
 const errorCode = (response: Response): Effect.Effect<string> =>
   Effect.tryPromise(() => response.json() as Promise<{ error?: { code?: string } } | null>).pipe(

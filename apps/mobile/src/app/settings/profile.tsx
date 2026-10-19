@@ -97,12 +97,7 @@ function BioField({ value, error, busy, onChange }: BioFieldProps) {
   );
 }
 
-type NameFieldProps = {
-  value: string;
-  error?: string | undefined;
-  busy: boolean;
-  onChange: (value: string) => void;
-};
+type NameFieldProps = BioFieldProps;
 
 function NameField({ value, error, busy, onChange }: NameFieldProps) {
   return (

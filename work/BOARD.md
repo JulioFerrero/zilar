@@ -2197,3 +2197,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2196](T-2196-phone-profile-error.md) | phone: profile calls fail with the shared ApiError | 2026-10-19 |
 | [T-2197](T-2197-store-test-twins-2.md) | store tests, wave 2: drop app cases the core tests | 2026-10-19 |
 | [T-2198](T-2198-trim-ui-tests.md) | tests: drop 4 client tests outside the crucial areas | 2026-10-19 |
+| [T-2199](T-2199-type-twins.md) | one type per shape: 7 twin types become aliases | 2026-10-19 |

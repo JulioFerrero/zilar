@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { AvatarFile } from '../avatars/read';
 import type { ServerDatabase } from '../db/client';
 import type { ChatBackgroundRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -186,11 +187,7 @@ export async function listBackgrounds(
   return rows.map(toBackgroundView);
 }
 
-export interface BackgroundFile {
-  bytes: Uint8Array;
-  mime: 'image/webp' | 'image/png';
-  size: number;
-}
+export type BackgroundFile = AvatarFile;
 
 // An unknown id and another user's image answer the same `null`, so ids cannot be
 // probed; a group member may read an image their group uses. The path is built from

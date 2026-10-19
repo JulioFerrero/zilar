@@ -122,13 +122,7 @@ export interface AddGroupAiInput {
   logger: InviteLogger;
 }
 
-export interface RemoveGroupAiInput {
-  groupId: string;
-  actorId: string;
-  aiId: string;
-  domain: string;
-  logger: InviteLogger;
-}
+export type RemoveGroupAiInput = AddGroupAiInput;
 
 export interface ChangeMemberRoleInput {
   groupId: string;

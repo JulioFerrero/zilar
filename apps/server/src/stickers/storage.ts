@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { readStoredFile } from '../avatars/read';
+import { readStoredFile, type AvatarFile } from '../avatars/read';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import {
@@ -337,11 +337,7 @@ export async function deleteSticker(
   );
 }
 
-export interface StickerFile {
-  bytes: Uint8Array;
-  mime: 'image/webp' | 'image/png';
-  size: number;
-}
+export type StickerFile = AvatarFile;
 
 export async function readStickerFile(
   deps: StickersServiceDeps,
