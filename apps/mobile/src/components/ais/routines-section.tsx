@@ -127,6 +127,19 @@ function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineR
   );
 }
 
+export function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View className="gap-2 px-2">
+      <Text accessibilityRole="alert" className="text-[13px] text-danger">
+        {message}
+      </Text>
+      <Button variant="outline" onPress={onRetry} className="self-start">
+        <Text>Retry</Text>
+      </Button>
+    </View>
+  );
+}
+
 export function RoutinesSectionContent({
   state,
   onRetry,
@@ -142,16 +155,7 @@ export function RoutinesSectionContent({
     return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
   if (state.status === 'error') {
-    return (
-      <View className="gap-2 px-2">
-        <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {state.message}
-        </Text>
-        <Button variant="outline" onPress={onRetry} className="self-start">
-          <Text>Retry</Text>
-        </Button>
-      </View>
-    );
+    return <SectionError message={state.message} onRetry={onRetry} />;
   }
   if (state.routines.length === 0) {
     return <StateMessage kind="empty" size="inline" title={ROUTINES_EMPTY_MESSAGE} />;

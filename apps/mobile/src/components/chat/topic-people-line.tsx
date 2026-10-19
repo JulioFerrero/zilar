@@ -1,18 +1,14 @@
 import { writingLabel } from '@zilar/chat-core';
-import { palette } from '@zilar/ui-tokens';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { AvatarStack } from '@/components/group-info/avatar-stack';
 import { Text } from '@/components/ui/text';
 import type { GroupDetail } from '@/lib/chat-api';
 import { FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-const STACK_SIZE = 22;
-const STACK_RING = 2;
-const STACK_OVERLAP = -7;
 const STACK_MAX = 4;
 const PULSE_MS = 700;
 const DOT_SIZE = 6;
@@ -49,33 +45,6 @@ type TopicPeopleLineProps = {
   onOpenGroup?: () => void;
   className?: string;
 };
-
-function Stack({ people }: { people: readonly TopicLinePerson[] }) {
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      className="flex-row items-center"
-    >
-      {people.map((person, index) => (
-        <View
-          key={person.id}
-          style={{
-            width: STACK_SIZE,
-            height: STACK_SIZE,
-            borderRadius: STACK_SIZE / 2,
-            borderWidth: STACK_RING,
-            borderColor: palette.surface,
-            overflow: 'hidden',
-            marginLeft: index === 0 ? 0 : STACK_OVERLAP,
-          }}
-        >
-          <EntityAvatar person={person} size={STACK_SIZE - STACK_RING * 2} />
-        </View>
-      ))}
-    </View>
-  );
-}
 
 function PulsingDot() {
   const reduceMotion = useReducedMotion();
@@ -173,7 +142,7 @@ export function TopicPeopleLine({
     : all.slice(0, STACK_MAX);
   return (
     <View className={cn('h-[22px] min-w-0 flex-row items-center gap-1.5', className)}>
-      {shown.length > 0 ? <Stack people={shown} /> : null}
+      {shown.length > 0 ? <AvatarStack people={shown} /> : null}
       {writing ? (
         <>
           <Text numberOfLines={1} className="shrink text-[13px] leading-4 text-[#d4d4d4]">

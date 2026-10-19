@@ -10,7 +10,7 @@ import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/i
 import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
-import { VisibilitySheet } from '@/components/chat/visibility-sheet';
+import { GroupVisibilitySheet } from '@/components/chat/visibility-sheet';
 import { useGroupRules } from '@/components/group-info/allowed-page';
 import {
   GroupContentSheets,
@@ -512,25 +512,7 @@ function GroupInfo() {
         }}
         manage={manage}
       />
-      <VisibilitySheet
-        visible={visibility.visible}
-        groupTitle={groupTitle}
-        visibility={visibility.truth?.visibility ?? 'private'}
-        handle={visibility.truth?.handle ?? null}
-        live={{ picked: visibility.picked, typed: visibility.typed }}
-        busy={visibility.busy}
-        checking={visibility.checking}
-        check={visibility.check}
-        error={visibility.error}
-        saved={visibility.saved}
-        confirmingPrivate={visibility.confirmingPrivate}
-        share={share}
-        onPick={visibility.pick}
-        onHandleChange={visibility.changeHandle}
-        onSave={visibility.save}
-        onCancelPrivate={visibility.cancelPrivate}
-        onClose={visibility.close}
-      />
+      <GroupVisibilitySheet state={visibility} groupTitle={groupTitle} share={share} />
 
       <GroupContentSheets content={content} />
 

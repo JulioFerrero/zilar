@@ -1,11 +1,11 @@
-import { parseUrl, photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
-import { useMemo, useState } from 'react';
+import { parseUrl, type UiMessage } from '@zilar/chat-core';
 import { Pressable, View } from 'react-native';
 
 import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentImage, AttachmentViewer } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
+import { useAttachmentViewer } from '@/components/chat/media-shared';
 import { metaTimeText } from '@/components/chat/meta-time';
 import { isGifVideoAttachment } from '@/lib/attachments';
 import { BUBBLE_COLORS, FOREGROUND, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
@@ -34,30 +34,9 @@ export function AttachmentBody({
   opening = false,
 }: AttachmentBodyProps) {
   const attachment = message.attachment;
-  const [viewer, setViewer] = useState<{
-    messageId: string;
-    albumIds?: readonly string[];
-  } | null>(null);
   const trustedHosts = useChatStore((state) => state.mediaTrustedHosts);
   const messages = useChatStore((state) => state.messagesByChat[message.chatId]);
-  const photos = useMemo(() => photosOf(messages ?? []), [messages]);
-  const viewerPhotos = useMemo<ViewerPhoto[]>(() => {
-    if (viewer === null || viewer.albumIds === undefined) {
-      return photos;
-    }
-    const inScope = new Set(viewer.albumIds);
-    const album = viewer.albumIds
-      .map((id) => photos.find((photo) => photo.messageId === id))
-      .filter((photo): photo is ViewerPhoto => photo !== undefined);
-    return [...album, ...photos.filter((photo) => !inScope.has(photo.messageId))];
-  }, [photos, viewer]);
-  const startIndex =
-    viewer === null
-      ? 0
-      : Math.max(
-          0,
-          viewerPhotos.findIndex((photo) => photo.messageId === viewer.messageId),
-        );
+  const { viewer, setViewer, viewerPhotos, startIndex } = useAttachmentViewer(messages);
   const hosts = trustedHosts ?? new Set<string>();
   if (attachment === undefined) {
     return null;

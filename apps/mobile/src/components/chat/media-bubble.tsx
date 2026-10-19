@@ -1,13 +1,14 @@
-import { photosOf, type UiMessage, type ViewerPhoto, formatTime } from '@zilar/chat-core';
+import { type UiMessage, formatTime } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import { type ReactNode } from 'react';
+import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { AttachmentViewer, isLoadableMediaUrl } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { MEDIA_WIDTH, mediaFrame } from '@/components/chat/media-frame';
+import { UploadFailed, UploadOverlay, useAttachmentViewer } from '@/components/chat/media-shared';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { PlainBubbleBody } from '@/components/chat/plain-bubble-body';
@@ -108,28 +109,7 @@ export function MediaBubble({
   const attachment = message.attachment;
   const hosts = useChatStore((state) => state.mediaTrustedHosts) ?? EMPTY_HOSTS;
   const messages = useChatStore((state) => state.messagesByChat[message.chatId]);
-  const [viewer, setViewer] = useState<{ messageId: string; albumIds?: readonly string[] } | null>(
-    null,
-  );
-  // The same viewer scoping as the attachment body: an album opens its members first, then the rest of the chat.
-  const photos = useMemo(() => photosOf(messages ?? []), [messages]);
-  const viewerPhotos = useMemo<ViewerPhoto[]>(() => {
-    if (viewer === null || viewer.albumIds === undefined) {
-      return photos;
-    }
-    const inScope = new Set(viewer.albumIds);
-    const album = viewer.albumIds
-      .map((id) => photos.find((photo) => photo.messageId === id))
-      .filter((photo): photo is ViewerPhoto => photo !== undefined);
-    return [...album, ...photos.filter((photo) => !inScope.has(photo.messageId))];
-  }, [photos, viewer]);
-  const startIndex =
-    viewer === null
-      ? 0
-      : Math.max(
-          0,
-          viewerPhotos.findIndex((photo) => photo.messageId === viewer.messageId),
-        );
+  const { viewer, setViewer, viewerPhotos, startIndex } = useAttachmentViewer(messages);
   const upload = mobileUploadOf(message);
   const uploading = message.status === 'sending' && message.failed !== true;
   const failed = message.failed === true;
@@ -316,19 +296,7 @@ function MediaImage({
   const size = mediaFrame(ratio);
 
   if (failed) {
-    return (
-      <View className="flex-row items-center gap-2 px-3 py-2">
-        <Text className="text-[12px] text-danger">Upload failed</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retry upload"
-          onPress={onRetry}
-          className="rounded px-1 py-0.5 active:bg-surface-raised"
-        >
-          <Text className="text-[12px] font-semibold text-danger">Retry</Text>
-        </Pressable>
-      </View>
-    );
+    return <UploadFailed onRetry={onRetry} />;
   }
 
   if (demoGradient !== undefined && media.localUri === undefined) {
@@ -398,16 +366,7 @@ function MediaImage({
           contentFit="cover"
         />
       ) : null}
-      {uploading ? (
-        <View className="absolute inset-0 items-center justify-center bg-black/40">
-          <ActivityIndicator accessibilityLabel="Uploading" />
-          {progress !== undefined ? (
-            <Text className="mt-1 font-mono text-[11px] text-foreground">
-              {Math.round(progress * 100)}%
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+      {uploading ? <UploadOverlay progress={progress} /> : null}
     </Pressable>
   );
 }

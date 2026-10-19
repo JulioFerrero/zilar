@@ -1,4 +1,3 @@
-import type { UiMessage, UiReaction } from '@zilar/chat-core';
 import {
   createContext,
   useCallback,
@@ -9,24 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 
-import { BubbleActionsSheet } from '@/components/chat/message-bubble-actions';
+import {
+  BubbleActionsSheet,
+  type BubbleActionsTarget,
+} from '@/components/chat/message-bubble-actions';
 import type { MessageHandler, ReactHandler } from '@/components/chat/use-stable-handlers';
 
-export type MessageMenuTarget = {
-  message: UiMessage;
-  albumMembers: UiMessage[] | undefined;
-  canCopy: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canDeleteForMe: boolean;
-  isDm: boolean;
-  own: boolean;
-  senderName: string;
-  canForward: boolean;
-  canPin: boolean | undefined;
-  isPinned: boolean | undefined;
-  myReactions: UiReaction[];
-};
+export type MessageMenuTarget = BubbleActionsTarget;
 
 // The list-level handlers the one sheet acts through: a bubble only names the message, the actions stay the list's.
 type MessageMenuHandlers = {

@@ -3,7 +3,7 @@ import { Effect, Fiber } from 'effect';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Video, Play } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
@@ -12,21 +12,16 @@ import { getSessionToken } from '@/lib/session-token';
 import { ICON } from '@/lib/colors';
 
 import { isLoadableMediaUrl } from './attachment-message';
+import { UploadFailed, UploadOverlay, type MediaUploadProps } from './media-shared';
 import { LONG_PRESS_MS } from './message-bubble-decor';
 import { useOpenMessageMenu } from './message-menu-context';
 
 const VIDEO_WIDTH = 240;
 const VIDEO_HEIGHT = 180;
 
-type AttachmentVideoProps = {
+type AttachmentVideoProps = MediaUploadProps & {
   attachment: Attachment;
   chatId: string;
-  trustedHosts: ReadonlySet<string>;
-  localUri?: string | undefined;
-  uploading?: boolean | undefined;
-  progress?: number | undefined;
-  failed?: boolean | undefined;
-  onRetry?: (() => void) | undefined;
 };
 
 /** An untrusted URL never fetches; GIF-origin videos loop muted, and start
@@ -114,19 +109,7 @@ export function AttachmentVideo({
   }, [gif, reduceMotion, uri, player]);
 
   if (failed) {
-    return (
-      <View className="flex-row items-center gap-2 px-3 py-2">
-        <Text className="text-[12px] text-danger">Upload failed</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retry upload"
-          onPress={onRetry}
-          className="rounded px-1 py-0.5 active:bg-surface-raised"
-        >
-          <Text className="text-[12px] font-semibold text-danger">Retry</Text>
-        </Pressable>
-      </View>
-    );
+    return <UploadFailed onRetry={onRetry} />;
   }
 
   if (uri === undefined) {
@@ -183,16 +166,7 @@ export function AttachmentVideo({
             </View>
           </View>
         ) : null}
-        {uploading ? (
-          <View className="absolute inset-0 items-center justify-center bg-black/40">
-            <ActivityIndicator accessibilityLabel="Uploading" />
-            {progress !== undefined ? (
-              <Text className="mt-1 font-mono text-[11px] text-foreground">
-                {Math.round(progress * 100)}%
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
+        {uploading ? <UploadOverlay progress={progress} /> : null}
       </Pressable>
       {uploading ? (
         <Text className="mt-1 px-0.5 text-[12px] text-muted-foreground">Uploading…</Text>

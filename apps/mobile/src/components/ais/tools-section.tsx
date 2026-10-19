@@ -6,7 +6,6 @@ import { Pressable, View, Modal } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { runMobile } from '@/lib/effect/runtime';
@@ -20,6 +19,7 @@ import type {
   ToolDetailsApi,
 } from '@/lib/tools-api';
 import { ToolDetailLoader } from './tool-detail-loader';
+import { SectionError } from './routines-section';
 
 function ToolDetailSheet({
   api,
@@ -136,16 +136,7 @@ export function ToolsSectionContent({
     return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
   if (state.status === 'error') {
-    return (
-      <View className="gap-2 px-2">
-        <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {state.message}
-        </Text>
-        <Button variant="outline" onPress={onRetry} className="self-start">
-          <Text>Retry</Text>
-        </Button>
-      </View>
-    );
+    return <SectionError message={state.message} onRetry={onRetry} />;
   }
   if (state.tools.length === 0) {
     return <StateMessage kind="empty" size="inline" title={TOOLS_EMPTY_MESSAGE} />;

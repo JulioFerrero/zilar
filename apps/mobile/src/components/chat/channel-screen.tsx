@@ -14,7 +14,7 @@ import { useGroupManage } from '@/components/chat/group-manage-section';
 import type { CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
-import { VisibilitySheet } from '@/components/chat/visibility-sheet';
+import { GroupVisibilitySheet } from '@/components/chat/visibility-sheet';
 import { ActivityPage } from '@/components/group-info/activity-page';
 import { GroupAisList } from '@/components/group-info/ais-list';
 import { AllowedPage, useGroupRules } from '@/components/group-info/allowed-page';
@@ -586,25 +586,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         />
         {/* The sheet lives here, not on the root: only Settings opens it, and
             the subpages early-return so the root's copy would be unmounted. */}
-        <VisibilitySheet
-          visible={visibility.visible}
-          groupTitle={title}
-          visibility={visibility.truth?.visibility ?? 'private'}
-          handle={visibility.truth?.handle ?? null}
-          live={{ picked: visibility.picked, typed: visibility.typed }}
-          busy={visibility.busy}
-          checking={visibility.checking}
-          check={visibility.check}
-          error={visibility.error}
-          saved={visibility.saved}
-          confirmingPrivate={visibility.confirmingPrivate}
-          share={linksShare}
-          onPick={visibility.pick}
-          onHandleChange={visibility.changeHandle}
-          onSave={visibility.save}
-          onCancelPrivate={visibility.cancelPrivate}
-          onClose={visibility.close}
-        />
+        <GroupVisibilitySheet state={visibility} groupTitle={title} share={linksShare} />
       </>
     );
   }

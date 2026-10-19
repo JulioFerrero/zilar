@@ -2,13 +2,14 @@ import { ApiError } from '@zilar/api-contract';
 import { handleSaveMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { HandleCheckField, VisibilityChoice } from '@/components/chat/visibility-fields';
 import type { GroupVisibility } from '@/lib/directory-api';
+import type { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { interruptFiber } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
@@ -17,19 +18,6 @@ import { useAction } from '@/lib/effect/use-action';
 /** The owner only may change visibility (same rule as web `GroupPanel`). */
 export function mayChangeVisibility(role: string | undefined): boolean {
   return role === 'owner';
-}
-
-export function visibilityReasonText(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'reserved':
-      return 'That handle is reserved. Try another.';
-    case 'rate_limited':
-      return 'Too many checks — wait a little and try again.';
-    default:
-      return 'That handle is taken. Try another.';
-  }
 }
 
 export function visibilitySaveError(error: unknown): string {
@@ -146,72 +134,20 @@ export function VisibilitySheet({
         </Button>
       }
     >
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Visibility"
-        className="mt-3 flex-row gap-2"
-      >
-        {(
-          [
-            { value: 'private', label: 'Private' },
-            { value: 'public', label: 'Public' },
-          ] as const
-        ).map((option) => (
-          <Pressable
-            key={option.value}
-            accessibilityRole="radio"
-            accessibilityLabel={option.label}
-            accessibilityState={{ checked: live.picked === option.value }}
-            onPress={() => onPick(option.value)}
-            className={`flex-1 items-center rounded-lg border px-3 py-2 active:opacity-80 ${
-              live.picked === option.value ? 'border-accent bg-accent/10' : 'border-border-strong'
-            }`}
-          >
-            <Text
-              className={`text-[14px] ${
-                live.picked === option.value
-                  ? 'font-medium text-foreground'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <VisibilityChoice value={live.picked} onChange={onPick} />
 
       {live.picked === 'public' ? (
         <>
           <Text className="mt-2 text-[13px] text-muted-foreground">
             Anyone can find and join {groupTitle === '' ? 'this group' : `"${groupTitle}"`}.
           </Text>
-          <Text className="mt-2 text-[14px] font-medium text-foreground">Handle</Text>
-          <TextField
-            value={live.typed}
-            onChangeText={onHandleChange}
-            maxLength={32}
+          <HandleCheckField
+            handle={live.typed}
+            onChange={onHandleChange}
+            check={check}
+            checking={checking}
             editable={!busy}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="hiking_club"
-            accessibilityLabel="Group handle"
-            className="mt-1"
           />
-          <View className="min-h-[20px]">
-            {checking ? (
-              <Text className="text-[14px] text-muted-foreground">Checking…</Text>
-            ) : check !== null ? (
-              check.available ? (
-                <Text className="text-[14px] text-muted-foreground">
-                  @{live.typed.trim()} is available
-                </Text>
-              ) : (
-                <Text accessibilityRole="alert" className="text-[14px] text-danger">
-                  {visibilityReasonText(check.reason)}
-                </Text>
-              )
-            ) : null}
-          </View>
         </>
       ) : visibility === 'public' ? (
         <Text className="mt-2 text-[13px] text-muted-foreground">
@@ -235,5 +171,40 @@ export function VisibilitySheet({
         </View>
       )}
     </BottomSheet>
+  );
+}
+
+export type VisibilitySheetState = ReturnType<typeof useGroupVisibility>;
+
+// The group and channel screens both bind the same hook state to the one sheet.
+export function GroupVisibilitySheet({
+  state,
+  groupTitle,
+  share,
+}: {
+  state: VisibilitySheetState;
+  groupTitle: string;
+  share: { copyText: (text: string) => Promise<void> };
+}) {
+  return (
+    <VisibilitySheet
+      visible={state.visible}
+      groupTitle={groupTitle}
+      visibility={state.truth?.visibility ?? 'private'}
+      handle={state.truth?.handle ?? null}
+      live={{ picked: state.picked, typed: state.typed }}
+      busy={state.busy}
+      checking={state.checking}
+      check={state.check}
+      error={state.error}
+      saved={state.saved}
+      confirmingPrivate={state.confirmingPrivate}
+      share={share}
+      onPick={state.pick}
+      onHandleChange={state.changeHandle}
+      onSave={state.save}
+      onCancelPrivate={state.cancelPrivate}
+      onClose={state.close}
+    />
   );
 }

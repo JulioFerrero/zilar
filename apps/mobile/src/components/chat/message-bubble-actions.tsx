@@ -27,10 +27,10 @@ import type { EmojiCategoryId } from '@/lib/emoji-data';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
-type BubbleActionsSheetProps = {
-  visible: boolean;
-  confirmOpen: boolean;
+// The message a bubble hands to the one menu: the flags and reactions travel with it, so the sheet reads no store.
+export type BubbleActionsTarget = {
   message: UiMessage;
+  albumMembers?: UiMessage[] | undefined;
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -42,7 +42,11 @@ type BubbleActionsSheetProps = {
   canPin: boolean | undefined;
   isPinned: boolean | undefined;
   myReactions: UiReaction[];
-  albumMembers?: UiMessage[] | undefined;
+};
+
+type BubbleActionsSheetProps = BubbleActionsTarget & {
+  visible: boolean;
+  confirmOpen: boolean;
   onReply: (message: UiMessage) => void;
   onEdit: ((message: UiMessage) => void) | undefined;
   onDelete: ((message: UiMessage) => void) | undefined;

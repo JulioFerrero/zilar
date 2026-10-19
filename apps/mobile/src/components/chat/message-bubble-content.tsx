@@ -1,7 +1,7 @@
 import { senderColor, UiMessage, lightToPlain, replyQuoteContent } from '@zilar/chat-core';
 import { isCardAllowedFrom } from '@zilar/client-core';
 import type { Sticker, ForwardOrigin, RoutinePost } from '@zilar/protocol';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, type ComponentProps } from 'react';
 import { Pressable, View } from 'react-native';
 import { AttachmentBody } from '@/components/chat/attachment-body';
 import { MarkdownText } from '@/components/chat/markdown-text';
@@ -484,32 +484,13 @@ export function StickerBubble({
   );
 }
 
-export function BigEmojiBubble({
-  message,
-  text,
-  outgoing,
-  generating,
-  reduceMotion,
-  onLongPress,
-}: {
-  message: UiMessage;
-  text: string;
-  outgoing: boolean;
-  generating: boolean;
-  reduceMotion: boolean;
-  onLongPress: () => void;
-}) {
+export function BigEmojiBubble(props: ComponentProps<typeof BigEmoji>) {
   return (
     <>
-      {message.forward !== undefined ? <ForwardedHeader origin={message.forward} /> : null}
-      <BigEmoji
-        message={message}
-        text={text}
-        outgoing={outgoing}
-        generating={generating}
-        reduceMotion={reduceMotion}
-        onLongPress={onLongPress}
-      />
+      {props.message.forward !== undefined ? (
+        <ForwardedHeader origin={props.message.forward} />
+      ) : null}
+      <BigEmoji {...props} />
     </>
   );
 }

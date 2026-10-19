@@ -2,9 +2,10 @@ import type { Attachment } from '@zilar/protocol';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
+import { UploadFailed, UploadOverlay, type MediaUploadProps } from '@/components/chat/media-shared';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { Text } from '@/components/ui/text';
@@ -26,16 +27,10 @@ export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string
   return isTrustedMediaUrl(url, trustedHosts);
 }
 
-type AttachmentImageProps = {
+type AttachmentImageProps = MediaUploadProps & {
   attachment: Attachment;
   chatId: string;
   outgoing?: boolean | undefined;
-  trustedHosts: ReadonlySet<string>;
-  localUri?: string | undefined;
-  uploading?: boolean | undefined;
-  progress?: number | undefined;
-  failed?: boolean | undefined;
-  onRetry?: (() => void) | undefined;
   onOpen?: (() => void) | undefined;
 };
 
@@ -74,7 +69,7 @@ export function AttachmentImage({
       : undefined;
 
   if (failed) {
-    return <UploadFailed onRetry={onRetry} />;
+    return <UploadFailed onRetry={onRetry} className="flex-row items-center gap-2 px-0.5" />;
   }
 
   if (demoGradient !== undefined && localUri === undefined) {
@@ -164,37 +159,12 @@ export function AttachmentImage({
             }
             contentFit="cover"
           />
-          {uploading ? (
-            <View className="absolute inset-0 items-center justify-center bg-black/40">
-              <ActivityIndicator accessibilityLabel="Uploading" />
-              {progress !== undefined ? (
-                <Text className="mt-1 font-mono text-[11px] text-foreground">
-                  {Math.round(progress * 100)}%
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
+          {uploading ? <UploadOverlay progress={progress} /> : null}
         </View>
       </Pressable>
       {uploading ? (
         <Text className="mt-1 px-0.5 text-[12px] text-muted-foreground">Uploading…</Text>
       ) : null}
-    </View>
-  );
-}
-
-function UploadFailed({ onRetry }: { onRetry?: (() => void) | undefined }) {
-  return (
-    <View className="flex-row items-center gap-2 px-0.5">
-      <Text className="text-[12px] text-danger">Upload failed</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Retry upload"
-        onPress={onRetry}
-        className="rounded px-1 py-0.5 active:bg-surface-raised"
-      >
-        <Text className="text-[12px] font-semibold text-danger">Retry</Text>
-      </Pressable>
     </View>
   );
 }

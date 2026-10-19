@@ -8,13 +8,110 @@ import { TextField } from '@/components/ui/text-field';
 import type { HandleCheck } from '@/lib/directory-api';
 import { interruptFiber } from '@zilar/client-core';
 
-import { visibilityReasonText } from '@/components/chat/visibility-sheet';
-
 export type CreateVisibility = 'private' | 'public';
 
 export interface HandleCheckState {
   available: boolean;
   reason?: string | undefined;
+}
+
+export function visibilityReasonText(reason: string | undefined): string {
+  switch (reason) {
+    case 'invalid':
+      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
+    case 'reserved':
+      return 'That handle is reserved. Try another.';
+    case 'rate_limited':
+      return 'Too many checks — wait a little and try again.';
+    default:
+      return 'That handle is taken. Try another.';
+  }
+}
+
+export function VisibilityChoice({
+  value,
+  onChange,
+}: {
+  value: CreateVisibility;
+  onChange: (next: CreateVisibility) => void;
+}) {
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Visibility"
+      className="mt-3 flex-row gap-2"
+    >
+      {(
+        [
+          { value: 'private', label: 'Private' },
+          { value: 'public', label: 'Public' },
+        ] as const
+      ).map((option) => (
+        <Pressable
+          key={option.value}
+          accessibilityRole="radio"
+          accessibilityLabel={option.label}
+          accessibilityState={{ checked: value === option.value }}
+          onPress={() => onChange(option.value)}
+          className={`flex-1 items-center rounded-lg border px-3 py-2 active:opacity-80 ${
+            value === option.value ? 'border-accent bg-accent/10' : 'border-border-strong'
+          }`}
+        >
+          <Text
+            className={`text-[14px] ${
+              value === option.value ? 'font-medium text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {option.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+export function HandleCheckField({
+  handle,
+  onChange,
+  check,
+  checking,
+  editable,
+}: {
+  handle: string;
+  onChange: (next: string) => void;
+  check: HandleCheckState | null;
+  checking: boolean;
+  editable?: boolean | undefined;
+}) {
+  return (
+    <>
+      <Text className="mt-2 text-[14px] font-medium text-foreground">Handle</Text>
+      <TextField
+        value={handle}
+        onChangeText={onChange}
+        maxLength={32}
+        editable={editable}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="hiking_club"
+        accessibilityLabel="Group handle"
+        className="mt-1"
+      />
+      <View className="min-h-[20px]">
+        {checking ? (
+          <Text className="text-[14px] text-muted-foreground">Checking…</Text>
+        ) : check !== null ? (
+          check.available ? (
+            <Text className="text-[14px] text-muted-foreground">@{handle.trim()} is available</Text>
+          ) : (
+            <Text accessibilityRole="alert" className="text-[14px] text-danger">
+              {visibilityReasonText(check.reason)}
+            </Text>
+          )
+        ) : null}
+      </View>
+    </>
+  );
 }
 
 // Private is invite-only (default); Public asks for an `@handle` with a live availability check. Switching back to Private clears the check; the parent keeps the handle text.
@@ -38,73 +135,14 @@ export function VisibilityFields({
   const noun = kind === 'group' ? 'group' : 'channel';
   return (
     <>
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Visibility"
-        className="mt-3 flex-row gap-2"
-      >
-        {(
-          [
-            { value: 'private', label: 'Private' },
-            { value: 'public', label: 'Public' },
-          ] as const
-        ).map((option) => (
-          <Pressable
-            key={option.value}
-            accessibilityRole="radio"
-            accessibilityLabel={option.label}
-            accessibilityState={{ checked: visibility === option.value }}
-            onPress={() => onVisibility(option.value)}
-            className={`flex-1 items-center rounded-lg border px-3 py-2 active:opacity-80 ${
-              visibility === option.value ? 'border-accent bg-accent/10' : 'border-border-strong'
-            }`}
-          >
-            <Text
-              className={`text-[14px] ${
-                visibility === option.value
-                  ? 'font-medium text-foreground'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <VisibilityChoice value={visibility} onChange={onVisibility} />
       <Text className="mt-2 text-[13px] text-muted-foreground">
         {visibility === 'public'
           ? `Anyone can find and join this ${noun}.`
           : `Only invited people can join this ${noun}.`}
       </Text>
       {visibility === 'public' ? (
-        <>
-          <Text className="mt-2 text-[14px] font-medium text-foreground">Handle</Text>
-          <TextField
-            value={handle}
-            onChangeText={onHandle}
-            maxLength={32}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="hiking_club"
-            accessibilityLabel="Group handle"
-            className="mt-1"
-          />
-          <View className="min-h-[20px]">
-            {checking ? (
-              <Text className="text-[14px] text-muted-foreground">Checking…</Text>
-            ) : check !== null ? (
-              check.available ? (
-                <Text className="text-[14px] text-muted-foreground">
-                  @{handle.trim()} is available
-                </Text>
-              ) : (
-                <Text accessibilityRole="alert" className="text-[14px] text-danger">
-                  {visibilityReasonText(check.reason)}
-                </Text>
-              )
-            ) : null}
-          </View>
-        </>
+        <HandleCheckField handle={handle} onChange={onHandle} check={check} checking={checking} />
       ) : null}
     </>
   );
