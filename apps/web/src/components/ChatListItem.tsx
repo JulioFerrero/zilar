@@ -45,6 +45,23 @@ const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
   card: File,
 };
 
+export function chatRowPreview(
+  chat: ChatSummary,
+  currentUserId: string,
+  messages: readonly UiMessage[],
+  blocked: ReadonlySet<string>,
+): { prefix: string; body: string; KindIcon: LucideIcon | undefined } {
+  const preview = previewMessage(chat, messages, blocked, currentUserId);
+  const options = { isGroup: chat.kind === 'group', currentUserId };
+  const { prefix, body: rawBody, kind } = previewParts(preview, options);
+  // Only an incoming AI reply previews as Markdown; your own messages preview literally.
+  const body =
+    preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
+      ? markdownToPlain(rawBody)
+      : lightToPlain(rawBody);
+  return { prefix, body, KindIcon: kind === undefined ? undefined : PREVIEW_ICONS[kind] };
+}
+
 export const ChatListItem = memo(function ChatListItem({
   chat,
   selected,
@@ -64,15 +81,7 @@ export const ChatListItem = memo(function ChatListItem({
   const showDraft = !selected && composerDraft.trim().length > 0;
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
-  const preview = previewMessage(chat, messages, blockedJids, currentUserId);
-  const options = { isGroup: chat.kind === 'group', currentUserId };
-  const { prefix, body: rawBody, kind } = previewParts(preview, options);
-  const KindIcon = kind === undefined ? undefined : PREVIEW_ICONS[kind];
-  // Only an incoming AI reply previews as Markdown; your own messages preview literally.
-  const body =
-    preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
-      ? markdownToPlain(rawBody)
-      : lightToPlain(rawBody);
+  const { prefix, body, KindIcon } = chatRowPreview(chat, currentUserId, messages, blockedJids);
   const own = last !== undefined && last.senderId === currentUserId;
   const typing = typingLabel(chat, typingNames);
   const writing = chat.isAI && (hasDraft || typing !== undefined);

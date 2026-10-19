@@ -1,4 +1,3 @@
-import { handleSaveMessage } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
@@ -12,11 +11,18 @@ import {
   claimHandle as apiClaimHandle,
   type HandleCheck,
 } from '@/lib/api';
-import { fromApi, type ApiFailure, toApiFailure } from '@zilar/client-core';
+import { type ApiFailure, toApiFailure } from '@zilar/client-core';
 import { suggestHandle as suggestHandleFor } from '@zilar/protocol';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { dismissHandleGate } from '@/lib/handleGate';
+import {
+  checkHandleAvailability,
+  handleReasonText,
+  handleSaveError,
+  IDLE_AVAILABILITY,
+  type HandleAvailability,
+} from '@/components/settings/handleField';
 
 // Shared with the server, which is the authority.
 
@@ -37,31 +43,8 @@ function claimHandle(handle: string): Promise<{ handle: string }> {
   return passThrough(() => apiClaimHandle(handle));
 }
 
-type AvailabilityCheck =
-  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
-
-const IDLE_CHECK: AvailabilityCheck = { state: 'idle' };
-
-// The 300 ms sleep is the debounce; useQuery interrupts it when the input changes. A rate
-// limit shows its own text, any other failure shows nothing.
-const checkAvailability = (handle: string): Effect.Effect<AvailabilityCheck> =>
-  handle === ''
-    ? Effect.succeed(IDLE_CHECK)
-    : Effect.sleep(300).pipe(
-        Effect.andThen(fromApi(() => checkHandle(handle))),
-        Effect.map((result): AvailabilityCheck => ({
-          state: 'done',
-          available: result.available,
-          reason: result.reason,
-        })),
-        Effect.catchTag('ApiFailure', (failure) =>
-          Effect.succeed(
-            failure.code === 'rate_limited'
-              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
-              : IDLE_CHECK,
-          ),
-        ),
-      );
+const checkAvailability = (handle: string): Effect.Effect<HandleAvailability> =>
+  checkHandleAvailability(handle, checkHandle);
 
 class UsernameMissing extends Data.TaggedError('UsernameMissing') {}
 class SaveFailed extends Data.TaggedError('SaveFailed') {}
@@ -94,9 +77,9 @@ export function HandlePage() {
 
   // Debounced live availability: the 300 ms sleep is the debounce, interrupted on a new input.
   const [checkResult] = useQuery(() => checkAvailability(trimmed), [trimmed]);
-  const check: AvailabilityCheck = AsyncResult.isSuccess(checkResult)
+  const check: HandleAvailability = AsyncResult.isSuccess(checkResult)
     ? checkResult.value
-    : IDLE_CHECK;
+    : IDLE_AVAILABILITY;
 
   const next = (location.state as { next?: string } | null)?.next;
 
@@ -157,7 +140,7 @@ export function HandlePage() {
             (check.available ? (
               <span className="text-muted-foreground">@{trimmed} is available</span>
             ) : (
-              <span className="text-danger">{reasonText(check.reason)}</span>
+              <span className="text-danger">{handleReasonText(check.reason, 'username')}</span>
             ))}
         </div>
         {error !== undefined && (
@@ -182,37 +165,13 @@ export function HandlePage() {
   );
 }
 
-function reasonText(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'reserved':
-      return 'That username is reserved. Try another.';
-    case 'rate_limited':
-      return 'Too many checks — wait a little and try again.';
-    default:
-      return 'That username is taken. Try another.';
-  }
-}
-
 function friendlyError(error: ClaimFailure): string {
   switch (error._tag) {
     case 'UsernameMissing':
       return 'Choose a username';
     case 'SaveFailed':
       return 'Could not save your username. Try again.';
-    case 'ApiFailure': {
-      const next = error.detail.nextChangeAt;
-      return (
-        handleSaveMessage(
-          {
-            code: error.code,
-            message: error.message,
-            nextChangeAt: typeof next === 'string' ? next : undefined,
-          },
-          'username',
-        ) ?? error.message
-      );
-    }
+    case 'ApiFailure':
+      return handleSaveError(error, 'username') ?? error.message;
   }
 }

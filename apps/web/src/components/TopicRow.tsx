@@ -1,33 +1,16 @@
 import {
   formatListTime,
-  lightToPlain,
-  markdownToPlain,
-  previewBody,
-  previewKind,
-  previewPrefix,
-  shouldRenderMarkdown,
   topicActivityView,
   typingLabel,
   type ChatSummary,
-  type PreviewKind,
   type UiMessage,
-  previewMessage,
 } from '@zilar/chat-core';
-import {
-  File,
-  Image as ImageIcon,
-  Images,
-  Lock,
-  Mic,
-  Paperclip,
-  Pin,
-  VolumeX,
-  type LucideIcon,
-} from 'lucide-react';
+import { Lock, Pin, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { AiActivityMarks } from './topic/AiActivityMarks';
 import { RowActions } from './chatList/RowActions';
+import { chatRowPreview } from './ChatListItem';
 import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { useChatSelector } from '@/store/ChatStoreProvider';
@@ -38,32 +21,6 @@ import { Badge } from './ui/badge';
 
 const NO_MESSAGES: UiMessage[] = [];
 const NO_NAMES: string[] = [];
-
-const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
-  photo: ImageIcon,
-  album: Images,
-  voice: Mic,
-  file: Paperclip,
-  card: File,
-};
-
-function rowPreview(
-  chat: ChatSummary,
-  currentUserId: string,
-  messages: readonly UiMessage[],
-  blocked: ReadonlySet<string>,
-): { prefix: string; body: string; KindIcon: LucideIcon | undefined } {
-  const preview = previewMessage(chat, messages, blocked, currentUserId);
-  const options = { isGroup: chat.kind === 'group', currentUserId };
-  const prefix = previewPrefix(preview, options);
-  const rawBody = previewBody(preview);
-  const body =
-    preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
-      ? markdownToPlain(rawBody)
-      : lightToPlain(rawBody);
-  const kind = previewKind(preview);
-  return { prefix, body, KindIcon: kind === undefined ? undefined : PREVIEW_ICONS[kind] };
-}
 
 export function TopicRow({
   chat,
@@ -82,7 +39,7 @@ export function TopicRow({
   const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
-  const { prefix, body, KindIcon } = rowPreview(chat, currentUserId, messages, blockedJids);
+  const { prefix, body, KindIcon } = chatRowPreview(chat, currentUserId, messages, blockedJids);
   const own = last !== undefined && last.senderId === currentUserId;
   const typing = typingLabel(chat, typingNames);
   const writing = chat.isAI && (hasDraft || typing !== undefined);

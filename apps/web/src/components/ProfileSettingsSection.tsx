@@ -1,3 +1,10 @@
+import {
+  checkHandleAvailability,
+  handleReasonText,
+  handleSaveError,
+  IDLE_AVAILABILITY,
+  type HandleAvailability,
+} from './settings/handleField';
 import { AvatarUploader } from './AvatarUploader';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -7,36 +14,16 @@ import { copyText } from '@/lib/clipboard';
 import { isWaiting, useAction, failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { handleSaveMessage } from '@zilar/chat-core';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
 import { Effect, Data } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Download } from 'lucide-react';
 import { useState } from 'react';
 
-type HandleCheck =
-  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
-
-const IDLE_CHECK: HandleCheck = { state: 'idle' };
-
-const handleCheck = (value: string, ownHandle: boolean): Effect.Effect<HandleCheck> =>
+const handleCheck = (value: string, ownHandle: boolean): Effect.Effect<HandleAvailability> =>
   value === '' || ownHandle
-    ? Effect.succeed(IDLE_CHECK)
-    : Effect.sleep(300).pipe(
-        Effect.andThen(fromApi(() => checkHandle(value))),
-        Effect.map((result): HandleCheck => ({
-          state: 'done',
-          available: result.available,
-          reason: result.reason,
-        })),
-        Effect.catchTag('ApiFailure', (failure) =>
-          Effect.succeed(
-            failure.code === 'rate_limited'
-              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
-              : IDLE_CHECK,
-          ),
-        ),
-      );
+    ? Effect.succeed(IDLE_AVAILABILITY)
+    : checkHandleAvailability(value, checkHandle);
 
 function ProfilePictureSection() {
   const auth = useAuth();
@@ -213,7 +200,9 @@ export function ProfileSettingsSection() {
   }
 
   const [checkResult] = useQuery(() => handleCheck(trimmed, ownHandle), [trimmed, ownHandle]);
-  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
+  const check: HandleAvailability = AsyncResult.isSuccess(checkResult)
+    ? checkResult.value
+    : IDLE_AVAILABILITY;
 
   const [saveState, runSave] = useAction<
     { handle?: string | undefined; name?: string | undefined; bio?: string | undefined },
@@ -335,7 +324,7 @@ export function ProfileSettingsSection() {
               (check.available ? (
                 <span className="text-muted-foreground">@{trimmed} is available</span>
               ) : (
-                <span className="text-danger">{reasonText(check.reason)}</span>
+                <span className="text-danger">{handleReasonText(check.reason, 'username')}</span>
               ))}
           </div>
         </div>
@@ -383,32 +372,9 @@ export function ProfileSettingsSection() {
   );
 }
 
-function reasonText(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'reserved':
-      return 'That username is reserved. Try another.';
-    case 'rate_limited':
-      return 'Too many checks — wait a little and try again.';
-    default:
-      return 'That username is taken. Try another.';
-  }
-}
-
 function friendlyError(error: ApiFailure): string {
   if (error.code === 'unknown_error') {
     return 'Could not save your changes. Try again.';
   }
-  const next = error.detail.nextChangeAt;
-  return (
-    handleSaveMessage(
-      {
-        code: error.code,
-        message: error.message,
-        nextChangeAt: typeof next === 'string' ? next : undefined,
-      },
-      'username',
-    ) ?? error.message
-  );
+  return handleSaveError(error, 'username') ?? error.message;
 }

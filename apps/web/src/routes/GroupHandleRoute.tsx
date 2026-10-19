@@ -61,16 +61,24 @@ function lookupView(result: LookupState): LookupView {
 /** The /@handle share entry: a person or a public group. A public group opens a card with
  * Join; a 404 falls back to the Add contact dialog. Any other failure shows an error with
  * Retry, so an outage never prompts a stranger to send a request against a group handle. */
-export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }) {
+export function useShareEntry(atHandle: string | undefined) {
   const auth = useAuth();
   const params = useParams<{ handle?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
-
   // The real URL the visitor opened, recorded for the login return trip.
   const here = `${location.pathname}${location.search}`;
   const handle = atHandle ?? params.handle ?? '';
+  const close = (): void => {
+    setOpen(false);
+    navigate('/', { replace: true });
+  };
+  return { auth, here, handle, open, close };
+}
+
+export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }) {
+  const { auth, here, handle, open, close } = useShareEntry(atHandle);
 
   // Resolve the handle once the session is known; until then the view stays on checking.
   const [lookup, retryLookup] = useQuery(
@@ -93,11 +101,6 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
   if (auth.status === 'guest') {
     return <Navigate to="/login" replace state={{ from: here }} />;
   }
-
-  const close = (): void => {
-    setOpen(false);
-    navigate('/', { replace: true });
-  };
 
   if (!open) {
     return null;

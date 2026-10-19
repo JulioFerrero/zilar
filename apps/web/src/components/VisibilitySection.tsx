@@ -1,10 +1,9 @@
-import { handleSaveMessage } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
 import { ApiError, checkGroupHandle } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
-import { fromApi, toApiFailure, type ApiFailure } from '@zilar/client-core';
+import { toApiFailure, type ApiFailure } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -12,6 +11,13 @@ import { FieldError } from './ais/AiPageShell';
 import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from './ui/text-input';
+import {
+  checkHandleAvailability,
+  handleReasonText,
+  handleSaveError,
+  IDLE_AVAILABILITY,
+  type HandleAvailability,
+} from './settings/handleField';
 
 class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
 
@@ -25,33 +31,14 @@ function fromStore<A>(call: () => Promise<A>): Effect.Effect<A, ApiFailure | Sto
   });
 }
 
-type HandleCheck =
-  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
-
-const IDLE_CHECK: HandleCheck = { state: 'idle' };
-
 const visibilityCheck = (
   picked: 'private' | 'public',
   value: string,
   ownHandle: boolean,
-): Effect.Effect<HandleCheck> =>
-  picked !== 'public' || value === '' || ownHandle
-    ? Effect.succeed(IDLE_CHECK)
-    : Effect.sleep(300).pipe(
-        Effect.andThen(fromApi(() => checkGroupHandle(value))),
-        Effect.map((result): HandleCheck => ({
-          state: 'done',
-          available: result.available,
-          reason: result.reason,
-        })),
-        Effect.catchTag('ApiFailure', (failure) =>
-          Effect.succeed(
-            failure.code === 'rate_limited'
-              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
-              : IDLE_CHECK,
-          ),
-        ),
-      );
+): Effect.Effect<HandleAvailability> =>
+  picked !== 'public' || ownHandle
+    ? Effect.succeed(IDLE_AVAILABILITY)
+    : checkHandleAvailability(value, checkGroupHandle);
 
 /**
  * Public groups get an `@handle` in the Explore directory; a handle change is
@@ -96,7 +83,9 @@ export function VisibilitySection({
     () => visibilityCheck(picked, trimmed, ownHandle),
     [picked, trimmed, ownHandle],
   );
-  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
+  const check: HandleAvailability = AsyncResult.isSuccess(checkResult)
+    ? checkResult.value
+    : IDLE_AVAILABILITY;
 
   const [saveState, runSave] = useAction<void, void, ApiFailure | StoreFailed>(() =>
     fromStore(() =>
@@ -190,7 +179,7 @@ export function VisibilitySection({
                 (check.available ? (
                   <span className="text-muted-foreground">@{trimmed} is available</span>
                 ) : (
-                  <span className="text-danger">{reasonText(check.reason)}</span>
+                  <span className="text-danger">{handleReasonText(check.reason, 'handle')}</span>
                 ))}
             </div>
           </>
@@ -224,19 +213,6 @@ export function VisibilitySection({
   );
 }
 
-function reasonText(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'reserved':
-      return 'That handle is reserved. Try another.';
-    case 'rate_limited':
-      return 'Too many checks — wait a little and try again.';
-    default:
-      return 'That handle is taken. Try another.';
-  }
-}
-
 function friendlyError(error: ApiFailure | StoreFailed): string {
   if (error._tag === 'StoreFailed') {
     return error.message;
@@ -244,15 +220,5 @@ function friendlyError(error: ApiFailure | StoreFailed): string {
   if (error.code === 'unknown_error') {
     return 'Could not save the visibility. Try again.';
   }
-  const next = error.detail.nextChangeAt;
-  return (
-    handleSaveMessage(
-      {
-        code: error.code,
-        message: error.message,
-        nextChangeAt: typeof next === 'string' ? next : undefined,
-      },
-      'handle',
-    ) ?? error.message
-  );
+  return handleSaveError(error, 'handle') ?? error.message;
 }

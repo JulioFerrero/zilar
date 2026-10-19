@@ -2,7 +2,7 @@ import { BlockedPage } from './BlockedPage';
 import { ChatView } from './ChatView';
 import { ContactsPage } from './ContactsPage';
 import { DevicesPage } from './DevicesPage';
-import { GroupHandleRoute } from './GroupHandleRoute';
+import { GroupHandleRoute, useShareEntry } from './GroupHandleRoute';
 import { HandlePage } from './HandlePage';
 import { JoinPage } from './JoinPage';
 import { RequestsPage } from './RequestsPage';
@@ -42,15 +42,7 @@ import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } 
  * prefilled; logged out goes to login and returns to the real URL afterwards. */
 
 function AddContactRoute({ atHandle }: { atHandle?: string | undefined }) {
-  const auth = useAuth();
-  const params = useParams<{ handle?: string }>();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(true);
-
-  // The real URL the visitor opened, recorded for the login return trip.
-  const here = `${location.pathname}${location.search}`;
-  const handle = atHandle ?? params.handle ?? '';
+  const { auth, here, handle, open, close } = useShareEntry(atHandle);
 
   if (auth.status === 'loading') {
     return null;
@@ -58,11 +50,6 @@ function AddContactRoute({ atHandle }: { atHandle?: string | undefined }) {
   if (auth.status === 'guest') {
     return <Navigate to="/login" replace state={{ from: here }} />;
   }
-
-  const close = (): void => {
-    setOpen(false);
-    navigate('/', { replace: true });
-  };
 
   if (!open) {
     return null;

@@ -6,6 +6,12 @@ import { Dialog } from './ui/dialog';
 import { DialogStepper } from './ui/dialog-stepper';
 import { SearchField } from './ui/search-field';
 import { SegmentedControl } from './ui/segmented-control';
+import {
+  checkHandleAvailability,
+  handleReasonText,
+  IDLE_AVAILABILITY,
+  type HandleAvailability,
+} from './settings/handleField';
 import { TextArea, TextInput } from './ui/text-input';
 import { checkGroupHandle, type Contact } from '@/lib/api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
@@ -17,32 +23,13 @@ import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
-type HandleCheck =
-  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
-
-const IDLE_CHECK: HandleCheck = { state: 'idle' };
-
 const checkHandle = (
   visibility: 'private' | 'public',
   handle: string,
-): Effect.Effect<HandleCheck> =>
-  visibility !== 'public' || handle === ''
-    ? Effect.succeed(IDLE_CHECK)
-    : Effect.sleep(300).pipe(
-        Effect.andThen(fromApi(() => checkGroupHandle(handle))),
-        Effect.map((result): HandleCheck => ({
-          state: 'done',
-          available: result.available,
-          reason: result.reason,
-        })),
-        Effect.catchTag('ApiFailure', (failure) =>
-          Effect.succeed(
-            failure.code === 'rate_limited'
-              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
-              : IDLE_CHECK,
-          ),
-        ),
-      );
+): Effect.Effect<HandleAvailability> =>
+  visibility === 'public'
+    ? checkHandleAvailability(handle, checkGroupHandle)
+    : Effect.succeed(IDLE_AVAILABILITY);
 
 class NameMissing extends Data.TaggedError('NameMissing') {}
 class HandleMissing extends Data.TaggedError('HandleMissing') {}
@@ -143,7 +130,9 @@ export function NewGroupDialog({
     () => checkHandle(visibility, trimmedHandle),
     [visibility, trimmedHandle],
   );
-  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
+  const check: HandleAvailability = AsyncResult.isSuccess(checkResult)
+    ? checkResult.value
+    : IDLE_AVAILABILITY;
 
   const toggle = (userId: string): void => {
     setSelected((current) =>
@@ -329,7 +318,7 @@ export function NewGroupDialog({
                   (check.available ? (
                     <span className="text-muted-foreground">@{trimmedHandle} is available</span>
                   ) : (
-                    <span className="text-danger">{handleReasonText(check.reason)}</span>
+                    <span className="text-danger">{handleReasonText(check.reason, 'handle')}</span>
                   ))}
               </div>
               {!channel && (
@@ -353,19 +342,6 @@ export function NewGroupDialog({
   );
 }
 
-function handleReasonText(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid':
-      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-    case 'reserved':
-      return 'That handle is reserved. Try another.';
-    case 'rate_limited':
-      return 'Too many checks — wait a little and try again.';
-    default:
-      return 'That handle is taken. Try another.';
-  }
-}
-
 function createErrorText(failure: CreateFailure, channel: boolean): string {
   switch (failure._tag) {
     case 'NameMissing':
@@ -373,7 +349,7 @@ function createErrorText(failure: CreateFailure, channel: boolean): string {
     case 'HandleMissing':
       return 'Choose a handle for the public group.';
     case 'HandleRefused':
-      return handleReasonText(failure.reason);
+      return handleReasonText(failure.reason, 'handle');
     case 'ApiFailure':
       return friendlyCreateError(failure, channel);
   }
