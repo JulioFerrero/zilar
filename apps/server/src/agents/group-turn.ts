@@ -9,20 +9,14 @@ import { runToolLoop } from './tool-rounds';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import { sendGroupReply } from './turn-send';
-import {
-  actionOfCall,
-  executeToolCalls,
-  failureLogFields,
-  followUpMessages,
-  mapFailureToReply,
-  redactError,
-} from './tool-exec';
+import { actionOfCall, executeToolCalls, followUpMessages } from './tool-exec';
+import { finishTurnFailure } from './turn';
 import {
   ChatCompletionError,
   TRANSIENT_FAILURE_REPLY,
   requestCompletion,
+  type CompleteChatInput,
   type ExecuteToolCall,
-  type ModelRequestMessage,
   type TurnCaps,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
@@ -167,27 +161,6 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Tells the owner the real reason a room turn failed, best
-// effort. The room already heard `GROUP_FAILURE_REPLY`; a throw from the
-// callback is logged (ids only) and never fails the turn.
-async function reportFailure(
-  deps: GroupTurnDeps,
-  secrets: string[],
-  reason: string,
-): Promise<void> {
-  if (deps.onFailure === undefined) {
-    return;
-  }
-  try {
-    await deps.onFailure(reason);
-  } catch (error) {
-    deps.logger.warn(
-      { err: redactError(error, secrets), aiId: deps.aiId },
-      'AI failure notice failed',
-    );
-  }
-}
-
 export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
   // The model's own leading `@asker` is stripped; the name is still
@@ -250,10 +223,21 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     ...(deps.log === undefined ? {} : { log: deps.log }),
     ...(deps.signal === undefined ? {} : { signal: deps.signal }),
   };
+  const failTurn = (failure: { error?: unknown; reason?: string }, finishProgress = true) =>
+    finishTurnFailure(deps, secrets, {
+      ...failure,
+      text: GROUP_FAILURE_REPLY,
+      send: (text) => {
+        const outgoing = wire(text);
+        return deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
+      },
+      ...(deps.onFailure === undefined ? {} : { beforeSend: deps.onFailure }),
+      ...(finishProgress ? {} : { finishProgress: false }),
+    });
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
     if (deps.tools !== undefined && deps.tools.length > 0 && deps.executeTool !== undefined) {
-      return await runGroupToolTurn(deps, completionInput, secrets, wire);
+      return await runGroupToolTurn(deps, completionInput, secrets, wire, failTurn);
     }
     const first = await requestCompletion({
       ...completionInput,
@@ -289,22 +273,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       wire(second.content ?? TRANSIENT_FAILURE_REPLY, second.content !== null),
     );
   } catch (error) {
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    const reason = mapFailureToReply(error);
-    deps.log?.append('error', failureLogFields(error));
-    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    await reportFailure(deps, secrets, reason);
-    const outgoing = wire(GROUP_FAILURE_REPLY);
-    try {
-      await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
-    } catch (sendError) {
-      deps.logger.warn(
-        { err: redactError(sendError, secrets), aiId: deps.aiId },
-        'AI failure reply could not be sent',
-      );
-      return { kind: 'failed', text: '' };
-    }
-    return { kind: 'failed', text: outgoing.text };
+    return await failTurn({ error }, false);
   } finally {
     deps.sendTyping(deps.roomJid, 'groupchat', 'paused');
   }
@@ -312,17 +281,10 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
 
 async function runGroupToolTurn(
   deps: GroupTurnDeps,
-  completionInput: {
-    target: ModelTarget;
-    fetchImpl?: FetchLike;
-    timeoutMs?: number;
-    secrets?: readonly string[];
-    onUsage?: (usage: ChatUsage) => void;
-    log?: TurnLog;
-    signal?: AbortSignal;
-  },
+  completionInput: Omit<CompleteChatInput, 'messages'>,
   secrets: string[],
   wire: (text: string, withHandoff?: boolean) => { text: string; opts: SendMessageOptions },
+  failTurn: (failure: { error?: unknown; reason?: string }) => Promise<DmTurnOutcome>,
 ): Promise<DmTurnOutcome> {
   const tools = deps.tools ?? [];
   const maxRounds = deps.maxRounds ?? 1;
@@ -343,15 +305,7 @@ async function runGroupToolTurn(
           advertised.has(call.tool) || call.tool === TASK_STATUS_TOOL
             ? execute(call)
             : Promise.resolve({ content: 'invalid: unknown tool' });
-  let loop: {
-    text: string | null;
-    notices: string[];
-    failure: { reply: string } | null;
-    rounds: number;
-    toolCalls: number;
-    messages: ModelRequestMessage[];
-    postedToRoom: boolean;
-  };
+  let loop: Awaited<ReturnType<typeof runToolLoop>>;
   try {
     loop = await runToolLoop({
       aiId: deps.aiId,
@@ -372,20 +326,9 @@ async function runGroupToolTurn(
       ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    const failure = mapFailureToReply(error);
-    deps.log?.append('error', failureLogFields(error));
-    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    await finishProgressQuietly(deps, secrets, 'failed');
-    await reportFailure(deps, secrets, failure);
-    return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
+    return await failTurn({ error });
   }
-  if (loop.failure !== null) {
-    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    await finishProgressQuietly(deps, secrets, 'failed');
-    await reportFailure(deps, secrets, loop.failure.reply);
-    return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
-  }
+  if (loop.failure !== null) return await failTurn({ reason: loop.failure.reply });
   // A call already posted the answer into the room (a `blocks` card),
   // so the room gets no echo reply. The card still finishes `done`, exactly
   // like a normal reply would.
@@ -405,11 +348,7 @@ async function runGroupToolTurn(
       // A stop that landed while the gate was awaited wins over a budget trip:
       // the turn posts no reply and the card ends `stopped`.
       if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-      if (gate !== null && gate.limited) {
-        await finishProgressQuietly(deps, secrets, 'failed');
-        await reportFailure(deps, secrets, gate.reply);
-        return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
-      }
+      if (gate !== null && gate.limited) return await failTurn({ reason: gate.reply });
     }
     let text: string;
     let modelText = false;
@@ -427,13 +366,7 @@ async function runGroupToolTurn(
         modelText = true;
       }
     } catch (error) {
-      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-      const failure = mapFailureToReply(error);
-      deps.log?.append('error', failureLogFields(error));
-      deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-      await finishProgressQuietly(deps, secrets, 'failed');
-      await reportFailure(deps, secrets, failure);
-      return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
+      return await failTurn({ error });
     }
     if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     await finishProgressQuietly(deps, secrets, 'done');

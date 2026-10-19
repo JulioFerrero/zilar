@@ -1,32 +1,20 @@
 // effect-plain: the turn adapters stay Promise-shaped over the shared tool loop.
-import type { FetchLike } from '../ai/http';
-import type { ModelTarget } from '../ai/providers';
-import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import { cutShortSuffix } from './replies';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { sendReply } from './turn-send';
-import { failureLogFields, mapFailureToReply, redactError, actionOfCall } from './tool-exec';
-import { TRANSIENT_FAILURE_REPLY, requestCompletion, type ModelRequestMessage } from './tool-loop';
+import { actionOfCall } from './tool-exec';
+import { finishTurnFailure, type TurnFailure } from './turn';
+import { TRANSIENT_FAILURE_REPLY, requestCompletion, type CompleteChatInput } from './tool-loop';
 import { runToolLoop } from './tool-rounds';
 import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools/definitions';
-import type { TurnLog } from './log/append';
 
 export { runToolLoop } from './tool-rounds';
 
 export async function runToolTurn(
   deps: DmTurnDeps,
-  completionInput: {
-    target: ModelTarget;
-    fetchImpl?: FetchLike;
-    timeoutMs?: number;
-    secrets?: readonly string[];
-    onDelta?: (textSoFar: string) => void;
-    onUsage?: (usage: ChatUsage) => void;
-    log?: TurnLog;
-    signal?: AbortSignal;
-  },
+  completionInput: Omit<CompleteChatInput, 'messages' | 'tools' | 'maxTokens'>,
   secrets: string[],
   tools: ChatToolDefinition[],
 ): Promise<DmTurnOutcome> {
@@ -34,14 +22,13 @@ export async function runToolTurn(
   const nowMs = deps.nowMs ?? Date.now;
   const turnLogger = deps.turnLogger ?? { info: () => undefined };
   const maxRounds = deps.maxRounds ?? 1;
-  let loop: {
-    text: string | null;
-    notices: string[];
-    failure: { reply: string } | null;
-    rounds: number;
-    toolCalls: number;
-    messages: ModelRequestMessage[];
-  };
+  let loop: Awaited<ReturnType<typeof runToolLoop>>;
+  const withNotices = (reason: string): string => reason + loop.notices.join('');
+  const failTurn = (failure: Omit<TurnFailure, 'send'>) =>
+    finishTurnFailure(deps, secrets, {
+      ...failure,
+      send: (text) => deps.sendMessage(deps.ownerJid, 'chat', text),
+    });
   try {
     loop = await runToolLoop({
       aiId: deps.aiId,
@@ -62,43 +49,13 @@ export async function runToolTurn(
       ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
-    if (turnStopped(deps)) {
-      return await stoppedTurn(deps, secrets);
-    }
     // The loop throws only for an empty first reply or a failed model
     // call: the failure text goes out like any other model failure, with
     // no notices (none were earned yet).
-    const failure = mapFailureToReply(error);
-    deps.log?.append('error', failureLogFields(error));
-    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    await finishProgressQuietly(deps, secrets, 'failed');
-    try {
-      await deps.sendMessage(deps.ownerJid, 'chat', failure);
-    } catch (sendError) {
-      deps.logger.warn(
-        { err: redactError(sendError, secrets), aiId: deps.aiId },
-        'AI failure reply could not be sent',
-      );
-      return { kind: 'failed', text: '' };
-    }
-    return { kind: 'failed', text: failure };
+    return await failTurn({ error, text: (reason) => reason });
   }
   if (loop.failure !== null) {
-    if (turnStopped(deps)) {
-      return await stoppedTurn(deps, secrets);
-    }
-    await finishProgressQuietly(deps, secrets, 'failed');
-    const text = loop.failure.reply + loop.notices.join('');
-    try {
-      await deps.sendMessage(deps.ownerJid, 'chat', text);
-    } catch (sendError) {
-      deps.logger.warn(
-        { err: redactError(sendError, secrets), aiId: deps.aiId },
-        'AI failure reply could not be sent',
-      );
-      return { kind: 'failed', text: '' };
-    }
-    return { kind: 'failed', text };
+    return await failTurn({ reason: loop.failure.reply, text: withNotices });
   }
   if (loop.text === null) {
     // The caps stopped the loop with no text: one last call so the AI must
@@ -112,18 +69,7 @@ export async function runToolTurn(
         return await stoppedTurn(deps, secrets);
       }
       if (gate !== null && gate.limited) {
-        await finishProgressQuietly(deps, secrets, 'failed');
-        const text = gate.reply + loop.notices.join('');
-        try {
-          await deps.sendMessage(deps.ownerJid, 'chat', text);
-        } catch (sendError) {
-          deps.logger.warn(
-            { err: redactError(sendError, secrets), aiId: deps.aiId },
-            'AI failure reply could not be sent',
-          );
-          return { kind: 'failed', text: '' };
-        }
-        return { kind: 'failed', text };
+        return await failTurn({ reason: gate.reply, text: withNotices });
       }
     }
     let text: string;
@@ -139,24 +85,7 @@ export async function runToolTurn(
           ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
-      if (turnStopped(deps)) {
-        return await stoppedTurn(deps, secrets);
-      }
-      const failure = mapFailureToReply(error);
-      deps.log?.append('error', failureLogFields(error));
-      deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-      await finishProgressQuietly(deps, secrets, 'failed');
-      const text = failure + loop.notices.join('');
-      try {
-        await deps.sendMessage(deps.ownerJid, 'chat', text);
-      } catch (sendError) {
-        deps.logger.warn(
-          { err: redactError(sendError, secrets), aiId: deps.aiId },
-          'AI failure reply could not be sent',
-        );
-        return { kind: 'failed', text: '' };
-      }
-      return { kind: 'failed', text };
+      return await failTurn({ error, text: withNotices });
     }
     if (turnStopped(deps)) {
       return await stoppedTurn(deps, secrets);
