@@ -9,7 +9,7 @@ import { TextArea, TextInput } from '@/components/ui/text-input';
 import { ConnectionPicker, providerLabel } from './ConnectionPicker';
 import { FieldError } from './AiPageShell';
 
-function LimitsFields({
+export function AiLimitsFields({
   day,
   month,
   dayError,
@@ -134,33 +134,6 @@ export function AiFormFields({
         inputId="ai-panel-model"
       />
     </>
-  );
-}
-
-export function AiLimitsFields({
-  day,
-  month,
-  dayError,
-  monthError,
-  onDayChange,
-  onMonthChange,
-}: {
-  day: string;
-  month: string;
-  dayError: string;
-  monthError: string;
-  onDayChange: (value: string) => void;
-  onMonthChange: (value: string) => void;
-}) {
-  return (
-    <LimitsFields
-      day={day}
-      month={month}
-      dayError={dayError}
-      monthError={monthError}
-      onDayChange={onDayChange}
-      onMonthChange={onMonthChange}
-    />
   );
 }
 

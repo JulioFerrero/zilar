@@ -385,6 +385,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       ),
     );
   };
+  const openSearch = (): void => {
+    setPanel(undefined);
+    startChatSearch();
+  };
+  const openMedia = (): void => {
+    setPanel(undefined);
+    setMediaOpen(true);
+  };
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
   const { selectedIds, setSelectedIds, selection, forwardSelected } = useMessageSelection({
@@ -591,14 +599,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
             key={`group:${groupChat.id}`}
             chat={groupChat}
             onClose={() => setPanel(undefined)}
-            onSearch={() => {
-              setPanel(undefined);
-              startChatSearch();
-            }}
-            onOpenMedia={() => {
-              setPanel(undefined);
-              setMediaOpen(true);
-            }}
+            onSearch={openSearch}
+            onOpenMedia={openMedia}
           />
         )}
         {panel === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel' && (
@@ -612,14 +614,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
           <ChannelPanel
             chat={chat}
             onClose={() => setPanel(undefined)}
-            onSearch={() => {
-              setPanel(undefined);
-              startChatSearch();
-            }}
-            onOpenMedia={() => {
-              setPanel(undefined);
-              setMediaOpen(true);
-            }}
+            onSearch={openSearch}
+            onOpenMedia={openMedia}
           />
         )}
         {panel === 'contact' && contactChat !== undefined && (
@@ -627,14 +623,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
             key={`contact:${contactChat.id}`}
             chat={contactChat}
             onClose={() => setPanel(undefined)}
-            onSearch={() => {
-              setPanel(undefined);
-              startChatSearch();
-            }}
-            onOpenMedia={() => {
-              setPanel(undefined);
-              setMediaOpen(true);
-            }}
+            onSearch={openSearch}
+            onOpenMedia={openMedia}
           />
         )}
         {pinsPanel !== undefined && (

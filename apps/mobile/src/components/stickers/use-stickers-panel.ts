@@ -150,6 +150,12 @@ export function useStickersPanel() {
     }
   };
 
+  const releaseBusy = (): Effect.Effect<void> =>
+    Effect.sync(() => {
+      busyRef.current = false;
+      setBusyId(null);
+    });
+
   const run = (id: string, task: Effect.Effect<unknown, unknown>, fallback: string): void => {
     if (busyRef.current) {
       return;
@@ -164,12 +170,7 @@ export function useStickersPanel() {
             setActionError(fallback);
           }),
         ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            busyRef.current = false;
-            setBusyId(null);
-          }),
-        ),
+        Effect.ensuring(releaseBusy()),
       ),
     );
   };
@@ -225,12 +226,7 @@ export function useStickersPanel() {
             setConfirmError(REMOVE_MODAL_ERROR);
           }),
         ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            busyRef.current = false;
-            setBusyId(null);
-          }),
-        ),
+        Effect.ensuring(releaseBusy()),
       ),
     );
   };
@@ -258,12 +254,7 @@ export function useStickersPanel() {
             setActionError(REORDER_ERROR);
           }),
         ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            busyRef.current = false;
-            setBusyId(null);
-          }),
-        ),
+        Effect.ensuring(releaseBusy()),
       ),
     );
   };

@@ -189,6 +189,22 @@ export function TelegramImportSheet({
       </Button>
     ) : undefined;
 
+  const progress = (
+    <>
+      {busy ? (
+        <View accessibilityLiveRegion="polite" className="mt-3 flex-row items-center gap-2">
+          <ActivityIndicator color={ACCENT} />
+          <Text className="text-[13px] text-muted-foreground">This can take up to 30 seconds.</Text>
+        </View>
+      ) : null}
+      {error !== '' ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {error}
+        </Text>
+      ) : null}
+    </>
+  );
+
   return (
     <BottomSheet
       visible={visible}
@@ -241,19 +257,7 @@ export function TelegramImportSheet({
               Imported packs are for personal use. This pack stays private.
             </Text>
           </View>
-          {busy ? (
-            <View accessibilityLiveRegion="polite" className="mt-3 flex-row items-center gap-2">
-              <ActivityIndicator color={ACCENT} />
-              <Text className="text-[13px] text-muted-foreground">
-                This can take up to 30 seconds.
-              </Text>
-            </View>
-          ) : null}
-          {error !== '' ? (
-            <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-              {error}
-            </Text>
-          ) : null}
+          {progress}
         </View>
       ) : (
         <View>
@@ -289,19 +293,7 @@ export function TelegramImportSheet({
               the server. Its art belongs to its creators.
             </Text>
           </View>
-          {busy ? (
-            <View accessibilityLiveRegion="polite" className="mt-3 flex-row items-center gap-2">
-              <ActivityIndicator color={ACCENT} />
-              <Text className="text-[13px] text-muted-foreground">
-                This can take up to 30 seconds.
-              </Text>
-            </View>
-          ) : null}
-          {error !== '' ? (
-            <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-              {error}
-            </Text>
-          ) : null}
+          {progress}
         </View>
       )}
     </BottomSheet>

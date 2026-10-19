@@ -57,14 +57,10 @@ export interface SwitchModelResult {
   model: string;
 }
 
-// Re-targets a task's worker onto a new model: a fresh session in the same worktree,
-// so work so far is kept. Never edits the task file or git.
-export async function switchModel(
+function workerFor(
   task: string,
-  newModel: string,
-  extraRulesFile: string | undefined,
   deps: SwitchModelDeps,
-): Promise<SwitchModelResult> {
+): { previous: TaskRecord; worktree: string } {
   if (!/^T-\d+$/.test(task)) {
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
@@ -80,6 +76,18 @@ export async function switchModel(
   if (!fs.existsSync(worktree)) {
     throw new Error(`worktree is missing for ${task}: ${worktree}`);
   }
+  return { previous, worktree };
+}
+
+// Re-targets a task's worker onto a new model: a fresh session in the same worktree,
+// so work so far is kept. Never edits the task file or git.
+export async function switchModel(
+  task: string,
+  newModel: string,
+  extraRulesFile: string | undefined,
+  deps: SwitchModelDeps,
+): Promise<SwitchModelResult> {
+  const { previous, worktree } = workerFor(task, deps);
   assertAllowedModel(newModel);
   const model = splitModel(newModel);
   const { file, branch } = readTaskFrontMatter(worktree, task);
@@ -158,21 +166,7 @@ export async function switchModelInPlace(
   newModel: string,
   deps: SwitchModelDeps,
 ): Promise<SwitchModelResult> {
-  if (!/^T-\d+$/.test(task)) {
-    throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
-  }
-  const state = loadState(deps.statePath);
-  const previous = state.tasks[task];
-  if (previous === undefined) {
-    throw new Error(`unknown task ${task}: no session in the state file`);
-  }
-  if (previous.role !== 'worker') {
-    throw new Error(`task ${task} is a ${previous.role} session, not a worker`);
-  }
-  const worktree = worktreeFor(deps.repoRoot, task);
-  if (!fs.existsSync(worktree)) {
-    throw new Error(`worktree is missing for ${task}: ${worktree}`);
-  }
+  const { previous, worktree } = workerFor(task, deps);
   assertAllowedModel(newModel);
   const { model: frontMatterModel, effort } = readTaskFrontMatter(worktree, task);
   const variant = resolveWorkerVariant(frontMatterModel, effort, new Date(), isGoPaused());

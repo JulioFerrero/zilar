@@ -378,6 +378,29 @@ function previewUrl(message: UiMessage, text: string): string | undefined {
   return undefined;
 }
 
+function BubbleMeta({
+  message,
+  own,
+  generating,
+}: {
+  message: UiMessage;
+  own: boolean;
+  generating: boolean;
+}) {
+  return (
+    <MessageMeta
+      message={message}
+      showTicks={own && !generating}
+      edited={message.edited === true}
+      className={cn(
+        'float-right ml-1.5 translate-y-[4px]',
+        own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+        generating && 'invisible',
+      )}
+    />
+  );
+}
+
 // effect-plain: presentational text body.
 export function MessageTextBody({
   message,
@@ -407,16 +430,7 @@ export function MessageTextBody({
           </Suspense>
           <span className="md-tail">
             {generating && <DraftCaret />}
-            <MessageMeta
-              message={message}
-              showTicks={own && !generating}
-              edited={message.edited === true}
-              className={cn(
-                'float-right ml-1.5 translate-y-[4px]',
-                own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                generating && 'invisible',
-              )}
-            />
+            <BubbleMeta message={message} own={own} generating={generating} />
           </span>
         </div>
       )}
@@ -425,16 +439,7 @@ export function MessageTextBody({
         <p className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
           <LinkText text={text} mentions={message.mentions} meJid={meJid} formatted />
           {generating && <DraftCaret />}
-          <MessageMeta
-            message={message}
-            showTicks={own && !generating}
-            edited={message.edited === true}
-            className={cn(
-              'float-right ml-1.5 translate-y-[4px]',
-              own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-              generating && 'invisible',
-            )}
-          />
+          <BubbleMeta message={message} own={own} generating={generating} />
         </p>
       )}
 
@@ -464,6 +469,10 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | undefined>(undefined);
+  const openMenu = (): void => {
+    setMenuPoint(undefined);
+    setMenuOpen(true);
+  };
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
   const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
@@ -648,14 +657,7 @@ export const MessageBubble = memo(function MessageBubble({
             ) : (
               !generating &&
               !selecting && (
-                <MessageActionsButton
-                  buttonRef={menuButtonRef}
-                  open={menuOpen}
-                  onOpen={() => {
-                    setMenuPoint(undefined);
-                    setMenuOpen(true);
-                  }}
-                />
+                <MessageActionsButton buttonRef={menuButtonRef} open={menuOpen} onOpen={openMenu} />
               )
             )}
             {messageMenu}
@@ -742,10 +744,7 @@ export const MessageBubble = memo(function MessageBubble({
               <MessageActionsButton
                 buttonRef={menuButtonRef}
                 open={menuOpen}
-                onOpen={() => {
-                  setMenuPoint(undefined);
-                  setMenuOpen(true);
-                }}
+                onOpen={openMenu}
                 beside={bigEmoji ? (own ? 'left' : 'right') : undefined}
               />
             )}
