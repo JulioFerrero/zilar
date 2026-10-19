@@ -1,27 +1,15 @@
-import { runApi, type PublicAuditEntry as ContractAuditEntry } from '@zilar/api-contract';
+import { runApi, type PublicAuditEntry } from '@zilar/api-contract';
+import { makeAuditApi, type AuditApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 
-/**
- * Errors are the shared `ApiError`, so the section shows fixed sentences, never server text.
- */
+// Errors are the shared `ApiError`, so the section shows fixed sentences, never server text.
 
-export type PublicAuditEntry = ContractAuditEntry;
+export type { PublicAuditEntry };
+export type { AuditApi, ListAuditPage as AuditPage } from '@zilar/client-core';
 export type AuditResult = PublicAuditEntry['result'];
 export type AuditCost = NonNullable<PublicAuditEntry['cost']>;
-
-export interface AuditPage {
-  entries: PublicAuditEntry[];
-  next: string | null;
-}
-
-export interface AuditApi {
-  listAiAudit(aiId: string, before?: string): Promise<AuditPage>;
-  listGroupAudit(groupId: string, before?: string): Promise<AuditPage>;
-}
-
-export const AUDIT_PAGE_LIMIT = 20;
 
 export function createAuditApi(
   getToken: () => Promise<string | undefined>,
@@ -29,30 +17,5 @@ export function createAuditApi(
   apiUrl: string = API_URL,
 ): AuditApi {
   const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  return {
-    async listAiAudit(aiId, before) {
-      const page = await runApi(
-        client.audit.list({
-          query: {
-            aiId,
-            limit: AUDIT_PAGE_LIMIT,
-            ...(before === undefined || before === '' ? {} : { before }),
-          },
-        }),
-      );
-      return { entries: [...page.entries], next: page.next };
-    },
-    async listGroupAudit(groupId, before) {
-      const page = await runApi(
-        client.audit.list({
-          query: {
-            groupId,
-            limit: AUDIT_PAGE_LIMIT,
-            ...(before === undefined || before === '' ? {} : { before }),
-          },
-        }),
-      );
-      return { entries: [...page.entries], next: page.next };
-    },
-  };
+  return makeAuditApi((call) => runApi(call(client)));
 }

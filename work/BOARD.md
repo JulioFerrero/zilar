@@ -2128,3 +2128,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2127](T-2127-dead-code-web-packages.md) | clean-up: dead exports, stale paths, test helpers | 2026-10-19 |
 | [T-2128](T-2128-turn-failure-tail.md) | AI turns: one failure and stop tail for DM and group | 2026-10-19 |
 | [T-2129](T-2129-server-deps-mount.md) | server: one core deps type and one API mount helper | 2026-10-19 |
+| [T-2131](T-2131-api-settings.md) | share: one settings API (integrations, audit, machines) | 2026-10-19 |

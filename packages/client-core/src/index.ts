@@ -35,6 +35,7 @@ export {
   type OnForeground,
 } from './foreground-hooks';
 export * from './chat-extras-api';
+export * from './settings-api';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
   makeTopicsApi,

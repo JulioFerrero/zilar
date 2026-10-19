@@ -6,114 +6,28 @@ import {
   type IntegrationsStatus,
   type PublicAuditEntry,
 } from '@zilar/api-contract';
+import { makeAuditApi, makeIntegrationsApi } from '@zilar/client-core';
 import { struct } from '@zilar/protocol';
 import { callApi } from '@/lib/effect/api-client';
 import { request, uploadBytes } from './http';
 
-// The Telegram bot token and the sign-in mail key are never returned, not even masked;
-// only configured and source say whether one is set.
+// Bot tokens and mail keys are never returned; only configured and source say whether one is set.
+export type { IntegrationsStatus, PublicAuditEntry };
+export type { AuditScope, ListAuditInput, ListAuditPage } from '@zilar/client-core';
+export type { SaveEmailSettingsInput, SaveVoiceTranscriptionInput } from '@zilar/client-core';
 
-// The contract encodes the trimmed form, so secrets are trimmed before sending.
-export type { IntegrationsStatus };
+export const {
+  getIntegrationsStatus,
+  getVoiceTranscriptionStatus,
+  getVoiceTranscript,
+  removeTelegramBotToken,
+  removeVoiceTranscriptionSettings,
+  saveEmailSettings,
+  saveTelegramBotToken,
+  saveVoiceTranscriptionSettings,
+} = makeIntegrationsApi(callApi);
 
-export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
-  return callApi((client) => client.integrations.status());
-}
-
-export async function saveTelegramBotToken(botToken: string): Promise<void> {
-  await callApi((client) =>
-    client.integrations.setTelegram({ payload: { botToken: botToken.trim() } }),
-  );
-}
-
-export async function removeTelegramBotToken(): Promise<void> {
-  await callApi((client) => client.integrations.removeTelegram());
-}
-
-export interface SaveEmailSettingsInput {
-  from: string;
-  resendApiKey?: string | undefined;
-}
-
-export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<void> {
-  const from = input.from.trim();
-  await callApi((client) =>
-    client.integrations.setEmail({
-      payload:
-        input.resendApiKey === undefined
-          ? { from }
-          : { from, resendApiKey: input.resendApiKey.trim() },
-    }),
-  );
-}
-
-// Transcription is off by default and configured by the server owner; the web offers it only
-// while the server says it is enabled.
-export interface SaveVoiceTranscriptionInput {
-  baseUrl: string;
-  apiKey?: string | undefined;
-  model?: string | undefined;
-}
-
-export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
-  return callApi((client) => client.voiceTranscription.status());
-}
-
-export function getVoiceTranscript(url: string): Promise<{ text: string }> {
-  return callApi((client) => client.voiceTranscription.transcript({ payload: { url } }));
-}
-
-export async function saveVoiceTranscriptionSettings(
-  input: SaveVoiceTranscriptionInput,
-): Promise<void> {
-  await callApi((client) =>
-    client.voiceTranscription.setSettings({
-      payload: {
-        baseUrl: input.baseUrl,
-        ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
-        ...(input.model === undefined ? {} : { model: input.model }),
-      },
-    }),
-  );
-}
-
-export async function removeVoiceTranscriptionSettings(): Promise<void> {
-  await callApi((client) => client.voiceTranscription.removeSettings());
-}
-
-export type { PublicAuditEntry };
-
-export interface ListAuditPage {
-  entries: PublicAuditEntry[];
-  next: string | null;
-}
-
-// The server answers exactly one of ?aiId= or ?groupId= and 400 otherwise; the union makes
-// both or neither a compile error.
-export type AuditScope =
-  { aiId: string; groupId?: undefined } | { groupId: string; aiId?: undefined };
-
-export type ListAuditInput = AuditScope & {
-  limit?: number;
-  before?: string;
-};
-
-export async function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
-  const page = await callApi((client) =>
-    client.audit.list({
-      query: {
-        ...('aiId' in input && input.aiId !== undefined
-          ? { aiId: input.aiId }
-          : 'groupId' in input && input.groupId !== undefined
-            ? { groupId: input.groupId }
-            : {}),
-        ...(input.limit === undefined ? {} : { limit: input.limit }),
-        ...(input.before === undefined || input.before === '' ? {} : { before: input.before }),
-      },
-    }),
-  );
-  return { entries: [...page.entries], next: page.next };
-}
+export const { listAudit } = makeAuditApi(callApi);
 
 // A fresh server's first visitor finishes setup (Resend key + admin email) and becomes the
 // first admin. The invite code stays in memory (never storage, URL or logs).

@@ -1,28 +1,19 @@
 import { Schema } from 'effect';
 import { runApi } from '@zilar/api-contract';
-import type { Machine, MachineStatus, PairingCode } from '@zilar/api-contract';
+import { makeMachinesApi, type MachinesApi as SharedMachinesApi } from '@zilar/client-core';
 import { struct } from '@zilar/protocol';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 import { rawRequest } from './effect/raw-request';
 
-/**
- * `setAiMachine` stays hand-written: the AI's home machine is a separate route on purpose, not part of the general PATCH.
- */
+// The AI's home machine is a separate route on purpose, not part of the general PATCH.
 
-export type { Machine, MachineStatus, PairingCode };
+export type { Machine, MachineStatus, PairingCode } from '@zilar/api-contract';
 
-export interface MachinesApi {
-  listMachines(): Promise<Machine[]>;
-  createPairingCode(): Promise<PairingCode>;
-  approveMachine(id: string): Promise<Machine>;
-  denyMachine(id: string): Promise<void>;
-  revokeMachine(id: string): Promise<Machine>;
-  renameMachine(id: string, name: string): Promise<Machine>;
-  deleteMachine(id: string): Promise<void>;
+export type MachinesApi = SharedMachinesApi & {
   setAiMachine(aiId: string, machineId: string | null): Promise<string | null>;
-}
+};
 
 const MachineIdSchema = struct({
   machineId: Schema.NullOr(Schema.String),
@@ -36,14 +27,7 @@ export function createMachinesApi(
   const transport = { getToken, fetchImpl, apiUrl };
   const client = createApiClient(transport);
   return {
-    listMachines: () => runApi(client.machines.list()).then((rows) => [...rows]),
-    createPairingCode: () => runApi(client.machines.createPairingCode()),
-    approveMachine: (id) => runApi(client.machines.approve({ params: { id } })),
-    denyMachine: (id) => runApi(client.machines.deny({ params: { id } })),
-    revokeMachine: (id) => runApi(client.machines.revoke({ params: { id } })),
-    renameMachine: (id, name) =>
-      runApi(client.machines.rename({ params: { id }, payload: { name: name.trim() } })),
-    deleteMachine: (id) => runApi(client.machines.remove({ params: { id } })),
+    ...makeMachinesApi((call) => runApi(call(client))),
     setAiMachine: async (aiId, machineId) => {
       const parsed = await rawRequest(
         transport,

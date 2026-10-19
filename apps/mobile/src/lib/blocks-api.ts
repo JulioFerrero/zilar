@@ -1,14 +1,11 @@
-import { Exit, Schema } from 'effect';
-import { ApiError, runApi, type BlocksRespondPayload } from '@zilar/api-contract';
-import { BlocksDataSchema, type BlocksData } from '@zilar/protocol';
+import { runApi } from '@zilar/api-contract';
+import { makeBlocksApi } from '@zilar/client-core';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
 import { getSessionToken } from './session-token';
 
-/**
- * The card comes back as opaque data; a failed decode rejects as `invalid_response`.
- */
+// A failed decode rejects as `invalid_response`; the card itself is opaque data.
 
 let client: ReturnType<typeof createApiClient> | undefined;
 
@@ -17,19 +14,6 @@ function blocksClient(): ReturnType<typeof createApiClient> {
   return client;
 }
 
-export async function respondToBlock(payload: BlocksRespondPayload): Promise<BlocksData> {
-  const { data } = await runApi(blocksClient()['message-blocks'].respond({ payload }));
-  const decoded = Schema.decodeUnknownExit(BlocksDataSchema)(data);
-  if (Exit.isFailure(decoded)) {
-    throw new ApiError(200, 'invalid_response', 'The server sent an unexpected response');
-  }
-  return decoded.value;
-}
+const api = makeBlocksApi((call) => runApi(call(blocksClient())));
 
-/**
- * A poll starts from them after a reload, so a re-vote never drops an earlier option.
- */
-export async function myBlockPicks(messageId: string): Promise<Record<string, readonly string[]>> {
-  const { picks } = await runApi(blocksClient()['message-blocks'].mine({ query: { messageId } }));
-  return picks;
-}
+export const { myBlockPicks, respondToBlock } = api;
