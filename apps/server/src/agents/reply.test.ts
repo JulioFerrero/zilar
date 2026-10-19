@@ -2,21 +2,25 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import { runDmTurn } from './dm-turn';
-import { runToolLoop } from './dm-tool-turn';
-import { CONTEXT_TOO_LONG_REPLY, MODEL_NOT_FOUND_REPLY, RATE_LIMITED_REPLY } from './replies';
+import {
+  CONTEXT_TOO_LONG_REPLY,
+  MODEL_NOT_FOUND_REPLY,
+  RATE_LIMITED_REPLY,
+  BUDGET_EXCEEDED_REPLY,
+  PROVIDER_KEY_REJECTED_REPLY,
+  TRANSIENT_FAILURE_REPLY,
+} from './replies';
 // The barrel does not re-export `redactError` or `requestCompletion`;
 // importing them here keeps this task to tests with no barrel change.
 import { redactError, mapFailureToReply } from './tool-exec';
 import {
   requestCompletion,
-  BUDGET_EXCEEDED_REPLY,
   ChatCompletionError,
-  PROVIDER_KEY_REJECTED_REPLY,
   TOOL_TURN_MAX_CALLS,
-  TRANSIENT_FAILURE_REPLY,
   type ExecuteToolCall,
   type ModelRequestMessage,
 } from './tool-loop';
+import { runToolLoop } from './tool-rounds';
 
 const TARGET: ModelTarget = {
   provider: 'deepseek',

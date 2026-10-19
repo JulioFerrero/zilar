@@ -3,10 +3,10 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { ExecuteRoutineOptions, ExecuteRoutinePorts } from './execute';
 import { markOk, markSkipped, recordFailure } from './outcomes';
+import { type RoutineRow } from '../db/rows-agents';
 
 export type PromptRunOutcome =
   'replied' | 'failed' | 'stopped' | 'limited' | 'offline' | 'not_in_room';

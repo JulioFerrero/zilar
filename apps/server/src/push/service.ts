@@ -55,5 +55,3 @@ export class SendFailed extends Data.TaggedError('SendFailed')<{
   /** The short reason stored with `failedAt`; see `pushFailureReason`. */
   readonly reason: string;
 }> {}
-
-export { handleIncomingPush } from './delivery';

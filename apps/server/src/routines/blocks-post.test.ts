@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import { Schema } from 'effect';
 import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
 import { outputJsonSchema } from '../sandbox/run-tool';
 import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { postResult } from './outcomes';
+import { type RoutineRow } from '../db/rows-agents';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 

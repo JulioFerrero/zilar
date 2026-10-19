@@ -4,11 +4,11 @@ import type { ActiveAiForGateway } from '../../ais/queries';
 import type { ServerDatabase } from '../../db/client';
 import type { TopicMemberRow } from '../../db/rows';
 import { runSql } from '../../effect/sql';
-import type { GroupRole } from '../../groups/service';
-import { topicRoleHolderIds } from '../../roles/service';
 import { allowedTopicAiIds } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { normBareJid } from '../context';
+import { type GroupRole } from '../../groups/schemas';
+import { topicRoleHolderIds } from '../../roles/access';
 
 interface OwnerNameRow {
   name: string;

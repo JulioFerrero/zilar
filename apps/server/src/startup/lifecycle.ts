@@ -1,10 +1,10 @@
 import { Cause, Effect, Exit, Fiber, Runtime } from 'effect';
 import type { Logger } from 'pino';
-import type { AgentGateway } from '../agents/gateway';
 import type { ServerDatabase } from '../db/client';
 import { disposeSqlRuntime } from '../effect/sql';
 import { markDraining } from '../health';
 import type { LeaderLock } from '../leader/lock';
+import { type AgentGateway } from '../agents/gateway/contracts';
 
 // How long open connections (SSE streams) get before they are closed, and when a stuck
 // shutdown gives up and exits.

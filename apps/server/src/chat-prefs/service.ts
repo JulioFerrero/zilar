@@ -9,8 +9,6 @@ import type { BackgroundFieldsInput, GroupBackground } from '../groups/schemas';
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
 
-export { CHAT_BACKGROUND_PRESET_IDS } from '@zilar/api-contract';
-
 export type { ChatPrefRow };
 
 export interface ChatPrefView extends GroupBackground {
@@ -233,9 +231,6 @@ export async function getChatBackgroundDefault(
   );
   return row ?? { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
 }
-
-export { requireChatAccess } from './access';
-export type { ChatAccess } from './access';
 
 export async function putChatBackgroundDefault(
   db: ServerDatabase,

@@ -3,10 +3,11 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import type { ChatUsage, ModelTarget } from '../ai/model-client';
+import type { ChatUsage } from '../ai/model-client';
 import { runDmTurn } from './dm-turn';
 import type { ChatToolDefinition } from '../ai/model-client';
 import type { ExecuteToolCall } from './tool-loop';
+import { type ModelTarget } from '../ai/providers';
 
 const API_KEY = 'sk-fake-provider-key';
 

@@ -262,27 +262,3 @@ export async function createGroup(
   await inviteNewMembers(adminClient, roomLocalpart, memberIds, input.domain, input.logger);
   return detail;
 }
-
-export { MAX_GROUP_MEMBERS, ROOM_LOCALPART_LENGTH } from './schemas';
-export type {
-  AddGroupAiInput,
-  AddGroupMembersInput,
-  ChangeMemberRoleInput,
-  ChannelKind,
-  ChatGroup,
-  CreateGroupInput,
-  GroupAiView,
-  GroupBackground,
-  GroupDetail,
-  GroupListenerEagerness,
-  GroupMemberView,
-  GroupRole,
-  InviteLogger,
-  PatchGroupInput,
-  RemoveGroupAiInput,
-  RemoveGroupMemberInput,
-} from './schemas';
-export { getGroupDetail, getMembership, listGroupsForUser, listMembersForViewer } from './queries';
-export { addGroupMembers, removeGroupMember } from './members';
-export { changeMemberRole, syncChannelVoice } from './member-roles';
-export { addGroupAi, removeGroupAi } from './ais';

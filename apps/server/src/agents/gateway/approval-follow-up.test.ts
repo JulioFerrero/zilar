@@ -4,10 +4,10 @@
 import type { XmppCore } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
-import type { ApprovalRow } from '../../db/rows';
 import type { AiSession } from './contracts';
 import { createApprovalFollowUp, type ApprovalFollowUpDeps } from '../gateway';
 import { createOnDecided } from './approval-on-decided';
+import { type ApprovalRow } from '../../db/rows-agents';
 
 const DOMAIN = 'zilar.localhost';
 const ROOM_JID = 't1@rooms.zilar.localhost';

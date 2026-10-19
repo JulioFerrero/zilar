@@ -2,8 +2,8 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import type { BlockCardInsert, BlockCardRow, BlockResponseRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { type BlockCardInsert, type BlockCardRow, type BlockResponseRow } from '../db/rows-agents';
 
 // Card storage: one row per card and one per interaction. The pure merge lives
 // in `apply.ts`.

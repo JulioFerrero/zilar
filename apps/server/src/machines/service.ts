@@ -77,7 +77,6 @@ export const MAX_PAIRING_CODES_PER_USER = 5;
 export const MAX_MACHINES_PER_USER = 20;
 export const MAX_PENDING_MACHINES_PER_USER = 5;
 
-export type { MachineRow } from '../db/rows';
 export type MachineStatus = 'pending' | 'approved' | 'revoked';
 
 // Routes map this to 409 with a stable code; missing or foreign machines return
@@ -91,20 +90,6 @@ export class MachineServiceError extends Error {
     this.errorCode = errorCode;
   }
 }
-
-export { fingerprintOfPublicKey, verifyPairingSignature } from './crypto';
-export {
-  approveMachine,
-  countMachines,
-  countPendingMachines,
-  deleteMachine,
-  denyMachine,
-  findOwnedMachine,
-  listApprovedMachineKeys,
-  listMachines,
-  renameMachine,
-  revokeMachine,
-} from './machines';
 
 export async function createPairingCode(
   db: ServerDatabase,

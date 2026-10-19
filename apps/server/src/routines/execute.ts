@@ -3,11 +3,9 @@ import { SqlClient } from 'effect/sql';
 import { type Payload, BlocksDataSchema, type BlocksData } from '@zilar/protocol';
 import { type AuditRecorder } from '../audit/recorder';
 import { type ServerDatabase } from '../db/client';
-import { type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { type CorrectCardInput } from '../message-blocks/respond';
 import { fieldOf } from '../message-blocks/apply';
-import { runToolVersion, ToolServiceError } from '../tools/service';
 import { isSubsetOf } from '../tools/adapter-support';
 import { type ToolRunner } from '../tools/types';
 import { executePromptRoutine, type PromptRunner } from './execute-prompt';
@@ -23,6 +21,9 @@ import { type TopicRow, allowedTopicAiIds } from '../topics/access';
 import { findCard, saveCardData } from '../message-blocks/cards';
 import { describeSchedule } from '../tools/routine-adapters';
 import { parseRoutineSchedule } from './schedule';
+import { type RoutineRow } from '../db/rows-agents';
+import { runToolVersion } from '../tools/runner';
+import { ToolServiceError } from '../tools/queries';
 // The alert block's `note` is `ShortText` (`MAX_SHORT`).
 const MAX_NOTE_CHARS = 40;
 
@@ -190,12 +191,6 @@ function alertVerdict(input: unknown, data: unknown): AlertVerdict {
   return value >= threshold ? { kind: 'post', value } : { kind: 'quiet', value };
 }
 
-export {
-  FAILURE_PAUSE_NOTICE,
-  HOSTS_CHANGED_NOTICE,
-  MAX_CONSECUTIVE_FAILURES,
-  MAX_POST_TEXT_CHARS,
-} from './outcomes';
 export type { RoutineRow };
 
 interface AiStatusRow {

@@ -23,7 +23,7 @@ import {
   type RemoveGroupAiInput,
   type InviteLogger,
 } from './schemas';
-import { topicRoleHolderIds } from '../roles/service';
+import { topicRoleHolderIds } from '../roles/access';
 // A group whose topic-room sync failed is retried every minute until the
 // rooms match the database again, archived rooms included, so a failed
 // removal leaves nothing stale. Idempotent, in-memory: a restart drops the

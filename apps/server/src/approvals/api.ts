@@ -10,21 +10,12 @@ import {
 import type { ServerCore } from '../app/deps';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { ApprovalRuleRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EffectApiMount } from '../effect/http-core';
 import { handler, mountApi, schemaErrorLayerFor, sessionLayer } from '../effect/http-core';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
-import {
-  ApprovalServiceError,
-  approverNamesForTopics,
-  decideApproval,
-  getDecidableApproval,
-  listDecidableApprovals,
-  toPublicApproval,
-  type AlwaysEligiblePredicate,
-} from './service';
+import { decideApproval } from './service';
 import {
   listActiveRulesForAi,
   listActiveRulesForTopic,
@@ -33,6 +24,14 @@ import {
   type PublicApprovalRule,
 } from './rules';
 import { isGroupManager } from '../groups/access';
+import { type ApprovalRuleRow } from '../db/rows-agents';
+import { ApprovalServiceError, type AlwaysEligiblePredicate } from './schemas';
+import {
+  approverNamesForTopics,
+  getDecidableApproval,
+  listDecidableApprovals,
+  toPublicApproval,
+} from './queries';
 
 // The minimum slice of pino the route needs; tests can pass a captor.
 export interface ApprovalsRouteLogger {

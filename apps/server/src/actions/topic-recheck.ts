@@ -2,11 +2,11 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { PendingActionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { errorName } from '../effect/error-utils';
 import { cancelPending } from './queries';
 import { buildRegistry } from './registry';
+import { type PendingActionRow } from '../db/rows-agents';
 
 // An AI that left a group or topic must not have a waiting action fire later, even if a path decides it without a re-check.
 export interface PendingActionScope {

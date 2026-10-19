@@ -7,15 +7,6 @@ import type { ChatFolderRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
-export {
-  FOLDER_CHATS_MAX,
-  FOLDER_CHAT_TYPES,
-  FOLDER_ICONS,
-  FOLDER_NAME_MAX,
-  type FolderChatType,
-  type FolderIcon,
-} from '@zilar/api-contract';
-
 export const FOLDERS_MAX = 20;
 
 export type { ChatFolderRow };

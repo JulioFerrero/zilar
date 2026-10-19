@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRow, AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { PublicTool, PublicToolVersion, ToolDetail, ToolVersionDetail } from './service';
+import { type AiToolRow, type AiToolRunRow, type AiToolVersionRow } from '../db/rows-agents';
 
 function toPublicTool(
   tool: AiToolRow,

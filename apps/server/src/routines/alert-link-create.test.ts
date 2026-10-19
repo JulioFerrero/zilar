@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { createPromptRoutine } from '../tools/routine-adapters';
+import { type RoutineRow } from '../db/rows-agents';
 
 // T-1870: the alert card block that drives a routine is written in the same
 // INSERT that creates it, and one live block never creates a second routine.

@@ -8,7 +8,8 @@ import {
   rekeyQuestionMessage,
 } from '../../questions/service';
 import { normBareJid } from '../context';
-import { errorName, isAiSender, type AiSession, type GatewayLogger } from './contracts';
+import { isAiSender, type AiSession, type GatewayLogger } from './contracts';
+import { errorName } from '../../effect/error-utils';
 
 // The stored answer is bounded, like every other stored question text.
 const MAX_ANSWER_LENGTH = 200;

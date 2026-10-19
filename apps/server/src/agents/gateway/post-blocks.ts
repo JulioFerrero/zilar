@@ -6,8 +6,9 @@ import type { RecordCardInput } from '../../message-blocks/cards';
 import { mediaIdsOf } from '../../message-blocks/media-ids';
 import { POST_BLOCKS_TOOL } from '../tools/schemas';
 import type { ToolExecution } from '../tool-loop';
-import { errorName, type AiSession, type GatewayLogger } from './contracts';
+import { type AiSession, type GatewayLogger } from './contracts';
 import type { createLiveSession } from './live';
+import { errorName } from '../../effect/error-utils';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 

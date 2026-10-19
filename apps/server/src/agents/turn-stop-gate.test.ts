@@ -1,11 +1,11 @@
 // T-1422: a stop that lands while a turn awaits its budget gate must win over
 // the gate's failure reply: the turn stays quiet and its card ends `stopped`.
 import { describe, expect, it } from 'vitest';
-import type { ModelTarget } from '../ai/model-client';
 import { runDmTurn } from './dm-turn';
 import { runGroupTurn } from './group-turn';
 import type { ExecuteToolCall } from './tool-loop';
 import type { ChatToolDefinition } from '../ai/model-client';
+import { type ModelTarget } from '../ai/providers';
 
 const RECALL_TOOL: ChatToolDefinition = {
   type: 'function',

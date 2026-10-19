@@ -1,13 +1,14 @@
 import { Effect } from 'effect';
 import type { Question } from '@zilar/protocol';
 import type { ServerDatabase } from '../../db/client';
-import type { AiQuestionRow } from '../../db/rows';
 import { HttpError } from '../../errors';
 import { createQuestion, expireQuestion, setQuestionMessageId } from '../../questions/service';
 import { ASK_PEOPLE_TOOL } from '../tools/schemas';
 import type { ToolExecution } from '../tool-loop';
-import { errorName, type AiSession, type GatewayLogger } from './contracts';
+import { type AiSession, type GatewayLogger } from './contracts';
 import type { createLiveSession } from './live';
+import { type AiQuestionRow } from '../../db/rows-agents';
+import { errorName } from '../../effect/error-utils';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 

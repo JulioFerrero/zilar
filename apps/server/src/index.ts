@@ -1,4 +1,5 @@
 import { NodeRuntime } from '@effect/platform-node';
-import { serverProgram, serverTeardown } from './main';
+import { serverProgram } from './main';
+import { serverTeardown } from './startup/lifecycle';
 
 NodeRuntime.runMain(serverProgram, { teardown: serverTeardown });

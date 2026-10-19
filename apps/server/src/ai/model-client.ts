@@ -227,7 +227,6 @@ export function chatErrorFromAiError(
     redactSecrets(detailOf(error.reason), secrets),
   );
 }
-export type { ModelTarget } from './providers';
 
 export const MODEL_CHAT_TIMEOUT_MS = 90_000;
 

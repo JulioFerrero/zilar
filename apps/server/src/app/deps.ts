@@ -5,7 +5,6 @@ import type { AiLogger } from '../ais/persona';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerConfig } from '../config/load';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { AlwaysEligiblePredicate } from '../approvals/service';
 import type { Auth } from '../auth/auth';
 import type { CurrentMailer } from '../auth/mailer';
 import type { ConnectionsLogger } from '../connections/api';
@@ -19,6 +18,7 @@ import type { SearchRoutesDependencies } from '../search/api';
 import type { SetupApiDependencies } from '../setup/api';
 import type { ToolRunner } from '../tools/types';
 import type { VoiceEngine } from '../voice/engine';
+import { type AlwaysEligiblePredicate } from '../approvals/schemas';
 
 export interface ServerCore {
   db: ServerDatabase;

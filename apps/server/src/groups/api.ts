@@ -22,25 +22,20 @@ import { roomAffiliationFor } from '../topics/room-members';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { syncGroupTopicRooms } from './ais';
-import { syncChannelVoice } from './member-roles';
-import { destroyQuietly, requireGroup } from './queries';
-import type { GroupRole, InviteLogger } from './schemas';
+import { syncGroupTopicRooms, addGroupAi, removeGroupAi } from './ais';
+import { syncChannelVoice, changeMemberRole } from './member-roles';
 import {
-  addGroupAi,
-  addGroupMembers,
-  changeMemberRole,
-  createGroup,
+  destroyQuietly,
+  requireGroup,
   getGroupDetail,
   getMembership,
   listMembersForViewer,
-  patchGroup,
-  removeGroupAi,
-  removeGroupMember,
-  type GroupDetail,
-} from './service';
+} from './queries';
+import type { GroupRole, InviteLogger, GroupDetail } from './schemas';
+import { createGroup, patchGroup } from './service';
 import { setGroupVisibility } from './visibility';
 import { joinPublicGroup } from './join';
+import { addGroupMembers, removeGroupMember } from './members';
 
 // Open joins of public groups: 30 per hour per user, so handles cannot be
 // farmed; directory and by-handle reads share the same clock.

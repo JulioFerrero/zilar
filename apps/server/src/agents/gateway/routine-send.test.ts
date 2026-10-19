@@ -4,9 +4,9 @@
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerDatabase } from '../../db/client';
-import type { RoutineRow } from '../../db/rows';
 import type { AiSession, GatewayLogger } from './contracts';
 import { createRoutineSend, ROUTINE_MESSAGE_MAX_AGE_MS, type RoutineSend } from './routine-send';
+import { type RoutineRow } from '../../db/rows-agents';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 

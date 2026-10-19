@@ -6,11 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
-import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
-import { executeRoutine, FAILURE_PAUSE_NOTICE } from './execute';
+import { executeRoutine } from './execute';
 import { MAX_PROMPT_RUNS_PER_DAY, type PromptRunner } from './execute-prompt';
+import { type RoutineRow } from '../db/rows-agents';
+import { FAILURE_PAUSE_NOTICE } from './outcomes';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 const DAY = '2026-01-05';

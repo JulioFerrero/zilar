@@ -6,7 +6,7 @@ import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createApp } from '../app';
 import { bootstrapUser } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { ApprovalServiceError, createApproval, decideApproval, toPublicApproval } from './service';
+import { createApproval, decideApproval } from './service';
 import {
   createRule,
   findActiveRule,
@@ -20,6 +20,8 @@ import { sqlRuntimeFor } from '../effect/sql';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
 import { createActionGateway } from '../actions/gateway';
 import { createAuditRecorder } from '../audit/recorder';
+import { ApprovalServiceError } from './schemas';
+import { toPublicApproval } from './queries';
 
 interface RuleIdRow {
   id: string;

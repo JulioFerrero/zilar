@@ -15,6 +15,7 @@ import {
   PROVIDER_IDS,
   UpdateConnectionPayload,
   type ConnectionView,
+  type ProviderId,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { catalogBaseUrl, getAiCatalog } from '../ai/catalog';
@@ -25,7 +26,6 @@ import { limiter, type RateLimiter } from '../rate-limit';
 import { resolvePublic, validateBaseUrl } from './base-url';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
-import type { ProviderId } from './providers';
 import {
   countAisUsingConnection,
   createConnection as createConnectionRow,

@@ -11,10 +11,10 @@ import { isBanned, isBannedIn } from './bans';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
 import { groupOwnerId } from './queries';
+import { type InviteLogger } from './schemas';
 
 export interface JoinPublicGroupDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;

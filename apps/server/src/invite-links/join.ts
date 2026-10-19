@@ -5,7 +5,6 @@ import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { MAX_GROUP_MEMBERS } from '../groups/service';
 import { isBanned, isBannedIn } from '../groups/bans';
 import { groupOwnerId } from '../groups/queries';
 import { finishJoin } from '../groups/join';
@@ -14,6 +13,7 @@ import { syncTopicRoom } from '../topics/rooms';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { countGroupMembers, findLinkRow, isGroupMember, linkIsUsable, serviceNow } from './queries';
 import { toInvalidLink, type InviteLinkServiceDeps, type JoinPreview } from './tokens';
+import { MAX_GROUP_MEMBERS } from '../groups/schemas';
 
 // The preview shows the group title and member count, never member names, and the group
 // id only to a member. Unknown, expired, revoked and exhausted links all answer the same

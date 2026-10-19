@@ -7,7 +7,6 @@ import { type Logger } from 'pino';
 import { loadAiOwnerId } from '../agents/gateway/db';
 import { type AuditRecorder } from '../audit/recorder';
 import { type ServerDatabase } from '../db/client';
-import { type BlockCardRow, type BlockResponseRow, type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { getGroupMembership, isTopicMember, requireVisibleTopic } from '../topics/access';
@@ -16,6 +15,7 @@ import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse
 import { errorName } from '../effect/error-utils';
 import { routineAccess } from '../routines/access';
 import { pauseRoutine, resumeRoutine } from '../routines/support';
+import { type BlockCardRow, type BlockResponseRow, type RoutineRow } from '../db/rows-agents';
 interface AlertRoutineDeps extends Pick<ServerCore, 'db' | 'logger'> {
   audit?: AuditRecorder;
 }

@@ -5,7 +5,6 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError, xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
 import { addGroupMembers } from '../groups/members';
-import { topicRoleHolderIds } from '../roles/service';
 import {
   canManageTopic,
   canSeeTopic,
@@ -18,6 +17,7 @@ import {
 import { syncTopicRoom } from './rooms';
 import { emitDroppedTopicAis } from './roles';
 import { toAuditEntry, type TopicServiceDeps } from './schemas';
+import { topicRoleHolderIds } from '../roles/access';
 
 export async function assertNameFree(
   db: ServerDatabase,

@@ -3,7 +3,6 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { hostsEqual } from './hosts';
 import {
@@ -24,6 +23,7 @@ import type {
   ToolDetail,
   ToolVersionDetail,
 } from './service';
+import { type AiToolRow, type AiToolVersionRow } from '../db/rows-agents';
 
 interface AppendVersionResult {
   tool: ToolDetail;

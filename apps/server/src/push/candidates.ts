@@ -6,7 +6,6 @@ import { runSql } from '../effect/sql';
 import type { SearchOwner } from '../search/service';
 import { bareJid, ownBareJid } from '../jid';
 import { isLiveAiUiEdit, isLiveAiUiRow } from '../notify/ai-cards';
-import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, isTopicMember, type TopicRow } from '../topics/access';
 import { findCloseTag, nextOpenTag, openTagAttrs } from '../markup/scan';
 import { albumInfoFromXml } from '../xmpp/album-xml';
@@ -15,6 +14,7 @@ import { localpartFor } from '../xmpp/provisioning';
 import type { ArchiveCandidate } from './archive-scan';
 import type { ResolvedPushMessage } from './payload';
 import type { PushServiceDeps } from './service';
+import { stanzaFrom } from '../search/snippet';
 
 type CandidateVerdict =
   { status: 'ok'; message: ResolvedPushMessage } | { status: 'muted' | 'hidden' | 'skip' };

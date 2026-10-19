@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { ApprovalRuleRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { type ApprovalRuleRow } from '../db/rows-agents';
 
 // A rule grants one AI one action in one chat without a fresh approval card.
 // Rules are soft-revoked so the audit history survives; only `revokedAt IS

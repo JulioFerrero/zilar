@@ -5,10 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { loadRoutineMessage, recordRoutineMessage } from '../agents/gateway/routine-send';
+import { type RoutineRow } from '../db/rows-agents';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 

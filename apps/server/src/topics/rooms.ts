@@ -2,8 +2,7 @@ import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 
-import type { InviteLogger } from '../groups/service';
-import { mapXmppError } from '../groups/schemas';
+import { mapXmppError, type InviteLogger } from '../groups/schemas';
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
@@ -100,8 +99,6 @@ export interface PushUserSyncDeps extends Pick<ServerCore, 'db' | 'adminClient'>
   domain: string;
   logger: InviteLogger;
 }
-
-export { desiredMembers } from './room-members';
 
 // Every desired member holding a push device is subscribed to the room
 // (MUC/Sub), so its messages reach them while they have no session; anyone

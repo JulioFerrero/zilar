@@ -39,18 +39,6 @@ import {
 } from './schemas';
 import { patchTopic } from './patch';
 
-export { auditDetail, defaultGlyph } from './schemas';
-export type {
-  CreateTopicBody,
-  CreateTopicInput,
-  PatchTopicBody,
-  TopicServiceDeps,
-} from './schemas';
-export { listTopicMembers } from './queries';
-export { addTopicMember, removeTopicMember } from './members';
-export { setTopicRoles } from './roles';
-export type { AddTopicAiBody, SetTopicRolesBody, SetTopicRolesInput } from './roles';
-
 export async function createTopic(
   deps: TopicServiceDeps,
   input: CreateTopicInput,

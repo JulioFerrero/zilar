@@ -2,14 +2,14 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
-import type { MediaItemRow } from '../db/rows';
 import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { bareJid } from '../jid';
-import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 import { extractLinks, extractMediaItems } from './extract';
 import { randomUUID } from 'node:crypto';
+import { type MediaItemRow } from '../db/rows-agents';
+import { correctionTarget, retractTarget, stanzaFrom } from '../search/snippet';
 
 // The columns mirror the `media_items` migration SQL; a `bigint` read would come back as
 // a string (none is read here). The insert leaves `created_at` to the database default.

@@ -5,13 +5,13 @@ import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
 import type { ActionGateway } from '../actions/gateway';
 import type { FetchLike } from '../ai/http';
-import type { ModelTarget } from '../ai/model-client';
 import type { AiSession } from './gateway/contracts';
 import { createRequestActionRunner } from './gateway/tool-exec';
 import { runGroupTurn } from './group-turn';
 import { REQUEST_ACTION_TOOL } from './tools/schemas';
 import { buildRequestActionTool } from './tools/definitions';
 import type { ChatToolDefinition } from '../ai/model-client';
+import { type ModelTarget } from '../ai/providers';
 
 const TARGET: ModelTarget = {
   provider: 'deepseek',

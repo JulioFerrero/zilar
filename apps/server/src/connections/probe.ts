@@ -2,7 +2,7 @@ import { Data, Duration, Effect } from 'effect';
 import { catalogBaseUrl } from '../ai/catalog';
 import { redactSecrets } from '../ai/http';
 import { createPinnedFetch } from './pinned-fetch';
-import type { ProviderId } from './providers';
+import { type ProviderId } from '@zilar/api-contract';
 
 // Each provider gets one cheap GET that returns 2xx only when the key is valid.
 // The key goes only to the provider's own API, never stored or returned, and

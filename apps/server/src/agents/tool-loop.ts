@@ -36,8 +36,6 @@ export const REPLY_MAX_TOKENS = 4096;
 export { ChatCompletionError, MODEL_CHAT_TIMEOUT_MS };
 export type { ChatToolCall, ChatUsage, ModelRequestMessage, ModelTarget };
 
-export * from './replies';
-
 // A validated call the executor may run. Unknown tools and invalid arguments
 // never reach this shape: they get `invalid: …` back instead.
 export type ValidToolCall =

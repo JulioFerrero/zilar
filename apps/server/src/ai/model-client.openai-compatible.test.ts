@@ -7,7 +7,8 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { chat, ChatCompletionError, type ModelTarget } from './model-client';
+import { chat, ChatCompletionError } from './model-client';
+import { type ModelTarget } from './providers';
 
 const API_KEY = 'sk-fake-custom-key';
 const LOCALHOST = { resolver: async () => ['127.0.0.1'], allowBlockedAddresses: true };

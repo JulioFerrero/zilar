@@ -3,7 +3,6 @@ import { Effect, Result, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { type ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { type ApprovalInsert, type ApprovalRow } from '../db/rows';
 import { createRuleEffect } from './rules';
 import { canDecide, decisionToStatus, safeHashEquals } from './access';
 import { isGroupManager } from '../groups/access';
@@ -20,6 +19,7 @@ import {
   type CreateApprovalInput,
   type CreatedApprovalRule,
 } from './schemas';
+import { type ApprovalInsert, type ApprovalRow } from '../db/rows-agents';
 export interface ApprovalVerifyResult {
   ok: boolean;
   decision?: ApprovalDecision;
@@ -328,26 +328,3 @@ export async function decideApproval(
   }
   return { row: updated, rule: createdRule };
 }
-
-export type {
-  AlwaysEligiblePredicate,
-  ApprovalDecision,
-  ApprovalStatus,
-  CreateApprovalInput,
-  CreatedApprovalRule,
-  PublicApproval,
-} from './schemas';
-export {
-  ApprovalServiceError,
-  CreateApprovalInputSchema,
-  MAX_APPROVAL_EXPIRY_MS,
-  MAX_PENDING_APPROVALS_PER_AI,
-} from './schemas';
-export {
-  approverNamesForTopics,
-  expireStale,
-  getDecidableApproval,
-  listDecidableApprovals,
-  toPublicApproval,
-} from './queries';
-export { canDecide, canDecideMany } from './access';

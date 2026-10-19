@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { MAX_GROUP_MEMBERS, addGroupMembers, removeGroupMember } from '../groups/service';
 import { createApp } from '../app';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { createAuditRecorder } from '../audit/recorder';
@@ -23,6 +22,8 @@ import {
 } from '../test-support';
 import { setTestAppInviteLinks } from '../app';
 import { trustedClientIp } from '../http/client-ip';
+import { MAX_GROUP_MEMBERS } from '../groups/schemas';
+import { addGroupMembers, removeGroupMember } from '../groups/members';
 
 interface CreatedLinkBody {
   id: string;

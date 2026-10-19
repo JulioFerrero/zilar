@@ -137,7 +137,6 @@ function exactInCodeMarks(
     ),
   };
 }
-export { SEARCH_MAX_LIMIT } from '@zilar/api-contract';
 export const SEARCH_DEFAULT_LIMIT = 20;
 // No expression index is possible in ejabberd, so a search scans 12 months and at
 // most 5 000 candidates.
@@ -388,18 +387,3 @@ export const runSearchEffect = Effect.fnUntraced(function* (
       : { nextBefore: result.oldest.toString() }),
   };
 });
-
-export {
-  SEARCH_MIN_FUZZY_QUERY_CHARS,
-  headlineToSnippet,
-  stanzaFrom,
-  correctionTarget,
-  retractTarget,
-} from './snippet';
-
-export {
-  loadEditsForTargets,
-  type EditOverlay,
-  type EditOverlayEntry,
-  type EditScope,
-} from './edit-overlay';

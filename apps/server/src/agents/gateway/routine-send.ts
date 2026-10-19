@@ -7,13 +7,14 @@ import { Effect } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { ChatKind } from '@zilar/xmpp-core';
 import type { ServerDatabase } from '../../db/client';
-import type { RoutineRow } from '../../db/rows';
 import { findRoutineById } from '../../routines/reads';
 import { parseRoutineSchedule } from '../../routines/schedule';
 import { describeSchedule } from '../../tools/routine-adapters';
-import { errorName, type AiSession, type GatewayLogger } from './contracts';
+import { type AiSession, type GatewayLogger } from './contracts';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../../effect/sql';
+import { type RoutineRow } from '../../db/rows-agents';
+import { errorName } from '../../effect/error-utils';
 
 // The routine's single live message: these helpers store, load and clear its id on the `routines` row.
 interface RoutineMessageRow {

@@ -12,13 +12,13 @@ import {
   avatarOwnerKindSchema,
   checkAvatarWritePermission,
   deleteAvatar,
-  readAvatarFile,
   uploadAvatar,
   type AvatarKind,
   type AvatarsServiceDeps,
 } from './service';
 
 import { type AuditRecorder } from '../audit/recorder';
+import { readAvatarFile } from './read';
 
 interface AvatarsRoutesDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config'> {
   storageDir: string;

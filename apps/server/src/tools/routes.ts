@@ -1,5 +1,4 @@
 import type { ServerCore } from '../app/deps';
-import type { AiToolRunRow } from '../db/rows';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
@@ -17,11 +16,6 @@ import { canSeeTopic, getTopic } from '../topics/access';
 import type { ToolRunner } from './types';
 import {
   deleteTool,
-  listTools,
-  listToolsForAi,
-  revertTool,
-  runToolVersion,
-  ToolServiceError,
   type PublicTool,
   type PublicToolVersion,
   type ToolDetail,
@@ -38,6 +32,10 @@ import {
   toolAccessIncludingDeleted,
 } from './access';
 import { HttpServerRequest } from 'effect/http';
+import { type AiToolRunRow } from '../db/rows-agents';
+import { listTools, listToolsForAi, ToolServiceError } from './queries';
+import { revertTool } from './mutations';
+import { runToolVersion } from './runner';
 
 // Manual runs are capped per user per minute.
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;

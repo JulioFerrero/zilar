@@ -11,17 +11,11 @@ import { type PublicRoutine } from './schemas';
 import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { findGroupMembership } from '../groups/access';
-import { canSeeTopic } from '../topics/access';
+import { canSeeTopic, getTopic, listTopicsByGroup } from '../topics/access';
 import { routineAccess, routineAccessIncludingDeleted } from './access';
-import {
-  findOwnedAiRow,
-  findTopicById,
-  listMyRoutines,
-  listTopicsByGroup,
-  listVisibleTopicRoutines,
-  type MyRoutineView,
-} from './reads';
+import { listMyRoutines, listVisibleTopicRoutines, type MyRoutineView } from './reads';
 import { withServiceErrors } from './status-errors';
+import { findOwnedAiRow } from '../tools/access';
 function toListWire(routine: PublicRoutine) {
   return {
     id: routine.id,
@@ -119,7 +113,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
               visible.push(routine);
               continue;
             }
-            const topic = await findTopicById(deps.db, routine.topicId);
+            const topic = await getTopic(deps.db, routine.topicId);
             if (topic && (await canSeeTopic(deps.db, topic, user.id))) {
               visible.push(routine);
             }

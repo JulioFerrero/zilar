@@ -19,8 +19,6 @@ import { settingsCipherFor } from '../setup/settings';
 import type { AudioFetcher, Transcriber } from './pipeline';
 import { getVoiceTranscriptionSettings, type VoiceTranscriptionSettings } from './settings';
 
-export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES } from './pipeline';
-
 export interface VoiceTranscriptionRoutesDependencies extends Pick<
   ServerCore,
   'auth' | 'db' | 'config' | 'logger'
@@ -32,10 +30,6 @@ export interface VoiceTranscriptionRoutesDependencies extends Pick<
   audioFetcher?: AudioFetcher | undefined;
   transcribe?: Transcriber | undefined;
 }
-
-export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
-
-export { AudioUnavailableError } from './pipeline';
 
 export function voiceTranscriptUrlHash(url: string): string {
   // The query string and fragment are not part of the audio's identity, so `?1` and `?2`

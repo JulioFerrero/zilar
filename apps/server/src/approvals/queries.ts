@@ -2,9 +2,9 @@ import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import type { ApprovalRow } from '../db/rows';
 import { canDecide, canDecideMany } from './access';
 import type { ApprovalStatus, PublicApproval } from './schemas';
+import { type ApprovalRow } from '../db/rows-agents';
 
 // The driver may hand back `timestamptz` as ISO strings; `toApprovalRow`
 // normalises them so the rest of the module keeps the `ApprovalRow` type.

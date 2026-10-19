@@ -6,7 +6,6 @@ import {
   startRecoveryStuckTimer,
   type RecoveryStuckHandle,
 } from '../actions/gateway';
-import { type AgentGateway } from '../agents/gateway';
 import { initTopicFollow } from '../agents/gateway/topic-follow';
 import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agents/log/retention';
 
@@ -22,7 +21,6 @@ import { createNativeSender } from '../push/native-sender';
 import { createWebPushSender } from '../push/sender';
 import { type PromptRunner } from '../routines/execute-prompt';
 import { type ArchivePool } from '../search/service';
-import { type BuildToolAdaptersDeps } from '../tools/adapters';
 import { type ToolRunner } from '../tools/types';
 import { reconcileRoomSubscriptionOptions, syncTopicRoom } from '../topics/rooms';
 
@@ -35,13 +33,15 @@ import {
 } from '../routines/scheduler';
 import { type AuditEntry } from '../audit/schema';
 import { startSweepLoop } from '../effect/sweep-loop';
-import { expireStale } from '../approvals/service';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { errorClassName, messageOf, serializeError } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { type TopicRow } from '../topics/access';
 import { type InviteLogger } from '../groups/schemas';
+import { type AgentGateway } from '../agents/gateway/contracts';
+import { type BuildToolAdaptersDeps } from '../tools/adapter-support';
+import { expireStale } from '../approvals/queries';
 interface RoomReconcileLogger extends InviteLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
 }

@@ -2,7 +2,6 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { type Payload } from '@zilar/protocol';
 import { type ServerDatabase } from '../db/client';
-import { type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { buildBlocksPayload } from '../message-blocks/build';
 import { withoutMedia } from '../message-blocks/media-ids';
@@ -11,6 +10,7 @@ import { cardHeader } from '../tools/card-header';
 import { describeSchedule } from '../tools/routine-adapters';
 import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { parseRoutineSchedule } from './schedule';
+import { type RoutineRow } from '../db/rows-agents';
 async function auditRun(
   options: ExecuteRoutineOptions,
   row: RoutineRow,

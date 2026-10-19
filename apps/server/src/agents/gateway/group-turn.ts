@@ -1,10 +1,9 @@
 import { Effect } from 'effect';
 import { displayNameOf, normBareJid, type ChatCompletionMessage } from '../context';
 import { finishDelegation } from '../delegation/service';
-import { GROUP_FAILURE_REPLY, type ExecuteToolCall } from '../tool-loop';
+import { type ExecuteToolCall } from '../tool-loop';
 import { failureLogFields, mapFailureToReply } from '../tool-exec';
 import {
-  errorName,
   isAiSender,
   toRedactedError,
   type AgentGatewayDeps,
@@ -27,6 +26,8 @@ import { settleFor } from './scheduled-settle';
 import { startTurn } from './turn-start';
 import { openTurnLog } from '../log/append';
 import { senderNamesByJid } from '../../xmpp/archive-sender';
+import { GROUP_FAILURE_REPLY } from '../replies';
+import { errorName } from '../../effect/error-utils';
 
 type RoomLimitResult = 'ok' | 'rate' | 'round';
 

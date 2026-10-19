@@ -4,7 +4,7 @@ import type { DraftHub } from '../../drafts/hub';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import type { KeyCipher } from '../../connections/crypto';
 import { bareJid, DM_HISTORY_MESSAGE_LIMIT, type ChatCompletionMessage } from '../context';
-import { TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../tool-loop';
+import { type ExecuteToolCall } from '../tool-loop';
 import type { createBudgetGate } from './budget';
 import {
   isAiSender,
@@ -25,6 +25,7 @@ import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
 import { failureLogFields, mapFailureToReply } from '../tool-exec';
 import { loadTurnPrompt } from './turn-prompt';
+import { TRANSIENT_FAILURE_REPLY } from '../replies';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 

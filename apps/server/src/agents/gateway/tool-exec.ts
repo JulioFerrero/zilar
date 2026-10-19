@@ -40,12 +40,12 @@ import {
   type GatewayLogger,
   type RoomRound,
   denialReasonForModel,
-  errorName,
   formatModelText,
 } from './contracts';
 import type { createLiveSession } from './live';
 import type { RequestActionContext } from './group-turn';
 import type { ActionGateway, RequestOutcome } from '../../actions/gateway';
+import { errorName } from '../../effect/error-utils';
 
 type RequestActionCall = Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>;
 type RequestActionChat = { groupId: string; topicId: string };

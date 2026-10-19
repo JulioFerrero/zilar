@@ -240,7 +240,6 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
 // Adding by `@username` sends a request the other person must accept. An unknown
 // handle, a retired one and a not-allowed request answer the same 404.
 
-export { MAX_LIST_ROWS } from './queries';
 export {
   isPendingPairViolation,
   MAX_PENDING_OUTGOING,
@@ -248,9 +247,6 @@ export {
   resolveHandleUser,
 };
 export type { ContactRequestsDeps };
-export { listContactRequests, profileForHandle, relationFor } from './reads';
-export type { OtherUserProfile } from './reads';
-export type { ContactRequestRow, ContactRequestStatus, ContactRequestView } from './queries';
 
 // Refuses self, an existing contact, a pending request in either direction, more
 // than 20 pending outgoing, and a re-request within 7 days of a decline. Every

@@ -2,11 +2,11 @@ import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { getToolRow, latestRunStatus, toToolDetail, ToolServiceError } from './queries';
 import { toolHostsSchema } from './schemas';
 import type { ToolDetail } from './service';
+import { type AiToolRow, type AiToolVersionRow } from '../db/rows-agents';
 
 type HostsChange = 'approve' | 'revoke';
 

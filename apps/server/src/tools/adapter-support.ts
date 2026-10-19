@@ -10,13 +10,14 @@ import type { RoutineServiceError } from '../routines/schemas';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { limiter, RATE_LIMITS, type RateLimiter } from '../rate-limit';
-import { ToolServiceError, approveToolHosts, getTool, listTools, revokeToolHosts } from './service';
 import {
   toolApproveHostsArgsSchema,
   toolRevokeHostsArgsSchema,
   type ApproveHostsBoundArgs,
 } from './tool-arg-schemas';
 import type { ToolRunner } from './types';
+import { ToolServiceError, getTool, listTools } from './queries';
+import { approveToolHosts, revokeToolHosts } from './hosts';
 
 export interface BuildToolAdaptersDeps extends Pick<ServerCore, 'db'> {
   runner: ToolRunner;

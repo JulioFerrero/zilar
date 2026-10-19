@@ -3,7 +3,6 @@ import { SqlClient } from 'effect/sql';
 import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 import { runSql } from '../effect/sql';
 import { toApprovalRow, type ApprovalSqlRow } from '../approvals/queries';
-import type { ApprovalRow } from '../db/rows';
 import { sharedDraftHub } from '../drafts/hub';
 import { normBareJid } from './context';
 import {
@@ -32,6 +31,7 @@ import { createRoutineRunner } from './gateway/routine-run';
 import { loadOwnerName } from './gateway/db';
 import { randomUUID } from 'node:crypto';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
+import { type ApprovalRow } from '../db/rows-agents';
 
 export interface ApprovalFollowUpDeps {
   sessions: Map<string, AiSession>;
@@ -113,27 +113,6 @@ export function createApprovalFollowUp(deps: ApprovalFollowUpDeps): ApprovalFoll
 
   return { continueAfterApproval };
 }
-export type {
-  AgentGateway,
-  AgentGatewayConfig,
-  AgentGatewayDeps,
-  GatewayLogger,
-} from './gateway/contracts';
-export {
-  AI_DRAIN_MS,
-  AI_RESTART_REPLY,
-  GATEWAY_RESOURCE,
-  GROUP_JOIN_SKEW_MS,
-  GROUP_RATE_WINDOW_MS,
-  GROUP_TURNS_PER_WINDOW,
-  LISTENER_EVERY_N_DEFAULT,
-  LISTENER_QUIET_MS_DEFAULT,
-  RECONCILE_INTERVAL_MS,
-  RETRY_BASE_DELAY_MS,
-  RETRY_MAX_DELAY_MS,
-  ROUND_MAX_AI_TURNS,
-  ROUND_MAX_HOPS,
-} from './gateway/contracts';
 
 // Agent gateway: keeps every active AI online over XMPP and replies to its
 // owner in their DM. The AI id always comes from the gateway's own connection

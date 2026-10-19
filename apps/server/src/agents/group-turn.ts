@@ -6,7 +6,7 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './tool-rounds';
-import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
+import { GROUP_FAILURE_REPLY, cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
 import { actionOfCall, executeToolCalls, followUpMessages } from './tool-exec';
 import {
   finishProgressQuietly,
@@ -18,7 +18,6 @@ import {
 } from './turn';
 import {
   ChatCompletionError,
-  TRANSIENT_FAILURE_REPLY,
   requestCompletion,
   type CompleteChatInput,
   type ExecuteToolCall,

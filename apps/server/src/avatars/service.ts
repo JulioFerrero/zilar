@@ -80,13 +80,8 @@ function toAvatarHttpError(check: AvatarCheck): HttpError {
   }
 }
 
-export { readAvatarFile } from './read';
-export type { AvatarFile } from './read';
-
 export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
-
-export type { AvatarRow } from '../db/rows';
 
 export function avatarUrlFor(avatarId: string): string {
   return `/api/avatars/${encodeURIComponent(avatarId)}`;

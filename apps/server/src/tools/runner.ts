@@ -3,7 +3,6 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import {
   getToolRow,
@@ -14,6 +13,7 @@ import {
 } from './queries';
 import type { RunToolVersionDeps, RunToolVersionInput } from './service';
 import type { ToolRunResult } from './types';
+import { type AiToolRunRow, type AiToolVersionRow } from '../db/rows-agents';
 
 // Runs one version through the runner port and records an `ai_tool_runs` row in the same step.
 // A stopped or provisioning AI throws `ai_not_active` before the runner; a runner failure is recorded as `error` and returned.

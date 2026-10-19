@@ -1,10 +1,10 @@
 import type { ServerDatabase } from '../db/client';
-import type { AiToolRow, ToolIdentity } from '../db/rows';
 import type { ToolRunner } from './types';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { runSql } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/deletes';
+import { type AiToolRow, type ToolIdentity } from '../db/rows-agents';
 
 // Soft-deletes one tool and its routines; a missing or already deleted id returns `deleted: false` and writes nothing.
 export async function deleteTool(
@@ -59,7 +59,6 @@ export function deleteToolsForAiInGroupEffect(input: {
     return rows.map((row) => row.id);
   });
 }
-export type { ToolRunner, ToolRunResult } from './types';
 
 // Versioned tool code per AI and topic; history is append-only — nothing updates or deletes a version row.
 
@@ -129,21 +128,3 @@ export interface RunToolVersionInput {
   input?: unknown;
   trigger: 'manual' | 'routine' | 'ai';
 }
-
-export {
-  getTool,
-  getVersion,
-  listRuns,
-  listTools,
-  listToolsForAi,
-  listVersions,
-  MAX_RUN_OUTPUT_BYTES,
-  MAX_RUNS_PER_TOOL,
-  MAX_TOOLS_PER_TOPIC,
-  MAX_VERSIONS_PER_TOOL,
-  ToolServiceError,
-} from './queries';
-
-export { revertTool, saveToolVersion } from './mutations';
-export { approveToolHosts, revokeToolHosts } from './hosts';
-export { runToolVersion } from './runner';

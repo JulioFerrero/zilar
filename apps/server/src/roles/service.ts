@@ -108,9 +108,6 @@ async function syncTopicsWithRoles(
     }
   }
 }
-export { GROUP_NOT_FOUND, MAX_ROLES_PER_GROUP, ROLE_NOT_FOUND } from './schemas';
-export type { GroupRoleDetail, GroupRoleRow, GroupRoleView } from './schemas';
-export { holdsTopicRole, topicRoleHolderIds } from './access';
 
 function mapRoleError(error: unknown): HttpError {
   if (error instanceof HttpError) {

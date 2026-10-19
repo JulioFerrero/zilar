@@ -10,7 +10,7 @@ import type {
   RatingBlock,
 } from '@zilar/protocol';
 import { MAX_SHORT } from '@zilar/protocol';
-import type { BlockResponseRow } from '../db/rows';
+import { type BlockResponseRow } from '../db/rows-agents';
 
 // The pure state merge every reader uses. Returns a new `BlocksData`; the input
 // is never mutated and the result still decodes as `BlocksDataSchema`.

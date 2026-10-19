@@ -7,7 +7,7 @@ import {
   type ActionAdapter,
   type ArgsSchema,
 } from '../actions/registry';
-import { createAgentGateway, type AgentGateway } from '../agents/gateway';
+import { createAgentGateway } from '../agents/gateway';
 import { createApp } from '../app';
 import { createAuditRecorder } from '../audit/recorder';
 import { createEjabberdAdminClient } from '../xmpp/admin/client';
@@ -32,15 +32,15 @@ import { loadPushConfigOrExit, type PushConfig } from '../push/config';
 import { type PromptRunner } from '../routines/execute-prompt';
 import { runTool } from '../sandbox/run-tool';
 import { createArchivePool } from '../search/service';
-import { buildToolAdapters, type BuildToolAdaptersDeps } from '../tools/adapters';
+import { buildToolAdapters } from '../tools/adapters';
 import { type ToolRunner } from '../tools/types';
 import { startEjabberdSchemaCheck } from '../xmpp/schema-check';
 import { type BootedServer } from './boot';
 import { CONNECTION_GRACE_MS, type RunningServer } from './lifecycle';
 import { type Logger } from 'pino';
 import { type ServerConfig } from '../config/load';
-import { createCloudHands, type Hands, requestReply } from '../hands/cloud-hands';
-import { ErrorInfoSchema } from '@zilar/desk';
+import { createCloudHands, requestReply } from '../hands/cloud-hands';
+import { ErrorInfoSchema, type Hands } from '@zilar/desk';
 import { type DeskClient } from '../agents/gateway/desk-exec';
 import { webPriceAdapter } from '../web-tools/price-adapter';
 import {
@@ -69,6 +69,8 @@ import {
 import { guardedGet } from '../web-tools/guarded-fetch';
 import { extractText } from '../web-tools/html';
 import { parseFeed } from '../web-tools/feed';
+import { type AgentGateway } from '../agents/gateway/contracts';
+import { type BuildToolAdaptersDeps } from '../tools/adapter-support';
 
 // A harmless demo adapter, alive only when `ACTION_DEMO_ENABLED=true`; off by default.
 // Tier 2 exercises the approval path.

@@ -2,12 +2,11 @@
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
-import { cutShortSuffix } from './replies';
+import { cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
 import { runLoopRound } from './tool-exec';
 import {
   CHAT_TURN_CAPS,
   ChatCompletionError,
-  TRANSIENT_FAILURE_REPLY,
   requestCompletion,
   type ExecuteToolCall,
   type ModelRequestMessage,

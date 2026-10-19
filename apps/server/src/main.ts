@@ -10,16 +10,6 @@ import {
   type RunningServer,
 } from './startup/lifecycle';
 
-export {
-  CONNECTION_GRACE_MS,
-  FORCE_EXIT_MS,
-  emptyRunning,
-  stopServer,
-  shutdownServer,
-  serverTeardown,
-} from './startup/lifecycle';
-export type { RunningServer } from './startup/lifecycle';
-
 export const serverProgram: Effect.Effect<never> = Effect.scoped(
   Effect.gen(function* () {
     const running = emptyRunning();

@@ -6,12 +6,12 @@ import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { type AlertBlock, BlocksDataSchema, type BlocksData } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/recorder';
-import type { RoutineRow } from '../db/rows';
 import { findCard, recordCard } from '../message-blocks/cards';
 import type { CorrectCardInput } from '../message-blocks/respond';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { executeRoutine, POST_RETRY_DELAY_MS } from './execute';
+import { type RoutineRow } from '../db/rows-agents';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 const silentAudit: AuditRecorder = { record: async () => undefined };

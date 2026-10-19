@@ -1,7 +1,7 @@
 import { Exit, Schema } from 'effect';
-import type { RoutineRow } from '../db/rows';
 import { firstIssueMessage } from '../effect/schema-issues';
 import type { RoutineSchedule } from './schedule';
+import { type RoutineRow } from '../db/rows-agents';
 
 export const MAX_ROUTINES_PER_TOPIC = 10;
 export const MAX_ROUTINE_TITLE_CHARS = 80;

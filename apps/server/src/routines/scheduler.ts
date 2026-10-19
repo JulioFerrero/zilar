@@ -3,11 +3,11 @@ import { Cause, Effect, Schedule, type Fiber } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
 import { errorName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { type ExecuteRoutinePorts, executeRoutine } from './execute';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
+import { type RoutineRow } from '../db/rows-agents';
 
 // Claimed runs queue and drain at this limit, so a slow run never makes the next tick skip.
 export const MAX_CONCURRENT_RUNS = 2;

@@ -4,8 +4,8 @@ import type { ServerDatabase } from '../db/client';
 import type { GroupMemberRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { holdsTopicRole, topicRoleHolderIds } from '../roles/service';
 import type { AiActivityState } from './ai-activity';
+import { holdsTopicRole, topicRoleHolderIds } from '../roles/access';
 
 export type { TopicRow };
 
@@ -422,11 +422,3 @@ export interface TopicAiView {
   /** the AI's JID, so its row can open the AI's chat. */
   jid?: string;
 }
-
-export {
-  countTopicMembers,
-  resolveOwnerName,
-  toTopicView,
-  listTopicAis,
-  toTopicViews,
-} from './views';

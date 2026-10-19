@@ -4,7 +4,6 @@ import type { ToolExecution, ValidToolCall } from '../tool-loop';
 import { DELEGATE_TOOL, TASK_STATUS_TOOL } from '../tools/schemas';
 import {
   ROUND_MAX_HOPS,
-  errorName,
   toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
@@ -12,6 +11,7 @@ import {
   type RoomRound,
 } from './contracts';
 import type { RequestActionContext } from './group-turn';
+import { errorName } from '../../effect/error-utils';
 
 type DelegateCall = Extract<ValidToolCall, { tool: typeof DELEGATE_TOOL }>;
 type TaskStatusCall = Extract<ValidToolCall, { tool: typeof TASK_STATUS_TOOL }>;

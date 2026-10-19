@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { AiQuestionInsert, AiQuestionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { type AiQuestionInsert, type AiQuestionRow } from '../db/rows-agents';
 
 // A question with reply chips lives 24 hours by default.
 export const DEFAULT_QUESTION_TTL_MS = 24 * 60 * 60 * 1000;

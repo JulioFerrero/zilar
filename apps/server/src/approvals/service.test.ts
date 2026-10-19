@@ -4,20 +4,19 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
+import { createApproval, decideApproval, verifyApproval } from './service';
 import {
   ApprovalServiceError,
-  canDecide,
-  canDecideMany,
-  createApproval,
-  decideApproval,
+  MAX_PENDING_APPROVALS_PER_AI,
+  type CreateApprovalInput,
+} from './schemas';
+import { canDecide, canDecideMany } from './access';
+import {
   expireStale,
   getDecidableApproval,
   listDecidableApprovals,
-  MAX_PENDING_APPROVALS_PER_AI,
   toPublicApproval,
-  verifyApproval,
-  type CreateApprovalInput,
-} from './service';
+} from './queries';
 
 function argsHash(seed: number | string): string {
   const buf = randomBytes(32);

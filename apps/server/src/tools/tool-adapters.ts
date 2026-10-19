@@ -19,15 +19,6 @@ import {
 } from './adapter-support';
 import { cardHeader, describeToolCard, readableToolName } from './card-header';
 import {
-  getTool,
-  getVersion,
-  listTools,
-  revertTool,
-  runToolVersion,
-  saveToolVersion,
-  ToolServiceError,
-} from './service';
-import {
   toolListArgsSchema,
   toolReadArgsSchema,
   toolRevertArgsSchema,
@@ -38,6 +29,9 @@ import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
 import type { PublicRoutine } from '../routines/schemas';
 import { describeSchedule } from './routine-adapters';
+import { getTool, getVersion, listTools, ToolServiceError } from './queries';
+import { revertTool, saveToolVersion } from './mutations';
+import { runToolVersion } from './runner';
 
 // The `tool.list` routine lines and pending `routine.schedule` approvals.
 // One line: `- <title> [id <first 8 chars>]: runs tool <name>, <schedule> [<status>]`, or `runs a prompt`.

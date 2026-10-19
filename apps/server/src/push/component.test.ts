@@ -10,10 +10,10 @@ import { PUBSUB_NAMESPACE, PUSH_NAMESPACE } from './protocol';
 import { startPushComponent, type PushComponentHandle } from './component';
 import type { PushServiceDeps } from './service';
 
-// `startPushComponent` calls `handleIncomingPush` from `./service`; stubbing it
+// `startPushComponent` calls `handleIncomingPush` from `./delivery`; stubbing it
 // keeps this a unit test of the IQ routing, with no archive or database.
 const { handleIncomingPush } = vi.hoisted(() => ({ handleIncomingPush: vi.fn() }));
-vi.mock('./service', () => ({ handleIncomingPush }));
+vi.mock('./delivery', () => ({ handleIncomingPush }));
 
 // The real `@xmpp/component` wires the real IQ callee middleware and listens
 // for `element`. The fake never connects: `start`/`stop` resolve and `send`

@@ -7,12 +7,12 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
 import { decodeActionArgs, type ActionAdapter, type ActionContext } from '../actions/registry';
-import type { RoutineRow } from '../db/rows';
 import { recordCard } from '../message-blocks/cards';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { buildToolAdapters } from './adapters';
 import type { ToolRunner } from './types';
+import { type RoutineRow } from '../db/rows-agents';
 
 const NOW = new Date('2026-01-05T08:00:00.000Z');
 

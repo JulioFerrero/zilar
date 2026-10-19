@@ -19,8 +19,8 @@ import {
   listChatPrefs,
   putChatBackgroundDefault,
   putChatPref,
-  requireChatAccess,
 } from './service';
+import { requireChatAccess } from './access';
 
 function parseMutedUntil(value: string | null | undefined): Date | null | undefined {
   if (value === undefined || value === null) {

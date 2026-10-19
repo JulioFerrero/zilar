@@ -7,7 +7,7 @@ import { runSql } from '../effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import { localpartFor } from '../xmpp/provisioning';
 import { visibleTopicsForGroups } from '../topics/visible-batch';
-import { listGroupsForUser } from '../groups/service';
+import { listGroupsForUser } from '../groups/queries';
 
 // A read-only pool to the ejabberd MAM archive, separate from the app pool; a 3 s
 // statement timeout keeps a search from holding the database.

@@ -357,5 +357,3 @@ export interface AgentTaskEventRow {
   durationMs: number | null;
   data: Record<string, unknown>;
 }
-
-export * from './rows-agents';

@@ -9,7 +9,6 @@ import { DM_HISTORY_MESSAGE_LIMIT, normBareJid } from '../context';
 import { finishDelegation } from '../delegation/service';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
 import {
-  errorName,
   rememberRoomSentId,
   type AiSession,
   type RoomPendingMessage,
@@ -29,6 +28,7 @@ import type { TurnLog } from '../log/append';
 import { turnLimits } from './turn-rounds';
 import type { ServerDatabase } from '../../db/client';
 import { loadTurnPrompt } from './turn-prompt';
+import { errorName } from '../../effect/error-utils';
 
 interface GroupTurnAccessInput {
   trigger: RoomPendingMessage;

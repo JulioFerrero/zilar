@@ -13,17 +13,12 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 // T-1764: the helper lives in `@zilar/chat-core`, which the server test package
 // does not depend on, so the unit check reaches its source by path.
 import { isTopicJoined } from '../../../../packages/chat-core/src/topics';
-import {
-  aiMayBeInTopic,
-  allowedTopicAiIds,
-  canSeeTopic,
-  countTopicMembers,
-  toTopicViews,
-} from './access';
-import { listTopicMembers } from './queries';
+import { aiMayBeInTopic, allowedTopicAiIds, canSeeTopic } from './access';
+import { listTopicMembers, countTopicMembers } from './queries';
 import { desiredMembers } from './room-members';
 import type { TopicServiceDeps } from './schemas';
 import { createTopic } from './service';
+import { toTopicViews } from './views';
 
 function depsFor(context: TestContext): TopicServiceDeps {
   return {

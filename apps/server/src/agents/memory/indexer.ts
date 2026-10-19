@@ -4,10 +4,10 @@ import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { bareJid } from '../../jid';
 import { decodeAgentPayload, isLiveAiUiRow } from '../../notify/ai-cards';
-import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
 import { senderNamesByJid } from '../../xmpp/archive-sender';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
+import { correctionTarget, retractTarget, stanzaFrom } from '../../search/snippet';
 
 // The read bounds, copied from the media indexer (apps/server/src/media/indexer.ts):
 // no expression index exists in the ejabberd database, so each pass reads the

@@ -7,9 +7,6 @@ import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import { listRoutinesForTopic, toPublicRoutines } from './queries';
 import type { PublicRoutine, RoutineRow } from './schemas';
 
-export { findOwnedAiRow } from '../tools/access';
-export { getTopic as findTopicById, listTopicsByGroup } from '../topics/access';
-
 export async function findRoutineById(
   db: ServerDatabase,
   routineId: string,

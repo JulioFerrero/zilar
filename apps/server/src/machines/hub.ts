@@ -4,7 +4,7 @@ import { type ServerDatabase } from '../db/client';
 import { serializeError } from '../effect/error-utils';
 import { type RunnerDesk } from '../hands/runner-hands';
 import { type RoutineLogger } from '../routines/scheduler';
-import { listApprovedMachineKeys } from './service';
+import { listApprovedMachineKeys } from './machines';
 /**
  * Binds the desk server to one runner, so a turn's `RunnerDesk` never carries
  * (or leaks) the runner id.

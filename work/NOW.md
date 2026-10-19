@@ -81,6 +81,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2167 | twin view model: the paged activity list (shrunk in a fix round from −2) | −37 |
 | T-2169, T-2172 | functions written twice with identical bodies get one home (15 server groups; 9 web and package groups) | −127, −68 |
 | T-2173, T-2174 | server and package helper copies, wave 2 (`messageOf`, `notFound`, `escapeLike`, sleep…); server types declared twice → one declaration (4 look-alikes kept apart on purpose) | −73, −55 |
+| T-2170 | 22 web/phone helpers written twice move to chat-core once (block answers, elapsed time, link preview, picker rules, routine texts…); no re-export shims | −195 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -99,11 +100,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (04:30):**
-- **T-2170:** web and phone functions written twice (bubble, blocks, pickers, routines texts) move to chat-core once (−178 before its fix round; re-export shims removed).
-- **T-2175:** the server's pass-through re-exports go; every import points at the module that defines the name (52 lines in 26 files, plus multi-line ones).
-- **Next, after T-2170:**
-  - client wave 2: the remaining web and phone copies plus about 15 shared type shapes;
-  - the web and phone re-exports (41 lines).
+- **T-2175:** the server's pass-through re-exports go, and every import points at the module that defines the name. Approved at −259 across 129 files; resolving a rebase on T-2174.
+- **T-2176:** web and phone copies, wave 2: 16 function groups and 14 type shapes.
+- **T-2177:** package and devtools copies, wave 2.
+- **Next:** the web and phone re-exports (41 lines), after T-2176.
 - **Checked and left alone:**
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.

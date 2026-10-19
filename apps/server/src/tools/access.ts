@@ -5,7 +5,8 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
-import { getTool, getVersion, listRuns, listTools, listVersions, type PublicTool } from './service';
+import { type PublicTool } from './service';
+import { getTool, getVersion, listRuns, listTools, listVersions } from './queries';
 
 // Reader = the AI's owner or a topic member; manager = the owner or a group owner/admin who can see the topic.
 // Null for missing, blind, or stranger alike, so existence is never leaked.

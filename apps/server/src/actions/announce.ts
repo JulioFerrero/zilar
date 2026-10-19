@@ -4,7 +4,7 @@ import {
   type ApprovalRequest,
   type Payload,
 } from '@zilar/protocol';
-import type { ApprovalRow } from '../db/rows';
+import { type ApprovalRow } from '../db/rows-agents';
 
 // The narrow port the gateway calls; a rejection is swallowed and never changes an outcome.
 export interface ActionAnnouncer {

@@ -3,15 +3,9 @@ import net, { type Server, type Socket } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DeskChunk, Hands } from '@zilar/desk';
+import type { DeskChunk, Hands, DeskSpec } from '@zilar/desk';
 import { createDeskRunner } from '../agents/gateway/desk-exec';
-import {
-  createCloudHands,
-  HandsError,
-  HandsQueued,
-  socketLines,
-  type DeskSpec,
-} from './cloud-hands';
+import { createCloudHands, HandsError, HandsQueued, socketLines } from './cloud-hands';
 
 /**
  * A minimal stand-in for the desk-agent's unix socket, so the app-side client

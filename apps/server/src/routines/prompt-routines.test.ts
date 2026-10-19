@@ -6,11 +6,11 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditEntry } from '../audit/schema';
 import type { AuditRecorder } from '../audit/recorder';
-import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { createPromptRoutine } from '../tools/routine-adapters';
 import { MAX_ROUTINE_PROMPT_CHARS, type CreatePromptRoutineInput } from './schemas';
+import { type RoutineRow } from '../db/rows-agents';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 const SCHEDULE = { kind: 'interval', everyMinutes: 60 };

@@ -24,11 +24,10 @@ import {
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { listGroupsForUser, type GroupBackground, type GroupRole } from '../groups/service';
 import { ownBareJid } from '../jid';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { allowedArchives, type ArchivePool } from '../search/service';
-import { toTopicViews, type TopicView } from '../topics/access';
+import { type TopicView } from '../topics/access';
 import { withTopicActivity } from '../topics/ai-activity';
 import { visibleTopicsForGroups } from '../topics/visible-batch';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
@@ -39,6 +38,9 @@ import { deliveredForChats, mergeTopicMarks, type DeliveryLookup } from './deliv
 import { markDeliveredAndNotify } from './delivered-notice';
 import { chatAccessFromParam, putChatRead, readForChats } from './reads';
 import { unreadForChats, type ChatUnread, type UnreadScope } from './unread';
+import { listGroupsForUser } from '../groups/queries';
+import { type GroupBackground, type GroupRole } from '../groups/schemas';
+import { toTopicViews } from '../topics/views';
 
 // effect-plain: mark handler bodies, access and limits only
 // `api.ts` wraps these with `handler` and the limiter, so access is checked before the write budget.

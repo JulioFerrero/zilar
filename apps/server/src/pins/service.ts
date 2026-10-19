@@ -19,7 +19,6 @@ import {
 } from './access';
 
 export const PINS_MAX_PER_CHAT = 20;
-export { PIN_MESSAGE_ID_MAX, PIN_SENDER_NAME_MAX, PIN_TEXT_MAX } from '@zilar/api-contract';
 
 // The snapshot is display-only: never trusted for authorization. Requests are validated
 // at the HTTP boundary.

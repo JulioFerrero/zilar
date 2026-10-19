@@ -16,15 +16,6 @@ import {
  * against the wire schema; the sidecar refuses anything but the pinned image.
  */
 
-export type {
-  DeskChunk,
-  DeskKey,
-  DeskRef,
-  DeskSpec,
-  DeskToolCall,
-  Hands,
-  SnapshotRef,
-} from '@zilar/desk';
 export { DeskError as HandsError, DeskQueued as HandsQueued };
 
 const requestIdSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));

@@ -7,8 +7,6 @@ import { runSql } from '../effect/sql';
 import { rolesOfTopic } from '../roles/service';
 import type { TopicAiView, TopicOwnerView, TopicView } from './access';
 
-export { countTopicMembers } from './queries';
-
 export async function resolveOwnerName(
   db: ServerDatabase,
   topic: TopicRow,

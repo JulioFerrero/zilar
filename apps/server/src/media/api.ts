@@ -9,7 +9,6 @@ import { LinkPreviewGroup, MediaGroup } from '@zilar/api-contract';
 
 import { isDmBlocked } from '../blocks/service';
 
-import type { MediaItemRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
@@ -25,6 +24,7 @@ import { senderNamesByJid } from '../xmpp/archive-sender';
 import { fetchLinkPreview, fetchLinkPreviewImage } from '../link-preview/fetch';
 import { indexChatOnDemand, type MediaKind, type MediaChatScope } from './indexer';
 import { bareJid } from '../jid';
+import { type MediaItemRow } from '../db/rows-agents';
 
 // Every optional field is absent, never `null`.
 interface MediaItem {

@@ -1,8 +1,8 @@
 // effect-plain: the turn adapters stay Promise-shaped over the shared tool loop.
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
-import { cutShortSuffix } from './replies';
+import { cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
 import { actionOfCall } from './tool-exec';
-import { TRANSIENT_FAILURE_REPLY, requestCompletion, type CompleteChatInput } from './tool-loop';
+import { requestCompletion, type CompleteChatInput } from './tool-loop';
 import { runToolLoop } from './tool-rounds';
 import {
   finishProgressQuietly,
@@ -14,8 +14,6 @@ import {
   type TurnFailure,
 } from './turn';
 import type { ChatToolDefinition } from '../ai/model-client';
-
-export { runToolLoop } from './tool-rounds';
 
 export async function runToolTurn(
   deps: DmTurnDeps,

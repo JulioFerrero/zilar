@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { healthSnapshot } from './health';
-import { emptyRunning, stopServer } from './main';
+import { emptyRunning, stopServer } from './startup/lifecycle';
 
 describe('stopServer', () => {
   it('marks draining, waits, then steps down before closing HTTP', async () => {

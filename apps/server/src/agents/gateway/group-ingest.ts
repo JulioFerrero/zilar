@@ -13,13 +13,13 @@ import {
   type GatewayLogger,
   type RoomPendingMessage,
   type RoomRound,
-  errorName,
 } from './contracts';
 import type { createRoomListener } from './listener';
 import { answerOnReply, rekeyOnReflection } from './question-answer';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
 import type { ServerDatabase } from '../../db/client';
 import { rekeyCard } from '../../message-blocks/cards';
+import { errorName } from '../../effect/error-utils';
 
 // The AI's own blocks card comes back from the room as an outgoing reflection.
 // Its `id` is the archive stanza id clients quote, while the row used the origin

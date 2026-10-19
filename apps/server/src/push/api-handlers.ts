@@ -245,8 +245,6 @@ function syncRoomsBestEffort(
   );
 }
 
-export { TEST_WAKE_CHAT_ID } from './api-util';
-
 export function createPushGroupLayer(
   api: HttpApi.HttpApi<'push', typeof PushGroup>,
   deps: PushApiDependencies,

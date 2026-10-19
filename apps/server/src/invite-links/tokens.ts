@@ -5,16 +5,9 @@ import type { AuditRecorder } from '../audit/recorder';
 
 import type { GroupInviteLinkRow } from '../db/rows';
 import { HttpError } from '../errors';
-import type { InviteLogger } from '../groups/service';
+import { type InviteLogger } from '../groups/schemas';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
-export {
-  INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
-  INVITE_LINK_CREATE_MAX_USES,
-  INVITE_LINK_LABEL_MAX,
-  INVITE_LINK_MIN_EXPIRY_HOURS,
-  INVITE_LINK_MIN_MAX_USES,
-} from '@zilar/api-contract';
 export const MAX_ACTIVE_INVITE_LINKS = 10;
 
 export type { GroupInviteLinkRow };

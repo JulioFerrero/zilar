@@ -1,8 +1,8 @@
 import type { ServerCore } from '../app/deps';
 import type { AuditRecorder } from '../audit/recorder';
 
-import type { InviteLogger } from '../groups/service';
 import type { TopicKind, TopicRow, TopicStatus, TopicVisibility } from './access';
+import { type InviteLogger } from '../groups/schemas';
 
 // The request bodies are validated at the Effect HTTP boundary in `api.ts`;
 // these are the shapes the service accepts.

@@ -26,21 +26,23 @@ import { limiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
-  approveMachine,
   consumePairingCode,
   createPairingCode,
-  deleteMachine,
-  denyMachine,
-  findOwnedMachine,
   insertPendingMachine,
-  listMachines,
-  renameMachine,
-  revokeMachine,
   toPublicMachine,
-  verifyPairingSignature,
   MachineServiceError,
   type PublicMachine,
 } from './service';
+import {
+  approveMachine,
+  deleteMachine,
+  denyMachine,
+  findOwnedMachine,
+  listMachines,
+  renameMachine,
+  revokeMachine,
+} from './machines';
+import { verifyPairingSignature } from './crypto';
 // The dates travel as ISO strings.
 function toMachineView(machine: PublicMachine): Machine {
   return {

@@ -18,38 +18,23 @@ import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { limiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
-import {
-  listTopicAis,
-  requireVisibleTopic,
-  toMissingTopic,
-  toTopicView,
-  toTopicViews,
-  visibleTopics,
-  type TopicAiView,
-} from './access';
+import { requireVisibleTopic, toMissingTopic, visibleTopics, type TopicAiView } from './access';
 import { withTopicActivity } from './ai-activity';
-import {
-  addTopicAi,
-  addTopicMember,
-  archiveTopic,
-  createTopic,
-  listTopicMembers,
-  removeTopicAi,
-  removeTopicMember,
-  setTopicRoles,
-  type TopicServiceDeps,
-} from './service';
-import { joinTopic } from './members';
+import { addTopicAi, archiveTopic, createTopic, removeTopicAi } from './service';
+import { joinTopic, addTopicMember, removeTopicMember } from './members';
 import { patchTopic } from './patch';
 import { senderNamesByJid } from '../xmpp/archive-sender';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
-import { aiAvatarUrls, withAiAvatars } from './views';
+import { aiAvatarUrls, withAiAvatars, listTopicAis, toTopicView, toTopicViews } from './views';
 import { isAiJid } from '@zilar/protocol';
 import { bareJid } from '../jid';
 import { decodeAgentPayload, isLiveAiUiEdit, isLiveAiUiRow, liveAiUiIds } from '../notify/ai-cards';
 import { loadEditsForTargets } from '../search/edit-overlay';
 import { correctionTarget, retractTarget, timestampToIso } from '../search/snippet';
+import { listTopicMembers } from './queries';
+import { setTopicRoles } from './roles';
+import { type TopicServiceDeps } from './schemas';
 
 // effect-plain: the preview is a Promise over the read-only ArchivePool; the Effect layer is topics/api.ts.
 // The read-only preview of a public topic a group member has not joined.

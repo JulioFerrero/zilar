@@ -1,8 +1,8 @@
 // effect-plain: pure access checks
 import type { ServerDatabase } from '../db/client';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
-import { canSeeTopic } from '../topics/access';
-import { findAiOwner, findRoutineById, findTopicById } from './reads';
+import { canSeeTopic, getTopic } from '../topics/access';
+import { findAiOwner, findRoutineById } from './reads';
 import { getRoutine } from './queries';
 
 export interface RoutineAccess {
@@ -54,7 +54,7 @@ async function accessFor(
     // Personal-chat routine: the AI owner only.
     return ai.owner === userId ? { routine, manager: true } : null;
   }
-  const topic = await findTopicById(db, routine.topicId);
+  const topic = await getTopic(db, routine.topicId);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }
@@ -85,7 +85,7 @@ async function deletedAccessFor(
     return null;
   }
   if (routine.topicId !== null) {
-    const topic = await findTopicById(db, routine.topicId);
+    const topic = await getTopic(db, routine.topicId);
     if (topic && !(await canSeeTopic(db, topic, userId))) {
       return null;
     }

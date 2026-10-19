@@ -3,12 +3,13 @@ import { SqlClient } from 'effect/sql';
 import { verifyApproval } from '../approvals/service';
 import type { AuditEntry } from '../audit/schema';
 import type { ServerDatabase } from '../db/client';
-import type { AisRow, ApprovalRow, GroupAiRow, PendingActionRow, TopicRow } from '../db/rows';
+import type { AisRow, GroupAiRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { allowedTopicAiIds } from '../topics/access';
 import type { ActionGatewayDependencies, RequestParams } from './gateway';
 import type { ActionResult } from './registry';
 import { errorName, safeAnnounce, truncateSummary, truncateText } from './support';
+import { type ApprovalRow, type PendingActionRow } from '../db/rows-agents';
 
 type AiStatusRow = Pick<AisRow, 'id' | 'status'>;
 

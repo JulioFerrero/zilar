@@ -1132,7 +1132,7 @@ describe('group roles (T-0116)', () => {
     );
     // `member` sees the topic but the approver role belongs to another
     // group: no decide rights (the owner still has them).
-    const { canDecide } = await import('../approvals/service');
+    const { canDecide } = await import('../approvals/access');
     expect(await canDecide(context.db, approval, member.id)).toBe(false);
     expect(await canDecide(context.db, approval, owner.id)).toBe(true);
   });

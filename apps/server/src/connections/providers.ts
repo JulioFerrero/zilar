@@ -1,7 +1,5 @@
 import { catalogBaseUrl } from '../ai/catalog';
 
-export { PROVIDER_IDS, ProviderIdSchema, type ProviderId } from '@zilar/api-contract';
-
 // `github` is deliberately absent: it is a git integration, not an LLM provider.
 const LLM_PROVIDER_IDS: readonly string[] = [
   'openai',

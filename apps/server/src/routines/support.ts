@@ -5,7 +5,6 @@ import { SqlClient, SqlError } from 'effect/sql';
 import { safeStringify } from '../actions/support';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { enforceRoutineLimit, toPublicRoutine } from './queries';
@@ -22,6 +21,7 @@ import {
   type RoutineToolRow,
   type RoutineVersionRow,
 } from './schemas';
+import { type RoutineRow } from '../db/rows-agents';
 
 // Creates a routine after a human approved it: validates title, schedule and input, checks the tool belongs to the same (AI, topic).
 // Requires `approvedHosts` to cover the tool's hosts and to sit inside the tool's approved set; enforces the 10-routines limit and audits ids only.

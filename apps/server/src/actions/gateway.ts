@@ -22,7 +22,6 @@ import {
 } from './registry';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { type ApprovalRow, type PendingActionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { startSweepLoop } from '../effect/sweep-loop';
 import {
@@ -33,6 +32,7 @@ import {
   truncateSummary,
   truncateText,
 } from './support';
+import { type ApprovalRow, type PendingActionRow } from '../db/rows-agents';
 
 // Stable reason codes; these strings end up in audit `detail` and `reason`.
 export type PolicyDenialReason =
@@ -232,7 +232,6 @@ function listActions(
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-export { RESULT_SUMMARY_MAX } from './support';
 async function runRequest(
   deps: ActionGatewayDependencies,
   params: RequestParams,

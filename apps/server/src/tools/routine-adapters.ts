@@ -30,14 +30,14 @@ import {
   serviceFailure,
   type AdapterState,
 } from './adapter-support';
-import { getTool } from './service';
 import { routineScheduleArgsSchema, routineTargetArgsSchema } from './tool-arg-schemas';
 import { randomUUID } from 'node:crypto';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
-import type { RoutineRow } from '../db/rows';
 import { enforceRoutineLimit, toPublicRoutine } from '../routines/queries';
+import { getTool } from './queries';
+import { type RoutineRow } from '../db/rows-agents';
 
 // Creates a `kind = 'prompt'` routine: no tool and no hosts.
 // Validates title, schedule and prompt; enforces the same 10-per-topic limit as a tool routine and audits ids only.

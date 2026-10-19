@@ -5,7 +5,7 @@ import type { ServerDatabase } from '../db/client';
 import type { ProviderConnectionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { ProviderId } from './providers';
+import { type ProviderId } from '@zilar/api-contract';
 
 // The create route answers 409 `limit_reached` at this cap.
 export const CONNECTIONS_MAX_PER_USER = 50;

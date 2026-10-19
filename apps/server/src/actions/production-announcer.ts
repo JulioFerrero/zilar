@@ -2,10 +2,10 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import type { ApprovalRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { approvalCardBody, buildApprovalCardPayload, type ActionAnnouncer } from './announce';
+import { type ApprovalRow } from '../db/rows-agents';
 
 export interface ProductionAnnouncerLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;

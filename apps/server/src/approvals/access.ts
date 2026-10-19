@@ -3,10 +3,11 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import type { ApprovalRow, TopicRow } from '../db/rows';
+import type { TopicRow } from '../db/rows';
 import { isGroupManager, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic } from '../topics/access';
 import type { ApprovalDecision } from './schemas';
+import { type ApprovalRow } from '../db/rows-agents';
 
 // The AI owner, a group owner/admin who can see the topic, or a holder of the
 // topic's approver role. Any of them only while they can see the topic; an
