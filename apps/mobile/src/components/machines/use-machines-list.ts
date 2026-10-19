@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { useFocusList } from '@/components/settings/use-focus-list';
 import { useAction } from '@/lib/effect/use-action';
-import { makeMachinesApi } from '@/lib/machines-api';
+import { makeMachinesApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import type { MachinesErrorInfo } from './errors';
 import { applyChange, call, mutationCall, type MachineMutation } from './mutations';

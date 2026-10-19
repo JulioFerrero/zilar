@@ -13,7 +13,7 @@ import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
 import { ToolsSection } from '@/components/ais/tools-section';
-import { makeMachinesApi, type MachinesApi } from '@/lib/machines-api';
+
 import { useApi } from '@/lib/use-mockable-api';
 import {
   defaultModelFor,
@@ -31,6 +31,7 @@ import {
   makeAisApi,
   makeAuditApi,
   makeChatExtrasApi,
+  makeMachinesApi,
   makeToolsApi,
   type Connection,
   type PublicAi,
@@ -342,7 +343,6 @@ export default function EditAiScreen() {
 function EditAi() {
   const router = useRouter();
   const { api } = useApi(makeAisApi);
-  const { api: connectionsApi } = useApi(makeAisApi);
   const { api: machinesApi } = useApi(makeMachinesApi);
   const { api: toolsApi } = useApi(makeToolsApi);
   const { api: auditApi } = useApi(makeAuditApi);
@@ -404,7 +404,7 @@ function EditAi() {
 
   useQuery(
     () =>
-      rawCall(() => connectionsApi.listConnections()).pipe(
+      rawCall(() => api.listConnections()).pipe(
         Effect.tap((list) =>
           Effect.sync(() => {
             setConnections(list.filter((connection) => connection.status === 'active'));
@@ -416,7 +416,7 @@ function EditAi() {
           }),
         ),
       ),
-    [connectionsApi],
+    [api],
   );
 
   useQuery(
@@ -445,9 +445,7 @@ function EditAi() {
 
   const [machineChange, runMachineChange] = useAction(
     (change: { aiId: string; next: string | null; previous: string | null }) =>
-      Effect.promise(() =>
-        applyMachineChange(machinesApi, change.aiId, change.next, change.previous),
-      ).pipe(
+      Effect.promise(() => applyMachineChange(api, change.aiId, change.next, change.previous)).pipe(
         Effect.tap((outcome) =>
           Effect.sync(() => {
             setHomeMachineId(outcome.home);
@@ -659,7 +657,7 @@ function EditAi() {
  * The `changeMachine` flow behind the picker: the PUT answer is the shown machine; on failure the previous value is restored with a fixed sentence.
  */
 function applyMachineChange(
-  api: MachinesApi,
+  api: ReturnType<typeof makeAisApi>,
   aiId: string,
   next: string | null,
   previous: string | null,
@@ -670,7 +668,7 @@ function applyMachineChange(
       catch: (cause: unknown) => cause,
     }).pipe(
       Effect.match({
-        onSuccess: (fresh) => ({ home: fresh, error: '' }),
+        onSuccess: (fresh) => ({ home: fresh.machineId ?? null, error: '' }),
         onFailure: (cause) => ({
           home: previous,
           error: describeMachinesError(cause, 'Could not update the home machine.').message,

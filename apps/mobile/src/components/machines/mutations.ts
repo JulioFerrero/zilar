@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect';
 
-import type { MachinesApi } from '@/lib/machines-api';
+import type { MachinesApi } from '@zilar/client-core';
 import { describeMachinesError } from './errors';
 import type { Machine } from '@zilar/api-contract';
 

@@ -16,6 +16,7 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { ApiError } from '@zilar/api-contract';
 import {
   makeAisApi,
+  makeMachinesApi,
   useNewAiFlowState,
   type NewAiFlowPort,
   type NewAiStep,
@@ -37,7 +38,7 @@ import { describeAisError } from '@/components/ais/errors';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { SelectSheet } from '@/components/ui/select-sheet';
 import { iconKey } from '@/lib/depth';
-import { makeMachinesApi } from '@/lib/machines-api';
+
 import { useApi } from '@/lib/use-mockable-api';
 
 import { KeyStep } from './key-step';
@@ -484,15 +485,13 @@ function useNewAiFlow({
 }) {
   const { api } = useApi(makeAisApi);
   const { api: machinesApi } = useApi(makeMachinesApi);
-  const { api: connectionsApi } = useApi(makeAisApi);
   const port = useMemo<NewAiFlowPort>(
     () => ({
-      ...connectionsApi,
       ...api,
-      setAiMachine: machinesApi.setAiMachine,
+      setAiMachine: api.setAiMachine,
       listMachines: machinesApi.listMachines,
     }),
-    [api, machinesApi, connectionsApi],
+    [api, machinesApi],
   );
   const flow = useNewAiFlowState(port);
   const [orbOpen, setOrbOpen] = useState(false);
