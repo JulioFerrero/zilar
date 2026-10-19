@@ -313,3 +313,9 @@ The nine files go from 2,591 to about 1,920 lines (about −26%). The three new
 files add about 700 lines while the nine lose about 1,360, so the net is the
 −670 above. Measure with `wc -l` after T8; if the result is above 2,050, stop and
 review before proposing another cut.
+
+**Measured so far (2026-10-19):**
+- **T1 (T-2128): −127.** The estimate held.
+- **T2: dropped, it grew the code.** One `sendTurnReply` needed a wrapper in each caller, so DM and group each kept a send function and the pair went +16. The two send functions stay in `agents/turn-send.ts`.
+- **T4 (T-2144): −3, not −80.** `gateway/turn-prompt.ts` (`loadTurnPrompt`) is one path for DM and group. The two prompt loaders differ in history kind, names, memory scope and the fresh-message shape, so the shared version needs a `dm ?` branch at each of those points. That costs about as much as the two blocks it replaced.
+- **For T3 and T5–T8:** expect well under the estimates. Spec each with a line target measured over all files, new ones included, and stop any step that does not go down.

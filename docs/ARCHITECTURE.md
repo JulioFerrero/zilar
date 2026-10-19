@@ -66,7 +66,7 @@ Plans for the next shared steps: `docs/audit/store-phase3-plan.md` (store wiring
 
 - **Fewer lines is the goal.** Share code between web and phone through the packages, and never copy it.
 - **File size.** About 400 lines per file is a soft limit. Never split a file only to meet it; only a file over 800 lines must be split. `pnpm gate` warns over 400 and fails over 800.
-- **No barrels in apps.** Import from the module that defines the name. Only a package's `src/index.ts` re-exports.
+- **No barrels in apps.** Import from the module that defines the name. Only a package's `src/index.ts` re-exports. One exception: `apps/web/src/lib/api.ts` gathers the web API wrappers (`lib/api/*.ts`) with `export *`, because one import path for about 110 screens costs fewer lines than per-module imports.
 - **Comments** say only the why the code cannot say (`docs/COMMENTS.md`). Task IDs and history belong in git, not in comments.
 - **Tests** cover only auth and keys, permissions and money, and the message pipeline. UI is checked by hand: on the phone with `pnpm phone:smoke`, on web in mock mode.
 - **Validation.** Data is validated with Effect `Schema` at every boundary. The repo uses no zod.
