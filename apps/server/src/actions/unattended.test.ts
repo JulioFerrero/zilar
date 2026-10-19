@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { removeGroupAi } from '../groups/ais';
-import { removeTopicAi } from '../topics/ais';
+import { removeTopicAi } from '../topics/service';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { createAuditRecorder } from '../audit/recorder';

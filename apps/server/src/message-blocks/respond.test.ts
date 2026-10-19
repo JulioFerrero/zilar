@@ -5,12 +5,18 @@ import type { BlocksData } from '@zilar/protocol';
 import type { RoutineRow } from '../db/rows';
 import { createAuditRecorder } from '../audit/recorder';
 import { listAuditForAi } from '../audit/api';
-import { AlertLinkTaken, linkAlertCard } from '../routines/alert-link';
 import { createPromptRoutine } from '../tools/routine-adapters';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';
-import { respondToCard, myPicks, type CardRespondDeps, type CorrectCardInput } from './respond';
+import {
+  respondToCard,
+  myPicks,
+  type CardRespondDeps,
+  type CorrectCardInput,
+  AlertLinkTaken,
+  linkAlertCard,
+} from './respond';
 
 // T-1792: a member's tap must reach the card, be stored and corrected in the
 // room; a stranger must not learn the card exists, and nothing may be written

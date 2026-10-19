@@ -4,7 +4,7 @@
 // run on its own pathological shape.
 
 import { describe, expect, it } from 'vitest';
-import { parseLinkPreview } from '../link-preview/parse';
+import { parseLinkPreview } from '../link-preview/fetch';
 import { decodeAgentPayload } from '../notify/ai-cards';
 import { textWithoutReplyFallback } from '../push/candidates';
 import { parseFeed } from '../web-tools/feed';

@@ -2140,3 +2140,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2137](T-2137-server-folds-a.md) | server: fold 16 single-use files into their importer | 2026-10-19 |
 | [T-2140](T-2140-web-folds-b.md) | web: fold 10 single-use files into their importer | 2026-10-19 |
 | [T-2141](T-2141-phone-folds.md) | phone: fold 21 single-use files into their importer | 2026-10-19 |
+| [T-2138](T-2138-server-folds-b.md) | server: fold 13 single-use files into their importer | 2026-10-19 |

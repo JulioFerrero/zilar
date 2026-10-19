@@ -9,7 +9,7 @@ import {
 } from '../test-support';
 import { guardedGet } from '../web-tools/guarded-fetch';
 import { fetchLinkPreview, resetLinkPreviewCache } from './fetch';
-import { parseLinkPreview } from './parse';
+import { parseLinkPreview } from './fetch';
 
 describe('parseLinkPreview', () => {
   it('picks og: over twitter: over <title> and caps the lengths', () => {

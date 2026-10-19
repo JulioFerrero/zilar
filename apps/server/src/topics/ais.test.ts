@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_GROUP_MEMBERS } from '../groups/schemas';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { addTopicAi, removeTopicAi } from './ais';
+import { addTopicAi, removeTopicAi } from './service';
 import type { TopicServiceDeps } from './schemas';
 
 function depsFor(context: TestContext): TopicServiceDeps {

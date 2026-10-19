@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseYahooChart, resolveYahooSymbol } from './prices';
+import { parseYahooChart, resolveYahooSymbol } from './price-adapter';
 
 describe('resolveYahooSymbol', () => {
   it.each([
