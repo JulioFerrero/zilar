@@ -41,6 +41,17 @@ const UNCONFIGURED_VOICE: VoiceIntegrationStatus = {
   model: null,
 };
 
+function SaveError({ error }: { error: string }) {
+  if (error === '') {
+    return null;
+  }
+  return (
+    <Text accessibilityRole="alert" className="text-[14px] text-danger">
+      {error}
+    </Text>
+  );
+}
+
 /**
  * Anyone who is not the owner gets the same 404 as an unknown route. Secrets are write-only: never prefilled, cleared the moment a save succeeds, never rendered, logged or stored anywhere else.
  */
@@ -238,11 +249,7 @@ function EmailCard({
           <Text className="text-[13px] leading-5 text-muted-foreground">
             Leave empty to keep the current key.
           </Text>
-          {save.error !== '' ? (
-            <Text accessibilityRole="alert" className="text-[14px] text-danger">
-              {save.error}
-            </Text>
-          ) : null}
+          <SaveError error={save.error} />
           {save.saved ? (
             <Text className="text-[14px] text-online">
               Saved. A test email is on its way to your address.
@@ -363,11 +370,7 @@ function VoiceCard({
       <Text className="text-[13px] leading-5 text-muted-foreground">
         Any OpenAI-compatible transcription endpoint works.
       </Text>
-      {save.error !== '' ? (
-        <Text accessibilityRole="alert" className="text-[14px] text-danger">
-          {save.error}
-        </Text>
-      ) : null}
+      <SaveError error={save.error} />
       {save.saved ? (
         <Text className="text-[14px] text-online">Saved. Transcripts are on.</Text>
       ) : null}
@@ -463,11 +466,7 @@ function TelegramCard({
             editable={!save.busy}
             returnKeyType="done"
           />
-          {save.error !== '' ? (
-            <Text accessibilityRole="alert" className="text-[14px] text-danger">
-              {save.error}
-            </Text>
-          ) : null}
+          <SaveError error={save.error} />
           {save.saved ? (
             <Text className="text-[14px] text-online">Saved. Imports are on.</Text>
           ) : null}

@@ -34,14 +34,16 @@ import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
 import { resolveContactChat } from '../contacts/add-contact';
 
-function usePeopleSearch(options: {
+type PeopleSearchOptions = {
   api: ContactsApi;
   text: string;
   chats: { id: string; kind: string }[];
   myJid: string | null | undefined;
   onMessage: (chatId: string) => void;
   submitRequest?: number | undefined;
-}): {
+};
+
+function usePeopleSearch(options: PeopleSearchOptions): {
   view: PeopleSearchView<HandleProfile>;
   actionError: string | null;
   openMessage: () => void;
@@ -78,14 +80,7 @@ function PeopleSearchResult({
   myJid,
   onMessage,
   submitRequest,
-}: {
-  api: ContactsApi;
-  text: string;
-  chats: { id: string; kind: string }[];
-  myJid: string | null | undefined;
-  onMessage: (chatId: string) => void;
-  submitRequest?: number | undefined;
-}) {
+}: PeopleSearchOptions) {
   const router = useRouter();
   const search = usePeopleSearch({ api, text, chats, myJid, onMessage, submitRequest });
   if (peopleHandleFor(text) === null) {

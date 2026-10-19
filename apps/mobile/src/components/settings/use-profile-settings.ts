@@ -477,6 +477,11 @@ function useProfileAvatar(
       );
     };
 
+  const failAvatar = (failure: ProfileFailed): Effect.Effect<void> =>
+    Effect.sync(() => {
+      setPhase({ name: 'failed', message: failure.message });
+    });
+
   const avatarEffect = (operation: AvatarOperation): Effect.Effect<void> => {
     switch (operation.kind) {
       case 'pick':
@@ -497,11 +502,7 @@ function useProfileAvatar(
               }
             }),
           ),
-          Effect.catch((failure) =>
-            Effect.sync(() => {
-              setPhase({ name: 'failed', message: failure.message });
-            }),
-          ),
+          Effect.catch(failAvatar),
         );
       case 'save': {
         const { picked, ownerId } = operation;
@@ -533,11 +534,7 @@ function useProfileAvatar(
               setPhase({ name: 'idle' });
             }),
           ),
-          Effect.catch((failure) =>
-            Effect.sync(() => {
-              setPhase({ name: 'failed', message: failure.message });
-            }),
-          ),
+          Effect.catch(failAvatar),
         );
       }
       case 'remove':
@@ -548,11 +545,7 @@ function useProfileAvatar(
               setPhase({ name: 'removed' });
             }),
           ),
-          Effect.catch((failure) =>
-            Effect.sync(() => {
-              setPhase({ name: 'failed', message: failure.message });
-            }),
-          ),
+          Effect.catch(failAvatar),
         );
     }
   };

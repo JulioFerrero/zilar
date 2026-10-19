@@ -293,6 +293,14 @@ function MediaImage({
       ? attachment.width / attachment.height
       : undefined;
   const size = mediaFrame(ratio);
+  const pressableProps = {
+    accessibilityRole: 'image' as const,
+    accessibilityLabel: alt,
+    onPress: onOpen,
+    disabled: onOpen === undefined,
+    className: 'overflow-hidden',
+    ...longPress,
+  };
 
   if (failed) {
     return <UploadFailed onRetry={onRetry} />;
@@ -300,14 +308,7 @@ function MediaImage({
 
   if (demoGradient !== undefined && media.localUri === undefined) {
     return (
-      <Pressable
-        accessibilityRole="image"
-        accessibilityLabel={alt}
-        onPress={onOpen}
-        disabled={onOpen === undefined}
-        className="overflow-hidden"
-        {...longPress}
-      >
+      <Pressable {...pressableProps}>
         <LinearGradient
           colors={demoGradient}
           start={{ x: 0, y: 0 }}
@@ -340,14 +341,7 @@ function MediaImage({
   }
 
   return (
-    <Pressable
-      accessibilityRole="image"
-      accessibilityLabel={alt}
-      onPress={onOpen}
-      disabled={onOpen === undefined}
-      className="overflow-hidden"
-      {...longPress}
-    >
+    <Pressable {...pressableProps}>
       <Image
         recyclingKey={withMediaRetry(attachment.url, media.retry)}
         source={source ?? null}

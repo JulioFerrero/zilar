@@ -30,6 +30,22 @@ import { useNavigate } from 'react-router';
 
 type TelegramOp = { readonly kind: 'save'; readonly token: string } | { readonly kind: 'remove' };
 
+function SaveError({ text }: { text: string }) {
+  return text === '' ? null : (
+    <p role="alert" className="text-[14px] text-danger">
+      {text}
+    </p>
+  );
+}
+
+function RemoveButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Button type="button" variant="outline" onClick={onClick} disabled={disabled}>
+      Remove
+    </Button>
+  );
+}
+
 function TelegramCard({
   telegram,
   onSaved,
@@ -103,11 +119,7 @@ function TelegramCard({
               onChange={(event) => setToken(event.target.value)}
             />
           </label>
-          {errorMessage !== '' && (
-            <p role="alert" className="text-[14px] text-danger">
-              {errorMessage}
-            </p>
-          )}
+          <SaveError text={errorMessage} />
           {saved && <p className="text-[14px] text-online">Saved — imports are on.</p>}
           <div className="flex flex-wrap gap-2">
             <Button
@@ -119,14 +131,7 @@ function TelegramCard({
               {busy ? 'Checking…' : 'Save'}
             </Button>
             {telegram.configured && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => runTelegram({ kind: 'remove' })}
-                disabled={busy}
-              >
-                Remove
-              </Button>
+              <RemoveButton disabled={busy} onClick={() => runTelegram({ kind: 'remove' })} />
             )}
           </div>
         </>
@@ -163,11 +168,7 @@ export function IntegrationsPage() {
             <p className="text-[14px] text-muted-foreground">
               Only the person who runs this server can change integrations.
             </p>
-            {errorMessage !== '' && (
-              <p role="alert" className="text-[14px] text-danger">
-                {errorMessage}
-              </p>
-            )}
+            <SaveError text={errorMessage} />
             {errorMessage !== '' && (
               <div>
                 <Button type="button" size="lg" onClick={() => refresh()}>
@@ -290,11 +291,7 @@ function EmailCard({
             />
           </label>
           <p className="text-[13px] text-muted-foreground">Leave empty to keep the current key.</p>
-          {errorMessage !== '' && (
-            <p role="alert" className="text-[14px] text-danger">
-              {errorMessage}
-            </p>
-          )}
+          <SaveError text={errorMessage} />
           {saved && (
             <p className="text-[14px] text-online">
               Saved — a test email is on its way to your address.
@@ -445,11 +442,7 @@ function VoiceTranscriptionCard({
         Optional — leave empty for a self-hosted server without one. The key is never shown again
         after saving.
       </p>
-      {errorMessage !== '' && (
-        <p role="alert" className="text-[14px] text-danger">
-          {errorMessage}
-        </p>
-      )}
+      <SaveError text={errorMessage} />
       {saved && <p className="text-[14px] text-online">Saved — transcripts are on.</p>}
       <div className="flex flex-wrap gap-2">
         <Button
@@ -461,14 +454,7 @@ function VoiceTranscriptionCard({
           {busy ? 'Checking…' : 'Save'}
         </Button>
         {voiceTranscription.configured && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => runVoice({ kind: 'remove' })}
-            disabled={busy}
-          >
-            Remove
-          </Button>
+          <RemoveButton disabled={busy} onClick={() => runVoice({ kind: 'remove' })} />
         )}
       </div>
     </section>

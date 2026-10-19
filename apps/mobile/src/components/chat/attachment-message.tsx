@@ -67,6 +67,14 @@ export function AttachmentImage({
     attachment.width !== undefined && attachment.height !== undefined
       ? attachment.width / attachment.height
       : undefined;
+  const pressableProps = {
+    accessibilityRole: 'image' as const,
+    accessibilityLabel: alt,
+    onPress: onOpen,
+    disabled: onOpen === undefined,
+    className: 'overflow-hidden rounded-xl border border-edge',
+    ...longPress,
+  };
 
   if (failed) {
     return <UploadFailed onRetry={onRetry} className="flex-row items-center gap-2 px-0.5" />;
@@ -75,14 +83,7 @@ export function AttachmentImage({
   if (demoGradient !== undefined && localUri === undefined) {
     return (
       <View>
-        <Pressable
-          accessibilityRole="image"
-          accessibilityLabel={alt}
-          onPress={onOpen}
-          disabled={onOpen === undefined}
-          className="overflow-hidden rounded-xl border border-edge"
-          {...longPress}
-        >
+        <Pressable {...pressableProps}>
           <LinearGradient
             colors={demoGradient}
             start={{ x: 0, y: 0 }}
@@ -138,14 +139,7 @@ export function AttachmentImage({
 
   return (
     <View>
-      <Pressable
-        accessibilityRole="image"
-        accessibilityLabel={alt}
-        onPress={onOpen}
-        disabled={onOpen === undefined}
-        className="overflow-hidden rounded-xl border border-edge"
-        {...longPress}
-      >
+      <Pressable {...pressableProps}>
         <View style={{ width: IMAGE_WIDTH }}>
           <Image
             recyclingKey={localUri ?? attachment.url}

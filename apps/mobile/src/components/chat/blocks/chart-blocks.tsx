@@ -28,6 +28,30 @@ const BAR_CURRENT: ViewStyle = {
 const TRACK_HEIGHT = 120;
 const PEAK_HEIGHT = 87;
 
+function BlockHeading({
+  block,
+  valueClassName,
+}: {
+  block: { title?: string | undefined; value?: string | undefined };
+  valueClassName: string;
+}) {
+  if (block.title === undefined && block.value === undefined) {
+    return null;
+  }
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text className="min-w-0 flex-1 text-[14px] font-medium text-[#a1a1a1]" numberOfLines={1}>
+        {block.title ?? ''}
+      </Text>
+      {block.value === undefined ? null : (
+        <Text className={valueClassName} style={TABULAR} numberOfLines={1}>
+          {block.value}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 /**
  * 05 · BARS: a column per series entry, today's column raised and labelled.
  * `showHeading` draws the block's own title and total when the card has no
@@ -39,21 +63,8 @@ function BarsBlock({ block, showHeading }: { block: BarsBlockData; showHeading: 
     [block.title, block.value].filter((part) => part !== undefined).join(', ') || 'Bar chart';
   return (
     <View className="gap-2.5">
-      {showHeading && (block.title !== undefined || block.value !== undefined) ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="min-w-0 flex-1 text-[14px] font-medium text-[#a1a1a1]" numberOfLines={1}>
-            {block.title ?? ''}
-          </Text>
-          {block.value === undefined ? null : (
-            <Text
-              className="font-mono text-[13px] text-[#a1a1a1]"
-              style={TABULAR}
-              numberOfLines={1}
-            >
-              {block.value}
-            </Text>
-          )}
-        </View>
+      {showHeading ? (
+        <BlockHeading block={block} valueClassName="font-mono text-[13px] text-[#a1a1a1]" />
       ) : null}
       <View
         accessible
@@ -228,21 +239,8 @@ function LineBlock({ block, showHeading }: { block: LineBlockData; showHeading: 
     [block.title, block.value].filter((part) => part !== undefined).join(', ') || 'Line chart';
   return (
     <View className="gap-2.5">
-      {showHeading && (block.title !== undefined || block.value !== undefined) ? (
-        <View className="flex-row items-center gap-2">
-          <Text className="min-w-0 flex-1 text-[14px] font-medium text-[#a1a1a1]" numberOfLines={1}>
-            {block.title ?? ''}
-          </Text>
-          {block.value === undefined ? null : (
-            <Text
-              className="font-mono text-[13px] text-[#ededed]"
-              style={TABULAR}
-              numberOfLines={1}
-            >
-              {block.value}
-            </Text>
-          )}
-        </View>
+      {showHeading ? (
+        <BlockHeading block={block} valueClassName="font-mono text-[13px] text-[#ededed]" />
       ) : null}
       <View className="flex-row gap-2">
         <View

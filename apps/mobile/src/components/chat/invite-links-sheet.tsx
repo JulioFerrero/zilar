@@ -241,17 +241,14 @@ export function InviteLinksSheet({
   );
 }
 
-function InviteLinkRowView({
-  link,
-  now,
-  revoking,
-  onRevoke,
-}: {
+type InviteLinkRowProps = {
   link: GroupInviteLink;
   now: number;
   revoking: boolean;
   onRevoke: (linkId: string) => void;
-}) {
+};
+
+function InviteLinkRowView({ link, now, revoking, onRevoke }: InviteLinkRowProps) {
   const state = inviteLinkState(link, now);
   const name = link.label === null || link.label === '' ? `····${link.tokenHint}` : link.label;
   return (
@@ -283,17 +280,7 @@ function InviteLinkRowView({
 }
 
 /** The full token never appears here, only the hint. */
-export function InviteLinkRow({
-  link,
-  now,
-  revoking,
-  onRevoke,
-}: {
-  link: GroupInviteLink;
-  now: number;
-  revoking: boolean;
-  onRevoke: (linkId: string) => void;
-}) {
+export function InviteLinkRow({ link, now, revoking, onRevoke }: InviteLinkRowProps) {
   return <InviteLinkRowView link={link} now={now} revoking={revoking} onRevoke={onRevoke} />;
 }
 

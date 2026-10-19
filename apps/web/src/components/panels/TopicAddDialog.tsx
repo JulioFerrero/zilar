@@ -235,6 +235,33 @@ export function TopicAddDialog({
   const recordAi = (ai: AddAi, outcome: Outcome | undefined): void => {
     setAiOutcomes((previous) => ({ ...previous, [ai.id]: { outcome, ai } }));
   };
+  const personRows = (rows: AddPerson[], tag?: string) =>
+    rows.map((person) => (
+      <AddRow
+        key={person.id}
+        id={person.id}
+        name={person.name}
+        {...(person.avatarUrl === undefined ? {} : { avatarUrl: person.avatarUrl })}
+        {...(tag === undefined ? {} : { tag })}
+        outcome={personOutcomes[person.id]?.outcome}
+        add={addMember}
+        onResult={(outcome) => recordPerson(person, outcome)}
+      />
+    ));
+  const aiRows = (rows: AddAi[], tag?: string) =>
+    rows.map((ai) => (
+      <AddRow
+        key={ai.id}
+        id={ai.id}
+        name={ai.name}
+        ai
+        {...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl })}
+        {...(tag === undefined ? {} : { tag })}
+        outcome={aiOutcomes[ai.id]?.outcome}
+        add={addAi}
+        onResult={(outcome) => recordAi(ai, outcome)}
+      />
+    ));
 
   return (
     <DialogPrimitive.Root
@@ -289,37 +316,12 @@ export function TopicAddDialog({
                   <>
                     {peopleInGroup.length > 0 && (
                       <Section title={`IN ${groupTitle.toUpperCase()}`}>
-                        {peopleInGroup.map((person) => (
-                          <AddRow
-                            key={person.id}
-                            id={person.id}
-                            name={person.name}
-                            {...(person.avatarUrl === undefined
-                              ? {}
-                              : { avatarUrl: person.avatarUrl })}
-                            outcome={personOutcomes[person.id]?.outcome}
-                            add={addMember}
-                            onResult={(outcome) => recordPerson(person, outcome)}
-                          />
-                        ))}
+                        {personRows(peopleInGroup)}
                       </Section>
                     )}
                     {isManager && peopleContacts.length > 0 && (
                       <Section title="YOUR CONTACTS">
-                        {peopleContacts.map((person) => (
-                          <AddRow
-                            key={person.id}
-                            id={person.id}
-                            name={person.name}
-                            {...(person.avatarUrl === undefined
-                              ? {}
-                              : { avatarUrl: person.avatarUrl })}
-                            tag={`+ joins ${groupTitle}`}
-                            outcome={personOutcomes[person.id]?.outcome}
-                            add={addMember}
-                            onResult={(outcome) => recordPerson(person, outcome)}
-                          />
-                        ))}
+                        {personRows(peopleContacts, `+ joins ${groupTitle}`)}
                       </Section>
                     )}
                   </>
@@ -329,36 +331,11 @@ export function TopicAddDialog({
               ) : (
                 <>
                   {aisInGroup.length > 0 && (
-                    <Section title={`IN ${groupTitle.toUpperCase()}`}>
-                      {aisInGroup.map((ai) => (
-                        <AddRow
-                          key={ai.id}
-                          id={ai.id}
-                          name={ai.name}
-                          ai
-                          {...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl })}
-                          outcome={aiOutcomes[ai.id]?.outcome}
-                          add={addAi}
-                          onResult={(outcome) => recordAi(ai, outcome)}
-                        />
-                      ))}
-                    </Section>
+                    <Section title={`IN ${groupTitle.toUpperCase()}`}>{aiRows(aisInGroup)}</Section>
                   )}
                   {isManager && aisOther.length > 0 && (
                     <Section title="YOUR OTHER AIS">
-                      {aisOther.map((ai) => (
-                        <AddRow
-                          key={ai.id}
-                          id={ai.id}
-                          name={ai.name}
-                          ai
-                          {...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl })}
-                          tag={`+ joins ${groupTitle}`}
-                          outcome={aiOutcomes[ai.id]?.outcome}
-                          add={addAi}
-                          onResult={(outcome) => recordAi(ai, outcome)}
-                        />
-                      ))}
+                      {aiRows(aisOther, `+ joins ${groupTitle}`)}
                     </Section>
                   )}
                 </>

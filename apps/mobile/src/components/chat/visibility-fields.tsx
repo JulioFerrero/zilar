@@ -231,7 +231,8 @@ export function publicCreateError(
 }
 
 // Empty-name and Public-handle guards; returns the payload or the sentence to show.
-export function groupCreateGuard(
+function createGuard(
+  kind: 'group' | 'channel',
   title: string,
   visibility: CreateVisibility,
   handle: string,
@@ -241,9 +242,9 @@ export function groupCreateGuard(
   | { error: string } {
   const trimmed = title.trim();
   if (trimmed === '') {
-    return { error: 'Enter a group name' };
+    return { error: `Enter a ${kind} name` };
   }
-  const guard = publicCreateError(visibility, handle, check, 'group');
+  const guard = publicCreateError(visibility, handle, check, kind);
   if (guard !== undefined) {
     return { error: guard };
   }
@@ -253,6 +254,17 @@ export function groupCreateGuard(
         ? { title: trimmed, visibility: 'public' as const, handle: handle.trim() }
         : { title: trimmed },
   };
+}
+
+export function groupCreateGuard(
+  title: string,
+  visibility: CreateVisibility,
+  handle: string,
+  check: HandleCheckState | null,
+):
+  | { input: { title: string; visibility: 'public'; handle: string } | { title: string } }
+  | { error: string } {
+  return createGuard('group', title, visibility, handle, check);
 }
 
 export function buildGroupCreateInput(
@@ -280,20 +292,7 @@ export function channelCreateGuard(
 ):
   | { input: { title: string; visibility: 'public'; handle: string } | { title: string } }
   | { error: string } {
-  const trimmed = title.trim();
-  if (trimmed === '') {
-    return { error: 'Enter a channel name' };
-  }
-  const guard = publicCreateError(visibility, handle, check, 'channel');
-  if (guard !== undefined) {
-    return { error: guard };
-  }
-  return {
-    input:
-      visibility === 'public'
-        ? { title: trimmed, visibility: 'public' as const, handle: handle.trim() }
-        : { title: trimmed },
-  };
+  return createGuard('channel', title, visibility, handle, check);
 }
 
 export function buildChannelCreateInput(

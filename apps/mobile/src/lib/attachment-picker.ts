@@ -36,15 +36,16 @@ function sizeErrorMessage(size: number | undefined): string | undefined {
   return tooLarge(size) ? TOO_LARGE_MESSAGE : undefined;
 }
 
-function pickedFile(input: {
+interface AssetInput {
   uri: string;
   name: string | null | undefined;
   mimeType: string | undefined;
   size: number | undefined;
   width?: number | undefined;
   height?: number | undefined;
-  measuredSize?: number | undefined;
-}): PickResult {
+}
+
+function pickedFile(input: AssetInput & { measuredSize?: number | undefined }): PickResult {
   // An unknown picker size is not empty: only a real zero refuses (the size is read from the file first).
   const size = input.size ?? input.measuredSize;
   const sizeError = sizeErrorMessage(size);
@@ -65,15 +66,6 @@ function pickedFile(input: {
     file.height = input.height;
   }
   return { status: 'picked', file, files: [file] };
-}
-
-interface AssetInput {
-  uri: string;
-  name: string | null | undefined;
-  mimeType: string | undefined;
-  size: number | undefined;
-  width?: number | undefined;
-  height?: number | undefined;
 }
 
 function assetInputFor(asset: ImagePicker.ImagePickerAsset): AssetInput {

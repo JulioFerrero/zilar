@@ -38,6 +38,19 @@ export interface TickResult {
   errors: string[];
 }
 
+function reportError(deps: AutopilotDeps, dryRun: boolean, result: TickResult, line: string): void {
+  if (dryRun) {
+    console.error(`DRY: ${line}`);
+  } else {
+    try {
+      appendLog(deps.statePath, line);
+    } catch {
+      // Logging must never break the loop.
+    }
+  }
+  result.errors.push(line);
+}
+
 // One poll over every worker session in the state file. Read-only when dryRun is
 // set: it classifies and prints, but replies, prompts, starts and saves nothing.
 export async function tickOnce(
@@ -52,16 +65,7 @@ export async function tickOnce(
   } catch (error) {
     // The sweep must never break the task loop.
     const line = `sweeper: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
-    if (options.dryRun) {
-      console.error(`DRY: ${line}`);
-    } else {
-      try {
-        appendLog(deps.statePath, line);
-      } catch {
-        // Logging must never break the loop.
-      }
-    }
-    result.errors.push(line);
+    reportError(deps, options.dryRun, result, line);
   }
   const initialSessions = new Map<string, string>();
   for (const [task, record] of Object.entries(state.tasks)) {
@@ -175,16 +179,7 @@ export async function tickOnce(
       updated.set(task, await applyActions(task, record, actions, deps, false, result));
     } catch (error) {
       const line = `${task}: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
-      if (options.dryRun) {
-        console.error(`DRY: ${line}`);
-      } else {
-        try {
-          appendLog(deps.statePath, line);
-        } catch {
-          // Logging must never break the loop.
-        }
-      }
-      result.errors.push(line);
+      reportError(deps, options.dryRun, result, line);
     }
   }
   if (!options.dryRun) {
@@ -205,16 +200,7 @@ export async function tickOnce(
   } catch (error) {
     // The doctor step must never break the task loop: a failure is logged and the results stand.
     const line = `doctor: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
-    if (options.dryRun) {
-      console.error(`DRY: ${line}`);
-    } else {
-      try {
-        appendLog(deps.statePath, line);
-      } catch {
-        // Logging must never break the loop.
-      }
-    }
-    result.errors.push(line);
+    reportError(deps, options.dryRun, result, line);
   }
   return result;
 }
