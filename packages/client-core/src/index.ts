@@ -47,6 +47,7 @@ export {
 } from './topics-api';
 export * from './chats-api';
 export * from './directory-api';
+export * from './contacts-api';
 export { makeGroupsApi, type CreateGroupInviteLinkInput } from './groups-api';
 export {
   isLocalPreviewUrl,
