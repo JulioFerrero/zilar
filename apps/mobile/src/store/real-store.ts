@@ -164,7 +164,6 @@ function makePushPair(ctx: StoreCtx): PushPair {
   };
 }
 
-export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
 export {
   DRAFT_END_FALLBACK_MS,
   DRAFT_IDLE_MS,
@@ -307,6 +306,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           locals.pendingUploads.delete(messageId);
           locals.pendingVoices.delete(messageId);
         },
+        rememberGroupIds: (entries) => helpers.rememberGroupIds(entries as ChatEntry[]),
         joinedRooms: locals.joinedRooms,
       },
       core: locals.core,

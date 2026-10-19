@@ -1,7 +1,10 @@
 import { Effect } from 'effect';
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { ChatPrefRow, ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { ChatEntry } from '@zilar/api-contract';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
-import { fromPromise, type CoreCtx, type CorePatch, type CoreState } from './ctx';
+import { mergeChatRows } from './chat-rows';
+import { fromPromise, nickFor, type CoreCtx, type CorePatch, type CoreState } from './ctx';
+import { applyChatDelivery } from './delivered';
 import type { LedgerBatchView } from './ledger-history-ingest';
 import { applyChatReadMark, recordRead } from './reads';
 import { coreKind, sortMessages } from './rows';
@@ -234,6 +237,40 @@ export const loadPreview = (
     Effect.catchCause(() => Effect.void),
   );
 };
+
+export function mergeFreshChats(
+  ctx: HistoryCtx,
+  rows: readonly ChatSummary[],
+  entries: ChatEntry[],
+  prefs: readonly ChatPrefRow[],
+  nowMs: number,
+): ChatSummary[] {
+  const previous = ctx.get().chats;
+  for (const row of rows) applyChatDelivery(ctx, row);
+  ctx.set({ chats: mergeChatRows(previous, rows, ctx.get().activeChatId, prefs, nowMs) });
+  ctx.fx.rememberGroupIds?.(entries);
+  return previous;
+}
+
+export const adoptNewRows = (
+  ctx: HistoryCtx,
+  core: XmppCore,
+  me: { readonly name: string; readonly jid?: string | null | undefined },
+  rows: readonly ChatSummary[],
+  known: ReadonlyMap<string, ChatSummary>,
+  onJoined: (row: ChatSummary) => void,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const fresh = rows.filter((row) => !known.has(row.id));
+    for (const row of fresh.filter((item) => item.kind === 'group')) {
+      yield* fromPromise(() => core.joinRoom(row.id, nickFor(me))).pipe(Effect.ignore);
+      onJoined(row);
+    }
+    for (const row of fresh) {
+      const chat = ctx.get().chats.find((item) => item.id === row.id);
+      if (chat !== undefined) yield* loadPreview(ctx, core, chat);
+    }
+  });
 
 export function flushPending(ctx: HistoryCtx): void {
   const pending = ctx.pendingOpenChatId;

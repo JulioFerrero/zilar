@@ -52,6 +52,7 @@ export interface CoreHooks {
   readonly forgetRetryBytes: (messageId: string) => void;
   /** Shows an in-tab browser notification for an unread message (web); mobile leaves it unset. */
   readonly notifyIncoming?: (chatId: string, message: UiMessage) => void;
+  readonly rememberGroupIds?: (entries: readonly unknown[]) => void;
   /**
    * The group rooms joined in this session, the same set as the context's `joinedRooms`;
    * the mobile history adapter rebuilds the context and reads it here.

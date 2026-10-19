@@ -2,13 +2,13 @@ import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import {
-  applyChatDelivery,
+  adoptNewRows,
   bridgeLocals,
   clearSupersededMarker,
-  flushPending as flushCore,
+  flushPending,
   loadOlder as loadOlderCore,
-  loadPreview as loadPreviewCore,
-  mergeChatRows,
+  loadPreview,
+  mergeFreshChats,
   openAtMessage as openAtMessageCore,
   openHistory,
   pruneInactiveChats,
@@ -48,8 +48,6 @@ function makeHistoryCtx(ctx: StoreCtx): HistoryCtx {
 
   return historyCtx;
 }
-
-export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from '@zilar/client-core/store';
 
 export interface History {
   readonly loadPrefRows: Effect.Effect<ChatPref[], never, Ports>;
@@ -94,22 +92,18 @@ export function makeHistory(ctx: StoreCtx): History {
     );
   });
 
-  // A server row at least as new as memory wins (a read on another device clears here); a newer in-memory preview wins. Topic rows that disappeared vanish; chat prefs apply after the merge. Returns the previous chats so the caller can tell which rows are new.
-  function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
-    const previous = get().chats;
-    const known = new Map(previous.map((chat) => [chat.id, chat]));
-    const activeChatId = get().activeChatId;
+  // A server row at least as new as memory wins (a read on another device clears here); a newer in-memory preview wins. Topic rows that disappeared vanish; chat prefs apply after the merge. Returns the rows from before the merge so the caller can tell which ones are new.
+  function mergeChatEntries(entries: ChatEntry[]): ChatSummary[] {
     const rows = entries.flatMap((entry) => h.summariesFor(entry));
-    // Confirms the newest preview of every row and applies the delivered mark the server reports to our own loaded messages.
-    for (const row of rows) {
-      applyChatDelivery(historyCtx, row);
-    }
-    const wanted = new Set(rows.map((row) => row.id));
-    set({
-      chats: mergeChatRows(previous, rows, activeChatId, s.chatPrefRows, ports.now().getTime()),
-    });
-    h.rememberGroupIds(entries);
+    const previous = mergeFreshChats(
+      historyCtx,
+      rows,
+      entries,
+      s.chatPrefRows,
+      ports.now().getTime(),
+    );
     // A topic that disappeared while open goes back to its group's topics screen with a notice that never names the topic.
+    const wanted = new Set(rows.map((row) => row.id));
     const openId = get().activeChatId;
     if (openId !== null && !wanted.has(openId)) {
       const was = previous.find((chat) => chat.id === openId);
@@ -122,49 +116,27 @@ export function makeHistory(ctx: StoreCtx): History {
         set({ activeChatId: null });
       }
     }
-    return known;
+    return previous;
   }
 
-  const loadPreview = (current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports> =>
-    loadPreviewCore(historyCtx, current, chat);
-
-  const adoptChatEntries = (
-    entries: ChatEntry[],
-    known: Map<string, ChatSummary>,
-  ): Effect.Effect<void, never, Ports> =>
-    Effect.gen(function* () {
-      const current = s.core;
-      const me = get().me;
-      if (current === undefined || me === undefined) {
-        return;
+  const adoptChatEntries = (entries: ChatEntry[], known: ReadonlyMap<string, ChatSummary>) => {
+    const current = s.core;
+    const me = get().me;
+    if (current === undefined || me === undefined) {
+      return Effect.void;
+    }
+    // Dedupe per group id: every topic row joins its own room, but names come from one shared detail GET.
+    const detailStarted = new Set<string>();
+    const rows = entries.flatMap((entry) => h.summariesFor(entry));
+    return adoptNewRows(historyCtx, current, me, rows, known, (row) => {
+      const groupId = row.groupId ?? groupIds.get(row.id);
+      if (groupId !== undefined && !detailStarted.has(groupId)) {
+        detailStarted.add(groupId);
+        ctx.forkSession(fx.ensureGroupDetail(groupId));
       }
-      // Dedupe per group id: every topic row joins its own room, but names come from one shared detail GET.
-      const detailStarted = new Set<string>();
-      const freshRows = entries
-        .flatMap((entry) => h.summariesFor(entry))
-        .filter((row) => !known.has(row.id) && row.kind === 'group');
-      for (const row of freshRows) {
-        yield* orElse(
-          lift(() => current.joinRoom(row.id, h.nick(me))),
-          undefined,
-        );
-        const groupId = row.groupId ?? groupIds.get(row.id);
-        if (groupId !== undefined && !detailStarted.has(groupId)) {
-          detailStarted.add(groupId);
-          ctx.forkSession(fx.ensureGroupDetail(groupId));
-        }
-        ctx.forkSession(fx.ensureGroupMembers(row.id));
-      }
-      for (const row of entries.flatMap((entry) => h.summariesFor(entry))) {
-        if (known.has(row.id)) {
-          continue;
-        }
-        const chat = get().chats.find((item) => item.id === row.id);
-        if (chat !== undefined) {
-          yield* loadPreview(current, chat);
-        }
-      }
+      ctx.forkSession(fx.ensureGroupMembers(row.id));
     });
+  };
 
   // Prefs and folders never fail, and a failing chat list does not cancel them.
   const fetchChatList = Effect.gen(function* () {
@@ -184,9 +156,9 @@ export function makeHistory(ctx: StoreCtx): History {
     }
     const [entries, prefs] = fetched.value;
     s.chatPrefRows = prefs;
-    const known = mergeChatEntries(entries);
-    flushCore(historyCtx);
-    yield* adoptChatEntries(entries, known);
+    const previous = mergeChatEntries(entries);
+    flushPending(historyCtx);
+    yield* adoptChatEntries(entries, new Map(previous.map((chat) => [chat.id, chat])));
   });
 
   const reloadChatsList: Effect.Effect<void, never, Ports> = Effect.gen(function* () {
@@ -203,10 +175,10 @@ export function makeHistory(ctx: StoreCtx): History {
     }
     const [entries, prefs] = fetched.value;
     s.chatPrefRows = prefs;
-    const known = mergeChatEntries(entries);
+    const previous = mergeChatEntries(entries);
     set({ chatsLoad: 'loaded' });
-    flushCore(historyCtx);
-    yield* adoptChatEntries(entries, known);
+    flushPending(historyCtx);
+    yield* adoptChatEntries(entries, new Map(previous.map((chat) => [chat.id, chat])));
   });
 
   const openAtMessage = (
@@ -223,9 +195,9 @@ export function makeHistory(ctx: StoreCtx): History {
     loadPrefRows,
     loadFolders,
     refreshChats,
-    loadPreview,
+    loadPreview: (current, chat) => loadPreview(historyCtx, current, chat),
     flushPending: () => {
-      flushCore(historyCtx);
+      flushPending(historyCtx);
     },
     loadOlder: (chatId) => {
       loadOlderCore(historyCtx, chatId);

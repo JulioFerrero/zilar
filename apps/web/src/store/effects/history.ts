@@ -1,11 +1,10 @@
 import { Effect } from 'effect';
 import type { UiMessage } from '@zilar/chat-core';
 import {
-  applyChatDelivery,
+  adoptNewRows,
   clearSupersededMarker,
   flushPending,
-  loadPreview,
-  mergeChatRows,
+  mergeFreshChats,
   openAtMessage as openAtMessageCore,
   openHistory,
   pruneInactiveChats,
@@ -21,13 +20,7 @@ import { Ports } from './ports';
 import { setUnreadMark } from './prefs';
 import { fromPromise, prefsByJid } from './util';
 
-export {
-  canLoadHistory,
-  flushPending,
-  loadOlder,
-  loadPreview,
-  openHistory,
-} from '@zilar/client-core/store';
+export { loadOlder, openHistory } from '@zilar/client-core/store';
 
 /** No ids: the stable empty set the reveal reader returns when a chat has none. */
 const NO_REVEALS: ReadonlySet<string> = new Set();
@@ -147,7 +140,6 @@ export const refreshChats = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =
 export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api, now } = yield* Ports;
-    const { k } = ctx;
     const session = ctx.rt.session();
     const [entries, loadedPrefs] = yield* Effect.all(
       [fromPromise(() => api.getChats()), Effect.option(fromPromise(() => api.listChatPrefs()))],
@@ -161,22 +153,15 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
       );
     }
 
-    const previous = ctx.get().chats;
-    const known = new Map(previous.map((chat) => [chat.id, chat]));
     const activeChatId = ctx.get().activeChatId;
     const freshRows = entries.flatMap((entry) => summariesFor(entry));
-    // Confirm the newest preview of every row and apply the delivered mark the server reports.
-    for (const row of freshRows) {
-      applyChatDelivery(ctx, row);
-    }
     // A failed prefs read keeps the last rows, so pins, mutes and archives survive.
     const prefs =
       loadedPrefs._tag === 'Some' ? loadedPrefs.value : Object.values(ctx.get().chatPrefs);
-    ctx.set({
-      chats: mergeChatRows(previous, freshRows, activeChatId, prefs, now().getTime()),
-      ...(loadedPrefs._tag === 'Some' ? { chatPrefs: prefsByJid(prefs) } : {}),
-    });
-    k.rememberGroupIds(entries);
+    const previous = mergeFreshChats(ctx, freshRows, entries, prefs, now().getTime());
+    if (loadedPrefs._tag === 'Some') {
+      ctx.set({ chatPrefs: prefsByJid(prefs) });
+    }
     // A topic that disappeared while open navigates to General with a short notice — unless
     // this client caused it (e.g. archiving from its own header): those move silently.
     const openChatRow =
@@ -224,25 +209,8 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
     if (current === undefined || me === undefined) {
       return;
     }
-    for (const entry of entries) {
-      if (entry.kind !== 'group') {
-        continue;
-      }
-      for (const row of summariesFor(entry)) {
-        if (known.has(row.id)) {
-          continue;
-        }
-        yield* fromPromise(() => current.joinRoom(row.id, k.nick(me))).pipe(Effect.ignore);
-        loadGroupMembersInBackground(ctx, row.id);
-      }
-    }
-    for (const row of freshRows) {
-      if (known.has(row.id)) {
-        continue;
-      }
-      const chat = ctx.get().chats.find((item) => item.id === row.id);
-      if (chat !== undefined) {
-        yield* loadPreview(ctx, current, chat);
-      }
-    }
+    const known = new Map(previous.map((chat) => [chat.id, chat]));
+    yield* adoptNewRows(ctx, current, me, freshRows, known, (row) =>
+      loadGroupMembersInBackground(ctx, row.id),
+    );
   });
