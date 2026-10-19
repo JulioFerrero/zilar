@@ -233,6 +233,33 @@ export function BubbleInlineMeta({
   );
 }
 
+type InlineMetaInput = {
+  message: UiMessage;
+  outgoing: boolean;
+  color: string;
+  generating: boolean;
+};
+
+// The hidden copy sits in the last line to reserve the meta's width; the visible copy is pinned bottom-right.
+export function bubbleMetaTail(meta: InlineMetaInput, reduceMotion: boolean) {
+  return (
+    <>
+      {meta.generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
+      <BubbleInlineMeta {...meta} hidden />
+    </>
+  );
+}
+
+export function bubbleMetaOverlay(meta: InlineMetaInput, textColor: string) {
+  return (
+    <View style={META_OVERLAY}>
+      <Text className="text-[15px] leading-5" color={textColor}>
+        <BubbleInlineMeta {...meta} />
+      </Text>
+    </View>
+  );
+}
+
 export function PlainBubbleBody({
   message,
   outgoing,
@@ -255,30 +282,6 @@ export function PlainBubbleBody({
   const blocks = splitCodeBlocks(text);
   const hasCode = blocks.some((block) => block.kind === 'code');
   const url = previewUrl(message, text);
-  const metaTail = (
-    <>
-      {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-      <BubbleInlineMeta
-        message={message}
-        outgoing={outgoing}
-        color={metaColor}
-        generating={generating}
-        hidden
-      />
-    </>
-  );
-  const metaOverlay = (
-    <View style={META_OVERLAY}>
-      <Text className="text-[15px] leading-5" color={textColor}>
-        <BubbleInlineMeta
-          message={message}
-          outgoing={outgoing}
-          color={metaColor}
-          generating={generating}
-        />
-      </Text>
-    </View>
-  );
   if (!hasCode) {
     return (
       <>
@@ -292,10 +295,10 @@ export function PlainBubbleBody({
               outgoing={outgoing}
               formatted
             />
-            {metaTail}
+            {bubbleMetaTail({ message, outgoing, color: metaColor, generating }, reduceMotion)}
           </Text>
           {generating ? <GeneratingLabel /> : null}
-          {metaOverlay}
+          {bubbleMetaOverlay({ message, outgoing, color: metaColor, generating }, textColor)}
         </View>
         {url !== undefined ? <LinkPreviewCard url={url} /> : null}
       </>
@@ -327,10 +330,10 @@ export function PlainBubbleBody({
       )}
       <View>
         <Text className="text-[15px] leading-5" color={textColor}>
-          {metaTail}
+          {bubbleMetaTail({ message, outgoing, color: metaColor, generating }, reduceMotion)}
         </Text>
         {generating ? <GeneratingLabel /> : null}
-        {metaOverlay}
+        {bubbleMetaOverlay({ message, outgoing, color: metaColor, generating }, textColor)}
       </View>
       {url !== undefined ? <LinkPreviewCard url={url} /> : null}
     </>

@@ -6,6 +6,21 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
 Julio's words: "dont stop working, try to reduce the lines and make a better codebase for other ais and humans". No feature was removed.
 
+**Morning summary (written 06:55 UTC; the tables below have the details):**
+- **Lines:** source went from 274,479 to 235,978. Real cuts are about −37,100; the rest is 1,365 test-helper lines moved into the test class.
+- **Since 03:00, for readers (people and AIs):**
+  - every helper and type written twice has one home (server, web, phone, packages);
+  - every pass-through re-export is gone, so each import names the module that defines it (server and both apps);
+  - 8 size-split folders went back into one file each;
+  - the phone has one picture editor hook;
+  - 30-odd single-use files were folded into their only user.
+- **Checks:**
+  - each push was live-checked (0 server errors; all 74 contract GET routes answer as before);
+  - each phone change ran on the emulator in mock mode;
+  - each web change was compared with main in mock mode.
+- **Lead tooling:** the `lead` CLI, autopilot and watch files were merged back into single files. `lead status`, the CLI and the autopilot run fine after the merge.
+- **Needs you:** the "Waiting for Julio" list below is unchanged. Nothing was released, no prod config was touched, and no chat messages were sent.
+
 **Source lines** (as the code map counts them; tests, mocks and generated files excluded):
 
 | When (UTC) | Lines |
@@ -24,6 +39,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 04:30 | 237,952 (real cuts since 19:35 about −35,160) |
 | 10-19 05:31 | 237,141 (real cuts since 19:35 about −35,970) |
 | 10-19 06:23 | 236,347 (real cuts since 19:35 about −36,770); T-2181's −206 lands after this count |
+| 10-19 06:45 | 235,978 (real cuts since 19:35 about −37,140) |
 
 **Merged tonight:**
 
@@ -92,6 +108,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2181 | web and phone: 178 re-exported names now imported from the defining module, 6 rename aliases and 4 re-export-only files gone (200 files) | −206 |
 | T-2182 | phone: one picture editor hook (pick, save, remove) for profile and group settings (big-cut plan B6) | −115 |
 | T-2183 | server: 7 single-use files folded into their only importer; the last 2 pass-through exports gone | −34 |
+| T-2184, T-2185 | web and phone: 16 single-use files folded into their only importer (forward picker, scroll memory, people search, swipe-to-reply, gallery grid…) | −68, −61 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -109,9 +126,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (06:20):**
-- **T-2184, T-2185:** single-use web and phone files folded into their only importer, wave 4.
+**Running (06:50):**
 - **T-2186:** phone screens that hand-roll load-on-focus use the existing `useFocusList` hook (8 screens).
+- **T-2187:** web and phone in-file repeats, wave 3 (22 files).
+- **T-2188:** blocks copied between two files of one app or package, wave 2 (13 pairs).
 
 **Checked and left alone tonight:**
 - **B8**, one guarded fetch: the two pinned HTTPS fetches overlap by about 60 lines, but their error types and timeouts differ. That is a security path for little gain.
@@ -120,7 +138,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `1f43a4df4` (06:26): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `50efd48ab` (06:43): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

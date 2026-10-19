@@ -9,16 +9,15 @@ import { MediaBubble } from '@/components/chat/media-bubble';
 import {
   BigEmoji,
   BubbleMeta,
-  DraftCaret,
   GeneratingLabel,
   LONG_PRESS_MS,
 } from '@/components/chat/message-bubble-decor';
 import { PayloadCard, isRenderedCard } from '@/components/chat/payload-card';
 import { PersonPressable } from '@/components/chat/person-pressable';
 import {
-  BubbleInlineMeta,
-  META_OVERLAY,
   PlainBubbleBody,
+  bubbleMetaOverlay,
+  bubbleMetaTail,
 } from '@/components/chat/plain-bubble-body';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
@@ -291,18 +290,7 @@ export function MessageBubbleContent({
 }: MessageBubbleContentProps) {
   // Stable across reveal frames that repeat the same text, so `MarkdownText`'s memo skips a re-parse. The hidden copy reserves the meta's width; the visible one is bottom-right.
   const trailingMeta = useMemo(
-    () => (
-      <>
-        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-        <BubbleInlineMeta
-          message={message}
-          outgoing={outgoing}
-          color={metaColor}
-          generating={generating}
-          hidden
-        />
-      </>
-    ),
+    () => bubbleMetaTail({ message, outgoing, color: metaColor, generating }, reduceMotion),
     [generating, message, outgoing, metaColor, reduceMotion],
   );
 
@@ -410,16 +398,7 @@ export function MessageBubbleContent({
         <View>
           <MarkdownText text={text} color={textColor} trailing={trailingMeta} />
           {generating ? <GeneratingLabel /> : null}
-          <View style={META_OVERLAY}>
-            <Text className="text-[15px] leading-5" color={textColor}>
-              <BubbleInlineMeta
-                message={message}
-                outgoing={outgoing}
-                color={metaColor}
-                generating={generating}
-              />
-            </Text>
-          </View>
+          {bubbleMetaOverlay({ message, outgoing, color: metaColor, generating }, textColor)}
         </View>
       ) : (
         <PlainBubbleBody
