@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openWorkspace } from './paths';
-import { runGit } from './tools/git';
+import { runGit } from './tools';
 import type { ToolContext } from './tool';
 
 let root: string;

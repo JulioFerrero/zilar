@@ -27,7 +27,7 @@ import {
   type ParseContext,
 } from './stanza';
 import type { Occupant } from './types';
-import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './stanza/decode';
+import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './stanza';
 import { createPresence } from './core-effect/presence';
 import type { CoreRuntime } from './core-effect/config';
 import {
