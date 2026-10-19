@@ -9,13 +9,9 @@ import { isFreePaused, pauseFreeOnRefusal } from './free-pause.js';
 import { currentHead, type GitRunner } from './git.js';
 import { isGoPaused } from './go-pause.js';
 import { FREE_MUSE } from './models.js';
+import type { PermissionRequest } from './policy.js';
 import { sleep } from './processes.js';
-import {
-  parsePermission,
-  summarizeSession,
-  type ParsedPermission,
-  type SessionState,
-} from './session.js';
+import { parsePermission, summarizeSession, type SessionState } from './session.js';
 import { appendLog, loadState, updateState } from './state.js';
 import { defaultSweepDeps, type SweepDeps } from './sweeper.js';
 import type { TaskRecord } from './types.js';
@@ -105,7 +101,7 @@ export async function tickOnce(
       const head = currentHead(deps.runner, record.worktree);
       const review = prereviewInfo(record.worktree);
       let prereviewSessionState: SessionState | 'none' = 'none';
-      let prereviewPermissions: ParsedPermission[] = [];
+      let prereviewPermissions: PermissionRequest[] = [];
       let prereviewQuotaError = false;
       let prereviewFailed = false;
       if (record.prereview !== undefined) {

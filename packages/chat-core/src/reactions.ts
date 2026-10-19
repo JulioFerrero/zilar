@@ -1,3 +1,5 @@
+import type { UiReaction } from './types';
+
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
 // XEP-0444: a reactor may hold at most this many distinct reactions.
@@ -17,13 +19,6 @@ export interface ReactionUpdate {
   reactorJid: string;
   emojis: string[];
   order: number;
-}
-
-export interface ReactionSummary {
-  emoji: string;
-  count: number;
-  mine: boolean;
-  reactors: string[];
 }
 
 export function emptyReactions(): ReactionsState {
@@ -58,11 +53,7 @@ export function applyReaction(state: ReactionsState, update: ReactionUpdate): Re
 }
 
 // Each emoji is ranked by the earliest (order, position in the set) at which a reactor used it; `mine` marks a reaction of `meJid`.
-export function summarize(
-  state: ReactionsState,
-  targetId: string,
-  meJid: string,
-): ReactionSummary[] {
+export function summarize(state: ReactionsState, targetId: string, meJid: string): UiReaction[] {
   const byReactor = state.targets[targetId];
   if (byReactor === undefined) return [];
 

@@ -115,20 +115,11 @@ interface RawWave {
   items: RawItem[];
 }
 
-interface RawAudit {
-  id: string;
-  title: string;
-  doc: string;
-  model: string;
-  counts: Record<string, number>;
-  highlights: string[];
-}
-
 export interface RawPlan {
   title: string;
   updated: string;
   intro: string;
-  audits: RawAudit[];
+  audits: PlanAudit[];
   waves: RawWave[];
 }
 
@@ -181,7 +172,7 @@ function parseCounts(value: unknown, where: string): Record<string, number> {
   return counts;
 }
 
-function parseAudit(value: unknown, index: number): RawAudit {
+function parseAudit(value: unknown, index: number): PlanAudit {
   const where = `audits[${index}]`;
   const audit = asObject(value, where);
   return {

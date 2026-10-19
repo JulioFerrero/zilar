@@ -22,6 +22,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 03:00 | 238,751 (real cuts since 19:35 about −34,370; 1,365 lines reclassified to tests in total) |
 | 10-19 03:17 | 238,620 (real cuts since 19:35 about −34,500) |
 | 10-19 04:30 | 237,952 (real cuts since 19:35 about −35,160) |
+| 10-19 05:31 | 237,141 (real cuts since 19:35 about −35,970) |
 
 **Merged tonight:**
 
@@ -82,6 +83,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2169, T-2172 | functions written twice with identical bodies get one home (15 server groups; 9 web and package groups) | −127, −68 |
 | T-2173, T-2174 | server and package helper copies, wave 2 (`messageOf`, `notFound`, `escapeLike`, sleep…); server types declared twice → one declaration (4 look-alikes kept apart on purpose) | −73, −55 |
 | T-2170 | 22 web/phone helpers written twice move to chat-core once (block answers, elapsed time, link preview, picker rules, routine texts…); no re-export shims | −195 |
+| T-2175 | server: every pass-through re-export gone; imports name the module that defines the name (129 files) | −259 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -100,7 +102,6 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (04:30):**
-- **T-2175:** the server's pass-through re-exports go, and every import points at the module that defines the name. Approved at −259 across 129 files; resolving a rebase on T-2174.
 - **T-2176:** web and phone copies, wave 2: 16 function groups and 14 type shapes.
 - **T-2177:** package and devtools copies, wave 2.
 - **Next:** the web and phone re-exports (41 lines), after T-2176.

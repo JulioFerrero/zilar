@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from '../autopilot.js';
-import { OpencodeCliClient, type OpenCodeClient } from '../client.js';
+import { OpencodeCliClient } from '../client.js';
 import { doctorWorktreeFor, startDoctorSession } from '../doctor.js';
 import { freshSessionRecord, startFreshWorkerSession } from '../fresh-session.js';
 import { currentHead, RealGitRunner } from '../git.js';
@@ -9,18 +9,11 @@ import { findTaskFile, launchTask, parseLaunchArgs } from '../launch.js';
 import { loadPrompt, promptsDir, renderPrompt } from '../prompts.js';
 import { collectSnapshot } from '../collect-snapshot.js';
 import { startPrereviewSession } from '../start-prereview.js';
-import { switchModel, switchModelInPlace } from '../switch-model.js';
+import { switchModel, switchModelInPlace, type SwitchModelDeps } from '../switch-model.js';
 import { loadState, stateFilePath, updateState } from '../state.js';
 import { parseFrontMatter, taskFileDir } from '../task-file.js';
 import { findRepoRoot } from '../repo-root.js';
 import { flag, flagValue } from './args.js';
-
-interface ReplyDeps {
-  client: OpenCodeClient;
-  statePath: string;
-  promptsDirPath: string;
-  repoRoot: string;
-}
 
 // There is no API to answer a `question` call directly, so the mechanism is interrupt,
 // then re-prompt with the lead's text. With `fresh`, that text opens a new session in
@@ -28,7 +21,7 @@ interface ReplyDeps {
 async function replyToWorker(
   task: string,
   promptFile: string,
-  deps: ReplyDeps,
+  deps: SwitchModelDeps,
   options?: { fresh?: boolean },
 ): Promise<void> {
   const state = loadState(deps.statePath);

@@ -1,4 +1,4 @@
-import { extractCommands } from './policy.js';
+import { extractCommands, type PermissionRequest } from './policy.js';
 
 export type SessionState = 'idle' | 'running' | 'unknown';
 
@@ -12,12 +12,6 @@ export interface SessionSummary {
   questionRunning: boolean;
   questionText: string;
   questionIds: string[];
-}
-
-export interface ParsedPermission {
-  id: string;
-  action: string;
-  commands: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -215,7 +209,7 @@ export function summarizeSession(messages: unknown[]): SessionSummary {
 }
 
 // A pending permission request, read defensively: anything unshaped is skipped.
-export function parsePermission(entry: unknown): ParsedPermission | null {
+export function parsePermission(entry: unknown): PermissionRequest | null {
   if (!isRecord(entry)) {
     return null;
   }

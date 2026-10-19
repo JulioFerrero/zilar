@@ -2174,3 +2174,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2174](T-2174-server-type-copies.md) | server: one declaration per type shape | 2026-10-19 |
 | [T-2170](T-2170-client-fn-copies.md) | web and phone helpers written twice move to chat-core | 2026-10-19 |
 | [T-2175](T-2175-server-reexports.md) | server: imports point at the module that defines the name | 2026-10-19 |
+| [T-2177](T-2177-pkg-copies-2.md) | packages: one declaration per shape, wave 2 | 2026-10-19 |
