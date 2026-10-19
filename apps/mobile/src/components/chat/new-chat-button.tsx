@@ -28,10 +28,10 @@ import {
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
 import { runMobile } from '@/lib/effect/runtime';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { apiCall } from '@/lib/effect/api-client';
 import { useQuery } from '@/lib/effect/use-query';
-import { fromApi, makeChatsApi, makeDirectoryApi } from '@zilar/client-core';
+import { fromApi, makeChatsApi, makeDirectoryApi, failureOf } from '@zilar/client-core';
 import { realApiTransport, useApi } from '@/lib/use-mockable-api';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
@@ -41,7 +41,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text, TextField } from '@/components/ui/text';
-import type { Contact } from '@/lib/contacts-api';
+import type { Contact } from '@zilar/client-core';
 
 // The new-message box, the phone twin of web's `NewMessageDialog`: with no contacts it keeps the invite sentence; otherwise a search field lists contacts and a tap opens the DM, reloading the chat list when the chat is missing. `Invite a friend` is the one sticky footer key.
 function NewMessageSheet({

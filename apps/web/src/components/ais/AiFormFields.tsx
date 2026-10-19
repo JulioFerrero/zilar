@@ -2,11 +2,11 @@ import type { KeyboardEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { Check, Wrench } from 'lucide-react';
 import type { AiCatalogModel } from '@zilar/api-contract';
-import { formatContextTokens, formatModelPrices } from '@zilar/chat-core';
+import { formatContextTokens, formatModelPrices, providerLabel } from '@zilar/chat-core';
 import type { Connection } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { TextArea, TextInput } from '@/components/ui/text-input';
-import { ConnectionPicker, providerLabel } from './ConnectionPicker';
+import { ConnectionPicker } from './ConnectionPicker';
 import { FieldError } from './AiPageShell';
 
 export function AiLimitsFields({

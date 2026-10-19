@@ -1,10 +1,10 @@
-import { fileExtension } from '@zilar/chat-core';
+import { fileExtension, formatFileSize } from '@zilar/chat-core';
 import { FileText, Image as ImageIcon, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { classifyMobileFile, formatFileSize } from '@/lib/attachments';
+import { classifyMobileFile } from '@/lib/attachments';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 

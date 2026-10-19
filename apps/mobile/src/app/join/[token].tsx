@@ -11,14 +11,13 @@ import {
   joinLinkViewFor,
   joinPressFailure,
   joinPreviewFailure,
-  resolveGroupChat,
   type JoinLinkView,
 } from '@/components/chat/join-link';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
-import { extractJoinToken, type JoinPreview } from '@/lib/invite-links-api';
+import { extractJoinToken, type JoinPreview, resolveGroupChat } from '@/lib/invite-links-api';
 import { fromThrown } from '@zilar/client-core';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 

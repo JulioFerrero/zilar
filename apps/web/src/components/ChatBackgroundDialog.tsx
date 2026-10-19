@@ -21,12 +21,12 @@ import {
   type GroupBackground,
 } from '@/lib/api';
 import { DEFAULT_BACKGROUND_DIM, chatBackgroundStyle } from '@/lib/chatBackground';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import type { ChatSummary } from '@zilar/chat-core';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, isWaiting } from '@zilar/client-core';
 import {
   DEFAULT_CHAT_BACKGROUND_PRESET,
   CHAT_BACKGROUND_PRESET_IDS,

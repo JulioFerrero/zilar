@@ -10,8 +10,8 @@ import { Text } from '@/components/ui/text';
 import { SEEN } from '@/lib/colors';
 import { raisedPill } from '@/lib/depth';
 import { messageAccessibilityLabel } from '@/lib/message-a11y';
-import type { ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
+import type { ActiveSource } from '@zilar/chat-core';
 
 export const TAIL_WIDTH = 9;
 export const TAIL_HEIGHT = 12;

@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { Brain } from 'lucide-react';
 import { useState } from 'react';
 import type { GroupAi, PublicAi } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AiBadge } from '../AiBadge';
 import { EntityAvatar } from '../EntityAvatar';
@@ -10,6 +10,7 @@ import { Button } from '../ui/button';
 import { GroupAiRowView } from './GroupAiRowView';
 import { addAiText, removeAiText, storeStep } from './groupPanelOps';
 import type { PanelFailure } from './groupPanelOps';
+import { isWaiting } from '@zilar/client-core';
 
 export function GroupAiSection({
   ais,

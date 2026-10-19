@@ -8,7 +8,7 @@ import { getContentUriAsync } from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Platform, Share } from 'react-native';
 
-import { cleanFilename, MAX_ATTACHMENT_BYTES } from './attachments';
+import { MAX_ATTACHMENT_BYTES } from './attachments';
 import type { AttachmentOpener } from './attachment-ports';
 import {
   authHeadersFor,
@@ -17,6 +17,7 @@ import {
   orErrorResult,
   TOO_LARGE_MESSAGE,
 } from './attachment-common';
+import { cleanFilename } from '@zilar/chat-core';
 
 /** `Intent.FLAG_GRANT_READ_URI_PERMISSION`: grants the viewer read access. */
 const FLAG_GRANT_READ_URI_PERMISSION = 1;

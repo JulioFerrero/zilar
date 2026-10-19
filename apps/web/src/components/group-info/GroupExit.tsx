@@ -3,7 +3,7 @@ import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { deleteGroup } from '@/lib/api/groups';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { FieldError } from '../ais/AiPageShell';
@@ -12,6 +12,7 @@ import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { ListRow } from '../ui/list-row';
 import { TextInput } from '../ui/text-input';
+import { isWaiting } from '@zilar/client-core';
 
 export function LeaveGroupRow({
   chatId,

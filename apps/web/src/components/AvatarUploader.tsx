@@ -2,11 +2,12 @@ import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { avatarIdentity } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
+import { isWaiting } from '@zilar/client-core';
 
 function friendlyUploadError(error: unknown): string {
   if (error !== null && typeof error === 'object' && 'code' in error) {

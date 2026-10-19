@@ -7,7 +7,7 @@ import { useMentions } from './composer/useMentions';
 import { useRecordingLifecycle } from './composer/useRecordingLifecycle';
 import { useVoiceRecorder } from './composer/useVoiceRecorder';
 import { getDraft, setDraft, useComposerDraft } from '@/lib/composer-drafts';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
   canEditMessage,
@@ -28,6 +28,7 @@ import {
   useLayoutEffect,
   type RefObject,
 } from 'react';
+import { failureOf, isWaiting } from '@zilar/client-core';
 // The draft set aside while a chat's message is edited (WUX-3): edit mode
 // pre-fills the composer, and leaving it restores this draft, so editing never
 // consumes the in-progress draft. Entries are keyed by user and chat, so one

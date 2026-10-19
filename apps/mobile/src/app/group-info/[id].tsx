@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text, TextField } from '@/components/ui/text';
 import { goBackOrHome } from '@/lib/navigation';
-import { mayCreateTopic, topicsOfGroup } from '@/lib/topics';
+import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 import { Effect } from 'effect';
 import { groupAction, rawCall } from '@/components/chat/group-action';
@@ -38,6 +38,7 @@ import type { CustomGroupRole } from '@/lib/roles-api';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
+import { mayCreateTopic } from '@zilar/chat-core';
 
 // The group screen's roles sheet state and writes: the query, the busy/error flags and the CRUD handlers the sheet calls.
 function useGroupRoles(groupId: string, members: readonly GroupMember[]) {

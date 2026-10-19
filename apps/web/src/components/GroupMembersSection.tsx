@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { GroupDetail, GroupMember, GroupRole } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -26,6 +26,7 @@ import { IconButton } from './ui/icon-button';
 import { ListRow } from './ui/list-row';
 import { Menu, MenuItem } from './ui/menu';
 import { SearchField } from './ui/search-field';
+import { isWaiting } from '@zilar/client-core';
 
 export function GroupMembersSection({
   chatId,

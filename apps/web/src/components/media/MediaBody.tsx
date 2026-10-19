@@ -1,4 +1,4 @@
-import { fromApi } from '@zilar/client-core';
+import { fromApi, failureOf, isWaiting } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { FileText, Image as ImageIcon, Link2, Mic } from 'lucide-react';
@@ -6,8 +6,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import type { MediaItem, MediaPage, MediaTab } from '@/lib/api';
-import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { mediaSrc } from '@/lib/attachments';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -19,6 +19,7 @@ import {
   rowSubtitle,
   type JumpTarget,
 } from './mediaModel';
+import { safeHttpUrl } from '@zilar/chat-core';
 
 export function MediaBody({
   chatId,

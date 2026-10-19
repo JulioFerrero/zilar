@@ -1,26 +1,33 @@
-import { type UiMessage, formatTime, isLoadableMediaUrl } from '@zilar/chat-core';
+import {
+  type UiMessage,
+  formatTime,
+  isLoadableMediaUrl,
+  isGifVideoAttachment,
+  withMediaRetry,
+} from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
-import { AttachmentViewer } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { UploadFailed, UploadOverlay, useAttachmentViewer } from '@/components/chat/media-shared';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { PlainBubbleBody } from '@/components/chat/plain-bubble-body';
 import { Text } from '@/components/ui/text';
-import { imageAttachmentRender, isGifVideoAttachment } from '@/lib/attachments';
+import { imageAttachmentRender } from '@/lib/attachments';
 import { imageGradient } from '@/lib/image-presets';
-import { useMediaRetry, withMediaRetry } from '@/lib/media-retry';
+import { useMediaRetry } from '@/lib/media-retry';
 import { useMediaSource } from '@/lib/media-source';
-import { mobileUploadOf, type UiImage } from '@/lib/types';
+import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { Ticks } from '@/components/chat/ticks';
 import { SEEN } from '@/lib/colors';
 import { cn } from '@/lib/utils';
+import { AttachmentViewer } from '@/components/chat/image-viewer';
+import type { UiImage } from '@zilar/chat-core';
 
 // The dark translucent blob when a media message has no caption: time and ticks on the photo, bottom-right, white on `rgba(0,0,0,0.45)`. Read ticks keep the bright seen colour.
 const PILL: ViewStyle = { backgroundColor: 'rgba(0,0,0,0.45)' };

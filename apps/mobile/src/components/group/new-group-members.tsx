@@ -9,7 +9,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import { cn } from '@/lib/utils';
-import type { Contact } from '@/lib/contacts-api';
+import type { Contact } from '@zilar/client-core';
 
 function ContactChip({ person, onRemove }: { person: Contact; onRemove: () => void }) {
   return (

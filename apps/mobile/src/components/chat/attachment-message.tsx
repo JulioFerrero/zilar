@@ -14,8 +14,6 @@ import { imageAttachmentRender } from '@/lib/attachments';
 import { imageGradient } from '@/lib/image-presets';
 import { useMediaSource } from '@/lib/media-source';
 
-export { AttachmentViewer } from './image-viewer';
-
 const IMAGE_WIDTH = 240;
 const MAX_IMAGE_HEIGHT = 320;
 

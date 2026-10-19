@@ -14,8 +14,9 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { GroupAi } from '@/lib/chat-api';
 import { ICON } from '@/lib/colors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { failureOf } from '@zilar/client-core';
 
 type AiWriteKind = 'add' | 'remove';
 

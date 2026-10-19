@@ -1,6 +1,12 @@
 import type { Contact, TaskSteps } from '@zilar/api-contract';
 import { type AvatarPersonInput, type ChatSummary, formatClock } from '@zilar/chat-core';
-import { defaultOpenStepId, stepsView, type DisplayStep, fromApi } from '@zilar/client-core';
+import {
+  defaultOpenStepId,
+  stepsView,
+  type DisplayStep,
+  fromApi,
+  failureOf,
+} from '@zilar/client-core';
 import type { ProgressStep } from '@zilar/protocol';
 import { AsyncResult } from 'effect/reactivity';
 import {
@@ -14,7 +20,6 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';

@@ -1,17 +1,8 @@
 import { Data, Effect, Result, Schema } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import {
-  getToolDetail,
-  listToolRuns,
-  listToolVersions,
-  runToolNow,
-  type ToolDetail,
-  type ToolRun,
-  type ToolRunResult,
-  type ToolVersion,
-} from '@/lib/tools';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+import { getToolDetail, listToolRuns, listToolVersions, runToolNow } from '@/lib/tools';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
+import type { ToolDetail, ToolRun, ToolRunResult, ToolVersion } from '@zilar/api-contract';
 
 const MAX_RUN_INPUT_BYTES = 4 * 1024;
 

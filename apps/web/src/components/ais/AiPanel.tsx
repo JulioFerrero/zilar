@@ -10,7 +10,6 @@ import {
   writeAi,
   refetchAi,
 } from './aiPanelOps';
-import { validateLimits } from './limits';
 import { AiBadge } from '@/components/AiBadge';
 import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { AvatarUploader } from '@/components/AvatarUploader';
@@ -33,7 +32,7 @@ import {
   setAiMachine,
   getComputerOptions,
 } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -46,8 +45,9 @@ import {
   buildPatch,
   defaultModelFor,
   modelSuggestionsFor,
+  validateLimits,
 } from '@zilar/chat-core';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, isWaiting } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { X, Cloud, Laptop, PowerOff, Sparkles, type LucideIcon } from 'lucide-react';

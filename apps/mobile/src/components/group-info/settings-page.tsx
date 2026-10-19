@@ -16,9 +16,10 @@ import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import type { GroupDetail } from '@/lib/chat-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { getSessionToken } from '@/lib/session-token';
 import { useChatStore } from '@/store/chat-store-provider';
+import { failureOf } from '@zilar/client-core';
 
 type GroupListenerInfo = NonNullable<GroupDetail['listener']>;
 

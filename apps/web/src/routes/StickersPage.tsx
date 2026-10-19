@@ -16,10 +16,10 @@ import { SearchField } from '@/components/ui/search-field';
 import { SortableList } from '@/components/ui/sortable-list';
 import { TextInput } from '@/components/ui/text-input';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { importTelegramStickers, type Sticker, type StickerPack } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import {
   type PageSetters,
   type PageStatus,
@@ -56,9 +56,6 @@ function FavoriteRow({ sticker, setters }: { sticker: Sticker; setters: PageSett
     </li>
   );
 }
-
-export { SETTINGS_COLUMN };
-export type { PackRowThumb } from '@/components/sticker/PackThumbs';
 
 const DISCOVER_SEARCH_DEBOUNCE_MS = 300;
 

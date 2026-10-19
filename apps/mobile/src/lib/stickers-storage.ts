@@ -2,11 +2,8 @@
  * Sticker ids are not secrets, so they stay out of the keychain, and `readRecentStickers` drops hostile data so a tampered value cannot break the panel.
  */
 
-import { RECENT_STICKERS_KEY } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { readRecentStickers, type RecentStickerEntry } from './stickers';
-
-export { RECENT_STICKERS_KEY };
 
 export interface RecentsStorageBackend {
   read(): Promise<string | null>;

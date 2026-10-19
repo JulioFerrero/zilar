@@ -8,8 +8,6 @@ import { cn } from '@/lib/utils';
 
 import { OptionRow } from './option-row';
 
-export type { ComputerMode } from '@zilar/chat-core';
-
 const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
   off: PowerOff,
   cloud: Cloud,

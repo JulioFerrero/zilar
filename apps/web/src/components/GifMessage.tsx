@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { isGifVideoAttachment as isSharedGifVideoAttachment } from '@zilar/chat-core';
+import { isGifVideoAttachment as isSharedGifVideoAttachment, safeHttpUrl } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/chat-core';
-import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { mediaSrc } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 export interface GifMessageProps {

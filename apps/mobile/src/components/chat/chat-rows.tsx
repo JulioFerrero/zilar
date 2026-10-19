@@ -16,10 +16,15 @@ import {
 } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import { Text } from '@/components/ui/text';
-import { MUTE_DURATIONS, mutedUntilFor } from '@/lib/chat-prefs';
 import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
-import type { ChatSummary, MessageStatus } from '@/lib/types';
-import { formatListTime, previewMessage, previewParts, typingLabel } from '@zilar/chat-core';
+import {
+  formatListTime,
+  previewMessage,
+  previewParts,
+  typingLabel,
+  MUTE_DURATIONS,
+  mutedUntilFor,
+} from '@zilar/chat-core';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { tap } from '@/components/chat/haptics';
@@ -33,6 +38,7 @@ import { channelSubscriberCount, channelSubscriberLabel } from '@/lib/channels';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { useComposerDraft } from '@/lib/composer-drafts';
 import { primaryKey, raisedPill } from '@/lib/depth';
+import type { ChatSummary, MessageStatus } from '@zilar/chat-core';
 
 function GroupListItem({
   groupId,

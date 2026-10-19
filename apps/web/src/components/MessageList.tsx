@@ -7,7 +7,7 @@ import { IconButton } from './ui/icon-button';
 import { StateMessage } from './ui/state-message';
 import { useInitialScroll, useScrollMemory } from './useScrollMemory';
 import { listAis, listConnections, type AiTemplate } from '@/lib/api';
-import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
+import { useBlockedJids } from '@/lib/blockedJids';
 import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
 import { dmContactFor } from '@/lib/contacts';
 import { useQuery } from '@/lib/effect/use-query';
@@ -26,6 +26,7 @@ import {
   type ChatSummary,
   type UiMessage,
   type RenderItem,
+  isBlockedSender,
 } from '@zilar/chat-core';
 import { fromApi } from '@zilar/client-core';
 import { Effect, Fiber } from 'effect';

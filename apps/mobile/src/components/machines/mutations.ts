@@ -1,7 +1,8 @@
 import { Data, Effect } from 'effect';
 
-import type { Machine, MachinesApi } from '@/lib/machines-api';
+import type { MachinesApi } from '@/lib/machines-api';
 import { describeMachinesError } from './errors';
+import type { Machine } from '@zilar/api-contract';
 
 export class MachineCallFailed extends Data.TaggedError('MachineCallFailed')<{
   readonly message: string;

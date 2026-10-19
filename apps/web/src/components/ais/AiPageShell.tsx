@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export function SelectOption({
@@ -41,5 +40,3 @@ export function FieldError({ children }: { children: React.ReactNode }) {
     </p>
   );
 }
-
-export { Button };

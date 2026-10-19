@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { useRef, useState, type RefObject } from 'react';
 import type { StickerPack } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import {
   CallFailed,
   call,
@@ -9,6 +9,7 @@ import {
   type PackEditorItem,
   type PackEditorProps,
 } from './packEditorModel';
+import { failureOf, isWaiting } from '@zilar/client-core';
 
 interface SaveInput {
   readonly title: string;

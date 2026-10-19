@@ -1,7 +1,6 @@
 import {
   fitStickerSize,
   sniffMotionBytes,
-  STICKER_PREP_MAX_DIM,
   STICKER_SNIFF_BYTES,
   type MotionKind,
 } from '@zilar/chat-core';
@@ -15,7 +14,6 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
  * and never touch the native modules (the `avatar-native.ts` pattern).
  */
 
-export { fitStickerSize, STICKER_PREP_MAX_DIM };
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
 /** The raw cap for a moving file the server converts (a GIF or a video, T-1496). */
 export const STICKER_MOVE_MAX_BYTES = 4 * 1024 * 1024;

@@ -1,6 +1,13 @@
 import { Effect, Schedule } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { approvalSentBy, fromApi, isStaleDecision, type ApiFailure } from '@zilar/client-core';
+import {
+  approvalSentBy,
+  fromApi,
+  isStaleDecision,
+  type ApiFailure,
+  failureOf,
+  isWaiting,
+} from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
@@ -11,7 +18,7 @@ import {
   type ApprovalStatus,
   type PublicApproval,
 } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ais/AiPageShell';
 

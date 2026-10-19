@@ -24,10 +24,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import type { Machine, PairingCode } from '@/lib/machines-api';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { useAction } from '@/lib/effect/use-action';
 import { MachineCallFailed } from '../../components/machines/mutations';
+import type { Machine, PairingCode } from '@zilar/api-contract';
 
 /**
  * The add flow, mirroring web's `AddMachineDialog`: the pairing code and the

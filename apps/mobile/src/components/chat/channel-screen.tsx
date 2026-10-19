@@ -30,7 +30,7 @@ import {
   mayManageChannel,
 } from '@/lib/channels';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -39,6 +39,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { failureOf } from '@zilar/client-core';
 
 /** A store call that rejected; `code` is what the server said (empty when none). */
 class ChannelCallFailed extends Data.TaggedError('ChannelCallFailed')<{

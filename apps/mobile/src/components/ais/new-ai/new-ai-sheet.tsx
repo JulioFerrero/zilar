@@ -33,7 +33,6 @@ import { ICON } from '@/lib/colors';
 import type { PublicAi } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import { LimitsFields } from '@/components/ais/limits-fields';
-import type { ComputerMode } from '@/components/ais/computer-picker';
 import { describeAisError } from '@/components/ais/errors';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { SelectSheet } from '@/components/ui/select-sheet';
@@ -43,6 +42,7 @@ import { useApi } from '@/lib/use-mockable-api';
 
 import { KeyStep } from './key-step';
 import { ProviderStep } from './provider-step';
+import type { ComputerMode } from '@zilar/chat-core';
 
 const TEMPLATE_OPTIONS: SegmentedOption[] = AI_TEMPLATE_OPTIONS.filter(
   (option) => option.id !== 'custom',

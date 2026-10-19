@@ -2,8 +2,8 @@ import { Check, CheckCheck, CircleAlert, Clock } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
-import type { MessageStatus } from '@/lib/types';
 import { DANGER } from '@/lib/colors';
+import type { MessageStatus } from '@zilar/chat-core';
 
 type TicksProps = {
   status: MessageStatus;

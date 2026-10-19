@@ -16,13 +16,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
-import { favoriteTileSize } from './stickers';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { DANGER, FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { API_URL } from '@/lib/auth';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
+import { favoriteTileSize } from '@/components/stickers/tile-size';
 
 function resolveTile(
   selection: PackTileSelection | null,

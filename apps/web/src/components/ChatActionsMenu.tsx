@@ -2,10 +2,11 @@ import { type ChatSummary, MUTE_DURATIONS } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 import { Archive, Bell, BellOff, Eraser, Mail, MailOpen, Pin, PinOff } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Menu, MenuItem, type MenuItemProps } from './ui/menu';
+import { isWaiting } from '@zilar/client-core';
 
 const SAVE_ERROR = 'Could not save that change';
 /** The same fixed line the store sets when a delete call fails. */

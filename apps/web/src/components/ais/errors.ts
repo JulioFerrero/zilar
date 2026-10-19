@@ -2,8 +2,6 @@ import { describeAiFailure, type AiErrorInfo } from '@zilar/chat-core';
 import { ApiError } from '@/lib/api';
 import type { ApiFailure } from '@zilar/client-core';
 
-export type { AiErrorInfo };
-
 // The code table lives in @zilar/chat-core; this keeps the web error class.
 // A non-`ApiError` (a dropped request reads "Failed to fetch") is not the
 // server talking, so the caller's fixed fallback shows instead.

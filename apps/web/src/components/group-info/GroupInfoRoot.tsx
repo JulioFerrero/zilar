@@ -19,7 +19,7 @@ import {
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import type { GroupDetail, GroupMember } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useMuteToggle } from '../useMuteToggle';
 import { EntityAvatar } from '../EntityAvatar';
@@ -35,6 +35,7 @@ import { ContentNav } from './ContentNav';
 import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
 import { AvatarStack } from './AvatarStack';
 import type { AvatarStackEntry } from '@zilar/chat-core';
+import { failureOf, isWaiting } from '@zilar/client-core';
 
 export type GroupInfoPageId =
   'root' | 'people' | 'links' | 'tools' | 'activity' | 'allowed' | 'settings';

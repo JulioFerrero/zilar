@@ -8,8 +8,8 @@ import { X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { fromApi, type makeToolsApi } from '@zilar/client-core';
-import { type ActionState, failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { fromApi, type makeToolsApi, failureOf } from '@zilar/client-core';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import type { ToolDetail, ToolRun, ToolRunResult, ToolVersion } from '@zilar/api-contract';
 
@@ -21,6 +21,7 @@ import {
   parseRunInput,
   runErrorMessage,
 } from './tool-actions';
+import type { ActionState } from '@zilar/client-core';
 
 export const TOOL_DETAIL_LOAD_FAILED_MESSAGE = 'Could not load the tool.';
 

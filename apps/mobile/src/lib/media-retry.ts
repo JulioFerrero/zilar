@@ -1,7 +1,4 @@
-import { withMediaRetry } from '@zilar/chat-core';
-import { MEDIA_RETRY_DELAYS_MS, useMediaRetry as useSharedMediaRetry } from '@zilar/client-core';
-
-export { MEDIA_RETRY_DELAYS_MS, withMediaRetry };
+import { useMediaRetry as useSharedMediaRetry } from '@zilar/client-core';
 
 export interface MobileMediaRetry {
   localUri: string | undefined;

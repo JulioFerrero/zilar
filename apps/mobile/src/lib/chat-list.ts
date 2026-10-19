@@ -1,6 +1,12 @@
-import { chatSortTime, isUnjoinedTopic, type ChatFolder, type ChatSummary } from '@zilar/chat-core';
+import {
+  chatSortTime,
+  isUnjoinedTopic,
+  type ChatFolder,
+  type ChatSummary,
+  sortPinnedFirst,
+} from '@zilar/chat-core';
 
-import { archivedChats, sortChatPinnedFirst, unarchivedChats } from './chat-prefs';
+import { archivedChats, unarchivedChats } from './chat-prefs';
 import { filterChats } from './filter';
 import { groupRowFor, groupTopicChats } from './topics';
 
@@ -28,7 +34,7 @@ export function chatListModel(
   const joined = chats.filter((chat) => !isUnjoinedTopic(chat.topic, options.myUserId ?? ''));
   const filtered = filterChats(joined, options);
   const listed = unarchivedChats(filtered);
-  const pinned = sortChatPinnedFirst(listed);
+  const pinned = sortPinnedFirst(listed);
   const byGroup = groupTopicChats(pinned);
   const topicIds = new Set([...byGroup.values()].flat().map((chat) => chat.id));
   const rows: ChatListRow[] = pinned

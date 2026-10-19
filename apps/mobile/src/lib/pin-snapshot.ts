@@ -2,6 +2,7 @@
  * Dependency-free, so components import it without pulling the API client.
  */
 
+/** A pin `kind` this build does not know decodes to `text`. */
 export type SnapshotPinKind = 'text' | 'image' | 'file' | 'voice' | 'card';
 
 /**

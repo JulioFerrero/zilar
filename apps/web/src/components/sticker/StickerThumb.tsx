@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { Effect } from 'effect';
 import { Smile } from 'lucide-react';
 import { isStickerFileUrl } from '@zilar/chat-core';
-import type { RecentStickerEntry } from '@/lib/stickers';
 import { readRecentStickers } from '@/lib/stickers';
-import type { StickerChoice } from '@zilar/chat-core';
+import type { StickerChoice, RecentStickerEntry } from '@zilar/chat-core';
 
 /**
  * A same-origin sticker file URL loads lazily; anything else (e.g. a hostile

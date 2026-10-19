@@ -1,4 +1,10 @@
-import { isUnjoinedTopic } from '@zilar/chat-core';
+import {
+  isUnjoinedTopic,
+  mutedUntilFor,
+  MUTE_DURATIONS,
+  mayArchiveTopic,
+  mayCreateTopic,
+} from '@zilar/chat-core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,24 +21,17 @@ import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import { mutedUntilFor, MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
-import {
-  mayArchiveTopic,
-  mayCreateTopic,
-  splitGroupTopics,
-  topicsHeaderSubtitle,
-  topicsOfGroup,
-} from '@/lib/topics';
-import type { ChatSummary } from '@/lib/types';
+import { splitGroupTopics, topicsHeaderSubtitle, topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 import { Archive, ChevronLeft, Hash, Lock, Plus } from 'lucide-react-native';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
+import type { MuteDurationId, ChatSummary } from '@zilar/chat-core';
 
 type TopicSheetAction = 'archive';
 type TopicPrefAction =

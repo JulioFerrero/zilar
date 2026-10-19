@@ -1,4 +1,4 @@
-import { replyRef } from '@zilar/chat-core';
+import { replyRef, mayArchiveTopic } from '@zilar/chat-core';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -7,10 +7,9 @@ import { useApi } from '@/lib/use-mockable-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { describeRolesError } from '@/lib/roles';
 import { selectedInOrder, toggleSelected } from '@/lib/selection';
-import { mayArchiveTopic } from '@/lib/topics';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 import type { BannerPin } from '@/components/chat/pinned-banner';
-import type { ReplyRef, UiMessage } from '@/lib/types';
+import type { ReplyRef, UiMessage } from '@zilar/chat-core';
 
 export function useChatScreen() {
   const router = useRouter();

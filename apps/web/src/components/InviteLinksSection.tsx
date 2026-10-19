@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { copyText } from '@/lib/clipboard';
 import type { GroupInviteLink } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 
 function linkState(
   link: GroupInviteLink,

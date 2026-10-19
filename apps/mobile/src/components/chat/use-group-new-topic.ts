@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { rawCall } from '@/components/chat/group-action';
 import type { NewTopicInput } from '@/components/chat/new-topic-sheet';
 import type { GroupAi } from '@/lib/chat-api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { failureOf } from '@zilar/client-core';
 
 // The group screen's new-topic sheet state: creates the topic, then adds one AI per tick. The sheet stays open until the topic exists.
 export function useGroupNewTopic(options: { groupChatId: string; myAis: readonly GroupAi[] }) {

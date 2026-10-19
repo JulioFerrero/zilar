@@ -15,9 +15,9 @@ import {
   primaryKey,
   segment,
 } from '@/lib/depth';
-import type { UiMessage } from '@/lib/types';
 import type { VoiceSpeed } from '@/lib/voice-playback';
 import { voiceErrorCopy } from '@/lib/voice-failure';
+import type { UiMessage } from '@zilar/chat-core';
 
 // The one "Aa" control both transcript toggles share. Callers key it by the look, so Android builds a fresh view instead of swapping one gradient style for another on a live view.
 export function TranscriptToggle({ show, onToggle }: { show: boolean; onToggle: () => void }) {

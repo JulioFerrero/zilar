@@ -7,7 +7,6 @@ import {
   listGroupRoutines,
   pauseRoutine,
   resumeRoutine,
-  type Routine,
 } from '@/lib/tools';
 import {
   describeRoutineSchedule,
@@ -16,12 +15,14 @@ import {
   routineLastText,
   routineStatusText,
 } from '@zilar/chat-core';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { failureText } from './toolDetailOps';
+import type { Routine } from '@zilar/api-contract';
+import { Button } from '@/components/ui/button';
 
 type RoutineWork = 'pause' | 'resume' | 'delete';
 

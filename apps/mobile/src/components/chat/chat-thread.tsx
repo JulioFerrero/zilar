@@ -11,11 +11,11 @@ import { API_URL } from '@/lib/auth';
 import { mediaUrl } from '@/lib/attachment-common';
 import { createAttachmentOpener } from '@/lib/attachment-opener';
 import type { AttachmentOpener } from '@/lib/attachment-ports';
-import { safeHttpUrl } from '@/lib/attachments';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { getSessionToken } from '@/lib/session-token';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
-import type { ChatSummary, UiMessage } from '@/lib/types';
+import { safeHttpUrl } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 
 type ChatThreadProps = {
   screen: ChatScreen;

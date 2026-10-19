@@ -23,8 +23,8 @@ import {
   type ConnectionTestResult,
 } from '@/lib/api';
 import { apiFailureText } from '@/components/panels/groupPanelOps';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting, shownFailure } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { providerLabel } from '@zilar/chat-core';

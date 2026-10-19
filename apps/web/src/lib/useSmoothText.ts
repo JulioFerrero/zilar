@@ -1,15 +1,6 @@
-import {
-  type FrameScheduler,
-  SMOOTH_CATCH_UP_MS,
-  SMOOTH_MIN_CHARS_PER_SECOND,
-  type SmoothTextOptions as CoreSmoothTextOptions,
-  safeCut,
-} from '@zilar/chat-core';
+import { type SmoothTextOptions as CoreSmoothTextOptions } from '@zilar/chat-core';
 import { useSmoothText as useCoreSmoothText } from '@zilar/client-core';
 import { useSyncExternalStore } from 'react';
-
-export { SMOOTH_CATCH_UP_MS, SMOOTH_MIN_CHARS_PER_SECOND, safeCut };
-export type { FrameScheduler };
 
 /** A visibility seam so tests can fake a tab becoming visible again. */
 export interface VisibilitySource {

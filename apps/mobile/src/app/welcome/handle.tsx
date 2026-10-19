@@ -18,9 +18,9 @@ import {
   handleAvailabilityFor,
   handleAvailabilityText,
   isHandleRateLimited,
-  suggestHandleFor,
   type HandleAvailability,
 } from '@/components/settings/profile-logic';
+import { suggestHandle } from '@zilar/protocol';
 
 export default function HandleRoute() {
   return (
@@ -36,9 +36,7 @@ function HandleStep() {
   const me = useAuthStore((state) => state.me);
   const { api } = useProfileApi();
 
-  const [handle, setHandle] = useState(() =>
-    me === null ? '' : suggestHandleFor(me.name, me.email),
-  );
+  const [handle, setHandle] = useState(() => (me === null ? '' : suggestHandle(me.name, me.email)));
   const [typed, setTyped] = useState(false);
   const [availability, setAvailability] = useState<HandleAvailability>({ state: 'idle' });
   const [error, setError] = useState<string | undefined>(undefined);
@@ -47,7 +45,7 @@ function HandleStep() {
   const trimmed = handle.trim();
   // The suggestion fills when the profile arrives after mount while the input is untouched; typing wins forever after.
   if (!typed && handle === '' && me !== null) {
-    const suggestion = suggestHandleFor(me.name, me.email);
+    const suggestion = suggestHandle(me.name, me.email);
     if (suggestion !== '') {
       setHandle(suggestion);
     }

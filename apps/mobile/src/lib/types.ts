@@ -7,16 +7,6 @@ export type LegacyFolder = 'all' | 'personal' | 'ai' | 'work';
 
 export type ChatFolder = LegacyFolder;
 
-export type {
-  AiStatus,
-  ChatKind,
-  ChatSummary,
-  MessageStatus,
-  ReplyRef,
-  UiImage,
-  UiMessage,
-} from '@zilar/chat-core';
-
 import type { UiMessage } from '@zilar/chat-core';
 
 /**

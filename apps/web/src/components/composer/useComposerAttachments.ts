@@ -15,14 +15,9 @@ import type { GifItem } from '@zilar/chat-core';
 import type { StickerChoice } from '@zilar/chat-core';
 import type { StoreApi } from '@zilar/client-core';
 import type { ChatStoreState } from '@/store/store';
-import {
-  MAX_ATTACHMENT_BYTES,
-  classify,
-  gifBlobType,
-  objectUrlFor,
-  type PendingAttachment,
-} from '@/lib/attachments';
+import { classify, objectUrlFor, type PendingAttachment } from '@/lib/attachments';
 import { ComposerFailure, fork } from './composerShared';
+import { MAX_ATTACHMENT_BYTES, gifBlobType } from '@zilar/chat-core';
 
 const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
 /**

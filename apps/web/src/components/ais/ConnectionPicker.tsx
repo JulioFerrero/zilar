@@ -2,8 +2,6 @@ import { isLlmProvider, providerLabel } from '@zilar/chat-core';
 import type { Connection } from '@/lib/api';
 import { SelectOption } from './AiPageShell';
 
-export { providerLabel };
-
 /**
  * A connection whose provider is not an LLM one (GitHub) is dropped: it
  * cannot run an AI.

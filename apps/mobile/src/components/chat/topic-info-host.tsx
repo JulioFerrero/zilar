@@ -9,13 +9,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { useChatStore } from '@/store/chat-store-provider';
-import type { ChatSummary } from '@/lib/types';
 import { LogOut } from 'lucide-react-native';
 import { View } from 'react-native';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { DANGER } from '@/lib/colors';
+import type { ChatSummary } from '@zilar/chat-core';
 
 type LeaveTopicSheetProps = {
   chat: ChatSummary | null;

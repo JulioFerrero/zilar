@@ -23,17 +23,20 @@ import { Button } from './ui/button';
 import { Chip } from './ui/chip';
 import { StateMessage } from './ui/state-message';
 import { Well } from './ui/well';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useInstallPrompt } from '@/lib/push';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
-import { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH } from '@/lib/usePeopleSearch';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { folderUnreadTotal } from '@zilar/chat-core';
-import { peopleHandleFor, useDelayed } from '@zilar/client-core';
+import {
+  folderUnreadTotal,
+  normalizePeopleQuery,
+  PEOPLE_SEARCH_MIN_LENGTH,
+} from '@zilar/chat-core';
+import { peopleHandleFor, useDelayed, failureOf, isWaiting } from '@zilar/client-core';
 import { Effect, Schema } from 'effect';
 import { Archive, Loader2, Search, LayoutGrid } from 'lucide-react';
 import {

@@ -18,7 +18,7 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
 import { TopicLinkRow } from '@/components/chat/topic-link-row';
 import { memberPerson } from '@/components/chat/topic-people-line';
-import type { AvatarStackEntry } from '@zilar/chat-core';
+import type { AvatarStackEntry, ChatSummary } from '@zilar/chat-core';
 import { InfoRow } from '@/components/group-info/info-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -36,15 +36,14 @@ import {
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/topics-api';
-import type { ChatSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
-import { isTopicJoined } from '@zilar/chat-core';
+import { isTopicJoined, mutedUntilFor } from '@zilar/chat-core';
 import { rawCall } from '@/components/chat/group-action';
-import { mutedUntilFor } from '@/lib/chat-prefs';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { failureOf } from '@zilar/client-core';
 
 const MUTE_ERROR = 'Could not change notifications. Try again.';
 

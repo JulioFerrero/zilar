@@ -93,13 +93,6 @@ function PackEditorItems({
   );
 }
 
-export type {
-  PackEditorItem,
-  PackEditorItemStatus,
-  PackEditorProps,
-} from './sticker/packEditorModel';
-export { PACK_ACCEPT, takeSingleEmoji } from './sticker/packEditorModel';
-
 /**
  * The object URL is owned by this node: created on mount and revoked when it
  * leaves. StrictMode's throwaway setup/cleanup/setup would revoke the URL the

@@ -1,20 +1,16 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
-import {
-  listAiToolDetails,
-  listGroupToolDetails,
-  listTopicToolDetails,
-  type ToolListItem,
-} from '@/lib/tools';
+import { listAiToolDetails, listGroupToolDetails, listTopicToolDetails } from '@/lib/tools';
 import { hostsLine, toolLastRunText } from '@zilar/chat-core';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '../ui/state-message';
 import { ToolDetailPanel } from './ToolDetailPanel';
 import { failureText } from './toolDetailOps';
+import type { ToolListItem } from '@zilar/api-contract';
+import { Button } from '@/components/ui/button';
 
 type ListStatus = 'loading' | 'ready' | 'error';
 

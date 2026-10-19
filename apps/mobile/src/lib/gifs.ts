@@ -4,13 +4,6 @@
 
 import { parseUrl } from '@zilar/chat-core';
 
-export {
-  gifBlobType,
-  gifsAvailability,
-  resetGifsAvailability,
-  setGifsAvailability,
-} from '@zilar/chat-core';
-
 const GIF_MEDIA_TYPES: ReadonlySet<string> = new Set([
   'image/gif',
   'image/webp',
@@ -28,8 +21,6 @@ export function isGifMediaType(contentType: string): boolean {
 export function gifFileName(id: string, extension: string): string {
   return `gif-${id.slice(0, 16)}.${extension}`;
 }
-
-export { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 
 export const GIF_ATTRIBUTION = 'Powered by Giphy';
 

@@ -7,26 +7,20 @@ import {
   settledFailure,
 } from './toolDetailOps';
 import { hostsLine, runStatusText } from '@zilar/chat-core';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { TextArea } from '@/components/ui/text-input';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import {
-  getToolVersion,
-  listToolRuns,
-  revertTool,
-  type ToolRun,
-  type ToolRunResult,
-  deleteTool,
-  type ToolVersion,
-} from '@/lib/tools';
+import { getToolVersion, listToolRuns, revertTool, deleteTool } from '@/lib/tools';
 import { truncateOutput } from '@zilar/chat-core';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import type { ToolRun, ToolRunResult, ToolVersion } from '@zilar/api-contract';
 
 function DeleteToolButton({
   toolId,

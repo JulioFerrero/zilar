@@ -1,18 +1,18 @@
-import { parseUrl, type UiMessage } from '@zilar/chat-core';
+import { parseUrl, type UiMessage, isGifVideoAttachment } from '@zilar/chat-core';
 import { Pressable, View } from 'react-native';
 
 import { AlbumGrid } from '@/components/chat/album-grid';
-import { AttachmentImage, AttachmentViewer } from '@/components/chat/attachment-message';
+import { AttachmentImage } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { useAttachmentViewer } from '@/components/chat/media-shared';
 import { metaTimeText } from '@/components/chat/meta-time';
-import { isGifVideoAttachment } from '@/lib/attachments';
 import { BUBBLE_COLORS, FOREGROUND, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { Text } from '@/components/ui/text';
 import { Ticks } from '@/components/chat/ticks';
 import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { AttachmentViewer } from '@/components/chat/image-viewer';
 
 const OUTGOING_TEXT_COLOR = '#0a0a0a';
 

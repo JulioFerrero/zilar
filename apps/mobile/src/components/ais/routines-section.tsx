@@ -21,12 +21,6 @@ import {
 import type { Routine } from '@zilar/api-contract';
 import { interruptFiber, type makeToolsApi } from '@zilar/client-core';
 
-export {
-  routineActionMessage,
-  type RoutineAction,
-  type RoutineActionMessage,
-} from '@/components/ais/use-routine-actions';
-
 export const ROUTINES_LOAD_FAILED_MESSAGE = 'Could not load the routines. Try again.';
 
 export const ROUTINES_EMPTY_MESSAGE =

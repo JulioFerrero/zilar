@@ -1,6 +1,7 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect, type Effect as EffectType } from 'effect';
-import { contactChatId, type ContactsApi, type HandleProfile } from '../../lib/contacts-api';
+import { contactChatId, type ContactsApi } from '../../lib/contacts-api';
+import type { HandleProfile } from '@zilar/client-core';
 
 /**
  * The add-contact states, mirroring the web `AddContactDialog`: UI-free so the

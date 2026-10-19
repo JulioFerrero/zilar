@@ -1,7 +1,8 @@
 import { Effect } from 'effect';
 import { ApiError, getAi, type PublicAi } from '@/lib/api';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { describeAiError, type AiErrorInfo } from './errors';
+import { describeAiError } from './errors';
+import type { AiErrorInfo } from '@zilar/chat-core';
 
 export type PanelStatus = 'loading' | 'ready' | 'missing' | 'error';
 

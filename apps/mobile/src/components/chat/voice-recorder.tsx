@@ -15,9 +15,9 @@ import {
   type FinishedRecording,
   type VoiceRecorderPort,
 } from '@/lib/voice-recorder';
-import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 import { useKeyPress } from '@/components/ui/use-key-press';
+import type { ReplyRef } from '@zilar/chat-core';
 
 type VoiceRecordingRowProps = {
   elapsedMs: number;

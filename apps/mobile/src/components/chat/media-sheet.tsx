@@ -3,12 +3,12 @@ import { Effect, Fiber } from 'effect';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Image, Linking, Pressable, View } from 'react-native';
 import { BottomSheet } from '../ui/bottom-sheet';
-import type { MediaItem, MediaTab } from '../../lib/media-api';
 import { useChatStore } from '../../store/chat-store-provider';
 import { Button } from '../ui/button';
 import { SegmentedControl, type SegmentedOption } from '../ui/segmented-control';
 import { StateMessage } from '../ui/state-message';
 import { Text } from '../ui/text';
+import type { MediaItem, MediaTab } from '@zilar/api-contract';
 
 /** The gallery tab labels, in the order the segmented control shows them. */
 const TAB_OPTIONS: SegmentedOption[] = [
@@ -99,7 +99,6 @@ function MediaSheetContent({
   );
 }
 
-export { formatDuration } from '@zilar/chat-core';
 export { MEDIA_EMPTY_TEXT, MEDIA_LOADING_TEXT };
 export type { MediaSheetContentProps };
 export type { MediaSheetStatus };

@@ -148,8 +148,6 @@ function ForwardedHeader({ origin }: { origin: ForwardOrigin }) {
   );
 }
 
-export { SendFailure } from './message/SendFailure';
-
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 

@@ -1,6 +1,6 @@
 import { chatSubtitle } from '@zilar/chat-core';
-import type { Contact } from '@/lib/contacts-api';
-import type { ChatSummary } from '@/lib/types';
+import type { Contact } from '@zilar/client-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 /**
  * Reads the same source the chat header reads: the chat store's DM rows, whose

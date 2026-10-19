@@ -6,8 +6,6 @@ import { searchMessages, type SearchItem } from '@/lib/api';
 import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 
-export { MESSAGE_SEARCH_DEBOUNCE_MS };
-
 export type MessageSearchState =
   | { status: 'idle' }
   | { status: 'loading' }

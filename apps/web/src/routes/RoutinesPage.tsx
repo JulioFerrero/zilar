@@ -3,16 +3,10 @@ import { useNavigate } from 'react-router';
 import { Effect, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Check, MessageCircle, Pause, Play, Repeat, Trash2, X } from 'lucide-react';
-import {
-  deleteRoutine,
-  listMyRoutines,
-  pauseRoutine,
-  resumeRoutine,
-  type MyRoutine,
-} from '@/lib/tools';
+import { deleteRoutine, listMyRoutines, pauseRoutine, resumeRoutine } from '@/lib/tools';
 import { describeRoutineSchedule } from '@zilar/chat-core';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { Card, SectionLabel } from '@/components/ui/card';
@@ -20,6 +14,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { cn } from '@/lib/utils';
+import type { MyRoutine } from '@zilar/api-contract';
 
 const REFRESH_INTERVAL_MS = 30_000;
 

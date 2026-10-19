@@ -6,9 +6,9 @@ import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { isSameOriginStickerUrl, stickerImageSource } from '@/lib/stickers';
-import type { PanelPack } from '@/lib/stickers-api';
 import { cn } from '@/lib/utils';
 import { packCountLabel } from '@/components/stickers/tile-size';
+import type { PanelPack } from '@zilar/client-core';
 
 function packMeta(pack: PanelPack, own: boolean): string {
   const count = packCountLabel(pack.stickers.length);

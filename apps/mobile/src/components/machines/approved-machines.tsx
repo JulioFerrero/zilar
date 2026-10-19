@@ -6,10 +6,10 @@ import { Card } from '@/components/ui/card';
 import { Text, TextField } from '@/components/ui/text';
 import type { PublicAi } from '@zilar/client-core';
 import { groupFingerprint } from '@zilar/chat-core';
-import type { Machine } from '@/lib/machines-api';
 import { MachineRow, RevokedToggleRow } from './machine-row';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { cn } from '@/lib/utils';
+import type { Machine } from '@zilar/api-contract';
 
 function MachineSheet({
   machine,

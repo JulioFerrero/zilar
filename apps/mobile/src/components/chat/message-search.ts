@@ -1,18 +1,10 @@
 import { ApiError } from '@zilar/api-contract';
 import { Effect, Fiber } from 'effect';
-import type { SearchApi, SearchPage, SearchItem } from '../../lib/search-api';
+import type { SearchApi } from '../../lib/search-api';
 import { interruptFiber } from '@zilar/client-core';
-import {
-  MESSAGE_SEARCH_DEBOUNCE_MS,
-  MESSAGE_SEARCH_MIN_LENGTH,
-  activeQuery,
-  MESSAGE_SEARCH_LIMIT,
-  groupSearchByChat,
-  searchResultTitle,
-  snippetParts,
-  type SearchGroup,
-  type SnippetPart,
-} from '@zilar/chat-core';
+import { MESSAGE_SEARCH_DEBOUNCE_MS, activeQuery, MESSAGE_SEARCH_LIMIT } from '@zilar/chat-core';
+import type { SearchPage } from '@zilar/client-core';
+import type { SearchItem } from '@zilar/api-contract';
 
 /** Null until the first debounce settles, so the first keystrokes wait too. */
 type DebouncedQuery = string | null;
@@ -60,17 +52,8 @@ function settleSearch(
   );
 }
 
-export {
-  MESSAGE_SEARCH_DEBOUNCE_MS,
-  MESSAGE_SEARCH_LIMIT,
-  MESSAGE_SEARCH_MIN_LENGTH,
-  activeQuery,
-  groupSearchByChat,
-  nearEnd,
-  searchResultTitle,
-  snippetParts,
-};
-export type { DebouncedQuery, MessageSearchStatus, SearchGroup, SnippetPart, SearchScheduler };
+export { nearEnd };
+export type { DebouncedQuery, MessageSearchStatus, SearchScheduler };
 
 // The pure logic behind mobile message search, unit-tested in Node; the hook only wires timers and the API to it. The controller owns requests, cancellation, cursor paging and their state; the hook owns the debounce timer and React state.
 

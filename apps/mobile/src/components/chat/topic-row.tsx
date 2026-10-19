@@ -19,9 +19,9 @@ import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { useBlockedJids } from '@/lib/blocked-users';
-import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
+import type { ChatSummary, MessageStatus } from '@zilar/chat-core';
 
 // One topic row: the raised glyph tile, name with a lock for private topics, pin/muted icons, the AIs at work as state marks, a one-line preview, the time and the unread badge (grey while muted). A topic whose AIs are done shows a green check and a muted name; ordering lives in `lib/topics`.
 export function TopicRow({

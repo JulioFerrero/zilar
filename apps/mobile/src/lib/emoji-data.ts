@@ -1,8 +1,5 @@
 import { Effect } from 'effect';
 
-export { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES } from '@zilar/chat-core';
-export type { EmojiCategory, EmojiCategoryId } from '@zilar/chat-core';
-
 export interface CaretSelection {
   start: number;
   end: number;

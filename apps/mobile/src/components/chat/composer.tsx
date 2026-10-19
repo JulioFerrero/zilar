@@ -58,7 +58,6 @@ import {
 import type { CaretSelection } from '@/lib/emoji-data';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
-import type { ReplyRef } from '@/lib/types';
 import {
   type SendAttachmentOptions,
   type SendStickerChoice,
@@ -67,6 +66,7 @@ import {
 } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { setDraft, useComposerDraft } from '@/lib/composer-drafts';
+import type { ReplyRef } from '@zilar/chat-core';
 
 interface MentionPickerProps {
   members: MentionMember[];

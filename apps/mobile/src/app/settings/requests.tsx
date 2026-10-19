@@ -15,7 +15,6 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import type { ContactRequestView } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import {
   performRequestAction,
@@ -24,6 +23,7 @@ import {
 } from '@/components/contacts/requests';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
+import type { ContactRequestView } from '@zilar/client-core';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 

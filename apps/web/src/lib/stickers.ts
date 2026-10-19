@@ -3,14 +3,10 @@
 import { orFallback } from './emojiRecents';
 import {
   addRecentSticker,
-  MAX_RECENT_STICKERS,
   parseRecentStickers,
   RECENT_STICKERS_KEY,
   type RecentStickerEntry,
 } from '@zilar/chat-core';
-
-export { MAX_RECENT_STICKERS, RECENT_STICKERS_KEY };
-export type { RecentStickerEntry };
 
 export function readRecentStickers(storage: Storage | null): RecentStickerEntry[] {
   if (storage === null) {

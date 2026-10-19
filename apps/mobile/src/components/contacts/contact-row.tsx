@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
-import type { Contact } from '@/lib/contacts-api';
+import type { Contact } from '@zilar/client-core';
 
 export function ContactRow({
   person,

@@ -1,4 +1,4 @@
-import type { HandleProfile } from '@/lib/contacts-api';
+import type { HandleProfile } from '@zilar/client-core';
 
 /**
  * The by-handle profile plus the optional bio the server sends: the phone's

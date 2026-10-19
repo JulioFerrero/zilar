@@ -6,7 +6,7 @@ import { ChatList } from '@/components/chat/chat-list';
 import { ChatPeopleResults, ChatSearchResults } from '@/components/chat/chat-search-results';
 import { NewChatButton } from '@/components/chat/new-chat-button';
 import { interruptFiber, peopleHandleFor, useDelayed } from '@zilar/client-core';
-import { withKey } from '@zilar/chat-core';
+import { withKey, mutedUntilFor } from '@zilar/chat-core';
 import { Effect, type Fiber } from 'effect';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
@@ -22,7 +22,6 @@ import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import { mutedUntilFor } from '@/lib/chat-prefs';
 import { ChatActionsSheet } from '@/components/chat/chat-actions-sheet';
 
 // How long a failed swipe keeps its line above the chat list.

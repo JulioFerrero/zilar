@@ -23,9 +23,9 @@ import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import type { EmojiCategoryId } from '@/lib/emoji-data';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
+import type { EmojiCategoryId } from '@zilar/chat-core';
 
 // The message a bubble hands to the one menu: the flags and reactions travel with it, so the sheet reads no store.
 export type BubbleActionsTarget = {

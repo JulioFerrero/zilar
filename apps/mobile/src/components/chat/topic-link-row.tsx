@@ -8,9 +8,9 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text, TextField } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { httpsTopicUrl, topicLinkText } from '@/lib/topics';
 import type { TopicInfo } from '@zilar/chat-core';
 import type { PatchTopicInput } from '@/lib/topics-api';
+import { httpsTopicUrl, topicLinkText } from '@zilar/chat-core';
 
 const LABEL_MAX = 40;
 

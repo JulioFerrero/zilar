@@ -3,8 +3,6 @@ import { fromApi, makeBlockedJidsStore } from '@zilar/client-core';
 
 import { listBlockedUsers } from './api';
 
-export { isBlockedSender } from '@zilar/chat-core';
-
 const store = makeBlockedJidsStore({
   load: () => Effect.runPromise(fromApi(() => listBlockedUsers())),
   watchRefresh: (refresh) => {

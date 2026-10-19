@@ -30,11 +30,12 @@ import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
 import type { GroupDetail } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { cn } from '@/lib/utils';
+import { failureOf, isWaiting } from '@zilar/client-core';
 
 function TypingDots({ className }: { className?: string }) {
   return (

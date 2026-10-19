@@ -101,12 +101,6 @@ export function friendlyAvatarError(error: unknown): string {
   return 'Could not save the picture. Try again.';
 }
 
-export {
-  HANDLE_MAX_LENGTH,
-  HANDLE_MIN_LENGTH,
-  suggestHandle as suggestHandleFor,
-} from '@zilar/protocol';
-
 export type AvatarPhase =
   | { name: 'idle' }
   | { name: 'picked'; uri: string; mimeType: string }

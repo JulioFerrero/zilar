@@ -6,8 +6,6 @@ import type { ChatFolder } from './types';
  * Each visible topic is its own chat keyed by its room JID, General keeps the group's old chat id, and an older server without `topics` keeps one row per group.
  */
 
-export { sortTopics };
-
 export function topicsOfGroup(chats: readonly ChatSummary[], groupId: string): ChatSummary[] {
   return sortTopics(chats.filter((chat) => chat.groupId === groupId && chat.topic !== undefined));
 }
@@ -120,10 +118,6 @@ export function topicInFolder(chat: ChatSummary, folder: ChatFolder): boolean {
       return chat.space === 'work';
   }
 }
-
-export { httpsTopicUrl, topicLinkText } from '@zilar/chat-core';
-export { mayArchiveTopic, mayCreateTopic, mayManageTopic } from '@zilar/chat-core';
-export type { GroupMembership, GroupRole, TopicPermissionsInput } from '@zilar/chat-core';
 
 export function topicsHeaderSubtitle(options: { memberCount: number; topicCount: number }): string {
   const members = options.memberCount === 1 ? '1 member' : `${options.memberCount} members`;

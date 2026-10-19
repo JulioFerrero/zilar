@@ -15,7 +15,6 @@ import {
 
 // `parseTopic` drops malformed rows, never rendered.
 
-export type { TopicVisibility } from '@zilar/chat-core';
 export type {
   ApproverRole,
   TopicAi,

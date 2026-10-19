@@ -2,8 +2,9 @@ import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
 import type * as React from 'react';
 import type { ApiFailure } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { failInline } from './topic-failure';
+import { isWaiting } from '@zilar/client-core';
 
 export function TopicOptionsKey({
   subject,

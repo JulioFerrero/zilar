@@ -2,9 +2,9 @@ import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import type { GroupInviteLink, GroupRole } from '@/lib/api';
 import { listGroupInviteLinks, listGroupRoles } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, type ActionState } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { describeAiError } from '../ais/errors';
+import type { ActionState } from '@zilar/client-core';
 
 export class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
 

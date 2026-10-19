@@ -45,11 +45,11 @@ import { useChatStore } from '@/store/chat-store-provider';
 import { tap as tapHaptic } from './haptics';
 import { Gesture, GestureDetector, type TapGesture } from 'react-native-gesture-handler';
 import { Text } from '@/components/ui/text';
-import { type ActiveSource, useSmoothText } from '@/lib/use-smooth-text';
 import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
 import { ArrowRight } from 'lucide-react-native';
 import type { Contact } from '@/lib/chat-api';
-import { interruptFiber, runLater, useAlbumMembers } from '@zilar/client-core';
+import { interruptFiber, runLater, useAlbumMembers, useSmoothText } from '@zilar/client-core';
+import type { ActiveSource } from '@zilar/chat-core';
 
 /** How long the "who reacted" line stays under the chips. */
 const REACTORS_VISIBLE_MS = 3000;

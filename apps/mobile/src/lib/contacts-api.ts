@@ -2,18 +2,6 @@ import { bareJid } from '@zilar/protocol';
 import { makeContactsApi, type HandleProfile } from '@zilar/client-core';
 import type { ApiCall } from './effect/api-client';
 /** Errors are the shared `ApiError`: screens branch on `code` and `status` (404 unknown handle, 429 rate limited). */
-export type {
-  BlockedPerson,
-  Contact,
-  ContactRelation,
-  ContactRequestList,
-  ContactRequestPerson,
-  ContactRequestRow,
-  ContactRequestStatus,
-  ContactRequestView,
-  CreatedContactRequest,
-  HandleProfile,
-} from '@zilar/client-core';
 
 export type ContactsApi = Omit<ReturnType<typeof makeContactsApi>, 'searchUsers'> & {
   searchUsers(q: string): Promise<HandleProfile[]>;

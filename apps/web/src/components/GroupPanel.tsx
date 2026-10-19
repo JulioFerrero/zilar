@@ -43,13 +43,14 @@ import {
   revokeGroupInviteLink,
 } from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState, type ReactNode } from 'react';
+import { isWaiting } from '@zilar/client-core';
 
 function GroupPictureSection({
   groupId,

@@ -7,9 +7,8 @@ import { View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
-import { buildPatch } from '@/components/ais/form';
 import { LimitsFields } from '@/components/ais/limits-fields';
-import { ComputerPicker, type ComputerMode } from '@/components/ais/computer-picker';
+import { ComputerPicker } from '@/components/ais/computer-picker';
 import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
@@ -24,6 +23,7 @@ import {
   formatContextTokens,
   formatModelPrices,
   modelSuggestionsFor,
+  buildPatch,
 } from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import {
@@ -34,19 +34,20 @@ import {
   type Connection,
   type PublicAi,
   type UpdateAiInput,
+  failureOf,
 } from '@zilar/client-core';
 import { applyMachineChange } from '@/components/machines/machine-change';
 import { rawCall } from '@/components/chat/group-action';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
-import type { Machine } from '@/lib/machines-api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { OptionGlyph, OptionRow } from '../../components/ais/option-row';
 import { Wrench } from 'lucide-react-native';
-import type { AiCatalogModel } from '@zilar/api-contract';
+import type { AiCatalogModel, Machine } from '@zilar/api-contract';
 import { ACCENT } from '@/lib/colors';
+import type { ComputerMode } from '@zilar/chat-core';
 
 function ModelPicker({
   provider,

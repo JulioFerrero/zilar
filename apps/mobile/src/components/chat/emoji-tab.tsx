@@ -1,4 +1,4 @@
-import { searchEmoji } from '@zilar/chat-core';
+import { searchEmoji, EMOJI_BY_CATEGORY, EMOJI_CATEGORIES } from '@zilar/chat-core';
 import {
   X,
   Clock,
@@ -25,8 +25,8 @@ import {
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
-import { EMOJI_BY_CATEGORY, type EmojiCategoryId, EMOJI_CATEGORIES } from '@/lib/emoji-data';
 import { cn } from '@/lib/utils';
+import type { EmojiCategoryId } from '@zilar/chat-core';
 
 const EMOJI_CATEGORY_BAR_HEIGHT = 36;
 

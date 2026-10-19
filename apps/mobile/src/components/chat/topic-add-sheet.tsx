@@ -13,8 +13,8 @@ import { Text } from '@/components/ui/text';
 import type { Contact, GroupDetail } from '@/lib/chat-api';
 import { SEEN } from '@/lib/colors';
 import { runInBackground } from '@/lib/effect/run-in-background';
-import type { ChatSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import type { ChatSummary } from '@zilar/chat-core';
 
 export type AddTab = 'people' | 'ais';
 

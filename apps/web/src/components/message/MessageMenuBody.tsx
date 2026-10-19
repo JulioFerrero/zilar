@@ -1,4 +1,4 @@
-import { canAct, QUICK_REACTIONS, type UiMessage } from '@zilar/chat-core';
+import { canAct, QUICK_REACTIONS, type UiMessage, safeHttpUrl } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import {
   Copy,
@@ -20,7 +20,7 @@ import { Menu, MenuEntry, MenuItem } from '../ui/menu';
 import { useToast } from '../ui/toast';
 import { useAlbumMembers } from '@zilar/client-core';
 import type { MessageMenuState } from './use-message-menu';
-import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { mediaSrc } from '@/lib/attachments';
 import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
 import { downloadFile } from '@/lib/open-file';

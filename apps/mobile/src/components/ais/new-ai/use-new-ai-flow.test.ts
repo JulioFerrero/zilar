@@ -8,7 +8,7 @@ import {
   keyCheckBaseState,
   keyStateAfterBaseUrlEdit,
   settleNewAiKeyCheck,
-} from '@/components/ais/form';
+} from '@zilar/client-core';
 
 const EMPTY = { connectionId: null, created: false, verified: false } as const;
 

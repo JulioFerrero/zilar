@@ -7,7 +7,7 @@ import { resolvePerson, type PersonLinkTarget } from '@zilar/chat-core';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { useChatStore } from '@/store/chat-store-provider';
-import type { ChatSummary } from '../../lib/types';
+import type { ChatSummary } from '@zilar/chat-core';
 
 type PersonLinkContext = {
   contacts: readonly Contact[];

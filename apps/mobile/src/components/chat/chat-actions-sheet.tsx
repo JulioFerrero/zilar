@@ -13,8 +13,8 @@ import { View } from 'react-native';
 
 import { Text } from '../ui/text';
 import { ActionSheet, ActionSheetItem } from '../ui/action-sheet';
-import { MUTE_DURATIONS, type MuteDurationId } from '../../lib/chat-prefs';
-import type { ChatSummary } from '../../lib/types';
+import { MUTE_DURATIONS } from '@zilar/chat-core';
+import type { MuteDurationId, ChatSummary } from '@zilar/chat-core';
 
 /** Pure view: the screen owns the mute submenu and the pref writes. Group
  *  prefs sit on the General JID, so a mute covers every topic. */

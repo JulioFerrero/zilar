@@ -29,9 +29,9 @@ import {
   type StickerItem,
 } from '@/lib/stickers';
 import { Image } from 'expo-image';
-import type { PanelPack } from '@/lib/stickers-api';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
+import type { PanelPack } from '@zilar/client-core';
 
 function FavoritesTab({
   favorites,
@@ -93,8 +93,6 @@ function FavoritesTab({
     </View>
   );
 }
-
-export { favoriteTileSize } from '@/components/stickers/tile-size';
 
 const TABS: readonly { key: StickerTab; label: string }[] = [
   { key: 'packs', label: 'My packs' },

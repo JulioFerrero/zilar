@@ -9,7 +9,7 @@ import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
 import { SendFailure } from './SendFailure';
 import { IconButton } from '@/components/ui/icon-button';
-import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { mediaSrc } from '@/lib/attachments';
 import { useMediaRetry } from '@/lib/media-retry';
 import { downloadFile, openPdfInNewTab } from '@/lib/open-file';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ import {
   type Attachment,
   formatFileMeta,
   isPdfAttachment,
+  safeHttpUrl,
 } from '@zilar/chat-core';
 import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
 import { ArrowDown, FileText, Loader2, RotateCcw } from 'lucide-react';

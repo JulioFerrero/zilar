@@ -1,5 +1,11 @@
 import { formatClock, type AvatarPersonInput } from '@zilar/chat-core';
-import { defaultOpenStepId, stepsView, type DisplayStep, fromApi } from '@zilar/client-core';
+import {
+  defaultOpenStepId,
+  stepsView,
+  type DisplayStep,
+  fromApi,
+  failureOf,
+} from '@zilar/client-core';
 import type { Progress } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
@@ -18,7 +24,6 @@ import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import { failureOf } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';

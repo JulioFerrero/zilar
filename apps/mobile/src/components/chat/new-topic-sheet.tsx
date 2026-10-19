@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Text, TextField } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
-import type { TopicVisibility } from '@/lib/topics-api';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
+import type { TopicVisibility } from '@zilar/chat-core';
 
 export type NewTopicInput = {
   name: string;

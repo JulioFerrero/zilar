@@ -25,8 +25,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
-import type { Contact } from '@/lib/contacts-api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import { useChatStore } from '@/store/chat-store-provider';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
@@ -35,6 +34,8 @@ import { RoleChips } from '@/components/chat/role-chips';
 import { IconButton } from '@/components/ui/icon-button';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { membersWithChips } from '@/lib/roles';
+import type { Contact } from '@zilar/client-core';
+import { failureOf } from '@zilar/client-core';
 
 /** The owner crown color from web's `MemberRow`; mobile has no token for it. */
 const OWNER_COLOR = '#e5b84b';

@@ -4,9 +4,10 @@ import { View } from 'react-native';
 import { rawCall } from '@/components/chat/group-action';
 import { ActionTiles, type ActionTile } from '@/components/ui/action-tiles';
 import { Text } from '@/components/ui/text';
-import { mutedUntilFor } from '@/lib/chat-prefs';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { mutedUntilFor } from '@zilar/chat-core';
+import { failureOf } from '@zilar/client-core';
 
 const MUTE_ERROR = 'Could not update notifications. Try again.';
 

@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ShieldCheck, Check, X } from 'lucide-react';
 import { decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
-import { fromApi, isStaleDecision, type ApiFailure, useDelayed } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import {
+  fromApi,
+  isStaleDecision,
+  type ApiFailure,
+  useDelayed,
+  failureOf,
+  isWaiting,
+} from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -15,6 +22,7 @@ import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/Avatar';
 import { IconButton } from '@/components/ui/icon-button';
+import { Button } from '@/components/ui/button';
 
 interface ApprovalRowProps {
   approval: PublicApproval;

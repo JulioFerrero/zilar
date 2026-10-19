@@ -3,11 +3,12 @@ import { Effect } from 'effect';
 import { useNavigate } from 'react-router';
 import type { ChatSummary } from '@zilar/chat-core';
 import { deleteAi, resumeAi, stopAi, type PublicAi } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { writeAi } from './aiPanelOps';
+import { isWaiting } from '@zilar/client-core';
 
 export function AiDangerZone({
   ai,

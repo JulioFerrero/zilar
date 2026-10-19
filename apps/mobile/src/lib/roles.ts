@@ -1,6 +1,7 @@
 import type { GroupRole } from './chat-api';
 import type { CustomGroupRole } from './roles-api';
-import type { ApproverRole, TopicRole, TopicVisibility } from './topics-api';
+import type { ApproverRole, TopicRole } from './topics-api';
+import type { TopicVisibility } from '@zilar/chat-core';
 
 /** A 403 reads the same to a stranger or a plain member: a neutral message that reveals nothing. */
 export const ROLE_WRITE_DENIED_MESSAGE = 'Only group owners and admins can change roles.';

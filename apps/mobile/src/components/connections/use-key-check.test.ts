@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Connection } from '@zilar/client-core';
 
-import { providerSelection } from './use-key-check';
+import { providerSelection } from '@zilar/client-core';
 
 // The hook's API clients read route params; `providerSelection` never does.
 vi.mock('expo-router', () => ({

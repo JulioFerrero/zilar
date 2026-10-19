@@ -3,10 +3,11 @@ import { Deferred, Effect } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAction } from '@/lib/effect/use-action';
-import { makeMachinesApi, type Machine, type PairingCode } from '@/lib/machines-api';
+import { makeMachinesApi } from '@/lib/machines-api';
 import { useApi } from '@/lib/use-mockable-api';
 import type { MachinesErrorInfo } from './errors';
 import { applyChange, call, mutationCall, type MachineMutation } from './mutations';
+import type { Machine, PairingCode } from '@zilar/api-contract';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 

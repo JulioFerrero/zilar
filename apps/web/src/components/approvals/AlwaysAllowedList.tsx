@@ -8,12 +8,13 @@ import {
   type ApprovalRule,
   type GroupDetail,
 } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector } from '@/store/ChatStoreProvider';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
+import { Button } from '@/components/ui/button';
 
 export type AlwaysAllowedScope = { aiId: string } | { groupId: string };
 

@@ -9,8 +9,6 @@ import { Button } from '@/components/ui/button';
 import { failureText } from '@/components/sticker/pageActions';
 import { FieldError } from './AiPageShell';
 
-export { describeAuditEntry, formatRelativeAudit };
-
 const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   month: 'long',
   day: 'numeric',

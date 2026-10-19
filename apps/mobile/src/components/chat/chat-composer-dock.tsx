@@ -14,7 +14,6 @@ import { useStickersApi } from '@/components/stickers/use-stickers-api';
 import { API_URL } from '@/lib/auth';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { channelViewerRole, isChannelChat, mayPostInChannel } from '@/lib/channels';
-import { mutedUntilFor } from '@/lib/chat-prefs';
 import { DANGER, ICON } from '@/lib/colors';
 import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
 import { makeGifsApi, type GifsApi } from '@/lib/gifs-api';
@@ -30,8 +29,8 @@ import {
   type MentionMember,
   type UiMessage,
   type UiMention,
+  mutedUntilFor,
 } from '@zilar/chat-core';
-import type { ChatSummary, ReplyRef } from '@/lib/types';
 import type {
   SendAttachmentOptions,
   SendStickerChoice,
@@ -47,7 +46,9 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import type { ChatSummary, ReplyRef } from '@zilar/chat-core';
+import { failureOf } from '@zilar/client-core';
 
 /** The store refused the mute change; the bar shows a fixed sentence, never the cause. */
 class MuteChangeFailed extends Data.TaggedError('MuteChangeFailed')<{

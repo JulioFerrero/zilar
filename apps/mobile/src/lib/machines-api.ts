@@ -10,8 +10,6 @@ import { rawRequest } from './effect/raw-request';
 
 // The AI's home machine is a separate route on purpose, not part of the general PATCH.
 
-export type { Machine, MachineStatus, PairingCode } from '@zilar/api-contract';
-
 export type MachinesApi = SharedMachinesApi & {
   setAiMachine(aiId: string, machineId: string | null): Promise<string | null>;
 };

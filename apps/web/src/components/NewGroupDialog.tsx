@@ -13,10 +13,10 @@ import {
 } from './settings/handleField';
 import { TextArea, TextInput } from './ui/text-input';
 import { checkGroupHandle, type Contact } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useRef, useState, useMemo } from 'react';

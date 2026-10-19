@@ -29,13 +29,14 @@ import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { domainOfJid, type Contact, type ContactsApi } from '@/lib/contacts-api';
-import type { ChatSummary } from '@/lib/types';
+import { domainOfJid, type ContactsApi } from '@/lib/contacts-api';
 import { fromApi, interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';
 import { ApiError } from '@zilar/api-contract';
+import type { Contact } from '@zilar/client-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 /**
  * The contacts page's remove flow, mirroring the web `ContactsPage`: every error

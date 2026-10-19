@@ -6,7 +6,7 @@ import { SearchField } from './ui/search-field';
 import { Switch } from './ui/switch';
 import { folderIconComponent } from '@/components/folderIcon';
 import { createChatFolder, deleteChatFolder, patchChatFolder, type ApiChatFolder } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import {
@@ -17,7 +17,7 @@ import {
   type FolderIcon,
   FOLDER_ICONS,
 } from '@zilar/chat-core';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { Data, Effect } from 'effect';
 import { X } from 'lucide-react';
 import { useMemo, useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';

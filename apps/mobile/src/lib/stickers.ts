@@ -10,8 +10,6 @@ import {
   type StickerChoice,
 } from '@zilar/chat-core';
 
-export { addRecentSticker as rememberRecentSticker, MAX_RECENT_STICKERS } from '@zilar/chat-core';
-
 export interface StickerPack {
   id: string;
   title: string;

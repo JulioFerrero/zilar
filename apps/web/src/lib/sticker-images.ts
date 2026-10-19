@@ -18,7 +18,6 @@ async function sniffMotion(file: Blob): Promise<MotionKind | null> {
   return sniffMotionBytes(bytes);
 }
 
-export { fitStickerSize, STICKER_PREP_MAX_DIM };
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
 /** The server's raw-upload cap for a moving file it converts. */
 export const STICKER_PREP_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;

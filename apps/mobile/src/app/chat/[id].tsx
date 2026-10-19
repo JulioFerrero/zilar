@@ -36,12 +36,13 @@ import { MediaSheet } from '@/components/chat/media-sheet';
 import { PinsSheet } from '@/components/chat/pins-sheet';
 import type { BannerPin } from '@/components/chat/pinned-banner';
 import { runInBackground } from '@/lib/effect/run-in-background';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { bubbleStyle } from '@/lib/depth';
 import type { TopicPreviewMessage } from '@/lib/topics-api';
 import { ChatPickerList } from '@/components/chat/chat-picker-list';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { failureOf } from '@zilar/client-core';
 
 function forwardSendLabel(count: number): string {
   return count > 1 ? `Send to ${count} chats` : 'Send';

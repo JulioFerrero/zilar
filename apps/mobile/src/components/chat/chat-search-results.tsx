@@ -21,18 +21,14 @@ import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import type { ChatListRow } from '@/lib/chat-list';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import {
-  type ContactsApi,
-  type HandleProfile,
-  type ContactRelation,
-  domainOfJid,
-} from '@/lib/contacts-api';
+import { type ContactsApi, domainOfJid } from '@/lib/contacts-api';
 import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
 import { makeSearchApi } from '@/lib/search-api';
 import { realApiTransport } from '@/lib/use-mockable-api';
-import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
 import { resolveContactChat } from '../contacts/add-contact';
+import type { HandleProfile, ContactRelation } from '@zilar/client-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 type PeopleSearchOptions = {
   api: ContactsApi;

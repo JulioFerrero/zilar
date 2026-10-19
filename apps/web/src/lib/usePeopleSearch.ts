@@ -13,7 +13,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { searchDirectory, searchUsers, type DirectoryEntry, type HandleProfile } from '@/lib/api';
 import { useAction } from '@/lib/effect/use-action';
 
-export { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH };
 export const PUBLIC_GROUP_SEARCH_LIMIT = 5;
 const GROUP_SEARCH_MAX_LENGTH = 100;
 

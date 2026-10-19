@@ -11,9 +11,9 @@ import {
   claimHandle as apiClaimHandle,
   type HandleCheck,
 } from '@/lib/api';
-import { type ApiFailure, toApiFailure } from '@zilar/client-core';
-import { suggestHandle as suggestHandleFor } from '@zilar/protocol';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { type ApiFailure, toApiFailure, failureOf, isWaiting } from '@zilar/client-core';
+import { suggestHandle } from '@zilar/protocol';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { dismissHandleGate } from '@/lib/handleGate';
 import {
@@ -63,12 +63,12 @@ export function HandlePage() {
   const auth = useAuth();
   // The suggestion fills while the input is untouched; typing wins forever after.
   const [handle, setHandle] = useState(() =>
-    auth.user === undefined ? '' : suggestHandleFor(auth.user.name, auth.user.email),
+    auth.user === undefined ? '' : suggestHandle(auth.user.name, auth.user.email),
   );
   const [typed, setTyped] = useState(false);
   const serverUser = auth.user;
   if (!typed && handle === '' && serverUser !== undefined) {
-    const suggestion = suggestHandleFor(serverUser.name, serverUser.email);
+    const suggestion = suggestHandle(serverUser.name, serverUser.email);
     if (suggestion !== '') {
       setHandle(suggestion);
     }

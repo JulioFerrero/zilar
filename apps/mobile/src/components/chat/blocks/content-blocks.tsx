@@ -15,7 +15,6 @@ import {
 } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { type ReactNode, useMemo, useState } from 'react';
-import { AttachmentViewer } from '@/components/chat/attachment-message';
 import { View, ViewStyle, Linking, Pressable, ActivityIndicator } from 'react-native';
 import { TABULAR } from '@/components/chat/blocks/figure-block';
 import { Text } from '@/components/ui/text';
@@ -41,6 +40,7 @@ import { API_URL } from '@/lib/auth';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useMediaSource } from '@/lib/media-source';
 import { getSessionToken } from '@/lib/session-token';
+import { AttachmentViewer } from '@/components/chat/image-viewer';
 
 // The board's raised tile key (`PhoneContent.dc.html:148`, `.tilekey` at `:26`).
 const TILE: ViewStyle = {

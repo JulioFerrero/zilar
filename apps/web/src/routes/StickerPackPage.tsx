@@ -9,7 +9,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { useToast } from '@/components/ui/toast';
 import { copyText } from '@/lib/clipboard';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import type { Sticker } from '@/lib/api';
 import type { StickerChoice } from '@zilar/chat-core';
@@ -23,6 +23,7 @@ import {
   stickerPackUrlText,
 } from '@/components/sticker/pageActions';
 import { Well } from '@/components/ui/well';
+import { failureOf, isWaiting } from '@zilar/client-core';
 
 function PackLinkRow({ packId }: { packId: string }) {
   const show = useToast();

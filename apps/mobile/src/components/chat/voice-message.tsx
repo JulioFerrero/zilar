@@ -21,7 +21,7 @@ import type { VoicePlayerControls } from './voice-player-host';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { interruptFiber } from '@zilar/client-core';
-import { mobileUploadOf, type UiMessage } from '@/lib/types';
+import { mobileUploadOf } from '@/lib/types';
 import { voiceAudioSource, type VoicePlayback, type VoiceSpeed } from '@/lib/voice-playback';
 import {
   readTranscripts,
@@ -38,6 +38,7 @@ import {
 import { createWhistlePort, type WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import type { UiMessage } from '@zilar/chat-core';
 
 type TranscribeConfirmProps = {
   open: boolean;
@@ -68,8 +69,6 @@ function VoiceTranscribeConfirm({ open, busy, onDownload, onClose }: TranscribeC
     />
   );
 }
-
-export { resolvePlaySource, resolvePlaySourceEffect } from './voice-playback-source';
 
 type VoiceMessageProps = {
   voice: VoiceMeta;

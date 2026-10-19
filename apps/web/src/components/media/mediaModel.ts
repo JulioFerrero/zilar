@@ -1,6 +1,5 @@
-import { formatDuration as formatDurationMs } from '@zilar/chat-core';
+import { formatDuration as formatDurationMs, formatFileSize } from '@zilar/chat-core';
 import type { MediaItem, MediaTab } from '@/lib/api';
-import { formatFileSize } from '@/lib/attachments';
 
 export const TABS: { value: MediaTab; label: string }[] = [
   { value: 'media', label: 'Media' },

@@ -11,11 +11,7 @@ import type { UploadSlotRequester } from '@zilar/client-core';
 
 export {
   cleanFilename,
-  formatFileSize,
-  gifBlobType,
   isTrustedMediaUrl,
-  MAX_ATTACHMENT_BYTES,
-  safeHttpUrl,
   trustedMediaHosts,
   type MediaTokenShape,
 } from '@zilar/chat-core';

@@ -1,5 +1,5 @@
 import { useAlbumMembers } from '@zilar/client-core';
-import { isLoadableMediaUrl, type UiMessage } from '@zilar/chat-core';
+import { isLoadableMediaUrl, type UiMessage, withMediaRetry } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -8,7 +8,7 @@ import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { Text } from '@/components/ui/text';
 import { imageGradient } from '@/lib/image-presets';
-import { useMediaRetry, withMediaRetry } from '@/lib/media-retry';
+import { useMediaRetry } from '@/lib/media-retry';
 import { useMediaSource } from '@/lib/media-source';
 import { mobileUploadOf } from '@/lib/types';
 import { cn } from '@/lib/utils';

@@ -9,7 +9,7 @@ import type { VoiceRecorderController } from './composerShared';
 import { EntityAvatar } from '../EntityAvatar';
 import type { ComposerAttachments, SendPendingOptions } from './useComposerAttachments';
 import type { Mentions } from './useMentions';
-import { formatFileSize, type PendingAttachment } from '@/lib/attachments';
+import { type PendingAttachment } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
 import {
   formatDuration,
@@ -17,6 +17,7 @@ import {
   isAiJid,
   type MentionMember,
   fileExtension,
+  formatFileSize,
 } from '@zilar/chat-core';
 import {
   ArrowUp,

@@ -16,7 +16,6 @@ import type { StickerChoice } from '@zilar/chat-core';
 import {
   isSameOriginStickerUrl,
   recentChoiceFor,
-  rememberRecentSticker,
   resolveActivePackId,
   stickerImageSource,
   type RecentStickerEntry,
@@ -26,6 +25,7 @@ import {
 import { apiCall } from '@/lib/effect/api-client';
 import { makeStickersApi, type StickersApi } from '@/lib/stickers-api';
 import { realApiTransport } from '@/lib/use-mockable-api';
+import { addRecentSticker } from '@zilar/chat-core';
 
 /** The sticker grid columns (5 across the sheet, web parity). */
 export const STICKER_GRID_COLUMNS = 5;
@@ -342,7 +342,7 @@ export function persistRecent(
     height: sticker.height,
     mime: sticker.mime,
   };
-  const next = rememberRecentSticker(recents, entry);
+  const next = addRecentSticker(recents, entry);
   // A blocked storage must never break sending: a failed write is dropped.
   const write = Effect.tryPromise({
     try: () => storage.write(JSON.stringify(next)),

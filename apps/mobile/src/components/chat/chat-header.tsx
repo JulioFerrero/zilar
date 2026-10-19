@@ -25,7 +25,7 @@ import { AiActivityMark, AiActivityMarks } from '@/components/chat/ai-activity-m
 import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { TopicPeopleLine, memberPerson } from '@/components/chat/topic-people-line';
-import type { AvatarStackEntry } from '@zilar/chat-core';
+import type { AvatarStackEntry, ChatSummary } from '@zilar/chat-core';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { IconButton } from '@/components/ui/icon-button';
@@ -34,7 +34,6 @@ import type { Contact } from '@/lib/chat-api';
 import { cn } from '@/lib/utils';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
-import type { ChatSummary } from '@/lib/types';
 import { makeAisApi, useDelayed } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { useQuery } from '@/lib/effect/use-query';

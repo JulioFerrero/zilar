@@ -13,17 +13,17 @@ import {
   VisibilityFields,
   type HandleCheckState,
 } from '@/components/chat/visibility-fields';
-import { makeDirectoryApi } from '@zilar/client-core';
+import { makeDirectoryApi, failureOf } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { NewGroupMembers } from '@/components/group/new-group-members';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text, TextField } from '@/components/ui/text';
-import type { Contact } from '@/lib/contacts-api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { toggleSelected } from '@/lib/selection';
 import { useChatStore } from '@/store/chat-store-provider';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import type { Contact } from '@zilar/client-core';
 
 function NewGroupName({
   members,

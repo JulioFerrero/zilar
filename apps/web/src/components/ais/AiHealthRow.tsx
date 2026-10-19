@@ -2,17 +2,22 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Effect } from 'effect';
 import { MessageSquare, MoreVertical, Pencil, Trash2 } from 'lucide-react';
-import { aiHealth, formatUsd, spendFraction, type AiHealthInput } from '@zilar/chat-core';
+import {
+  aiHealth,
+  formatUsd,
+  spendFraction,
+  type AiHealthInput,
+  formatLimit,
+} from '@zilar/chat-core';
 import { deleteAi, type PublicAi } from '@/lib/api';
-import { fromApi } from '@zilar/client-core';
-import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
+import { fromApi, isWaiting, shownFailure } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { AiBadge } from '@/components/AiBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { aiFailureText } from '@/components/ais/errors';
-import { formatLimit } from '@/components/ais/limits';
 import { IconButton } from '@/components/ui/icon-button';
 import { Menu, MenuItem } from '@/components/ui/menu';
 

@@ -7,9 +7,9 @@ import { useAuthStore } from '@/auth/session';
 import { fromApi, interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
-import type { PanelPack } from '@/lib/stickers-api';
 import { favoriteTileSize } from '@/components/stickers/tile-size';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
+import type { PanelPack } from '@zilar/client-core';
 
 /**
  * Pure helpers for the sticker screen: the reorder arithmetic and the panel

@@ -6,11 +6,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import {
-  routineActionMessage,
-  type RoutineAction,
-  type RoutineActionMessage,
-} from '@/components/ais/routines-section';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useApi } from '@/lib/use-mockable-api';
 import { SectionLabel } from '@/components/ui/card';
@@ -22,8 +17,10 @@ import { interruptFiber, makeToolsApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
-import { describeRoutineSchedule } from '@/lib/routines-format';
 import { cn } from '@/lib/utils';
+import { routineActionMessage } from '@/components/ais/use-routine-actions';
+import type { RoutineAction, RoutineActionMessage } from '@/components/ais/use-routine-actions';
+import { describeRoutineSchedule } from '@zilar/chat-core';
 
 type RoutineRowProps = {
   routine: MyRoutine;

@@ -5,7 +5,7 @@ import { EntityAvatar } from '@/components/EntityAvatar';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import type { PushDevice } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { isIosDevice, isStandaloneDisplay } from '@/lib/push';
 import type { StoredDevice } from '@/lib/push/deviceStorage';
 import { usePushEnable } from '@/lib/push/usePushEnable';
@@ -20,6 +20,7 @@ import { Data, Effect } from 'effect';
 import { Bell, BellOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { isWaiting } from '@zilar/client-core';
 
 const BLOCKED_DETAIL =
   "Notifications are blocked for this site. Allow them in the browser's site settings, then reload.";

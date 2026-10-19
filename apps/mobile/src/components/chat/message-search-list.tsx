@@ -1,4 +1,9 @@
-import { formatListTime } from '@zilar/chat-core';
+import {
+  formatListTime,
+  groupSearchByChat,
+  searchResultTitle,
+  snippetParts,
+} from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useRef, useReducer, useState } from 'react';
@@ -7,18 +12,12 @@ import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { LoadError } from '@/components/chat/load-error';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
-import type { SearchApi, SearchItem } from '@/lib/search-api';
-import type { ChatSummary } from '@/lib/types';
+import type { SearchApi } from '@/lib/search-api';
 import { useChatStore } from '@/store/chat-store-provider';
-import {
-  groupSearchByChat,
-  nearEnd,
-  searchResultTitle,
-  MessageSearchController,
-  type MessageSearchStatus,
-  snippetParts,
-} from './message-search';
+import { nearEnd, MessageSearchController, type MessageSearchStatus } from './message-search';
 import { openSearchHitEffect } from './search-jump';
+import type { SearchItem } from '@zilar/api-contract';
+import type { ChatSummary } from '@zilar/chat-core';
 
 const MARK_BACKGROUND = '#2a2a2a';
 

@@ -11,19 +11,14 @@ import {
   saveTelegramBotToken,
   saveVoiceTranscriptionSettings,
 } from '@/lib/api';
-import {
-  failureOf,
-  isWaiting,
-  shownFailure,
-  useAction,
-  type ActionState,
-} from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { fromApi, type ApiFailure, failureOf, isWaiting, shownFailure } from '@zilar/client-core';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import type { ActionState } from '@zilar/client-core';
 /** The server owner's key shelf: Email, Telegram and voice transcription cards. The page is
  * owner-only (the same 404 as an unknown route otherwise), and the token and the key are
  * never shown, not even masked. */

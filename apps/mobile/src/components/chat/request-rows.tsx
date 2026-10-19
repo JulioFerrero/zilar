@@ -15,9 +15,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { ToastMessage } from '@/components/ui/toast';
 import { ICON } from '@/lib/colors';
-import type { ContactRequestView, ContactsApi } from '@/lib/contacts-api';
+import type { ContactsApi } from '@/lib/contacts-api';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 import { onForeground } from '../../lib/foreground';
+import type { ContactRequestView } from '@zilar/client-core';
 
 const list = (api: ContactsApi): Promise<ContactRequestView[]> =>
   Effect.runPromise(

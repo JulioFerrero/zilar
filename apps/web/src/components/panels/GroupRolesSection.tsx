@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { useState } from 'react';
 import type { GroupRole } from '@/lib/api';
 import { createGroupRole, deleteGroupRole, renameGroupRole, setGroupRoleMembers } from '@/lib/api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { FieldError } from '../ais/AiPageShell';
 import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
@@ -11,6 +11,7 @@ import { StateMessage } from '../ui/state-message';
 import { TextInput } from '../ui/text-input';
 import { PanelFailure, apiStep, messageOf } from './groupPanelOps';
 import type { RolesView } from './groupPanelOps';
+import { isWaiting } from '@zilar/client-core';
 
 export function GroupRolesSection({
   groupId,

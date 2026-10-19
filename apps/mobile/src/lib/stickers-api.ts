@@ -5,8 +5,6 @@ import { makeStickersApi as makeSharedStickersApi, type Sticker } from '@zilar/c
 import { errorFieldsOf } from './api-error-body';
 import type { ApiCall, ApiTransport } from './effect/api-client';
 
-export type { PanelPack, StickerPack, StickerPackDetail } from '@zilar/client-core';
-
 export type TokenProvider = () => Promise<string | undefined>;
 
 /**

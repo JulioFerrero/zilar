@@ -5,7 +5,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text, TextField } from '../../components/ui/text';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
-import type { GroupChatTarget, JoinPreview } from '../../lib/invite-links-api';
+import type { JoinPreview } from '../../lib/invite-links-api';
 
 /** One neutral invalid state for every failure kind; an unreachable server
  *  gets a retry. The token never appears in any message. */
@@ -94,9 +94,6 @@ export function joinButtonTitle(preview: JoinPreview): string {
   }
   return preview.kind === 'channel' ? 'Join the channel' : 'Join the group';
 }
-
-export type { GroupChatTarget };
-export { resolveGroupChat } from '../../lib/invite-links-api';
 
 export function JoinLinkBody(props: {
   view: JoinLinkView;

@@ -17,7 +17,7 @@ import {
 import { useCallback, useRef, useState } from 'react';
 import { ScrollView, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { type AvatarPersonInput, chatSubtitle } from '@zilar/chat-core';
+import { type AvatarPersonInput, chatSubtitle, mutedUntilFor } from '@zilar/chat-core';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import {
@@ -35,7 +35,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { domainOfJid, normalizeHandleInput, type ContactRelation } from '@/lib/contacts-api';
+import { domainOfJid, normalizeHandleInput } from '@/lib/contacts-api';
 import { goBackOrHome } from '@/lib/navigation';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -46,7 +46,7 @@ import { InfoRow, InfoRowGroup } from '@/components/group-info/info-row';
 import { Button } from '@/components/ui/button';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
 import { fromThrown } from '@zilar/client-core';
-import { mutedUntilFor } from '@/lib/chat-prefs';
+import type { ContactRelation } from '@zilar/client-core';
 
 type UseProfileDmOptions = {
   profile: ProfilePerson | null;

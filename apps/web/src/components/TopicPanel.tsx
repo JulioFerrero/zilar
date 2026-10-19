@@ -18,7 +18,7 @@ import { TopicRolesSection } from './panels/TopicRolesSection';
 import { PinsSection } from './PinsPanel';
 import { TopicLinkRow } from './topic/TopicLinkRow';
 import { Sheet } from './ui/sheet';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { type ChatSummary, isTopicJoined } from '@zilar/chat-core';
@@ -35,6 +35,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
+import { isWaiting } from '@zilar/client-core';
 
 function TopicDangerZone({
   isManager,

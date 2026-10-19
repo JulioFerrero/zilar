@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { ListRow } from '@/components/ui/list-row';
 import { TextInput } from '@/components/ui/text-input';
-import { fromApi } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { fromApi, isWaiting } from '@zilar/client-core';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const LABEL_MAX = 40;

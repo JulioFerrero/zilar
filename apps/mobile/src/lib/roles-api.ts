@@ -3,7 +3,6 @@ import { makeGroupsApi } from '@zilar/client-core';
 
 import type { ApiCall } from './effect/api-client';
 
-export type { RoleMember as RoleHolder } from '@zilar/api-contract';
 /** Grants private-topic access and approver rights in the topics it is attached to. */
 export type { GroupRole as CustomGroupRole } from '@zilar/api-contract';
 

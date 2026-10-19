@@ -15,15 +15,14 @@ import {
   persistEmojiRecent,
   readStoredEmojiRecents,
   type CaretSelection,
-  type EmojiCategoryId,
 } from '@/lib/emoji-data';
-import { gifsAvailability } from '@/lib/gifs';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
 import type { RecentStickerEntry, StickerPack } from '@/lib/stickers';
-import type { StickerChoice } from '@zilar/chat-core';
+import type { StickerChoice, EmojiCategoryId } from '@zilar/chat-core';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import type { SendStickerChoice } from '@/store/types';
+import { gifsAvailability } from '@zilar/chat-core';
 
 export type EmojiSheetTab = 'emoji' | 'stickers' | 'gifs';
 

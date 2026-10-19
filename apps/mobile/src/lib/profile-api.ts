@@ -10,8 +10,6 @@ import type { ApiCall, ApiTransport } from './effect/api-client';
  * `ProfileApiError` is the shared `ApiError` (taken vs. reserved vs. invalid vs. rate limited), so screens branch on `status` without parsing the message.
  */
 
-export type { HandleCheck, HandleCheckReason } from '@zilar/api-contract';
-
 /** The profile row with an absent handle read as null, as web's `meSchema` does. */
 export type MyProfile = Omit<AuthMe, 'handle'> & { handle: string | null };
 

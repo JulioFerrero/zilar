@@ -2,14 +2,11 @@
 import { useMemo } from 'react';
 import {
   makeAisApi,
-  providerSelection,
   useKeyCheck as useSharedKeyCheck,
   type KeyCheckPort,
   type UseKeyCheckOptions,
 } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
-
-export { providerSelection };
 
 export function useKeyCheck(options: UseKeyCheckOptions = {}) {
   const { api } = useApi(makeAisApi);
