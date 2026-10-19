@@ -1,11 +1,58 @@
 // After `authFailed`: ask the server whether the session still exists before retrying, so
 // a revoked session sends the user to login instead of retrying the ladder for ever.
 import { Effect } from 'effect';
+import { ApiError } from '@zilar/api-contract';
 import { fromPromise } from './ctx';
 import type { Fibers, Lifetime } from './lifetime';
 import type { CoreMe, CorePorts } from './ports';
 
 export type SessionCheck = 'valid' | 'gone' | 'unknown';
+
+export interface SessionCheckOptions {
+  readonly getMe: () => Promise<unknown>;
+  readonly getToken?: () => Promise<string | undefined>;
+}
+
+const checkMe = (getMe: () => Promise<unknown>): Effect.Effect<SessionCheck> =>
+  Effect.matchEffect(
+    Effect.tryPromise({
+      try: () => getMe(),
+      catch: (error) => error,
+    }),
+    {
+      onFailure: (error: unknown) =>
+        Effect.succeed<SessionCheck>(
+          error instanceof ApiError && error.status === 401 ? 'gone' : 'unknown',
+        ),
+      onSuccess: () => Effect.succeed<SessionCheck>('valid'),
+    },
+  );
+
+/**
+ * Builds the session check the reconnect ladder runs. Without `getToken` it is the web
+ * rule; with it, a token read that fails is `unknown`, a missing token is `gone`, and the
+ * rest follows the web rule. The returned function never rejects.
+ */
+export const createSessionCheck =
+  ({ getMe, getToken }: SessionCheckOptions): (() => Promise<SessionCheck>) =>
+  () =>
+    Effect.runPromise(
+      (getToken === undefined
+        ? Effect.succeed<string | undefined>(undefined)
+        : Effect.tryPromise({
+            try: () => getToken(),
+            catch: (error) => error,
+          })
+      ).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.succeed<SessionCheck>('unknown'),
+          onSuccess: (token) =>
+            getToken !== undefined && token === undefined
+              ? Effect.succeed<SessionCheck>('gone')
+              : checkMe(getMe),
+        }),
+      ),
+    );
 
 export interface SessionCheckCtx {
   readonly ports: CorePorts;

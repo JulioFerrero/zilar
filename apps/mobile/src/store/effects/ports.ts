@@ -2,7 +2,7 @@
 import { Context, Layer, Effect } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
-import { ApiError } from '@zilar/api-contract';
+import { createSessionCheck } from '@zilar/client-core/store';
 
 import type { OfflineCachePort } from '../offline-cache';
 import { createChatApi, type ChatApi, type TokenProvider } from '../../lib/chat-api';
@@ -122,36 +122,7 @@ function voiceOutFor(deps: RealStoreDeps): VoiceOut {
 export const checkSession = (
   getToken: TokenProvider = getSessionToken,
   getMe: () => Promise<unknown>,
-): Promise<SessionCheck> =>
-  Effect.runPromise(
-    Effect.matchEffect(
-      Effect.tryPromise({
-        try: () => getToken(),
-        catch: (error) => error,
-      }),
-      {
-        onFailure: () => Effect.succeed('unknown' as SessionCheck),
-        onSuccess: (token) =>
-          token === undefined
-            ? Effect.succeed('gone' as SessionCheck)
-            : Effect.matchEffect(
-                Effect.tryPromise({
-                  try: () => getMe(),
-                  catch: (error) => error,
-                }),
-                {
-                  onFailure: (error: unknown) =>
-                    Effect.succeed(
-                      error instanceof ApiError && error.status === 401
-                        ? ('gone' as SessionCheck)
-                        : ('unknown' as SessionCheck),
-                    ),
-                  onSuccess: () => Effect.succeed('valid' as SessionCheck),
-                },
-              ),
-      },
-    ),
-  );
+): Promise<SessionCheck> => createSessionCheck({ getMe, getToken })();
 
 /** The dynamic import keeps this module loadable under Vitest; never rejects, so a failed import cannot leave the revoked session stuck on "Connecting…". */
 export const sessionGone = (

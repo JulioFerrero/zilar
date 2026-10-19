@@ -17,6 +17,7 @@ export * from './delete-own';
 
 export * from './polling';
 export * from './lifecycle';
+export { createSessionCheck } from './session-check';
 
 export * from './send';
 export * from './send-failure';

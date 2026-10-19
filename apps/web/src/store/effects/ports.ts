@@ -54,7 +54,6 @@ import {
   unpinMessage as unpinMessageRequest,
   type ChatEntry,
 } from '@/lib/api';
-import { ApiError } from '@/lib/api/http';
 import { defaultAttachmentPort, type AttachmentPort, cleanFilename } from '@/lib/attachments';
 import { authClient } from '@/lib/auth';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
@@ -76,31 +75,12 @@ import {
   type DraftHubEvent,
   decodeDraftEvent,
   draftReconnectDelay,
+  createSessionCheck,
 } from '@zilar/client-core/store';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import { Context, Effect, Layer } from 'effect';
 // effect-plain: promise-edge adapters beside the ports; the pipeline starts one layer up.
-// A 200 means the session is alive and a 401 that it is gone; another status or a network
-// error is unknown, so it never signs anyone out.
-
-export const checkSession = (): Promise<SessionCheck> =>
-  Effect.runPromise(
-    Effect.matchEffect(
-      Effect.tryPromise({
-        try: () => getMe(),
-        catch: (error) => error,
-      }),
-      {
-        onFailure: (error: unknown) =>
-          Effect.succeed(
-            error instanceof ApiError && error.status === 401
-              ? ('gone' as SessionCheck)
-              : ('unknown' as SessionCheck),
-          ),
-        onSuccess: () => Effect.succeed('valid' as SessionCheck),
-      },
-    ),
-  );
+export const checkSession = createSessionCheck({ getMe });
 
 /** The storage `clearChatListCache` writes through, exposed for tests. */
 export type SessionGoneStorage = StorageLike | null;
