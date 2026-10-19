@@ -19,12 +19,13 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
 import { fromApi } from '@zilar/client-core';
+import { ApiError } from '@zilar/api-contract';
 import { API_URL } from '@/lib/auth';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { goBackOrHome } from '@/lib/navigation';
 import { getSessionToken } from '@/lib/session-token';
-import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
+import type { MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 
 // One photo run at a time: a tap while one is waiting is dropped.
@@ -70,7 +71,7 @@ function OwnProfile() {
     (token === undefined ? sessionTokenEffect : Effect.succeed(token)).pipe(
       Effect.flatMap((sessionToken): Effect.Effect<unknown, unknown> =>
         sessionToken === undefined
-          ? Effect.fail(new ProfileApiError(401, 'unauthorized', 'No session'))
+          ? Effect.fail(new ApiError(401, 'unauthorized', 'No session'))
           : Effect.tryPromise({
               try: () =>
                 createAvatarFileUploader().upload(

@@ -4,9 +4,8 @@
  * availability view model and the handle suggestion builder.
  */
 
+import { ApiError } from '@zilar/api-contract';
 import { handleSaveMessage, parseUrl } from '@zilar/chat-core';
-
-import { ProfileApiError } from '../../lib/profile-api';
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
 
@@ -36,7 +35,7 @@ export function handleAvailabilityFor(
 }
 
 export function isHandleRateLimited(error: unknown): boolean {
-  return error instanceof ProfileApiError && error.code === 'rate_limited';
+  return error instanceof ApiError && error.code === 'rate_limited';
 }
 
 export function handleAvailabilityText(view: HandleAvailability): string | null {
@@ -63,11 +62,19 @@ export function reasonText(reason: HandleAvailabilityReason | undefined): string
   }
 }
 
+function nextChangeAtOf(value: unknown): string | undefined {
+  return typeof value === 'string' && !Number.isNaN(new Date(value).getTime()) ? value : undefined;
+}
+
 export function friendlyClaimError(error: unknown): string {
-  if (error instanceof ProfileApiError) {
+  if (error instanceof ApiError) {
     return (
       handleSaveMessage(
-        { code: error.code, message: error.message, nextChangeAt: error.nextChangeAt },
+        {
+          code: error.code,
+          message: error.message,
+          nextChangeAt: nextChangeAtOf(error.detail.nextChangeAt),
+        },
         'username',
       ) ?? error.message
     );
@@ -76,7 +83,7 @@ export function friendlyClaimError(error: unknown): string {
 }
 
 export function friendlyAvatarError(error: unknown): string {
-  if (error instanceof ProfileApiError) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'avatar_empty':
         return 'The picture file is empty.';

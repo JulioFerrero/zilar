@@ -1,6 +1,7 @@
 import { Effect, Option, Result, Schema, type Effect as EffectType } from 'effect';
 import * as ImagePicker from 'expo-image-picker';
-import { ProfileApiError, parseApiErrorBody } from '@/lib/profile-api';
+import { ApiError, apiErrorFromBody } from '@zilar/api-contract';
+import { errorFieldsOf } from '@/lib/api-error-body';
 import { runMobile } from '@/lib/effect/runtime';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, UploadType } from 'expo-file-system';
@@ -231,7 +232,7 @@ const uploadEffect = Effect.fnUntraced(function* (
   file: PickedPicture,
   token: string,
   onProgress?: (fraction: number) => void,
-): EffectType.fn.Return<{ url: string }, ProfileApiError> {
+): EffectType.fn.Return<{ url: string }, ApiError> {
   const source = new File(file.uri);
   const result = yield* Effect.tryPromise({
     try: () =>
@@ -249,37 +250,39 @@ const uploadEffect = Effect.fnUntraced(function* (
                 }
               },
       }),
-    catch: () => new ProfileApiError(0, 'network_error', 'Could not reach the server'),
+    catch: () => new ApiError(0, 'network_error', 'Could not reach the server'),
   });
   if (result.status < 200 || result.status >= 300) {
     return yield* Effect.fail(toAvatarUploadError(result.status, result.body));
   }
   const parsed = parseAvatarUploadBody(result.body);
   if (parsed === null) {
-    return yield* Effect.fail(new ProfileApiError(200, 'invalid_response', UPLOAD_FAILED_MESSAGE));
+    return yield* Effect.fail(new ApiError(200, 'invalid_response', UPLOAD_FAILED_MESSAGE));
   }
   return parsed;
 });
 
 /**
- * Maps a refused avatar PUT to a `ProfileApiError`, so `friendlyAvatarError` can
+ * Maps a refused avatar PUT to an `ApiError`, so `friendlyAvatarError` can
  * show the specific reason (`avatar_too_large`, `rate_limited`, ...) instead of
  * the generic failure. A parseable `{ code, message }` envelope wins; otherwise
  * the status decides (413, 429, 400); anything else is generic.
  */
-export function toAvatarUploadError(status: number, body: string): ProfileApiError {
-  const { code, message } = parseApiErrorBody(jsonBody(body));
-  if (code !== 'request_failed') {
-    return new ProfileApiError(status, code, message ?? UPLOAD_FAILED_MESSAGE);
+export function toAvatarUploadError(status: number, body: string): ApiError {
+  const raw = jsonBody(body);
+  const error = apiErrorFromBody(status, raw);
+  if (error.code !== 'request_failed') {
+    const { message } = errorFieldsOf(raw);
+    return new ApiError(status, error.code, message ?? UPLOAD_FAILED_MESSAGE);
   }
   switch (status) {
     case 400:
-      return new ProfileApiError(status, 'avatar_not_image', UPLOAD_FAILED_MESSAGE);
+      return new ApiError(status, 'avatar_not_image', UPLOAD_FAILED_MESSAGE);
     case 413:
-      return new ProfileApiError(status, 'avatar_too_large', UPLOAD_FAILED_MESSAGE);
+      return new ApiError(status, 'avatar_too_large', UPLOAD_FAILED_MESSAGE);
     case 429:
-      return new ProfileApiError(status, 'rate_limited', UPLOAD_FAILED_MESSAGE);
+      return new ApiError(status, 'rate_limited', UPLOAD_FAILED_MESSAGE);
     default:
-      return new ProfileApiError(status, 'request_failed', UPLOAD_FAILED_MESSAGE);
+      return new ApiError(status, 'request_failed', UPLOAD_FAILED_MESSAGE);
   }
 }

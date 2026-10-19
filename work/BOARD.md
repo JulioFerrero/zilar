@@ -2194,3 +2194,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2194](T-2194-dead-leftovers.md) | dead leftovers: 5 functions nothing calls | 2026-10-19 |
 | [T-2193](T-2193-store-test-twins.md) | store tests: drop 35 app cases the core already tests | 2026-10-19 |
 | [T-2195](T-2195-phone-machine-call.md) | phone: AI home machine uses the shared contract call | 2026-10-19 |
+| [T-2196](T-2196-phone-profile-error.md) | phone: profile calls fail with the shared ApiError | 2026-10-19 |

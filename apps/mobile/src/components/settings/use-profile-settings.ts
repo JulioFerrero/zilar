@@ -2,12 +2,13 @@ import { useFocusEffect } from 'expo-router';
 import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { interruptFiber } from '@zilar/client-core';
+import { ApiError } from '@zilar/api-contract';
 
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { fetchMe, updateBio } from '@/lib/auth-api';
 import { useAction } from '@/lib/effect/use-action';
-import { ProfileApiError, type MyProfile, type ProfileApi } from '@/lib/profile-api';
+import type { MyProfile, ProfileApi } from '@/lib/profile-api';
 import { getSessionToken } from '@/lib/session-token';
 import { mockToken } from '@/mock/gate';
 
@@ -164,13 +165,13 @@ export function useProfileSettings() {
     onProgress: (fraction: number) => void,
   ): Promise<{ url: string }> => {
     const ownerId = pictureOwnerId.current;
-    if (ownerId === undefined) throw new ProfileApiError(401, 'unauthorized', 'No session');
+    if (ownerId === undefined) throw new ApiError(401, 'unauthorized', 'No session');
     // The uploader the settings API calls with the upload url; its failures reach
     // `friendlyAvatarError` unchanged, so the same sentence shows as before.
     const uploaderFor = async (url: string): Promise<unknown> => {
       const sessionToken = avatarToken !== undefined ? avatarToken : await getSessionToken();
       if (sessionToken === undefined) {
-        throw new ProfileApiError(401, 'unauthorized', 'No session');
+        throw new ApiError(401, 'unauthorized', 'No session');
       }
       return createAvatarFileUploader().upload(
         url,
@@ -188,7 +189,7 @@ export function useProfileSettings() {
 
   const removeAvatar = async (): Promise<void> => {
     const ownerId = pictureOwnerId.current;
-    if (ownerId === undefined) throw new ProfileApiError(401, 'unauthorized', 'No session');
+    if (ownerId === undefined) throw new ApiError(401, 'unauthorized', 'No session');
     try {
       await api.removeAvatar(ownerId);
     } catch (cause) {

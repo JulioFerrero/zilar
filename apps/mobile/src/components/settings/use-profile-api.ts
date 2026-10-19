@@ -1,9 +1,10 @@
 import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
+import { ApiError } from '@zilar/api-contract';
 
 import { API_URL } from '@/lib/auth';
 import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
-import { avatarPutPath, makeProfileApi, ProfileApiError, type ProfileApi } from '@/lib/profile-api';
+import { avatarPutPath, makeProfileApi, type ProfileApi } from '@/lib/profile-api';
 import { realApiTransport } from '@/lib/use-mockable-api';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
@@ -41,11 +42,7 @@ function createMockProfile(): ProfileApi {
             ? (body as Record<string, unknown>)['url']
             : undefined;
         if (typeof url !== 'string') {
-          throw new ProfileApiError(
-            200,
-            'invalid_response',
-            'The server sent an unexpected response',
-          );
+          throw new ApiError(200, 'invalid_response', 'The server sent an unexpected response');
         }
         return { url };
       },
