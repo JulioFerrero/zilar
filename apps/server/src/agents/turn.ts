@@ -1,5 +1,5 @@
 // effect-plain: the shared failure, send and stop helpers stay Promise-shaped over the turn deps.
-import type { SendMessageOptions } from '@zilar/xmpp-core';
+import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
 import type { ChatToolDefinition } from '../ai/model-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
@@ -43,6 +43,36 @@ export function remainingTurnBudgetMs(
 /** True once the turn's abort signal has fired. */
 export function turnStopped(deps: TurnDeps): boolean {
   return deps.signal?.aborted === true;
+}
+
+export function completionInputOf(deps: TurnDeps): Omit<CompleteChatInput, 'messages'> {
+  return {
+    target: deps.target,
+    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+    ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
+    ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
+    ...('onDelta' in deps && deps.onDelta !== undefined ? { onDelta: deps.onDelta } : {}),
+    ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
+    ...(deps.log === undefined ? {} : { log: deps.log }),
+    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+  };
+}
+
+export async function runTyped(
+  deps: TurnDeps,
+  to: string,
+  kind: ChatKind,
+  run: () => Promise<DmTurnOutcome>,
+  onError: (error: unknown) => Promise<DmTurnOutcome>,
+): Promise<DmTurnOutcome> {
+  deps.sendTyping(to, kind, 'composing');
+  try {
+    return await run();
+  } catch (error) {
+    return await onError(error);
+  } finally {
+    deps.sendTyping(to, kind, 'paused');
+  }
 }
 
 export async function finishProgressQuietly(

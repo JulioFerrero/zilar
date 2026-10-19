@@ -6,8 +6,9 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { GROUP_FAILURE_REPLY } from './replies';
+import { completionInputOf, runTyped } from './turn';
 import { finishTurnFailure, runLoopTurn, sendGroupReply } from './turn';
-import { type CompleteChatInput, type ExecuteToolCall, type TurnCaps } from './tool-loop';
+import { type ExecuteToolCall, type TurnCaps } from './tool-loop';
 import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
 import type { ChatCompletionMessage } from './context';
@@ -200,15 +201,6 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       },
     };
   };
-  const completionInput = {
-    target: deps.target,
-    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-    ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
-    ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
-    ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
-    ...(deps.log === undefined ? {} : { log: deps.log }),
-    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
-  };
   const failTurn = (failure: { error?: unknown; reason?: string }, finishProgress = true) =>
     finishTurnFailure(deps, secrets, {
       ...failure,
@@ -220,49 +212,37 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       ...(deps.onFailure === undefined ? {} : { beforeSend: deps.onFailure }),
       ...(finishProgress ? {} : { finishProgress: false }),
     });
-  deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
-  try {
-    // Without an executor no tool may run, so the turn advertises none: an
-    // improvised call is answered `invalid: unknown tool` by the loop and a
-    // plain member can never reach the action gateway.
-    const toolTurn = deps.executeTool === undefined ? { ...deps, tools: [] } : deps;
-    return await runGroupToolTurn(toolTurn, completionInput, secrets, wire, failTurn);
-  } catch (error) {
-    return await failTurn({ error }, false);
-  } finally {
-    deps.sendTyping(deps.roomJid, 'groupchat', 'paused');
-  }
-}
-
-async function runGroupToolTurn(
-  deps: GroupTurnDeps,
-  completionInput: Omit<CompleteChatInput, 'messages'>,
-  secrets: string[],
-  wire: (text: string, withHandoff?: boolean) => { text: string; opts: SendMessageOptions },
-  failTurn: (failure: { error?: unknown; reason?: string }) => Promise<DmTurnOutcome>,
-): Promise<DmTurnOutcome> {
-  const tools = deps.tools ?? [];
-  // Only a tool that was advertised may run: anything else the model
-  // improvises (a persona tool, say) is answered `invalid: unknown tool`.
-  // `task_status` is the one exception: it is a read-only group tool and
-  // `getDelegationForAi` scopes the read to the two involved AIs, so it may
-  // run even when no delegation targets were advertised.
-  const advertised = new Set(tools.map((tool) => tool.function.name));
-  const execute = deps.executeTool;
-  const executeAdvertised: ExecuteToolCall | undefined =
-    execute === undefined
-      ? undefined
-      : (call) =>
-          advertised.has(call.tool) || call.tool === TASK_STATUS_TOOL
-            ? execute(call)
-            : Promise.resolve({ content: 'invalid: unknown tool' });
-  return runLoopTurn(deps, {
-    completionInput,
-    secrets,
-    tools,
-    ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
-    postedToRoom: true,
-    fail: (failure) => failTurn(failure),
-    reply: (text, fromModel) => sendGroupReply(deps, secrets, wire(text, fromModel)),
-  });
+  return runTyped(
+    deps,
+    deps.roomJid,
+    'groupchat',
+    () => {
+      // Without an executor no tool may run, so the turn advertises none: an
+      // improvised call is answered `invalid: unknown tool` by the loop and a
+      // plain member can never reach the action gateway.
+      const toolTurn = deps.executeTool === undefined ? { ...deps, tools: [] } : deps;
+      // Only an advertised tool may run: an improvised call gets
+      // `invalid: unknown tool`. `task_status` is the exception: a read-only
+      // group tool that `getDelegationForAi` scopes to the two AIs.
+      const advertised = new Set((toolTurn.tools ?? []).map((tool) => tool.function.name));
+      const execute = toolTurn.executeTool;
+      const executeAdvertised: ExecuteToolCall | undefined =
+        execute === undefined
+          ? undefined
+          : (call) =>
+              advertised.has(call.tool) || call.tool === TASK_STATUS_TOOL
+                ? execute(call)
+                : Promise.resolve({ content: 'invalid: unknown tool' });
+      return runLoopTurn(toolTurn, {
+        completionInput: completionInputOf(deps),
+        secrets,
+        tools: toolTurn.tools ?? [],
+        ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
+        postedToRoom: true,
+        fail: (failure) => failTurn(failure),
+        reply: (text, fromModel) => sendGroupReply(deps, secrets, wire(text, fromModel)),
+      });
+    },
+    (error) => failTurn({ error }, false),
+  );
 }

@@ -4,9 +4,8 @@ import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import { ChatCompletionError, type ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
-import { finishProgressQuietly, finishTurnFailure, runLoopTurn, sendReply } from './turn';
+import { completionInputOf, finishTurnFailure, runLoopTurn, runTyped, sendReply } from './turn';
 import { cutShortSuffix } from './replies';
-import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
 import type { TurnLog } from './log/append';
 import {
   requestCompletion,
@@ -103,60 +102,30 @@ export type DmTurnOutcome =
 // logged, never thrown: there is nobody left to tell.
 export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
-  const tools = deps.tools ?? PERSONA_TOOLS;
-  const completionInput = {
-    target: deps.target,
-    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-    ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
-    ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
-    ...(deps.onDelta === undefined ? {} : { onDelta: deps.onDelta }),
-    ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
-    ...(deps.log === undefined ? {} : { log: deps.log }),
-    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
-  };
-  deps.sendTyping(deps.ownerJid, 'chat', 'composing');
-  try {
-    return await runToolTurn(deps, completionInput, secrets, tools);
-  } catch (error) {
-    if (deps.signal?.aborted === true) {
-      await finishProgressQuietly(deps, secrets, 'stopped');
-      return { kind: 'stopped', text: '' };
-    }
-    const reply = mapFailureToReply(error);
-    deps.log?.append('error', failureLogFields(error));
-    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    try {
-      await deps.sendMessage(deps.ownerJid, 'chat', reply);
-    } catch (sendError) {
-      deps.logger.warn(
-        { err: redactError(sendError, secrets), aiId: deps.aiId },
-        'AI failure reply could not be sent',
-      );
-      return { kind: 'failed', text: '' };
-    }
-    return { kind: 'failed', text: reply };
-  } finally {
-    deps.sendTyping(deps.ownerJid, 'chat', 'paused');
-  }
-}
-
-export async function runToolTurn(
-  deps: DmTurnDeps,
-  completionInput: Omit<CompleteChatInput, 'messages' | 'tools' | 'maxTokens'>,
-  secrets: string[],
-  tools: ChatToolDefinition[],
-): Promise<DmTurnOutcome> {
-  return runLoopTurn(deps, {
-    completionInput,
-    secrets,
-    tools,
-    ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
-    fail: (failure, notices) =>
-      finishTurnFailure(deps, secrets, {
-        ...failure,
-        text: (reason) => reason + notices.join(''),
-        send: (text) => deps.sendMessage(deps.ownerJid, 'chat', text),
+  return runTyped(
+    deps,
+    deps.ownerJid,
+    'chat',
+    () =>
+      runLoopTurn(deps, {
+        completionInput: completionInputOf(deps),
+        secrets,
+        tools: deps.tools ?? PERSONA_TOOLS,
+        ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
+        fail: (failure, notices) =>
+          finishTurnFailure(deps, secrets, {
+            ...failure,
+            text: (reason) => reason + notices.join(''),
+            send: (text) => deps.sendMessage(deps.ownerJid, 'chat', text),
+          }),
+        reply: (text) => sendReply(deps, text),
       }),
-    reply: (text) => sendReply(deps, text),
-  });
+    (error) =>
+      finishTurnFailure(deps, secrets, {
+        error,
+        text: (reason) => reason,
+        send: (text) => deps.sendMessage(deps.ownerJid, 'chat', text),
+        finishProgress: false,
+      }),
+  );
 }

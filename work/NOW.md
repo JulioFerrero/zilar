@@ -141,6 +141,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2213 | server tests wave D: agent side-modules, from 91 to 33 cases (kept: permissions, delivery, caps, key redaction; 2 restored in a fix round) | −1,360 test |
 | T-2215 | chat list: an AI task card previews its summary (closed), title or stage instead of "Attachment" (web and phone) | +7 |
 | T-2210 | store phase 3 T4: one chat-list merge (`mergeFreshChats`) and row adoption (`adoptNewRows`) in client-core; the phone's import aliases and re-exports are gone | −22 |
 | T-2212 | a closed AI card's body is its summary ("Stopped after 12s"), so previews stop showing the last step after a stop | 0 |
@@ -173,9 +174,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
+  - **T-2217:** store phase 3 T3b. The shared half of `openChat` (prune, read mark, unread-mark clear, marker swap, `openHistory`) moves into client-core (stop rule: at least −15).
   - **T-2216:** AI turns T8, the last step. One completion-input builder and one typing-plus-failure shell; the DM catch uses `finishTurnFailure` (stop rule: at least −20).
   - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
-  - **T-2213:** server tests wave D. Agent side-modules (topic follow, tool params, post blocks, questions, routine send, logs, task card, approvals, ask people) cut to the crucial cases (at least −1,260).
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
   - **Web search W2 canvas, waiting for Julio:** https://claude.ai/artifact/9wDLt9GpmXNZZ2s2JWNu85. A "Web search" provider group in Add key (Brave, Exa, Firecrawl, Jina, Tavily), and Connections split into Models and Web search.
 - **Docs (lead, 07:25):**
@@ -206,7 +207,9 @@ Lead live checks as Julio in "ai test › General" (09:19–09:24):
 - a stopped multi-page fetch turn left the preview reading "Deepseek: Stopped after 10s";
 - a DM hello was answered.
 
-**`6f015f5c4`** (09:38, store T4): routes the same, 0 errors. A read-only look at Julio's real chats after a reload: the list, Financial and JULITO open normally with history and media. After the reload the card preview reads "Attachment" (history cards carry no body); T-2215 fixes it.
+**`6f015f5c4`** (09:38, store T4): routes the same, 0 errors. A read-only look at Julio's real chats after a reload: the list, Financial and JULITO open normally with history and media. After the reload the card preview read "Attachment" (history cards carry no body).
+
+**`a20f28e08`** (09:53, T-2215 and T-2213): routes the same, 0 errors. The T-2215 deploy at 09:43 failed on a Docker Hub TLS timeout pulling `pgvector`, not on code; the next push redeployed. After a reload, "ai test › General" now previews "Deepseek: Stopped after 10s".
 
 Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
