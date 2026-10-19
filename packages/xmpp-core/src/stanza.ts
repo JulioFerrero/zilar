@@ -19,7 +19,7 @@ import type {
   TypingEvent,
 } from './types';
 import { parseAlbum } from './stanza/album';
-import { MAX_STATUS_CHARS } from './stanza/build-outgoing';
+import { MAX_STATUS_CHARS } from './stanza/build-control';
 import {
   parseCorrection,
   parseForward,
@@ -43,28 +43,8 @@ import { CHAT_STATES } from './stanza/reactions';
 
 export { sanitizeReactions, type ReplyRef } from './stanza/reactions';
 
-export {
-  buildMessage,
-  buildCorrection,
-  RETRACTION_FALLBACK_BODY,
-  buildRetraction,
-  buildTyping,
-  MAX_STATUS_CHARS,
-  buildDisplayed,
-  buildPingRequest,
-  buildPingResult,
-  buildReactions,
-  buildJoinPresence,
-  buildLeavePresence,
-  buildAvailablePresence,
-  buildCarbonsEnable,
-  buildPushEnable,
-  buildPushDisable,
-  buildUploadSlotRequest,
-  parseUploadSlot,
-  buildRosterResult,
-  buildRosterError,
-} from './stanza/build-outgoing';
+export * from './stanza/build-outgoing';
+export * from './stanza/build-control';
 
 export {
   isMamResult,

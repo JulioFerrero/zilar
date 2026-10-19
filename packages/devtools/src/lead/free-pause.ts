@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Result, Schema } from 'effect';
 import { fallbackModel } from './fallback.js';
-import { goPauseConfigPath } from './go-pause.js';
+import { goPauseConfigPath, readConfigJson, warnBadConfig } from './go-pause.js';
 import { GO_MUSE, PAID_MUSE, isFreeListing } from './models.js';
 
 export { isFreeListing } from './models.js';
@@ -15,17 +15,6 @@ export const FREE_PAUSE_HOURS = 6;
 const freePauseConfigSchema = Schema.Struct({
   freePausedUntil: Schema.optional(Schema.String),
 });
-
-// A malformed value is reported once, then ignored: a typo must never stop the lead.
-let warnedBadConfig = false;
-
-function warnBadConfig(configPath: string, detail: string): void {
-  if (warnedBadConfig) {
-    return;
-  }
-  warnedBadConfig = true;
-  console.warn(`lead: ignoring bad free-pause config at ${configPath}: ${detail}`);
-}
 
 function readRaw(configPath: string): string | undefined {
   try {
@@ -43,11 +32,11 @@ function parseConfig(raw: string | undefined, configPath: string): Record<string
   try {
     parsed = JSON.parse(raw);
   } catch {
-    warnBadConfig(configPath, 'not valid JSON');
+    warnBadConfig('free-pause', configPath, 'not valid JSON');
     return {};
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    warnBadConfig(configPath, 'config must be a JSON object');
+    warnBadConfig('free-pause', configPath, 'config must be a JSON object');
     return {};
   }
   return { ...(parsed as Record<string, unknown>) };
@@ -62,22 +51,15 @@ export function freePause(
   now: Date = new Date(),
   configPath: string = goPauseConfigPath(),
 ): { until: string } | undefined {
-  let raw: string;
-  try {
-    raw = fs.readFileSync(configPath, 'utf8');
-  } catch {
-    return undefined; // no file = not paused
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    warnBadConfig(configPath, 'not valid JSON');
+  const parsed = readConfigJson(configPath, () =>
+    warnBadConfig('free-pause', configPath, 'not valid JSON'),
+  );
+  if (parsed === undefined) {
     return undefined;
   }
   const decoded = Schema.decodeUnknownResult(freePauseConfigSchema)(parsed);
   if (Result.isFailure(decoded)) {
-    warnBadConfig(configPath, 'freePausedUntil must be an ISO timestamp');
+    warnBadConfig('free-pause', configPath, 'freePausedUntil must be an ISO timestamp');
     return undefined;
   }
   const until = decoded.success.freePausedUntil;
@@ -86,7 +68,7 @@ export function freePause(
   }
   const at = Date.parse(until);
   if (Number.isNaN(at)) {
-    warnBadConfig(configPath, `freePausedUntil is not a real timestamp: ${until}`);
+    warnBadConfig('free-pause', configPath, `freePausedUntil is not a real timestamp: ${until}`);
     return undefined;
   }
   return at > now.getTime() ? { until } : undefined;

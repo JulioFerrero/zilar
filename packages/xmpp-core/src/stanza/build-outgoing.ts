@@ -15,25 +15,6 @@ import type { ChatKind, MentionInput, MessageAlbum } from '../types';
 import { albumElement } from './album';
 import { MAX_MENTIONS, codePointLength, codePointOffset } from './reactions';
 
-export {
-  MAX_STATUS_CHARS,
-  buildTyping,
-  buildDisplayed,
-  buildPingRequest,
-  buildPingResult,
-  buildReactions,
-  buildJoinPresence,
-  buildLeavePresence,
-  buildAvailablePresence,
-  buildCarbonsEnable,
-  buildPushEnable,
-  buildPushDisable,
-  buildUploadSlotRequest,
-  parseUploadSlot,
-  buildRosterResult,
-  buildRosterError,
-} from './build-control';
-
 // A Zilar forward origin (namespace `urn:zilar:forward:0`, distinct from XEP-0297's);
 // long strings travel as child text, ids and the time as attributes.
 function forwardElement(origin: ForwardOrigin): XmppElement {

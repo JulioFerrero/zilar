@@ -20,19 +20,36 @@ const goPauseConfigSchema = Schema.Struct({
   ),
 });
 
-// A malformed file is reported once, then ignored: a typo must never stop the lead.
-let warnedBadConfig = false;
+// A malformed file is reported once per config, then ignored: a typo must never stop
+// the lead.
+const warnedBadConfig = new Set<string>();
 
-function warnBadConfig(configPath: string, detail: string): void {
-  if (warnedBadConfig) {
+export function warnBadConfig(name: string, configPath: string, detail: string): void {
+  if (warnedBadConfig.has(name)) {
     return;
   }
-  warnedBadConfig = true;
-  console.warn(`lead: ignoring bad go-pause config at ${configPath}: ${detail}`);
+  warnedBadConfig.add(name);
+  console.warn(`lead: ignoring bad ${name} config at ${configPath}: ${detail}`);
 }
 
 function validIsoDate(value: string): boolean {
   return !Number.isNaN(Date.parse(value));
+}
+
+// The config file's JSON, or undefined when it is missing or not valid JSON.
+export function readConfigJson(configPath: string, onBadJson: () => void): unknown {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, 'utf8');
+  } catch {
+    return undefined; // no file = not paused
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    onBadJson();
+    return undefined;
+  }
 }
 
 // The ISO date Go stays paused until; paused strictly before it, back on the date.
@@ -40,22 +57,15 @@ export function goPause(
   now: Date = new Date(),
   configPath: string = goPauseConfigPath(),
 ): { until: string } | undefined {
-  let raw: string;
-  try {
-    raw = fs.readFileSync(configPath, 'utf8');
-  } catch {
-    return undefined; // no file = not paused
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    warnBadConfig(configPath, 'not valid JSON');
+  const parsed = readConfigJson(configPath, () =>
+    warnBadConfig('go-pause', configPath, 'not valid JSON'),
+  );
+  if (parsed === undefined) {
     return undefined;
   }
   const decoded = Schema.decodeUnknownResult(goPauseConfigSchema)(parsed);
   if (Result.isFailure(decoded)) {
-    warnBadConfig(configPath, 'goPausedUntil must be an ISO date like 2026-10-26');
+    warnBadConfig('go-pause', configPath, 'goPausedUntil must be an ISO date like 2026-10-26');
     return undefined;
   }
   const until = decoded.success.goPausedUntil;
@@ -63,7 +73,7 @@ export function goPause(
     return undefined;
   }
   if (!validIsoDate(until)) {
-    warnBadConfig(configPath, `goPausedUntil is not a real date: ${until}`);
+    warnBadConfig('go-pause', configPath, `goPausedUntil is not a real date: ${until}`);
     return undefined;
   }
   const today = now.toISOString().slice(0, 10);
