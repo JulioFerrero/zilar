@@ -1,4 +1,5 @@
 import { avatarIdentity } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -8,8 +9,110 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { API_URL } from '@/lib/auth';
+import { useAction } from '@/lib/effect/use-action';
 
+import { createPicturePicker } from './avatar-native';
 import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile-logic';
+
+export type PicturePick = { uri: string; mimeType: string };
+
+type PictureOperation =
+  | { readonly kind: 'pick' }
+  | { readonly kind: 'save'; readonly picked: PicturePick }
+  | { readonly kind: 'remove' };
+
+const PICK_ERROR = 'Could not pick that picture. Try again.';
+
+function rejectionMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+function uploading(picked: PicturePick, progress: number): AvatarPhase {
+  return { name: 'uploading', uri: picked.uri, mimeType: picked.mimeType, progress };
+}
+
+type PictureEditorOptions = {
+  upload: (picked: PicturePick, onProgress: (fraction: number) => void) => Promise<{ url: string }>;
+  remove: () => Promise<void>;
+  onChanged: (url: string | undefined) => void;
+};
+
+export function usePictureEditor({ upload, remove, onChanged }: PictureEditorOptions) {
+  const [phase, setPhase] = useState<AvatarPhase>({ name: 'idle' });
+  const [busy, setBusy] = useState(false);
+
+  const run = async (operation: PictureOperation): Promise<void> => {
+    if (operation.kind === 'pick') {
+      try {
+        const result = await createPicturePicker().pickPicture();
+        if (result.status === 'picked') {
+          setPhase({
+            name: 'picked',
+            uri: result.picture.uri,
+            mimeType: result.picture.mimeType,
+          });
+        } else if (result.status === 'error') {
+          setPhase({ name: 'failed', message: result.message });
+        }
+      } catch {
+        setPhase({ name: 'failed', message: PICK_ERROR });
+      }
+      return;
+    }
+    if (operation.kind === 'save') {
+      const { picked } = operation;
+      setPhase(uploading(picked, 0));
+      try {
+        const result = await upload(picked, (progress) => setPhase(uploading(picked, progress)));
+        onChanged(result.url);
+        setPhase({ name: 'idle' });
+      } catch (cause) {
+        setPhase({ name: 'failed', message: rejectionMessage(cause) });
+      }
+      return;
+    }
+    try {
+      await remove();
+      onChanged(undefined);
+      setPhase({ name: 'removed' });
+    } catch (cause) {
+      setPhase({ name: 'failed', message: rejectionMessage(cause) });
+    }
+  };
+
+  const [, runAction] = useAction(
+    (operation: PictureOperation) =>
+      Effect.promise(async () => {
+        setBusy(true);
+        try {
+          await run(operation);
+        } finally {
+          setBusy(false);
+        }
+      }),
+    { mode: 'ignore' },
+  );
+
+  const pick = (): void => {
+    runAction({ kind: 'pick' });
+  };
+
+  const savePicked = (): void => {
+    if (phase.name === 'picked') {
+      runAction({ kind: 'save', picked: phase });
+    }
+  };
+
+  const removePicture = (): void => {
+    runAction({ kind: 'remove' });
+  };
+
+  const reset = (): void => {
+    setPhase({ name: 'idle' });
+  };
+
+  return { phase, busy, pick, savePicked, remove: removePicture, reset };
+}
 
 type AvatarControlProps = {
   ownerId: string;

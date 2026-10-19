@@ -11,11 +11,11 @@ import { ProfileApiError, type MyProfile, type ProfileApi } from '@/lib/profile-
 import { getSessionToken } from '@/lib/session-token';
 import { mockToken } from '@/mock/gate';
 
-import { createAvatarFileUploader, createPicturePicker } from '@/components/settings/avatar-native';
+import { usePictureEditor, type PicturePick } from '@/components/settings/avatar-control';
+import { createAvatarFileUploader } from '@/components/settings/avatar-native';
 import {
   friendlyAvatarError,
   friendlyClaimError,
-  type AvatarPhase,
   type HandleAvailability,
   handleAvailabilityFor,
   isHandleRateLimited,
@@ -101,8 +101,6 @@ function attempt<A>(run: () => Promise<A>, message: (cause: unknown) => string) 
   });
 }
 
-export type ProfileAttempt = typeof attempt;
-
 type SaveInput = {
   readonly handle: string;
   readonly name: string;
@@ -155,7 +153,59 @@ export function useProfileSettings() {
     setProfile((previous) => (previous === null ? previous : { ...previous, avatarUrl: url }));
   }, []);
 
-  const avatar = useProfileAvatar(api, attempt, setAvatarUrl);
+  const [avatarToken, setAvatarToken] = useState<string | undefined>(undefined);
+  const pictureOwnerId = useRef<string | undefined>(undefined);
+
+  // The settings API uploads a local file through `expo-file-system` (React
+  // Native's `fetch` cannot send binary bodies); the uploader reports progress
+  // back into the phase. In mock mode the mock answers without touching the file.
+  const uploadAvatar = async (
+    picked: PicturePick,
+    onProgress: (fraction: number) => void,
+  ): Promise<{ url: string }> => {
+    const ownerId = pictureOwnerId.current;
+    if (ownerId === undefined) throw new ProfileApiError(401, 'unauthorized', 'No session');
+    // The uploader the settings API calls with the upload url; its failures reach
+    // `friendlyAvatarError` unchanged, so the same sentence shows as before.
+    const uploaderFor = async (url: string): Promise<unknown> => {
+      const sessionToken = avatarToken !== undefined ? avatarToken : await getSessionToken();
+      if (sessionToken === undefined) {
+        throw new ProfileApiError(401, 'unauthorized', 'No session');
+      }
+      return createAvatarFileUploader().upload(
+        url,
+        { uri: picked.uri, mimeType: picked.mimeType, width: 0, height: 0 },
+        sessionToken,
+        onProgress,
+      );
+    };
+    try {
+      return await api.uploadAvatar(ownerId, new Blob([], { type: picked.mimeType }), uploaderFor);
+    } catch (cause) {
+      throw new Error(friendlyAvatarError(cause));
+    }
+  };
+
+  const removeAvatar = async (): Promise<void> => {
+    const ownerId = pictureOwnerId.current;
+    if (ownerId === undefined) throw new ProfileApiError(401, 'unauthorized', 'No session');
+    try {
+      await api.removeAvatar(ownerId);
+    } catch (cause) {
+      throw new Error(friendlyAvatarError(cause));
+    }
+  };
+
+  const avatar = usePictureEditor({
+    upload: uploadAvatar,
+    remove: removeAvatar,
+    onChanged: setAvatarUrl,
+  });
+
+  const resetAvatar = (token: string | undefined): void => {
+    setAvatarToken(token);
+    avatar.reset();
+  };
 
   // Loads the profile (and the avatar bearer) into every section. It paints
   // `loading` only when nothing is shown yet, so a focus return shows server
@@ -208,7 +258,7 @@ export function useProfileSettings() {
               setBioError(undefined);
             }
             setSaved(false);
-            avatar.reset(token);
+            resetAvatar(token);
             setStatus('ready');
           }),
         ),
@@ -296,7 +346,7 @@ export function useProfileSettings() {
               });
             }
             if (input.bioChanged) {
-              const token = avatar.token;
+              const token = avatarToken;
               if (token === undefined) {
                 yield* Effect.sync(() => {
                   setBioError(BIO_SAVE_ERROR);
@@ -390,12 +440,18 @@ export function useProfileSettings() {
     status,
     profile,
     reload,
-    avatarToken: avatar.token,
+    avatarToken,
     avatarPhase: avatar.phase,
     avatarBusy: avatar.busy,
     pickPicture: avatar.pick,
-    savePickedPicture: avatar.savePicked,
-    removePicture: avatar.remove,
+    savePickedPicture: (ownerId: string): void => {
+      pictureOwnerId.current = ownerId;
+      avatar.savePicked();
+    },
+    removePicture: (ownerId: string): void => {
+      pictureOwnerId.current = ownerId;
+      avatar.remove();
+    },
     name,
     nameError,
     onNameChange,
@@ -411,177 +467,4 @@ export function useProfileSettings() {
     saveBusy,
     saveAll,
   };
-}
-
-type PickedAvatar = Extract<AvatarPhase, { name: 'picked' }>;
-
-type AvatarOperation =
-  | { readonly kind: 'pick' }
-  | { readonly kind: 'save'; readonly ownerId: string; readonly picked: PickedAvatar }
-  | { readonly kind: 'remove'; readonly ownerId: string };
-
-const PICK_ERROR = 'Could not pick that picture. Try again.';
-
-interface ProfileAvatar {
-  readonly token: string | undefined;
-  readonly phase: AvatarPhase;
-  readonly busy: boolean;
-  readonly reset: (token: string | undefined) => void;
-  readonly pick: () => void;
-  readonly savePicked: (ownerId: string) => void;
-  readonly remove: (ownerId: string) => void;
-}
-
-function useProfileAvatar(
-  api: ProfileApi,
-  attempt: ProfileAttempt,
-  setAvatarUrl: (url: string | undefined) => void,
-): ProfileAvatar {
-  const [token, setToken] = useState<string | undefined>(undefined);
-  const [phase, setPhase] = useState<AvatarPhase>({ name: 'idle' });
-  const [busy, setBusy] = useState(false);
-
-  // The uploader the settings API calls with the upload url; its failures reach
-  // `friendlyAvatarError` unchanged, so the same sentence shows as before.
-  const uploaderFor =
-    (picked: PickedAvatar) =>
-    (url: string): Promise<unknown> => {
-      const session: Effect.Effect<string | undefined, unknown> =
-        token !== undefined
-          ? Effect.succeed(token)
-          : Effect.tryPromise({ try: () => getSessionToken(), catch: (cause) => cause });
-      return Effect.runPromise(
-        session.pipe(
-          Effect.flatMap((sessionToken) =>
-            sessionToken === undefined
-              ? Effect.fail(new ProfileApiError(401, 'unauthorized', 'No session'))
-              : Effect.tryPromise({
-                  try: () =>
-                    createAvatarFileUploader().upload(
-                      url,
-                      { uri: picked.uri, mimeType: picked.mimeType, width: 0, height: 0 },
-                      sessionToken,
-                      (fraction) => {
-                        setPhase({
-                          name: 'uploading',
-                          uri: picked.uri,
-                          mimeType: picked.mimeType,
-                          progress: fraction,
-                        });
-                      },
-                    ),
-                  catch: (cause) => cause,
-                }),
-          ),
-        ),
-      );
-    };
-
-  const failAvatar = (failure: ProfileFailed): Effect.Effect<void> =>
-    Effect.sync(() => {
-      setPhase({ name: 'failed', message: failure.message });
-    });
-
-  const avatarEffect = (operation: AvatarOperation): Effect.Effect<void> => {
-    switch (operation.kind) {
-      case 'pick':
-        return attempt(
-          () => createPicturePicker().pickPicture(),
-          () => PICK_ERROR,
-        ).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              if (result.status === 'picked') {
-                setPhase({
-                  name: 'picked',
-                  uri: result.picture.uri,
-                  mimeType: result.picture.mimeType,
-                });
-              } else if (result.status === 'error') {
-                setPhase({ name: 'failed', message: result.message });
-              }
-            }),
-          ),
-          Effect.catch(failAvatar),
-        );
-      case 'save': {
-        const { picked, ownerId } = operation;
-        return Effect.sync(() => {
-          setPhase({
-            name: 'uploading',
-            uri: picked.uri,
-            mimeType: picked.mimeType,
-            progress: 0,
-          });
-        }).pipe(
-          // The settings API uploads a local file through `expo-file-system` (React
-          // Native's `fetch` cannot send binary bodies); the uploader reports progress
-          // back into the phase. In mock mode the mock answers without touching the file.
-          Effect.andThen(
-            attempt(
-              () =>
-                api.uploadAvatar(
-                  ownerId,
-                  new Blob([], { type: picked.mimeType }),
-                  uploaderFor(picked),
-                ),
-              friendlyAvatarError,
-            ),
-          ),
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              setAvatarUrl(result.url);
-              setPhase({ name: 'idle' });
-            }),
-          ),
-          Effect.catch(failAvatar),
-        );
-      }
-      case 'remove':
-        return attempt(() => api.removeAvatar(operation.ownerId), friendlyAvatarError).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              setAvatarUrl(undefined);
-              setPhase({ name: 'removed' });
-            }),
-          ),
-          Effect.catch(failAvatar),
-        );
-    }
-  };
-
-  const [, avatarRun] = useAction(
-    (operation: AvatarOperation) =>
-      Effect.sync(() => {
-        setBusy(true);
-      }).pipe(
-        Effect.andThen(avatarEffect(operation)),
-        Effect.ensuring(
-          Effect.sync(() => {
-            setBusy(false);
-          }),
-        ),
-      ),
-    { mode: 'ignore' },
-  );
-
-  const reset = (nextToken: string | undefined): void => {
-    setPhase({ name: 'idle' });
-    setToken(nextToken);
-  };
-
-  const pick = (): void => {
-    avatarRun({ kind: 'pick' });
-  };
-
-  const savePicked = (ownerId: string): void => {
-    if (phase.name !== 'picked') return;
-    avatarRun({ kind: 'save', ownerId, picked: phase });
-  };
-
-  const remove = (ownerId: string): void => {
-    avatarRun({ kind: 'remove', ownerId });
-  };
-
-  return { token, phase, busy, reset, pick, savePicked, remove };
 }

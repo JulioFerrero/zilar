@@ -87,6 +87,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2177 | packages: one declaration per type shape, wave 2 (reactions, devtools deps, audits, permissions) | −35 |
 | T-2178 | server in-file repeats, wave 3 (one tool-loop result builder, AI memory chat lookup, roles…) | −107 |
 | T-2176 | web and phone copies, wave 2: 16 function groups and 9 type pairs move to chat-core or client-core | −178 |
+| T-2180, T-2179 | size-split folders merged back: devtools lead `client`, `cli`, `autopilot`, `watch-app`, `xmpp-e2e`; runner-tunnel `mux`, `runner`, `server` (8 folders, 35 files fewer) | −125, −108 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -105,8 +106,6 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (06:20):**
-- **T-2179:** runner-tunnel's size-split folders (`mux`, `runner`, `server`) merged back into their parent files.
-- **T-2180:** devtools' size-split folders (lead client, cli, autopilot, watch-app, xmpp-e2e) merged back.
 - **T-2181:** web and phone pass-through re-exports and rename aliases gone; imports name the defining module.
 - **T-2182:** one phone picture editor hook for profile settings and group settings (big-cut plan B6).
 - **T-2183:** 7 small single-use server files folded into their only importer; the last 2 server pass-through exports gone.
