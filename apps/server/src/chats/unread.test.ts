@@ -3,9 +3,22 @@
 // an archive pool, so this tests the extracted pure counting step
 // (`summarizeUnread`) the loop runs over one batch read.
 
-import { describe, expect, it } from 'vitest';
-import type { SearchOwner } from '../search/service';
-import { newestUnskippedRow } from './unread';
+import { PGlite } from '@electric-sql/pglite';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createApp } from '../app';
+import type { ArchivePool, ArchiveRow, SearchOwner } from '../search/service';
+import {
+  bootstrapUser,
+  contactOf,
+  createTestContext,
+  testSql,
+  TEST_BASE_URL,
+  type TestContext,
+} from '../test-support';
+import { seedGroup, seedUser } from '../test-support/seed';
+import { afterForMark, newestUnskippedRow } from './unread';
 import { summarizeUnread } from './unread';
 
 const PEER = 'ana@zilar.test';
@@ -190,5 +203,161 @@ describe('summarizeUnread', () => {
 
     expect(answer[ROOM]?.unread).toBe(1);
     expect(answer[ROOM]?.lastMessage?.senderName).toBe('Legacy Nick');
+  });
+});
+
+describe('afterForMark', () => {
+  const floor = '1700000000000000';
+  it('parses a numeric mark', () => {
+    expect(afterForMark('1700000000000001', floor)).toBe('1700000000000001');
+  });
+  it('uses the floor when there is no mark', () => {
+    expect(afterForMark(undefined, floor)).toBe(floor);
+  });
+  it('falls back to the floor for a legacy non-numeric mark instead of throwing', () => {
+    expect(afterForMark('seen', floor)).toBe(floor);
+  });
+});
+
+// A group in the chat list keeps its unread count and preview: `list.ts`
+// built the unread scope with `kind: 'group'`, which matched neither arm of
+// `UnreadScope` and dropped every unread mark on the floor.
+const ARCHIVE_DDL = `CREATE TABLE archive (
+  username text NOT NULL,
+  timestamp bigint NOT NULL,
+  peer text NOT NULL,
+  bare_peer text NOT NULL,
+  xml text NOT NULL,
+  txt text,
+  id bigserial,
+  kind text,
+  nick text,
+  origin_id text NOT NULL
+);`;
+
+function pgliteArchivePool(client: PGlite): ArchivePool {
+  return {
+    query: (async (text: string, values: unknown[]) => {
+      const bound = values.map((value) => {
+        if (typeof value === 'bigint') {
+          throw new Error('archive fake rejects a bigint parameter (like postgres.js)');
+        }
+        if (Array.isArray(value)) {
+          for (const entry of value) {
+            if (typeof entry === 'bigint') {
+              throw new Error('archive fake rejects a bigint array element (like postgres.js)');
+            }
+          }
+          if (value.length === 0) return '{}';
+          return `{${value.map((entry) => `"${String(entry).replaceAll('"', '""')}"`).join(',')}}`;
+        }
+        return value;
+      });
+      const result = await client.query(text, bound as never[]);
+      return result.rows as ArchiveRow[];
+    }) as ArchivePool['query'],
+    close: async () => {},
+  };
+}
+
+describe('a group in the chat list keeps its unread and preview', () => {
+  let context: TestContext;
+  let app: ReturnType<typeof createApp>;
+  let archiveClient: PGlite;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+    archiveClient = new PGlite();
+    await archiveClient.exec(ARCHIVE_DDL);
+    app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      archive: pgliteArchivePool(archiveClient),
+    });
+  });
+
+  afterEach(async () => {
+    await context.close();
+    await archiveClient.close();
+  });
+
+  it('carries unread and lastMessage on the group entry', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const bob = await contactOf(context, app, alice.id, 'bob@example.com');
+    const [bobAcct] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          localpart: string;
+          jid: string;
+        }>`SELECT localpart, jid FROM xmpp_accounts WHERE user_id = ${bob.id} LIMIT 1`;
+      }),
+    );
+    if (bobAcct === undefined) throw new Error('missing xmpp account for sender');
+    const ownerId = await seedUser(context);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [
+        { userId: ownerId, role: 'owner' },
+        { userId: alice.id, role: 'member' },
+      ],
+      [],
+    );
+    const [group] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`SELECT room_localpart FROM groups
+          WHERE id = ${groupId} LIMIT 1`;
+      }),
+    );
+    if (group === undefined) throw new Error('seeded group not found');
+    const groupJid = `${group.roomLocalpart}@${context.config.xmpp.mucDomain}`.toLowerCase();
+    const [topic] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`SELECT room_localpart FROM topics
+          WHERE id = ${generalTopicId} LIMIT 1`;
+      }),
+    );
+    if (topic === undefined) throw new Error('seeded general topic not found');
+    const roomJid = `${topic.roomLocalpart}@${context.config.xmpp.mucDomain}`;
+    const sender = bobAcct.jid;
+    const senderLocalpart = bobAcct.localpart;
+    await archiveClient.query(
+      `INSERT INTO archive (username, timestamp, peer, bare_peer, xml, txt, kind, nick, origin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'groupchat', $7, $8)`,
+      [
+        roomJid,
+        String(BigInt(Date.now() - 2 * 86_400_000) * 1000n),
+        roomJid,
+        sender,
+        `<message type="groupchat" from="${roomJid}/${senderLocalpart}"><body>hello group</body></message>`,
+        'hello group',
+        senderLocalpart,
+        'grp-1',
+      ],
+    );
+
+    const response = await app.request(`${TEST_BASE_URL}/api/chats`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      chats: Array<{
+        chatJid: string;
+        kind: string;
+        unread?: number;
+        lastMessage?: { id: string };
+        topics?: Array<{ chatJid: string; unread?: number; lastMessage?: { id: string } }>;
+      }>;
+    };
+    const entry = body.chats.find((chat) => chat.chatJid === groupJid);
+    const general = entry?.topics?.find((topic) => topic.chatJid === roomJid);
+    expect(general?.unread).toBe(1);
+    expect(general?.lastMessage?.id).toBe('grp-1');
   });
 });

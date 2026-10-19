@@ -5,7 +5,7 @@ import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { canManageTopic, canSeeTopic, type TopicRow } from '../topics/access';
-import { requireChatAccess } from '../chat-prefs/access';
+import { requireChatAccess } from '../chats/access';
 
 // The same 404 as for an unknown chat, so chat JIDs cannot be probed.
 const MISSING_CHAT_MESSAGE = 'Chat not found';

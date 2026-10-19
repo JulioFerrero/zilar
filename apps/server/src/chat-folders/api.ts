@@ -1,11 +1,8 @@
 import type { ServerCore } from '../app/deps';
-
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-
 import { ChatFoldersGroup } from '@zilar/api-contract';
-
+import { handler, mountGroups, withLimit, type EffectApiMount } from '../effect/http-core';
 import { limiter } from '../rate-limit';
-import { mountGroups, handler, withLimit, type EffectApiMount } from '../effect/http-core';
 import {
   createChatFolder,
   deleteChatFolder,
@@ -13,22 +10,18 @@ import {
   reorderChatFolders,
   updateChatFolder,
 } from './service';
-
 const ChatFoldersApi = HttpApi.make('chatFolders').add(ChatFoldersGroup);
-
-export interface ChatFoldersApiDependencies extends Pick<
-  ServerCore,
-  'auth' | 'db' | 'config' | 'logger'
-> {
+export type ChatFoldersApiDependencies = Pick<ServerCore, 'auth' | 'db' | 'config' | 'logger'> & {
   now?: () => number;
-}
-
+};
 export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter = limiter('chatFoldersWrite', now);
-  const limitedWrite = withLimit(logger, writeLimiter, 'Too many folder changes, try again later');
-
+  const limited = withLimit(
+    logger,
+    limiter('chatFoldersWrite', now),
+    'Too many folder changes, try again later',
+  );
   const groupLayer = HttpApiBuilder.group(ChatFoldersApi, 'chatFolders', (handlers) =>
     handlers
       .handle(
@@ -39,72 +32,42 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       )
       .handle(
         'create',
-        limitedWrite(async (request, user) => {
-          const folder = await createChatFolder(deps.db, {
+        limited(async (request, user) => ({
+          folder: await createChatFolder(deps.db, {
             userId: user.id,
-            name: request.payload.name,
-            icon: request.payload.icon,
-            includeTypes: [...(request.payload.includeTypes ?? [])],
-            includeChats: [...(request.payload.includeChats ?? [])],
-            excludeChats: [...(request.payload.excludeChats ?? [])],
-            excludeMuted: request.payload.excludeMuted ?? false,
-            excludeRead: request.payload.excludeRead ?? false,
+            ...request.payload,
             now: new Date(now()),
-          });
-          return { folder };
-        }),
+          }),
+        })),
       )
       .handle(
         'order',
-        limitedWrite(async (request, user) => {
-          const folders = await reorderChatFolders(deps.db, {
+        limited(async (request, user) => ({
+          folders: await reorderChatFolders(deps.db, {
             userId: user.id,
             ids: [...request.payload.ids],
             now: new Date(now()),
-          });
-          return { folders };
-        }),
+          }),
+        })),
       )
       .handle(
         'update',
-        limitedWrite(async (request, user) => {
-          const folder = await updateChatFolder(deps.db, {
+        limited(async (request, user) => ({
+          folder: await updateChatFolder(deps.db, {
             userId: user.id,
             id: request.params.id,
-            ...(request.payload.name !== undefined ? { name: request.payload.name } : {}),
-            ...(request.payload.icon !== undefined ? { icon: request.payload.icon } : {}),
-            ...(request.payload.includeTypes !== undefined
-              ? { includeTypes: [...request.payload.includeTypes] }
-              : {}),
-            ...(request.payload.includeChats !== undefined
-              ? { includeChats: [...request.payload.includeChats] }
-              : {}),
-            ...(request.payload.excludeChats !== undefined
-              ? { excludeChats: [...request.payload.excludeChats] }
-              : {}),
-            ...(request.payload.excludeMuted !== undefined
-              ? { excludeMuted: request.payload.excludeMuted }
-              : {}),
-            ...(request.payload.excludeRead !== undefined
-              ? { excludeRead: request.payload.excludeRead }
-              : {}),
+            ...request.payload,
             now: new Date(now()),
-          });
-          return { folder };
-        }),
+          }),
+        })),
       )
       .handle(
         'remove',
-        limitedWrite(async (request, user) => {
+        limited(async (request, user) => {
           await deleteChatFolder(deps.db, { userId: user.id, id: request.params.id });
           return { deleted: true as const };
         }),
       ),
   );
-
-  return mountGroups(ChatFoldersApi, groupLayer, {
-    auth: deps.auth,
-    logger,
-    schemaErrors: true,
-  });
+  return mountGroups(ChatFoldersApi, groupLayer, { auth: deps.auth, logger, schemaErrors: true });
 }

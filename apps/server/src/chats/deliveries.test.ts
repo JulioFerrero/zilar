@@ -8,7 +8,7 @@ import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import type { ArchivePool } from '../search/service';
-import { notifyDelivered } from './delivered-notice';
+import { notifyDelivered } from './deliveries';
 import { putDeliveredMark } from './deliveries';
 import {
   bootstrapUser,

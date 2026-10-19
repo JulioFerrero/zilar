@@ -228,7 +228,13 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
       - T-2237: chat list shared model plus web, at least −550.
       - T-2238: bubble view and menu models plus web bubble, at least −300.
       - T-2239: search model plus web and phone search, at least −700.
-    - **T-2226:** in a lead fix round. Virtua keeps 10–13 bubbles in the DOM against main's 226, but the chat opens 996 px above the bottom, and scroll memory comes back one row off.
+    - **T-2226 merged (13:40, −88), pushed at `8c4c15313`.** The web list is on virtua: it opens at the bottom, holds 10–13 bubbles in the DOM (main had 226), and older pages do not jump. Scroll memory is about 225 px short; the list rewrite spec must ask for an exact restore.
+    - **Budget rounds sent (12:40–13:14):**
+      - T-2237: net was −287 against −550.
+      - T-2238: net was −49 against −300, after `MessageMeta` grew from 61 to 279 lines.
+      - T-2236: net was −187 against −250.
+    - **T-2240:** the merge reached 1,301 lines, and the worker showed it is the floor. Option 2: two files under 800 each, at most 1,320.
+    - **DeepSeek is rate-limiting** at 7 workers, so every worker is on paid Muse; T-2240 hit the Muse quota once.
     - **Next rewrites:**
       - phone chat list, on the T-2237 model;
       - web and phone composer, after T-2236;

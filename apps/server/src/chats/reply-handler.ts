@@ -14,7 +14,7 @@ import { HttpError, xmppUnavailable } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { ChatsApiDependencies } from './api';
-import { chatAccessFromParam } from './reads';
+import { chatAccessFromParam } from './access';
 
 type ClaimResult = 'claimed' | 'sent' | 'in_flight';
 

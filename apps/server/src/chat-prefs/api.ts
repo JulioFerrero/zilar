@@ -1,58 +1,65 @@
 import type { ServerCore } from '../app/deps';
-
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-
-import { ChatPrefsGroup } from '@zilar/api-contract';
-
+import type { HttpServerRequest } from 'effect/http';
+import { ChatPrefsGroup, PutChatPrefPayload } from '@zilar/api-contract';
+import { chatAccessFromParam } from '../chats/access';
 import { HttpError } from '../errors';
-import { decodeChatJid } from '../chats/api';
-import { limiter } from '../rate-limit';
 import {
-  mountGroups,
   handler,
-  withLimit,
   httpErrorResponse,
+  mountGroups,
   requestIdOf,
   type EffectApiMount,
+  type SessionUser,
 } from '../effect/http-core';
+import { limiter, type RateLimiter } from '../rate-limit';
 import {
   getChatBackgroundDefault,
   listChatPrefs,
   putChatBackgroundDefault,
   putChatPref,
 } from './service';
-import { requireChatAccess } from './access';
-
 function parseMutedUntil(value: string | null | undefined): Date | null | undefined {
-  if (value === undefined || value === null) {
-    return value;
-  }
+  if (value === undefined || value === null) return value;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  if (Number.isNaN(date.getTime()))
     throw new HttpError(400, 'invalid_request', 'mutedUntil must be a valid date and time');
-  }
   return date;
 }
-
-function tooManyChanges(): HttpError {
-  return new HttpError(429, 'rate_limited', 'Too many preference changes, try again later');
+type PutPrefRequest = {
+  params: { chatJid: string };
+  payload: typeof PutChatPrefPayload.Type;
+  request: HttpServerRequest.HttpServerRequest;
+};
+function withChatAccess(deps: ChatPrefsApiDependencies, limit: RateLimiter) {
+  return handler(deps.logger, async (request: PutPrefRequest, user: SessionUser) => {
+    const { bare } = await chatAccessFromParam(deps, request.params.chatJid, user.id);
+    if (!limit.allow(user.id))
+      return httpErrorResponse(
+        requestIdOf(request.request),
+        new HttpError(429, 'rate_limited', 'Too many preference changes, try again later'),
+      );
+    const pref = await putChatPref(deps.db, {
+      userId: user.id,
+      bare,
+      ...request.payload,
+      mutedUntil: parseMutedUntil(request.payload.mutedUntil),
+      now: new Date((deps.now ?? Date.now)()),
+    });
+    return pref === null ? { prefs: null } : pref;
+  });
 }
-
 const ChatPrefsApi = HttpApi.make('chatPrefs').add(ChatPrefsGroup);
-
 export interface ChatPrefsApiDependencies extends Pick<
   ServerCore,
   'auth' | 'db' | 'config' | 'logger'
 > {
   now?: () => number;
 }
-
 export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
-  const writeLimiter = limiter('chatPrefsWrite', now);
-  const limited = withLimit(logger, writeLimiter, 'Too many preference changes, try again later');
-
+  const writeLimit = limiter('chatPrefsWrite', now);
   const groupLayer = HttpApiBuilder.group(ChatPrefsApi, 'chatPrefs', (handlers) =>
     handlers
       .handle(
@@ -65,37 +72,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
           return { prefs, defaultBackground };
         }),
       )
-      // Session, body decode, access check, then the write budget.
-      .handle(
-        'putPref',
-        handler(logger, async (request, user) => {
-          const chatJid = decodeChatJid(request.params.chatJid);
-          const { bare } = await requireChatAccess(deps.db, {
-            chatJid,
-            userId: user.id,
-            domain: deps.config.xmpp.domain,
-            mucDomain: deps.config.xmpp.mucDomain,
-          });
-          if (!writeLimiter.allow(user.id)) {
-            return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
-          }
-          const mutedUntil = parseMutedUntil(request.payload.mutedUntil);
-          const pref = await putChatPref(deps.db, {
-            userId: user.id,
-            bare,
-            mutedUntil,
-            archived: request.payload.archived,
-            pinned: request.payload.pinned,
-            unreadMark: request.payload.unreadMark,
-            backgroundPreset: request.payload.backgroundPreset,
-            backgroundImageId: request.payload.backgroundImageId,
-            backgroundDim: request.payload.backgroundDim,
-            now: new Date(now()),
-          });
-          // A row back at all defaults is deleted, not kept: the client drops it.
-          return pref === null ? { prefs: null } : pref;
-        }),
-      )
+      .handle('putPref', withChatAccess(deps, writeLimit))
       .handle(
         'getBackground',
         handler(logger, async (_request, user) => ({
@@ -104,21 +81,17 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
       )
       .handle(
         'putBackground',
-        limited(async (request, user) => {
-          const defaultBackground = await putChatBackgroundDefault(deps.db, user.id, {
-            backgroundPreset: request.payload.backgroundPreset,
-            backgroundImageId: request.payload.backgroundImageId,
-            backgroundDim: request.payload.backgroundDim,
-            now: new Date(now()),
-          });
-          return { defaultBackground };
-        }),
+        handler(
+          logger,
+          async (request, user) => ({
+            defaultBackground: await putChatBackgroundDefault(deps.db, user.id, {
+              ...request.payload,
+              now: new Date(now()),
+            }),
+          }),
+          { limit: writeLimit, limitMessage: 'Too many preference changes, try again later' },
+        ),
       ),
   );
-
-  return mountGroups(ChatPrefsApi, groupLayer, {
-    auth: deps.auth,
-    logger,
-    schemaErrors: true,
-  });
+  return mountGroups(ChatPrefsApi, groupLayer, { auth: deps.auth, logger, schemaErrors: true });
 }

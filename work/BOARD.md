@@ -2232,3 +2232,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2230](T-2230-audit-messages-list-bubble.md) | rewrite map: message list and bubble (7.5k to 3.9k) | 2026-10-19 |
 | [T-2233](T-2233-audit-store-core.md) | rewrite map: shared store (8.6k to 4.2k) | 2026-10-19 |
 | [T-2226](T-2226-web-list-virtua.md) | web message list on virtua | 2026-10-19 |
+| [T-2235](T-2235-rewrite-chat-list-server.md) | chat list server rewritten to the lean map | 2026-10-19 |

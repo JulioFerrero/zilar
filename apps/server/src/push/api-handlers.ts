@@ -37,7 +37,7 @@ import { STRICT_DECODE, TEST_WAKE_CHAT_ID, createRequirePush } from './api-util'
 import { createTestHandler } from './api-test';
 import type { PushApiDependencies } from './api';
 
-import { markDeliveredAndNotify } from '../chats/delivered-notice';
+import { markDeliveredAndNotify } from '../chats/deliveries';
 
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 
