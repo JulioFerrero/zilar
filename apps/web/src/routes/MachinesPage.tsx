@@ -3,20 +3,14 @@ import { FieldError } from '@/components/ais/AiPageShell';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
 import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
-import {
-  EMPTY_CONFIRMING,
-  clearFailure,
-  failureText,
-  useMachineAction,
-  type ConfirmingState,
-  type ConfirmKind,
-} from '@/components/machines/machineRowOps';
+import { machineErrorMessage } from '@/components/machines/errors';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { StateMessage } from '@/components/ui/state-message';
 import {
+  ApiError,
   listAis,
   listMachines,
   deleteMachine,
@@ -27,12 +21,21 @@ import {
   renameMachine,
   revokeMachine,
 } from '@/lib/api';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import {
+  failureOf,
+  isWaiting,
+  shownFailure,
+  useAction,
+  type ActionControls,
+  type ActionState,
+  type UseActionOptions,
+} from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
-import { fromApi, useDelayed } from '@zilar/client-core';
+import { fromApi, useDelayed, type ApiFailure } from '@zilar/client-core';
 import { Effect } from 'effect';
+import type { HttpClient } from 'effect/http';
 import { AsyncResult } from 'effect/reactivity';
 import { Ban, ChevronRight, Server, Plus, X, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -576,4 +579,45 @@ export function MachinesPage() {
       {adding && <AddMachineDialog onClose={() => setAdding(false)} />}
     </SettingsShell>
   );
+}
+
+interface ConfirmingState {
+  deny: string | null;
+  revoke: string | null;
+  delete: string | null;
+}
+
+type ConfirmKind = keyof ConfirmingState;
+
+const EMPTY_CONFIRMING: ConfirmingState = { deny: null, revoke: null, delete: null };
+
+function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionControls): void {
+  if (!isWaiting(state)) {
+    controls.reset();
+  }
+}
+
+function failureText(failure: ApiFailure | undefined, fallback: string): string {
+  if (failure === undefined || failure.code === 'unknown_error') {
+    return fallback;
+  }
+  return machineErrorMessage(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
+  );
+}
+
+function useMachineAction<I, A>(
+  fn: (input: I) => Effect.Effect<A, ApiFailure, HttpClient.HttpClient>,
+  fallback: string,
+  options?: UseActionOptions,
+): readonly [
+  state: ActionState<A, ApiFailure>,
+  run: (input: I) => void,
+  controls: ActionControls,
+  error: string | null,
+] {
+  const [state, run, controls] = useAction(fn, options);
+  const failure = shownFailure(state);
+  return [state, run, controls, failure === undefined ? null : failureText(failure, fallback)];
 }

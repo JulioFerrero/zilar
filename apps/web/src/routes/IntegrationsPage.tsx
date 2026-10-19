@@ -1,12 +1,3 @@
-import {
-  EndpointMissing,
-  SenderMissing,
-  TokenMissing,
-  friendlyError,
-  shownFailure,
-  type PageStatus,
-} from '../components/settings/integrationErrors';
-import { useIntegrationSave } from '../components/settings/useIntegrationSave';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -20,9 +11,16 @@ import {
   saveTelegramBotToken,
   saveVoiceTranscriptionSettings,
 } from '@/lib/api';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
+import {
+  failureOf,
+  isWaiting,
+  shownFailure,
+  useAction,
+  type ActionState,
+} from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { fromApi } from '@zilar/client-core';
+import { fromApi, type ApiFailure } from '@zilar/client-core';
+import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -475,4 +473,71 @@ function VoiceTranscriptionCard({
       </div>
     </section>
   );
+}
+
+type PageStatus = 'loading' | 'ready' | 'forbidden';
+
+class SenderMissing extends Data.TaggedError('SenderMissing') {}
+class EndpointMissing extends Data.TaggedError('EndpointMissing') {}
+class TokenMissing extends Data.TaggedError('TokenMissing') {}
+
+function friendlyError(error: ApiFailure): string {
+  if (error.code === 'unknown_error') {
+    return 'Something went wrong. Try again.';
+  }
+  if (error.code === 'invalid_token') {
+    return 'Telegram rejected the bot token. Check it and try again.';
+  }
+  if (error.code === 'mail_send_failed') {
+    return 'The test email could not be sent. Check the Resend key and the sender address.';
+  }
+  if (error.code === 'managed_by_environment') {
+    return 'Email is managed by environment variables on this server.';
+  }
+  if (error.code === 'endpoint_unreachable') {
+    return 'The transcription endpoint could not be reached. Check the URL.';
+  }
+  if (error.code === 'endpoint_rejected') {
+    return 'The transcription endpoint rejected the test request. Check the URL, key and model.';
+  }
+  if (error.code === 'rate_limited') {
+    return 'Too many tries — wait a little and try again.';
+  }
+  if (error.code === 'network_error') {
+    return 'Could not reach the server.';
+  }
+  return error.message;
+}
+
+interface IntegrationSave<Op, Value, ValidationError> {
+  write: (op: Op) => Promise<void>;
+  validate?: (op: Op) => ValidationError | undefined;
+  clearInput?: (op: Op) => void;
+  onSaved: (next: IntegrationsStatus, op: Op) => void;
+  value: (op: Op) => Value;
+}
+
+/**
+ * Check the input, run the write, empty the secret, reload the status and
+ * patch the page, then resolve the card's value. The reload is part of the
+ * action, so a failed reload fails the action and the success line never lies.
+ */
+function useIntegrationSave<Op, Value, ValidationError>(
+  save: IntegrationSave<Op, Value, ValidationError>,
+): readonly [state: ActionState<Value, ValidationError | ApiFailure>, run: (op: Op) => void] {
+  const [state, run] = useAction<Op, Value, ValidationError | ApiFailure>(
+    (op): Effect.Effect<Value, ValidationError | ApiFailure> => {
+      const invalid = save.validate?.(op);
+      if (invalid !== undefined) {
+        return Effect.fail(invalid);
+      }
+      return fromApi(() => save.write(op)).pipe(
+        Effect.tap(() => Effect.sync(() => save.clearInput?.(op))),
+        Effect.andThen(fromApi(() => getIntegrationsStatus())),
+        Effect.tap((next) => Effect.sync(() => save.onSaved(next, op))),
+        Effect.as(save.value(op)),
+      );
+    },
+  );
+  return [state, run];
 }
