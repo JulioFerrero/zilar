@@ -1,12 +1,17 @@
-import { Effect } from 'effect';
-import { useState } from 'react';
+import { Effect, Schedule } from 'effect';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { approvalSentBy, fromApi, type ApiFailure } from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
-import { decideApproval, getApproval, type ApprovalDecision, type ApprovalStatus } from '@/lib/api';
+import {
+  decideApproval,
+  getApproval,
+  type ApprovalDecision,
+  type ApprovalStatus,
+  type PublicApproval,
+} from '@/lib/api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useApprovalPolling } from '@/lib/useApprovalPolling';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ais/AiPageShell';
 
@@ -249,4 +254,158 @@ function decisionMessage(failure: ApiFailure): string {
     return 'Only a group admin can always allow an action here.';
   }
   return failure.code === 'unknown_error' ? 'Could not send the decision' : failure.message;
+}
+
+type ApprovalPollingState =
+  | { kind: 'loading' }
+  | { kind: 'notDecidable' }
+  | { kind: 'error' }
+  | { kind: 'ready'; approval: PublicApproval };
+
+/** The poll cadence while the card is open and the tab is visible. */
+const APPROVAL_POLL_INTERVAL_MS = 10_000;
+
+const defaultVisibility = {
+  isVisible: () =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  subscribe: (onVisible: () => void) => {
+    if (typeof document === 'undefined') {
+      return () => {};
+    }
+    const handler = (): void => {
+      if (document.visibilityState === 'visible') {
+        onVisible();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  },
+};
+
+const defaultNow = (): number => Date.now();
+
+// Two ready states are the same when the id, the status and the decidedAt have not changed;
+// the other fields can shift without changing what the card shows.
+function sameReady(left: ApprovalPollingState, right: ApprovalPollingState): boolean {
+  if (left.kind !== 'ready' || right.kind !== 'ready') {
+    return false;
+  }
+  return (
+    left.approval.id === right.approval.id &&
+    left.approval.status === right.approval.status &&
+    left.approval.decidedAt === right.approval.decidedAt
+  );
+}
+
+/** Polls request.id while it is pending, the page is visible and it has not expired. Stops on
+ * a non-pending status, a 404 (the viewer cannot decide), unmount, an id change and expiry;
+ * a failed poll keeps the last good state. The effect never calls setState synchronously. */
+function useApprovalPolling(request: ApprovalRequest) {
+  const visibility = defaultVisibility;
+  const now = defaultNow;
+
+  const [state, setState] = useState<ApprovalPollingState>({ kind: 'loading' });
+  // The cell the poll reads; apply writes it too, so an optimistic update short-circuits polls.
+  const latestRef = useRef<ApprovalPollingState>({ kind: 'loading' });
+
+  const apply = useCallback((next: ApprovalPollingState): void => {
+    latestRef.current = next;
+    setState(next);
+  }, []);
+
+  // Reset during render (the repo's lint forbids setState in an effect body), comparing the
+  // previous key; the polling ref resets inside the effect to stay out of oxlint's refs path.
+  const key = request.id;
+  const [lastKey, setLastKey] = useState<string>(key);
+  if (lastKey !== key) {
+    setLastKey(key);
+    setState({ kind: 'loading' });
+  }
+
+  // The timed loop and the visibility read are separate runs, so a focus never restarts the loop.
+  const [, startLoop, loopControls] = useAction<Effect.Effect<unknown>, unknown, never>(
+    (effect) => effect,
+    { mode: 'replace' },
+  );
+  const [, readNow, readControls] = useAction<Effect.Effect<unknown>, unknown, never>(
+    (effect) => effect,
+    { mode: 'replace' },
+  );
+
+  useEffect(() => {
+    // The id or the reset key changed: drop the cached outcome and start fresh.
+    latestRef.current = { kind: 'loading' };
+
+    // One read that checks the latest state when it runs, so each tick sees the previous one.
+    const readOnce = (): Effect.Effect<void> =>
+      Effect.suspend(() => {
+        const prior = latestRef.current;
+        if (prior.kind === 'notDecidable') {
+          return Effect.void;
+        }
+        if (prior.kind === 'ready' && prior.approval.status !== 'pending') {
+          return Effect.void;
+        }
+        const requestExpiresAt = new Date(request.expires_at).getTime();
+        const expired = now() >= requestExpiresAt;
+        // An expired request that was never ready gets one final read; otherwise it is a no-op.
+        if (expired && prior.kind !== 'ready' && prior.kind !== 'loading') {
+          return Effect.void;
+        }
+        if (!visibility.isVisible()) {
+          return Effect.void;
+        }
+        return fromApi(() => getApproval(request.id)).pipe(
+          Effect.matchEffect({
+            onSuccess: (approval) => {
+              const next: ApprovalPollingState = { kind: 'ready', approval };
+              latestRef.current = next;
+              return sameReady(prior, next) ? Effect.void : Effect.sync(() => setState(next));
+            },
+            onFailure: (failure) => {
+              // A 404 stops polling; any other failure keeps the last good state, so a hiccup
+              // never flips a decided card into an error.
+              if (failure.status === 404) {
+                const next: ApprovalPollingState = { kind: 'notDecidable' };
+                latestRef.current = next;
+                return Effect.sync(() => setState(next));
+              }
+              if (latestRef.current.kind === 'ready') {
+                return Effect.void;
+              }
+              // No good state yet: surface the error so the card can offer Retry.
+              const next: ApprovalPollingState = { kind: 'error' };
+              latestRef.current = next;
+              return prior.kind === 'error' ? Effect.void : Effect.sync(() => setState(next));
+            },
+          }),
+        );
+      });
+
+    // The first read runs right away, then one per interval while the tab is visible.
+    startLoop(Effect.repeat(readOnce(), Schedule.fixed(APPROVAL_POLL_INTERVAL_MS)));
+
+    // When the tab becomes visible again, read once so a phone-side decision shows up.
+    const unsubscribeVisibility = visibility.subscribe(() => {
+      readNow(readOnce());
+    });
+
+    return () => {
+      loopControls.interrupt();
+      readControls.interrupt();
+      unsubscribeVisibility();
+    };
+  }, [
+    key,
+    request.id,
+    request.expires_at,
+    visibility,
+    now,
+    startLoop,
+    readNow,
+    loopControls,
+    readControls,
+  ]);
+
+  return { state, apply };
 }

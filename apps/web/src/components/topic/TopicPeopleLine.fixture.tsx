@@ -4,7 +4,7 @@ import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import type { GroupDetail } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createRealChatStore } from '@/store/realStore';
-import { TopicPeopleLine } from './TopicPeopleLine';
+import { TopicPeopleLine } from '../ChatHeader';
 
 const TOPIC_ID = 'c-financial';
 

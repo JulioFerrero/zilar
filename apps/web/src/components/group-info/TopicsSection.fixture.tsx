@@ -1,7 +1,7 @@
 import type { ChatSummary, TopicInfo } from '@zilar/chat-core';
 import type { GroupDetail } from '@/lib/api';
 import { Button } from '../ui/button';
-import { TopicsList } from './TopicsSection';
+import { TopicsList } from './GroupInfoRoot';
 
 const INFO: GroupDetail = {
   id: 'g-devteam',

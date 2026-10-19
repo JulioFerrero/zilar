@@ -9,6 +9,8 @@ import {
   loadRoles,
   messageOf,
   rolesViewOf,
+  settingText,
+  storeStep,
   type PanelFailure,
 } from './panels/groupPanelOps';
 import { GroupRolesSection } from './panels/GroupRolesSection';
@@ -21,17 +23,20 @@ import type { AvatarStackEntry } from './group-info/AvatarStack';
 import { GroupInfoPage } from './group-info/GroupInfoPage';
 import { GROUP_INFO_TITLES, GroupInfoRoot, type GroupInfoPageId } from './group-info/GroupInfoRoot';
 import { InviteLinksSection } from './InviteLinksSection';
-import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
+import { SegmentedControl } from './ui/segmented-control';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
+import { Switch } from './ui/switch';
 import { VisibilitySection } from './VisibilitySection';
 import {
   type CreatedInviteLink,
   type GroupInviteLink,
   type GroupRole,
+  type ListenerEagerness,
   type PublicAi,
+  type SetGroupListenerInput,
   type GroupAi,
   type GroupDetail,
   createGroupInviteLink,
@@ -44,7 +49,7 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 function GroupPictureSection({
   groupId,
@@ -446,5 +451,132 @@ export function GroupPanel({
         />
       )}
     </Sheet>
+  );
+}
+
+function GroupSettingSwitch({
+  ariaLabel,
+  title,
+  checked,
+  onCheckedChange,
+  disabled,
+  error,
+  children,
+  description,
+}: {
+  ariaLabel: string;
+  title: string;
+  checked: boolean;
+  onCheckedChange: () => void;
+  disabled: boolean;
+  error: string;
+  children?: ReactNode;
+  description?: ReactNode;
+}) {
+  return (
+    <section aria-label={ariaLabel} className="flex flex-col gap-2 px-2">
+      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+        <span className="text-[14px]">{title}</span>
+        <Switch
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          label={title}
+          hideLabel
+          disabled={disabled}
+        />
+      </label>
+      {children}
+      {description}
+      {error !== '' && <FieldError>{error}</FieldError>}
+    </section>
+  );
+}
+
+function GroupTopicSetting({
+  chatId,
+  canCreateTopics,
+}: {
+  chatId: string;
+  canCreateTopics: boolean | undefined;
+}) {
+  const storeApi = useChatStoreApi();
+  const [state, setTopicsAllowed] = useAction<boolean, void, PanelFailure>((allowed) =>
+    storeStep(
+      () => storeApi.getState().setMembersCanCreateTopics(chatId, allowed),
+      settingText,
+    ).pipe(Effect.asVoid),
+  );
+  return (
+    <GroupSettingSwitch
+      ariaLabel="Topic settings"
+      title="Members can create topics"
+      checked={canCreateTopics === true}
+      onCheckedChange={() => setTopicsAllowed(canCreateTopics !== true)}
+      disabled={isWaiting(state)}
+      error={messageOf(state) ?? ''}
+    />
+  );
+}
+
+function GroupListenerSetting({
+  chatId,
+  enabled,
+  available,
+  eagerness,
+}: {
+  chatId: string;
+  enabled: boolean;
+  available: boolean;
+  eagerness: ListenerEagerness;
+}) {
+  const storeApi = useChatStoreApi();
+  const [state, saveListener] = useAction<SetGroupListenerInput, void, PanelFailure>((input) =>
+    storeStep(() => storeApi.getState().setGroupListener(chatId, input), settingText).pipe(
+      Effect.asVoid,
+    ),
+  );
+  const busy = isWaiting(state);
+  const flip = (): void => {
+    if (available) {
+      saveListener({ listenerEnabled: !enabled });
+    }
+  };
+  const chooseEagerness = (value: ListenerEagerness): void => {
+    if (available) {
+      saveListener({ listenerEagerness: value });
+    }
+  };
+  return (
+    <GroupSettingSwitch
+      ariaLabel="AI listener"
+      title="Let AIs answer without @mention"
+      checked={enabled}
+      onCheckedChange={flip}
+      disabled={!available || busy}
+      error={messageOf(state) ?? ''}
+      description={
+        <p className="px-2 text-[13px] text-muted-foreground">
+          {available
+            ? 'Normal suits most groups. Quiet wakes AIs only for clear asks.'
+            : 'Turned off on this server'}
+        </p>
+      }
+    >
+      {enabled && (
+        <fieldset disabled={!available || busy} className="m-0 min-w-0 border-0 p-0">
+          <SegmentedControl
+            options={[
+              { value: 'quiet', label: 'Quiet' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'eager', label: 'Eager' },
+            ]}
+            value={eagerness}
+            onChange={(value) => chooseEagerness(value as ListenerEagerness)}
+            ariaLabel="Eagerness"
+            mode="radio"
+          />
+        </fieldset>
+      )}
+    </GroupSettingSwitch>
   );
 }

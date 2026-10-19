@@ -2138,3 +2138,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2136](T-2136-dedupe-phone.md) | phone: one copy of the duplicated blocks | 2026-10-19 |
 | [T-2134](T-2134-phone-use-api.md) | phone: one apiCall and one useApi for every API area | 2026-10-19 |
 | [T-2137](T-2137-server-folds-a.md) | server: fold 16 single-use files into their importer | 2026-10-19 |
+| [T-2140](T-2140-web-folds-b.md) | web: fold 10 single-use files into their importer | 2026-10-19 |
