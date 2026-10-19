@@ -6,7 +6,6 @@ import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import type { AiSession } from './contracts';
 import { createApprovalFollowUp, type ApprovalFollowUpDeps } from '../gateway';
-import { createOnDecided } from './approval-on-decided';
 import { type ApprovalRow } from '../../db/rows-agents';
 
 const DOMAIN = 'zilar.localhost';
@@ -105,22 +104,6 @@ describe('approval follow-up', () => {
     expect(session.pending).toHaveLength(0);
   });
 
-  it.each(['routine.schedule', 'routine.pause', 'routine.delete'])(
-    'queues nothing after a %s approval',
-    async (action) => {
-      const session = sessionFor();
-      const row = approvalRow({ action });
-      const { deps, kicked } = depsFor(session, row);
-
-      await createApprovalFollowUp(deps).continueAfterApproval(row.id);
-
-      expect(session.roomPending.size).toBe(0);
-      expect(session.pending).toHaveLength(0);
-      expect(kicked.rooms).toEqual([]);
-      expect(kicked.dm).toBe(0);
-    },
-  );
-
   it('queues nothing after a deny', async () => {
     const session = sessionFor();
     const row = approvalRow({ status: 'denied' });
@@ -160,39 +143,5 @@ describe('approval follow-up', () => {
     expect(kicked.dm).toBe(1);
     expect(kicked.rooms).toEqual([]);
     expect(session.roomPending.size).toBe(0);
-  });
-});
-
-describe('approval decision hook', () => {
-  it('runs the action before the follow-up', async () => {
-    const order: string[] = [];
-    const hook = createOnDecided({
-      runAction: async () => {
-        order.push('action');
-      },
-      follower: () => ({
-        continueAfterApproval: async () => {
-          order.push('follow-up');
-        },
-      }),
-    });
-
-    await hook('a-1');
-
-    expect(order).toEqual(['action', 'follow-up']);
-  });
-
-  it('still runs the action when the gateway carries no follower', async () => {
-    let ran = false;
-    const hook = createOnDecided({
-      runAction: async () => {
-        ran = true;
-      },
-      follower: () => null,
-    });
-
-    await hook('a-1');
-
-    expect(ran).toBe(true);
   });
 });

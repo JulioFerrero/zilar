@@ -141,6 +141,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2215 | chat list: an AI task card previews its summary (closed), title or stage instead of "Attachment" (web and phone) | +7 |
 | T-2210 | store phase 3 T4: one chat-list merge (`mergeFreshChats`) and row adoption (`adoptNewRows`) in client-core; the phone's import aliases and re-exports are gone | −22 |
 | T-2212 | a closed AI card's body is its summary ("Stopped after 12s"), so previews stop showing the last step after a stop | 0 |
 | T-2211 | AI turns T7: DM and group loop turns share `runLoopTurn` (loop call, gate-then-stop, last call, finish); only the fail and reply callbacks differ | −42 |
@@ -172,7 +173,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2215:** a task card's chat-list preview shows its summary, title or stage instead of "Attachment" after a reload (chat-core, so web and phone both get it).
+  - **T-2216:** AI turns T8, the last step. One completion-input builder and one typing-plus-failure shell; the DM catch uses `finishTurnFailure` (stop rule: at least −20).
   - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
   - **T-2213:** server tests wave D. Agent side-modules (topic follow, tool params, post blocks, questions, routine send, logs, task card, approvals, ask people) cut to the crucial cases (at least −1,260).
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.

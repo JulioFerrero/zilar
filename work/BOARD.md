@@ -2212,3 +2212,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2212](T-2212-card-close-body.md) | AI card: a closed card's body is its summary | 2026-10-19 |
 | [T-2210](T-2210-chat-list-refresh.md) | store phase 3 T4: one chat-list merge and row adoption | 2026-10-19 |
 | [T-2215](T-2215-card-preview.md) | chat list: a task card previews its summary or title | 2026-10-19 |
+| [T-2213](T-2213-agent-tests-cut-d.md) | server tests D: agent side-modules cut to essentials | 2026-10-19 |

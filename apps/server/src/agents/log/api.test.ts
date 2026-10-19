@@ -1,5 +1,5 @@
-// T-1426: `GET /api/agents/tasks/:taskId/events` is owner only. An unknown
-// task and a task owned by someone else answer the same 404.
+// `GET /api/agents/tasks/:taskId/events` is owner only. An unknown task and a
+// task owned by someone else answer the same 404.
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
@@ -64,8 +64,7 @@ describe('GET /api/agents/tasks/:taskId/events', () => {
       secrets: [],
     });
     log.append('status', { stage: 'Running tests' });
-    log.append('answer', { bytes: 4 });
-    // Let the best-effort writes land before the requests below.
+    // Let the best-effort write land before the requests below.
     await wait(30);
   });
 
@@ -82,14 +81,6 @@ describe('GET /api/agents/tasks/:taskId/events', () => {
     const json: unknown = await response.json().catch(() => null);
     return { status: response.status, json };
   }
-
-  it('returns the owner their events, oldest first', async () => {
-    const { status, json } = await getEvents(owner.cookie);
-    expect(status).toBe(200);
-    const body = json as { events: Array<{ seq: number }>; next: number | null };
-    expect(body.events.map((event) => event.seq)).toEqual([1, 2]);
-    expect(body.next).toBeNull();
-  });
 
   it('answers 404 for another user and for an unknown task', async () => {
     expect((await getEvents(stranger.cookie)).status).toBe(404);

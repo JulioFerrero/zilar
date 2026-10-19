@@ -1,15 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  addTaskCardStep,
-  finishTaskCard,
-  nameTaskCard,
-  startTaskCard,
-  taskCardPayload,
-  taskCardSummary,
-  TASK_CARD_DEFAULT_TITLE,
-  TASK_CARD_MAX_STEPS,
-  type TaskCard,
-} from './task-card';
+import { addTaskCardStep, startTaskCard, TASK_CARD_MAX_STEPS, type TaskCard } from './task-card';
 
 const STARTED_AT = '2026-10-14T09:00:00.000Z';
 
@@ -35,40 +25,9 @@ describe('startTaskCard', () => {
       named: false,
     });
   });
-
-  it('falls back to the fixed title when there is no stage text', () => {
-    expect(startTaskCard('   ', STARTED_AT).title).toBe(TASK_CARD_DEFAULT_TITLE);
-  });
-});
-
-describe('nameTaskCard (T-1745)', () => {
-  it('names the card once and keeps the stage as a step', () => {
-    const card = startTaskCard('Reading files', STARTED_AT);
-    const named = nameTaskCard(card, 'Check the prices');
-
-    expect(named.title).toBe('Check the prices');
-    expect(named.steps).toEqual([{ id: 'step-1', label: 'Reading files', state: 'doing' }]);
-    expect(named.named).toBe(true);
-
-    // A later title in the same turn is ignored.
-    const again = nameTaskCard(named, 'Something else');
-    expect(again).toBe(named);
-    expect(again.title).toBe('Check the prices');
-  });
 });
 
 describe('addTaskCardStep', () => {
-  it('marks the previous step done and the new one doing', () => {
-    const card = cardWithSteps(['Reading files', 'Running the tool']);
-
-    expect(card.steps).toEqual([
-      { id: 'step-1', label: 'Reading files', state: 'done' },
-      { id: 'step-2', label: 'Running the tool', state: 'doing' },
-    ]);
-    expect(card.stage).toBe('Running the tool');
-    expect(card.state).toBe('working');
-  });
-
   it('caps the list at 20 steps and renames the last one', () => {
     const labels = Array.from({ length: TASK_CARD_MAX_STEPS }, (_, index) => `Step ${index + 1}`);
     const capped = cardWithSteps(labels);
@@ -87,91 +46,5 @@ describe('addTaskCardStep', () => {
       label: 'Step 21',
       state: 'doing',
     });
-  });
-
-  it('skips the first step when its label repeats the title (T-1727)', () => {
-    const card = addTaskCardStep(startTaskCard('Reading files', STARTED_AT), 'Reading files');
-
-    expect(card.steps).toEqual([]);
-    expect(card.stage).toBe('Reading files');
-    expect(card.title).toBe('Reading files');
-  });
-
-  it('opens step 1 with a later, different label (T-1727)', () => {
-    const opened = addTaskCardStep(startTaskCard('Reading files', STARTED_AT), 'Reading files');
-    const card = addTaskCardStep(opened, 'Running the tool');
-
-    expect(card.steps).toEqual([{ id: 'step-1', label: 'Running the tool', state: 'doing' }]);
-    expect(card.stage).toBe('Running the tool');
-  });
-});
-
-describe('finishTaskCard', () => {
-  it('resolves the in-progress step done on a clean finish', () => {
-    const card = finishTaskCard(
-      cardWithSteps(['Running the tool']),
-      'done',
-      'Done in 40s · 1 step',
-    );
-
-    expect(card.state).toBe('done');
-    expect(card.summary).toBe('Done in 40s · 1 step');
-    expect(card.steps[0]).toMatchObject({ state: 'done' });
-  });
-
-  it('resolves the in-progress step when the turn is stopped', () => {
-    const card = finishTaskCard(
-      cardWithSteps(['Running the tool']),
-      'stopped',
-      'Stopped after 40s',
-    );
-
-    expect(card.state).toBe('stopped');
-    expect(card.summary).toBe('Stopped after 40s');
-    // A terminal card must not leave a step spinning.
-    expect(card.steps[0]).toMatchObject({ state: 'failed' });
-  });
-});
-
-describe('taskCardSummary', () => {
-  it('uses the fixed done and failed formats', () => {
-    expect(taskCardSummary({ state: 'done', elapsedMs: 134_000, stepCount: 3 })).toBe(
-      'Done in 2m 14s · 3 steps',
-    );
-    expect(taskCardSummary({ state: 'done', elapsedMs: 40_000, stepCount: 1 })).toBe(
-      'Done in 40s · 1 step',
-    );
-    expect(taskCardSummary({ state: 'failed', elapsedMs: 40_000, stepCount: 2 })).toBe(
-      'Failed after 40s',
-    );
-  });
-});
-
-describe('taskCardPayload', () => {
-  it('carries the full card, with elapsed_ms only when given', () => {
-    const card = finishTaskCard(
-      cardWithSteps(['Running the tool']),
-      'done',
-      'Done in 40s · 1 step',
-    );
-    const payload = taskCardPayload({ ai: 'ai-1@zilar.localhost', card, elapsedMs: 40_000 });
-
-    expect(payload).toMatchObject({
-      v: 0,
-      type: 'progress',
-      data: {
-        ai: 'ai-1@zilar.localhost',
-        stage: 'Running the tool',
-        title: 'Working',
-        steps: card.steps,
-        state: 'done',
-        started_at: STARTED_AT,
-        elapsed_ms: 40_000,
-        summary: 'Done in 40s · 1 step',
-      },
-    });
-
-    const withoutElapsed = taskCardPayload({ ai: 'ai-1@zilar.localhost', card });
-    expect(withoutElapsed.type === 'progress' && 'elapsed_ms' in withoutElapsed.data).toBe(false);
   });
 });

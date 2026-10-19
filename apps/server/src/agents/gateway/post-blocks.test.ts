@@ -7,7 +7,6 @@ import type { Payload } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
 import type { CardMediaRow } from '../../db/rows-agents';
-import type { RecordCardInput } from '../../message-blocks/cards';
 import { createPostBlocksRunner } from './post-blocks';
 import type { AiSession, GatewayLogger } from './contracts';
 
@@ -154,129 +153,6 @@ describe('post_blocks runner', () => {
     expect(failed.content).toBe('error: the card could not be posted');
   });
 
-  it('records the posted card with the origin id, the room and the card data', async () => {
-    const roomJid = 'blocks@rooms.zilar.localhost';
-    const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
-    const sent: SentMessage[] = [];
-    const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(
-      silentLogger,
-      recordingSend(sent),
-      async (input) => {
-        records.push(input);
-      },
-      lookupNone,
-    );
-
-    const result = await runner.runPostBlocks(
-      session,
-      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
-      { roomJid, groupId: 'g-1', topicId: 'topic-1' },
-    );
-
-    expect(result.content).toBe(
-      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
-    );
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      originId: 'block-1',
-      aiId: 'ai-1',
-      groupId: 'g-1',
-      topicId: 'topic-1',
-      roomJid,
-    });
-    expect(records[0]?.data).toMatchObject({
-      fallback: 'Prices today',
-      blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }],
-    });
-  });
-
-  it('records the DM card under the sent id with no group or topic', async () => {
-    const dmJid = 'owner@zilar.localhost';
-    const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
-    const sent: SentMessage[] = [];
-    const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(
-      silentLogger,
-      recordingSend(sent),
-      async (input) => {
-        records.push(input);
-      },
-      lookupNone,
-    );
-
-    const result = await runner.runPostBlocks(
-      session,
-      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
-      { roomJid: dmJid, kind: 'chat' },
-    );
-
-    expect(result.content).toBe(
-      'Your card was posted in this chat (card id block-1). Do not repeat what it shows; reply with at most one short line.',
-    );
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.to).toBe(dmJid);
-    expect(sent[0]?.kind).toBe('chat');
-    expect(sent[0]?.payload).toMatchObject({ v: 0, type: 'blocks' });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      originId: 'block-1',
-      aiId: 'ai-1',
-      roomJid: dmJid,
-    });
-    expect(records[0]).not.toHaveProperty('groupId');
-    expect(records[0]).not.toHaveProperty('topicId');
-  });
-
-  it('posts an interactive card in the owner DM and records it', async () => {
-    const dmJid = 'owner@zilar.localhost';
-    const session = sessionFor('ai-1', 'helper@zilar.localhost', 'blocks@rooms.zilar.localhost');
-    const sent: SentMessage[] = [];
-    const records: RecordCardInput[] = [];
-    const runner = createPostBlocksRunner(
-      silentLogger,
-      recordingSend(sent),
-      async (input) => {
-        records.push(input);
-      },
-      lookupNone,
-    );
-
-    const result = await runner.runPostBlocks(
-      session,
-      {
-        text: 'Lunch?',
-        blocks: [
-          {
-            kind: 'poll',
-            id: 'lunch',
-            question: 'Where do we eat?',
-            options: [{ id: 'thai', label: 'Thai' }],
-          },
-        ],
-      },
-      { roomJid: dmJid, kind: 'chat' },
-    );
-
-    expect(result.content).toBe(
-      'Your card was posted in this chat (card id block-1). Do not repeat what it shows; reply with at most one short line.',
-    );
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.to).toBe(dmJid);
-    expect(sent[0]?.kind).toBe('chat');
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      originId: 'block-1',
-      aiId: 'ai-1',
-      roomJid: dmJid,
-    });
-    expect(records[0]?.data).toMatchObject({
-      blocks: [{ kind: 'poll', id: 'lunch', question: 'Where do we eat?' }],
-    });
-    expect(records[0]).not.toHaveProperty('groupId');
-    expect(records[0]).not.toHaveProperty('topicId');
-  });
-
   it('refuses media ids this AI did not fetch into this chat', async () => {
     const roomJid = 'blocks@rooms.zilar.localhost';
     const dmJid = 'owner@zilar.localhost';
@@ -326,30 +202,5 @@ describe('post_blocks runner', () => {
     });
     expect(dmPosted.content.startsWith('Your card was posted')).toBe(true);
     expect(sent).toHaveLength(2);
-  });
-
-  it('keeps the posted result when recording the card fails', async () => {
-    const roomJid = 'blocks@rooms.zilar.localhost';
-    const session = sessionFor('ai-1', 'helper@zilar.localhost', roomJid);
-    const sent: SentMessage[] = [];
-    const runner = createPostBlocksRunner(
-      silentLogger,
-      recordingSend(sent),
-      async () => {
-        throw new Error('db down');
-      },
-      lookupNone,
-    );
-
-    const result = await runner.runPostBlocks(
-      session,
-      { text: 'Prices today', blocks: [{ kind: 'number', label: 'BTC', value: '$82,302' }] },
-      { roomJid },
-    );
-
-    expect(result.content).toBe(
-      'Your card was posted in this room (card id block-1). Do not repeat what it shows; reply with at most one short line.',
-    );
-    expect(sent).toHaveLength(1);
   });
 });

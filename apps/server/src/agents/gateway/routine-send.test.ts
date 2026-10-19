@@ -1,11 +1,11 @@
-// T-1714: a routine posts one message and every later run edits it. The
-// wrapper remembers the routine's message id across the sends of one run and
-// edits it while it is under 24 h old; a stopped session sends nothing.
+// A routine posts one message and every later run edits it while it is under
+// 24 h old; a stopped session sends nothing. A title is capped at 80
+// characters in the payload.
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerDatabase } from '../../db/client';
 import type { AiSession, GatewayLogger } from './contracts';
-import { createRoutineSend, ROUTINE_MESSAGE_MAX_AGE_MS, type RoutineSend } from './routine-send';
+import { createRoutineSend, type RoutineSend } from './routine-send';
 import { type RoutineRow } from '../../db/rows-agents';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
@@ -107,7 +107,7 @@ function harness(
   return { send, core, loadMessage, recordMessage, loadRoutine };
 }
 
-describe('a routine sends one message and edits it (T-1714)', () => {
+describe('a routine sends one message and edits it', () => {
   it('posts a new message and records its id when the routine has none', async () => {
     const h = harness({ stored: null });
 
@@ -136,39 +136,6 @@ describe('a routine sends one message and edits it (T-1714)', () => {
     expect(h.recordMessage).toHaveBeenCalledWith(expect.anything(), 'routine-1', 'stored-1', NOW);
   });
 
-  it('posts a new message when the stored id is older than 24 h', async () => {
-    const h = harness({
-      stored: {
-        messageId: 'stale-1',
-        at: new Date(NOW.getTime() - ROUTINE_MESSAGE_MAX_AGE_MS - HOUR_MS),
-      },
-    });
-
-    const sent = await h.send('room@example.test', 'groupchat', 'fresh');
-
-    expect(sent).toEqual({ id: 'sent-1' });
-    expect(h.core.sendMessage).toHaveBeenCalledTimes(1);
-    expect(h.core.sendCorrection).not.toHaveBeenCalled();
-  });
-
-  it('corrects the first message of the run on the second send', async () => {
-    const h = harness({ stored: null });
-
-    await h.send('room@example.test', 'groupchat', 'first');
-    const second = await h.send('room@example.test', 'groupchat', 'second');
-
-    expect(second).toEqual({ id: 'sent-1' });
-    expect(h.core.sendMessage).toHaveBeenCalledTimes(1);
-    expect(h.core.sendCorrection).toHaveBeenCalledTimes(1);
-    expect(h.core.sendCorrection).toHaveBeenCalledWith(
-      'room@example.test',
-      'groupchat',
-      'sent-1',
-      'second',
-      { payload: routinePayloadValue },
-    );
-  });
-
   it('sends nothing when the session is not live', async () => {
     const h = harness({ live: false, stored: { messageId: 'stored-1', at: NOW } });
 
@@ -179,47 +146,6 @@ describe('a routine sends one message and edits it (T-1714)', () => {
     expect(h.core.sendCorrection).not.toHaveBeenCalled();
     expect(h.loadMessage).not.toHaveBeenCalled();
     expect(h.recordMessage).not.toHaveBeenCalled();
-  });
-
-  it('still sends when the stored id cannot be read', async () => {
-    const core = makeCore();
-    const send = createRoutineSend({
-      db: {} as ServerDatabase,
-      session: sessionFor(core.core),
-      routineId: 'routine-1',
-      isLive: () => true,
-      now: () => NOW,
-      logger: silentLogger,
-      loadMessage: vi.fn(async () => {
-        throw new Error('db down');
-      }),
-      recordMessage: vi.fn(async () => undefined),
-      loadRoutine: vi.fn(async () => routineRow()),
-    }).send;
-
-    const sent = await send('room@example.test', 'groupchat', 'hello');
-
-    expect(sent).toEqual({ id: 'sent-1' });
-    expect(core.sendMessage).toHaveBeenCalledTimes(1);
-  });
-
-  it('carries the routine payload on both the send and the edit (T-1721)', async () => {
-    const h = harness({ stored: null });
-
-    const first = await h.send('room@example.test', 'groupchat', 'first');
-    const second = await h.send('room@example.test', 'groupchat', 'second');
-
-    expect(h.core.sendMessage).toHaveBeenCalledWith('room@example.test', 'groupchat', 'first', {
-      payload: routinePayloadValue,
-    });
-    expect(h.core.sendCorrection).toHaveBeenCalledWith(
-      'room@example.test',
-      'groupchat',
-      first.id,
-      'second',
-      { payload: routinePayloadValue },
-    );
-    expect(second).toEqual({ id: first.id });
   });
 
   it('truncates a title longer than 80 characters', async () => {
@@ -234,25 +160,5 @@ describe('a routine sends one message and edits it (T-1714)', () => {
         data: { id: 'routine-1', title: 'x'.repeat(80), schedule: 'every 5 minutes' },
       },
     });
-  });
-
-  it('sends without a payload when the routine cannot be loaded or parsed', async () => {
-    const missing = harness({ stored: null, routine: null });
-    await missing.send('room@example.test', 'groupchat', 'hello');
-    expect(missing.core.sendMessage).toHaveBeenCalledWith(
-      'room@example.test',
-      'groupchat',
-      'hello',
-      undefined,
-    );
-
-    const badSchedule = harness({ routine: routineRow({ schedule: { kind: 'nope' } }) });
-    await badSchedule.send('room@example.test', 'groupchat', 'hello');
-    expect(badSchedule.core.sendMessage).toHaveBeenCalledWith(
-      'room@example.test',
-      'groupchat',
-      'hello',
-      undefined,
-    );
   });
 });

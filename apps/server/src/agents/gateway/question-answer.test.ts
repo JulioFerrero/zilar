@@ -21,7 +21,7 @@ import {
   setQuestionMessageId,
 } from '../../questions/service';
 import type { AiSession, GatewayLogger } from './contracts';
-import { answerOnReply, answerOpenQuestionsOnTurn, rekeyOnReflection } from './question-answer';
+import { answerOnReply, rekeyOnReflection } from './question-answer';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 
@@ -169,30 +169,6 @@ describe('a reply closes the question (T-1579)', () => {
     return { session, stanzaId };
   }
 
-  it('re-keys the card and closes the question with the option text', async () => {
-    const asked = await askQuestion();
-    const { session, stanzaId } = await rekey(asked);
-
-    expect(await findOpenQuestionByMessage(context.db, asked.originId, asked.room)).toBeNull();
-    expect((await findOpenQuestionByMessage(context.db, stanzaId, asked.room))?.id).toBe(
-      asked.questionId,
-    );
-
-    await answerOnReply(
-      context.db,
-      session,
-      replyTo(asked.room, expectedJid(asked.ownerId), '@Helper Friday', stanzaId),
-      silentLogger,
-    );
-
-    expect(await findOpenQuestionByMessage(context.db, stanzaId, asked.room)).toBeNull();
-    expect(await storedAnswer(context, asked.questionId)).toMatchObject({
-      status: 'answered',
-      answer: 'Friday',
-      answeredBy: expectedJid(asked.ownerId),
-    });
-  });
-
   it('does nothing for a session that is not the asking AI', async () => {
     const asked = await askQuestion();
     const { stanzaId } = await rekey(asked);
@@ -228,25 +204,6 @@ describe('a reply closes the question (T-1579)', () => {
       asked.questionId,
     );
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
-  });
-
-  it('answers the open question when a person types in the room', async () => {
-    const asked = await askQuestion();
-    const session = sessionFor(asked.aiId, asked.aiJid, asked.room, 'Helper');
-
-    await answerOpenQuestionsOnTurn(
-      context.db,
-      session,
-      { fromJid: expectedJid(asked.ownerId), body: 'Delete one yes' },
-      asked.room,
-      silentLogger,
-    );
-
-    expect(await storedAnswer(context, asked.questionId)).toMatchObject({
-      status: 'answered',
-      answer: 'Delete one yes',
-      answeredBy: expectedJid(asked.ownerId),
-    });
   });
 
   it('ignores a reply sent in another room the AI is in (T-1991)', async () => {
