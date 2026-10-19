@@ -7,7 +7,7 @@ Copied from the Report of `work/T-0864-api-contract-pilot.md` ("How to move a gr
 - **One list of groups.** `packages/api-contract/src/api.ts` imports every group and passes them to one `HttpApi.make('zilar').add(...)` call, in alphabetical order. Add your `import { FooGroup } from './foo';` and one `FooGroup,` line. There are no chain blocks or per-chain arrays.
 - **One export list.** `packages/api-contract/src/index.ts` has one `export * from './<x>';` line per file, alphabetical.
 - **One middleware file.** Every middleware tag lives in `packages/api-contract/src/middleware.ts`. Add yours there, with the same key string as before. Do not create a per-module or per-chain middleware file.
-- **Smoke case.** Your smoke case goes in `apps/server/src/<x>/contract.smoke.test.ts`, using `createSmokeHarness` from `apps/server/src/contract-smoke-support.ts` (`cookieClient`, `bearerClient`, `requestCount`).
+- **Smoke case.** Your smoke case goes in `apps/server/src/<x>/contract.smoke.test.ts`, using `createSmokeHarness` from `apps/server/src/test-support/contract-smoke.ts` (`cookieClient`, `bearerClient`, `requestCount`).
 - **Session and CurrentUser.** `Session`/`CurrentUser` come from `@zilar/api-contract` (no bridge). `apps/server/src/effect/http-core.ts` re-exports them, and `sessionLayer(auth, logger)` provides the contract tag. Use `sessionLayer` in your module's layers.
 
 ## The recipe

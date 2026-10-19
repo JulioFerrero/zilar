@@ -63,8 +63,8 @@ expand/contract:
 
 ## Pitfalls that already cost us a round (mobile and shared code)
 
-- Registry files (`apps/mobile/src/lib/settings-items.ts`, the new-chat menu) are touched by many tasks: add ONE entry, never reorder or reformat the others.
-- Never swap one gradient style for another on a live view: give the element a `key` that changes with the look (see `apps/mobile/src/lib/gradient-swap.test.ts`).
+- Registry files (`packages/chat-core/src/settings-items.ts`, the new-chat menu) are touched by many tasks: add ONE entry, never reorder or reformat the others.
+- Never swap one gradient style for another on a live view: give the element a `key` that changes with the look.
 - Native module functions: no `Promise` parameter inside a `Coroutine` (Expo cannot convert it). Hermes has no `crypto.subtle`.
 - Server URLs from the API may be relative (`/api/avatars/<id>`): resolve them against the API origin on native.
 - The server accepts PNG or WebP for avatars and stickers; phone photos are JPEG, so re-encode first.
