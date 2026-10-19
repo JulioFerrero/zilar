@@ -14,8 +14,8 @@ import { isDmBlocked } from '../blocks/service';
 import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';
-import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
-import { HttpError, notFound } from '../errors';
+import { mountGroups, Session, withLimit, type EffectApiMount } from '../effect/http-core';
+import { notFound } from '../errors';
 import { limiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter } from '../search/service';
 import { cardMediaPath, getCardMedia } from './service';
@@ -94,14 +94,12 @@ export function createCardMediaApi(deps: CardMediaApiDependencies): EffectApiMou
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const readLimiter = limiter('cardMediaRead', now);
+  const limitedServe = withLimit(logger, readLimiter, 'Too many card media reads, try again later');
 
   const groupLayer = HttpApiBuilder.group(CardMediaApi, 'card-media', (handlers) =>
     handlers.handle(
       'serve',
-      handler(logger, async (request, user) => {
-        if (!readLimiter.allow(user.id)) {
-          throw new HttpError(429, 'rate_limited', 'Too many card media reads, try again later');
-        }
+      limitedServe(async (request, user) => {
         const row = await getCardMedia(deps.db, request.params.id);
         if (row === undefined || !(await mayRead(deps, row, user.id))) {
           throw notFound();

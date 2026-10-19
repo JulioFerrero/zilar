@@ -5,7 +5,7 @@ import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/h
 
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, Session, handler, withLimit, type EffectApiMount } from '../effect/http-core';
 import { limiter } from '../rate-limit';
 import {
   AVATAR_MAX_BYTES,
@@ -79,6 +79,7 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
   const uploadLimiter = deps.uploadLimiter ?? limiter('avatarUpload', now);
   // The read budget, charged per viewer in `serve`.
   const readLimiter = limiter('avatarRead', now);
+  const limitedServe = withLimit(logger, readLimiter, 'Too many avatar reads, try again later');
 
   function serviceDeps(): AvatarsServiceDeps {
     return {
@@ -138,12 +139,9 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
       // to a member; `readAvatarFile` answers `null` otherwise, the same 404 as unknown.
       .handle(
         'serve',
-        handler(logger, async (request, user) => {
+        limitedServe(async (request, user) => {
           // The read budget (600 per 10 min per user) is spent before the lookup, so ids
           // cannot be probed for free.
-          if (!readLimiter.allow(user.id)) {
-            throw new HttpError(429, 'rate_limited', 'Too many avatar reads, try again later');
-          }
           const avatarId = decodePathId(request.params.id);
           const file = await readAvatarFile(serviceDeps(), avatarId, user.id);
           // An unknown id and a missing file answer the same 404.

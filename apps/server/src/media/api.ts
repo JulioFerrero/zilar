@@ -10,7 +10,7 @@ import { LinkPreviewGroup, MediaGroup } from '@zilar/api-contract';
 import { isDmBlocked } from '../blocks/service';
 
 import { runSql } from '../effect/sql';
-import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, handler, withLimit, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { limiter, type RateLimiter } from '../rate-limit';
@@ -156,6 +156,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const mediaLimiter = deps.limiter ?? limiter('media', now);
   const linkPreviewLimiter = deps.linkPreviewLimiter ?? limiter('linkPreview', now);
+  const limited = withLimit(logger, linkPreviewLimiter, 'Too many requests, try again later');
 
   const groupLayer = HttpApiBuilder.group(MediaApi, 'media', (handlers) =>
     handlers.handle(
@@ -269,11 +270,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     handlers
       .handle(
         'get',
-        handler(logger, (request, user) =>
+        limited((request, _user) =>
           Effect.gen(function* () {
-            if (!linkPreviewLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
-            }
             const url = linkPreviewUrl(request.request);
             if (url === null) {
               throw new HttpError(400, 'invalid_request', 'Invalid link preview url');
@@ -288,11 +286,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
       )
       .handle(
         'image',
-        handler(logger, (request, user) =>
+        limited((request, _user) =>
           Effect.gen(function* () {
-            if (!linkPreviewLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
-            }
             const image = yield* fetchLinkPreviewImage(request.params.key, { logger });
             if (image === null) {
               throw new HttpError(404, 'not_found', 'Link preview image not found');

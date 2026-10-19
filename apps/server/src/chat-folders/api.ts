@@ -4,15 +4,8 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 
 import { ChatFoldersGroup } from '@zilar/api-contract';
 
-import { HttpError } from '../errors';
 import { limiter } from '../rate-limit';
-import {
-  mountGroups,
-  handler,
-  httpErrorResponse,
-  requestIdOf,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, withLimit, type EffectApiMount } from '../effect/http-core';
 import {
   createChatFolder,
   deleteChatFolder,
@@ -34,16 +27,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
   const writeLimiter = limiter('chatFoldersWrite', now);
-
-  function checkWriteLimit(userId: string, requestId: string) {
-    if (writeLimiter.allow(userId)) {
-      return undefined;
-    }
-    return httpErrorResponse(
-      requestId,
-      new HttpError(429, 'rate_limited', 'Too many folder changes, try again later'),
-    );
-  }
+  const limitedWrite = withLimit(logger, writeLimiter, 'Too many folder changes, try again later');
 
   const groupLayer = HttpApiBuilder.group(ChatFoldersApi, 'chatFolders', (handlers) =>
     handlers
@@ -55,11 +39,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       )
       .handle(
         'create',
-        handler(logger, async (request, user) => {
-          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
-          if (limited !== undefined) {
-            return limited;
-          }
+        limitedWrite(async (request, user) => {
           const folder = await createChatFolder(deps.db, {
             userId: user.id,
             name: request.payload.name,
@@ -76,11 +56,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       )
       .handle(
         'order',
-        handler(logger, async (request, user) => {
-          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
-          if (limited !== undefined) {
-            return limited;
-          }
+        limitedWrite(async (request, user) => {
           const folders = await reorderChatFolders(deps.db, {
             userId: user.id,
             ids: [...request.payload.ids],
@@ -91,11 +67,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       )
       .handle(
         'update',
-        handler(logger, async (request, user) => {
-          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
-          if (limited !== undefined) {
-            return limited;
-          }
+        limitedWrite(async (request, user) => {
           const folder = await updateChatFolder(deps.db, {
             userId: user.id,
             id: request.params.id,
@@ -123,11 +95,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       )
       .handle(
         'remove',
-        handler(logger, async (request, user) => {
-          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
-          if (limited !== undefined) {
-            return limited;
-          }
+        limitedWrite(async (request, user) => {
           await deleteChatFolder(deps.db, { userId: user.id, id: request.params.id });
           return { deleted: true as const };
         }),

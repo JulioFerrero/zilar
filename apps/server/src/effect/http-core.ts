@@ -18,6 +18,7 @@ import {
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
+import type { RateLimiter } from '../rate-limit';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
 export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
@@ -184,6 +185,11 @@ export function withErrorEnvelope<A, R>(
  * Reads the request id and the signed-in user, runs `body` and renders every
  * defect through the shared envelope. The group must declare `Session`.
  */
+export interface HandlerOptions {
+  limit?: Pick<RateLimiter, 'allow'>;
+  limitMessage?: string;
+}
+
 export function handler<
   Req extends { readonly request: HttpServerRequest.HttpServerRequest },
   A,
@@ -191,6 +197,7 @@ export function handler<
 >(
   logger: Logger,
   body: (request: Req, user: SessionUser) => Promise<A> | Effect.Effect<A, never, R>,
+  options?: HandlerOptions,
 ): (
   request: Req,
 ) => Effect.Effect<A | HttpServerResponse.HttpServerResponse, never, R | CurrentUser> {
@@ -198,6 +205,17 @@ export function handler<
     withErrorEnvelope(
       Effect.gen(function* () {
         const user = yield* CurrentUser;
+        // The budget is spent before the body runs, as before.
+        if (options?.limit !== undefined && !options.limit.allow(user.id)) {
+          return httpErrorResponse(
+            requestIdOf(request.request),
+            new HttpError(
+              429,
+              'rate_limited',
+              options.limitMessage ?? 'Too many requests, try again later',
+            ),
+          );
+        }
         return yield* Effect.suspend(() => {
           const out = body(request, user);
           return Effect.isEffect(out) ? out : Effect.promise(() => out);
@@ -206,6 +224,12 @@ export function handler<
       logger,
       requestIdOf(request.request),
     );
+}
+
+export function withLimit(logger: Logger, limit: Pick<RateLimiter, 'allow'>, limitMessage: string) {
+  return <Req extends { readonly request: HttpServerRequest.HttpServerRequest }, A, R = never>(
+    body: (request: Req, user: SessionUser) => Promise<A> | Effect.Effect<A, never, R>,
+  ) => handler(logger, body, { limit, limitMessage });
 }
 
 export type EffectApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

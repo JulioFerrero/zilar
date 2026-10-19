@@ -10,7 +10,7 @@ import {
 } from '@zilar/api-contract';
 import { currentSessionId } from '../auth/sessions';
 import { errorClassName, isUniqueViolation } from '../effect/error-utils';
-import { handler } from '../effect/http-core';
+import { handler, withLimit } from '../effect/http-core';
 import { HttpError, xmppUnavailable } from '../errors';
 import { unreadForChats, type UnreadScope } from '../chats/unread';
 import { cardEditTarget, isLiveAiUiRow } from '../notify/ai-cards';
@@ -258,6 +258,7 @@ export function createPushGroupLayer(
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const requirePush = createRequirePush(deps);
+  const limited = withLimit(logger, limiters.preview, 'Too many preview lookups, try again later');
   // The native sender for the test route, built once from the push config.
   // Injected in tests.
   const nativeSender: FcmSender | undefined =
@@ -336,11 +337,8 @@ export function createPushGroupLayer(
       )
       .handle(
         'preview',
-        handler(logger, (request, user) =>
+        limited((request, user) =>
           Effect.gen(function* () {
-            if (!limiters.preview.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many preview lookups, try again later');
-            }
             const archive = deps.archive;
             if (archive === undefined) {
               throw xmppUnavailable();

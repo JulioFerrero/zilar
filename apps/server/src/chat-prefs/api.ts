@@ -10,6 +10,7 @@ import { limiter } from '../rate-limit';
 import {
   mountGroups,
   handler,
+  withLimit,
   httpErrorResponse,
   requestIdOf,
   type EffectApiMount,
@@ -50,6 +51,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
   const writeLimiter = limiter('chatPrefsWrite', now);
+  const limited = withLimit(logger, writeLimiter, 'Too many preference changes, try again later');
 
   const groupLayer = HttpApiBuilder.group(ChatPrefsApi, 'chatPrefs', (handlers) =>
     handlers
@@ -102,10 +104,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
       )
       .handle(
         'putBackground',
-        handler(logger, async (request, user) => {
-          if (!writeLimiter.allow(user.id)) {
-            return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
-          }
+        limited(async (request, user) => {
           const defaultBackground = await putChatBackgroundDefault(deps.db, user.id, {
             backgroundPreset: request.payload.backgroundPreset,
             backgroundImageId: request.payload.backgroundImageId,

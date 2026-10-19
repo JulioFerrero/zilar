@@ -196,7 +196,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
     - **T-2225:** one `limit` option on the server `handler()`.
       - Real net −28, accepted: most checks run after an access or availability check, so they stay.
       - The lead's −2k to −3k server guess was too high.
-    - **T-2227:** a server HTTP layer audit (no code), measuring payload copying, repeated access checks, mounts and response shaping before any more server specs.
+    - **T-2227 merged:** `docs/audit/server-http-boilerplate.md`.
+      - Only about −425 lines are low-risk across the 45 route files, plus about −300 from one shared `HttpApi` (high risk, last).
+      - The server's size is breadth, not boilerplate.
+      - The low-risk follow-ups launch after T-2225 merges, since they share files with it.
     - **T-2226:** the web message list on virtua (tested in the Viernes room's 800-message backlog).
     - **Next:** the phone list on LegendList, after T-2226 proves out.
   - **T-2220 (merged 11:02):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
