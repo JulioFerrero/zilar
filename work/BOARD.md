@@ -2225,3 +2225,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2227](T-2227-server-http-audit.md) | server HTTP layer boilerplate audit | 2026-10-19 |
 | [T-2225](T-2225-handler-rate-limit.md) | handler() takes the per-route rate limit | 2026-10-19 |
 | [T-2223](T-2223-web-search-keys-phone.md) | web search W2c: phone keys, grouped provider sheet | 2026-10-19 |
+| [T-2231](T-2231-audit-messages-chat-list.md) | rewrite map: chat list (6.7k to 3.5k) | 2026-10-19 |
