@@ -2,18 +2,19 @@ import { ApiError, type MyRoutine } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { Repeat, MessageCircle, Pause, Play, Trash2 } from 'lucide-react-native';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { AisScreenShell } from '@/components/ais/screen-shell';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { useApi } from '@/lib/use-mockable-api';
 import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, DANGER, ICON } from '@/lib/colors';
-import { interruptFiber, makeToolsApi } from '@zilar/client-core';
+import { makeToolsApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
@@ -138,8 +139,6 @@ function loadMyRoutinesEffect(
   );
 }
 
-type LoadStatus = 'loading' | 'ready' | 'error';
-
 export default function RoutinesScreen() {
   return (
     <RequireAuth>
@@ -151,38 +150,14 @@ export default function RoutinesScreen() {
 function RoutinesBody() {
   const router = useRouter();
   const { api } = useApi(makeToolsApi);
-  const [status, setStatus] = useState<LoadStatus>('loading');
-  const [routines, setRoutines] = useState<MyRoutine[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const { data, status, error, refreshing, refresh, reload } = useFocusList<MyRoutine[]>(() =>
+    loadMyRoutinesEffect(api).pipe(Effect.mapError(() => LIST_FAILED_MESSAGE)),
+  );
+  const routines = data ?? [];
+
   const [notice, setNotice] = useState<RoutineActionMessage | null>(null);
-  const [reloadTick, setReloadTick] = useState(0);
   const [revealedId, setRevealedId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fiber = Effect.runFork(
-      loadMyRoutinesEffect(api).pipe(
-        Effect.matchEffect({
-          onFailure: () =>
-            Effect.sync(() => {
-              setStatus('error');
-              setRefreshing(false);
-            }),
-          onSuccess: (list) =>
-            Effect.sync(() => {
-              setRoutines(list);
-              setStatus('ready');
-              setRefreshing(false);
-            }),
-        }),
-      ),
-    );
-    return () => {
-      interruptFiber(fiber);
-    };
-  }, [api, reloadTick]);
-
-  const reload = (): void => setReloadTick((tick) => tick + 1);
 
   const [actionState, runAction] = useAction(
     (work: { action: RoutineAction; id: string }) =>
@@ -252,14 +227,11 @@ function RoutinesBody() {
       {status === 'error' ? (
         <StateMessage
           kind="error"
-          title={LIST_FAILED_MESSAGE}
+          title={error ?? LIST_FAILED_MESSAGE}
           action={{
             label: 'Retry',
             accessibilityLabel: 'Retry loading routines',
-            onPress: () => {
-              setStatus('loading');
-              reload();
-            },
+            onPress: reload,
           }}
         />
       ) : null}
@@ -272,10 +244,7 @@ function RoutinesBody() {
             <RefreshControl
               refreshing={refreshing}
               tintColor={MUTED_FOREGROUND}
-              onRefresh={() => {
-                setRefreshing(true);
-                reload();
-              }}
+              onRefresh={refresh}
             />
           }
         >

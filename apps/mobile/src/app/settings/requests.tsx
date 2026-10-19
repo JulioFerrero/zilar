@@ -51,7 +51,8 @@ function RequestsList() {
   );
   const status: PageStatus = list.status;
   const { incoming, outgoing } = list.data ?? EMPTY_REQUESTS;
-  const { setData, error, setError, refreshing, refresh } = list;
+  const { setData, setError, refreshing, refresh } = list;
+  const error = list.error ?? '';
 
   const remove = (id: string): void => {
     setData((current) =>

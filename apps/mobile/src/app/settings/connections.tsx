@@ -1,7 +1,7 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { Deferred, Effect } from 'effect';
+import { useRouter } from 'expo-router';
+import { Effect } from 'effect';
 import { KeyRound, Plus, MoreHorizontal } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,6 +14,7 @@ import { ConnectionSheet } from '@/components/connections/connection-sheet';
 import { useKeyCheck } from '@/components/connections/use-key-check';
 import { useApi } from '@/lib/use-mockable-api';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -54,8 +55,6 @@ function describeConnectionsError(error: unknown, fallback: string): Connections
   }
   return { message: error instanceof Error ? error.message : fallback };
 }
-
-type PageStatus = 'loading' | 'ready' | 'error';
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) {
@@ -153,15 +152,25 @@ function ConnectionsList() {
 
   const { api } = useApi(makeAisApi);
 
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  // `reload` keeps its identity, so a load reads the current status from here:
-  // only a screen with nothing shown yet gets the loading message.
-  const statusRef = useRef<PageStatus>('loading');
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-  const [errorInfo, setErrorInfo] = useState<ConnectionsErrorInfo>({ message: '' });
+  // A failed background load keeps the rows and shows this banner.
+  const [bannerInfo, setBannerInfo] = useState<ConnectionsErrorInfo>({ message: '' });
+
+  const { data, setData, status, error, reload } = useFocusList<Connection[], ConnectionsErrorInfo>(
+    () =>
+      Effect.sync(() => setBannerInfo({ message: '' })).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listConnections(),
+            catch: (cause): ConnectionsErrorInfo =>
+              describeConnectionsError(cause, 'Could not load your connections.'),
+          }),
+        ),
+        Effect.tapError((info) => Effect.sync(() => setBannerInfo(info))),
+      ),
+  );
+  const connections = data ?? [];
+  const errorInfo = error ?? bannerInfo;
+
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, boolean>>({});
   const [testErrors, setTestErrors] = useState<Record<string, string>>({});
@@ -173,50 +182,6 @@ function ConnectionsList() {
   // Bumped whenever a replace starts. A test that began earlier captured the
   // old value, so its late result belongs to the replaced key and is dropped.
   const replaceGeneration = useRef(0);
-
-  // Latest reload wins: a focus reload replaces a load still in flight.
-  const [, load] = useAction(
-    (settled: Deferred.Deferred<void>) =>
-      Effect.sync(() => {
-        // A reload over a ready list keeps the rows on screen.
-        if (statusRef.current !== 'ready') {
-          setStatus('loading');
-        }
-        setErrorInfo({ message: '' });
-      }).pipe(
-        Effect.andThen(
-          Effect.tryPromise({
-            try: () => api.listConnections(),
-            catch: (cause): ConnectionsErrorInfo =>
-              describeConnectionsError(cause, 'Could not load your connections.'),
-          }),
-        ),
-        Effect.tap((list) =>
-          Effect.sync(() => {
-            setConnections(list);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch((info) =>
-          Effect.sync(() => {
-            setErrorInfo(info);
-            // A failed background reload keeps the list; the banner shows why.
-            if (statusRef.current !== 'ready') {
-              setStatus('error');
-            }
-          }),
-        ),
-        Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(settled, Effect.void))),
-      ),
-    { mode: 'replace' },
-  );
-
-  // Returns a promise that settles when this load ends, so a pull stops on time.
-  const reload = useCallback(() => {
-    const settled = Deferred.makeUnsafe<void>();
-    load(settled);
-    return Effect.runPromise(Deferred.await(settled));
-  }, [load]);
 
   // A second tap on any Test is ignored while one test runs (one lock for
   // all rows, as the server rate-limits key tests per user).
@@ -313,7 +278,7 @@ function ConnectionsList() {
         }).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
-              setConnections((previous) => previous.filter((connection) => connection.id !== id));
+              setData((previous) => previous?.filter((connection) => connection.id !== id));
               setConfirmingId(null);
             }),
           ),
@@ -322,12 +287,6 @@ function ConnectionsList() {
       ),
       Effect.ensuring(Effect.sync(() => setBusy(false))),
     ),
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
   );
 
   const askRemove = (id: string): void => {

@@ -115,7 +115,8 @@ function ContactsList() {
   );
   const status: PageStatus = list.status;
   const people = list.data ?? [];
-  const { setData, error, refreshing, refresh } = list;
+  const { setData, refreshing, refresh } = list;
+  const error = list.error ?? '';
 
   const [handle, setHandle] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');

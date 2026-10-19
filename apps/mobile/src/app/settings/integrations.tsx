@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Lock, Mail, Mic, Send } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
@@ -20,6 +20,7 @@ import {
   type CardSaveOutcome,
 } from '@/components/integrations/card-save';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text, TextField } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
@@ -33,7 +34,7 @@ import {
 } from '@zilar/api-contract';
 import { makeIntegrationsApi, type IntegrationsApi } from '@zilar/client-core';
 
-type PageStatus = 'loading' | 'ready' | 'forbidden' | 'error';
+type IntegrationsLoadError = { readonly forbidden: boolean };
 
 const UNCONFIGURED_VOICE: VoiceIntegrationStatus = {
   configured: false,
@@ -67,50 +68,16 @@ function IntegrationsBody() {
   const router = useRouter();
   const { api } = useApi(makeIntegrationsApi);
 
-  const [data, setData] = useState<IntegrationsStatus | null>(null);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [errorInfo, setErrorInfo] = useState<{ message: string }>({ message: '' });
-
-  const [, load] = useAction(
-    () => {
-      const keepContent = status === 'ready';
-      return Effect.tryPromise({
-        try: () => api.getIntegrationsStatus(),
-        catch: (cause: unknown) => cause,
-      }).pipe(
-        Effect.tap((loaded) =>
-          Effect.sync(() => {
-            setData(loaded);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch((cause) =>
-          Effect.sync(() => {
-            if (keepContent) {
-              return;
-            }
-            if (cause instanceof Error && 'status' in cause && cause.status === 404) {
-              setStatus('forbidden');
-            } else {
-              setErrorInfo({ message: 'Could not load integrations.' });
-              setStatus('error');
-            }
-          }),
-        ),
-      );
-    },
-    { mode: 'replace' },
-  );
-
-  const reload = useCallback(() => {
-    setStatus((current) => (current === 'ready' ? current : 'loading'));
-    load(undefined);
-  }, [load]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
+  const { data, setData, status, error, reload } = useFocusList<
+    IntegrationsStatus,
+    IntegrationsLoadError
+  >(() =>
+    Effect.tryPromise({
+      try: () => api.getIntegrationsStatus(),
+      catch: (cause: unknown): IntegrationsLoadError => ({
+        forbidden: cause instanceof Error && 'status' in cause && cause.status === 404,
+      }),
+    }),
   );
 
   return (
@@ -125,7 +92,7 @@ function IntegrationsBody() {
           <StateMessage kind="loading" title="Loading integrations…" />
         ) : null}
 
-        {status === 'forbidden' ? (
+        {status === 'error' && error?.forbidden === true ? (
           <View className="items-center gap-3 px-6 pt-16">
             <Lock size={32} color={ICON} />
             <Text className="text-center text-[15px] text-muted-foreground">
@@ -134,10 +101,10 @@ function IntegrationsBody() {
           </View>
         ) : null}
 
-        {status === 'error' ? (
+        {status === 'error' && error?.forbidden !== true ? (
           <StateMessage
             kind="error"
-            title={errorInfo.message}
+            title="Could not load integrations."
             action={{
               label: 'Retry',
               accessibilityLabel: 'Retry loading integrations',
@@ -146,7 +113,7 @@ function IntegrationsBody() {
           />
         ) : null}
 
-        {status === 'ready' && data !== null ? (
+        {status === 'ready' && data !== undefined ? (
           <>
             <EmailCard api={api} email={data.email} onSaved={setData} />
             <VoiceCard

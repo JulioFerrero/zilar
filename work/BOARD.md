@@ -2185,3 +2185,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2184](T-2184-fold-web-4.md) | web: single-use files folded, wave 4 | 2026-10-19 |
 | [T-2185](T-2185-fold-phone-4.md) | phone: single-use files folded, wave 4 | 2026-10-19 |
 | [T-2188](T-2188-clone-pairs-2.md) | one copy of blocks repeated across two files, wave 2 | 2026-10-19 |
+| [T-2186](T-2186-phone-focus-list.md) | phone: settings screens load through useFocusList | 2026-10-19 |

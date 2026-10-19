@@ -9,14 +9,15 @@ import {
   type ChatSummary,
   withKey,
 } from '@zilar/chat-core';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Plus, Zap } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { makeAisApi, type PublicAi } from '@zilar/client-core';
@@ -124,8 +125,6 @@ function DeleteConfirmDialog({
   );
 }
 
-type PageStatus = 'loading' | 'ready' | 'error';
-
 // These keep their own error class: describeAisError and the 409 check read ApiError.
 const apiCall = <A,>(call: () => Promise<A>) =>
   Effect.tryPromise({ try: call, catch: (cause: unknown) => cause });
@@ -143,9 +142,12 @@ function AisList() {
   const { api } = useApi(makeAisApi);
   const store = useChatStoreApi();
 
-  const [ais, setAis] = useState<PublicAi[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [errorInfo, setErrorInfo] = useState<AiErrorInfo>({ message: '', unavailable: false });
+  const { data, setData, status, error, reload } = useFocusList<PublicAi[], AiErrorInfo>(() =>
+    apiCall(() => api.listAis()).pipe(
+      Effect.mapError((cause: unknown) => describeAisError(cause, 'Could not load your AIs')),
+    ),
+  );
+  const ais = data ?? [];
 
   const [actionAi, setActionAi] = useState<PublicAi | null>(null);
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);
@@ -160,33 +162,6 @@ function AisList() {
   };
   // `runError` renders inline on failure (the sheet stays open to retry); a 409 also reloads the list. One call at a time: a second tap while one waits is dropped.
   const [runError, setRunError] = useState('');
-
-  // A reload with the list on screen refreshes it in place: only a load with nothing to show takes the loading state or the error view.
-  const reload = useCallback(() => {
-    setStatus((current) => (current === 'ready' ? current : 'loading'));
-    Effect.runFork(
-      apiCall(() => api.listAis()).pipe(
-        Effect.tap((list) =>
-          Effect.sync(() => {
-            setAis(list);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch((error: unknown) =>
-          Effect.sync(() => {
-            setErrorInfo(describeAisError(error, 'Could not load your AIs'));
-            setStatus((current) => (current === 'ready' ? current : 'error'));
-          }),
-        ),
-      ),
-    );
-  }, [api]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
 
   const closeActions = (): void => {
     setActionAi(null);
@@ -219,7 +194,7 @@ function AisList() {
     apiCall(() => (next === 'stop' ? api.stopAi(ai.id) : api.resumeAi(ai.id))).pipe(
       Effect.tap((fresh) =>
         Effect.sync(() => {
-          setAis((previous) => previous.map((item) => (item.id === fresh.id ? fresh : item)));
+          setData((previous) => previous?.map((item) => (item.id === fresh.id ? fresh : item)));
           setActionAi((current) => (current?.id === ai.id ? null : current));
         }),
       ),
@@ -285,7 +260,7 @@ function AisList() {
     apiCall(() => api.deleteAi(ai.id)).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          setAis((previous) => previous.filter((item) => item.id !== ai.id));
+          setData((previous) => previous?.filter((item) => item.id !== ai.id));
           setConfirmAi((current) => (current?.id === ai.id ? null : current));
         }),
       ),
@@ -322,9 +297,11 @@ function AisList() {
         {status === 'error' && (
           <StateMessage
             kind="error"
-            title={errorInfo.message}
+            title={error?.message ?? ''}
             hint={
-              errorInfo.unavailable ? 'AI management is not available on this server.' : undefined
+              error?.unavailable === true
+                ? 'AI management is not available on this server.'
+                : undefined
             }
             action={{ label: 'Retry', onPress: reload }}
           />

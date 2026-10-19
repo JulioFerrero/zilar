@@ -41,7 +41,8 @@ function BlockedList() {
   );
   const status: PageStatus = list.status;
   const people = list.data ?? [];
-  const { setData, error, setError, refreshing, refresh } = list;
+  const { setData, setError, refreshing, refresh } = list;
+  const error = list.error ?? '';
 
   // A failure keeps the row and shows the fixed sentence; the row's own action stops a double tap.
   const unblock = (userId: string): Effect.Effect<void> =>

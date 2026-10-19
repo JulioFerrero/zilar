@@ -1,9 +1,9 @@
-import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { fromApi, interruptFiber } from '@zilar/client-core';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
@@ -34,7 +34,10 @@ function panelIdSet(ids: readonly string[]): Set<string> {
 
 export type StickerTab = 'packs' | 'discover' | 'favorites';
 
-type PageStatus = 'loading' | 'ready' | 'error';
+type PanelData = {
+  readonly packs: StickerPack[];
+  readonly favorites: StickerItem[];
+};
 
 export const DISCOVER_ERROR = 'Could not load shared packs.';
 const ADD_ERROR = 'Could not add the pack. Try again.';
@@ -47,9 +50,6 @@ export function useStickersPanel() {
   const { api, viewerId } = useStickersApi();
 
   const [tab, setTab] = useState<StickerTab>('packs');
-  const [packs, setPacks] = useState<StickerPack[]>([]);
-  const [favorites, setFavorites] = useState<StickerItem[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
   const [discover, setDiscover] = useState<PanelPack[] | undefined>(undefined);
   const [discoverBusy, setDiscoverBusy] = useState(false);
   const [discoverError, setDiscoverError] = useState('');
@@ -83,37 +83,21 @@ export function useStickersPanel() {
 
   // A reload over shown data keeps it, so returning never flashes the loading
   // state; a failed reload also keeps the list instead of blanking it.
-  const reload = useCallback(() => {
-    setStatus((previous) => (previous === 'ready' ? previous : 'loading'));
-    setActionError('');
-    Effect.runFork(
-      Effect.all(
-        [fromApi(() => api.listStickerPacks()), fromApi(() => api.listStickerFavorites())],
-        {
-          concurrency: 'unbounded',
-        },
-      ).pipe(
-        Effect.tap(([panel, starred]) =>
-          Effect.sync(() => {
-            setPacks(panel);
-            setFavorites(starred);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch(() =>
-          Effect.sync(() => {
-            setStatus((previous) => (previous === 'ready' ? previous : 'error'));
-          }),
+  const { data, setData, status, reload } = useFocusList<PanelData, unknown>(() =>
+    Effect.sync(() => setActionError('')).pipe(
+      Effect.andThen(
+        Effect.all(
+          [fromApi(() => api.listStickerPacks()), fromApi(() => api.listStickerFavorites())],
+          {
+            concurrency: 'unbounded',
+          },
         ),
       ),
-    );
-  }, [api]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
+      Effect.map(([packs, favorites]) => ({ packs, favorites })),
+    ),
   );
+  const packs = data?.packs ?? [];
+  const favorites = data?.favorites ?? [];
 
   const loadDiscover = useCallback(
     (search: string) => {
@@ -178,7 +162,9 @@ export function useStickersPanel() {
   const refreshPanel = fromApi(() => api.listStickerPacks()).pipe(
     Effect.tap((panel) =>
       Effect.sync(() => {
-        setPacks(panel);
+        setData((current) =>
+          current === undefined ? { packs: panel, favorites: [] } : { ...current, packs: panel },
+        );
       }),
     ),
   );
@@ -245,12 +231,21 @@ export function useStickersPanel() {
     setActionError('');
     const previous = packs;
     const byId = new Map(packs.map((pack) => [pack.id, pack]));
-    setPacks(next.map((id) => byId.get(id)).filter((pack) => pack !== undefined));
+    setData((current) =>
+      current === undefined
+        ? current
+        : {
+            ...current,
+            packs: next.map((id) => byId.get(id)).filter((pack) => pack !== undefined),
+          },
+    );
     Effect.runFork(
       fromApi(() => api.reorderStickerPanelPacks(next)).pipe(
         Effect.catch(() =>
           Effect.sync(() => {
-            setPacks(previous);
+            setData((current) =>
+              current === undefined ? current : { ...current, packs: previous },
+            );
             setActionError(REORDER_ERROR);
           }),
         ),
@@ -265,7 +260,14 @@ export function useStickersPanel() {
       fromApi(() => api.removeStickerFavorite(stickerId)).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            setFavorites((previous) => previous.filter((row) => row.id !== stickerId));
+            setData((current) =>
+              current === undefined
+                ? current
+                : {
+                    ...current,
+                    favorites: current.favorites.filter((row) => row.id !== stickerId),
+                  },
+            );
           }),
         ),
       ),

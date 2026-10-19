@@ -1,7 +1,7 @@
-import { useFocusEffect } from 'expo-router';
-import { Deferred, Effect } from 'effect';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Effect } from 'effect';
+import { useCallback, useRef, useState } from 'react';
 
+import { useFocusList } from '@/components/settings/use-focus-list';
 import { useAction } from '@/lib/effect/use-action';
 import { makeMachinesApi } from '@/lib/machines-api';
 import { useApi } from '@/lib/use-mockable-api';
@@ -9,21 +9,24 @@ import type { MachinesErrorInfo } from './errors';
 import { applyChange, call, mutationCall, type MachineMutation } from './mutations';
 import type { Machine, PairingCode } from '@zilar/api-contract';
 
-type PageStatus = 'loading' | 'ready' | 'error';
-
 export function useMachinesList() {
   const { api } = useApi(makeMachinesApi);
 
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  // `reload` keeps its identity, so a load reads the current status from here:
-  // only a screen with nothing shown yet gets the loading message.
-  const statusRef = useRef<PageStatus>('loading');
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-  const [errorInfo, setErrorInfo] = useState<MachinesErrorInfo>({ message: '' });
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  // A failed background load keeps the rows and shows this banner.
+  const [bannerInfo, setBannerInfo] = useState<MachinesErrorInfo>({ message: '' });
+
+  const { data, setData, status, error, reload } = useFocusList<Machine[], MachinesErrorInfo>(() =>
+    Effect.sync(() => {
+      setActionErrors({});
+      setBannerInfo({ message: '' });
+    }).pipe(
+      Effect.andThen(call(() => api.listMachines(), 'Could not load your machines.')),
+      Effect.tapError((failure) => Effect.sync(() => setBannerInfo({ message: failure.message }))),
+    ),
+  );
+  const machines = data ?? [];
+  const errorInfo = error ?? bannerInfo;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ kind: 'revoke' | 'delete'; id: string } | null>(
     null,
@@ -56,51 +59,6 @@ export function useMachinesList() {
     });
   };
 
-  // Loads the list. A reload (focus, Retry, pull) replaces one still running.
-  const [, loadList] = useAction(
-    (settled: Deferred.Deferred<void>) =>
-      Effect.sync(() => {
-        // A reload over a ready list keeps it on screen.
-        if (statusRef.current !== 'ready') {
-          setStatus('loading');
-        }
-        setActionErrors({});
-        setErrorInfo({ message: '' });
-      }).pipe(
-        Effect.andThen(call(() => api.listMachines(), 'Could not load your machines.')),
-        Effect.tap((list) =>
-          Effect.sync(() => {
-            setMachines(list);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch((failure) =>
-          Effect.sync(() => {
-            setErrorInfo({ message: failure.message });
-            // A failed background reload keeps the list; the banner shows why.
-            if (statusRef.current !== 'ready') {
-              setStatus('error');
-            }
-          }),
-        ),
-        Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(settled, Effect.void))),
-      ),
-    { mode: 'replace' },
-  );
-
-  // Returns a promise that settles when this load ends, so a pull stops on time.
-  const reload = useCallback(() => {
-    const settled = Deferred.makeUnsafe<void>();
-    loadList(settled);
-    return Effect.runPromise(Deferred.await(settled));
-  }, [loadList]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
-
   // One mutation at a time: a second tap while one runs is dropped.
   const [, runMutation] = useAction((input: MachineMutation) => {
     const dialog = input.kind === 'revoke' || input.kind === 'delete';
@@ -115,7 +73,9 @@ export function useMachinesList() {
       Effect.andThen(mutationCall(api, input)),
       Effect.tap((change) =>
         Effect.sync(() => {
-          setMachines((previous) => applyChange(previous, change));
+          setData((previous) =>
+            previous === undefined ? previous : applyChange(previous, change),
+          );
           if (input.kind === 'rename') {
             setRenamingId(null);
           }
