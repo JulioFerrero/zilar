@@ -6,7 +6,7 @@ import type { ChatSummary } from '@zilar/chat-core';
 import { describe, expect, it, vi } from 'vitest';
 import { clearActiveChatRead } from './polling';
 import { recordRead } from './reads';
-import { testCtx, ANA } from './test-ctx';
+import { testCtx, ANA } from './test-support';
 import { mergeUnread } from './chat-rows';
 
 const CHAT = 'ana@zilar.test';

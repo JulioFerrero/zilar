@@ -46,7 +46,7 @@ export const radius = {
 /**
  * The chat dot grid both apps draw (ui-style.md §2): a 22 px cell with a
  * 1 px `#1c1c1c` dot on the panel black. Mobile reads it directly in
- * `components/chat/chat-background.tsx`; web pins `--chat-background` to it
+ * `apps/mobile/src/app/chat/[id].tsx`; web pins `--chat-background` to it
  * in the drift test.
  */
 export const chatGrid = {
@@ -121,81 +121,3 @@ export const depth = {
   bubbleGenShadow:
     'inset 0 2px 6px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.06)',
 } as const;
-
-export interface PlatformDifference {
-  /** The token name, matching the CSS variable or palette key where one exists. */
-  name: string;
-  /** The web value (literal, alias, scale or "missing" when web has nothing). */
-  web: string;
-  /** The mobile value (literal, alias or "missing" when mobile has nothing). */
-  mobile: string;
-  note: string;
-}
-
-/**
- * Tokens that differ between web and mobile today. The dot grid is on both
- * apps (decided 2026-10-05), so these entries are real differences only; the
- * drift tests skip these by name and read them from here.
- */
-export const platformDifferences: readonly PlatformDifference[] = [
-  {
-    name: 'auth-gradient-background',
-    web: 'var(--panel)',
-    mobile: '#000000',
-    note: "Mobile CHAT_BACKGROUND in colors.ts is the auth screens' gradient (page black), not panel.",
-  },
-  {
-    name: 'key-text-shadow',
-    web: '0 1px 0 rgba(255, 255, 255, 0.7)',
-    mobile: 'missing',
-    note: 'Mobile primaryKey has no text shadow; web flips it dark on a future blue accent.',
-  },
-  {
-    name: 'avatar-ring',
-    web: 'var(--panel)',
-    mobile: 'missing',
-    note: 'Web online-dot ring follows the row; mobile has no row-aware ring token.',
-  },
-  {
-    name: 'list-active-foreground',
-    web: 'var(--foreground)',
-    mobile: 'missing',
-    note: 'Mobile has no list-active-foreground token.',
-  },
-  {
-    name: 'voice-played',
-    web: '#0a0a0a',
-    mobile: 'missing',
-    note: 'Mobile has no voice waveform tokens; colors resolve per bubble inline.',
-  },
-  {
-    name: 'voice-unplayed',
-    web: '#8a8a8a',
-    mobile: 'missing',
-    note: 'Mobile has no voice waveform tokens; colors resolve per bubble inline.',
-  },
-  {
-    name: 'radius-sm',
-    web: 'calc(var(--radius) - 4px)',
-    mobile: 'missing',
-    note: 'Mobile has only --radius, no sm/md/lg/xl scale.',
-  },
-  {
-    name: 'radius-md',
-    web: 'calc(var(--radius) - 2px)',
-    mobile: 'missing',
-    note: 'Mobile has only --radius, no sm/md/lg/xl scale.',
-  },
-  {
-    name: 'radius-lg',
-    web: 'var(--radius)',
-    mobile: 'missing',
-    note: 'Mobile has only --radius, no sm/md/lg/xl scale.',
-  },
-  {
-    name: 'radius-xl',
-    web: 'calc(var(--radius) + 4px)',
-    mobile: 'missing',
-    note: 'Mobile has only --radius, no sm/md/lg/xl scale.',
-  },
-] as const;

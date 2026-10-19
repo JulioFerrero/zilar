@@ -6,7 +6,6 @@ import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { BlocksRespondRateLimit, SchemaErrors, Session } from './middleware';
 
 export const BLOCKS_RESPOND_ID_MAX = 256;
-export const BLOCKS_RESPOND_FORM_VALUE_MAX = 120;
 
 const IdText = Schema.String.check(
   Schema.isMinLength(1),

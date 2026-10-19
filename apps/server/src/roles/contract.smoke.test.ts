@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runApi } from '@zilar/api-contract';
-import { createSmokeHarness, type SmokeHarness } from '../contract-smoke-support';
+import { createSmokeHarness, type SmokeHarness } from '../test-support/contract-smoke';
 import { bootstrapUser, contactOf, TEST_BASE_URL } from '../test-support';
 
 describe('api contract smoke: roles (T-0892)', () => {

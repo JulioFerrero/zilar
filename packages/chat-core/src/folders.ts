@@ -82,30 +82,3 @@ export function sortFolders(folders: readonly ChatFolder[]): ChatFolder[] {
     (a, b) => a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
 }
-
-export function defaultFolders(): ChatFolder[] {
-  return [
-    {
-      id: 'default-personal',
-      name: 'Personal',
-      icon: 'user',
-      position: 0,
-      includeTypes: ['dm'],
-      includeChats: [],
-      excludeChats: [],
-      excludeMuted: false,
-      excludeRead: false,
-    },
-    {
-      id: 'default-ais',
-      name: 'AIs',
-      icon: 'bot',
-      position: 1,
-      includeTypes: ['ai'],
-      includeChats: [],
-      excludeChats: [],
-      excludeMuted: false,
-      excludeRead: false,
-    },
-  ];
-}

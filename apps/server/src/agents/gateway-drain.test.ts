@@ -11,7 +11,7 @@ import {
   tick,
   waitFor,
   type Call,
-} from './gateway.test-harness';
+} from '../test-support/gateway-harness';
 
 // T-1168 (AI-1): `stop()` drains the turns in flight before it disconnects the
 // sessions, so a DM reply the model already produced still reaches the owner.

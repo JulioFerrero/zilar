@@ -1,7 +1,7 @@
 // Badge and push dismissal are best effort: a failure never reaches the caller, and neither
 // waits on the store scope, so a sync started before stop() still finishes.
 import { Effect } from 'effect';
-import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
+import { totalBadgeUnread, updateAppBadge } from '@/lib/push';
 import type { StoreCtx } from './ctx';
 import { fromPromise } from './util';
 
@@ -13,8 +13,4 @@ const syncBadge = (ctx: StoreCtx): Effect.Effect<void> =>
 
 export const syncBadgeInBackground = (ctx: StoreCtx): void => {
   ctx.rt.runDetached(syncBadge(ctx));
-};
-
-export const dismissNotificationsInBackground = (ctx: StoreCtx, chatId: string): void => {
-  ctx.rt.runDetached(fromPromise(() => dismissChatNotifications(chatId)).pipe(Effect.ignore));
 };

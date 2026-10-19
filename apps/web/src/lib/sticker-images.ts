@@ -353,22 +353,3 @@ function encodeStages(
     };
   });
 }
-
-/** One decimal, with no trailing .0: used by both size formatters. */
-function roundToOneDecimal(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
-
-/** 320 x 410 · 84 KiB for the editor preview. */
-export function formatStickerSize(width: number, height: number, bytes: number): string {
-  return `${width}×${height} · ${roundToOneDecimal(bytes / 1024)} KiB`;
-}
-
-/** 84 KiB or 1.2 MiB for a moving file the canvas never measured. */
-export function formatStickerBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    return `${roundToOneDecimal(bytes / (1024 * 1024))} MiB`;
-  }
-  return `${roundToOneDecimal(bytes / 1024)} KiB`;
-}

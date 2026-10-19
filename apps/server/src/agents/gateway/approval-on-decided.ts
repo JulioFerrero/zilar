@@ -1,5 +1,5 @@
 // effect-plain: sequences the approvals route's action then the AI's follow-up
-// turn over injected promises; imported by app/routes-ai.ts, which must stay
+// turn over injected promises; imported by app.ts, which must stay
 // free of the XMPP core behind agents/gateway/contracts.ts.
 import type { ApprovalFollower } from './stop-types';
 

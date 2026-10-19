@@ -9,7 +9,7 @@ import type { CoreState } from './ctx';
 import { openHistory, type HistoryCtx } from './history';
 import { handleDisplayed } from './incoming';
 import { applyReadUntil } from './reads';
-import { ANA, ME, NOW, testCtx } from './test-ctx';
+import { ANA, ME, NOW, testCtx } from './test-support';
 
 /** One message of the DM with Ana: `mine` sets the sender and the direction. */
 function message(id: string, mine: boolean): ChatMessage {

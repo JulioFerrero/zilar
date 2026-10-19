@@ -21,7 +21,7 @@ import {
 } from './history';
 import { loadPreviews } from './previews';
 import { previewMessageOf } from './row-helpers';
-import { ANA, ME, TEAM, dm, team, testCtx } from './test-ctx';
+import { ANA, ME, TEAM, dm, team, testCtx } from './test-support';
 
 /** `count` messages from Ana, `ana-0` the oldest, one minute apart. */
 function anaHistory(count: number): ChatMessage[] {

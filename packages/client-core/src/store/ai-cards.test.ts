@@ -6,7 +6,7 @@ import type { Payload } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 import { approvalSentBy, isAiOnlyCardType, senderAiId, UNSUPPORTED_MESSAGE_TEXT } from './ai-cards';
 import type { LedgerStanza } from './ledger-types';
-import { ANA, ME, testCtx } from './test-ctx';
+import { ANA, ME, testCtx } from './test-support';
 
 const AI = 'ai-dev@zilar.test/desk';
 

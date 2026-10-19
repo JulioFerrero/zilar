@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
 // The one place server tests wait for async work. Raw `setTimeout(resolve, 0)`
-// waits in test files are banned by `src/test-support/noRawTimeoutWaits.test.ts`.
+// waits in test files are banned.
 
 const POLL_MS = 10;
 

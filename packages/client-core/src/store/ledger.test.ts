@@ -14,7 +14,7 @@ import {
   type StoreMessage,
 } from './ledger';
 import { advanceStatus, moveChatToTop, sortMessages } from './rows';
-import { ANA, NOW, TEAM, testCtx } from './test-ctx';
+import { ANA, NOW, TEAM, testCtx } from './test-support';
 
 const ME = 'me@zilar.test';
 const BOB = 'bob@zilar.test';

@@ -21,7 +21,7 @@ import { patchTopic } from '../../topics/patch';
 import { archiveTopic } from '../../topics/service';
 import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import { createGroupIngest } from './group-ingest';
-import { tick, waitFor } from '../gateway.test-harness';
+import { tick, waitFor } from '../../test-support/gateway-harness';
 import { createStopTurn } from './stop';
 import {
   followingAiFor,

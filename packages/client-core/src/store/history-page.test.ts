@@ -6,7 +6,7 @@ import type { CoreCtx, CoreSet } from './ctx';
 import { loadOlderPage, openHistory, type HistoryCtx, type HistoryState } from './history';
 import { createMessageLedger } from './ledger';
 import { sortMessages } from './rows';
-import { ANA, testCtx } from './test-ctx';
+import { ANA, testCtx } from './test-support';
 
 const stanza = (fields: Partial<ChatMessage> & { id: string }): ChatMessage => ({
   kind: 'chat',

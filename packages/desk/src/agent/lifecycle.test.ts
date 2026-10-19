@@ -4,7 +4,7 @@ import { loadAgentConfig, type AgentConfig } from './config';
 import type { EgressRegistrar } from './egress';
 import { Lifecycle } from './lifecycle';
 import { runIdleSweep } from './main';
-import { FakeDocker, PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
+import { FakeDocker, PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-support';
 import type { Workspaces } from './workspace';
 
 const agent = setupAgent();

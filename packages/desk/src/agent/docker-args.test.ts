@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DockerSettings } from './config';
 import { createDockerLayer } from './docker';
 import { createArgs, type Exec } from './docker-args';
-import { PACKAGE, spec } from './test-harness';
+import { PACKAGE, spec } from './test-support';
 
 const SETTINGS: DockerSettings = {
   runtime: 'runc',

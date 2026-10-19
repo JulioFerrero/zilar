@@ -19,20 +19,6 @@ export const AVATAR_GRADIENTS: readonly AvatarGradient[] = [
   { index: 6, from: '#e0a2f3', to: '#d669ed' },
 ];
 
-function hashId(id: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < id.length; i += 1) {
-    hash ^= id.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-export function avatarGradient(id: string): AvatarGradient {
-  const index = hashId(id) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[index] ?? AVATAR_GRADIENTS[0]!;
-}
-
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
 function firstLetterOrDigit(word: string): string {

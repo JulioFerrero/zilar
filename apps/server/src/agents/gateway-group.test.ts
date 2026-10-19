@@ -41,7 +41,7 @@ import {
   tick,
   waitFor,
   type Call,
-} from './gateway.test-harness';
+} from '../test-support/gateway-harness';
 
 const ROOM = 'project@rooms.zilar.localhost';
 const ROOM_DAY = new Date('2026-09-28T12:00:00Z');

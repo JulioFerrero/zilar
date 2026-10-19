@@ -12,11 +12,11 @@ import type { FetchLike } from '../ai/http';
 import { createKeyCipher } from '../connections/crypto';
 import type { ActionGateway } from '../actions/gateway';
 import type { ArchivePool } from '../search/service';
-import type { GatewayLogger } from './gateway';
+import type { GatewayLogger } from '../agents/gateway';
 import { TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
 import { aiLocalpart } from '../ais/provisioning-xmpp';
-import { createAgentGateway, type AgentGateway, type AgentGatewayDeps } from './gateway';
+import { createAgentGateway, type AgentGateway, type AgentGatewayDeps } from '../agents/gateway';
 import { type DraftHub } from '../drafts/hub';
 
 export const MASTER_KEY = 'test-master-key-0000000000000000000000';

@@ -223,7 +223,7 @@ function buildChatPageQuery(
   };
 }
 
-// Exactly the scope `archive-query.ts` uses with no chat filter.
+// Exactly the scope `search/service.ts` uses with no chat filter.
 function buildCountQuery(allowed: SearchOwner): { text: string; values: unknown[] } {
   const values: unknown[] = [];
   const next = (value: unknown): string => {

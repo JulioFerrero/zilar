@@ -3,7 +3,7 @@ import type { ChatMessage } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 import { deleteForEveryone, editMessage, react, sendTyping } from './actions';
 import { handleMessage } from './incoming';
-import { ANA, ME, NOW, TEAM, testCtx } from './test-ctx';
+import { ANA, ME, NOW, TEAM, testCtx } from './test-support';
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i += 1) {

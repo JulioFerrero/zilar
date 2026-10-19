@@ -7,7 +7,7 @@ import {
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
-} from './test-support';
+} from '../test-support';
 
 const baseHttpClient = Effect.runSync(
   Effect.provide(Effect.service(HttpClient.HttpClient), FetchHttpClient.layer),

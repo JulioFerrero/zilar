@@ -55,10 +55,6 @@ let activeVoiceAudio: HTMLAudioElement | null = null;
 /** Session cache of fetched transcripts keyed by voice URL, so a toggle never refetches. */
 const transcriptCache = new Map<string, string>();
 
-export function resetVoiceTranscriptCache(): void {
-  transcriptCache.clear();
-}
-
 function friendlyTranscriptError(failure: ApiFailure): string {
   if (failure.code === 'transcription_not_configured') {
     return 'Transcription is not set up on this server.';

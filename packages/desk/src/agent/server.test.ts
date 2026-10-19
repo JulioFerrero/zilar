@@ -5,7 +5,7 @@ import type { DeskToolCall } from '../hands';
 import { Admission } from './admission';
 import { createArgs, createDockerLayer, DESK_LABEL } from './docker';
 import { Lifecycle } from './lifecycle';
-import { PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
+import { PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-support';
 
 const agent = setupAgent();
 

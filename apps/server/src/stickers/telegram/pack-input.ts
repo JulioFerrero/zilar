@@ -1,4 +1,4 @@
-// effect-plain: moved unchanged from apps/server/src/stickers/telegram-import.ts (size split)
+// effect-plain: pure input parsing, no effects.
 import { TelegramImportError } from './errors';
 
 const PACK_NAME_PATTERN = /^[A-Za-z0-9_]{1,64}$/;

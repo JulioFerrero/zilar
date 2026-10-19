@@ -41,7 +41,3 @@ export const AI_TEMPLATE_OPTIONS: readonly AiTemplateOption[] = [
 export function defaultPersonaFor(template: AiTemplateId): string {
   return AI_TEMPLATE_OPTIONS.find((option) => option.id === template)?.defaultPersona ?? '';
 }
-
-export function templateLabel(template: AiTemplateId): string {
-  return AI_TEMPLATE_OPTIONS.find((option) => option.id === template)?.label ?? template;
-}

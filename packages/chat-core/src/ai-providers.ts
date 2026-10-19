@@ -16,8 +16,6 @@ export const AI_PROVIDERS: readonly AiProvider[] = [
   { id: 'github', label: 'GitHub' },
 ];
 
-export const AI_PROVIDER_IDS: readonly string[] = AI_PROVIDERS.map((provider) => provider.id);
-
 // The ids that can back an AI; `github` is deliberately absent.
 export const LLM_PROVIDER_IDS: readonly string[] = [
   'openai',

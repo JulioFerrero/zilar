@@ -13,7 +13,7 @@ import {
 } from './incoming';
 import { startChatsPolling, type PollingCtx } from './polling';
 import { LAST_READ_PREFIX } from './reads';
-import { ANA, dm, ME, NOW, TEAM, team, testCtx } from './test-ctx';
+import { ANA, dm, ME, NOW, TEAM, team, testCtx } from './test-support';
 
 afterEach(() => {
   vi.useRealTimers();

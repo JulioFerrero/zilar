@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { clearHistory, deleteForMe, DELETE_ERROR } from './delete-own';
 import { testCorePorts, type CoreApi } from './ports';
-import { ANA, NOW, testCtx } from './test-ctx';
+import { ANA, NOW, testCtx } from './test-support';
 
 function msg(id: string): UiMessage {
   return {

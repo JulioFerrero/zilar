@@ -31,7 +31,6 @@ export const CLOSE_REVOKED = 4404;
 /** Binary frame kinds. Every binary frame starts with a 5-byte header. */
 export const FRAME_DATA = 0;
 export const FRAME_FIN = 1;
-export const FRAME_RESET = 2;
 
 export const FRAME_HEADER_BYTES = 5;
 

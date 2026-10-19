@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoreState } from './ctx';
 import type { HistoryCtx, HistoryState } from './history';
 import { KEEP_INACTIVE, pruneInactiveChats } from './prune';
-import { ANA, TEAM, testCtx } from './test-ctx';
+import { ANA, TEAM, testCtx } from './test-support';
 
 /** `count` messages from Ana, `ana-<from>` the oldest, one minute apart. */
 function history(count: number, from = 0, status: UiMessage['status'] = 'sent'): UiMessage[] {

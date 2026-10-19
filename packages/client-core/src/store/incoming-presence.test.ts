@@ -3,7 +3,7 @@
 // list re-renders. Kept beside `incoming.test.ts` (which is at its size cap).
 import { describe, expect, it } from 'vitest';
 import { handleOccupants, handlePresence } from './incoming';
-import { ANA, TEAM, testCtx } from './test-ctx';
+import { ANA, TEAM, testCtx } from './test-support';
 
 describe('presence and occupant events keep the chats reference (PERF-7)', () => {
   it('keeps the chats array and the chat objects when nothing visible changed', () => {

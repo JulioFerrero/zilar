@@ -31,17 +31,6 @@ export const suspendStore = (ctx: { core: XmppCore | undefined }): Effect.Effect
     );
   });
 
-/**
- * Brings a core back after a suspend: `wake()` when the core supports it, else a plain
- * `connect()`. Never trusts a stale `online` status: `wake()` reconnects either way.
- */
-export const wakeCore = (current: XmppCore): Effect.Effect<void, unknown> => {
-  const wake = current.wake;
-  return wake === undefined
-    ? fromPromise(() => current.connect())
-    : fromPromise(() => wake()).pipe(Effect.asVoid);
-};
-
 // Reads the last-read map a user's storage saved; anything unusable reads as none.
 const parseJson = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 

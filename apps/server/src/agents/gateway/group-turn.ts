@@ -272,8 +272,8 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       return;
     }
 
-    // The rate window and the per-message round budget live in
-    // `room-limits.ts`. A rate drop tells the asker once per window; a round
+    // The rate window and the per-message round budget are checked in
+    // `checkRoomLimits`. A rate drop tells the asker once per window; a round
     // drop never does (AIs answering each other is expected).
     const atMs = nowMs();
     const limit = checkRoomLimits({ roomTurns: session.roomTurns, roomRounds, roomJid, atMs });

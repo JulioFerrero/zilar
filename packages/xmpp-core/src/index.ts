@@ -1,6 +1,5 @@
 import { createCore } from './client';
-import { createCoreEffect } from './core-effect';
-import type { XmppCore, XmppCoreEffect, XmppCoreOptions } from './types';
+import type { XmppCore, XmppCoreOptions } from './types';
 
 export type { EventName, EventPayload } from './events';
 
@@ -66,10 +65,4 @@ export { buildDisplayed } from './stanza/build-control';
  * `getToken` for a fresh JWT. */
 export function createXmppCore(options: XmppCoreOptions): XmppCore {
   return createCore(options);
-}
-
-/** The same core with every method an `Effect` and one `Stream` per event; a plain
- * factory because the core is per-login state, not a Layer. */
-export function createXmppCoreEffect(options: XmppCoreOptions): XmppCoreEffect {
-  return createCoreEffect(options);
 }

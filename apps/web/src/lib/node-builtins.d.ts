@@ -1,5 +1,5 @@
-// Local Node builtin declarations for tests that read files from disk
-// (`pwa.test.ts`). The web program is DOM-only on purpose: pulling
+// Local Node builtin declarations for tests that read files from disk.
+// The web program is DOM-only on purpose: pulling
 // `@types/node` into `tsconfig.json` would retype `setTimeout` globally and
 // break unrelated files, and adding the dependency is out of scope. Only the
 // exact surface the tests use is declared here.

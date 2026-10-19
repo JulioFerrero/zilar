@@ -18,7 +18,7 @@ import {
   toolCallResponse,
   waitFor,
   type Call,
-} from './gateway.test-harness';
+} from '../test-support/gateway-harness';
 import { createBudgetGate } from './gateway/budget';
 import { createDmTurn } from './gateway/dm-turn';
 import { createLiveSession } from './gateway/live';

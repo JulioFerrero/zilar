@@ -8,7 +8,7 @@ import {
 } from './delivered';
 import { handleMessage } from './incoming';
 import { testCorePorts, type CoreApi } from './ports';
-import { ANA, ME, NOW, testCtx } from './test-ctx';
+import { ANA, ME, NOW, testCtx } from './test-support';
 
 afterEach(() => {
   vi.useRealTimers();

@@ -10,7 +10,7 @@ import {
   seedAi,
   toolCallResponse,
   waitFor,
-} from './gateway.test-harness';
+} from '../test-support/gateway-harness';
 
 // T-1409: a DM turn where the model calls `bash`. The desk is provisioned once
 // and `execute` gets the tool and args; the final model reply still comes back.
