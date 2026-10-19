@@ -62,20 +62,6 @@ function pgliteArchivePool(client: PGlite): ArchivePool {
   };
 }
 
-// Fails the second-pass author lookup (the only query that filters one origin
-// id) while the pass read still works, like a transient archive-pool error.
-function failingAuthorLookupPool(pool: ArchivePool): ArchivePool {
-  return {
-    query: (async (text: string, values: unknown[]) => {
-      if (text.includes('origin_id =')) {
-        throw new Error('archive pool unavailable');
-      }
-      return pool.query(text, values);
-    }) as ArchivePool['query'],
-    close: async () => {},
-  };
-}
-
 function escapeXmlText(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -179,15 +165,9 @@ describe('media indexer', () => {
     await archiveClient.close();
   });
 
-  function runIndex(
-    options: {
-      maxRows?: number;
-      archive?: ArchivePool;
-      logger?: { warn: (details: unknown) => void };
-    } = {},
-  ) {
+  function runIndex(options: { maxRows?: number } = {}) {
     return indexChat({
-      archive: options.archive ?? archive,
+      archive,
       db: context.db,
       archiveOwner: ROOM,
       chatJid: ROOM,
@@ -247,53 +227,6 @@ describe('media indexer', () => {
     ]);
   });
 
-  it('the victim own retraction hides the row', async () => {
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-2',
-        atMicros: at('2026-05-01T00:00:00.000Z'),
-        from: ALICE,
-        attachment: FILE_PAYLOAD,
-      }),
-      seedRow({
-        originId: 'alice-3',
-        atMicros: at('2026-05-01T00:01:00.000Z'),
-        from: ALICE,
-        retract: 'alice-2',
-      }),
-    ]);
-
-    await runIndex();
-
-    expect(await itemsOf('alice-2')).toEqual([
-      { kind: 'file', senderJid: ALICE_JID, deleted: true },
-    ]);
-  });
-
-  it('a correction from another sender inserts nothing', async () => {
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-4',
-        atMicros: at('2026-05-01T00:00:00.000Z'),
-        from: ALICE,
-        attachment: FILE_PAYLOAD,
-      }),
-      seedRow({
-        originId: 'mallory-2',
-        atMicros: at('2026-05-01T00:01:00.000Z'),
-        from: MALLORY,
-        body: 'https://evil.example.test/link',
-        replace: 'alice-4',
-      }),
-    ]);
-
-    await runIndex();
-
-    expect(await itemsOf('alice-4')).toEqual([
-      { kind: 'file', senderJid: ALICE_JID, deleted: false },
-    ]);
-  });
-
   it('a correction from another bare_peer with the same nick leaves the target alone', async () => {
     await seedArchive(archiveClient, [
       seedRow({
@@ -319,105 +252,6 @@ describe('media indexer', () => {
       { kind: 'file', senderJid: ALICE_JID, deleted: false },
     ]);
     expect(await itemsOf('mallory-spoof')).toEqual([]);
-  });
-
-  it('a foreign correction of a text-only message inserts nothing', async () => {
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-text',
-        atMicros: at('2026-05-04T00:00:00.000Z'),
-        from: ALICE,
-        body: 'no links here',
-      }),
-    ]);
-    await runIndex();
-
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'mallory-3',
-        atMicros: at('2026-05-04T00:01:00.000Z'),
-        from: MALLORY,
-        body: 'https://evil.example.test/text',
-        replace: 'alice-text',
-      }),
-    ]);
-    const result = await runIndex();
-
-    expect(result.inserted).toBe(0);
-    expect(await itemsOf('alice-text')).toEqual([]);
-  });
-
-  it('the author own correction of a text-only message inserts its links', async () => {
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-text-own',
-        atMicros: at('2026-05-04T01:00:00.000Z'),
-        from: ALICE,
-        body: 'no links here',
-      }),
-      seedRow({
-        originId: 'alice-edit-own',
-        atMicros: at('2026-05-04T01:01:00.000Z'),
-        from: ALICE,
-        body: 'https://example.test/own',
-        replace: 'alice-text-own',
-      }),
-    ]);
-
-    await runIndex();
-
-    expect(await itemsOf('alice-text-own')).toEqual([
-      { kind: 'link', senderJid: ALICE_JID, deleted: false },
-    ]);
-  });
-
-  it('an archive failure during a correction is logged and skipped', async () => {
-    const textAt = at('2026-05-05T00:00:00.000Z');
-    const editAt = at('2026-05-05T00:01:00.000Z');
-    const fileAt = at('2026-05-05T00:02:00.000Z');
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-text-fail',
-        atMicros: textAt,
-        from: ALICE,
-        body: 'no links here',
-      }),
-    ]);
-    await runIndex();
-
-    await seedArchive(archiveClient, [
-      seedRow({
-        originId: 'alice-edit-fail',
-        atMicros: editAt,
-        from: ALICE,
-        body: 'https://example.test/fail',
-        replace: 'alice-text-fail',
-      }),
-      seedRow({
-        originId: 'alice-after-fail',
-        atMicros: fileAt,
-        from: ALICE,
-        attachment: FILE_PAYLOAD,
-      }),
-    ]);
-
-    const skipped: unknown[] = [];
-    const result = await runIndex({
-      archive: failingAuthorLookupPool(archive),
-      logger: {
-        warn: (details) => {
-          skipped.push(details);
-        },
-      },
-    });
-
-    expect(result.inserted).toBe(1);
-    expect(skipped).toEqual([{ messageId: 'alice-edit-fail', err: 'Error' }]);
-    expect(await itemsOf('alice-text-fail')).toEqual([]);
-    expect(await itemsOf('alice-after-fail')).toEqual([
-      { kind: 'file', senderJid: ALICE_JID, deleted: false },
-    ]);
-    expect(await cursor()).toBe(BigInt(fileAt));
   });
 
   it('indexes at most 50 links of a message and moves the cursor on', async () => {

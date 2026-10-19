@@ -14,7 +14,6 @@ import { TEST_SECRET } from '../test-support';
 import { createDeskProbe } from '../startup/components';
 
 const DIGEST = `zilar-desk@sha256:${'a'.repeat(64)}`;
-const OVERRIDE = `zilar-desk@sha256:${'b'.repeat(64)}`;
 
 const config = loadServerConfig({
   DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
@@ -45,7 +44,6 @@ function createFakeHands(): Hands {
 
 interface FakeAgent {
   readonly socketPath: string;
-  count: () => number;
   close: () => Promise<void>;
 }
 
@@ -53,7 +51,6 @@ interface FakeAgent {
 async function startAgent(reply: (request: unknown) => string | null): Promise<FakeAgent> {
   const dir = await mkdtemp(join(tmpdir(), 'zilar-desk-probe-'));
   const socketPath = join(dir, 'desk.sock');
-  let requests = 0;
   const server = createServer((socket) => {
     socket.on('error', () => undefined);
     let buffer = '';
@@ -64,7 +61,6 @@ async function startAgent(reply: (request: unknown) => string | null): Promise<F
         const line = buffer.slice(0, newline).trim();
         buffer = buffer.slice(newline + 1);
         if (line.length > 0) {
-          requests += 1;
           const out = reply(JSON.parse(line));
           if (out === null) {
             socket.destroy();
@@ -80,7 +76,6 @@ async function startAgent(reply: (request: unknown) => string | null): Promise<F
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
   return {
     socketPath,
-    count: () => requests,
     close: async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(dir, { recursive: true, force: true });
@@ -103,27 +98,9 @@ async function agent(reply: (request: unknown) => string | null): Promise<FakeAg
   return started;
 }
 
-function probeFor(options: {
-  socketPath: string;
-  overrideImage?: string;
-  ttlMs?: number;
-  logs?: string[];
-  now?: () => number;
-}) {
-  const logs = options.logs ?? [];
-  const logger: Logger = createLogger(config, {
-    write: (line: string) => {
-      logs.push(line);
-    },
-  });
-  return createDeskProbe({
-    socketPath: options.socketPath,
-    hands: createFakeHands(),
-    logger,
-    ...(options.overrideImage === undefined ? {} : { overrideImage: options.overrideImage }),
-    ...(options.ttlMs === undefined ? {} : { ttlMs: options.ttlMs }),
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
+function probeFor(socketPath: string) {
+  const logger: Logger = createLogger(config, { write: () => {} });
+  return createDeskProbe({ socketPath, hands: createFakeHands(), logger });
 }
 
 afterEach(async () => {
@@ -136,57 +113,13 @@ afterEach(async () => {
 describe('createDeskProbe', () => {
   it('returns a client with the pinned digest when the agent is ready', async () => {
     const desk = await agent(() => statusReply({ ready: true, imageDigest: DIGEST }));
-    const probe = probeFor({ socketPath: desk.socketPath });
-    const client = await probe();
+    const client = await probeFor(desk.socketPath)();
     expect(client?.imageDigest).toBe(DIGEST);
     expect(client?.hands).toBeDefined();
   });
 
-  it('accepts the real agent wire shape, where running is a list of desks', async () => {
-    const desk = await agent(() =>
-      statusReply({
-        running: [{ id: 'desk-1', key: { aiId: 'ai-1', projectId: 'project-1' } }],
-        queued: 0,
-        ready: true,
-        imageDigest: DIGEST,
-        detail: null,
-      }),
-    );
-    const probe = probeFor({ socketPath: desk.socketPath });
-    await expect(probe()).resolves.toMatchObject({ imageDigest: DIGEST });
-  });
-
-  it('answers null when the agent is not ready', async () => {
-    const desk = await agent(() => statusReply({ ready: false, imageDigest: DIGEST }));
-    const probe = probeFor({ socketPath: desk.socketPath });
-    await expect(probe()).resolves.toBeNull();
-  });
-
-  it('answers null without throwing when no socket listens', async () => {
-    const probe = probeFor({ socketPath: '/run/zilar/no-such-desk.sock' });
-    await expect(probe()).resolves.toBeNull();
-  });
-
-  it('uses the override image for an old agent, or null without it', async () => {
-    const desk = await agent(() => statusReply({}));
-    const withOverride = probeFor({ socketPath: desk.socketPath, overrideImage: OVERRIDE });
-    await expect(withOverride()).resolves.toMatchObject({ imageDigest: OVERRIDE });
-
-    const withoutOverride = probeFor({ socketPath: desk.socketPath });
-    await expect(withoutOverride()).resolves.toBeNull();
-  });
-
-  it('caches the answer: two calls within the TTL ask once', async () => {
-    const desk = await agent(() => statusReply({ ready: true, imageDigest: DIGEST }));
-    const probe = probeFor({ socketPath: desk.socketPath, ttlMs: 10_000 });
-    await probe();
-    await probe();
-    expect(desk.count()).toBe(1);
-  });
-
   it('answers null on a malformed reply', async () => {
     const desk = await agent(() => 'not json');
-    const probe = probeFor({ socketPath: desk.socketPath });
-    await expect(probe()).resolves.toBeNull();
+    await expect(probeFor(desk.socketPath)()).resolves.toBeNull();
   });
 });

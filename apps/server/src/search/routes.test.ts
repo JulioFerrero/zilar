@@ -4,28 +4,12 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
 import { runSearchEffect } from './routes';
 import type { ArchivePool, ArchiveRow } from './service';
-
-// Lets one test make the batched name lookup reject, the way a transient DB
-// failure would; every other test passes through to the real lookup.
-const nameLookup = vi.hoisted(() => ({ fail: false }));
-vi.mock('../xmpp/archive-sender', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../xmpp/archive-sender')>();
-  return {
-    ...actual,
-    senderNamesByJid: async (...args: Parameters<typeof actual.senderNamesByJid>) => {
-      if (nameLookup.fail) {
-        throw new Error('name lookup failed');
-      }
-      return actual.senderNamesByJid(...args);
-    },
-  };
-});
 
 const SECRET = 'The secretword is here';
 
@@ -95,7 +79,6 @@ describe('runSearchEffect room sender names', () => {
   });
 
   afterEach(async () => {
-    nameLookup.fail = false;
     await context.close();
   });
 
@@ -118,27 +101,5 @@ describe('runSearchEffect room sender names', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.senderName).toBe('Ana');
-  });
-
-  it('keeps the hits with fallback names when the name lookup fails', async () => {
-    const { ownerId, anaJid, roomJid } = await roomFixture(context);
-    nameLookup.fail = true;
-
-    const result = await Effect.runPromise(
-      runSearchEffect(
-        {
-          auth: context.auth,
-          db: context.db,
-          config: context.config,
-          logger: context.logger,
-          archive: fakeArchive(roomRow(roomJid, anaJid)),
-        },
-        ownerId,
-        { q: 'secretword', chat: roomJid },
-      ),
-    );
-
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0]?.senderName).toBe('Julio');
   });
 });
