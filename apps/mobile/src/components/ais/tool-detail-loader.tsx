@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi, type makeToolsApi, failureOf } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import type { ToolDetail, ToolRun, ToolRunResult, ToolVersion } from '@zilar/api-contract';
 

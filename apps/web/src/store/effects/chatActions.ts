@@ -6,13 +6,8 @@ import type {
   VoiceRecording,
 } from '../store';
 import type { StoreCtx } from './ctx';
-import {
-  loadOlder as loadOlderInStore,
-  openAtMessage as openAtMessageEffect,
-  openChat as openChatInStore,
-  openHistory as openHistoryEffect,
-  scheduleChatsRefresh,
-} from './history';
+import { openAtMessage, openChat, scheduleChatsRefresh } from './history';
+import { loadOlder, openHistory } from '@zilar/client-core/store';
 import { resetUserState, retryBoot, signOutStore, startStore, stopStore } from './lifecycle';
 import type { StoreLocals } from './locals';
 import {
@@ -35,7 +30,7 @@ import {
   setPinned,
   setUnreadMark,
 } from './prefs';
-import { recordRead } from './reads';
+import { recordRead } from '@zilar/client-core/store';
 import type { Lifetime } from './runtime';
 import type { UiMessage } from '@zilar/chat-core';
 import type { SetState } from '@zilar/client-core';
@@ -213,7 +208,7 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
       scheduleChatsRefresh(ctx);
     },
     openChat: (chatId) => {
-      openChatInStore(ctx, chatId);
+      openChat(ctx, chatId);
     },
     closeChat: (chatId) => {
       if (get().activeChatId === chatId) {
@@ -229,18 +224,17 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
       rt.runDetached(retryBoot(ctx));
     },
     retryHistory: (chatId) => {
-      rt.fork(openHistoryEffect(ctx, chatId));
+      rt.fork(openHistory(ctx, chatId));
     },
     loadOlder: (chatId) => {
-      loadOlderInStore(ctx, chatId);
+      loadOlder(ctx, chatId);
     },
     loadPins: (chatId) => rt.runPromise(refreshPinsForEffect(ctx, chatId)),
     loadChatMedia: (chatId, tab, before) => rt.runPromise(loadChatMedia(ctx, chatId, tab, before)),
     pinMessage: (chatId, messageId) => rt.runPromise(pinMessage(ctx, chatId, messageId)),
     unpinMessage: (chatId, pinId) => rt.runPromise(unpinMessage(ctx, chatId, pinId)),
     setPinsPanel: (chatId) => set({ pinsPanel: chatId === undefined ? undefined : { chatId } }),
-    openAtMessage: (chatId, messageId) =>
-      rt.runPromise(openAtMessageEffect(ctx, chatId, messageId)),
+    openAtMessage: (chatId, messageId) => rt.runPromise(openAtMessage(ctx, chatId, messageId)),
     react: (chatId, messageId, emoji) => {
       react(ctx, chatId, messageId, emoji);
     },

@@ -8,10 +8,10 @@ import {
   DELIVERED_NAMESPACE,
   ROSTER_NAMESPACE,
 } from './namespaces';
+import type { DeliveredMarkEvent } from './types-delivered';
 import type {
   ChatKind,
   ChatMessage,
-  DeliveredMarkEvent,
   DisplayedEvent,
   Mention,
   RosterEvent,
@@ -40,8 +40,6 @@ import {
 } from './stanza/parse-context';
 import { conversationJid, fromNick, messageId, resolveSender } from './stanza/resolve-sender';
 import { CHAT_STATES } from './stanza/reactions';
-
-export { sanitizeReactions, type ReplyRef } from './stanza/reactions';
 
 export * from './stanza/build-outgoing';
 export * from './stanza/build-control';
@@ -128,8 +126,6 @@ function isTrustedRosterFrom(
   return bare === domain || (me !== undefined && bare === me);
 }
 
-export { resolveSender } from './stanza/resolve-sender';
-
 export {
   parseReactions,
   parseCorrection,
@@ -137,8 +133,6 @@ export {
   parseForward,
   originIdOf,
 } from './stanza/parse-fields';
-
-export { albumElement, parseAlbum, ALBUM_ID_MAX, ALBUM_MAX } from './stanza/album';
 
 // Message bodies are text that can be large. Anything above 64 KiB of UTF-8 is
 // truncated on a code point boundary so a hostile peer cannot exhaust memory.

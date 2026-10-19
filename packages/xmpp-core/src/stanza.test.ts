@@ -23,9 +23,9 @@ import {
   parseUploadSlot,
   MAX_STATUS_CHARS,
   RETRACTION_FALLBACK_BODY,
-  sanitizeReactions,
   type ParseContext,
 } from './stanza';
+import { sanitizeReactions } from './stanza/reactions';
 import type { Occupant } from './types';
 import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './stanza';
 import { createPresence } from './core-effect/presence';

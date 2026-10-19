@@ -6,8 +6,8 @@
 // 6to4, Teredo refused), then the request is pinned to the validated IP with
 // SNI/`Host` kept. Redirects are never followed; a 3xx is a result the model can
 // retry with the new URL.
-import { lookup as dnsLookup } from 'node:dns/promises';
-import { request as httpsRequest } from 'node:https';
+import { lookup } from 'node:dns/promises';
+import { request } from 'node:https';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
@@ -59,7 +59,7 @@ export function fetchPinned(
         resume(Effect.fail(classifyFetchError(error)));
       }
     };
-    const req = httpsRequest(
+    const req = request(
       {
         host: address,
         port: 443,
@@ -230,7 +230,7 @@ type GuardedGetError =
   | UnsupportedContentType;
 
 const resolveAll: DnsLookup = async (name) => {
-  const records = await dnsLookup(name, { all: true });
+  const records = await lookup(name, { all: true });
   return records.map((record) => record.address);
 };
 

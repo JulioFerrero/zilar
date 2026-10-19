@@ -5,12 +5,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { manipulateAsync, SaveFormat, type Action, type ImageResult } from 'expo-image-manipulator';
 
-import {
-  extensionForMime,
-  MAX_ATTACHMENT_BYTES,
-  mimeForAsset,
-  mimeForFileName,
-} from './attachments';
+import { extensionForMime, mimeForAsset, mimeForFileName } from './attachments';
+import { MAX_ATTACHMENT_BYTES } from '@zilar/chat-core';
 import type { AttachmentPicker, PickedFile, PickResult } from './attachment-ports';
 import {
   CAMERA_DENIED_MESSAGE,

@@ -13,7 +13,8 @@ import {
 } from '@/lib/api';
 import type { StoreCtx } from './ctx';
 import { actionStore, applyTopicRow, joinRoomQuietly } from './groupShared';
-import { openHistory, refreshChats, refreshChatsOrThrow } from './history';
+import { refreshChats, refreshChatsOrThrow } from './history';
+import { openHistory } from '@zilar/client-core/store';
 import { Ports } from './ports';
 
 // Resolves General from the painted list, refreshing it first.

@@ -1,5 +1,5 @@
 import type { ServerCore } from '../app/deps';
-import { request as httpsRequest } from 'node:https';
+import { request } from 'node:https';
 import { Effect } from 'effect';
 
 import type { GifProvider } from './provider';
@@ -43,7 +43,7 @@ export function fetchProxiedMediaEffect(
       resume(effect);
     };
 
-    const req = httpsRequest(
+    const req = request(
       {
         host: address,
         port: options.port ?? 443,

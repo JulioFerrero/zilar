@@ -46,7 +46,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import type { ChatSummary, ReplyRef } from '@zilar/chat-core';
 import { failureOf } from '@zilar/client-core';
 

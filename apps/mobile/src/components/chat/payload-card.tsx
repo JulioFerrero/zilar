@@ -31,7 +31,8 @@ import type { ApprovalDecision, ApprovalStatus, PublicApproval } from '@zilar/ap
 import { applyDecision, loadApprovalCardState, type ApprovalCardState } from '@/lib/approval-state';
 import { ACCENT, DANGER, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { bubbleStyle } from '@/lib/depth';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import {
   answeredOption,

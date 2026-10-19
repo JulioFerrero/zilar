@@ -7,8 +7,9 @@ import type { ChatPref, GroupDetail } from '@/lib/api';
 import { sortByRecency, summariesFor } from './chatRows';
 import type { StoreCtx } from './ctx';
 import { ensureGroupMembers } from './groupMembers';
-import { openHistory } from './history';
-import { Ports, type ApiClient } from './ports';
+import { openHistory } from '@zilar/client-core/store';
+import { Ports } from './ports';
+import { type ApiClient } from './portTypes';
 import { applyPrefsWithUnreadMark } from './prefs';
 import { fromPromise, prefsByJid } from './util';
 

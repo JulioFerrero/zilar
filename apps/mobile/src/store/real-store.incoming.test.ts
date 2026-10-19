@@ -5,7 +5,8 @@ import { createFakeXmppCore, type FakeXmppCore } from '@zilar/xmpp-core/testing'
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
-import { createRealChatStore, type AppStateLike } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type AppStateLike } from './effects/ports';
 import { fakeApi } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 

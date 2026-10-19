@@ -1,7 +1,7 @@
 // Step order is security-relevant: session, provider check (501), then the limiter, then
 // the 400 query decode, so an invalid query still spends budget.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { lookup as dnsLookup } from 'node:dns/promises';
+import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Layer, Option, Schema, Exit } from 'effect';
 import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -112,7 +112,7 @@ const GifsApi = HttpApi.make('gifs').add(GifsGroup);
 async function resolvePublicAddress(host: string): Promise<string | undefined> {
   let addresses: string[];
   try {
-    const records = await dnsLookup(host, { all: true });
+    const records = await lookup(host, { all: true });
     addresses = records.map((record) => record.address);
   } catch {
     return undefined;

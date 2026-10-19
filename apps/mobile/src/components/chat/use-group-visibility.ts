@@ -6,7 +6,8 @@ import { groupAction, rawCall } from '@/components/chat/group-action';
 import { visibilitySaveError } from '@/components/chat/visibility-sheet';
 import { makeDirectoryApi, type GroupVisibility } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
 

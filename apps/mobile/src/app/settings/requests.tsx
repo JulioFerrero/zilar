@@ -20,7 +20,8 @@ import {
   type RequestAction,
 } from '@/components/contacts/requests';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import type { ContactRequestView } from '@zilar/client-core';
 
 type PageStatus = 'loading' | 'ready' | 'error';

@@ -13,8 +13,6 @@ import { archiveMarkOf, createdAtOf, previewMessageOf, unreadOf } from './row-he
 import type { ServerRowFields } from './row-helpers';
 import { orderChatRows } from './rows';
 import { chatEntryTopics, summaryForTopic } from './topic-rows';
-
-export type { ServerRowFields } from './row-helpers';
 export { previewMessageOf, chatEntryTopics };
 
 function previewAt(message: UiMessage | undefined): number {

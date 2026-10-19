@@ -3,14 +3,14 @@ import { createCoreLocals, type CoreLocals } from '@zilar/client-core/store';
 import type { PickedFile } from '../../lib/attachment-ports';
 import type { GroupDetail } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
-import type { CustomGroupRole } from '../../lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import type { ApproverRole, TopicRole } from '../../lib/topics-api';
 import type { RecordedVoice } from '../../lib/voice';
 
 export interface StoreLocals extends CoreLocals {
   groupDetails: Map<string, GroupDetail>;
   loadingGroupDetails: Set<string>;
-  groupRolesById: Map<string, CustomGroupRole[]>;
+  groupRolesById: Map<string, GroupRole[]>;
   loadingGroupRoles: Set<string>;
   topicRolesById: Map<string, { roles: TopicRole[]; approverRole: ApproverRole | null }>;
   loadingTopicRoles: Set<string>;

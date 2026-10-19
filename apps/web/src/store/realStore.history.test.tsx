@@ -3,7 +3,9 @@ import type { ChatMessage } from '@zilar/xmpp-core';
 import type { ChatEntry } from '@/lib/api';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush } from '@/test/wait';
-import { createRealChatStore, type RealStoreDeps, type StorageLike } from './realStore';
+import { createRealChatStore } from './realStore';
+import { type RealStoreDeps } from './effects/ports';
+import { type StorageLike } from './effects/portTypes';
 
 // History through the real web store: the first page, older pages and the
 // topic-gone case (T-0912, written on the old code before the move to

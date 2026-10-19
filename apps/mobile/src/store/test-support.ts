@@ -2,7 +2,7 @@
 import { vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
-import type { AppStateLike } from './real-store';
+import type { AppStateLike } from './effects/ports';
 
 /** An app that stays in the foreground and never changes state. */
 export function fakeAppState(): AppStateLike {

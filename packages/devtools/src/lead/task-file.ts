@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Result, Schema } from 'effect';
-import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
+import { isFreePaused, paidStep } from './free-pause.js';
+import { isFreeListing } from './models.js';
 import { isGoPaused, withoutPausedGoModel, type ModelRef } from './go-pause.js';
 import { freeSessionInUse, loadState, type FreeSessionScope } from './state.js';
 import type { StateFile } from './types.js';

@@ -16,7 +16,7 @@ import {
   type SendCtx,
 } from '@zilar/client-core/store';
 
-import { MAX_ATTACHMENT_BYTES } from '../../lib/attachments';
+import { MAX_ATTACHMENT_BYTES } from '@zilar/chat-core';
 import { validateRecording, voiceSendRefusalMessage, type RecordedVoice } from '../../lib/voice';
 import type { ChatStoreState } from '../types';
 import type { StoreCtx } from './runtime';

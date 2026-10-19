@@ -67,10 +67,6 @@ export const readLastRead = (
   );
 };
 
-export { flushOnline } from './online';
-export { onAuthFailed, type SessionCheck } from './session-check';
-export { CONNECT_RETRY_DELAYS_MS } from './connect';
-
 /** The boot in flight: a resume waits for it. */
 export interface LifecycleBoot {
   readonly session: Fibers<never>;

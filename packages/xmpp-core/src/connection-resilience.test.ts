@@ -10,7 +10,8 @@ import {
 import { ALBUM_NAMESPACE, PING_NAMESPACE } from './namespaces';
 import { SM_ENABLE_TIMEOUT_MS } from './core-effect/config';
 import { STREAM_MANAGEMENT_NS } from './core-effect';
-import { createCore, type ClientOptions } from './client';
+import { createCore } from './client';
+import { type ClientOptions } from './core-effect/config';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from './types';
 
 type FakeClient = XmppClient & {

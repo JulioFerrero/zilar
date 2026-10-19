@@ -57,7 +57,8 @@ import {
 import { defaultAttachmentPort, type AttachmentPort, cleanFilename } from '@/lib/attachments';
 import { authClient } from '@/lib/auth';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
-import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
+import { dismissChatNotifications, updateAppBadge } from '@/lib/push';
+import { totalBadgeUnread } from '@zilar/chat-core';
 import { writeStoredDevice } from '@/lib/push/deviceStorage';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice/convert';
@@ -111,8 +112,6 @@ const defaultSessionGoneStorage = (): SessionGoneStorage => {
     return null;
   }
 };
-
-export type { ApiClient, StorageLike } from './portTypes';
 
 // effect-plain: the browser EventSource adapter behind the drafts port, a callback transport.
 

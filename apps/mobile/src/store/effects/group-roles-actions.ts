@@ -1,13 +1,13 @@
 import { Effect } from 'effect';
-import { changeTopic as changeTopicCore, type GroupActionStore } from '@zilar/client-core/store';
+import { changeTopic, type GroupActionStore } from '@zilar/client-core/store';
 
 import type { ApproverRole, SetTopicRolesInput, TopicRole } from '../../lib/topics-api';
-import type { CustomGroupRole } from '../../lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import type { ChatStoreState } from '../types';
 import { lift, type StoreCtx } from './runtime';
 
 export interface GroupRolesHelpers {
-  readonly groupRolesById: Map<string, CustomGroupRole[]>;
+  readonly groupRolesById: Map<string, GroupRole[]>;
   readonly topicRolesById: Map<string, { roles: TopicRole[]; approverRole: ApproverRole | null }>;
   bumpRevision(): void;
   ensureGroupRoles(groupId: string, force?: boolean): Effect.Effect<void, unknown>;
@@ -104,7 +104,7 @@ export function makeGroupRolesActions(
       ),
     setTopicRoles: (chatId, input) =>
       ctx.run(
-        changeTopicCore(
+        changeTopic(
           ctx.coreCtx,
           actionStore(),
           chatId,

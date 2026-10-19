@@ -35,8 +35,6 @@ import { createLifecycle, type LifecycleApi } from './core-effect/lifecycle';
 import { createOperations } from './core-effect/operations';
 import { createPresence } from './core-effect/presence';
 
-export type { ClientFactory, ClientOptions, CoreDependencies } from './core-effect/config';
-
 // `rebound` joins the map through interface merging: a fresh session bound (not a
 // resume), so stanzas sent on the previous stream may be lost and the store resends.
 declare module './events' {

@@ -9,7 +9,7 @@ import {
   type StateFile,
   type TaskRecord,
 } from './types.js';
-import { isFreeListing } from './free-pause.js';
+import { isFreeListing } from './models.js';
 import { FREE_MUSE } from './models.js';
 
 // The state file lives outside the repo so worktree removals and rebases can

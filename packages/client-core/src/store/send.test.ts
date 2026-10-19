@@ -7,21 +7,14 @@ import { handleMessage } from './incoming';
 import { createMessageLedger } from './ledger';
 import { makeLifetime } from './lifetime';
 import { testCorePorts } from './test-support';
-import {
-  SEND_TIMEOUT_MS,
-  ackText,
-  deleteFailedMessage,
-  forwardMessages,
-  retrySticker,
-  retryText,
-  sendAttachment,
-  sendSticker,
-  sendText,
-  sendVoice,
-  unackText,
-  type SendCtx,
-  type SendRun,
-} from './send';
+import { deleteFailedMessage, type SendCtx, type SendRun } from './send';
+import { SEND_TIMEOUT_MS } from './send/pipeline';
+import { ackText, sendText, unackText } from './send/text';
+import { forwardMessages } from './send/forward';
+import { retrySticker, sendSticker } from './send/sticker';
+import { retryText } from './send/retry-text';
+import { sendAttachment } from './send/attachment';
+import { sendVoice } from './send/voice';
 import { createTextOutbox, flushOutbox, outboxRebound, OUTBOX_MAX_WAIT_MS } from './send/outbox';
 import { flushOnline } from './online';
 import type { HistoryCtx } from './history';

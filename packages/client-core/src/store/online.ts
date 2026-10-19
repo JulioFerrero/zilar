@@ -2,7 +2,8 @@ import { Effect } from 'effect';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { fromPromise } from './ctx';
 import { flushPending, type HistoryCtx } from './history';
-import { flushOutbox, type SendCtx } from './send';
+import { type SendCtx } from './send';
+import { flushOutbox } from './send/outbox';
 import { outboxRebound } from './send/outbox';
 
 /** What `wake()` reported, from the core's own signature: the package root exports

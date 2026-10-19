@@ -2,8 +2,6 @@ import { runWeb } from '@/lib/effect/runtime';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 
-export { totalBadgeUnread } from '@zilar/chat-core';
-
 // Everything here only touches browser APIs, read through narrow injectable surfaces for tests.
 
 interface BadgeSurface {

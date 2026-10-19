@@ -34,9 +34,10 @@ import { Effect } from 'effect';
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import type { GroupMember } from '@/lib/chat-api';
 import { useQuery } from '@/lib/effect/use-query';
-import type { CustomGroupRole } from '@/lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 import { mayCreateTopic } from '@zilar/chat-core';
 
@@ -85,7 +86,7 @@ function useGroupRoles(groupId: string, members: readonly GroupMember[]) {
     reloadRoles();
   };
 
-  const toggleRoleMember = (role: CustomGroupRole, userId: string): Promise<void> => {
+  const toggleRoleMember = (role: GroupRole, userId: string): Promise<void> => {
     const held = role.members.some((holder) => holder.userId === userId);
     const userIds = held
       ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)

@@ -12,7 +12,8 @@ import { AppState } from 'react-native';
 import { useSession } from '@/auth/session';
 import { ENV_MOCK, ENV_NODE_ENV, isMockMode, mockToken } from '@/mock/gate';
 
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type AppStateLike, type RealStoreDeps } from './effects/ports';
 import { makeChatApi } from '../lib/chat-api';
 import { makeInviteLinksApi } from '../lib/invite-links-api';
 import { makeRolesApi } from '../lib/roles-api';

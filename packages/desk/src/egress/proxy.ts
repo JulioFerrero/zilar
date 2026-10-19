@@ -7,8 +7,8 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http';
-import { lookup as dnsLookup } from 'node:dns/promises';
-import { connect as netConnect, isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
+import { connect, isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { classifyIp, isIpLiteral } from './ip-guard';
 import type { EgressLog } from './log';
@@ -48,7 +48,7 @@ interface PolicyOptions {
 }
 
 const resolveAll: ResolveHost = async (host) => {
-  const records = await dnsLookup(host, { all: true });
+  const records = await lookup(host, { all: true });
   return records.map((record) => record.address);
 };
 
@@ -303,7 +303,7 @@ async function handleConnect(
     sendRaw(clientSocket, 403, 'Forbidden');
     return;
   }
-  const upstream = netConnect({ host: decision.address, port });
+  const upstream = connect({ host: decision.address, port });
   let bytes = 0;
   let logged = false;
   const done = (allowed: boolean, reason: string): void => {

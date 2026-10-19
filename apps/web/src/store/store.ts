@@ -291,7 +291,5 @@ export type ChatStoreState = ChatStore & {
   activeChatId: string | undefined;
   groupInfos: Record<string, GroupDetail>;
 };
-
-export { matchesFolder, visibleChats } from './selectors';
 export { MUTE_DURATIONS, applyChatPrefs, effectivePrefFor, mutedUntilFor, sortPinnedFirst };
 export type { MuteDurationId };

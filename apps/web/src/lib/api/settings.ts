@@ -13,9 +13,6 @@ import { request, uploadBytes } from './http';
 
 // Bot tokens and mail keys are never returned; only configured and source say whether one is set.
 export type { IntegrationsStatus, PublicAuditEntry };
-export type { AuditScope, ListAuditInput, ListAuditPage } from '@zilar/client-core';
-export type { SaveEmailSettingsInput, SaveVoiceTranscriptionInput } from '@zilar/client-core';
-
 export const {
   getIntegrationsStatus,
   getVoiceTranscriptionStatus,

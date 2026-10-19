@@ -17,7 +17,8 @@ import { API_URL } from '@/lib/auth';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { createApiClient } from '@/lib/effect/api-client';
 import { fromApi, interruptFiber, type SetPushPair } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { readLastPushReceived } from '@/lib/push/last-received';
 import {
   NATIVE_PUSH_USER_AGENT,

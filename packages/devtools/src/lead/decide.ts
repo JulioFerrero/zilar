@@ -1,4 +1,5 @@
-import { classifyPermission, type PermissionRequest } from './policy.js';
+import { classifyPermission } from './policy/classify.js';
+import { type PermissionRequest } from './policy/types.js';
 import { fallbackModel, FREE_MUSE } from './fallback.js';
 import { modelLabel } from './models.js';
 import type { SessionState } from './session.js';

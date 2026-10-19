@@ -38,8 +38,6 @@ export const {
 } = api;
 
 // Dates arrive as ISO strings and stay strings, matching ApprovalRequest.expires_at.
-
-export type { ApprovalDecision, ApprovalStatus } from '@zilar/api-contract';
 export type { ApprovalRule, PublicApproval };
 
 const approvals = makeApprovalsApi(callApi);

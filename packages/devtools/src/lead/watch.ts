@@ -3,7 +3,7 @@
 
 import path from 'node:path';
 import React from 'react';
-import { render as renderInk } from 'ink';
+import { render } from 'ink';
 import { OpencodeCliClient } from './client.js';
 import { loadGitCache, saveGitCache } from './collect-snapshot.js';
 import { RealGitRunner } from './git.js';
@@ -12,10 +12,6 @@ import { stateFilePath } from './state.js';
 import { buildView } from './watch/collect.js';
 import { formatClock } from './watch/format.js';
 import type { WatchEntry, WatchView } from './watch/view.js';
-
-export type { ChangedFile, FileKind } from './watch/changed-files.js';
-export { parseChangedFiles } from './watch/changed-files.js';
-export { liveStep } from './watch/live-step.js';
 export {
   formatClock,
   formatContext,
@@ -23,13 +19,6 @@ export {
   modelLabel,
   sparkline,
 } from './watch/format.js';
-export type { SessionSpeed } from './watch/speed.js';
-export { sessionSpeed } from './watch/speed.js';
-export type { WatchEntry, WatchView } from './watch/view.js';
-export { parseWatchView } from './watch/view.js';
-export type { BoardTaskFacts } from './watch/collect.js';
-export { boardModelFor, boardTaskEntry, buildView, collectFiles } from './watch/collect.js';
-
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /** Widths below this drop the tracker bars, the sparkline and file names. */
@@ -313,7 +302,7 @@ export async function runWatch(options?: { noIcons?: boolean }): Promise<void> {
     mergedToday: 0,
     entries: [],
   };
-  const app = renderInk(
+  const app = render(
     React.createElement(WatchLive, { initial, icons: iconsEnabled(options?.noIcons ?? false) }),
     { alternateScreen: true },
   );

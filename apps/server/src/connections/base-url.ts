@@ -1,7 +1,7 @@
 // effect-plain: pure URL and DNS checks over an injected Promise resolver; no Effect
 // The shape check at save, and the DNS check that runs again on every request
 // (in `pinned-fetch.ts`), so a name that later resolves private is refused.
-import { lookup as dnsLookup } from 'node:dns/promises';
+import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
 
@@ -9,7 +9,7 @@ import { classifyIp, isIpLiteral } from '@zilar/desk/egress/ip-guard';
 export type ResolveHost = (host: string) => Promise<readonly string[]>;
 
 export const resolveAll: ResolveHost = async (host) => {
-  const records = await dnsLookup(host, { all: true });
+  const records = await lookup(host, { all: true });
   return records.map((record) => record.address);
 };
 

@@ -4,8 +4,6 @@ import { writeChatListCache } from '../chatListCache';
 import { syncBadgeInBackground } from './badge';
 import type { StoreCtx } from './ctx';
 
-export { persistLastRead, recordRead } from '@zilar/client-core/store';
-
 export function saveChatList(ctx: StoreCtx): void {
   const state = ctx.get();
   if (state.chatsState === 'ready') {

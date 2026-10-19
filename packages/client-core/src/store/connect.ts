@@ -6,7 +6,8 @@ import { handleDeliveredMark } from './delivered';
 import { flushPending } from './history';
 import { loadPreviews } from './previews';
 import { flushOnline, markReboundOutbox } from './online';
-import { ackText, unackText, type SendCtx } from './send';
+import { type SendCtx } from './send';
+import { ackText, unackText } from './send/text';
 import {
   handleDisplayed,
   handleMessage,

@@ -13,7 +13,7 @@ import type { Me, GroupDetail } from '../lib/chat-api';
 import type { PickedFile } from '../lib/attachment-ports';
 import type { PutChatPrefInput } from '../lib/chat-prefs-api';
 import type { CreateChatFolderInput, PatchChatFolderInput } from '../lib/chat-folders-api';
-import type { Pin } from '../lib/pins-api';
+import type { Pin } from '@zilar/api-contract';
 import type {
   CreatedInviteLink,
   CreateGroupInviteLinkInput,
@@ -21,7 +21,7 @@ import type {
   JoinPreview,
   JoinResult,
 } from '../lib/invite-links-api';
-import type { CustomGroupRole } from '../lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import type {
   ApproverRole,
   CreateTopicInput,
@@ -112,17 +112,13 @@ export interface ChatStoreGroups {
   previewJoinLink: (token: string) => Promise<JoinPreview>;
   joinByLink: (token: string) => Promise<JoinResult>;
   /** Keyed by **group id**; every member reads it, only owners/admins write it. */
-  groupRoles: (groupId: string) => CustomGroupRole[] | undefined;
+  groupRoles: (groupId: string) => GroupRole[] | undefined;
   refreshGroupRoles: (groupId: string) => Promise<void>;
-  createGroupRole: (groupId: string, name: string) => Promise<CustomGroupRole>;
-  renameGroupRole: (groupId: string, roleId: string, name: string) => Promise<CustomGroupRole>;
+  createGroupRole: (groupId: string, name: string) => Promise<GroupRole>;
+  renameGroupRole: (groupId: string, roleId: string, name: string) => Promise<GroupRole>;
   deleteGroupRole: (groupId: string, roleId: string) => Promise<void>;
   /** The server diffs the full desired member list inside a transaction. */
-  setGroupRoleMembers: (
-    groupId: string,
-    roleId: string,
-    userIds: string[],
-  ) => Promise<CustomGroupRole>;
+  setGroupRoleMembers: (groupId: string, roleId: string, userIds: string[]) => Promise<GroupRole>;
   /** Public topics show no role controls; going public clears roles server-side. */
   setTopicRoles: (chatId: string, input: SetTopicRolesInput) => Promise<void>;
   topicRoles: (

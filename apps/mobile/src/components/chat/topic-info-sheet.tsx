@@ -35,7 +35,7 @@ import {
   DANGER,
 } from '@/lib/colors';
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
-import type { CustomGroupRole } from '@/lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import type { ApproverRole, PatchTopicInput, TopicAi, TopicRole } from '@/lib/topics-api';
 import { cn } from '@/lib/utils';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -43,7 +43,8 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ListRow } from '@/components/ui/list-row';
 import { httpsTopicUrl, isTopicJoined, mutedUntilFor, topicLinkText } from '@zilar/chat-core';
 import { rawCall } from '@/components/chat/group-action';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { failureOf } from '@zilar/client-core';
 
@@ -256,7 +257,7 @@ type TopicInfoSheetProps = {
   // A group-roles load failure: the add picker names it with a Retry instead of degrading to attached-only.
   groupRolesError: string;
   approverRole: ApproverRole | null;
-  groupRoles: CustomGroupRole[];
+  groupRoles: GroupRole[];
   canManageRoles: boolean;
   onToggleTopicRole: (roleId: string) => void;
   onPickApprover: (roleId: string | null) => void;

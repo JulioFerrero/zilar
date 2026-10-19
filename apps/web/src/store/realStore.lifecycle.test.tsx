@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush, waitFor as pollUntil } from '@/test/wait';
-import { CONNECT_RETRY_DELAYS_MS, createRealChatStore, type StorageLike } from './realStore';
+import { createRealChatStore } from './realStore';
+import { CONNECT_RETRY_DELAYS_MS } from '@zilar/client-core/store';
+import { type StorageLike } from './effects/portTypes';
 
 // Sign-out must not hit Better Auth over the network in a test.
 vi.mock('@/lib/auth', () => ({

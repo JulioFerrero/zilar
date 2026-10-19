@@ -1,7 +1,7 @@
 // effect-plain: the sync localStorage seam for the shared codec; storage failures are swallowed.
 import type { ChatSummary } from '@zilar/chat-core';
 import { decodeChatListCache, encodeChatListCache } from '@zilar/client-core/store';
-import type { StorageLike } from './realStore';
+import type { StorageLike } from './effects/portTypes';
 
 // The last chat list, painted on reload; the payload is the shared client-core codec.
 export const CHAT_LIST_CACHE_KEY = 'zilar:chatList';

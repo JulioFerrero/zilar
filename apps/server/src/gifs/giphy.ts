@@ -1,5 +1,5 @@
-import { lookup as dnsLookup } from 'node:dns/promises';
-import { request as httpsRequest } from 'node:https';
+import { lookup } from 'node:dns/promises';
+import { request } from 'node:https';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { classifyIp } from '@zilar/desk/egress/ip-guard';
@@ -41,7 +41,7 @@ const GIPHY_API_MAX_BYTES = 1024 * 1024;
 class GiphyRequestFailed extends Data.TaggedError('GiphyRequestFailed') {}
 
 async function defaultResolver(host: string): Promise<string[]> {
-  const records = await dnsLookup(host, { all: true });
+  const records = await lookup(host, { all: true });
   return records.map((record) => record.address);
 }
 
@@ -53,7 +53,7 @@ const giphyRequestEffect = (
   address: string,
 ): EffectType.Effect<{ status: number; body: string }, GiphyRequestFailed> =>
   Effect.callback<{ status: number; body: string }, GiphyRequestFailed>((resume) => {
-    const req = httpsRequest(
+    const req = request(
       {
         host: address,
         port: 443,

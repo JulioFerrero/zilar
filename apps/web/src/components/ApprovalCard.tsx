@@ -11,13 +11,8 @@ import {
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Check, Clock, Repeat, X } from 'lucide-react';
-import {
-  decideApproval,
-  getApproval,
-  type ApprovalDecision,
-  type ApprovalStatus,
-  type PublicApproval,
-} from '@/lib/api';
+import type { ApprovalDecision, ApprovalStatus } from '@zilar/api-contract';
+import { decideApproval, getApproval, type PublicApproval } from '@/lib/api';
 import { useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ais/AiPageShell';

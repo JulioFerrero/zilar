@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chatListModel } from '../lib/chat-list';
 import { readChatListCache } from './effects/lifecycle';
-import type { Pin, PinsApi } from '../lib/pins-api';
+import type { PinsApi } from '../lib/pins-api';
+import type { Pin } from '@zilar/api-contract';
 
 // A writable stand-in for the cache file: the read/write go through
 // `expo-file-system/legacy` behind a dynamic import, so the real native module
@@ -28,7 +29,8 @@ vi.mock('expo-file-system/legacy', () => ({
 }));
 import type { ChatFoldersApi } from '../lib/chat-folders-api';
 import type { ChatPrefsApi } from '../lib/chat-prefs-api';
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type AppStateLike, type RealStoreDeps } from './effects/ports';
 import { fakeApi } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 

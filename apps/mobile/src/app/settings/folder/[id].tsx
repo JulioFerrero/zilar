@@ -29,7 +29,8 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { iconKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 
 const TYPE_ORDER: FolderChatType[] = ['dm', 'group', 'channel', 'ai'];
 

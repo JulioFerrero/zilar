@@ -8,7 +8,7 @@ import {
   type MessageCacheWriter,
   type MessageCacheWriterPort,
 } from '@zilar/client-core/store';
-import type { StorageLike } from './realStore';
+import type { StorageLike } from './effects/portTypes';
 
 // effect-plain: the shared codec owns the parsing; this file wraps browser storage and its caps.
 export const MESSAGE_CACHE_KEY = 'zilar:messages';

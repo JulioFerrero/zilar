@@ -17,8 +17,6 @@ import { Ports } from './ports';
 import { setUnreadMark } from './prefs';
 import { fromPromise, prefsByJid } from './util';
 
-export { loadOlder, openHistory } from '@zilar/client-core/store';
-
 /** No ids: the stable empty set the reveal reader returns when a chat has none. */
 const NO_REVEALS: ReadonlySet<string> = new Set();
 

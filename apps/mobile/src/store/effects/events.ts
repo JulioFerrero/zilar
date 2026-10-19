@@ -18,8 +18,6 @@ import { applyChatPrefs } from '../../lib/chat-prefs';
 import type { ChatPref, PutChatPrefInput } from '../../lib/chat-prefs-api';
 import type { ChatStoreState } from '../types';
 import { lift, type StoreCtx } from './runtime';
-
-export { TYPING_CLEAR_MS } from '@zilar/client-core/store';
 export { CHAT_REFRESH_DEBOUNCE_MS };
 
 export type EventActions = Pick<

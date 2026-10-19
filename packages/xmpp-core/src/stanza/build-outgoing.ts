@@ -11,7 +11,8 @@ import {
   STANZA_ID_NAMESPACE,
   ZILAR_FORWARD_NAMESPACE,
 } from '../namespaces';
-import type { ChatKind, MentionInput, MessageAlbum } from '../types';
+import type { ChatKind, MentionInput } from '../types';
+import type { MessageAlbum } from './album';
 import { albumElement } from './album';
 import { MAX_MENTIONS, codePointLength, codePointOffset } from './reactions';
 

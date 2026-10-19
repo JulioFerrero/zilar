@@ -1,4 +1,5 @@
-import { extractCommands, type PermissionRequest } from './policy.js';
+import { extractCommands } from './policy/classify.js';
+import { type PermissionRequest } from './policy/types.js';
 
 export type SessionState = 'idle' | 'running' | 'unknown';
 

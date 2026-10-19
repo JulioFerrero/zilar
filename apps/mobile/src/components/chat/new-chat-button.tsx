@@ -28,7 +28,8 @@ import {
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
 import { runMobile } from '@/lib/effect/runtime';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { apiCall } from '@/lib/effect/api-client';
 import { useQuery } from '@/lib/effect/use-query';
 import { fromApi, makeChatsApi, makeDirectoryApi, failureOf } from '@zilar/client-core';

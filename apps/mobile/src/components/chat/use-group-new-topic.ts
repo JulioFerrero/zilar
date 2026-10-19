@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { rawCall } from '@/components/chat/group-action';
 import type { NewTopicInput } from '@/components/chat/new-topic-sheet';
 import type { GroupAi } from '@/lib/chat-api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { failureOf } from '@zilar/client-core';
 

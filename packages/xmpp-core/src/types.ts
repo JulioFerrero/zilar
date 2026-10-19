@@ -12,7 +12,6 @@ import type {
 } from './stanza/parse-context';
 import type { XmppSuspend, XmppSuspendEffect } from './types-suspend';
 
-export type { MessageAlbum } from './stanza/album';
 export type {
   Mention,
   MentionInput,
@@ -20,9 +19,6 @@ export type {
   MessageReactions,
   MessageRetraction,
 } from './stanza/parse-context';
-export type { StreamAckEvent } from './types-ack';
-export type { DeliveredMarkEvent } from './types-delivered';
-export type { WakeOutcome } from './types-suspend';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 

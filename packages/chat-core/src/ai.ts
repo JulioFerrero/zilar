@@ -1,6 +1,4 @@
 // The rule lives in `@zilar/protocol`; it is re-exported so `markdown.ts` and the web AI badge can never disagree.
-export { isAiJid } from '@zilar/protocol';
-
 export type AiTemplateId = 'dev' | 'marketing' | 'fun' | 'custom';
 
 // A `null` bound means the owner set no limit; new AIs start with both empty, so the server stores NULL.

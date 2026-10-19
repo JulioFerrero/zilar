@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient, type SessionModel } from './client.js';
-import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
+import { isFreePaused, paidStep } from './free-pause.js';
+import { isFreeListing } from './models.js';
 import { isGoPaused } from './go-pause.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';

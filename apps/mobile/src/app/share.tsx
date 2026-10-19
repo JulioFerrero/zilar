@@ -13,7 +13,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { EMPTY_MESSAGE, TOO_LARGE_MESSAGE } from '@/lib/attachment-common';
 import type { PickedFile } from '@/lib/attachment-ports';
-import { MAX_ATTACHMENT_BYTES } from '@/lib/attachments';
+import { MAX_ATTACHMENT_BYTES } from '@zilar/chat-core';
 import { type ShareDraft, toShareDraft } from '@/lib/share-intent';
 import { useChatStore } from '@/store/chat-store-provider';
 

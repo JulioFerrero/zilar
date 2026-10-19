@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatEntry } from '@/lib/api';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush, waitFor } from '@/test/wait';
-import { createRealChatStore, type RealStoreDeps, type StorageLike } from '../realStore';
+import { createRealChatStore } from '../realStore';
+import { type RealStoreDeps } from './ports';
+import { type StorageLike } from './portTypes';
 
 const ANA = 'ana@zilar.test';
 const NOW = new Date('2026-10-18T12:00:00Z');

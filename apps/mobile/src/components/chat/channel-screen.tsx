@@ -30,7 +30,8 @@ import {
   mayManageChannel,
 } from '@/lib/channels';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { goBackOrHome } from '@/lib/navigation';
 import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';

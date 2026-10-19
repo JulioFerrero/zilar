@@ -19,7 +19,6 @@ import {
   layoutColumns,
   liveStepIcon,
   modelBadge,
-  parseWatchView,
   phaseColorName,
   REFRESH_INTERVAL_MS,
   SPINNER_FRAMES,
@@ -27,13 +26,12 @@ import {
   trackerStep,
   truncate,
   visibleSlice,
-  type ChangedFile,
   type ModelBadge,
-  type SessionSpeed,
   type VisibleSlice,
-  type WatchEntry,
-  type WatchView,
 } from './watch.js';
+import { parseWatchView, type WatchEntry, type WatchView } from './watch/view.js';
+import { type ChangedFile } from './watch/changed-files.js';
+import { type SessionSpeed } from './watch/speed.js';
 
 export interface WatchAppProps {
   view: WatchView;

@@ -142,6 +142,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2218 | Stop cancels an in-flight DeepSeek web tool: the abort signal goes through the action gateway (`ActionContext.signal`) | +18 |
 | T-2217 | store phase 3 T3b: one `openChatCore` (prune, read mark, unread-mark clear, marker swap, `openHistory`) for web and phone | −15 |
 | T-2216 | AI turns T8: `completionInputOf` + `runTyped`; the DM catch uses `finishTurnFailure`. **The AI turn plan is done.** | −21 |
 | T-2213 | server tests wave D: agent side-modules, from 91 to 33 cases (kept: permissions, delivery, caps, key redaction; 2 restored in a fix round) | −1,360 test |
@@ -177,10 +178,21 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2218:** Stop cancels an in-flight DeepSeek `web.search`/`web.fetch`. The turn's abort signal travels through the action gateway; a live stop took about 20 s at 10:00.
+  - **T-2219:** web search W2a, the server half (approved 10:08; boards in `docs/design/mockups/web-search/`).
+    - Brave, Exa, Firecrawl, Jina and Tavily become connections with key tests.
+    - One `web-tools/sources.ts`.
+    - `loadWebSource` picks the AI's DeepSeek key, or else the owner's first web search key.
+    - The web and phone screens (W2b/W2c) launch after it merges.
   - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
-  - **Web search W2 canvas, waiting for Julio:** https://claude.ai/artifact/9wDLt9GpmXNZZ2s2JWNu85. A "Web search" provider group in Add key (Brave, Exa, Firecrawl, Jina, Tavily), and Connections split into Models and Web search.
+  - **Julio, 10:23: brainstorm after the pending tasks.** MCPs and skills for AIs:
+    - easy to connect (Atlassian and other sets);
+    - open repositories of them, "even mcps of mcps or mcps of skills".
+
+    Brainstorm with him before any canvas or spec.
+  - **T-2221:** server tests wave E. The AI turn tests (gateway-group, gateway-stop, reply, group-turn-card, context) are cut to the crucial cases, at least −700.
+  - **T-2222:** the phone groups API moves onto the shared client-core one. There is one `createGroup` (group or channel, public handle) for both apps, and the phone's hand-written `GroupsApi` goes (stop rule at least −60). Next in that line: the phone `chat-api` and `profile-api` wrappers (plan B1), after T-2222, because they share `ports.ts`.
+  - **T-2220 (written, launches after T-2219):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
@@ -216,6 +228,8 @@ Lead live checks as Julio in "ai test › General" (09:19–09:24):
 **`83e27024a`** (09:58, AI turns T8): routes the same, 0 errors. Live checks:
 - a DM hello was answered ("Here and working, Julio, live check three is fine.");
 - a stopped multi-page fetch task ended "Stopped after 29s" with no reply. Stop pressed at about 0:05 only landed when the in-flight DeepSeek fetch returned, so T-2218 passes the abort signal to web tools.
+
+**`757d70f81`** (10:10, T-2218): routes the same, 0 errors. Stop pressed at about 0:06 on a multi-page fetch task ended the card "Stopped after 10s"; before the fix it took 29 s.
 
 Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 

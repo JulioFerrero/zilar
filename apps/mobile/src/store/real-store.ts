@@ -172,8 +172,6 @@ export {
 } from '@zilar/client-core/store';
 export { isUpdateStanza, summariesFor };
 
-export type { AppStateLike, RealStoreDeps } from './effects/ports';
-
 // One shared empty list: a selector must return the same reference while
 // nothing changed, or React re-renders forever ("Maximum update depth").
 const EMPTY_MESSAGES: UiMessage[] = [];

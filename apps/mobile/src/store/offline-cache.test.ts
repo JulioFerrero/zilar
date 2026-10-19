@@ -8,7 +8,8 @@ import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type RealStoreDeps } from './effects/ports';
 import {
   OFFLINE_CACHE_WRITE_DELAY_MS,
   encodeOfflineCache,

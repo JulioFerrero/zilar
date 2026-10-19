@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
-import { auditApi, type AuditScope, type PublicAuditEntry } from '@/lib/api';
+import { auditApi, type PublicAuditEntry } from '@/lib/api';
+import type { AuditScope } from '@zilar/client-core';
 import { toApiFailure, useAuditActivity, useDelayed } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';

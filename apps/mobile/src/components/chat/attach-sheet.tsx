@@ -27,7 +27,8 @@ import type {
 import type { PickedFile } from '@/lib/attachment-ports';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, segment } from '@/lib/depth';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 
 /**
  * The File tab: today's document picker behind "Browse files". The

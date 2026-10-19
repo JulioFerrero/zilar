@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush } from '@/test/wait';
-import { createRealChatStore, type RealStoreDeps, type StorageLike } from './realStore';
+import { createRealChatStore } from './realStore';
+import { type RealStoreDeps } from './effects/ports';
+import { type StorageLike } from './effects/portTypes';
 
 // Incoming events and message actions through the real web store, for the
 // paths no other store test covers (T-0907, written on the old code before the

@@ -9,8 +9,8 @@ import {
 } from '@zilar/client-core/store';
 
 import { API_URL } from '../../lib/auth';
-import { isTrustedMediaUrl } from '../../lib/attachments';
-import type { Pin } from '../../lib/pins-api';
+import { isTrustedMediaUrl } from '@zilar/chat-core';
+import type { Pin } from '@zilar/api-contract';
 import type { ChatStoreState } from '../types';
 import { Ports } from './ports';
 import { lift, type StoreCtx } from './runtime';

@@ -14,7 +14,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { GroupAi } from '@/lib/chat-api';
 import { ICON } from '@/lib/colors';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { failureOf } from '@zilar/client-core';
 

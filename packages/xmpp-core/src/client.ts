@@ -1,8 +1,7 @@
 import { Effect } from 'effect';
-import { createCoreEffect, type CoreDependencies } from './core-effect';
+import { createCoreEffect } from './core-effect';
+import { type CoreDependencies } from './core-effect/config';
 import type { XmppCore, XmppCoreOptions } from './types';
-
-export type { ClientFactory, ClientOptions, CoreDependencies } from './core-effect';
 
 /**
  * The Promise facade over the Effect core: each method runs the core's Effect with

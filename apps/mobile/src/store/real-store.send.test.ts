@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../lib/chat-api';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
 import type { ConvertedVoice, VoicePort } from '../lib/voice';
-import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type RealStoreDeps } from './effects/ports';
 import { fakeApi } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 

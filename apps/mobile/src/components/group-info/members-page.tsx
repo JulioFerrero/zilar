@@ -25,8 +25,9 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import type { GroupAi, GroupMember } from '@/lib/chat-api';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
-import type { CustomGroupRole } from '@/lib/roles-api';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
+import type { GroupRole } from '@zilar/api-contract';
 import { useChatStore } from '@/store/chat-store-provider';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { PersonPressable } from '@/components/chat/person-pressable';
@@ -42,7 +43,7 @@ const OWNER_COLOR = '#e5b84b';
 
 type MembersListProps = {
   members: GroupMember[];
-  roles: CustomGroupRole[] | undefined;
+  roles: GroupRole[] | undefined;
   me: string | undefined;
   isManager: boolean;
   isOwner: boolean;
@@ -136,7 +137,7 @@ type MembersPageProps = {
   groupId: string;
   members: GroupMember[];
   ais: GroupAi[];
-  roles: CustomGroupRole[] | undefined;
+  roles: GroupRole[] | undefined;
   me: string | undefined;
   isManager: boolean;
   isOwner: boolean;

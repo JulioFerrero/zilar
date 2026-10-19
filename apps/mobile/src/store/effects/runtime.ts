@@ -17,7 +17,7 @@ import type { RecordedVoice } from '../../lib/voice';
 import type { VoiceFailureReason } from '../../lib/voice-failure';
 import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
-import type { CustomGroupRole } from '../../lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 import type { ApproverRole, Topic, TopicRole } from '../../lib/topics-api';
 import type { SetState } from '@zilar/client-core';
 import type { ChatStoreState } from '../types';
@@ -106,7 +106,7 @@ export interface StoreState extends CoreLocals {
   readonly pendingVoices: Map<string, RecordedVoice>;
   readonly groupDetails: Map<string, GroupDetail>;
   readonly loadingGroupDetails: Set<string>;
-  readonly groupRolesById: Map<string, CustomGroupRole[]>;
+  readonly groupRolesById: Map<string, GroupRole[]>;
   readonly loadingGroupRoles: Set<string>;
   readonly topicRolesById: Map<string, { roles: TopicRole[]; approverRole: ApproverRole | null }>;
   readonly loadingTopicRoles: Set<string>;

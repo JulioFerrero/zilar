@@ -1,7 +1,8 @@
 // Badge and push dismissal are best effort: a failure never reaches the caller, and neither
 // waits on the store scope, so a sync started before stop() still finishes.
 import { Effect } from 'effect';
-import { totalBadgeUnread, updateAppBadge } from '@/lib/push';
+import { updateAppBadge } from '@/lib/push';
+import { totalBadgeUnread } from '@zilar/chat-core';
 import type { StoreCtx } from './ctx';
 import { fromPromise } from './util';
 

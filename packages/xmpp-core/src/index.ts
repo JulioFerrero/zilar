@@ -7,7 +7,6 @@ export type {
   ChatKind,
   ChatMessage,
   ConnectionStatus,
-  DeliveredMarkEvent,
   DisplayedEvent,
   ErrorEvent,
   HistoryPage,
@@ -15,7 +14,6 @@ export type {
   LoadHistoryOptions,
   Mention,
   MentionInput,
-  MessageAlbum,
   MessageCorrection,
   MessageReactions,
   MessageRetraction,
@@ -34,6 +32,8 @@ export type {
   XmppCoreEffect,
   XmppCoreOptions,
 } from './types';
+export type { MessageAlbum } from './stanza/album';
+export type { DeliveredMarkEvent } from './types-delivered';
 export {
   ConnectionFailed,
   ConnectTimeout,

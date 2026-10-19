@@ -1,5 +1,5 @@
 import type { ChatSummary, UiMessage } from './types';
-import { isAiJid } from './ai';
+import { isAiJid } from '@zilar/protocol';
 
 // Incoming messages in AI chats qualify, as do incoming AI replies in a group; a human DM, a human group message or your own message stays plain text.
 export function shouldRenderMarkdown(

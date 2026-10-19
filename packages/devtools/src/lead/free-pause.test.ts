@@ -8,12 +8,12 @@ import { fallbackModel } from './fallback.js';
 import {
   FREE_PAUSE_HOURS,
   freePause,
-  isFreeListing,
   isFreePaused,
   paidStep,
   pauseFree,
   pauseFreeOnRefusal,
 } from './free-pause.js';
+import { isFreeListing } from './models.js';
 import { FREE_DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, GO_MUSE, PAID_MUSE } from './models.js';
 import { promptsDir } from './prompts.js';
 import { summarizeSession } from './session.js';

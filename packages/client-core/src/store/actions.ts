@@ -22,8 +22,6 @@ import { fromPromise, type CoreCtx } from './ctx';
 import { coreKind } from './rows';
 import type { SendStickerInput, SendTextOptions } from './send/context';
 
-export type { SendStickerInput, SendTextOptions } from './send/context';
-
 /** Toggles my reaction of `emoji` (XEP-0444) optimistically; reverts when the send fails. */
 export function react(ctx: CoreCtx, chatId: string, messageId: string, emoji: string): void {
   const { k } = ctx;

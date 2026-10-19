@@ -3,7 +3,6 @@
  */
 
 import { classifyMime, cleanFilename, mimeOrOctetStream } from '@zilar/chat-core';
-export { isTrustedMediaUrl, MAX_ATTACHMENT_BYTES, type MediaTokenShape } from '@zilar/chat-core';
 
 export interface PendingMobileFile {
   uri: string;

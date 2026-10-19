@@ -3,7 +3,8 @@ import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
-import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { createRealChatStore } from './real-store';
+import { type RealStoreDeps } from './effects/ports';
 import { fakeApi, fakeAppState } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 

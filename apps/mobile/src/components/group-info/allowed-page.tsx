@@ -12,7 +12,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { ApprovalRule } from '@zilar/api-contract';
 import { interruptFiber, makeApprovalsApi } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 
 export const RULES_LOAD_FAILED_MESSAGE = 'Could not load the rules.';
 

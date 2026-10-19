@@ -13,7 +13,7 @@ import { Text, TextField } from '@/components/ui/text';
 import { fromApi } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { deleteRoleConfirmText, type MemberWithChips } from '@/lib/roles';
-import type { CustomGroupRole } from '@/lib/roles-api';
+import type { GroupRole } from '@zilar/api-contract';
 
 export function GroupRolesSheet({
   visible,
@@ -35,7 +35,7 @@ export function GroupRolesSheet({
   visible: boolean;
   groupTitle: string;
   members: MemberWithChips[];
-  roles: CustomGroupRole[] | undefined;
+  roles: GroupRole[] | undefined;
   rolesError: string;
   isManager: boolean;
   busy: boolean;
@@ -44,7 +44,7 @@ export function GroupRolesSheet({
   onCreateRole: (name: string) => Promise<void>;
   onRenameRole: (roleId: string, name: string) => Promise<void>;
   onDeleteRole: (roleId: string) => Promise<void>;
-  onToggleMember: (role: CustomGroupRole, userId: string) => Promise<void>;
+  onToggleMember: (role: GroupRole, userId: string) => Promise<void>;
   onClose: () => void;
   manage: GroupManageProps;
 }) {
@@ -74,7 +74,7 @@ export function GroupRolesSheet({
     { mode: 'replace' },
   );
   const [, toggleMember] = useAction(
-    (input: { role: CustomGroupRole; userId: string }) =>
+    (input: { role: GroupRole; userId: string }) =>
       fromApi(() => onToggleMember(input.role, input.userId)),
     { mode: 'replace' },
   );

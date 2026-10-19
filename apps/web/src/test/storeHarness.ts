@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
-import type { ApiClient } from '@/store/realStore';
+import type { ApiClient } from '../store/effects/portTypes';
 
 export interface FakeXmpp {
   core: XmppCore;

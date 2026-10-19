@@ -11,7 +11,8 @@ import { RevokeConfirmDialog, AlwaysAllowedRow } from '@/components/approvals/al
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/ui/card';
 import type { ApprovalRule, ApprovalDecision, PublicApproval } from '@zilar/api-contract';

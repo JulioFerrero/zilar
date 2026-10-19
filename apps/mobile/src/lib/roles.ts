@@ -1,5 +1,5 @@
 import type { GroupRole } from './chat-api';
-import type { CustomGroupRole } from './roles-api';
+import type { GroupRole as CustomGroupRole } from '@zilar/api-contract';
 import type { ApproverRole, TopicRole } from './topics-api';
 import type { TopicVisibility } from '@zilar/chat-core';
 

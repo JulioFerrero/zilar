@@ -8,7 +8,7 @@ import {
   createWebMessageCache,
   readMessageCache,
 } from './messageCache';
-import type { StorageLike } from './realStore';
+import type { StorageLike } from './effects/portTypes';
 
 function memoryStorage(): StorageLike {
   const data = new Map<string, string>();

@@ -14,7 +14,8 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { blockedLoadFailure, performUnblock } from '@/components/contacts/blocks';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import type { BlockedPerson } from '@zilar/client-core';
 
 type PageStatus = 'loading' | 'ready' | 'error';

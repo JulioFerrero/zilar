@@ -5,8 +5,6 @@ import { fallbackModel } from './fallback.js';
 import { goPauseConfigPath, readConfigJson, warnBadConfig } from './go-pause.js';
 import { GO_MUSE, PAID_MUSE, isFreeListing } from './models.js';
 
-export { isFreeListing } from './models.js';
-
 // Every free listing shares one pause: after a gateway abuse refusal the lead leaves
 // free listings alone for a few hours and starts new sessions on the paid step. The
 // setting lives in config.json next to state.json, read on every call.

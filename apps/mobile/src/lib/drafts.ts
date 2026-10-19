@@ -5,9 +5,7 @@ import type { DraftHubEvent } from '@zilar/client-core/store';
 import { decodeDraftEvent, draftReconnectDelay } from '@zilar/client-core/store';
 import { Effect, Fiber } from 'effect';
 
-import type { AppStateLike } from '../store/real-store';
-
-export type { OpenDraftStream } from '@zilar/client-core/store';
+import type { AppStateLike } from '../store/effects/ports';
 
 export const DRAFT_STREAM_PATH = '/api/drafts/stream';
 

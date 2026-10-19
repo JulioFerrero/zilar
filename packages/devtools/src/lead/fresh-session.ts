@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { OpenCodeClient } from './client.js';
-import { isFreeListing, isFreePaused, paidStep } from './free-pause.js';
+import { isFreePaused, paidStep } from './free-pause.js';
+import { isFreeListing } from './models.js';
 import { isGoPaused } from './go-pause.js';
 import { readTaskFrontMatter } from './launch.js';
 import { resolveWorkerModel } from './model-schedule.js';

@@ -6,7 +6,8 @@ import { parseInviteCode } from '@zilar/chat-core';
 
 import { Button } from '@/components/ui/button';
 import { Text, TextField } from '@/components/ui/text';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { isWaiting } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 

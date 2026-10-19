@@ -1,5 +1,6 @@
 import { Data } from 'effect';
-import { groupChats, visibleChats, type ChatStoreState } from '@/store/store';
+import { groupChats, type ChatStoreState } from '@/store/store';
+import { visibleChats } from '../../store/selectors';
 
 // A normal (re)connect takes well under this; only a slow one gets a banner.
 export const CONNECTION_BANNER_DELAY_MS = 1500;

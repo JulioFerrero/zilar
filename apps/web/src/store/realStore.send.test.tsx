@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush } from '@/test/wait';
-import { createRealChatStore, type RealStoreDeps, type StorageLike } from './realStore';
+import { createRealChatStore } from './realStore';
+import { type RealStoreDeps } from './effects/ports';
+import { type StorageLike } from './effects/portTypes';
 
 const ANA = 'ana@zilar.test';
 

@@ -36,8 +36,6 @@ import { applyPrefsWithUnreadMark } from './prefs';
 import { saveChatList } from './reads';
 import { prefsByJid, fromPromise } from './util';
 
-export { CONNECT_RETRY_DELAYS_MS, readLastRead } from '@zilar/client-core/store';
-
 export const startStore = (ctx: StoreCtx): Effect.Effect<void> => coreStartStore(ctx);
 
 export const retryBoot = (ctx: StoreCtx): Effect.Effect<void> => coreRetryBoot(ctx);

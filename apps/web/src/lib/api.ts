@@ -62,7 +62,7 @@ export const {
   revokeMachine,
 } = makeMachinesApi(callApi);
 
-export { API_BASE, ApiError } from './api/http';
+export * from './api/http';
 
 // In mock mode the mock backend answers the same path; the real call is a same-origin fetch.
 const exportRequest = (): Effect.Effect<Response, unknown> =>

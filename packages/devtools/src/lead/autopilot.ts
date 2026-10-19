@@ -17,7 +17,7 @@ import { isGoPaused } from './go-pause.js';
 import { findTaskFile, readTaskFrontMatter } from './launch.js';
 import { resolveWorkerVariant } from './model-schedule.js';
 import { FREE_MUSE } from './models.js';
-import type { PermissionRequest } from './policy.js';
+import type { PermissionRequest } from './policy/types.js';
 import { leadProcessIds, sleep } from './processes.js';
 import { loadPrompt, renderPrompt, type PromptName } from './prompts.js';
 import { parsePermission, summarizeSession, type SessionState } from './session.js';
