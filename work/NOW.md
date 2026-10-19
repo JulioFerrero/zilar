@@ -91,6 +91,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2180, T-2179 | size-split folders merged back: devtools lead `client`, `cli`, `autopilot`, `watch-app`, `xmpp-e2e`; runner-tunnel `mux`, `runner`, `server` (8 folders, 35 files fewer) | −125, −108 |
 | T-2181 | web and phone: 178 re-exported names now imported from the defining module, 6 rename aliases and 4 re-export-only files gone (200 files) | −206 |
 | T-2182 | phone: one picture editor hook (pick, save, remove) for profile and group settings (big-cut plan B6) | −115 |
+| T-2183 | server: 7 single-use files folded into their only importer; the last 2 pass-through exports gone | −34 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -109,7 +110,6 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (06:20):**
-- **T-2183:** 7 small single-use server files folded into their only importer, and the last 2 server pass-through exports gone. In a fix round for one runner e2e import the gate does not check.
 - **T-2184, T-2185:** single-use web and phone files folded into their only importer, wave 4.
 - **T-2186:** phone screens that hand-roll load-on-focus use the existing `useFocusList` hook (8 screens).
 

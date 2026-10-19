@@ -7,7 +7,6 @@ import { copyText } from '@/lib/clipboard';
 import { fromApi, type ApiFailure, failureOf, isWaiting } from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { machineErrorMessage } from './errors';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -194,4 +193,24 @@ export function failureText(failure: ApiFailure | undefined, fallback: string): 
     new ApiError(failure.status, failure.code, failure.message, failure.detail),
     fallback,
   );
+}
+
+function machineErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case 'pairing_code_limit':
+        return 'You already have unused pairing codes. Use one or wait for it to expire.';
+      case 'rate_limited':
+        return 'Too many pairing codes. Try again in a few minutes.';
+      case 'revoke_first':
+        return 'Revoke the machine before deleting it.';
+      case 'not_found':
+        return 'That machine no longer exists.';
+      case 'network_error':
+        return 'Could not reach the server.';
+      default:
+        return error.message;
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
 }

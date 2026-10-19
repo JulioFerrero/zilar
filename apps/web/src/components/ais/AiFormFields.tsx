@@ -2,12 +2,16 @@ import type { KeyboardEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { Check, Wrench } from 'lucide-react';
 import type { AiCatalogModel } from '@zilar/api-contract';
-import { formatContextTokens, formatModelPrices, providerLabel } from '@zilar/chat-core';
+import {
+  formatContextTokens,
+  formatModelPrices,
+  isLlmProvider,
+  providerLabel,
+} from '@zilar/chat-core';
 import type { Connection } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { TextArea, TextInput } from '@/components/ui/text-input';
-import { ConnectionPicker } from './ConnectionPicker';
-import { FieldError } from './AiPageShell';
+import { FieldError, SelectOption } from './AiPageShell';
 
 export function AiLimitsFields({
   day,
@@ -118,11 +122,33 @@ export function AiFormFields({
       {connections.length > 1 && (
         <div className="flex flex-col gap-2">
           <span className="text-[14px] font-medium">Provider</span>
-          <ConnectionPicker
-            connections={connections}
-            value={selectedConnectionId}
-            onChange={onChooseConnection}
-          />
+          {/* A connection whose provider is not an LLM one (GitHub) is dropped: it cannot run an AI. */}
+          <div role="radiogroup" aria-label="Provider connection" className="flex flex-col gap-2">
+            {connections
+              .filter((connection) => isLlmProvider(connection.provider))
+              .map((connection) => {
+                const selected = connection.id === selectedConnectionId;
+                return (
+                  <SelectOption
+                    key={connection.id}
+                    selected={selected}
+                    onClick={() => onChooseConnection(connection.id)}
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[14px] font-semibold text-accent">
+                      {providerLabel(connection.provider).charAt(0)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] font-medium">
+                        {providerLabel(connection.provider)}
+                      </span>
+                      <span className="block truncate text-[13px] text-muted-foreground">
+                        {connection.label ?? 'No label'}
+                      </span>
+                    </span>
+                  </SelectOption>
+                );
+              })}
+          </div>
         </div>
       )}
 

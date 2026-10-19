@@ -7,7 +7,6 @@ import { BlockCard } from './blocks/BlockCard';
 import { useMediaViewer } from '../media/MediaViewer';
 import { MessageMeta } from './MessageMeta';
 import { QuestionCard } from './QuestionCard';
-import { SendFailure } from './SendFailure';
 import { IconButton } from '@/components/ui/icon-button';
 import { mediaSrc } from '@/lib/attachments';
 import { useMediaRetry } from '@/lib/media-retry';
@@ -22,6 +21,8 @@ import {
   formatFileMeta,
   isPdfAttachment,
   safeHttpUrl,
+  sendFailureLabel,
+  type SendFailureReason,
 } from '@zilar/chat-core';
 import { isCardAllowedFrom, UNSUPPORTED_MESSAGE_TEXT } from '@zilar/client-core';
 import { ArrowDown, FileText, Loader2, RotateCcw } from 'lucide-react';
@@ -488,6 +489,43 @@ export function AttachmentBody({
           </div>
         )}
     </>
+  );
+}
+
+function SendFailure({
+  chatId,
+  messageId,
+  reason,
+  onRetry,
+}: {
+  chatId: string;
+  messageId: string;
+  reason: SendFailureReason | undefined;
+  onRetry: () => void;
+}) {
+  const storeApi = useChatStoreApi();
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-[12px]">
+      <span className="font-semibold text-danger">
+        Not sent{reason === undefined ? '' : `: ${sendFailureLabel(reason)}`}
+      </span>
+      <button
+        type="button"
+        aria-label="Retry sending message"
+        onClick={onRetry}
+        className="font-semibold text-muted-foreground underline"
+      >
+        Retry
+      </button>
+      <button
+        type="button"
+        aria-label="Delete unsent message"
+        onClick={() => storeApi.getState().deleteFailedMessage(chatId, messageId)}
+        className="font-semibold text-muted-foreground underline"
+      >
+        Delete
+      </button>
+    </div>
   );
 }
 

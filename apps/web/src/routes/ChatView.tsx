@@ -11,7 +11,6 @@ import { Composer } from '@/components/Composer';
 import { focusComposer } from '@/components/composer/useComposerFocus';
 import { ContactPanel } from '@/components/ContactPanel';
 import { EntityAvatar } from '@/components/EntityAvatar';
-import { ForwardPicker } from '@/components/ForwardPicker';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { MessageList } from '@/components/MessageList';
@@ -21,6 +20,10 @@ import { SelectionBar } from '@/components/SelectionBar';
 import { StepsPanel } from '@/components/StepsPanel';
 import { TopicJoinView } from '@/components/topic/TopicJoinView';
 import { TopicPanel } from '@/components/TopicPanel';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog } from '@/components/ui/dialog';
+import { SearchField } from '@/components/ui/search-field';
+import { TextArea } from '@/components/ui/text-input';
 import { useMuteToggle } from '@/components/useMuteToggle';
 import type { MediaTab } from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
@@ -29,8 +32,10 @@ import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
+  canPostTo,
   isTopicJoined,
   replyRef,
+  targetLabel,
   type ChatSummary,
   type ReplyRef,
   type UiMessage,
@@ -639,5 +644,101 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
       </div>
     </MediaViewerProvider>
+  );
+}
+
+/** Picks one or more targets; archived chats and non-postable channels are never offered. */
+function ForwardPicker({ messages, onClose }: { messages: UiMessage[]; onClose: () => void }) {
+  const chats = useChatSelector((s) => s.chats);
+  const storeApi = useChatStoreApi();
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [comment, setComment] = useState('');
+
+  const targets = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    return chats.filter((chat) => {
+      if (chat.archived === true || !canPostTo(chat)) {
+        return false;
+      }
+      if (search.length === 0) {
+        return true;
+      }
+      return (
+        chat.title.toLowerCase().includes(search) ||
+        (chat.groupTitle !== undefined && chat.groupTitle.toLowerCase().includes(search))
+      );
+    });
+  }, [chats, query]);
+
+  const toggle = (chatId: string): void => {
+    setSelected((current) =>
+      current.includes(chatId) ? current.filter((id) => id !== chatId) : [...current, chatId],
+    );
+  };
+
+  const send = (): void => {
+    if (selected.length === 0) {
+      return;
+    }
+    const trimmed = comment.trim();
+    storeApi
+      .getState()
+      .forwardMessages(selected, messages, trimmed === '' ? undefined : { comment: trimmed });
+    onClose();
+  };
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Forward"
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+      actions={
+        <Button type="submit" size="lg" disabled={selected.length === 0}>
+          {selected.length > 1 ? `Send to ${selected.length} chats` : 'Send'}
+        </Button>
+      }
+    >
+      <SearchField
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search chats"
+        aria-label="Search chats"
+        data-autofocus
+        className="mt-3"
+      />
+      <div className="mt-2">
+        {targets.length === 0 ? (
+          <p className="py-6 text-center text-[14px] text-muted-foreground">No chats found</p>
+        ) : (
+          targets.map((chat) => (
+            <label
+              key={chat.id}
+              className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+            >
+              <Checkbox
+                checked={selected.includes(chat.id)}
+                onCheckedChange={() => toggle(chat.id)}
+              />
+              <EntityAvatar chat={chat} size={28} ai={chat.isAI} />
+              <span className="truncate text-[15px]">{targetLabel(chat)}</span>
+            </label>
+          ))
+        )}
+      </div>
+      <div className="mt-3">
+        <TextArea
+          label="Add a comment (optional)"
+          value={comment}
+          rows={2}
+          onChange={(event) => setComment(event.target.value)}
+          className="min-h-0 resize-none"
+        />
+      </div>
+    </Dialog>
   );
 }

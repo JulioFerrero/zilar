@@ -2182,3 +2182,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2182](T-2182-picture-editor-hook.md) | phone: one picture editor hook for profile and group | 2026-10-19 |
 | [T-2181](T-2181-client-reexports.md) | web and phone imports name the defining module | 2026-10-19 |
 | [T-2183](T-2183-fold-server-3.md) | server: single-use files folded, wave 3 | 2026-10-19 |
+| [T-2184](T-2184-fold-web-4.md) | web: single-use files folded, wave 4 | 2026-10-19 |
