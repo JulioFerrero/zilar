@@ -6,62 +6,408 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { alreadyPassedKey, gatePassDir, hasPassRecord, treeKey } from '../gate/pass-record.js';
+import { runAutopilot, type AutopilotDeps } from './autopilot.js';
 import { runBatchCheck } from './batch/check.js';
 import { runBatchMerge, type BatchMergeDeps } from './batch/merge.js';
 import { isRecord } from './batch/parsers.js';
 import type { BatchDeps, BatchPackage, CommandResult } from './batch/types.js';
+import { OpencodeCliClient } from './client.js';
+import { collectSnapshot } from './collect-snapshot.js';
+import { doctorWorktreeFor, startDoctorSession } from './doctor.js';
 import { runForget } from './forget.js';
-import { RealGitRunner } from './git.js';
-import { findTaskFile } from './launch.js';
+import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
+import { currentHead, RealGitRunner } from './git.js';
+import { findTaskFile, launchTask, parseLaunchArgs } from './launch.js';
 import { mergeTask } from './merge.js';
+import { loadPrompt, promptsDir, renderPrompt } from './prompts.js';
 import { findRepoRoot } from './repo-root.js';
+import { startPrereviewSession } from './start-prereview.js';
+import { loadState, stateFilePath, updateState } from './state.js';
 import { runStatus } from './status.js';
-import { stateFilePath, updateState } from './state.js';
-import { parseTaskFrontMatter, taskFileDir } from './task-file.js';
+import { switchModel, switchModelInPlace, type SwitchModelDeps } from './switch-model.js';
+import { parseFrontMatter, parseTaskFrontMatter, taskFileDir } from './task-file.js';
 import { runWatch, runWatchData } from './watch.js';
-import { flagValue } from './cli/args.js';
-import {
-  runAutopilotCommand,
-  runDoctor,
-  runLaunch,
-  runPrereview,
-  runReply,
-  runSnapshot,
-  runSpecCheck,
-  runSwitchModel,
-} from './cli/commands.js';
 
-const HELP = `lead — zero-token supervision of OpenCode workers
+// `lead spec-check T-XXXX` reads a task's Spec before a worker starts and reports
+// claims that are not true of the code: invented features, missing files, absent routes.
 
-Usage: lead <command> [options]
+interface SpecProblem {
+  kind: 'missing-read-first' | 'missing-folder' | 'unknown-route' | 'uncited-web-claim';
+  detail: string;
+}
 
-  launch <T-XXXX> [--extra-rules <file>] [--base <ref>]      create the worktree and worker session (--base branches off an older commit)
-  switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place]
-                                                            move a tracked worker onto a new model (quota fallback)
-                                                            --in-place keeps the same session and its context; send lead reply after it if the worker is idle
-  autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
-  doctor [--since <sha>]                                    audit main now with a Muse doctor session
-  prereview <T-XXXX>                                        start a Muse pre-review manually
-  reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
-  merge <T-XXXX> --summary "<one line>" [--skip-gate] [--hold]
-                                                            rebase, run the gate, squash onto main, board, push, clean up
-                                                            (--hold merges without pushing; run \`lead push\` to deploy)
-                                                            ("T-XXXX: summary" is the commit subject, at most 72 characters)
-  push                                                      push main to origin (deploys; use after \`lead merge --hold\`)
-  batch check <T-A> <T-B> ...                               combine the branches on a wave worktree, run install, typecheck and every
-                                                            package's tests, write one fix file per task under ~/.zilar-lead/wave/
-  batch merge <T-A> <T-B> ...                               merge a checked wave task by task, no gate (refuses when the check is stale)
-  spec-check <T-XXXX>                                    check a spec's paths, routes and web claims against the code
-  snapshot                                                  JSON of every task in flight, its step and timings
-  dashboard <out.html>                                      the snapshot rendered as the dashboard page
-  status                                                    compact table of every tracked task
-  forget <T-XXXX> [...] | --finished [--dry-run]            drop tracked tasks from the state file
-  watch [--no-icons]                                          live terminal view of every running task
+interface SpecCheckDeps {
+  exists: (relativePath: string) => boolean;
+  serverText: () => string;
+}
 
-State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
-Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
-The autopilot never merges, pushes, or edits task files or the board.
-`;
+function flag(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
+function flagValue(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index === -1 || index + 1 >= args.length) {
+    return undefined;
+  }
+  return args[index + 1];
+}
+
+function section(text: string, heading: string): string {
+  const match = new RegExp(
+    `^### ${heading}\\s*\\n([\\s\\S]*?)(?=^### |^---\\s*$|^## |$(?![\\s\\S]))`,
+    'm',
+  ).exec(text);
+  return match?.[1] ?? '';
+}
+
+function backticked(text: string): string[] {
+  return [...text.matchAll(/`([^`\n]+)`/g)].map((match) => (match[1] ?? '').trim());
+}
+
+function looksLikePath(token: string): boolean {
+  return /^[\w@.-]+(\/[\w@.[\]()*-]+)+\/?$/.test(token) && !token.includes(' ');
+}
+
+function hasGlob(token: string): boolean {
+  return token.includes('*');
+}
+
+// `docs/a.md#section` and `docs/a.md:12` name the file.
+function bareFile(token: string): string {
+  return token.replace(/[#:][^/]*$/, '');
+}
+
+function checkSpec(taskText: string, deps: SpecCheckDeps): SpecProblem[] {
+  const problems: SpecProblem[] = [];
+  const spec = taskText.split(/^## Report/m)[0] ?? taskText;
+
+  for (const token of backticked(section(spec, 'Read first'))) {
+    if (!looksLikePath(bareFile(token)) || hasGlob(token)) {
+      continue;
+    }
+    if (!deps.exists(bareFile(token))) {
+      problems.push({ kind: 'missing-read-first', detail: token });
+    }
+  }
+
+  for (const token of backticked(section(spec, 'Allowed files'))) {
+    if (!looksLikePath(token)) {
+      continue;
+    }
+    const concrete = token.split('*')[0] ?? token;
+    const folder = concrete.endsWith('/') ? concrete.slice(0, -1) : path.posix.dirname(concrete);
+    // A new folder is fine (a task may create one); a new folder under a
+    // folder that does not exist either is a typo.
+    const parent = path.posix.dirname(folder);
+    const typo = !deps.exists(folder) && parent !== '.' && !deps.exists(parent);
+    if (folder !== '.' && folder !== '' && typo) {
+      problems.push({
+        kind: 'missing-folder',
+        detail: `${token} (neither ${folder} nor its parent exists)`,
+      });
+    }
+  }
+
+  const serverText = deps.serverText();
+  const seen = new Set<string>();
+  for (const match of spec.matchAll(/`(?:GET|POST|PUT|PATCH|DELETE)\s+(\/api\/[^\s`?]+)/g)) {
+    const route = match[1] ?? '';
+    if (seen.has(route)) {
+      continue;
+    }
+    seen.add(route);
+    // Route params differ in name (":handle" vs "{handle}"): compare the static prefix.
+    const prefix = route.replace(/\/[:{][^/]*$/, '').replace(/\/[:{].*$/, '');
+    const relative = prefix.replace(/^\/api/, '');
+    if (!serverText.includes(relative) && !serverText.includes(prefix)) {
+      problems.push({ kind: 'unknown-route', detail: route });
+    }
+  }
+
+  const claimsWeb = /\b(like|as|same as|matches|mirrors|from) (the )?web\b/i.test(spec);
+  if (claimsWeb && !/apps\/web\//.test(spec)) {
+    problems.push({
+      kind: 'uncited-web-claim',
+      detail:
+        'the spec says it matches web but names no apps/web/ file; read the web code and cite it',
+    });
+  }
+  return problems;
+}
+
+function formatProblems(task: string, problems: SpecProblem[]): string {
+  if (problems.length === 0) {
+    return `${task}: spec check passed`;
+  }
+  const lines = problems.map((problem) => `  ${problem.kind}: ${problem.detail}`);
+  return [`${task}: ${problems.length} problem(s) in the spec`, ...lines].join('\n');
+}
+
+// There is no API to answer a `question` call directly, so the mechanism is interrupt,
+// then re-prompt with the lead's text. With `fresh`, that text opens a new session in
+// the same worktree and the state points at it.
+async function replyToWorker(
+  task: string,
+  promptFile: string,
+  deps: SwitchModelDeps,
+  options?: { fresh?: boolean },
+): Promise<void> {
+  const state = loadState(deps.statePath);
+  const record = state.tasks[task];
+  if (record === undefined) {
+    throw new Error(`unknown task ${task}: no session in the state file`);
+  }
+  let text: string;
+  try {
+    text = fs.readFileSync(promptFile, 'utf8');
+  } catch {
+    throw new Error(`cannot read prompt file ${promptFile}`);
+  }
+  if (text.trim().length === 0) {
+    throw new Error(`prompt file ${promptFile} is empty`);
+  }
+  if (options?.fresh !== true) {
+    await deps.client.interrupt(record.sessionId);
+    deps.client.promptDetached(record.sessionId, text);
+    return;
+  }
+  // Every local check runs before the interrupt, so a typo never stops the old worker
+  // without a replacement.
+  const file = findTaskFile(record.worktree, task);
+  const fields = parseFrontMatter(
+    fs.readFileSync(path.join(record.worktree, 'work', file), 'utf8'),
+  );
+  const head = renderPrompt(loadPrompt(deps.promptsDirPath, 'fresh'), {
+    TASK: task,
+    TASK_FILE: file,
+    WORKTREE: record.worktree,
+    BRANCH: fields['branch'] ?? '',
+  });
+  const outcome = await deps.client.tryInterrupt(record.sessionId);
+  if (outcome.kind === 'error') {
+    throw new Error(
+      `refusing to reply fresh to ${task}: cannot interrupt the previous session (${record.sessionId}): ${outcome.message}`,
+    );
+  }
+  const previousSessionId = record.sessionId;
+  const { sessionId, model } = await startFreshWorkerSession(
+    { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
+    { task, record, title: `${task} reply`, prompt: `${head}\n\n${text}` },
+  );
+  updateState(deps.statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined && current.sessionId === previousSessionId) {
+      fresh.tasks[task] = freshSessionRecord(current, sessionId, model);
+    }
+  });
+}
+
+async function runLaunch(args: string[]): Promise<void> {
+  const options = parseLaunchArgs(args);
+  const root = findRepoRoot();
+  const { sessionId, worktree } = await launchTask(options, {
+    repoRoot: root,
+    client: new OpencodeCliClient(),
+    promptsDirPath: promptsDir(),
+    statePath: stateFilePath(),
+    runner: new RealGitRunner(),
+  });
+  console.log(`${options.task} ${sessionId} ${worktree}`);
+}
+
+async function runAutopilotCommand(positional: string[], args: string[]): Promise<void> {
+  void positional;
+  const deps: AutopilotDeps = {
+    client: new OpencodeCliClient(),
+    runner: new RealGitRunner(),
+    statePath: stateFilePath(),
+    promptsDirPath: promptsDir(),
+    repoRoot: findRepoRoot(),
+  };
+  await runAutopilot(deps, { once: flag(args, '--once'), dryRun: flag(args, '--dry-run') });
+}
+
+async function runDoctor(positional: string[], args: string[]): Promise<void> {
+  void positional;
+  const root = findRepoRoot();
+  const statePath = stateFilePath();
+  const runner = new RealGitRunner();
+  const head = currentHead(runner, root);
+  if (head === undefined) {
+    throw new Error(`cannot read HEAD of ${root}`);
+  }
+  const state = loadState(statePath);
+  const since = flagValue(args, '--since') ?? state.doctor?.head;
+  if (since === undefined) {
+    throw new Error('no previous audit: pass --since <sha>');
+  }
+  const client = new OpencodeCliClient();
+  const { sessionId, model } = await startDoctorSession(
+    { client, runner, promptsDirPath: promptsDir(), repoRoot: root },
+    { head, since },
+  );
+  const startedAt = new Date().toISOString();
+  updateState(statePath, (fresh) => {
+    fresh.doctor = {
+      sessionId,
+      head,
+      since,
+      startedAt,
+      reportedForHead: undefined,
+      stalledReportedForHead: undefined,
+      model,
+    };
+  });
+  console.log(`doctor ${sessionId} ${doctorWorktreeFor(root)}`);
+}
+
+async function runPrereview(positional: string[]): Promise<void> {
+  const task = positional[0];
+  if (task === undefined) {
+    throw new Error('usage: lead prereview <T-XXXX>');
+  }
+  const statePath = stateFilePath();
+  const state = loadState(statePath);
+  const record = state.tasks[task];
+  if (record === undefined) {
+    throw new Error(`unknown task ${task}: no session in the state file`);
+  }
+  const client = new OpencodeCliClient();
+  const head = currentHead(new RealGitRunner(), record.worktree);
+  if (head === undefined) {
+    throw new Error(`cannot read HEAD of ${record.worktree}`);
+  }
+  const { sessionId, model } = await startPrereviewSession(
+    { client, promptsDirPath: promptsDir(), worktree: record.worktree, task },
+    head,
+  );
+  const startedAt = new Date().toISOString();
+  updateState(statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined) {
+      current.prereview = { sessionId, head, startedAt, model };
+    }
+  });
+  console.log(`${task} pre-review ${sessionId} for ${head}`);
+}
+
+async function runReply(positional: string[], args: string[]): Promise<void> {
+  const task = positional[0];
+  const promptFile = positional[1];
+  if (task === undefined || promptFile === undefined) {
+    throw new Error('usage: lead reply <T-XXXX> <prompt-file> [--fresh]');
+  }
+  const fresh = flag(args, '--fresh');
+  await replyToWorker(
+    task,
+    promptFile,
+    {
+      client: new OpencodeCliClient(),
+      statePath: stateFilePath(),
+      promptsDirPath: promptsDir(),
+      // The non-fresh path never uses the repo root, and finding it throws
+      // outside a checkout — so only look it up when --fresh needs it.
+      repoRoot: fresh ? findRepoRoot() : '',
+    },
+    { fresh },
+  );
+  console.log(`${task} replied`);
+}
+
+async function runSwitchModel(positional: string[], args: string[]): Promise<void> {
+  const task = positional[0];
+  const model = positional[1];
+  if (task === undefined || model === undefined) {
+    throw new Error(
+      'usage: lead switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place] (--in-place keeps the same session and its context; send lead reply after it if the worker is idle)',
+    );
+  }
+  const extraRules = flagValue(args, '--extra-rules');
+  const inPlace = flag(args, '--in-place');
+  if (inPlace && extraRules !== undefined) {
+    throw new Error('--extra-rules needs a new session; drop --in-place');
+  }
+  const root = findRepoRoot();
+  if (inPlace) {
+    const { sessionId, model: chosen } = await switchModelInPlace(task, model, {
+      repoRoot: root,
+      client: new OpencodeCliClient(),
+      promptsDirPath: promptsDir(),
+      statePath: stateFilePath(),
+    });
+    console.log(`${task} ${sessionId} ${chosen}`);
+    return;
+  }
+  const { sessionId, model: chosen } = await switchModel(task, model, extraRules, {
+    repoRoot: root,
+    client: new OpencodeCliClient(),
+    promptsDirPath: promptsDir(),
+    statePath: stateFilePath(),
+  });
+  console.log(`${task} ${sessionId} ${chosen}`);
+}
+
+function runSpecCheck(positional: string[]): void {
+  const task = positional[0];
+  if (task === undefined) {
+    throw new Error('usage: lead spec-check <T-XXXX>');
+  }
+  const root = findRepoRoot();
+  const dir = taskFileDir(root, task, stateFilePath());
+  const file = findTaskFile(dir, task);
+  const text = fs.readFileSync(path.join(dir, 'work', file), 'utf8');
+  const serverRoot = path.join(root, 'apps', 'server', 'src');
+  const problems = checkSpec(text, {
+    exists: (relative) => fs.existsSync(path.join(root, relative)),
+    serverText: () => {
+      const chunks: string[] = [];
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.name.endsWith('.ts')) {
+            chunks.push(fs.readFileSync(full, 'utf8'));
+          }
+        }
+      };
+      walk(serverRoot);
+      return chunks.join('\n');
+    },
+  });
+  console.log(formatProblems(task, problems));
+  if (problems.length > 0) {
+    process.exitCode = 1;
+  }
+}
+
+async function runSnapshot(positional: string[], page: boolean): Promise<void> {
+  const root = findRepoRoot();
+  const snapshot = await collectSnapshot({
+    client: new OpencodeCliClient(),
+    runner: new RealGitRunner(),
+    statePath: stateFilePath(),
+    root,
+    now: Date.now(),
+  });
+  const json = JSON.stringify(snapshot);
+  if (!page) {
+    console.log(json);
+    return;
+  }
+  const out = positional[0];
+  if (out === undefined) {
+    throw new Error('usage: lead dashboard <out.html>');
+  }
+  const template = fs.readFileSync(
+    path.join(root, 'packages', 'devtools', 'dashboard', 'template.html'),
+    'utf8',
+  );
+  // `<` is escaped so task text can never close the script tag.
+  fs.writeFileSync(out, template.replace('__SNAPSHOT__', json.replace(/</g, '\\u003c')));
+  console.log(`dashboard written to ${out} (${snapshot.active.length} active)`);
+}
 
 function runShell(
   cwd: string,
@@ -256,7 +602,39 @@ async function runBatch(positional: string[]): Promise<void> {
   }
 }
 
-export async function main(argv: string[]): Promise<void> {
+const HELP = `lead — zero-token supervision of OpenCode workers
+
+Usage: lead <command> [options]
+
+  launch <T-XXXX> [--extra-rules <file>] [--base <ref>]      create the worktree and worker session (--base branches off an older commit)
+  switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place]
+                                                            move a tracked worker onto a new model (quota fallback)
+                                                            --in-place keeps the same session and its context; send lead reply after it if the worker is idle
+  autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
+  doctor [--since <sha>]                                    audit main now with a Muse doctor session
+  prereview <T-XXXX>                                        start a Muse pre-review manually
+  reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
+  merge <T-XXXX> --summary "<one line>" [--skip-gate] [--hold]
+                                                            rebase, run the gate, squash onto main, board, push, clean up
+                                                            (--hold merges without pushing; run \`lead push\` to deploy)
+                                                            ("T-XXXX: summary" is the commit subject, at most 72 characters)
+  push                                                      push main to origin (deploys; use after \`lead merge --hold\`)
+  batch check <T-A> <T-B> ...                               combine the branches on a wave worktree, run install, typecheck and every
+                                                            package's tests, write one fix file per task under ~/.zilar-lead/wave/
+  batch merge <T-A> <T-B> ...                               merge a checked wave task by task, no gate (refuses when the check is stale)
+  spec-check <T-XXXX>                                    check a spec's paths, routes and web claims against the code
+  snapshot                                                  JSON of every task in flight, its step and timings
+  dashboard <out.html>                                      the snapshot rendered as the dashboard page
+  status                                                    compact table of every tracked task
+  forget <T-XXXX> [...] | --finished [--dry-run]            drop tracked tasks from the state file
+  watch [--no-icons]                                          live terminal view of every running task
+
+State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
+Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
+The autopilot never merges, pushes, or edits task files or the board.
+`;
+
+async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   const positional = rest.filter((arg) => !arg.startsWith('--'));
   if (command === undefined || command === '--help' || command === '-h' || command === 'help') {

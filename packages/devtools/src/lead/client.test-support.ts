@@ -3,7 +3,7 @@ import type {
   OpenCodeClient,
   PermissionDecision,
   SessionModel,
-} from './interface.js';
+} from './client.js';
 
 // An in-memory OpenCode stand-in for tests. Sessions hold scripted messages
 // and permissions, and every mutating call is recorded for assertions.

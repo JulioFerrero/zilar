@@ -84,6 +84,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2173, T-2174 | server and package helper copies, wave 2 (`messageOf`, `notFound`, `escapeLike`, sleep…); server types declared twice → one declaration (4 look-alikes kept apart on purpose) | −73, −55 |
 | T-2170 | 22 web/phone helpers written twice move to chat-core once (block answers, elapsed time, link preview, picker rules, routine texts…); no re-export shims | −195 |
 | T-2175 | server: every pass-through re-export gone; imports name the module that defines the name (129 files) | −259 |
+| T-2177 | packages: one declaration per type shape, wave 2 (reactions, devtools deps, audits, permissions) | −35 |
+| T-2178 | server in-file repeats, wave 3 (one tool-loop result builder, AI memory chat lookup, roles…) | −107 |
+| T-2176 | web and phone copies, wave 2: 16 function groups and 9 type pairs move to chat-core or client-core | −178 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -101,10 +104,16 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (04:30):**
-- **T-2176:** web and phone copies, wave 2: 16 function groups and 14 type shapes.
-- **T-2177:** package and devtools copies, wave 2.
-- **Next:** the web and phone re-exports (41 lines), after T-2176.
+**Running (06:20):**
+- **T-2179:** runner-tunnel's size-split folders (`mux`, `runner`, `server`) merged back into their parent files.
+- **T-2180:** devtools' size-split folders (lead client, cli, autopilot, watch-app, xmpp-e2e) merged back.
+- **T-2181:** web and phone pass-through re-exports and rename aliases gone; imports name the defining module.
+- **T-2182:** one phone picture editor hook for profile settings and group settings (big-cut plan B6).
+- **T-2183:** 7 small single-use server files folded into their only importer; the last 2 server pass-through exports gone.
+
+**Checked and left alone tonight:**
+- **B8**, one guarded fetch: the two pinned HTTPS fetches overlap by about 60 lines, but their error types and timeouts differ. That is a security path for little gain.
+- **Connections twin:** the web keeps per-row state while the phone keeps about 20 screen-level states. Unifying them means rewriting one, which needs a daytime look.
 - **Checked and left alone:**
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.

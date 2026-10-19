@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tickOnce, type AutopilotDeps } from './autopilot.js';
-import { FakeOpenCodeClient } from './client.js';
+import { FakeOpenCodeClient } from './client.test-support.js';
 import { fallbackModel } from './fallback.js';
 import {
   FREE_PAUSE_HOURS,

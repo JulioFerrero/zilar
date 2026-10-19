@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tickOnce, type AutopilotDeps } from './autopilot.js';
-import { FakeOpenCodeClient } from './client.js';
+import { FakeOpenCodeClient } from './client.test-support.js';
 import { decide, type DecideInput } from './decide.js';
 import { FREE_GLM_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, PAID_MUSE, modelLabel } from './models.js';
 import { promptsDir } from './prompts.js';

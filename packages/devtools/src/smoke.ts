@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { errorMessage } from './xmpp-e2e/harness';
+import { errorMessage } from './xmpp-e2e.js';
 const XMPP_FRAMING_NAMESPACE = 'urn:ietf:params:xml:ns:xmpp-framing';
 
 type OpenFrameReply = {

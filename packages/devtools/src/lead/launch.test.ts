@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FakeOpenCodeClient } from './client';
+import { FakeOpenCodeClient } from './client.test-support.js';
 import { RealGitRunner } from './git';
 import { launchTask } from './launch';
 import { FREE_DEEPSEEK_FLASH, GO_DEEPSEEK_FLASH } from './models';

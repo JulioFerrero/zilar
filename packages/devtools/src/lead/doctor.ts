@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { extractCounts, extractVerdict } from './autopilot/task-info.js';
+import { extractCounts, extractVerdict } from './autopilot.js';
 import { type OpenCodeClient } from './client.js';
 import { oneLine, type FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
