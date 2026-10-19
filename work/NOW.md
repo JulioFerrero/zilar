@@ -215,6 +215,27 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
       | T-2233 | shared client-core store | 7,504 |
       | T-2234 | web and phone store layers | 5,591 |
 
+    - **Maps merged (12:05):**
+      - T-2229 composer: 4,454 → 2,665;
+      - T-2230 list and bubble: 7,468 → 3,943;
+      - T-2231 chat list: 6,710 → 3,471;
+      - T-2232 screen, search, pins: 7,159 → 4,071;
+      - T-2234 store layers: 5,591 → 1,987 (+445 core).
+      - T-2233 (shared store) is still running.
+    - **Rewrites running:**
+      - T-2235: chat list server, at most 1,350 from 2,490.
+      - T-2236: composer mentions shared, at least −250.
+      - T-2237: chat list shared model plus web, at least −550.
+      - T-2238: bubble view and menu models plus web bubble, at least −300.
+      - T-2239: search model plus web and phone search, at least −700.
+    - **T-2226:** in a lead fix round. Virtua keeps 10–13 bubbles in the DOM against main's 226, but the chat opens 996 px above the bottom, and scroll memory comes back one row off.
+    - **Next rewrites:**
+      - phone chat list, on the T-2237 model;
+      - web and phone composer, after T-2236;
+      - phone bubble and list, after T-2238 and T-2226;
+      - pins and chat screen;
+      - search server and archive access, after T-2235;
+      - store steps, after T-2233.
     - **T-2228** (server payload pass-through, −100) is parked: small-trim kind.
     - **Lines by feature (11:40, 232k source):**
       - messages 44.3k; AI 37.9k; groups and topics 27.7k; plumbing and kits 18.8k;
