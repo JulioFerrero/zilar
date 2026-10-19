@@ -3,7 +3,7 @@ import type { Payload, HandoffLine } from '@zilar/protocol';
 import type { SendMessageOptions, ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
-import type { ChatUsage } from '../ai/model-client';
+import { ChatCompletionError, type ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './tool-rounds';
 import { GROUP_FAILURE_REPLY, cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
@@ -17,7 +17,6 @@ import {
   turnStopped,
 } from './turn';
 import {
-  ChatCompletionError,
   requestCompletion,
   type CompleteChatInput,
   type ExecuteToolCall,

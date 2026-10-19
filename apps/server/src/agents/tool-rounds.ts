@@ -1,12 +1,11 @@
 // effect-plain: this module's public edge stays Promise-shaped.
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
-import type { ChatUsage } from '../ai/model-client';
+import { ChatCompletionError, type ChatUsage } from '../ai/model-client';
 import { cutShortSuffix, TRANSIENT_FAILURE_REPLY } from './replies';
 import { runLoopRound } from './tool-exec';
 import {
   CHAT_TURN_CAPS,
-  ChatCompletionError,
   requestCompletion,
   type ExecuteToolCall,
   type ModelRequestMessage,

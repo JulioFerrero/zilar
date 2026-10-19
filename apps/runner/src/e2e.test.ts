@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '@zilar/server/src/app.ts';
-import { serveEdgeOnNode } from '@zilar/server/src/effect/node-serve.ts';
+import { serveEdgeOnNode } from '@zilar/server/src/startup/components.ts';
 import {
   bootstrapUser,
   createTestContext,

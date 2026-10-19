@@ -1,7 +1,5 @@
 // effect-plain: the Promise edge over `ai/model-client`; every model call is an Effect inside `chat`.
 import {
-  ChatCompletionError,
-  MODEL_CHAT_TIMEOUT_MS,
   chat,
   type ChatToolCall,
   type ChatUsage,
@@ -33,7 +31,6 @@ import type { ChatToolDefinition } from '../ai/model-client';
 // Cap on every completion request, enforced in code from day one (§8.4).
 export const REPLY_MAX_TOKENS = 4096;
 
-export { ChatCompletionError, MODEL_CHAT_TIMEOUT_MS };
 export type { ChatToolCall, ChatUsage, ModelRequestMessage, ModelTarget };
 
 // A validated call the executor may run. Unknown tools and invalid arguments

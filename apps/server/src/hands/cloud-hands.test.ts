@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DeskChunk, Hands, DeskSpec } from '@zilar/desk';
+import { DeskError, DeskQueued } from '@zilar/desk';
 import { createDeskRunner } from '../agents/gateway/desk-exec';
-import { createCloudHands, HandsError, HandsQueued, socketLines } from './cloud-hands';
+import { createCloudHands, socketLines } from './cloud-hands';
 
 /**
  * A minimal stand-in for the desk-agent's unix socket, so the app-side client
@@ -126,10 +127,10 @@ describe('cloud Hands over the sidecar socket', () => {
 
   it('surfaces a queued answer and a fixed error code', async () => {
     const hands = createCloudHands(socketPath);
-    await expect(hands.provision(spec('queued'))).rejects.toBeInstanceOf(HandsQueued);
+    await expect(hands.provision(spec('queued'))).rejects.toBeInstanceOf(DeskQueued);
     await expect(hands.provision(spec('queued'))).rejects.toMatchObject({ position: 2 });
     await expect(hands.provision({ ...spec(), imageDigest: 'bad' })).rejects.toBeInstanceOf(
-      HandsError,
+      DeskError,
     );
   });
 
@@ -192,7 +193,7 @@ describe('desk runner result cap', () => {
       },
       stop: async () => undefined,
       snapshot: async () => {
-        throw new HandsError('tool_failed', 'snapshot is not available');
+        throw new DeskError('tool_failed', 'snapshot is not available');
       },
     };
     const runner = createDeskRunner({

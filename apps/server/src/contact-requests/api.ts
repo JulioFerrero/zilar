@@ -25,12 +25,11 @@ import {
   schemaErrorLayerFor,
   type EffectApiMount,
 } from '../effect/http-core';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import { runSql } from '../effect/sql';
 import { HttpError, notFound } from '../errors';
 import { normalizeHandle } from '@zilar/protocol';
 import { escapeLike } from '../stickers/storage';
-import { isPendingPairViolation } from './errors';
 import {
   auditFor,
   findActionableEffect,
@@ -240,12 +239,7 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
 // Adding by `@username` sends a request the other person must accept. An unknown
 // handle, a retired one and a not-allowed request answer the same 404.
 
-export {
-  isPendingPairViolation,
-  MAX_PENDING_OUTGOING,
-  RE_REQUEST_COOLDOWN_DAYS,
-  resolveHandleUser,
-};
+export { MAX_PENDING_OUTGOING, RE_REQUEST_COOLDOWN_DAYS, resolveHandleUser };
 export type { ContactRequestsDeps };
 
 // Refuses self, an existing contact, a pending request in either direction, more
@@ -606,4 +600,37 @@ export async function cancelContactRequest(
   viewerId: string,
 ): Promise<ContactRequestRow> {
   return decideContactRequest(deps, id, viewerId, 'cancelled', 'from', 'contact_request.cancelled');
+}
+
+// Recognises the pending-request partial unique indexes by code or constraint,
+// never by message text.
+export function isPendingPairViolation(error: unknown): boolean {
+  if (error instanceof SqlError.SqlError) {
+    const reason = error.reason;
+    return (
+      reason._tag === 'UniqueViolation' &&
+      (reason.constraint === undefined ||
+        reason.constraint === 'contact_requests_pending_idx' ||
+        reason.constraint === 'contact_requests_pending_pair_idx')
+    );
+  }
+  let current: unknown = error;
+  for (let depth = 0; depth < 5; depth += 1) {
+    if (typeof current !== 'object' || current === null) {
+      return false;
+    }
+    const record = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (record.code === '23505') {
+      return (
+        record.constraint === undefined ||
+        record.constraint === 'contact_requests_pending_idx' ||
+        record.constraint === 'contact_requests_pending_pair_idx'
+      );
+    }
+    if (!('cause' in record)) {
+      return false;
+    }
+    current = record.cause;
+  }
+  return false;
 }

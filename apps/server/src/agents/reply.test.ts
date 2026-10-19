@@ -13,9 +13,9 @@ import {
 // The barrel does not re-export `redactError` or `requestCompletion`;
 // importing them here keeps this task to tests with no barrel change.
 import { redactError, mapFailureToReply } from './tool-exec';
+import { ChatCompletionError } from '../ai/model-client';
 import {
   requestCompletion,
-  ChatCompletionError,
   TOOL_TURN_MAX_CALLS,
   type ExecuteToolCall,
   type ModelRequestMessage,

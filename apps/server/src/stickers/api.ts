@@ -6,6 +6,7 @@
 // multipart or the raw stream, and the file GET answers a raw response.
 
 import type { ServerCore } from '../app/deps';
+import type { AuditRecorder } from '../audit/recorder';
 
 import { HttpApi } from 'effect/http-api';
 import { StickersGroup, StickersSchemaErrors, StickersUploadRateLimit } from '@zilar/api-contract';
@@ -13,9 +14,25 @@ import { StickersGroup, StickersSchemaErrors, StickersUploadRateLimit } from '@z
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { mountGroups, schemaErrorLayerFor, type EffectApiMount } from '../effect/http-core';
 import { limiter, type RateLimiter } from '../rate-limit';
-import type { StickersRoutesDependencies } from './routes';
 import { createStickersGroupLayer } from './api-handlers';
 import { renderSchemaError } from './api-decode';
+import type { StickerConverter } from './convert';
+
+export interface StickersRoutesDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config'> {
+  storageDir: string;
+  audit?: AuditRecorder;
+  now?: () => number;
+  uploadLimiter?: { allow: (key: string) => boolean };
+  importLimiter?: { allow: (key: string) => boolean };
+  telegramClient?: import('./telegram/set').TelegramClient;
+  converter?: StickerConverter;
+  /**
+   * Resolves the bot token per request: the env value wins when set, else
+   * the stored integrations value, else none. `app.ts` wires the integrations
+   * resolver; tests inject a fixed value. Absent = the legacy env-only read.
+   */
+  getBotToken?: () => Promise<string | null>;
+}
 
 export type StickersApiDependencies = StickersRoutesDependencies & Pick<ServerCore, 'logger'>;
 

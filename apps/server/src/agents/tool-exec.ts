@@ -1,5 +1,5 @@
 // effect-plain: this module's public edge stays Promise-shaped.
-import type { ModelCallResult } from '../ai/model-client';
+import { ChatCompletionError, type ModelCallResult } from '../ai/model-client';
 import { REQUEST_ACTION_TOOL } from './tools/schemas';
 import { stripTaskTitle } from './tools/parse';
 import { QUIET_TOOLS, stageForToolCall } from './tool-guide';
@@ -17,7 +17,6 @@ import {
   TOOL_RESULT_MAX_CHARS,
   type ExecuteToolCall,
   type ModelRequestMessage,
-  ChatCompletionError,
 } from './tool-loop';
 import { executeToolCalls } from './tool-calls';
 import { redactError } from './redact-error';

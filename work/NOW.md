@@ -23,6 +23,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 03:17 | 238,620 (real cuts since 19:35 about −34,500) |
 | 10-19 04:30 | 237,952 (real cuts since 19:35 about −35,160) |
 | 10-19 05:31 | 237,141 (real cuts since 19:35 about −35,970) |
+| 10-19 06:23 | 236,347 (real cuts since 19:35 about −36,770); T-2181's −206 lands after this count |
 
 **Merged tonight:**
 
@@ -88,6 +89,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2178 | server in-file repeats, wave 3 (one tool-loop result builder, AI memory chat lookup, roles…) | −107 |
 | T-2176 | web and phone copies, wave 2: 16 function groups and 9 type pairs move to chat-core or client-core | −178 |
 | T-2180, T-2179 | size-split folders merged back: devtools lead `client`, `cli`, `autopilot`, `watch-app`, `xmpp-e2e`; runner-tunnel `mux`, `runner`, `server` (8 folders, 35 files fewer) | −125, −108 |
+| T-2181 | web and phone: 178 re-exported names now imported from the defining module, 6 rename aliases and 4 re-export-only files gone (200 files) | −206 |
+| T-2182 | phone: one picture editor hook (pick, save, remove) for profile and group settings (big-cut plan B6) | −115 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -106,9 +109,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (06:20):**
-- **T-2181:** web and phone pass-through re-exports and rename aliases gone; imports name the defining module.
-- **T-2182:** one phone picture editor hook for profile settings and group settings (big-cut plan B6).
-- **T-2183:** 7 small single-use server files folded into their only importer; the last 2 server pass-through exports gone.
+- **T-2183:** 7 small single-use server files folded into their only importer, and the last 2 server pass-through exports gone. In a fix round for one runner e2e import the gate does not check.
+- **T-2184, T-2185:** single-use web and phone files folded into their only importer, wave 4.
+- **T-2186:** phone screens that hand-roll load-on-focus use the existing `useFocusList` hook (8 screens).
 
 **Checked and left alone tonight:**
 - **B8**, one guarded fetch: the two pinned HTTPS fetches overlap by about 60 lines, but their error types and timeouts differ. That is a security path for little gain.
@@ -117,7 +120,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `6c7db075d` (05:33): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `1f43a4df4` (06:26): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 
