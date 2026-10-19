@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
+import { safeStringify } from '../actions/support';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
@@ -308,12 +309,4 @@ export async function insertRoutineRow(
   const [inserted] = rows;
   if (inserted === undefined) throw new Error(failureMessage);
   return inserted;
-}
-
-function safeStringify(value: unknown): string | null {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return null;
-  }
 }

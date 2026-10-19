@@ -112,6 +112,8 @@ export function toMissingTopic(): HttpError {
   return new HttpError(TOPIC_NOT_FOUND.status, TOPIC_NOT_FOUND.code, MISSING_TOPIC_MESSAGE);
 }
 
+// `SELECT *` returns camelCased columns, so rows keep the shapes the access helpers expect.
+// A missing id returns null, so callers answer the same 404 whether it exists or not.
 export async function getTopic(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
   const [row] = await runSql(
     db,
@@ -121,6 +123,17 @@ export async function getTopic(db: ServerDatabase, topicId: string): Promise<Top
     }),
   );
   return row ?? null;
+}
+
+export async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+  return [...rows];
 }
 
 export async function getGroupMembership(

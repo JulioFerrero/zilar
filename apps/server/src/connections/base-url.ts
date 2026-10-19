@@ -28,7 +28,7 @@ export class BaseUrlError extends Error {
 const INVALID = 'The base URL must be a public https address';
 
 /** Lowercase, strip IPv6 brackets: `[::1]` and `::1` classify the same. */
-function bareHost(host: string): string {
+export function bareHost(host: string): string {
   return host
     .trim()
     .toLowerCase()

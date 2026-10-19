@@ -15,7 +15,7 @@ import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EffectApiMount } from '../effect/http-core';
 import { handler, mountApi, schemaErrorLayerFor, sessionLayer } from '../effect/http-core';
-import { canSeeTopic, type TopicRow } from '../topics/access';
+import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import {
   ApprovalServiceError,
   approverNamesForTopics,
@@ -66,18 +66,6 @@ export function toWireApproval(row: WireApprovalInput): PublicApproval {
 
 export function toWireRule(rule: PublicApprovalRule): ApprovalRule {
   return { ...rule, createdAt: rule.createdAt.toISOString() };
-}
-
-// The full row `canSeeTopic` needs; `null` for a missing id keeps 404s alike.
-export async function loadTopicRow(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
 }
 
 export async function loadTopicsForGroup(
@@ -133,7 +121,7 @@ export async function canManageRuleFor(
   userId: string,
 ): Promise<boolean> {
   if (rule.topicId !== null) {
-    const topic = await loadTopicRow(db, rule.topicId);
+    const topic = await getTopic(db, rule.topicId);
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       return false;
     }
@@ -231,7 +219,7 @@ export async function visibleTopicNames(
   const ids = [...new Set(rows.map((row) => row.topicId).filter((id) => id !== null))];
   const names = new Map<string, string>();
   for (const id of ids) {
-    const topic = await loadTopicRow(db, id);
+    const topic = await getTopic(db, id);
     if (topic && (await canSeeTopic(db, topic, userId))) {
       names.set(id, topic.name);
     }
@@ -482,9 +470,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 visible.push({ ...rule, topicName: null });
                 continue;
               }
-              const topic = yield* Effect.promise(() =>
-                loadTopicRow(deps.db, rule.topicId as string),
-              );
+              const topic = yield* Effect.promise(() => getTopic(deps.db, rule.topicId as string));
               if (
                 topic !== null &&
                 (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))

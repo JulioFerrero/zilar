@@ -6,7 +6,7 @@ import type { CardMediaRow } from '../../db/rows-agents';
 import { SAVE_TEXT_MEDIA_TOOL, type SaveTextMediaFormat } from '../tools/schemas';
 import type { ToolExecution } from '../tool-loop';
 import type { AgentGatewayDeps, AiSession } from './contracts';
-import type { FetchMediaChat } from './fetch-media';
+import { humanSize, type FetchMediaChat } from './fetch-media';
 
 export interface SaveTextMediaCall {
   name: string;
@@ -32,17 +32,6 @@ const NOT_AVAILABLE = 'media is not available';
 class InvalidJson extends Data.TaggedError('InvalidJson') {}
 
 type StoreOutcome = { ok: true; row: CardMediaRow } | { ok: false; reason: string };
-
-function humanSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const kilobytes = bytes / 1024;
-  if (kilobytes < 1024) {
-    return `${Math.round(kilobytes)} KB`;
-  }
-  return `${Math.round((kilobytes / 1024) * 10) / 10} MB`;
-}
 
 // The display name only: the bytes are stored under a server-made UUID. The
 // format extension is added when missing, and the name is reduced to the same

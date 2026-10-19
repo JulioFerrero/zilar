@@ -5,6 +5,7 @@ import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import type { CompleteChatInput, ModelRequestMessage } from '../tool-loop';
 import { PERSONA_SUMMARY_MAX_LENGTH } from '../tools/schemas';
+import { parseJsonOrNull } from '../../stickers/api-decode';
 
 // Eagerness maps to the score an AI must reach to be woken (plan §2.3). Lower
 // means readier to speak; `normal` is the product default (decision 2).
@@ -138,14 +139,6 @@ function stripCodeFence(raw: string): string {
   return match === null ? trimmed : (match[1] ?? '').trim();
 }
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 export interface ListenerOutput {
   scores: Map<string, number>;
   reason: string;
@@ -161,7 +154,7 @@ export function parseListenerOutput(
   rosterIds: readonly string[],
 ): ListenerOutput | null {
   const parsed = Schema.decodeUnknownExit(ListenerOutputSchema, { onExcessProperty: 'error' })(
-    parseJson(stripCodeFence(raw)),
+    parseJsonOrNull(stripCodeFence(raw)),
   );
   if (!Exit.isSuccess(parsed)) {
     return null;

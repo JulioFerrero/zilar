@@ -11,7 +11,7 @@ import { type ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { deleteToolsForAiInGroupEffect } from '../tools/service';
-import { type TopicRow, aiMayBeInTopic } from '../topics/access';
+import { type TopicRow, aiMayBeInTopic, listTopicsByGroup } from '../topics/access';
 import { syncTopicRoom, type TopicRoomDeps } from '../topics/rooms';
 import { emitGroupAi, emitTopicAi } from './events';
 import { getGroupDetail, getMembership, requireGroup } from './queries';
@@ -96,17 +96,6 @@ async function pendingGroupTopics(deps: TopicRoomDeps, groupId: string): Promise
   return [...rows];
 }
 
-async function groupTopicRows(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
-    }),
-  );
-  return [...rows];
-}
-
 // Re-apply the desired members to every topic room, archived ones included
 // (a removed person must not keep an affiliation). Public topics gain/lose
 // the person; private ones drop anyone whose `topic_members` row is gone.
@@ -119,7 +108,7 @@ export async function syncGroupTopicRooms(
   domain: string,
   logger: InviteLogger,
 ): Promise<void> {
-  const rows = await groupTopicRows(db, groupId);
+  const rows = await listTopicsByGroup(db, groupId);
   let failed = false;
   for (const topic of rows) {
     try {
@@ -138,7 +127,7 @@ export async function syncGroupTopicRooms(
 // longer allows gets an `ai-removed` event, so a live session leaves at
 // once. The `topic_ais` rows stay: re-adding the owner brings the AI back.
 export async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
-  const topicRows = await groupTopicRows(db, groupId);
+  const topicRows = await listTopicsByGroup(db, groupId);
   for (const topic of topicRows) {
     // Every non-General topic follows the derived rule, so a dropped AI is
     // announced for public topics too.
@@ -174,7 +163,7 @@ export async function archiveDrainedPrivateTopics(
   db: ServerDatabase,
   groupId: string,
 ): Promise<void> {
-  const rows = await groupTopicRows(db, groupId);
+  const rows = await listTopicsByGroup(db, groupId);
   for (const topic of rows) {
     if (topic.archivedAt !== null || topic.visibility !== 'private' || topic.isGeneral) {
       continue;

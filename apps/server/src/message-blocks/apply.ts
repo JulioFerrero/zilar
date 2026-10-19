@@ -17,7 +17,7 @@ import type { BlockResponseRow } from '../db/rows';
 
 type NameOf = (actorId: string) => string | undefined;
 
-function fieldOf(value: unknown, key: string): unknown {
+export function fieldOf(value: unknown, key: string): unknown {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }

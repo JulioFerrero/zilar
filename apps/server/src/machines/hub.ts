@@ -1,6 +1,7 @@
 import { TunnelServer, type KeyRegistry, type DeskServer } from '@zilar/runner-tunnel';
 import { Duration, Effect, Fiber, Schedule } from 'effect';
 import { type ServerDatabase } from '../db/client';
+import { serializeError } from '../effect/error-utils';
 import { type RunnerDesk } from '../hands/runner-hands';
 import { listApprovedMachineKeys } from './service';
 /**
@@ -186,13 +187,6 @@ export function createHubKeyRegistry({
       unsubscribeDurableRevoke();
     },
   };
-}
-
-function serializeError(error: unknown): Record<string, unknown> {
-  if (error instanceof Error) {
-    return { name: error.name, message: error.message };
-  }
-  return { message: String(error) };
 }
 
 export interface StartRunnerHubOptions {

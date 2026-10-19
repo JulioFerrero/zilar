@@ -8,7 +8,7 @@ import { Data, Effect, type Effect as EffectType } from 'effect';
 import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
 import { readU16BE, readU16LE, readU24LE, readU32BE, readU32LE, writeU32LE } from '../media-bytes';
-import { isPng, isWebp } from '../stickers/image';
+import { isPng, isWebp, startsWith } from '../stickers/image';
 import {
   guardedGet,
   type DnsLookup,
@@ -442,13 +442,6 @@ export interface SniffedImage {
 
 const PNG_IHDR = [0x49, 0x48, 0x44, 0x52] as const;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d] as const;
-
-function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
-  if (bytes.length < magic.length) {
-    return false;
-  }
-  return magic.every((value, index) => bytes[index] === value);
-}
 
 function sniffPng(bytes: Uint8Array): SniffedImage | null {
   if (bytes.length < 24 || !PNG_IHDR.every((value, index) => bytes[12 + index] === value)) {

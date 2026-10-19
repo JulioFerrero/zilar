@@ -5,6 +5,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { ChatPrefsGroup } from '@zilar/api-contract';
 
 import { HttpError } from '../errors';
+import { decodeChatJid } from '../chats/api';
 import { limiter } from '../rate-limit';
 import {
   mountGroups,
@@ -20,15 +21,6 @@ import {
   putChatPref,
   requireChatAccess,
 } from './service';
-
-// A malformed percent escape is an unknown chat (404), not a server error.
-function decodePathJid(raw: string): string {
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    throw new HttpError(404, 'not_found', 'Chat not found');
-  }
-}
 
 function parseMutedUntil(value: string | null | undefined): Date | null | undefined {
   if (value === undefined || value === null) {
@@ -75,7 +67,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
       .handle(
         'putPref',
         handler(logger, async (request, user) => {
-          const chatJid = decodePathJid(request.params.chatJid);
+          const chatJid = decodeChatJid(request.params.chatJid);
           const { bare } = await requireChatAccess(deps.db, {
             chatJid,
             userId: user.id,

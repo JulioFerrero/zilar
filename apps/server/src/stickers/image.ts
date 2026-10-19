@@ -85,7 +85,7 @@ const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const RIFF_MAGIC = [0x52, 0x49, 0x46, 0x46] as const;
 const WEBP_MAGIC = [0x57, 0x45, 0x42, 0x50] as const;
 
-function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
+export function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
   if (bytes.length < magic.length) {
     return false;
   }

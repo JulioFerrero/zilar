@@ -1,4 +1,5 @@
 import { Effect, Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { booleanFlagSchema } from '../config/load';
 
 // Push configuration. Everything is optional so the server boots without
 // push: routes answer 404 and the component stays off unless
@@ -10,16 +11,6 @@ const toText = SchemaGetter.transform((value: number) => String(value));
 
 function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
   return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
-}
-
-function booleanFlagSchema() {
-  return Schema.Literals(['true', 'false']).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed('false')),
-    Schema.decodeTo(Schema.Boolean, {
-      decode: SchemaGetter.transform((value: 'true' | 'false') => value === 'true'),
-      encode: SchemaGetter.transform((value: boolean) => (value ? 'true' : 'false')),
-    }),
-  );
 }
 
 const nonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));

@@ -284,7 +284,7 @@ function portSchema(defaultPort: string) {
 }
 
 // `'true'`/`'false'` decoded to a boolean; anything else is invalid.
-function booleanFlagSchema() {
+export function booleanFlagSchema() {
   return Schema.Literals(['true', 'false']).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed('false')),
     Schema.decodeTo(Schema.Boolean, {

@@ -38,7 +38,7 @@ import { startSweepLoop } from '../effect/sweep-loop';
 import { expireStale } from '../approvals/service';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { errorClassName } from '../effect/error-utils';
+import { errorClassName, serializeError } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { type TopicRow } from '../topics/access';
 import { type InviteLogger } from '../groups/schemas';
@@ -182,13 +182,6 @@ export function startApprovalsSweeper({
 
   // First run after one interval, not at boot, so the delay never blocks startup.
   return startSweepLoop(intervalMs, tick);
-}
-
-function serializeError(error: unknown): Record<string, unknown> {
-  if (error instanceof Error) {
-    return { name: error.name, message: error.message };
-  }
-  return { message: String(error) };
 }
 
 interface BuildRoutineSchedulerDeps extends Pick<ServerCore, 'db' | 'audit'> {

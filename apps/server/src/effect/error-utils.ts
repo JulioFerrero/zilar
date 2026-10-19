@@ -15,6 +15,13 @@ export function errorClassName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
+export function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message };
+  }
+  return { message: String(error) };
+}
+
 // Either the structured `UniqueViolation` reason or the Postgres `23505` code,
 // which a wrapped driver error can carry on a nested `cause`. The message check
 // is a last resort, never matched instead of a code.

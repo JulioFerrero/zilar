@@ -3,32 +3,12 @@ import { SqlClient } from 'effect/sql';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { canSeeTopic, type TopicRow } from '../topics/access';
+import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import { listRoutinesForTopic, toPublicRoutines } from './queries';
 import type { PublicRoutine, RoutineRow } from './schemas';
 
-// `SELECT *` returns camelCased columns, so rows keep the shapes the access helpers expect.
-export async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-export async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
-    }),
-  );
-  return [...rows];
-}
+export { findOwnedAiRow } from '../tools/access';
+export { getTopic as findTopicById, listTopicsByGroup } from '../topics/access';
 
 export async function findRoutineById(
   db: ServerDatabase,
@@ -53,18 +33,6 @@ export async function findAiOwner(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: string) {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`SELECT id FROM ais
-        WHERE id = ${aiId} AND owner = ${ownerId} LIMIT 1`;
     }),
   );
   return row ?? null;
@@ -210,7 +178,7 @@ export async function listVisibleTopicRoutines(
   topicId: string,
   userId: string,
 ): Promise<PublicRoutine[] | null> {
-  const topic = await findTopicById(db, topicId);
+  const topic = await getTopic(db, topicId);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }

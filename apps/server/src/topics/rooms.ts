@@ -3,10 +3,10 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 
 import type { InviteLogger } from '../groups/service';
+import { mapXmppError } from '../groups/schemas';
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
-import { HttpError, xmppUnavailable } from '../errors';
 import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { userIdsWithDevices } from '../push/store';
@@ -31,7 +31,7 @@ export async function syncTopicRoom(
     wanted = await desiredMembers(deps.db, topic, deps.domain);
   } catch (error) {
     deps.logger.warn({ err: errorClassName(error) }, 'could not read the topic members');
-    throw mapRoomError(error);
+    throw mapXmppError(error);
   }
 
   let current: Array<{ jid: string; affiliation: string }>;
@@ -42,7 +42,7 @@ export async function syncTopicRoom(
       { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
       'could not read the topic room affiliations',
     );
-    throw mapRoomError(error);
+    throw mapXmppError(error);
   }
 
   const currentByJid = new Map(current.map((entry) => [entry.jid, entry.affiliation]));
@@ -57,7 +57,7 @@ export async function syncTopicRoom(
           { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
           'could not set the topic room affiliation',
         );
-        throw mapRoomError(error);
+        throw mapXmppError(error);
       }
       added.push(jid);
     }
@@ -71,7 +71,7 @@ export async function syncTopicRoom(
           { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
           'could not remove the topic room affiliation',
         );
-        throw mapRoomError(error);
+        throw mapXmppError(error);
       }
       removed.push(jid);
     }
@@ -91,12 +91,6 @@ export async function syncTopicRoom(
   return { added, removed };
 }
 
-function mapRoomError(error: unknown): HttpError {
-  if (error instanceof HttpError) {
-    return error;
-  }
-  return xmppUnavailable();
-}
 export interface TopicRoomDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;

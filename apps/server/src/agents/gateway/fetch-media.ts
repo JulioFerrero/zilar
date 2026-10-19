@@ -34,7 +34,7 @@ const FORMAT_BY_MIME: Readonly<Record<string, string>> = {
   'text/plain': 'TXT',
 };
 
-function humanSize(bytes: number): string {
+export function humanSize(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
   }

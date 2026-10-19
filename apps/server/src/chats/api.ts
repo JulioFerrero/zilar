@@ -296,7 +296,7 @@ interface ArchiveIdRequest {
 }
 
 // A malformed percent escape is an unknown chat (404), not a server error.
-function decodeChatJid(raw: string): string {
+export function decodeChatJid(raw: string): string {
   try {
     return decodeURIComponent(raw);
   } catch {

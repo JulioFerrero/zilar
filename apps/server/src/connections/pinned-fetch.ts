@@ -10,7 +10,7 @@ import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
-import { resolveAll, resolvePublic, type ResolveHost } from './base-url';
+import { bareHost, resolveAll, resolvePublic, type ResolveHost } from './base-url';
 
 export type PinnedTransport = (url: URL, address: string, init: RequestInit) => Promise<Response>;
 
@@ -28,13 +28,6 @@ export class PinnedFetchError extends Error {
     super('The base URL request was refused');
     this.name = 'PinnedFetchError';
   }
-}
-
-function bareHost(host: string): string {
-  return host
-    .trim()
-    .toLowerCase()
-    .replace(/^\[|\]$/g, '');
 }
 
 async function pinnedAddress(

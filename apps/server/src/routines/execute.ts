@@ -6,7 +6,9 @@ import { type ServerDatabase } from '../db/client';
 import { type RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { type CorrectCardInput } from '../message-blocks/respond';
+import { fieldOf } from '../message-blocks/apply';
 import { runToolVersion, ToolServiceError } from '../tools/service';
+import { isSubsetOf } from '../tools/adapter-support';
 import { type ToolRunner } from '../tools/types';
 import { executePromptRoutine, type PromptRunner } from './execute-prompt';
 import {
@@ -170,11 +172,6 @@ async function readCurrentHosts(
   return version ? [...version.hosts] : null;
 }
 
-function isSubset(current: readonly string[], approved: readonly string[]): boolean {
-  const allowed = new Set(approved);
-  return current.every((host) => allowed.has(host));
-}
-
 // A routine linked to an alert card reads the tool's `output.data.value` and compares it with `input.threshold`.
 // Below it the run stays `ok` and silent; at or above it posts; a missing number on either side is a failure.
 type AlertVerdict =
@@ -184,16 +181,9 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function readKey(value: unknown, key: string): unknown {
-  if (typeof value !== 'object' || value === null) {
-    return undefined;
-  }
-  return (value as Record<string, unknown>)[key];
-}
-
 function alertVerdict(input: unknown, data: unknown): AlertVerdict {
-  const value = finiteNumber(readKey(data, 'value'));
-  const threshold = finiteNumber(readKey(input, 'threshold'));
+  const value = finiteNumber(fieldOf(data, 'value'));
+  const threshold = finiteNumber(fieldOf(input, 'threshold'));
   if (value === null || threshold === null) {
     return { kind: 'error' };
   }
@@ -315,7 +305,7 @@ export async function executeRoutine(
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
     return;
   }
-  if (!isSubset(currentHosts, row.approvedHosts)) {
+  if (!isSubsetOf(currentHosts, row.approvedHosts)) {
     await pauseForHostsChanged(db, options, ports, row, at, startedAt);
     return;
   }

@@ -253,12 +253,7 @@ export function attempt<A>(thunk: () => PromiseLike<A>): Effect.Effect<A, unknow
   return Effect.tryPromise({ try: thunk, catch: (error) => error });
 }
 
-export function errorName(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return typeof error;
-}
+export { errorName } from '../../effect/error-utils';
 
 // The model-facing wording for a `denied` outcome. We never echo the
 // adapter's reason beyond the stable enum below.
