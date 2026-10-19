@@ -7,13 +7,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 Julio's words: "dont stop working, try to reduce the lines and make a better codebase for other ais and humans". No feature was removed.
 
 **Morning summary (written 06:55 UTC; the tables below have the details):**
-- **Lines:** source went from 274,479 to 235,624 (07:16). Real cuts are about −37,500; the rest is 1,365 test-helper lines moved into the test class.
+- **Lines:** source went from 274,479 to 235,404 (07:47). Real cuts are about −37,700; the rest is 1,365 test-helper lines moved into the test class. Tests went from 65,769 to 64,003 after 07:00, as tests that repeated a client-core store test or covered display-only helpers were deleted (your 10-10 rule).
 - **Since 03:00, for readers (people and AIs):**
   - every helper and type written twice has one home (server, web, phone, packages);
   - every pass-through re-export is gone, so each import names the module that defines it (server and both apps);
   - 8 size-split folders went back into one file each;
   - the phone has one picture editor hook;
-  - 30-odd single-use files were folded into their only user.
+  - 30-odd single-use files were folded into their only user;
+  - after 07:00:
+    - the phone has one settings screen shell and one focus-load hook;
+    - the phone calls the shared client for the AI's home machine, and profile calls fail with the shared error;
+    - 14 comments that named deleted files were fixed;
+    - `docs/ARCHITECTURE.md` lists the new shared pieces.
 - **Checks:**
   - each push was live-checked (0 server errors; all 74 contract GET routes answer as before);
   - each phone change ran on the emulator in mock mode;
@@ -42,6 +47,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 06:45 | 235,978 (real cuts since 19:35 about −37,140) |
 | 10-19 07:16 | 235,624 (real cuts since 19:35 about −37,490) |
 | 10-19 07:27 | 235,604 source, 65,098 test (T-2192 cut 669 test lines) |
+| 10-19 07:47 | 235,404 source, 64,003 test |
 
 **Merged tonight:**
 
@@ -120,6 +126,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2192 | Julio's test rule: 12 chat-core tests of display-only helpers deleted (test lines, not source) | −669 test |
 | T-2194 | 5 functions nothing called (pin snapshot text, voice source wrapper, gifs reset, 2 test helpers) | −76 |
 | T-2193 | 35 web and phone store test cases that repeated a client-core store test (one wiring case per file stays) | −811 test |
+| T-2195 | phone: an AI's home machine is set through the shared contract call; the hand-written request and `lib/machines-api.ts` are gone | −85 |
+| T-2196 | phone: profile and avatar calls fail with the shared `ApiError`; `ProfileApiError` and its own body parsing are gone | −65 |
+| T-2197 | store test twins, wave 2 (web echo-edit file, web message cache, phone send effects) | −256 test |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -128,7 +137,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 - **Superseded:** T-2104, whose rebase conflicted on 26 files; it was redone on current main as T-2118.
 - **Safety nets run tonight:**
-  - every package typechecks on main (16/16; re-run at 07:15 after the later merges);
+  - every package typechecks on main (16/16; re-run at 07:15 and again at 07:52 on `5600e5207`);
   - no package.json, config, script or core doc points at a file that no longer exists (07:15);
   - no file references any of the 307 files deleted tonight;
   - live had 0 server errors after each server push.
@@ -140,9 +149,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 **Running (06:50):**
 
-- **T-2195 (07:45):** the phone sets an AI's home machine through the shared contract call; its hand-written request and `lib/machines-api.ts` go.
-- **T-2196 (07:50):** phone profile and avatar calls fail with the shared `ApiError`; `ProfileApiError` and its own body parsing go.
-- **T-2197 (07:55):** store test twins, wave 2 (web echo-edit file, web message cache, phone send effects). Test lines only.
+- **T-2198 (07:50):** delete 4 client tests outside the crucial areas: people-search text, the media retry view state, and a media row parser (180 test lines).
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
@@ -154,7 +161,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `0744de8e9` (07:25): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `2cf648410` (07:40; the later pushes up to `5600e5207` change only phone code and tests): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 
