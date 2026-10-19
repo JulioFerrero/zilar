@@ -11,6 +11,8 @@ export interface WebSearchResult {
   title: string;
   url: string;
   snippet: string;
+  date?: string;
+  site?: string;
 }
 
 export interface WebSearchProvider {
@@ -215,10 +217,16 @@ export function searchUnavailableText(): string {
   ].join(' ');
 }
 
-export function formatSearchResults(query: string, results: WebSearchResult[]): string {
-  const lines = results.map(
-    (result, index) =>
-      `${index + 1}. ${result.title}\n   ${result.url}${result.snippet.length > 0 ? `\n   ${result.snippet}` : ''}`,
-  );
-  return `Search results for "${query}" (unreliable, from DuckDuckGo HTML):\n${lines.join('\n')}`;
+export function formatSearchResults(
+  query: string,
+  results: WebSearchResult[],
+  source: string,
+): string {
+  const lines = results.map((result, index) => {
+    const site = result.site === undefined ? '' : `\n   ${result.site}`;
+    const date = result.date === undefined ? '' : `\n   ${result.date}`;
+    const snippet = result.snippet.length > 0 ? `\n   ${result.snippet}` : '';
+    return `${index + 1}. ${result.title}\n   ${result.url}${site}${date}${snippet}`;
+  });
+  return `Search results for "${query}" (from ${source}):\n${lines.join('\n')}`;
 }

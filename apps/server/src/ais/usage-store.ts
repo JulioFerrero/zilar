@@ -88,6 +88,28 @@ export function recordUsage(
   return write;
 }
 
+const ZERO_USAGE: ChatUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+};
+
+/**
+ * A flat tool cost (for example a billed search) adds money and zero tokens to
+ * the same daily row; best effort like `recordUsage`.
+ */
+export function recordToolCost(
+  deps: UsageStoreDeps,
+  aiId: string,
+  costUsd: number,
+  now: Date,
+): Promise<void> {
+  const write = writeCost(deps, aiId, costUsd, now);
+  trackPendingUsage(aiId, write);
+  return write;
+}
+
 async function writeUsage(
   deps: UsageStoreDeps,
   aiId: string,
@@ -96,30 +118,52 @@ async function writeUsage(
   usage: ChatUsage,
   now: Date,
 ): Promise<void> {
-  const day = utcDayString(now);
   try {
     // A cold process has no catalog prices yet; warm them so the first call is
     // priced.
     await ensureModelPrices(provider, model);
     const cost = costOf(provider, model, usage, deps.logger).toFixed(6);
-    await runSql(
-      deps.db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO ai_usage
-            (ai_id, day, input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost_usd)
-          VALUES (${aiId}, ${day}, ${usage.inputTokens}, ${usage.outputTokens},
-            ${usage.cacheReadTokens}, ${usage.cacheWriteTokens}, ${cost})
-          ON CONFLICT (ai_id, day) DO UPDATE SET
-            input_tokens = ai_usage.input_tokens + EXCLUDED.input_tokens,
-            output_tokens = ai_usage.output_tokens + EXCLUDED.output_tokens,
-            cached_tokens = ai_usage.cached_tokens + EXCLUDED.cached_tokens,
-            cache_write_tokens = ai_usage.cache_write_tokens + EXCLUDED.cache_write_tokens,
-            cost_usd = ai_usage.cost_usd + EXCLUDED.cost_usd,
-            updated_at = now()`;
-      }),
-    );
+    await addUsage(deps, aiId, usage, cost, utcDayString(now));
   } catch (error) {
     deps.logger?.warn({ err: error, aiId }, 'AI usage record failed');
   }
+}
+
+async function writeCost(
+  deps: UsageStoreDeps,
+  aiId: string,
+  costUsd: number,
+  now: Date,
+): Promise<void> {
+  try {
+    await addUsage(deps, aiId, ZERO_USAGE, costUsd.toFixed(6), utcDayString(now));
+  } catch (error) {
+    deps.logger?.warn({ err: error, aiId }, 'AI usage record failed');
+  }
+}
+
+async function addUsage(
+  deps: UsageStoreDeps,
+  aiId: string,
+  usage: ChatUsage,
+  cost: string,
+  day: string,
+): Promise<void> {
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_usage
+          (ai_id, day, input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost_usd)
+        VALUES (${aiId}, ${day}, ${usage.inputTokens}, ${usage.outputTokens},
+          ${usage.cacheReadTokens}, ${usage.cacheWriteTokens}, ${cost})
+        ON CONFLICT (ai_id, day) DO UPDATE SET
+          input_tokens = ai_usage.input_tokens + EXCLUDED.input_tokens,
+          output_tokens = ai_usage.output_tokens + EXCLUDED.output_tokens,
+          cached_tokens = ai_usage.cached_tokens + EXCLUDED.cached_tokens,
+          cache_write_tokens = ai_usage.cache_write_tokens + EXCLUDED.cache_write_tokens,
+          cost_usd = ai_usage.cost_usd + EXCLUDED.cost_usd,
+          updated_at = now()`;
+    }),
+  );
 }

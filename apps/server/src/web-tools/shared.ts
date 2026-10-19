@@ -1,5 +1,6 @@
 // effect-plain: the shared state, constants and helpers for the web adapters.
 import type { ActionContext, ActionResult } from '../actions/registry';
+import type { FetchLike } from '../ai/http';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { serverVersion } from '../version';
 import {
@@ -35,6 +36,9 @@ export interface BuildWebToolsAdaptersDeps {
   searchProviderName?: WebSearchProviderName;
   searchProvider?: WebSearchProvider;
   logger?: WebToolsLogger;
+  deepseekKeyFor?: (aiId: string) => Promise<string | null>;
+  deepseekFetch?: FetchLike;
+  recordToolCost?: (aiId: string, costUsd: number) => void;
 }
 
 export interface WebToolsState {
@@ -44,6 +48,9 @@ export interface WebToolsState {
   searchProviderName: WebSearchProviderName;
   searchProvider: WebSearchProvider;
   logger: WebToolsLogger;
+  deepseekKeyFor: ((aiId: string) => Promise<string | null>) | undefined;
+  deepseekFetch: FetchLike | undefined;
+  recordToolCost: ((aiId: string, costUsd: number) => void) | undefined;
 }
 
 export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsState {
@@ -54,6 +61,9 @@ export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsSt
     searchProviderName: deps.searchProviderName ?? 'duckduckgo-html',
     searchProvider: deps.searchProvider ?? duckduckgoProvider(deps.fetcher, deps.dnsLookup),
     logger: deps.logger ?? { warn: () => {} },
+    deepseekKeyFor: deps.deepseekKeyFor,
+    deepseekFetch: deps.deepseekFetch,
+    recordToolCost: deps.recordToolCost,
   };
 }
 
@@ -90,14 +100,14 @@ function webRateLimitKey(ctx: ActionContext): string {
 
 export function withWebRateLimit(
   state: WebToolsState,
-  fn: (args: unknown) => Promise<ActionResult>,
+  fn: (args: unknown, ctx: ActionContext) => Promise<ActionResult>,
 ): (ctx: unknown, args: unknown) => Promise<ActionResult> {
   return async (ctx, args) => {
     const actionCtx = ctx as ActionContext;
     if (!state.webLimiter.allow(webRateLimitKey(actionCtx))) {
       return { summary: 'web limit reached, try later' };
     }
-    return fn(args);
+    return fn(args, actionCtx);
   };
 }
 
