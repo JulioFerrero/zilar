@@ -15,7 +15,7 @@ import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';
 import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
-import { HttpError } from '../errors';
+import { HttpError, notFound } from '../errors';
 import { limiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter } from '../search/service';
 import { cardMediaPath, getCardMedia } from './service';
@@ -41,10 +41,6 @@ const CardMediaGroup = HttpApiGroup.make('card-media')
   .prefix('/api');
 
 const CardMediaApi = HttpApi.make('card-media').add(CardMediaGroup);
-
-function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
-}
 
 // Only a conservative character set, at most 100 characters, so the header cannot be
 // split or misread.

@@ -184,11 +184,12 @@ export async function requireOwnedPack(
   return pack;
 }
 
-function extensionFor(mime: 'image/webp' | 'image/png'): string {
+export function extensionFor(mime: 'image/webp' | 'image/png'): string {
   return mime === 'image/webp' ? 'webp' : 'png';
 }
 
-/** Escapes LIKE wildcards (`%`, `_`, `\`) in a user query fragment. */
+// `%`, `_` and the escape char in a query are literal text, never wildcards. PostgreSQL
+// `LIKE`/`ILIKE` use backslash as the escape by default, so no `ESCAPE` clause is needed.
 export function escapeLike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }

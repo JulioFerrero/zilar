@@ -16,7 +16,7 @@ import { createResendMailer } from '../auth/mailer';
 import type { ServerConfig } from '../config/load';
 import { createTelegramClient } from '../stickers/telegram/client';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
+import { HttpError, notFound } from '../errors';
 import {
   mountGroups,
   handler,
@@ -34,7 +34,6 @@ import {
   envMailConfigured,
   isInvalidToken,
   mailStatusFor,
-  notFound,
   ownerEmailFor,
   saveStoredTelegramToken,
   sendWorkingTestMail,

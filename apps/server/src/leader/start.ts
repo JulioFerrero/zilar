@@ -27,7 +27,7 @@ import { type ToolRunner } from '../tools/types';
 import { reconcileRoomSubscriptionOptions, syncTopicRoom } from '../topics/rooms';
 
 import { type Payload } from '@zilar/protocol';
-import { type ExecuteRoutinePorts } from '../routines/execute';
+import { defaultSleep, type ExecuteRoutinePorts } from '../routines/execute';
 import {
   createRoutineScheduler,
   type RoutineLogger,
@@ -38,7 +38,7 @@ import { startSweepLoop } from '../effect/sweep-loop';
 import { expireStale } from '../approvals/service';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { errorClassName, serializeError } from '../effect/error-utils';
+import { errorClassName, messageOf, serializeError } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { type TopicRow } from '../topics/access';
 import { type InviteLogger } from '../groups/schemas';
@@ -61,10 +61,6 @@ const PRIVATE_ROOM_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ['public', 'false'],
   ['public_list', 'false'],
 ];
-
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function liveTopics(db: ServerDatabase): Promise<TopicRow[]> {
   const rows = await runSql(
@@ -114,7 +110,7 @@ async function reconcileRoomRights(deps: RoomReconcileDeps): Promise<void> {
     } else {
       failed += 1;
     }
-    await pause(pauseMs);
+    await defaultSleep(pauseMs);
   }
   deps.logger.info(
     { rooms: topics.length, reconciled, failed, interrupted: deps.signal?.aborted === true },
@@ -247,10 +243,6 @@ export interface LeaderWorkDeps extends Pick<
 export interface LeaderWork {
   start: () => Promise<void>;
   stop: () => Promise<void>;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {

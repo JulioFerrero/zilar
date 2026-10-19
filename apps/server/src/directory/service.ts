@@ -7,6 +7,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { escapeLike } from '../stickers/storage';
 
 export const DIRECTORY_PAGE_SIZE = 20;
 export const DIRECTORY_QUERY_MIN_LENGTH = 2;
@@ -233,12 +234,6 @@ export async function publicGroupForHandle(
     joined: joined.has(row.id),
     ...(singleAvatarId === undefined ? {} : { avatarUrl: avatarUrlFor(singleAvatarId) }),
   };
-}
-
-// `%`, `_` and the escape char in a query are literal text, never wildcards. PostgreSQL
-// `LIKE`/`ILIKE` use backslash as the escape by default, so no `ESCAPE` clause is needed.
-function escapeLike(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 async function countMembers(db: ServerDatabase, groupIds: string[]): Promise<Map<string, number>> {

@@ -27,9 +27,10 @@ import {
 } from '../effect/http-core';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, notFound } from '../errors';
 import { normalizeHandle } from '@zilar/protocol';
-import { isPendingPairViolation, notFound } from './errors';
+import { escapeLike } from '../stickers/storage';
+import { isPendingPairViolation } from './errors';
 import {
   auditFor,
   findActionableEffect,
@@ -55,12 +56,6 @@ const USER_SEARCH_LIMIT = 10;
 type HandleRelation = Awaited<ReturnType<typeof relationFor>>;
 
 type UserSearchEntry = OtherUserProfile & { relation: HandleRelation };
-
-// `%`, `_` and the escape char are literal text; PostgreSQL `LIKE` treats
-// backslash as the escape by default, so no `ESCAPE` clause is needed.
-function escapeLike(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-}
 
 function normalizeUserSearchQuery(query: string): string {
   const trimmed = query.trim();

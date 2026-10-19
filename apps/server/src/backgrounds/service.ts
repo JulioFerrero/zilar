@@ -8,7 +8,7 @@ import type { ChatBackgroundRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
-import { resolveStorageDir } from '../stickers/storage';
+import { extensionFor, resolveStorageDir } from '../stickers/storage';
 
 export const BACKGROUND_MAX_BYTES = 1024 * 1024;
 export const BACKGROUND_MAX_SIDE = 2048;
@@ -27,10 +27,6 @@ export interface BackgroundView {
   width: number | null;
   height: number | null;
   createdAt: string;
-}
-
-function extensionFor(mime: 'image/webp' | 'image/png'): string {
-  return mime === 'image/webp' ? 'webp' : 'png';
 }
 
 export function backgroundUrlFor(backgroundId: string): string {

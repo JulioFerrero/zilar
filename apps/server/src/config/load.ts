@@ -1,5 +1,5 @@
 import { Context, Effect, Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
-import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
+import { loadXmppConfig, withDefault, type XmppConfig } from '../xmpp/config';
 
 // Mail transport and GitHub App cross-field rules. Every issue names the variable and
 // states what is wrong, never the value, so `SMTP_PASSWORD` cannot leak through an error.
@@ -257,10 +257,6 @@ function isPinnedImage(value: string): string | undefined {
   return /^[^@\s]+@sha256:[0-9a-f]{64}$/.test(value) ? undefined : 'invalid pinned image';
 }
 const pinnedImageSchema = Schema.String.pipe(Schema.check(Schema.makeFilter(isPinnedImage)));
-
-function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
-  return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
-}
 
 function literalWithDefault<const L extends ReadonlyArray<string>>(
   literals: L,

@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedUser } from '../test-support/seed';
-import { notFound } from './errors';
+import { notFound } from '../errors';
 import {
   acceptContactRequest,
   cancelContactRequest,

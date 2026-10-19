@@ -7,6 +7,7 @@
 // with no cleanup.
 import postgres from 'postgres';
 import type { Logger } from 'pino';
+import { messageOf } from '../effect/error-utils';
 
 // A dedicated advisory-lock scope, so this never collides with the per-key
 // `pg_advisory_xact_lock(hashtext(…))` locks already in the database.
@@ -37,10 +38,6 @@ export interface LeaderLock {
   isLeader: () => boolean;
   stepDown: () => Promise<void>;
   close: () => Promise<void>;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createLeaderLock(options: CreateLeaderLockOptions): LeaderLock {

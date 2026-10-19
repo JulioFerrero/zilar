@@ -78,6 +78,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2160, T-2161 | in-file repeats, wave 2 (6 server files; 9 phone files, 3 web pages, devtools autopilot) | −79, −118 |
 | T-2162, T-2163, T-2164 | blocks copied between files: web typing line + visibility setting; one phone settings screen shell; xmpp-core export path + devtools pause config | −11, −64, −47 |
 | T-2165, T-2166, T-2168 | twin view models in client-core, one copy for web and phone: GIF search, Devices, AI memory | −49, −22, −71 |
+| T-2167 | twin view model: the paged activity list (shrunk in a fix round from −2) | −37 |
+| T-2169, T-2172 | functions written twice with identical bodies get one home (15 server groups; 9 web and package groups) | −127, −68 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -96,13 +98,15 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (04:30):**
-- **T-2167:** one activity (audit list) hook. Reviewed and approved at −37; resolving a client-core `index.ts` rebase conflict.
-- **T-2169, T-2170, T-2172:** functions written twice with identical bodies get one home (server; web+phone into chat-core; web and packages). From a new whole-function scan: 60 groups, about 505 lines of extra copies.
+- **T-2170:** web and phone functions written twice (bubble, blocks, pickers, routines texts) move to chat-core once.
+- **T-2173:** server and package function copies, wave 2 (error message, sleep, `notFound`, `escapeLike`…).
+- **T-2174:** server types declared twice with identical fields get one declaration.
+- **Next:** client wave 2 (the remaining web and phone copies plus about 15 shared type shapes), after T-2170 merges.
 - **Checked and left alone:**
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `e6429f7af` (04:32): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `74a5ec178` (04:40): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

@@ -4,7 +4,7 @@ import { DeskError } from '../protocol';
 import type { DeskChunk, DeskRef, DeskSpec, DeskToolCall, SnapshotRef } from '../hands';
 import type { Admission } from './admission';
 import type { AgentConfig } from './config';
-import type { DockerLayer } from './docker';
+import { errorMessage, type DockerLayer } from './docker';
 import type { EgressRegistrar } from './egress';
 import { deskName, type Workspaces } from './workspace';
 
@@ -37,10 +37,6 @@ export interface LifecycleDeps {
   readonly egress?: EgressRegistrar | null;
   readonly now?: () => number;
   readonly log?: (message: string) => void;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

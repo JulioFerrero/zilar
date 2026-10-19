@@ -146,12 +146,12 @@ export interface StopProcessesDeps {
   exited?: (pid: number) => boolean;
 }
 
-function defaultKill(pid: number, signal: 'SIGTERM' | 'SIGKILL'): void {
-  process.kill(pid, signal);
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function defaultKill(pid: number, signal: 'SIGTERM' | 'SIGKILL'): void {
+  process.kill(pid, signal);
 }
 
 function defaultExited(pid: number): boolean {
@@ -172,7 +172,7 @@ export async function stopWorktreeProcesses(
 ): Promise<StoppedProcess[]> {
   const kill = deps.kill ?? defaultKill;
   const now = deps.now ?? Date.now;
-  const sleep = deps.sleep ?? defaultSleep;
+  const wait = deps.sleep ?? sleep;
   const exited = deps.exited ?? defaultExited;
   const stopped: StoppedProcess[] = [];
   for (const candidate of candidates) {
@@ -195,7 +195,7 @@ export async function stopWorktreeProcesses(
       if (exited(candidate.pid)) {
         break;
       }
-      await sleep(EXIT_POLL_MS);
+      await wait(EXIT_POLL_MS);
     }
     if (!exited(candidate.pid)) {
       try {

@@ -28,14 +28,14 @@ function skipUnreadRow(xml: string, barePeer: string, liveIds: ReadonlySet<strin
   return isLiveAiUiRow(xml, barePeer) || isLiveAiUiEdit(xml, liveIds);
 }
 
-// The timestamp is microseconds; postgres.js returns a bigint as a string, normalised before comparing in memory.
-function toMicros(value: number | string | bigint): bigint {
+// postgres.js returns a bigint column as a string; this normalises timestamps (microseconds) and row ids before comparing in memory.
+export function toBigInt(value: number | string | bigint): bigint {
   return typeof value === 'bigint' ? value : BigInt(value);
 }
 
 function newestFirst(a: UnreadSkipRow, b: UnreadSkipRow): number {
-  const left = toMicros(a.timestamp);
-  const right = toMicros(b.timestamp);
+  const left = toBigInt(a.timestamp);
+  const right = toBigInt(b.timestamp);
   if (left === right) {
     return 0;
   }

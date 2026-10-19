@@ -15,6 +15,10 @@ export function errorClassName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     return { name: error.name, message: error.message };

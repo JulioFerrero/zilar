@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { GroupMemberRow } from '../db/rows';
 import type { TopicRow } from '../topics/access';
 import { runSql } from '../effect/sql';
+import { toBigInt } from '../chats/unread';
 import { bareJid } from '../jid';
 import { liveAiUiIds } from '../notify/ai-cards';
 import type { SearchOwner } from '../search/service';
@@ -51,14 +52,6 @@ export function initialGroupNotifierState(now: Date): GroupNotifierState {
     cursor: { timestampMicros: BigInt(now.getTime()) * 1000n, rowId: 0n },
     resourceCache: new Map(),
   };
-}
-
-function toMicros(value: number | string | bigint): bigint {
-  return typeof value === 'bigint' ? value : BigInt(value);
-}
-
-function toRowId(value: number | string | bigint): bigint {
-  return typeof value === 'bigint' ? value : BigInt(value);
 }
 
 // The room's topic (General plus every topic room archives under its own
@@ -227,8 +220,8 @@ export async function runGroupNotifierTick(
     const liveIds = liveAiUiIds(rows);
     for (const row of rows) {
       await notifyRow(deps, state, row, at, liveIds);
-      const timestampMicros = toMicros(row.timestamp);
-      const rowId = toRowId(row.id);
+      const timestampMicros = toBigInt(row.timestamp);
+      const rowId = toBigInt(row.id);
       if (
         timestampMicros > state.cursor.timestampMicros ||
         (timestampMicros === state.cursor.timestampMicros && rowId > state.cursor.rowId)

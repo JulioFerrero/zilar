@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { errorMessage } from './xmpp-e2e/harness';
 const XMPP_FRAMING_NAMESPACE = 'urn:ietf:params:xml:ns:xmpp-framing';
 
 type OpenFrameReply = {
@@ -81,10 +82,6 @@ function requiredEnv(name: string): string {
     throw new Error(`${name} is not set in ${envFile}`);
   }
   return value;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function loadEnvironment(): void {

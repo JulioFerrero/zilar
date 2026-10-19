@@ -12,7 +12,7 @@ import type { TelegramClient } from '../stickers/telegram/set';
 import type { CurrentMailer, Mailer } from '../auth/mailer';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { notFound } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { getMailSettings, settingsCipherFor } from '../setup/settings';
 import type { createSettingsCipher } from '../setup/crypto';
@@ -87,10 +87,6 @@ export interface IntegrationsRoutesDependencies extends Pick<
   now?: (() => number) | undefined;
   sendTestMail?: ((input: { mailer: Mailer; email: string }) => Promise<void>) | undefined;
   swapMailer?: ((mailer: Mailer) => void) | undefined;
-}
-
-export function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
 }
 
 export type IntegrationSource = 'env' | 'stored' | null;

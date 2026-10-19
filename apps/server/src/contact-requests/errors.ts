@@ -1,9 +1,4 @@
 import { SqlError } from 'effect/sql';
-import { HttpError } from '../errors';
-
-export function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
-}
 
 // Recognises the pending-request partial unique indexes by code or constraint,
 // never by message text.

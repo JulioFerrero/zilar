@@ -19,7 +19,7 @@ export { createArgs, proxyAddress };
 
 export type DockerLog = (message: string) => void;
 
-function reason(error: unknown): string {
+export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -301,7 +301,7 @@ export function createDockerLayer(
         } catch (error) {
           log(
             `could not create network ${network} for ${name}; ` +
-              `Docker's default address pool is full or the daemon refused: ${reason(error)}`,
+              `Docker's default address pool is full or the daemon refused: ${errorMessage(error)}`,
           );
           throw error instanceof DeskError
             ? error

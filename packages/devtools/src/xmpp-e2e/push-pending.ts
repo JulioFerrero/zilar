@@ -8,8 +8,9 @@ import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
 import type { EjabberdAdminClient } from '../../../../apps/server/src/xmpp/admin/types';
 import type { XmppConfig } from '../../../../apps/server/src/xmpp/config';
 import { issueXmppToken } from '../../../../apps/server/src/xmpp/token';
+import { sleep } from '../lead/processes.js';
 import { connect } from './connect';
-import { sleep, STEP_TIMEOUT_MS, waitUntil, withDeadline, type Runtime } from './harness';
+import { STEP_TIMEOUT_MS, waitUntil, withDeadline, type Runtime } from './harness';
 import { joinRoom } from './muc';
 
 const PUSH_NAMESPACE = 'urn:xmpp:push:0';

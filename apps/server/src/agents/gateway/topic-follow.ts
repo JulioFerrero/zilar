@@ -1,6 +1,7 @@
 import { Cause, Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
+import { messageOf } from '../../effect/error-utils';
 import { runSql } from '../../effect/sql';
 import { bareJid } from '../../jid';
 
@@ -195,10 +196,6 @@ function saveFollowChange(
 
 function logNotSaved(detail: string): Effect.Effect<void> {
   return Effect.logWarning(`topic follow pause was not saved: ${detail}`);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function isFollowPaused(aiId: string, roomJid: string): boolean {

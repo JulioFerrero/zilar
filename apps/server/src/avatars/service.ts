@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { type AuditRecorder } from '../audit/recorder';
-import { resolveStorageDir } from '../stickers/storage';
+import { extensionFor, resolveStorageDir } from '../stickers/storage';
 import { type ServerDatabase } from '../db/client';
 import { type AvatarOwnerKind } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -87,10 +87,6 @@ export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
 
 export type { AvatarRow } from '../db/rows';
-
-function extensionFor(mime: 'image/webp' | 'image/png'): string {
-  return mime === 'image/webp' ? 'webp' : 'png';
-}
 
 export function avatarUrlFor(avatarId: string): string {
   return `/api/avatars/${encodeURIComponent(avatarId)}`;

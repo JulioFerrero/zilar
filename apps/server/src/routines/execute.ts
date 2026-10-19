@@ -241,7 +241,7 @@ export interface ExecuteRoutineOptions {
 // A post during the AI's reconnect answers `false`; one retry after this wait catches the next connection.
 export const POST_RETRY_DELAY_MS = 30_000;
 
-function defaultSleep(ms: number): Promise<void> {
+export function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 

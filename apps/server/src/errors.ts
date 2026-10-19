@@ -20,6 +20,10 @@ export class HttpError extends Error {
   }
 }
 
+export function notFound(): HttpError {
+  return new HttpError(404, 'not_found', 'Not found');
+}
+
 /** The chat service is unreachable: answers 503 with code `xmpp_unavailable`. */
 export function xmppUnavailable(): HttpError {
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');

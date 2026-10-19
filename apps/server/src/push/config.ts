@@ -1,5 +1,6 @@
-import { Effect, Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
+import { Exit, Schema, SchemaGetter, SchemaIssue } from 'effect';
 import { booleanFlagSchema } from '../config/load';
+import { withDefault } from '../xmpp/config';
 
 // Push configuration. Everything is optional so the server boots without
 // push: routes answer 404 and the component stays off unless
@@ -8,10 +9,6 @@ import { booleanFlagSchema } from '../config/load';
 
 const toInt = SchemaGetter.transform((value: string) => Number.parseInt(value, 10));
 const toText = SchemaGetter.transform((value: number) => String(value));
-
-function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
-  return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
-}
 
 const nonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
 

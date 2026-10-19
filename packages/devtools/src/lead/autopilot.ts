@@ -9,6 +9,7 @@ import { isFreePaused, pauseFreeOnRefusal } from './free-pause.js';
 import { currentHead, type GitRunner } from './git.js';
 import { isGoPaused } from './go-pause.js';
 import { FREE_MUSE } from './models.js';
+import { sleep } from './processes.js';
 import {
   parsePermission,
   summarizeSession,
@@ -203,10 +204,6 @@ export async function tickOnce(
     reportError(deps, options.dryRun, result, line);
   }
   return result;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function runAutopilot(

@@ -4,13 +4,13 @@ import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
 import { createEjabberdAdminClient } from '../../../../apps/server/src/xmpp/admin/client';
 import { issueXmppToken } from '../../../../apps/server/src/xmpp/token';
 import { type XmppConfig } from '../../../../apps/server/src/xmpp/config';
+import { sleep } from '../lead/processes.js';
 import { connect, expectLoginFails } from './connect';
 import {
   collectGroupchat,
   errorMessage,
   loadEnvironment,
   sendGroupchat,
-  sleep,
   STEP_TIMEOUT_MS,
   waitUntil,
   websocketUrlFromApiUrl,

@@ -17,7 +17,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
 } from '../effect/http-core';
-import { HttpError } from '../errors';
+import { HttpError, notFound } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
 import { limiter, type RateLimiter } from '../rate-limit';
 import {
@@ -184,10 +184,6 @@ const SetupGroup = HttpApiGroup.make('setup')
   .prefix('/api');
 
 const SetupApi = HttpApi.make('setup').add(SetupGroup);
-
-function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
-}
 
 export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
   const logger = deps.logger;

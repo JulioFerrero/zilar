@@ -25,7 +25,7 @@ function isUrlWithProtocols(...protocols: ReadonlyArray<string>): (value: string
 const isHttpUrl = isUrlWithProtocols('http:', 'https:');
 const isWebSocketUrl = isUrlWithProtocols('ws:', 'wss:');
 
-function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
+export function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
   return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
 }
 

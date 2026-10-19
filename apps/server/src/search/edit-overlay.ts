@@ -6,7 +6,8 @@
 
 import { bareJid } from '../jid';
 import type { ArchivePool, SearchOwner } from './service';
-import { correctionTarget, retractTarget } from './snippet';
+import { cardEditTarget } from '../notify/ai-cards';
+import { retractTarget } from './snippet';
 
 export type EditScope =
   | { kind: 'dm'; owner: string; peer: string }
@@ -65,10 +66,6 @@ function scopePredicate(scope: EditScope, next: Binder['next']): string {
   const ownLocalpart = next(scope.owners.ownLocalpart);
   const dmPeers = next(scope.owners.dmPeers);
   return `(username = ANY(${rooms}) OR (username = ${ownLocalpart} AND bare_peer = ANY(${dmPeers})))`;
-}
-
-export function editTarget(xml: string): string | null {
-  return correctionTarget(xml) ?? retractTarget(xml);
 }
 
 function isSpace(char: string | undefined): boolean {
@@ -184,7 +181,7 @@ export async function loadEditsForTargets(
 
   const overlay = new Map<string, EditOverlayEntry>();
   for (const row of editRows) {
-    const target = editTarget(row.xml);
+    const target = cardEditTarget(row.xml);
     if (target === null) {
       continue;
     }

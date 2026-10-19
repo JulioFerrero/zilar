@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { xml, type XmppClient, type XmppElement } from '@xmpp/client';
 import { loadXmppConfig, type XmppConfig } from '../../../../apps/server/src/xmpp/config';
+import { sleep } from '../lead/processes.js';
 
 export const STEP_TIMEOUT_MS = 10_000;
 
@@ -18,10 +19,6 @@ export type Runtime = {
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function loadEnvironment(): XmppConfig {

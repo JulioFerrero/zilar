@@ -2170,3 +2170,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2167](T-2167-activity-hook.md) | T-2167: one activity hook for web and phone | 2026-10-19 |
 | [T-2172](T-2172-webpkg-fn-copies.md) | web and packages: one copy of each twice-written function | 2026-10-19 |
 | [T-2169](T-2169-server-fn-copies.md) | server: one copy of each twice-written function | 2026-10-19 |
+| [T-2173](T-2173-server-fn-copies-2.md) | server and packages: one copy of each helper, wave 2 | 2026-10-19 |
