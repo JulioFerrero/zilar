@@ -2153,3 +2153,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2152](T-2152-test-only-code.md) | delete test-only product code; name test helpers | 2026-10-19 |
 | [T-2151](T-2151-docs-stale-paths.md) | docs: living docs point at today's files | 2026-10-19 |
 | [T-2154](T-2154-merge-sibling-splits.md) | merge back small sibling splits (chat-core AI, dialog) | 2026-10-19 |
+| [T-2155](T-2155-server-merge-splits.md) | server: merge turn and health sibling splits | 2026-10-19 |

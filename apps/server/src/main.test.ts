@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { healthSnapshot } from './health-status';
+import { healthSnapshot } from './health';
 import { emptyRunning, stopServer } from './main';
 
 describe('stopServer', () => {

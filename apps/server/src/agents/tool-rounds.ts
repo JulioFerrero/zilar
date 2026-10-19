@@ -13,7 +13,7 @@ import {
   type ModelRequestMessage,
   type TurnCaps,
 } from './tool-loop';
-import { remainingTurnBudgetMs } from './turn-budget';
+import { remainingTurnBudgetMs } from './turn';
 import type { ChatToolDefinition } from './tools/definitions';
 import type { TurnLog } from './log/append';
 

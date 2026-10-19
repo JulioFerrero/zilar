@@ -3,7 +3,7 @@ import type { Logger } from 'pino';
 import type { AgentGateway } from '../agents/gateway';
 import type { ServerDatabase } from '../db/client';
 import { disposeSqlRuntime } from '../effect/sql';
-import { markDraining } from '../health-status';
+import { markDraining } from '../health';
 import type { LeaderLock } from '../leader/lock';
 
 // How long open connections (SSE streams) get before they are closed, and when a stuck

@@ -5,7 +5,7 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
-import { finishProgressQuietly } from './turn-stop';
+import { finishProgressQuietly } from './turn';
 import { cutShortSuffix } from './replies';
 import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
 import type { TurnLog } from './log/append';

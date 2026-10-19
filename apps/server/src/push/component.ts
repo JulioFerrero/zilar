@@ -8,7 +8,7 @@ import {
   PUSH_SUMMARY_FORM_TYPE,
 } from './protocol';
 import { handleIncomingPush, type PushServiceDeps } from './service';
-import { markPushOffline, markPushOnline } from '../health-status';
+import { markPushOffline, markPushOnline } from '../health';
 
 // Parses the IQ mod_push routes to the component; shape from XEP-0357
 // example 12/13 and mod_push.erl `notify/7`.

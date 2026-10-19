@@ -4,7 +4,7 @@
 // `MODEL_CALL_MAX_MS`.
 import { describe, expect, it } from 'vitest';
 import { COMPUTER_TURN_CAPS, MODEL_CALL_MAX_MS } from '../tool-loop';
-import { remainingTurnBudgetMs } from '../turn-budget';
+import { remainingTurnBudgetMs } from '../turn';
 import { turnLimits } from './turn-rounds';
 
 describe('turnLimits', () => {

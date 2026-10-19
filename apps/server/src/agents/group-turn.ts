@@ -6,11 +6,16 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './tool-rounds';
-import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
-import { sendGroupReply } from './turn-send';
 import { actionOfCall, executeToolCalls, followUpMessages } from './tool-exec';
-import { finishTurnFailure } from './turn';
+import {
+  finishProgressQuietly,
+  finishTurnFailure,
+  remainingTurnBudgetMs,
+  sendGroupReply,
+  stoppedTurn,
+  turnStopped,
+} from './turn';
 import {
   ChatCompletionError,
   TRANSIENT_FAILURE_REPLY,
@@ -19,7 +24,6 @@ import {
   type ExecuteToolCall,
   type TurnCaps,
 } from './tool-loop';
-import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL } from './tools/schemas';
 import type { TurnLog } from './log/append';
 import type { ChatCompletionMessage } from './context';

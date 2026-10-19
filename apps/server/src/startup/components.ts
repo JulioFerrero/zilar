@@ -15,7 +15,7 @@ import { createAuth } from '../auth/auth';
 import { createKeyCipher } from '../connections/crypto';
 import { sharedDraftHub } from '../drafts/hub';
 import { serveEdgeOnNode } from '../effect/node-serve';
-import { markLeader } from '../health-status';
+import { markLeader } from '../health';
 import { cardCorrectorOf } from '../message-blocks/api';
 import { type CorrectCardInput } from '../message-blocks/respond';
 import {

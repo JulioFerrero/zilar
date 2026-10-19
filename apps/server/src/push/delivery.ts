@@ -1,5 +1,5 @@
 import { Effect, type Effect as EffectType } from 'effect';
-import { markPushFailed, markPushSent } from '../health-status';
+import { markPushFailed, markPushSent } from '../health';
 import { albumKey } from './album-key';
 import { newestMessageForUserEffect } from './archive-scan';
 import { FcmSendError } from './fcm';

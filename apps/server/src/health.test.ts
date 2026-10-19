@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createHealthCheck } from './health';
-import { markDraining, markLeader } from './health-status';
+import { createHealthCheck, markDraining, markLeader } from './health';
 import { createTestContext } from './test-support';
 
 describe('/health', () => {
