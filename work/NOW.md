@@ -17,6 +17,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 00:11 | 242,382, of which 849 lines are T-2127's test-only helpers moved under `test-support` (a reclassification, not a cut); real cuts since 19:35 are about −31,250 |
 | 10-19 00:41 | 241,495 |
 | 10-19 01:17 | 240,678 (−33,801 since 19:35, including the 849 reclassified) |
+| 10-19 01:54 | 240,018 (−34,461 since 19:35, including the 849 reclassified) |
 
 **Merged tonight:**
 
@@ -56,6 +57,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2136 | phone: duplicated blocks found by the clone scan | −131 |
 | T-2137 | server: 16 single-use files folded | −134 |
 | T-2139, T-2140 | web: 24 single-use files folded | −79, −70 |
+| T-2138, T-2146 | server: 18 more single-use files folded | −110, −35 |
+| T-2141, T-2145 | phone: 38 more single-use files folded | −165, −129 |
+| T-2143, T-2147 | packages and web: 13 more single-use files folded | −51, −31 |
+| T-2142 | one shared copy of the sticker URL rule, GIF helpers, duration format and blocked-list store; `useMockableApi` gone | −113 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -69,16 +74,20 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - live had 0 server errors after each server push.
 
 - **Checks:** every merge was checked in web mock mode (Playwright, all 25 routes for the folds), and on the emulator when it touched the phone.
-- **Live:** at `4908910fb` (01:16), 0 server errors, and all 74 contract GET routes answer the same as before the night's server changes.
+- **Live:** at `db209d184` (01:56), 0 server errors, and all 74 contract GET routes answer the same as before the night's server changes.
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running or queued (01:25):**
-- T-2138: server folds, second half (resolving a one-file import conflict with T-2137).
-- T-2141: phone, 22 single-use files folded.
-- T-2143: package folds (desk tools, stanza decoder, protocol block choices).
-- T-2144: AI turns T2 + T4 (one reply send, one prompt assembly; the message arrays must stay byte for byte, test-guarded).
-- T-2142 (queued until T-2141 merges): shared sticker, GIF and duration helpers; phone contacts on `useApi`.
+**Running (02:10):**
+- **T-2144:** AI turns T2 + T4. The first try grew the code (+33): the shared reply send needed a wrapper in each caller, and the merged prompt loader cost more than the two blocks it replaced. The fix round reverts the send part and shrinks the prompt loader's input. If it cannot reach net ≤ 0, the lead holds it and folds it into T5.
+- **T-2148, T-2149:** delete about 55 exported names that nothing in the repo uses (server, web, packages, phone).
+- **T-2150:** phone, 7 more single-use files folded.
+- **T-2151:** docs, pointing `SERVER_CONFIG`, `FEATURES`, the Effect guide and brief, and the parity roadmap at files that exist today. The lead fixed `AGENTS.md`, the API recipe and `LEAD_HANDOFF`.
+
+**Checked and left alone:**
+- **Comments** (12.6k lines, 5% of source): what is left is mostly the "why" the rules keep (privacy, injection, lock order). A second pass would cut useful lines.
+- **Clone pairs:** each one still listed was tried and skipped; one side only calls a hook, or sharing would add lines.
+- **Group create/patch:** both apps write it by hand. It goes through store ports, so it waits for store phase 3.
 
 **Waiting for Julio (daytime, needs live checks):**
 - **AI turn plan** (`docs/audit/agent-turns-plan.md`): T3 and T5–T8, about −450. T1 is live; T2 and T4 run tonight under tests. The live check in "ai test › General" (DM "hello", an @mention, remember a fact) covers T1–T4.

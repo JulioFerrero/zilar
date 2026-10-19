@@ -1,29 +1,19 @@
 import { Effect } from 'effect';
-import type { ChatMessage } from '@zilar/xmpp-core';
 import { randomUUID } from 'node:crypto';
 import type { DraftHub } from '../../drafts/hub';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import type { KeyCipher } from '../../connections/crypto';
-import {
-  bareJid,
-  buildDmMessages,
-  DM_HISTORY_MESSAGE_LIMIT,
-  type ChatCompletionMessage,
-} from '../context';
-import { promptNow } from '../prompt-time';
-import { timeZoneFor } from '../../auth/profile-time-zone';
+import { bareJid, DM_HISTORY_MESSAGE_LIMIT, type ChatCompletionMessage } from '../context';
 import { TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../tool-loop';
 import type { createBudgetGate } from './budget';
 import {
   isAiSender,
-  toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
   type GatewayLogger,
   type PendingMessage,
   type ScheduledTurnOutcome,
 } from './contracts';
-import { loadOwnerName } from './db';
 import { loadModelTarget } from './model-target';
 import type { DeskTurnContext } from './desk-exec';
 import { runDmTurnInput } from './dm-turn-input';
@@ -34,6 +24,7 @@ import { startTurn } from './turn-start';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
 import { failureLogFields, mapFailureToReply } from '../tool-exec';
+import { loadTurnPrompt } from './turn-prompt';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -121,7 +112,6 @@ export function createDmTurn(ctx: DmTurnContext) {
     liveSendTyping,
     liveMarkDisplayed,
     budgetGate,
-    loadMemoryContext,
     startCompaction,
     disconnectAi,
     secretsFor,
@@ -249,65 +239,17 @@ export function createDmTurn(ctx: DmTurnContext) {
         return;
       }
 
-      const history = yield* Effect.promise(() =>
-        session.core.loadHistory(ownerJid, 'chat', {
-          max: DM_HISTORY_MESSAGE_LIMIT,
-        }),
-      ).pipe(
-        Effect.map((page): ChatMessage[] => page.messages),
-        Effect.catchDefect((historyError) =>
-          Effect.sync((): ChatMessage[] => {
-            logger.warn(
-              { err: toRedactedError(historyError, secretsFor(target.apiKey)), aiId: session.aiId },
-              'AI history lookup failed; replying without history',
-            );
-            return [];
-          }),
-        ),
-      );
-
-      const ownerName = yield* Effect.promise(() => loadOwnerName(deps.db, ai.owner));
-      const now = (deps.now ?? (() => new Date()))();
-      const today = promptNow(now, yield* Effect.promise(() => timeZoneFor(deps.db, ai.owner)));
-      const memory = yield* Effect.promise(() =>
-        loadMemoryContext({
-          aiId: session.aiId,
-          chatKey: dmChatKey,
-          archiveOwner: ai.localpart,
-          scope: { kind: 'dm', peer: ownerBare },
-          aiBareJid: bareJid(ai.jid),
-          ownerName,
-          now,
-          secret: target.apiKey,
+      const messages = yield* Effect.promise(() =>
+        loadTurnPrompt({
+          ctx,
+          ai,
+          session,
+          target,
+          chat: { kind: 'dm', jid: ownerJid, key: dmChatKey, limit: DM_HISTORY_MESSAGE_LIMIT },
+          items: ownerMessages,
+          trigger,
         }),
       );
-      // The batch is newer than the archive may know: merge its messages into
-      // the history, skipping ids MAM already returned, so a coalesced turn
-      // sees every message that arrived.
-      const knownIds = new Set(history.map((message) => message.id));
-      const fresh: ChatMessage[] = ownerMessages
-        .filter((item) => !knownIds.has(item.id))
-        .map((item) => ({
-          id: item.id,
-          chatJid: session.aiJid,
-          kind: 'chat' as const,
-          fromJid: ownerJid,
-          fromResolved: true,
-          body: item.body,
-          timestamp: now,
-          outgoing: false,
-        }));
-      const messages: ChatCompletionMessage[] = buildDmMessages({
-        aiName: ai.name,
-        persona: ai.persona,
-        ownerName,
-        today,
-        aiJid: ai.jid,
-        ownerJid,
-        history: [...history, ...fresh],
-        trigger,
-        memory,
-      });
       // The guide rides as a trailing user turn only when tools are enabled
       // and tool/routine adapters are registered. A scheduled run offers
       // `request_action` but the unattended flag keeps it from parking a card.

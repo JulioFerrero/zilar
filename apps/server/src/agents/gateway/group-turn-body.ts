@@ -1,25 +1,16 @@
 import { Effect } from 'effect';
-import type { ChatMessage } from '@zilar/xmpp-core';
 import type { ActiveAiForGateway } from '../../ais/queries';
 import { runGroupTurn } from '../group-turn';
 import { buildGroupTools } from '../tools/definitions';
 import type { AiUsage } from '../../ais/usage';
 import { recordUsage } from '../../ais/usage-store';
 import type { KeyCipher } from '../../connections/crypto';
-import {
-  buildGroupMessages,
-  DM_HISTORY_MESSAGE_LIMIT,
-  normBareJid,
-  type ChatCompletionMessage,
-} from '../context';
-import { promptNow } from '../prompt-time';
-import { timeZoneForJid } from '../../auth/profile-time-zone';
+import { DM_HISTORY_MESSAGE_LIMIT, normBareJid } from '../context';
 import { finishDelegation } from '../delegation/service';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
 import {
   errorName,
   rememberRoomSentId,
-  toRedactedError,
   type AiSession,
   type RoomPendingMessage,
   type RoomSubscription,
@@ -36,8 +27,8 @@ import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
 import { turnLimits } from './turn-rounds';
-import { senderNamesByJid } from '../../xmpp/archive-sender';
 import type { ServerDatabase } from '../../db/client';
+import { loadTurnPrompt } from './turn-prompt';
 
 interface GroupTurnAccessInput {
   trigger: RoomPendingMessage;
@@ -197,7 +188,6 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     liveSendTyping,
     liveProgressReporter,
     budgetGate,
-    loadMemoryContext,
     startCompaction,
     secretsFor,
     executeToolCall,
@@ -215,81 +205,23 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     }
     secretRef.value = target.apiKey;
 
-    const history = yield* Effect.promise(() =>
-      session.core.loadHistory(roomJid, 'groupchat', {
-        max: DM_HISTORY_MESSAGE_LIMIT,
-      }),
-    ).pipe(
-      Effect.map((page): ChatMessage[] => page.messages),
-      Effect.catchDefect((historyError) =>
-        Effect.sync((): ChatMessage[] => {
-          logger.warn(
-            { err: toRedactedError(historyError, secretsFor(target.apiKey)), aiId: session.aiId },
-            'AI group history lookup failed; replying without history',
-          );
-          return [];
-        }),
-      ),
-    );
-
-    const now = (deps.now ?? (() => new Date()))();
-    const senderZone = yield* Effect.promise(() =>
-      timeZoneForJid(deps.db, normBareJid(trigger.fromJid)),
-    );
-    const today = promptNow(now, senderZone);
-    const memory = yield* Effect.promise(() =>
-      loadMemoryContext({
-        aiId: session.aiId,
-        chatKey: groupChatKey,
-        archiveOwner: roomJid,
-        scope: { kind: 'room', room: roomJid },
-        aiBareJid: normBareJid(ai.jid),
-        now,
-        secret: target.apiKey,
-      }),
-    );
-    // The batch is newer than the archive may know: merge it into the history
-    // so a coalesced turn sees every mention (the context dedupes by id).
-    const knownIds = new Set(history.map((message) => message.id));
-    const fresh: ChatMessage[] = eligible
-      .filter((item) => !knownIds.has(item.id))
-      .map((item) => ({
-        id: item.id,
-        chatJid: roomJid,
-        kind: 'groupchat' as const,
-        fromJid: item.fromJid,
-        fromResolved: item.fromResolved,
-        ...(item.fromNick === undefined ? {} : { fromNick: item.fromNick }),
-        body: item.body,
-        timestamp: item.timestamp,
-        outgoing: false,
-      }));
     const roster = yield* resolveHandoffRoster(deps.db, sessions, session, roomJid);
     const { handoffTargets, canDelegate } = roster;
-    const senderNames = yield* Effect.promise(() =>
-      senderNamesByJid(
-        deps.db,
-        [...history, ...fresh].flatMap((message) =>
-          message.fromResolved ? [message.fromJid] : [],
-        ),
-      ),
-    ).pipe(Effect.catchDefect(() => Effect.succeed(new Map<string, string>())));
-    const messages: ChatCompletionMessage[] = buildGroupMessages({
-      aiName: ai.name,
-      persona: ai.persona,
-      senderName,
-      today,
-      aiJid: ai.jid,
-      senderNames,
-      ...(groupName === undefined ? {} : { groupName }),
-      ...(topicName === undefined ? {} : { topicName }),
-      ...(handoffTargets.length === 0
-        ? {}
-        : { handoffNames: handoffTargets.map((target) => target.nick) }),
-      history: [...history, ...fresh],
-      trigger: { id: trigger.id, body: trigger.body },
-      memory,
-    });
+    const messages = yield* Effect.promise(() =>
+      loadTurnPrompt({
+        ctx,
+        ai,
+        session,
+        target,
+        chat: { kind: 'group', jid: roomJid, key: groupChatKey, limit: DM_HISTORY_MESSAGE_LIMIT },
+        items: eligible,
+        trigger,
+        senderName,
+        groupName,
+        topicName,
+        handoffNames: handoffTargets.map((target) => target.nick),
+      }),
+    );
 
     const actionsList = deps.actions?.listActions() ?? [];
     const { scheduledTrigger, triggerBare, allowActions, allowDesk, askPeople, delegateTargets } =
