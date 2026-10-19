@@ -162,11 +162,8 @@ export function createLiveSession(ctx: LiveSessionContext) {
       // no card logs nothing.
       log?.append('status', { stage: `card_${state}` });
       const elapsedMs = Math.max(0, Date.now() - Date.parse(card.startedAt));
-      const finished = finishTaskCard(
-        card,
-        state,
-        taskCardSummary({ state, elapsedMs, stepCount: card.steps.length }),
-      );
+      const summary = taskCardSummary({ state, elapsedMs, stepCount: card.steps.length });
+      const finished = finishTaskCard(card, state, summary);
       const payload = taskCardPayload({
         ai: aiJid,
         ...(taskId === undefined ? {} : { taskId }),
@@ -174,7 +171,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
         elapsedMs,
       });
       yield* Effect.promise(() =>
-        session.core.sendCorrection(to, kind, current, finished.stage, { payload }),
+        session.core.sendCorrection(to, kind, current, summary, { payload }),
       ).pipe(
         Effect.catchDefect((error) =>
           Effect.sync(() => {

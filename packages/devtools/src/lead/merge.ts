@@ -89,7 +89,7 @@ export interface MergeOptions {
   // result stops the merge before main is touched. Omitted: no gate.
   gate?: (worktree: string) => { ok: boolean; output: string };
   // Whether to push main to origin after the squash. Defaults to true; a
-  // `--hold` merge and `batch merge` set it false so a batch is one push.
+  // `--hold` merge sets it false.
   push?: boolean;
 }
 

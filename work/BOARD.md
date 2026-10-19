@@ -2209,3 +2209,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2207](T-2207-ai-turn-wiring.md) | AI turns T5/T6: DM and group turns share one wiring helper | 2026-10-19 |
 | [T-2209](T-2209-deepseek-search.md) | web search W1: DeepSeek AIs use DeepSeek Search and Fetch | 2026-10-19 |
 | [T-2211](T-2211-one-loop-turn.md) | AI turns T7: DM and group loop turns share runLoopTurn | 2026-10-19 |
+| [T-2212](T-2212-card-close-body.md) | AI card: a closed card's body is its summary | 2026-10-19 |
