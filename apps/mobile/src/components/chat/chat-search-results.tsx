@@ -26,8 +26,9 @@ import {
   type ContactRelation,
   domainOfJid,
 } from '@/lib/contacts-api';
-import { createSearchApi } from '@/lib/search-api';
-import { getSessionToken } from '@/lib/session-token';
+import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
+import { makeSearchApi } from '@/lib/search-api';
+import { realApiTransport } from '@/lib/use-mockable-api';
 import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
 import { PersonRow } from '../contacts/person-row';
@@ -249,9 +250,14 @@ export function ChatSearchResults({
     if (process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-      return createSearchApi(mockToken, mockFetch, API_URL);
+      const transport: ApiTransport = {
+        getToken: mockToken,
+        fetchImpl: mockFetch,
+        apiUrl: API_URL,
+      };
+      return makeSearchApi(apiCall(transport), transport);
     }
-    return createSearchApi(getSessionToken);
+    return makeSearchApi(apiCall(realApiTransport), realApiTransport);
   }, []);
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>

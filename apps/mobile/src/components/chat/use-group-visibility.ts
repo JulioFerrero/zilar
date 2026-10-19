@@ -4,7 +4,8 @@ import { useState } from 'react';
 
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import { visibilitySaveError } from '@/components/chat/visibility-sheet';
-import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { makeDirectoryApi } from '@/lib/directory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import type { GroupVisibility } from '@/lib/directory-api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -12,7 +13,7 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 // The group screen's visibility sheet state, owner only like web: it reads server truth on open, keeps a debounced availability check for a changed handle, and saves through the directory API.
 export function useGroupVisibility(groupId: string) {
-  const { api: directoryApi } = useDirectoryApi();
+  const { api: directoryApi } = useApi(makeDirectoryApi);
   const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
 
   const [visibilityOpen, setVisibilityOpen] = useState(false);

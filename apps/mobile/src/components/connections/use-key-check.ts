@@ -1,20 +1,19 @@
 // effect-plain: the key-check flow is plain React state over the shared promise port.
 import { useMemo } from 'react';
 import {
+  makeAisApi,
   providerSelection,
   useKeyCheck as useSharedKeyCheck,
   type KeyCheckPort,
   type UseKeyCheckOptions,
 } from '@zilar/client-core';
-
-import { useAisApi } from '@/components/ais/use-ais-api';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { useApi } from '@/lib/use-mockable-api';
 
 export { providerSelection };
 
 export function useKeyCheck(options: UseKeyCheckOptions = {}) {
-  const { api } = useAisApi();
-  const { api: connectionsApi } = useConnectionsApi();
+  const { api } = useApi(makeAisApi);
+  const { api: connectionsApi } = useApi(makeAisApi);
   const port = useMemo<KeyCheckPort>(
     () => ({
       ...connectionsApi,

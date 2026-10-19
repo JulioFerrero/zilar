@@ -3,18 +3,20 @@ import { Context, Layer, Effect } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
 import { createSessionCheck } from '@zilar/client-core/store';
+import { makeChatExtrasApi, makeTopicsApi } from '@zilar/client-core';
 
 import type { OfflineCachePort } from '../offline-cache';
-import { createChatApi, type ChatApi, type TokenProvider } from '../../lib/chat-api';
+import { makeChatApi, type ChatApi, type TokenProvider } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
-import { createPinsApi, type PinsApi } from '../../lib/pins-api';
-import { createMediaApi, type MediaApi } from '../../lib/media-api';
+import type { PinsApi } from '../../lib/pins-api';
+import type { MediaApi } from '../../lib/media-api';
 import { API_URL } from '../../lib/auth';
-import { createInviteLinksApi, type InviteLinksApi } from '../../lib/invite-links-api';
-import { createTopicsApi, type TopicsApi } from '../../lib/topics-api';
-import { createRolesApi, type RolesApi } from '../../lib/roles-api';
-import { createGroupsApi, type GroupsApi } from '../../lib/groups-api';
+import { apiCall } from '../../lib/effect/api-client';
+import { makeInviteLinksApi, type InviteLinksApi } from '../../lib/invite-links-api';
+import type { TopicsApi } from '../../lib/topics-api';
+import { makeRolesApi, type RolesApi } from '../../lib/roles-api';
+import { makeGroupsApi, type GroupsApi } from '../../lib/groups-api';
 import { DRAFT_STREAM_PATH, subscribeToDrafts, type OpenDraftStream } from '../../lib/drafts';
 import { getSessionToken } from '../../lib/session-token';
 import type { AttachmentUploader, PickedFile } from '../../lib/attachment-ports';
@@ -265,15 +267,16 @@ function createMobileXmpp(options: XmppCoreOptions): XmppCore {
 
 export function resolvePorts(deps: RealStoreDeps): PortsShape {
   const appState = deps.appState ?? alwaysActive;
-  const api = deps.api ?? createChatApi(getSessionToken);
+  const call = apiCall({ getToken: getSessionToken, fetchImpl: fetch, apiUrl: API_URL });
+  const api = deps.api ?? makeChatApi(call);
   return {
     api,
-    topics: deps.topicsApi ?? createTopicsApi(getSessionToken, fetch, API_URL),
-    inviteLinks: deps.inviteLinksApi ?? createInviteLinksApi(getSessionToken, fetch, API_URL),
-    roles: deps.rolesApi ?? createRolesApi(getSessionToken, fetch, API_URL),
-    pins: deps.pinsApi ?? createPinsApi(getSessionToken, fetch, API_URL),
-    media: deps.mediaApi ?? createMediaApi(getSessionToken, fetch, API_URL),
-    groups: deps.groupsApi ?? createGroupsApi(getSessionToken, fetch, API_URL),
+    topics: deps.topicsApi ?? makeTopicsApi(call),
+    inviteLinks: deps.inviteLinksApi ?? makeInviteLinksApi(call),
+    roles: deps.rolesApi ?? makeRolesApi(call),
+    pins: deps.pinsApi ?? makeChatExtrasApi(call),
+    media: deps.mediaApi ?? makeChatExtrasApi(call),
+    groups: deps.groupsApi ?? makeGroupsApi(call),
     chatPrefs: deps.chatPrefsApi,
     chatFolders: deps.chatFoldersApi,
     ownedAis: deps.ownedAis,

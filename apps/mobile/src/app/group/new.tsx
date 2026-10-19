@@ -13,7 +13,8 @@ import {
   VisibilityFields,
   type HandleCheckState,
 } from '@/components/chat/visibility-fields';
-import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { makeDirectoryApi } from '@/lib/directory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { NewGroupMembers } from '@/components/group/new-group-members';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -133,7 +134,7 @@ function NewGroupFlow() {
   // Private (default, invite-only) or Public with its own checked `@handle`.
   const [visibility, setVisibility] = useState<CreateVisibility>('private');
   const [handle, setHandle] = useState('');
-  const { api: directoryApi } = useDirectoryApi();
+  const { api: directoryApi } = useApi(makeDirectoryApi);
   const checkHandle = useCallback(
     (value: string) => directoryApi.checkGroupHandle(value),
     [directoryApi],

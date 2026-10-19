@@ -2,13 +2,14 @@ import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useRouter } from 'expo-router';
 import { Server, Plus, Check, Copy } from 'lucide-react-native';
+import { makeAisApi } from '@zilar/client-core';
 import { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { ApprovedMachines } from '@/components/machines/approved-machines';
 import { groupAisByMachine } from '@/components/machines/machine-row';
 import { useMachinesList } from '@/components/machines/use-machines-list';
@@ -325,7 +326,7 @@ export default function MachinesScreen() {
 
 function MachinesList() {
   const router = useRouter();
-  const { api: aisApi } = useAisApi();
+  const { api: aisApi } = useApi(makeAisApi);
   const {
     status,
     errorInfo,

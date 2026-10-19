@@ -1,15 +1,12 @@
-import {
-  runApi,
-  type CreatedInviteLink,
-  type InviteLink as GroupInviteLink,
-  type JoinPreview,
-  type JoinResult,
+import type {
+  CreatedInviteLink,
+  InviteLink as GroupInviteLink,
+  JoinPreview,
+  JoinResult,
 } from '@zilar/api-contract';
 import { makeGroupsApi, type CreateGroupInviteLinkInput } from '@zilar/client-core';
 
-import { API_URL } from './auth';
-import type { TokenProvider } from './chat-api';
-import { createApiClient } from './effect/api-client';
+import type { ApiCall } from './effect/api-client';
 
 /**
  * The token is shown once at creation in `url` and never stored, so the list carries hints, labels, uses and state, never tokens.
@@ -35,13 +32,8 @@ export interface InviteLinksApi {
   joinByLink(token: string): Promise<JoinResult>;
 }
 
-export function createInviteLinksApi(
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): InviteLinksApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeGroupsApi((call) => runApi(call(client)));
+export function makeInviteLinksApi(call: ApiCall): InviteLinksApi {
+  const api = makeGroupsApi(call);
   return {
     createGroupInviteLink: api.createGroupInviteLink,
     listGroupInviteLinks: api.listGroupInviteLinks,

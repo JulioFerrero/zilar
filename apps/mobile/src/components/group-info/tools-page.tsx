@@ -12,7 +12,8 @@ import {
 } from '@/components/ais/routines-section';
 import { ToolsSectionContent, sectionStateOf } from '@/components/ais/tools-section';
 import { useRoutineActions } from '@/components/ais/use-routine-actions';
-import { useToolsApi } from '@/components/ais/use-tools-api';
+import { makeToolsApi } from '@zilar/client-core';
+import { useApi } from '@/lib/use-mockable-api';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { useQuery } from '@/lib/effect/use-query';
 import { mayManageRoles } from '@/lib/roles';
@@ -57,7 +58,7 @@ export function ToolsPage({
   topicId?: string;
   onBack: () => void;
 }) {
-  const { api } = useToolsApi();
+  const { api } = useApi(makeToolsApi);
   const [toolsLoad, reloadTools] = useQuery(
     () => loadTools(api, groupId, topicId),
     [api, groupId, topicId],

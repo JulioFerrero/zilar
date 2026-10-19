@@ -7,11 +7,11 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { StepsSheet } from '@/components/chat/steps-sheet';
 import { Text } from '@/components/ui/text';
 import { ACCENT, DANGER, MUTED_FOREGROUND } from '@/lib/colors';
-import { interruptFiber } from '@zilar/client-core';
+import { interruptFiber, makeAisApi } from '@zilar/client-core';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -97,7 +97,7 @@ export function ProgressCard({ data }: { data: Progress }) {
   const taskId = data.task_id;
 
   // Stop shows only for a working card the viewer can stop: the server set `can_stop` and the AI belongs to the viewer.
-  const { api } = useAisApi();
+  const { api } = useApi(makeAisApi);
   const chatJid = useChatStore((state) => state.activeChatId);
   const [ownedResult] = useQuery(() => Effect.promise(() => api.listAis()), [api, data.ai]);
   const ownedAi = AsyncResult.isSuccess(ownedResult)

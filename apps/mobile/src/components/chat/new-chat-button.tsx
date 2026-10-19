@@ -20,8 +20,9 @@ import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
 import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
 import { runMobile } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { createInvitesApi } from '@/lib/invites-api';
-import { getSessionToken } from '@/lib/session-token';
+import { apiCall } from '@/lib/effect/api-client';
+import { makeInvitesApi } from '@/lib/invites-api';
+import { realApiTransport } from '@/lib/use-mockable-api';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -198,7 +199,7 @@ export function NewChatButton() {
       ? createErrorText(channelFailure.reason, 'channel')
       : '';
   // The invite box talks to the real session API: a personal invite link is meaningless offline.
-  const invitesApi = useMemo(() => createInvitesApi(getSessionToken), []);
+  const invitesApi = useMemo(() => makeInvitesApi(apiCall(realApiTransport)), []);
 
   const inviteShare = useMemo(
     () => ({

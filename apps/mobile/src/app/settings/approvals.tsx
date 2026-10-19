@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { AisScreenShell } from '@/components/ais/screen-shell';
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { fromApi, makeAisApi, makeApprovalsApi } from '@zilar/client-core';
 import { RevokeConfirmDialog, AlwaysAllowedRow } from '@/components/approvals/always-allowed-row';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -15,8 +15,7 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/ui/card';
 import type { ApprovalRule, ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
-import { useApprovalsApi } from '@/components/chat/use-approvals-api';
-import { fromApi } from '@zilar/client-core';
+import { useApi } from '@/lib/use-mockable-api';
 import {
   claimDecision,
   confirmationForDecision,
@@ -268,8 +267,8 @@ export default function ApprovalsScreen() {
 
 function ApprovalsBody() {
   const router = useRouter();
-  const { api } = useApprovalsApi();
-  const { api: aisApi } = useAisApi();
+  const { api } = useApi(makeApprovalsApi);
+  const { api: aisApi } = useApi(makeAisApi);
 
   const [rows, setRows] = useState<RowsById>({});
   const [status, setStatus] = useState<LoadStatus>('loading');
@@ -333,7 +332,7 @@ function ApprovalsBody() {
     { mode: 'replace' },
   );
 
-  // One AI-list fetch for display names; it goes through `useAisApi` so mock
+  // One AI-list fetch for display names; it goes through `useApi` so mock
   // mode reads the mock AIs, and a failure leaves the names empty.
   const aiList = Effect.tryPromise({
     try: () => aisApi.listAis(),

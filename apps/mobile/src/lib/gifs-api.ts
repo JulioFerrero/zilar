@@ -1,10 +1,12 @@
 import { Effect } from 'effect';
 import { toApiError, type GifResult, type ZilarClient } from '@zilar/api-contract';
-import { makeGifsApi, runApiAbortable, type GifPage as SharedGifPage } from '@zilar/client-core';
+import {
+  makeGifsApi as makeSharedGifsApi,
+  runApiAbortable,
+  type GifPage as SharedGifPage,
+} from '@zilar/client-core';
 
-import { API_URL } from './auth';
-import { createApiClient } from './effect/api-client';
-import { getSessionToken } from './session-token';
+import { createApiClient, type ApiCall, type ApiTransport } from './effect/api-client';
 import type { GifItem } from './gifs';
 
 /**
@@ -45,12 +47,8 @@ export interface GifsApi {
   trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage>;
 }
 
-export function createGifsApi(
-  getToken: TokenProvider = getSessionToken,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): GifsApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
+export function makeGifsApi(_call: ApiCall, transport: ApiTransport): GifsApi {
+  const client = createApiClient(transport);
   // An abort is not an API failure: it surfaces as the `AbortError` a `fetch` abort would give.
   function call<A, E>(
     request: (client: ZilarClient) => Effect.Effect<A, E>,
@@ -58,5 +56,5 @@ export function createGifsApi(
   ): Promise<A> {
     return runApiAbortable(Effect.mapError(request(client), toApiError), signal);
   }
-  return makeGifsApi<GifItem>(call, (row) => toGifItem(row, apiUrl));
+  return makeSharedGifsApi<GifItem>(call, (row) => toGifItem(row, transport.apiUrl));
 }

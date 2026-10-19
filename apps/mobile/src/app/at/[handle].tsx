@@ -13,7 +13,8 @@ import {
   postJoinTarget,
   type HandleView,
 } from '@/components/directory/handle-helpers';
-import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { makeDirectoryApi } from '@/lib/directory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import type { DirectoryEntry } from '@/lib/directory-api';
@@ -45,7 +46,7 @@ export default function GroupHandleRoute() {
 
 function HandleCard({ handle }: { handle: string | undefined }) {
   const router = useRouter();
-  const { api } = useDirectoryApi();
+  const { api } = useApi(makeDirectoryApi);
   const reloadChats = useChatStore((state) => state.reloadChats);
   const [view, setView] = useState<HandleView>(
     handle === undefined || handle === '' ? { state: 'not-found' } : { state: 'checking' },

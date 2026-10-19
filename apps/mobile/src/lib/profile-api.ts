@@ -1,17 +1,10 @@
 import { Exit, Schema, type Effect } from 'effect';
-import {
-  ApiError,
-  runApi,
-  type AuthMe,
-  type HandleCheck,
-  type ZilarClient,
-} from '@zilar/api-contract';
+import { ApiError, type AuthMe, type HandleCheck, type ZilarClient } from '@zilar/api-contract';
 import { makeChatsApi, makeHandlesApi } from '@zilar/client-core';
 import { struct } from '@zilar/protocol';
 
 import { errorFieldsOf } from './api-error-body';
-import { API_URL } from './auth';
-import { createApiClient } from './effect/api-client';
+import type { ApiCall, ApiTransport } from './effect/api-client';
 
 /**
  * `ProfileApiError` is the shared `ApiError` (taken vs. reserved vs. invalid vs. rate limited), so screens branch on `status` without parsing the message.
@@ -117,28 +110,23 @@ function toProfileError(error: unknown): unknown {
   );
 }
 
-export function createProfileApi(
-  getToken: () => Promise<string | undefined>,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): ProfileApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const call = <A, E>(request: (client: ZilarClient) => Effect.Effect<A, E>): Promise<A> =>
-    runApi(request(client)).catch((error: unknown) => {
+export function makeProfileApi(call: ApiCall, transport: ApiTransport): ProfileApi {
+  const profileCall = <A, E>(request: (client: ZilarClient) => Effect.Effect<A, E>): Promise<A> =>
+    call(request).catch((error: unknown) => {
       throw toProfileError(error);
     });
-  const chats = makeChatsApi(call);
-  const handles = makeHandlesApi(call);
+  const chats = makeChatsApi(profileCall);
+  const handles = makeHandlesApi(profileCall);
 
   // The bearer rides on the PUT itself, like the attachment uploader.
   async function avatarRequest(ownerId: string, init: RequestInit): Promise<unknown> {
-    const token = await getToken();
+    const token = await transport.getToken();
     if (token === undefined) {
       throw new ProfileApiError(401, 'unauthorized', 'No session');
     }
     let response: Response;
     try {
-      response = await fetchImpl(`${apiUrl}${avatarPutPath(ownerId)}`, {
+      response = await transport.fetchImpl(`${transport.apiUrl}${avatarPutPath(ownerId)}`, {
         ...init,
         credentials: 'omit',
         headers: {
@@ -172,11 +160,13 @@ export function createProfileApi(
     claimHandle: (handle) => handles.claimHandle(handle),
     async uploadAvatar(ownerId, blob, uploader) {
       if (uploader !== undefined) {
-        const token = await getToken();
+        const token = await transport.getToken();
         if (token === undefined) {
           throw new ProfileApiError(401, 'unauthorized', 'No session');
         }
-        return avatarUrlOrThrow(await uploader(`${apiUrl}${avatarPutPath(ownerId)}`, blob.type));
+        return avatarUrlOrThrow(
+          await uploader(`${transport.apiUrl}${avatarPutPath(ownerId)}`, blob.type),
+        );
       }
       return avatarUrlOrThrow(
         await avatarRequest(ownerId, {

@@ -23,7 +23,9 @@ import {
   type StickerItem,
   type StickerPack,
 } from '@/lib/stickers';
-import { createStickersApi, type StickersApi } from '@/lib/stickers-api';
+import { apiCall } from '@/lib/effect/api-client';
+import { makeStickersApi, type StickersApi } from '@/lib/stickers-api';
+import { realApiTransport } from '@/lib/use-mockable-api';
 
 /** The sticker grid columns (5 across the sheet, web parity). */
 export const STICKER_GRID_COLUMNS = 5;
@@ -361,7 +363,8 @@ export function persistRecent(
 export function loadStickerPacks(api?: StickersApi): Promise<StickerPack[]> {
   return Effect.runPromise(
     Effect.tryPromise({
-      try: () => (api ?? createStickersApi()).listStickerPacks(),
+      try: () =>
+        (api ?? makeStickersApi(apiCall(realApiTransport), realApiTransport)).listStickerPacks(),
       catch: (error) => error,
     }),
   );

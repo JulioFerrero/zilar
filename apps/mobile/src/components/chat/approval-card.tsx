@@ -1,4 +1,4 @@
-import { approvalSentBy } from '@zilar/client-core';
+import { approvalSentBy, makeApprovalsApi } from '@zilar/client-core';
 import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Effect } from 'effect';
@@ -7,7 +7,7 @@ import { Check, Repeat, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { useApprovalsApi } from '@/components/chat/use-approvals-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import type {
@@ -35,7 +35,7 @@ export function ApprovalCard({
   /** The message sender: the record's `aiId` must belong to it. */
   senderId?: string | undefined;
 }) {
-  const { api } = useApprovalsApi();
+  const { api } = useApi(makeApprovalsApi);
   const [loaded] = useQuery(
     () => Effect.promise(() => loadApprovalCardState(api, data.id)),
     [api, data.id],

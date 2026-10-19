@@ -1,18 +1,17 @@
 // effect-plain: presentational card
 import { Image } from 'expo-image';
-import { useGlobalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { Effect, Fiber } from 'effect';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
-import { createChatApi, type ChatApi, type LinkPreview } from '@/lib/chat-api';
+import { makeChatApi, type ChatApi, type LinkPreview } from '@/lib/chat-api';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { safeLinkTarget } from '@/lib/links';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
+import { useApi } from '@/lib/use-mockable-api';
 
 /**
  * Only the `/api/link-preview/image/<key>` prefix ever loads, so a hostile path cannot reach another origin or receive the session token.
@@ -50,17 +49,6 @@ function useLinkPreviewImage(path: string | undefined): LinkPreviewImageSource |
   return { uri: `${API_URL}${path}`, headers };
 }
 
-/** Builds the mock `ChatApi` behind a literal build-time condition: Metro folds
- *  it to `false`, so the mock stays out of a release bundle. */
-function createMockChatApi(): ChatApi {
-  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return createChatApi(mockToken, mockFetch, API_URL);
-  }
-  throw new Error('The mock API is not part of this build');
-}
-
 type PreviewState =
   { kind: 'loading' } | { kind: 'none' } | { kind: 'ready'; preview: LinkPreview };
 
@@ -93,13 +81,7 @@ function loadPreview(api: ChatApi, url: string): Promise<LinkPreview | null> {
 }
 
 export function LinkPreviewCard({ url }: { url: string }) {
-  const params = useGlobalSearchParams();
-  const mock = apiMockActive(
-    ENV_MOCK,
-    params,
-    mockParamAllowed({ dev: __DEV__, envMock: ENV_MOCK }),
-  );
-  const api = useMemo(() => (mock ? createMockChatApi() : createChatApi(getSessionToken)), [mock]);
+  const { api } = useApi(makeChatApi);
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
   // Called before the early return so the hook order stays stable.
   const imageSource = useLinkPreviewImage(state.kind === 'ready' ? state.preview.image : undefined);

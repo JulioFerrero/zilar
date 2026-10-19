@@ -16,7 +16,8 @@ import type { PickedFile } from '@/lib/attachment-ports';
 import { channelViewerRole, isChannelChat, mayPostInChannel } from '@/lib/channels';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { DANGER, ICON } from '@/lib/colors';
-import { createGifsApi, type GifsApi } from '@/lib/gifs-api';
+import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
+import { makeGifsApi, type GifsApi } from '@/lib/gifs-api';
 import { mockDemoAttachments } from '@/mock/attachments';
 import { mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -464,11 +465,12 @@ type ChatComposerDockProps = {
 
 /** Builds the mock `GifsApi` behind a literal build-time condition: Metro folds
  *  it to `false`, so the mock module stays out of a release bundle. */
-function createMockGifs(): GifsApi {
+function makeMockGifs(): GifsApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return createGifsApi(mockToken, mockFetch, API_URL);
+    const transport: ApiTransport = { getToken: mockToken, fetchImpl: mockFetch, apiUrl: API_URL };
+    return makeGifsApi(apiCall(transport), transport);
   }
   throw new Error('The mock API is not part of this build');
 }
@@ -529,7 +531,7 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
         : undefined,
     [],
   );
-  const gifsApi = useMemo(() => (mockActive ? createMockGifs() : undefined), [mockActive]);
+  const gifsApi = useMemo(() => (mockActive ? makeMockGifs() : undefined), [mockActive]);
 
   const [notInTopic, setNotInTopic] = useState<TopicNotIn[]>([]);
   useEffect(() => {

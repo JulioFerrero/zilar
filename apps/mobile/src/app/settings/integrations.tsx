@@ -12,31 +12,10 @@ import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import {
-  type IntegrationsStatus,
-  type VoiceIntegrationStatus,
-  createIntegrationsApi,
-  type IntegrationsApi,
-} from '@/lib/integrations-api';
+import { type IntegrationsStatus, type VoiceIntegrationStatus } from '@/lib/integrations-api';
 import { useAction } from '@/lib/effect/use-action';
-import { API_URL } from '@/lib/auth';
-import { getSessionToken } from '@/lib/session-token';
-import { useMockableApi } from '@/lib/use-mockable-api';
-import { mockToken } from '@/mock/gate';
-
-const realIntegrationsApi = () => createIntegrationsApi(getSessionToken);
-
-const mockIntegrationsApi = (mockFetch: typeof fetch) =>
-  createIntegrationsApi(mockToken, mockFetch, API_URL);
-
-interface IntegrationsApiHandle {
-  api: IntegrationsApi;
-  mock: boolean;
-}
-
-function useIntegrationsApi(): IntegrationsApiHandle {
-  return useMockableApi(realIntegrationsApi, mockIntegrationsApi);
-}
+import { useApi } from '@/lib/use-mockable-api';
+import { makeIntegrationsApi } from '@zilar/client-core';
 
 type PageStatus = 'loading' | 'ready' | 'forbidden' | 'error';
 
@@ -59,7 +38,7 @@ export default function IntegrationsScreen() {
 
 function IntegrationsBody() {
   const router = useRouter();
-  const { api } = useIntegrationsApi();
+  const { api } = useApi(makeIntegrationsApi);
 
   const [data, setData] = useState<IntegrationsStatus | null>(null);
   const [status, setStatus] = useState<PageStatus>('loading');

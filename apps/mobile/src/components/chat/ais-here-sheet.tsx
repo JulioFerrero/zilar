@@ -7,7 +7,8 @@ import { Square } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { makeAisApi } from '@zilar/client-core';
+import { useApi } from '@/lib/use-mockable-api';
 import { AiActivityMark } from '@/components/chat/ai-activity-marks';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { IconButton } from '@/components/ui/icon-button';
@@ -29,7 +30,7 @@ function AisHereRow({
   onOpenApprovals: () => void;
   onOpenQuestion: (messageId: string) => void;
 }) {
-  const { api } = useAisApi();
+  const { api } = useApi(makeAisApi);
   const [stopping, setStopping] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -107,7 +108,7 @@ export function AisHereSheet({
   chat: ChatSummary;
 }) {
   const router = useRouter();
-  const { api } = useAisApi();
+  const { api } = useApi(makeAisApi);
   // Only an AI the viewer owns can be stopped.
   const [aisResult] = useQuery(() => Effect.promise(() => api.listAis()), [api]);
   const ownIds = AsyncResult.isSuccess(aisResult)

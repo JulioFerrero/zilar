@@ -1,9 +1,8 @@
-import { omitUndefined, runApi, type PatchGroupPayload } from '@zilar/api-contract';
-import { makeGroupsApi } from '@zilar/client-core';
+import { omitUndefined, type PatchGroupPayload } from '@zilar/api-contract';
+import { makeGroupsApi as makeSharedGroupsApi } from '@zilar/client-core';
 
-import { API_URL } from './auth';
-import type { GroupMember, TokenProvider } from './chat-api';
-import { createApiClient } from './effect/api-client';
+import type { GroupMember } from './chat-api';
+import type { ApiCall } from './effect/api-client';
 
 /**
  * A malformed payload throws `invalid_response`; raw server messages never reach the UI.
@@ -62,16 +61,11 @@ export interface GroupsApi {
   patchGroupSettings(groupId: string, patch: PatchGroupPayload): Promise<void>;
 }
 
-export function createGroupsApi(
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): GroupsApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeGroupsApi((call) => runApi(call(client)));
+export function makeGroupsApi(call: ApiCall): GroupsApi {
+  const api = makeSharedGroupsApi(call);
   return {
     createChannel: (input) =>
-      runApi(
+      call((client) =>
         client.groups.create({
           payload: {
             title: input.title.trim(),
@@ -86,7 +80,7 @@ export function createGroupsApi(
         }),
       ).then(({ id }) => ({ id })),
     createGroup: (input) =>
-      runApi(
+      call((client) =>
         client.groups.create({
           payload: {
             title: input.title.trim(),
@@ -121,7 +115,9 @@ export function createGroupsApi(
     deleteGroup: (groupId) => api.deleteGroup(groupId),
     // `omitUndefined` sends only the keys the caller set, so a patch of one setting never clears another.
     patchGroupSettings: async (groupId, patch) => {
-      await runApi(client.groups.patch({ params: { id: groupId }, payload: omitUndefined(patch) }));
+      await call((client) =>
+        client.groups.patch({ params: { id: groupId }, payload: omitUndefined(patch) }),
+      );
     },
   };
 }

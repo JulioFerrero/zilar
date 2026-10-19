@@ -5,13 +5,13 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AlwaysAllowedRow, RevokeConfirmDialog } from '@/components/approvals/always-allowed-row';
-import { useApprovalsApi } from '@/components/chat/use-approvals-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { ApprovalRule } from '@/lib/approvals-api';
-import { interruptFiber } from '@zilar/client-core';
+import { interruptFiber, makeApprovalsApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 export const RULES_LOAD_FAILED_MESSAGE = 'Could not load the rules.';
@@ -43,7 +43,7 @@ const isAlreadyGone = (error: unknown): boolean =>
   error instanceof ApiError && error.status === 404;
 
 export function useGroupRules(groupId: string, enabled = true): GroupRulesHandle {
-  const { api } = useApprovalsApi();
+  const { api } = useApi(makeApprovalsApi);
   const [status, setStatus] = useState<RulesStatus>('loading');
   const [rules, setRules] = useState<ApprovalRule[]>([]);
   const [error, setError] = useState('');

@@ -8,9 +8,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { providerLabel } from '@zilar/chat-core';
 import { ApiError } from '@zilar/api-contract';
+import { makeAisApi } from '@zilar/client-core';
 import { AddKeySheet } from '@/components/connections/add-key-sheet';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { usePullToRefresh } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
@@ -173,7 +174,7 @@ function ConnectionsList() {
     setToast({ id: Date.now(), text: 'Key replaced', tone: 'notice' });
   };
 
-  const { api } = useConnectionsApi();
+  const { api } = useApi(makeAisApi);
 
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');

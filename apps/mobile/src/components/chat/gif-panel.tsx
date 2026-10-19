@@ -14,12 +14,16 @@ import {
   gifsAvailability,
   isLoadableGifPreviewUrl,
 } from '@/lib/gifs';
-import { createGifsApi, type GifsApi, type GifPage } from '@/lib/gifs-api';
+import { apiCall } from '@/lib/effect/api-client';
+import { makeGifsApi, type GifsApi, type GifPage } from '@/lib/gifs-api';
 import { getSessionToken } from '@/lib/session-token';
+import { realApiTransport } from '@/lib/use-mockable-api';
 import { Image } from 'expo-image';
 import { API_URL } from '@/lib/auth';
 
 const CELL_ASPECT = 4 / 3;
+
+const defaultGifsApi = (): GifsApi => makeGifsApi(apiCall(realApiTransport), realApiTransport);
 
 /** Only same-origin proxy URLs preview inline; anything else shows a
  *  placeholder tile, so the device never fetches it. */
@@ -114,7 +118,7 @@ function probeGifsAvailabilityEffect(api?: GifsApi): Effect.Effect<boolean> {
     return Effect.succeed(cached);
   }
   return Effect.tryPromise({
-    try: () => (api ?? createGifsApi()).trendingGifs(undefined, undefined),
+    try: () => (api ?? defaultGifsApi()).trendingGifs(undefined, undefined),
     catch: (error) => error,
   }).pipe(
     Effect.andThen(
@@ -162,7 +166,7 @@ export function GifPanel({ open, api, onPick }: GifPanelProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [rateLimited, setRateLimited] = useState(false);
-  const [client] = useState<GifsApi>(() => api ?? createGifsApi());
+  const [client] = useState<GifsApi>(() => api ?? defaultGifsApi());
   const inflight = useRef<AbortController | undefined>(undefined);
   const debounceWait = useRef<Fiber.Fiber<void> | undefined>(undefined);
   // A ref set before the fetch starts, so a second scroll event cannot fire an

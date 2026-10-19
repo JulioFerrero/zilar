@@ -1,7 +1,13 @@
 // The mobile transport of the derived contract client: a missing token fails `unauthorized` before anything is sent, and the `fetch` adapter sends a string URL, a plain header record and a string body.
 import { Effect } from 'effect';
 import { HttpClient, HttpClientRequest } from 'effect/http';
-import { ApiError, makeZilarClient, withFetch, type ZilarClient } from '@zilar/api-contract';
+import {
+  ApiError,
+  makeZilarClient,
+  runApi,
+  withFetch,
+  type ZilarClient,
+} from '@zilar/api-contract';
 import { API_TIMEOUT_MS, fetchWithTimeout } from './fetch-timeout';
 import { mobileRuntime } from './runtime';
 
@@ -35,4 +41,11 @@ export function createApiClient({ getToken, fetchImpl, apiUrl }: ApiTransport): 
       makeZilarClient(http.pipe(withBearer, withFetch(adapter)), { baseUrl: apiUrl }),
     ),
   );
+}
+
+export type ApiCall = <A, E>(call: (client: ZilarClient) => Effect.Effect<A, E>) => Promise<A>;
+
+export function apiCall(transport: ApiTransport): ApiCall {
+  const client = createApiClient(transport);
+  return (call) => runApi(call(client));
 }

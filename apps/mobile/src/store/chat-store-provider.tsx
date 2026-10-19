@@ -13,22 +13,20 @@ import { useSession } from '@/auth/session';
 import { ENV_MOCK, ENV_NODE_ENV, isMockMode, mockToken } from '@/mock/gate';
 
 import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
-import { createChatApi } from '../lib/chat-api';
-import { createTopicsApi } from '../lib/topics-api';
-import { createInviteLinksApi } from '../lib/invite-links-api';
-import { createRolesApi } from '../lib/roles-api';
-import { createGroupsApi } from '../lib/groups-api';
-import { createMediaApi } from '../lib/media-api';
-import { createChatPrefsApi } from '../lib/chat-prefs-api';
-import { createChatFoldersApi } from '../lib/chat-folders-api';
-import { createPinsApi } from '../lib/pins-api';
+import { makeChatApi } from '../lib/chat-api';
+import { makeInviteLinksApi } from '../lib/invite-links-api';
+import { makeRolesApi } from '../lib/roles-api';
+import { makeGroupsApi } from '../lib/groups-api';
+import { makeChatPrefsApi } from '../lib/chat-prefs-api';
+import { makeChatFoldersApi } from '../lib/chat-folders-api';
+import { apiCall } from '../lib/effect/api-client';
 import { ensurePushPair, registerNativePush, watchPushTokenRolls } from '../lib/push/native';
 import { createSizeReader } from '../lib/attachment-picker';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
 import { clearTranscripts } from '../lib/voice-transcripts';
 import type { ChatStoreState } from './types';
-import type { StoreApi } from '@zilar/client-core';
+import { makeChatExtrasApi, makeTopicsApi, type StoreApi } from '@zilar/client-core';
 import { Effect } from 'effect';
 import { File, UploadType } from 'expo-file-system';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
@@ -130,19 +128,20 @@ function mockStoreDeps(): RealStoreDeps | null {
     const { backend, mockFetch } = require('../mock/backend') as typeof import('../mock/backend');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createMockUploader } = require('../mock/uploader') as typeof import('../mock/uploader');
+    const call = apiCall({ getToken: mockToken, fetchImpl: mockFetch, apiUrl: API_URL });
     return {
       ...sharedDeps(),
       // The fake core's slot URL is a `data:` URL, so the real native PUT cannot work in mock mode: this one reports progress and resolves without network.
       uploader: createMockUploader(),
-      api: createChatApi(mockToken, mockFetch, API_URL),
-      topicsApi: createTopicsApi(mockToken, mockFetch, API_URL),
-      inviteLinksApi: createInviteLinksApi(mockToken, mockFetch, API_URL),
-      rolesApi: createRolesApi(mockToken, mockFetch, API_URL),
-      groupsApi: createGroupsApi(mockToken, mockFetch, API_URL),
-      chatPrefsApi: createChatPrefsApi(mockToken, mockFetch, API_URL),
-      chatFoldersApi: createChatFoldersApi(mockToken, mockFetch, API_URL),
-      pinsApi: createPinsApi(mockToken, mockFetch, API_URL),
-      mediaApi: createMediaApi(mockToken, mockFetch, API_URL),
+      api: makeChatApi(call),
+      topicsApi: makeTopicsApi(call),
+      inviteLinksApi: makeInviteLinksApi(call),
+      rolesApi: makeRolesApi(call),
+      groupsApi: makeGroupsApi(call),
+      chatPrefsApi: makeChatPrefsApi(call),
+      chatFoldersApi: makeChatFoldersApi(call),
+      pinsApi: makeChatExtrasApi(call),
+      mediaApi: makeChatExtrasApi(call),
       createXmpp: backend.xmpp,
     };
   }
@@ -150,11 +149,12 @@ function mockStoreDeps(): RealStoreDeps | null {
 }
 
 function realStoreDeps(): RealStoreDeps {
+  const call = apiCall({ getToken: getSessionToken, fetchImpl: fetch, apiUrl: API_URL });
   return {
     ...sharedDeps(),
-    chatPrefsApi: createChatPrefsApi(getSessionToken, fetch, API_URL),
-    chatFoldersApi: createChatFoldersApi(getSessionToken, fetch, API_URL),
-    pinsApi: createPinsApi(getSessionToken, fetch, API_URL),
+    chatPrefsApi: makeChatPrefsApi(call),
+    chatFoldersApi: makeChatFoldersApi(call),
+    pinsApi: makeChatExtrasApi(call),
   };
 }
 

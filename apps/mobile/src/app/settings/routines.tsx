@@ -12,13 +12,13 @@ import {
   type RoutineActionMessage,
 } from '@/components/ais/routines-section';
 import { AisScreenShell } from '@/components/ais/screen-shell';
-import { useToolsApi } from '@/components/ais/use-tools-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, DANGER, ICON } from '@/lib/colors';
-import { interruptFiber } from '@zilar/client-core';
+import { interruptFiber, makeToolsApi } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { AiToolsApi, MyRoutine } from '@/lib/tools-api';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
@@ -152,7 +152,7 @@ export default function RoutinesScreen() {
 
 function RoutinesBody() {
   const router = useRouter();
-  const { api } = useToolsApi();
+  const { api } = useApi(makeToolsApi);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [routines, setRoutines] = useState<MyRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);

@@ -2,7 +2,8 @@ import { replyRef } from '@zilar/chat-core';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
+import { makeAiMemoryApi } from '@/lib/ai-memory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { describeRolesError } from '@/lib/roles';
 import { selectedInOrder, toggleSelected } from '@/lib/selection';
@@ -47,7 +48,7 @@ export function useChatScreen() {
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
-  const { api: memoryApi } = useAiMemoryApi();
+  const { api: memoryApi } = useApi(makeAiMemoryApi);
 
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   // A search jump that gave up lands here with `?notFound=1`: the chat opens at its bottom with a short notice, dismissed once.

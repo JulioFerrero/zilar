@@ -1,8 +1,4 @@
 import { makeToolsApi, type Routine, type ToolListItem, type ToolRun } from '@zilar/client-core';
-import { runApi } from '@zilar/api-contract';
-
-import { API_URL } from './auth';
-import { createApiClient } from './effect/api-client';
 
 export type {
   MyRoutine,
@@ -41,12 +37,3 @@ export type ToolActionsApi = Pick<Tools, 'revertTool' | 'runToolNow' | 'deleteTo
 export type RoutineActionsApi = Pick<Tools, 'pauseRoutine' | 'resumeRoutine' | 'deleteRoutine'>;
 export type MyRoutinesApi = Pick<Tools, 'listMyRoutines'>;
 export type AiToolsApi = Tools;
-
-export function createToolsApi(
-  getToken: () => Promise<string | undefined>,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): AiToolsApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  return makeToolsApi((call) => runApi(call(client)));
-}

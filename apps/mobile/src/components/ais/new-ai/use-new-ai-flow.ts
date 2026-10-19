@@ -1,13 +1,17 @@
 // effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs.
 import { ApiError } from '@zilar/api-contract';
-import { useNewAiFlowState, type NewAiFlowPort, type NewAiStep } from '@zilar/client-core';
+import {
+  makeAisApi,
+  useNewAiFlowState,
+  type NewAiFlowPort,
+  type NewAiStep,
+} from '@zilar/client-core';
+import { makeMachinesApi } from '@/lib/machines-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { useMemo, useState } from 'react';
 
 import type { ComputerMode } from '@/components/ais/computer-picker';
 import { describeAisError } from '@/components/ais/errors';
-import { useAisApi } from '@/components/ais/use-ais-api';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
-import { useMachinesApi } from '@/components/machines/use-machines-api';
 import type { PublicAi } from '@/lib/ais-api';
 
 import { saveOrbAvatar } from './orb-upload';
@@ -19,9 +23,9 @@ export function useNewAiFlow({
 }: {
   onCreated: (ai: PublicAi, partialFailure: boolean) => void;
 }) {
-  const { api } = useAisApi();
-  const { api: machinesApi } = useMachinesApi();
-  const { api: connectionsApi } = useConnectionsApi();
+  const { api } = useApi(makeAisApi);
+  const { api: machinesApi } = useApi(makeMachinesApi);
+  const { api: connectionsApi } = useApi(makeAisApi);
   const port = useMemo<NewAiFlowPort>(
     () => ({
       ...connectionsApi,

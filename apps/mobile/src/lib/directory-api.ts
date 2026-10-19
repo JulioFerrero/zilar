@@ -1,7 +1,6 @@
 // effect-plain: Promise port over the shared directory API; the contract client owns the Effect edge.
-import { runApi } from '@zilar/api-contract';
 import {
-  makeDirectoryApi,
+  makeDirectoryApi as makeSharedDirectoryApi,
   type DirectoryEntry,
   type DirectoryPage,
   type GroupVisibilityState,
@@ -11,9 +10,7 @@ import {
   type SetGroupVisibilityInput,
 } from '@zilar/client-core';
 
-import { API_URL } from './auth';
-import type { TokenProvider } from './chat-api';
-import { createApiClient } from './effect/api-client';
+import type { ApiCall } from './effect/api-client';
 
 /**
  * Public groups and channels only, never users or private groups; reads are rate limited 30 per 10 minutes. Errors are the shared `ApiError` (404 = unknown or private, 409 = full / handle taken, 429 = rate limited).
@@ -41,13 +38,8 @@ export interface DirectoryApi {
   checkGroupHandle(handle: string): Promise<HandleCheck>;
 }
 
-export function createDirectoryApi(
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): DirectoryApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeDirectoryApi((call) => runApi(call(client)));
+export function makeDirectoryApi(call: ApiCall): DirectoryApi {
+  const api = makeSharedDirectoryApi(call);
   return {
     ...api,
     async setGroupVisibility(groupId, input) {

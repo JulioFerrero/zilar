@@ -24,7 +24,7 @@ import { useStableHandler, useStableReact } from '@/components/chat/use-stable-h
 import type { VoicePlayerHost } from '@/components/chat/voice-player-host';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
-import { runLater } from '@zilar/client-core';
+import { makeAisApi, runLater } from '@zilar/client-core';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
 import { ChevronDown, MessageSquare } from 'lucide-react-native';
@@ -34,10 +34,10 @@ import { ICON } from '@/lib/colors';
 import { raisedPill, well } from '@/lib/depth';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { dmHandleFor } from '@/components/chat/chat-header';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
+
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -219,8 +219,8 @@ function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps):
 const MessageListRow = memo(MessageListRowImpl, areRowPropsEqual);
 
 function EmptyChat({ chat }: { chat: ChatSummary }) {
-  const { api: aisApi } = useAisApi();
-  const { api: connectionsApi } = useConnectionsApi();
+  const { api: aisApi } = useApi(makeAisApi);
+  const { api: connectionsApi } = useApi(makeAisApi);
   const contacts = useChatStore((state) => state.contacts);
   const sendText = useChatStore((state) => state.sendText);
 

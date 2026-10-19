@@ -1,6 +1,7 @@
+import { makeChatExtrasApi } from '@zilar/client-core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createMediaApi } from './media-api';
+import { apiCall } from './effect/api-client';
 import { jsonResponse } from '@/test/wait';
 
 const ROW = {
@@ -12,7 +13,7 @@ const ROW = {
   url: 'https://x/a.png',
 };
 
-describe('createMediaApi', () => {
+describe('makeChatExtrasApi', () => {
   it('drops a row whose date cannot be parsed', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
@@ -20,7 +21,13 @@ describe('createMediaApi', () => {
         next: '123',
       }),
     ) as unknown as typeof fetch;
-    const api = createMediaApi(async () => 'token-1', fetchImpl, 'http://server.test');
+    const api = makeChatExtrasApi(
+      apiCall({
+        getToken: async () => 'token-1',
+        fetchImpl,
+        apiUrl: 'http://server.test',
+      }),
+    );
 
     const page = await api.listChatMedia({ chat: ROW.chat, type: 'media' });
 

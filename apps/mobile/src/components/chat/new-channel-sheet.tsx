@@ -6,7 +6,8 @@ import {
   useHandleCheck,
   type CreateVisibility,
 } from '@/components/chat/visibility-fields';
-import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { makeDirectoryApi } from '@/lib/directory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -37,7 +38,7 @@ export function NewChannelSheet({
   const [visibility, setVisibility] = useState<CreateVisibility>('private');
   const [handle, setHandle] = useState('');
   const [localError, setLocalError] = useState('');
-  const { api: directoryApi } = useDirectoryApi();
+  const { api: directoryApi } = useApi(makeDirectoryApi);
   // Memoized like the group sheet's: the effect deps see only visibility/handle, never a fresh closure identity.
   const checkHandle = useCallback(
     (value: string) => directoryApi.checkGroupHandle(value),

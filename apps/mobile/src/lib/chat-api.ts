@@ -1,19 +1,17 @@
 // effect-plain: the contract client runs each call; the shared chats API in @zilar/client-core owns it.
-import {
-  runApi,
-  type AuthMe,
-  type ChatEntry as ContractChatEntry,
-  type Contact as ContractContact,
-  type GroupAi as ContractGroupAi,
-  type GroupDetail as ContractGroupDetail,
-  type GroupMember as ContractGroupMember,
-  type LinkPreview as ContractLinkPreview,
-  type XmppTokenResult,
+import type {
+  AuthMe,
+  ChatEntry as ContractChatEntry,
+  Contact as ContractContact,
+  GroupAi as ContractGroupAi,
+  GroupDetail as ContractGroupDetail,
+  GroupMember as ContractGroupMember,
+  LinkPreview as ContractLinkPreview,
+  XmppTokenResult,
 } from '@zilar/api-contract';
 import { makeChatsApi, makeChatExtrasApi } from '@zilar/client-core';
 
-import { API_URL } from './auth';
-import { createApiClient } from './effect/api-client';
+import type { ApiCall } from './effect/api-client';
 import type { Me } from './auth-api';
 
 export type { Me };
@@ -82,22 +80,17 @@ function toGroupDetail(detail: ContractGroupDetail): GroupDetail {
   };
 }
 
-export function createChatApi(
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
-): ChatApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeChatsApi((call) => runApi(call(client)));
+export function makeChatApi(call: ApiCall): ChatApi {
+  const api = makeChatsApi(call);
   return {
     getMe: () => api.getMe().then(toMe),
     getChats: api.getChats,
     getContacts: api.getContacts,
     getGroup: (groupId) =>
-      runApi(client.groups.detail({ params: { id: groupId } })).then(toGroupDetail),
+      call((client) => client.groups.detail({ params: { id: groupId } })).then(toGroupDetail),
     getXmppToken: api.getXmppToken,
     // The server answers 204 when the page has nothing; the derived client then yields `null`. A transport failure rejects, and the card treats it as `null` too.
-    linkPreview: makeChatExtrasApi((call) => runApi(call(client))).linkPreview,
+    linkPreview: makeChatExtrasApi(call).linkPreview,
     markChatRead: api.markChatRead,
     markChatDelivered: api.markChatDelivered,
     deleteMessageForMe: api.deleteMessageForMe,

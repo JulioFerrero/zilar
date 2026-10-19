@@ -1,6 +1,5 @@
 import { Exit, Schema } from 'effect';
 import {
-  runApi,
   Topic as TopicSchema,
   type Topic as ContractTopic,
   type TopicAi,
@@ -8,14 +7,11 @@ import {
   type TopicPreviewMessage,
 } from '@zilar/api-contract';
 import {
-  makeTopicsApi,
   type CreateTopicInput,
   type PatchTopicInput,
   type SetTopicRolesInput,
   type Topic,
 } from '@zilar/client-core';
-
-import { createApiClient } from './effect/api-client';
 
 // `parseTopic` drops malformed rows, never rendered.
 
@@ -57,13 +53,4 @@ function toTopic(value: ContractTopic): Topic {
 export function parseTopic(value: unknown): Topic | null {
   const decoded = Schema.decodeUnknownExit(TopicSchema)(value);
   return Exit.isSuccess(decoded) ? toTopic(decoded.value) : null;
-}
-
-export function createTopicsApi(
-  getToken: () => Promise<string | undefined>,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string,
-): TopicsApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  return makeTopicsApi((call) => runApi(call(client)));
 }

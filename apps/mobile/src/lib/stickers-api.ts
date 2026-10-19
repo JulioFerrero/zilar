@@ -1,20 +1,13 @@
-import { Effect, Exit, Schema } from 'effect';
+import { Exit, Schema } from 'effect';
+import { ApiError, Sticker as ContractSticker } from '@zilar/api-contract';
 import {
-  ApiError,
-  runApi,
-  Sticker as ContractSticker,
-  type ZilarClient,
-} from '@zilar/api-contract';
-import {
-  makeStickersApi,
+  makeStickersApi as makeSharedStickersApi,
   type Sticker,
   type TelegramImportResult as SharedTelegramImportResult,
 } from '@zilar/client-core';
 
-import { API_URL } from './auth';
 import { errorFieldsOf } from './api-error-body';
-import { createApiClient } from './effect/api-client';
-import { getSessionToken } from './session-token';
+import type { ApiCall, ApiTransport } from './effect/api-client';
 
 export type TelegramImportResult = SharedTelegramImportResult;
 export type { PanelPack, StickerPack, StickerPackDetail } from '@zilar/client-core';
@@ -69,7 +62,7 @@ function decodeSticker(value: unknown): Sticker {
   return decoded.value;
 }
 
-type SharedStickersApi = ReturnType<typeof makeStickersApi>;
+type SharedStickersApi = ReturnType<typeof makeSharedStickersApi>;
 
 export interface StickersApi extends SharedStickersApi {
   /**
@@ -82,20 +75,13 @@ export interface StickersApi extends SharedStickersApi {
   ): Promise<Sticker>;
 }
 
-export function createStickersApi(
-  getToken: TokenProvider = getSessionToken,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string = API_URL,
+export function makeStickersApi(
+  call: ApiCall,
+  transport: ApiTransport,
   binaryUpload: StickerBinaryUpload = { upload: defaultBinaryUpload },
 ): StickersApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-
-  function call<A, E>(request: (client: ZilarClient) => Effect.Effect<A, E>): Promise<A> {
-    return runApi(request(client));
-  }
-
   const uploadStickerFile: StickersApi['uploadStickerFile'] = async (packId, file, emoji) => {
-    const token = await getToken();
+    const token = await transport.getToken();
     if (token === undefined) {
       throw new ApiError(401, 'unauthorized', 'No session');
     }
@@ -107,7 +93,7 @@ export function createStickersApi(
       headers['x-emoji'] = encodeURIComponent(emoji);
     }
     const result = await binaryUpload.upload(
-      `${apiUrl}/api/sticker-packs/${encodeURIComponent(packId)}/stickers`,
+      `${transport.apiUrl}/api/sticker-packs/${encodeURIComponent(packId)}/stickers`,
       file.uri,
       headers,
     );
@@ -123,5 +109,5 @@ export function createStickersApi(
     return decodeSticker(body);
   };
 
-  return { ...makeStickersApi(call), uploadStickerFile };
+  return { ...makeSharedStickersApi(call), uploadStickerFile };
 }

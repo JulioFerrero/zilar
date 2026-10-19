@@ -1,7 +1,7 @@
-import { runApi, type GroupRole as CustomGroupRole } from '@zilar/api-contract';
+import type { GroupRole as CustomGroupRole } from '@zilar/api-contract';
 import { makeGroupsApi } from '@zilar/client-core';
 
-import { createApiClient } from './effect/api-client';
+import type { ApiCall } from './effect/api-client';
 
 export type { RoleMember as RoleHolder } from '@zilar/api-contract';
 /** Grants private-topic access and approver rights in the topics it is attached to. */
@@ -15,13 +15,8 @@ export interface RolesApi {
   setGroupRoleMembers(groupId: string, roleId: string, userIds: string[]): Promise<CustomGroupRole>;
 }
 
-export function createRolesApi(
-  getToken: () => Promise<string | undefined>,
-  fetchImpl: typeof fetch = fetch,
-  apiUrl: string,
-): RolesApi {
-  const client = createApiClient({ getToken, fetchImpl, apiUrl });
-  const api = makeGroupsApi((call) => runApi(call(client)));
+export function makeRolesApi(call: ApiCall): RolesApi {
+  const api = makeGroupsApi(call);
   return {
     listGroupRoles: api.listGroupRoles,
     createGroupRole: api.createGroupRole,

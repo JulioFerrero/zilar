@@ -14,7 +14,8 @@ import {
   directorySubtitle,
   exploreActionTitle,
 } from '@/components/directory/explore-helpers';
-import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { makeDirectoryApi } from '@/lib/directory-api';
+import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
@@ -52,7 +53,7 @@ export default function ExploreScreen() {
 
 function ExploreList() {
   const router = useRouter();
-  const { api } = useDirectoryApi();
+  const { api } = useApi(makeDirectoryApi);
   const reloadChats = useChatStore((state) => state.reloadChats);
 
   const [query, setQuery] = useState('');

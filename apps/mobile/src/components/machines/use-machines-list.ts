@@ -3,15 +3,15 @@ import { Deferred, Effect } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAction } from '@/lib/effect/use-action';
-import type { Machine, PairingCode } from '@/lib/machines-api';
+import { makeMachinesApi, type Machine, type PairingCode } from '@/lib/machines-api';
+import { useApi } from '@/lib/use-mockable-api';
 import type { MachinesErrorInfo } from './errors';
 import { applyChange, call, mutationCall, type MachineMutation } from './mutations';
-import { useMachinesApi } from './use-machines-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
 export function useMachinesList() {
-  const { api } = useMachinesApi();
+  const { api } = useApi(makeMachinesApi);
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');

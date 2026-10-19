@@ -2,8 +2,9 @@ import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
 import { API_URL } from '@/lib/auth';
-import { createStickersApi, type StickerBinaryUpload, type StickersApi } from '@/lib/stickers-api';
-import { getSessionToken } from '@/lib/session-token';
+import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
+import { makeStickersApi, type StickerBinaryUpload, type StickersApi } from '@/lib/stickers-api';
+import { realApiTransport } from '@/lib/use-mockable-api';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /** The 4 stand-in PNG bytes the mock sticker upload records; not a real picture. */
@@ -36,8 +37,9 @@ function createMockStickers(): { api: StickersApi; viewerId: string } {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { mockFetch, mockViewerId } =
       require('@/mock/backend') as typeof import('@/mock/backend');
+    const transport: ApiTransport = { getToken: mockToken, fetchImpl: mockFetch, apiUrl: API_URL };
     return {
-      api: createStickersApi(mockToken, mockFetch, API_URL, createMockStickerUpload(mockFetch)),
+      api: makeStickersApi(apiCall(transport), transport, createMockStickerUpload(mockFetch)),
       viewerId: mockViewerId,
     };
   }
@@ -58,7 +60,10 @@ export function useStickersApi(): StickersApiHandle {
     () =>
       mock
         ? createMockStickers()
-        : { api: createStickersApi(getSessionToken), viewerId: undefined },
+        : {
+            api: makeStickersApi(apiCall(realApiTransport), realApiTransport),
+            viewerId: undefined,
+          },
     [mock],
   );
   return { api: resolved.api, mock, viewerId: resolved.viewerId };

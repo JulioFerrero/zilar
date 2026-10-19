@@ -14,9 +14,9 @@ import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
 import { AiMemorySection } from '@/components/ais/ai-memory-section';
 import { ToolsSection } from '@/components/ais/tools-section';
-import { useToolsApi } from '@/components/ais/use-tools-api';
-import { useAuditApi } from '@/components/ais/use-audit-api';
-import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
+import { makeAiMemoryApi } from '@/lib/ai-memory-api';
+import { makeMachinesApi } from '@/lib/machines-api';
+import { useApi } from '@/lib/use-mockable-api';
 import {
   defaultModelFor,
   validateLimits,
@@ -27,10 +27,8 @@ import {
   modelSuggestionsFor,
 } from '@zilar/chat-core';
 import { AisScreenShell } from '@/components/ais/screen-shell';
-import { useAisApi } from '@/components/ais/use-ais-api';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { makeAisApi, makeAuditApi, makeToolsApi } from '@zilar/client-core';
 import { applyMachineChange } from '@/components/machines/machine-change';
-import { useMachinesApi } from '@/components/machines/use-machines-api';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -347,12 +345,12 @@ export default function EditAiScreen() {
 
 function EditAi() {
   const router = useRouter();
-  const { api } = useAisApi();
-  const { api: connectionsApi } = useConnectionsApi();
-  const { api: machinesApi } = useMachinesApi();
-  const { api: toolsApi } = useToolsApi();
-  const { api: auditApi } = useAuditApi();
-  const { api: memoryApi } = useAiMemoryApi();
+  const { api } = useApi(makeAisApi);
+  const { api: connectionsApi } = useApi(makeAisApi);
+  const { api: machinesApi } = useApi(makeMachinesApi);
+  const { api: toolsApi } = useApi(makeToolsApi);
+  const { api: auditApi } = useApi(makeAuditApi);
+  const { api: memoryApi } = useApi(makeAiMemoryApi);
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
 

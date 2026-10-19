@@ -12,7 +12,8 @@ import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
 import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
 import { type RunAction, runAction } from '@/components/ais/run-state';
 import { AisScreenShell } from '@/components/ais/screen-shell';
-import { useAisApi } from '@/components/ais/use-ais-api';
+import { makeAisApi } from '@zilar/client-core';
+import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -141,7 +142,7 @@ export default function AisScreen() {
 
 function AisList() {
   const router = useRouter();
-  const { api } = useAisApi();
+  const { api } = useApi(makeAisApi);
   const store = useChatStoreApi();
 
   const [ais, setAis] = useState<PublicAi[]>([]);

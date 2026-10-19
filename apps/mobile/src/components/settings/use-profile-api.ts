@@ -2,13 +2,9 @@ import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
 import { API_URL } from '@/lib/auth';
-import {
-  avatarPutPath,
-  createProfileApi,
-  ProfileApiError,
-  type ProfileApi,
-} from '@/lib/profile-api';
-import { getSessionToken } from '@/lib/session-token';
+import { apiCall, type ApiTransport } from '@/lib/effect/api-client';
+import { avatarPutPath, makeProfileApi, ProfileApiError, type ProfileApi } from '@/lib/profile-api';
+import { realApiTransport } from '@/lib/use-mockable-api';
 import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /** The 4 stand-in PNG bytes the mock avatar upload sends; not a real picture. */
@@ -22,7 +18,8 @@ function createMockProfile(): ProfileApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    const api = createProfileApi(mockToken, mockFetch, API_URL);
+    const transport: ApiTransport = { getToken: mockToken, fetchImpl: mockFetch, apiUrl: API_URL };
+    const api = makeProfileApi(apiCall(transport), transport);
     return {
       ...api,
       // The screens hand a native uploader (an `expo-file-system` PUT) that no
@@ -67,7 +64,8 @@ export function useProfileApi(): ProfileApiHandle {
   const envMock = ENV_MOCK;
   const mock = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
-    () => (mock ? createMockProfile() : createProfileApi(getSessionToken)),
+    () =>
+      mock ? createMockProfile() : makeProfileApi(apiCall(realApiTransport), realApiTransport),
     [mock],
   );
   return { api, mock };
