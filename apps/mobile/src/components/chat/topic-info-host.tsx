@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
+import { AiMemorySection } from '@/components/ais/ai-memory-section';
+import type { AiMemoryApi } from '@/lib/ai-memory-api';
 import { TopicAddSheet } from '@/components/chat/topic-add-sheet';
 import { TopicInfoSheet } from '@/components/chat/topic-info-sheet';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
@@ -285,5 +286,31 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
         onClose={() => screen.setMemoryAi(null)}
       />
     </>
+  );
+}
+
+/** Forget and Clear follow the server's `canChange`. */
+function AiMemorySheet({
+  api,
+  chat,
+  ai,
+  onClose,
+}: {
+  api: AiMemoryApi;
+  chat: string;
+  ai: { id: string; name: string } | null;
+  onClose: () => void;
+}) {
+  return (
+    <BottomSheet
+      visible={ai !== null}
+      onClose={onClose}
+      closeLabel="Close memory"
+      title={ai !== null ? `What ${ai.name} remembers` : undefined}
+    >
+      {ai !== null ? (
+        <AiMemorySection api={api} chat={chat} aiId={ai.id} aiName={ai.name} initiallyOpen />
+      ) : null}
+    </BottomSheet>
   );
 }

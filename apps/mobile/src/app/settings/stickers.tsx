@@ -1,21 +1,26 @@
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { Plus, Star } from 'lucide-react-native';
+import { Check, CircleMinus, Download, Plus, Star, Sticker } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { View, Pressable } from 'react-native';
+import { ActivityIndicator, View, Pressable } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
-import { DiscoverTab } from '@/components/stickers/discover-tab';
+import { PackCard } from '@/components/stickers/pack-card';
 import { PackSheet } from '@/components/stickers/pack-sheet';
-import { PacksTab } from '@/components/stickers/packs-tab';
 import { TelegramImportSheet } from '@/components/stickers/telegram-import-sheet';
-import { type StickerTab, useStickersPanel } from '@/components/stickers/use-stickers-panel';
+import {
+  DISCOVER_ERROR,
+  type StickerTab,
+  useStickersPanel,
+} from '@/components/stickers/use-stickers-panel';
+import { SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
+import { SearchField } from '@/components/ui/search-field';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
-import { ICON, FOREGROUND } from '@/lib/colors';
+import { ICON, FOREGROUND, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { fromApi } from '@zilar/client-core';
 import {
   type StickerPack,
@@ -24,6 +29,7 @@ import {
   type StickerItem,
 } from '@/lib/stickers';
 import { Image } from 'expo-image';
+import type { PanelPack } from '@/lib/stickers-api';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 
@@ -376,5 +382,233 @@ function StickersBody() {
         api={api}
       />
     </SettingsScreenShell>
+  );
+}
+
+function DiscoverTab({
+  discover,
+  discoverBusy,
+  discoverError,
+  query,
+  actionError,
+  busy,
+  busyId,
+  panelIds,
+  token,
+  onQueryChange,
+  onSearch,
+  onAdd,
+  onRemove,
+  onOpenPackLink,
+}: {
+  discover: PanelPack[] | undefined;
+  discoverBusy: boolean;
+  discoverError: string;
+  query: string;
+  actionError: string;
+  busy: boolean;
+  busyId: string | null;
+  panelIds: Set<string>;
+  token: string | undefined;
+  onQueryChange: (value: string) => void;
+  onSearch: (search: string) => void;
+  onAdd: (packId: string) => void;
+  onRemove: (pack: PanelPack) => void;
+  onOpenPackLink: (packId: string) => void;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-[14px] text-muted-foreground">
+        Find shared packs from anyone on this server and add them to your panel.
+      </Text>
+      <SearchField
+        value={query}
+        onChangeText={onQueryChange}
+        onSubmitEditing={() => onSearch(query)}
+        maxLength={60}
+        returnKeyType="search"
+        placeholder="Search shared packs"
+        accessibilityLabel="Search sticker packs"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {actionError !== '' ? (
+        <Text accessibilityRole="alert" className="text-[14px] text-danger">
+          {actionError}
+        </Text>
+      ) : null}
+      {discoverBusy ? (
+        <StateMessage kind="loading" title="Searching…" />
+      ) : discover === undefined || discoverError !== '' ? (
+        <StateMessage
+          kind="error"
+          title={discoverError === '' ? DISCOVER_ERROR : discoverError}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading shared packs',
+            onPress: () => onSearch(query),
+          }}
+        />
+      ) : discover.length === 0 ? (
+        <View className="items-center px-6 pt-12">
+          <Text className="text-center text-[15px] text-muted-foreground">
+            No shared packs found. Try another search.
+          </Text>
+        </View>
+      ) : (
+        <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+          {discover.map((pack, index) => {
+            const added = panelIds.has(pack.id);
+            return (
+              <PackCard
+                key={pack.id}
+                inList
+                divider={index < discover.length - 1}
+                pack={pack}
+                token={token}
+                accessibilityLabel={`Open ${pack.title}`}
+                onPress={() => onOpenPackLink(pack.id)}
+                action={
+                  added ? (
+                    <View className="flex-row items-center gap-2">
+                      <Check size={18} color={SEEN} aria-hidden />
+                      <IconButton
+                        label={`Remove ${pack.title} from panel`}
+                        disabled={busy}
+                        onPress={() => onRemove(pack)}
+                      >
+                        <CircleMinus size={18} color={ICON} />
+                      </IconButton>
+                    </View>
+                  ) : (
+                    <IconButton
+                      label={`Add ${pack.title}`}
+                      disabled={busy}
+                      onPress={() => onAdd(pack.id)}
+                    >
+                      {busyId === pack.id ? (
+                        <ActivityIndicator size="small" color={ICON} />
+                      ) : (
+                        <Plus size={18} color={ICON} />
+                      )}
+                    </IconButton>
+                  )
+                }
+              />
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PacksTab({
+  packs,
+  token,
+  meId,
+  busy,
+  actionError,
+  onRemove,
+  onOpenPack,
+  onOpenPackLink,
+  onImport,
+  onOpenDiscover,
+}: {
+  packs: PanelPack[];
+  token: string | undefined;
+  meId: string | undefined;
+  busy: boolean;
+  actionError: string;
+  onRemove: (pack: StickerPack) => void;
+  onOpenPack: (packId: string) => void;
+  onOpenPackLink: (packId: string) => void;
+  onImport: () => void;
+  onOpenDiscover: () => void;
+}) {
+  // While the viewer id is still unknown, every pack counts as your own so no
+  // Added row flashes a remove key on a pack you own.
+  const own =
+    meId === undefined
+      ? packs
+      : packs.filter((pack) => pack.ownerId === undefined || pack.ownerId === meId);
+  const added = meId === undefined ? [] : packs.filter((pack) => pack.ownerId !== meId);
+
+  return (
+    <View className="gap-2">
+      {actionError !== '' ? (
+        <Text accessibilityRole="alert" className="text-[14px] text-danger">
+          {actionError}
+        </Text>
+      ) : null}
+
+      {own.length === 0 ? (
+        <StateMessage
+          kind="empty"
+          icon={Sticker}
+          title="No packs on your panel yet. Look in Discover for shared packs to add."
+          action={{
+            label: 'Open Discover',
+            accessibilityLabel: 'Open Discover',
+            onPress: onOpenDiscover,
+          }}
+        />
+      ) : null}
+
+      <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+        {own.map((pack) => (
+          <PackCard
+            key={pack.id}
+            inList
+            pack={pack}
+            token={token}
+            meId={meId}
+            accessibilityLabel={`Open ${pack.title}`}
+            onPress={() => onOpenPack(pack.id)}
+          />
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Import from Telegram"
+          disabled={busy}
+          onPress={onImport}
+          className="flex-row items-center gap-3 px-3 py-3 active:bg-surface-raised disabled:opacity-50"
+        >
+          <View className="h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-raised">
+            <Download size={18} color={MUTED_FOREGROUND} />
+          </View>
+          <Text className="text-[15px] text-muted-foreground">Import from Telegram</Text>
+        </Pressable>
+      </View>
+
+      {added.length > 0 ? (
+        <View className="mt-4 gap-2">
+          <SectionLabel>Added</SectionLabel>
+          <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+            {added.map((pack, index) => (
+              <PackCard
+                key={pack.id}
+                inList
+                divider={index < added.length - 1}
+                pack={pack}
+                token={token}
+                meId={meId}
+                accessibilityLabel={`Open ${pack.title}`}
+                onPress={() => onOpenPackLink(pack.id)}
+                action={
+                  <IconButton
+                    label={`Remove ${pack.title} from panel`}
+                    disabled={busy}
+                    onPress={() => onRemove(pack)}
+                  >
+                    <CircleMinus size={18} color={ICON} />
+                  </IconButton>
+                }
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }

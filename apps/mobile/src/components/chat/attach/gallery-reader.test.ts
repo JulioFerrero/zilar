@@ -17,7 +17,7 @@ vi.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
-import type { ImageDownscaler } from '@/lib/attachment-downscale';
+import type { ImageDownscaler } from '@/lib/attachment-picker';
 import { EMPTY_MESSAGE, TOO_LARGE_MESSAGE } from '@/lib/attachment-common';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { createGalleryReader } from '@/lib/attachment-picker';

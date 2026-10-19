@@ -18,13 +18,8 @@ import * as Sharing from 'expo-sharing';
 
 import { Text } from '@/components/ui/text';
 import { useMediaSource, type MediaSource } from '@/lib/media-source';
-import {
-  SAVE_FAILED_MESSAGE,
-  SAVED_MESSAGE,
-  savePhoto,
-  deleteQuietly,
-  downloadToCache,
-} from '@/lib/save-photo';
+import { File, Paths } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 /**
  * The URL and bearer come from the `MediaSource` already resolved, so a share sends exactly the bytes on screen and never another host.
@@ -319,4 +314,80 @@ export function AttachmentViewer({
       </GestureHandlerRootView>
     </Modal>
   );
+}
+
+/**
+ * The URL and bearer come from the `MediaSource` already resolved, so a save fetches exactly the bytes on screen and never another host.
+ */
+
+const SAVED_MESSAGE = 'Saved to gallery';
+const SAVE_FAILED_MESSAGE = 'Could not save the photo.';
+
+type SaveResult = { status: 'saved' } | { status: 'error'; message: string };
+
+const SAVE_FAILED: SaveResult = { status: 'error', message: SAVE_FAILED_MESSAGE };
+
+function cacheFileName(uri: string): string {
+  const path = parseUrl(uri)?.pathname ?? '';
+  const extension = /\.[A-Za-z0-9]{1,5}$/.exec(path)?.[0] ?? '.jpg';
+  return `zilar-photo-${Date.now()}${extension}`;
+}
+
+function deleteQuietly(file: File): void {
+  try {
+    file.delete();
+  } catch {
+    // The file is already gone or the cache was cleared: nothing to do.
+  }
+}
+
+function downloadToCache(source: MediaSource): Effect.Effect<File | undefined> {
+  return Effect.gen(function* () {
+    const destination = yield* Effect.try({
+      try: () => new File(Paths.cache, cacheFileName(source.uri)),
+      catch: () => undefined,
+    }).pipe(Effect.orElseSucceed(() => undefined));
+    if (destination === undefined) {
+      return undefined;
+    }
+    return yield* Effect.tryPromise({
+      try: () =>
+        File.downloadFileAsync(source.uri, destination, {
+          idempotent: true,
+          ...(source.headers === undefined ? {} : { headers: source.headers }),
+        }),
+      catch: () => undefined,
+    }).pipe(Effect.orElseSucceed(() => undefined));
+  });
+}
+
+const saveEffect = (source: MediaSource): Effect.Effect<SaveResult> =>
+  Effect.gen(function* () {
+    const granted = yield* Effect.tryPromise({
+      try: () => MediaLibrary.requestPermissionsAsync(true),
+      catch: () => undefined,
+    }).pipe(
+      Effect.map((response) => response.granted),
+      Effect.orElseSucceed(() => false),
+    );
+    if (!granted) {
+      return SAVE_FAILED;
+    }
+    const file = yield* downloadToCache(source);
+    if (file === undefined) {
+      return SAVE_FAILED;
+    }
+    const saved = yield* Effect.tryPromise({
+      try: () => MediaLibrary.saveToLibraryAsync(file.uri).then(() => true),
+      catch: () => false,
+    }).pipe(Effect.orElseSucceed(() => false));
+    yield* Effect.sync(() => deleteQuietly(file));
+    return saved ? { status: 'saved' as const } : SAVE_FAILED;
+  });
+
+/**
+ * Every failure collapses to the one fixed sentence, so the viewer never shows raw platform text.
+ */
+function savePhoto(source: MediaSource, onResult: (result: SaveResult) => void): void {
+  void Effect.runPromise(saveEffect(source)).then(onResult);
 }

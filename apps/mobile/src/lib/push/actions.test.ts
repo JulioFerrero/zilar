@@ -6,6 +6,9 @@ import { jsonResponse } from '@/test/wait';
 const notifications = vi.hoisted(() => ({
   dismissNotificationAsync: vi.fn(async () => undefined),
   setNotificationCategoryAsync: vi.fn(async () => null),
+  registerTaskAsync: vi.fn(async () => null),
+  setNotificationHandler: vi.fn(),
+  BackgroundNotificationTaskResult: { NewData: 0, NoData: 1, Failed: 2 },
   DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
 }));
 
@@ -15,8 +18,9 @@ vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn(async () => null),
   setItemAsync: vi.fn(async () => undefined),
 }));
+vi.mock('expo-task-manager', () => ({ defineTask: vi.fn() }));
 
-import { onNotificationAction, READ_ACTION, REPLY_ACTION } from './actions';
+import { onNotificationAction, READ_ACTION, REPLY_ACTION } from './background';
 
 const API_URL = 'http://server.test';
 const token = async () => 'session-token';
@@ -173,5 +177,22 @@ describe('onNotificationAction (T-1896)', () => {
 
     expect(calls).toHaveLength(0);
     expect(notifications.dismissNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('notification categories', () => {
+  it('registers Reply and Mark as read when the module loads', async () => {
+    vi.resetModules();
+    notifications.setNotificationCategoryAsync.mockClear();
+    await import('./background');
+    await vi.waitFor(() => {
+      expect(notifications.setNotificationCategoryAsync).toHaveBeenCalledWith(
+        'message',
+        expect.arrayContaining([
+          expect.objectContaining({ identifier: REPLY_ACTION }),
+          expect.objectContaining({ identifier: READ_ACTION }),
+        ]),
+      );
+    });
   });
 });

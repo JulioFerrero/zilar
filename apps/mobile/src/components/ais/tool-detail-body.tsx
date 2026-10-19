@@ -5,9 +5,13 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { hostsLine, truncateOutput } from '@/lib/routines-format';
-import type { ToolDetail, ToolRun, ToolRunResult, ToolVersion } from '@/lib/tools-api';
-
-import { numberedLines, waitingHosts, runStatusText } from './tool-detail-format';
+import type {
+  ToolDetail,
+  ToolListItem,
+  ToolRun,
+  ToolRunResult,
+  ToolVersion,
+} from '@/lib/tools-api';
 import { fetchCountText } from './tool-actions';
 
 function ShowMoreButton({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {
@@ -404,4 +408,32 @@ export function ToolDetailBody({
       </View>
     </View>
   );
+}
+
+/** A run's status line, e.g. `ok · v3 · manual · 120 ms · <date>`. */
+function runStatusText(run: ToolRun): string {
+  const at = new Date(run.createdAt);
+  const label = run.status === 'ok' ? 'ok' : `error (${run.errorKind ?? 'failed'})`;
+  return `${label} · v${run.version} · ${run.trigger} · ${run.durationMs} ms · ${at.toLocaleString()}`;
+}
+
+/** Missing `approvedHosts` reads as none approved, like web. */
+function waitingHosts(tool: ToolListItem | ToolDetail): string[] {
+  const approved = tool.approvedHosts ?? [];
+  return tool.hosts.filter((host) => !approved.includes(host));
+}
+
+interface NumberedLine {
+  n: number;
+  text: string;
+}
+
+/** An empty source reads as no lines; a trailing newline does not add one. */
+function numberedLines(source: string): NumberedLine[] {
+  if (source === '') return [];
+  const lines = source.split('\n');
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  return lines.map((text, index) => ({ n: index + 1, text }));
 }
