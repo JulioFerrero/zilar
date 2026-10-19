@@ -2,13 +2,10 @@ import { Effect } from 'effect';
 import type { UiMessage } from '@zilar/chat-core';
 import {
   adoptNewRows,
-  clearSupersededMarker,
   flushPending,
   mergeFreshChats,
   openAtMessage as openAtMessageCore,
-  openHistory,
-  pruneInactiveChats,
-  recordRead,
+  openChatCore,
 } from '@zilar/client-core/store';
 import { ApiError } from '@/lib/api';
 import { summariesFor } from './chatRows';
@@ -85,33 +82,20 @@ export function openChat(ctx: StoreCtx, chatId: string): void {
     topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
   }));
   // The chat just opened is now active, so every other chat drops to its newest KEEP_INACTIVE.
-  pruneInactiveChats(ctx, chatId);
-  // Drop every quiet-archive mark except the one for the chat just opened: a leaked mark
-  // would silence a later, unrelated removal.
+  // Every quiet-archive mark but the opened chat's goes: a leaked mark would silence a later removal.
   for (const id of ctx.quietArchiveIds) {
     if (id !== chatId) {
       ctx.quietArchiveIds.delete(id);
     }
   }
-  recordRead(ctx, chatId, ctx.lastRead[chatId]);
   // Opening a chat clears its manual unread mark at once; the pref write keeps the server in
   // step even when no numeric read mark can be sent (a fresh device holds no last-read id).
-  const opening = ctx.get().chats.find((entry) => entry.id === chatId);
-  if (opening?.unreadMark === true) {
-    ctx.set((state) => ({
-      chats: state.chats.map((chat) =>
-        chat.id === chatId ? { ...chat, unreadMark: false } : chat,
-      ),
-    }));
-    ctx.rt.fork(setUnreadMark(ctx, chatId, false).pipe(Effect.ignore));
-  }
+  const load = openChatCore(ctx, chatId, {
+    writeUnreadMark: (id) => ctx.rt.fork(setUnreadMark(ctx, id, false).pipe(Effect.ignore)),
+  });
   loadGroupMembersInBackground(ctx, chatId);
   ctx.rt.fork(refreshPinsFor(ctx, chatId));
-  if (ctx.pendingOpenChatId !== undefined && ctx.pendingOpenChatId !== chatId) {
-    clearSupersededMarker(ctx, ctx.pendingOpenChatId);
-  }
-  ctx.pendingOpenChatId = chatId;
-  ctx.rt.fork(openHistory(ctx, chatId));
+  ctx.rt.fork(load);
 }
 
 /** A roster push means the chat list changed: refetch after a short wait, joining new

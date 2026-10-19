@@ -4,21 +4,19 @@ import type { XmppCore } from '@zilar/xmpp-core';
 import {
   adoptNewRows,
   bridgeLocals,
-  clearSupersededMarker,
   flushPending,
   loadOlder as loadOlderCore,
   loadPreview,
   mergeFreshChats,
   openAtMessage as openAtMessageCore,
+  openChatCore,
   openHistory,
-  pruneInactiveChats,
   type HistoryCtx,
 } from '@zilar/client-core/store';
 
 import type { ChatEntry } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { TOPIC_GONE_NOTICE } from '../../lib/topics';
-import { clearUnreadMarkOnOpen } from './events';
 import { Ports } from './ports';
 import { detached, isClosed, lift, orElse, recover, type StoreCtx } from './runtime';
 
@@ -226,9 +224,11 @@ export function makeHistory(ctx: StoreCtx): History {
         };
       });
       // The chat just opened is now active, so every other chat drops to its newest KEEP_INACTIVE messages.
-      pruneInactiveChats(historyCtx, chatId);
-      h.recordRead(chatId, s.lastRead[chatId]);
-      clearUnreadMarkOnOpen(ctx, chatId);
+      const load = openChatCore(historyCtx, chatId, {
+        // The pref write keeps the server in step when no numeric read mark can be sent.
+        writeUnreadMark: (id) =>
+          ctx.fork(lift(() => get().setChatPref(id, { unreadMark: false })).pipe(Effect.ignore)),
+      });
       // The detail first: it fills the cache, so the member-name fallback shares the same GET on a cold open.
       const groupId = h.groupIdForChat(chatId);
       if (groupId !== undefined) {
@@ -237,11 +237,7 @@ export function makeHistory(ctx: StoreCtx): History {
       ctx.forkSession(fx.ensureGroupMembers(chatId));
       ctx.forkSession(fx.loadPins(chatId, true));
       fx.startPinsPolling(chatId);
-      if (s.pendingOpenChatId !== undefined && s.pendingOpenChatId !== chatId) {
-        clearSupersededMarker(historyCtx, s.pendingOpenChatId);
-      }
-      s.pendingOpenChatId = chatId;
-      ctx.forkSession(openHistory(historyCtx, chatId));
+      ctx.forkSession(load);
     },
   };
 }

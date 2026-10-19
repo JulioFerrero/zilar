@@ -6,6 +6,7 @@ import { mergeChatRows } from './chat-rows';
 import { fromPromise, nickFor, type CoreCtx, type CorePatch, type CoreState } from './ctx';
 import { applyChatDelivery } from './delivered';
 import type { LedgerBatchView } from './ledger-history-ingest';
+import { pruneInactiveChats } from './prune';
 import { applyChatReadMark, recordRead } from './reads';
 import { coreKind, sortMessages } from './rows';
 
@@ -284,6 +285,28 @@ export function flushPending(ctx: HistoryCtx): void {
   ctx.pendingOpenChatId = undefined;
   ctx.rt.fork(openHistory(ctx, pending));
 }
+
+export const openChatCore = (
+  ctx: HistoryCtx,
+  chatId: string,
+  { writeUnreadMark }: { readonly writeUnreadMark: (chatId: string) => void },
+): Effect.Effect<void> => {
+  pruneInactiveChats(ctx, chatId);
+  recordRead(ctx, chatId, ctx.lastRead[chatId]);
+  const opening = ctx.get().chats.find((entry) => entry.id === chatId);
+  if (opening?.unreadMark === true) {
+    const chats = ctx
+      .get()
+      .chats.map((chat) => (chat.id === chatId ? { ...chat, unreadMark: false } : chat));
+    ctx.set({ chats });
+    writeUnreadMark(chatId);
+  }
+  if (ctx.pendingOpenChatId !== undefined && ctx.pendingOpenChatId !== chatId) {
+    clearSupersededMarker(ctx, ctx.pendingOpenChatId);
+  }
+  ctx.pendingOpenChatId = chatId;
+  return openHistory(ctx, chatId);
+};
 
 export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void> =>
   Effect.suspend(() => {

@@ -2214,3 +2214,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2215](T-2215-card-preview.md) | chat list: a task card previews its summary or title | 2026-10-19 |
 | [T-2213](T-2213-agent-tests-cut-d.md) | server tests D: agent side-modules cut to essentials | 2026-10-19 |
 | [T-2216](T-2216-turn-shell.md) | AI turns T8: one completion input and typing shell | 2026-10-19 |
+| [T-2217](T-2217-open-chat-core.md) | store phase 3 T3b: one openChat core for web and phone | 2026-10-19 |

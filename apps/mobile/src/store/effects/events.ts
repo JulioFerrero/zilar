@@ -47,24 +47,6 @@ export interface Events {
   clearTimers(): void;
 }
 
-/** Also writes the pref, so the server stays in step when no numeric read mark can be sent (a fresh device holds no last-read id). */
-export function clearUnreadMarkOnOpen(ctx: StoreCtx, chatId: string): void {
-  const { get, set } = ctx;
-  const opening = get().chats.find((entry) => entry.id === chatId);
-  if (opening?.unreadMark !== true) {
-    return;
-  }
-  set({
-    chats: get().chats.map((chat) => (chat.id === chatId ? { ...chat, unreadMark: false } : chat)),
-  });
-  ctx.fork(
-    Effect.tryPromise({
-      try: () => get().setChatPref(chatId, { unreadMark: false }),
-      catch: (cause) => cause,
-    }).pipe(Effect.ignore),
-  );
-}
-
 export function makeEvents(ctx: StoreCtx): Events {
   const { ports, get, set, s, life } = ctx;
   const { now } = ports;
