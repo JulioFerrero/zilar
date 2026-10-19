@@ -20,6 +20,7 @@ export interface ProviderChoice {
   readonly id: string;
   readonly label: string;
   readonly hasKey: boolean;
+  readonly tag?: string;
 }
 
 export interface ProviderConnectionView {
@@ -73,6 +74,11 @@ const KEY_PAGES: Record<string, string> = {
   deepseek: 'https://platform.deepseek.com/api_keys',
   xai: 'https://console.x.ai',
   openrouter: 'https://openrouter.ai/keys',
+  brave: 'https://api-dashboard.search.brave.com/app/keys',
+  exa: 'https://dashboard.exa.ai/api-keys',
+  firecrawl: 'https://www.firecrawl.dev/app/api-keys',
+  jina: 'https://jina.ai/api-dashboard/key-manager',
+  tavily: 'https://app.tavily.com/home',
 };
 
 export function keyPageFor(providerId: string, catalog: CatalogView | null): string | null {

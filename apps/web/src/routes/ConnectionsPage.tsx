@@ -23,11 +23,21 @@ import {
   type ConnectionTestResult,
 } from '@/lib/api';
 import { apiFailureText } from '@/components/panels/groupPanelOps';
-import { fromApi, type ApiFailure, failureOf, isWaiting, shownFailure } from '@zilar/client-core';
+import {
+  fromApi,
+  type ApiFailure,
+  failureOf,
+  isWaiting,
+  shownFailure,
+  webUseText,
+} from '@zilar/client-core';
 import { useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { providerLabel } from '@zilar/chat-core';
+import { WEB_SEARCH_PROVIDER_IDS } from '@zilar/api-contract';
+
+const WEB_SEARCH_IDS: readonly string[] = WEB_SEARCH_PROVIDER_IDS;
 
 export function ConnectionsPage() {
   const navigate = useNavigate();
@@ -39,11 +49,25 @@ export function ConnectionsPage() {
   const connections = AsyncResult.isSuccess(list) ? list.value : undefined;
   const loadError = shownFailure(list);
   const visible = (connections ?? []).filter((connection) => !removedIds.has(connection.id));
+  const models = visible.filter((connection) => !WEB_SEARCH_IDS.includes(connection.provider));
+  const webSearch = visible.filter((connection) => WEB_SEARCH_IDS.includes(connection.provider));
 
   const markRemoved = (id: string): void => {
     setRemovedIds((ids) => new Set(ids).add(id));
     setConfirmingId(null);
   };
+
+  const renderRow = (connection: Connection) => (
+    <ConnectionRow
+      key={connection.id}
+      connection={connection}
+      all={visible}
+      confirming={confirmingId === connection.id}
+      onAskRemove={() => setConfirmingId(connection.id)}
+      onCancelRemove={() => setConfirmingId(null)}
+      onRemoved={markRemoved}
+    />
+  );
 
   return (
     <SettingsShell
@@ -79,21 +103,38 @@ export function ConnectionsPage() {
         )}
 
         {connections !== undefined && visible.length > 0 && (
-          <ul
-            aria-label="Connections"
-            className="overflow-hidden rounded-xl border border-border bg-surface"
-          >
-            {visible.map((connection) => (
-              <ConnectionRow
-                key={connection.id}
-                connection={connection}
-                confirming={confirmingId === connection.id}
-                onAskRemove={() => setConfirmingId(connection.id)}
-                onCancelRemove={() => setConfirmingId(null)}
-                onRemoved={markRemoved}
-              />
-            ))}
-          </ul>
+          <div className="flex flex-col gap-6">
+            {models.length > 0 && (
+              <section className="flex flex-col">
+                <div className="flex items-baseline gap-2 px-1 pb-2">
+                  <h2 className="text-[13px] font-medium">Models</h2>
+                </div>
+                <ul
+                  aria-label="Models"
+                  className="overflow-hidden rounded-xl border border-border bg-surface"
+                >
+                  {models.map(renderRow)}
+                </ul>
+              </section>
+            )}
+
+            {webSearch.length > 0 && (
+              <section className="flex flex-col">
+                <div className="flex items-baseline gap-2 px-1 pb-2">
+                  <h2 className="text-[13px] font-medium">Web search</h2>
+                  <span className="text-[13px] text-subtle-foreground">
+                    for AIs whose model has none
+                  </span>
+                </div>
+                <ul
+                  aria-label="Web search"
+                  className="overflow-hidden rounded-xl border border-border bg-surface"
+                >
+                  {webSearch.map(renderRow)}
+                </ul>
+              </section>
+            )}
+          </div>
         )}
 
         {adding && (
@@ -179,7 +220,7 @@ function AddKeyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       }
     >
       <div className="flex flex-col gap-4">
-        {step === 0 && <ProviderStep keys={keys} />}
+        {step === 0 && <ProviderStep keys={keys} withWebSearch />}
         {step === 1 && <KeyStep keys={keys} />}
       </div>
     </Dialog>
@@ -278,12 +319,14 @@ function ReplaceKeyForm({
 
 function ConnectionRow({
   connection,
+  all,
   confirming,
   onAskRemove,
   onCancelRemove,
   onRemoved,
 }: {
   connection: Connection;
+  all: readonly Connection[];
   confirming: boolean;
   onAskRemove: () => void;
   onCancelRemove: () => void;
@@ -315,6 +358,7 @@ function ConnectionRow({
   const addedDate = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(
     new Date(connection.createdAt),
   );
+  const useText = webUseText(connection, all);
   const removeFailure = confirming ? shownFailure(removeState) : undefined;
 
   const askRemove = (): void => {
@@ -345,6 +389,7 @@ function ConnectionRow({
           {reason !== undefined && ' · '}
           {connection.label !== null && `${connection.label} · `}
           {connection.baseUrl !== null && `${hostOf(connection.baseUrl)} · `}
+          {useText !== undefined && `${useText} · `}
           {addedDate}
         </p>
         {removeFailure !== undefined && (

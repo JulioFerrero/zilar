@@ -142,6 +142,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2222 | the phone groups API on the shared client-core one: one `createGroup` (group or channel) for both apps; the phone `lib/groups-api.ts` is gone (held) | −88 |
 | T-2219 | web search W2a (server): Brave, Exa, Firecrawl, Jina and Tavily as connections with key tests; one `web-tools/sources.ts` table; `loadWebSource` (DeepSeek key, or else the owner's first capable key) | +321 (feature) |
 | T-2221 | server tests wave E: the AI turn tests (gateway-group, gateway-stop, reply, group-turn-card, context) cut to the crucial cases | −896 test |
 | T-2214 | the import rule everywhere: no pass-through re-exports outside index files and no rename aliases without a clash (126 files; held, deploys with the next push) | −36 |
@@ -187,7 +188,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
     - open repositories of them, "even mcps of mcps or mcps of skills".
 
     Brainstorm with him before any canvas or spec.
-  - **T-2222 (approved 10:47; web and phone create and member checks passed):** waiting on a rebase conflict in `ports.ts` against T-2214, which the worker is resolving. The phone groups API moves onto the shared client-core one. There is one `createGroup` (group or channel, public handle) for both apps, and the phone's hand-written `GroupsApi` goes (stop rule at least −60). Next in that line: the phone `chat-api` and `profile-api` wrappers (plan B1), after T-2222, because they share `ports.ts`.
+  - **Next:** the phone `chat-api` and `profile-api` wrappers onto the shared API (plan B1).
   - **T-2220 (launched 10:50):** the shared helpers plus the web screens for web search keys. The phone twin follows it.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
@@ -224,6 +225,10 @@ Lead live checks as Julio in "ai test › General" (09:19–09:24):
 **`83e27024a`** (09:58, AI turns T8): routes the same, 0 errors. Live checks:
 - a DM hello was answered ("Here and working, Julio, live check three is fine.");
 - a stopped multi-page fetch task ended "Stopped after 29s" with no reply. Stop pressed at about 0:05 only landed when the in-flight DeepSeek fetch returned, so T-2218 passes the abort signal to web tools.
+
+**`e23be6572`** (10:37, T-2214 and T-2221): routes the same, 0 errors.
+
+**`026d29e0e`** (10:50, T-2219 web search keys, server): routes the same, 0 errors. Live check: "latest stable Go" was answered "go1.27.2 (8 Oct 2026)", and the AI said the tool header names "DeepSeek", so the DeepSeek AI still uses its own key.
 
 **`757d70f81`** (10:10, T-2218): routes the same, 0 errors. Stop pressed at about 0:06 on a multi-page fetch task ended the card "Stopped after 10s"; before the fix it took 29 s.
 

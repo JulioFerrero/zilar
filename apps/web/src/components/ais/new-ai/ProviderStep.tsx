@@ -1,20 +1,35 @@
 import { Combobox } from '@/components/ui/combobox';
 import type { KeyCheck } from './useKeyCheck';
 
-export function ProviderStep({ keys }: { keys: KeyCheck }) {
+export function ProviderStep({ keys, withWebSearch }: { keys: KeyCheck; withWebSearch?: boolean }) {
+  const options = [
+    ...keys.choices
+      .filter((choice) => choice.id !== 'openai-compatible')
+      .map((choice) => ({
+        value: choice.id,
+        label: choice.label,
+        ...(withWebSearch === true ? { group: 'Models' } : {}),
+        ...(withWebSearch === true && choice.tag !== undefined ? { tag: choice.tag } : {}),
+        ...(choice.hasKey ? { dot: 'online' as const } : {}),
+      })),
+    ...(withWebSearch === true
+      ? keys.webChoices.map((choice) => ({
+          value: choice.id,
+          label: choice.label,
+          group: 'Web search',
+          tag: choice.tag,
+          ...(choice.hasKey ? { dot: 'online' as const } : {}),
+        }))
+      : []),
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <span className="text-[13px] font-medium">Provider</span>
         <Combobox
           label="Provider"
-          options={keys.choices
-            .filter((choice) => choice.id !== 'openai-compatible')
-            .map((choice) => ({
-              value: choice.id,
-              label: choice.label,
-              ...(choice.hasKey ? { dot: 'online' as const } : {}),
-            }))}
+          options={options}
           value={keys.providerId}
           onValueChange={keys.chooseProvider}
           placeholder="Search providers"

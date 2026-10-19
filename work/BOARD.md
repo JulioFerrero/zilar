@@ -2220,3 +2220,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2221](T-2221-agent-tests-cut-e.md) | server tests wave E: AI turn tests cut | 2026-10-19 |
 | [T-2219](T-2219-web-search-keys-server.md) | web search keys W2a: providers as connections | 2026-10-19 |
 | [T-2222](T-2222-phone-groups-api-shared.md) | phone groups API on the shared client-core one | 2026-10-19 |
+| [T-2220](T-2220-web-search-keys-web.md) | web search keys W2b: shared helpers and web screens | 2026-10-19 |

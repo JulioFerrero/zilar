@@ -28,6 +28,30 @@ export const mockConnections: readonly ConnectionView[] = [
     status: 'active',
     createdAt: '2026-09-22T10:00:00.000Z',
   },
+  {
+    id: 'conn-deepseek',
+    provider: 'deepseek',
+    label: 'Personal key',
+    baseUrl: null,
+    status: 'active',
+    createdAt: '2026-09-23T10:00:00.000Z',
+  },
+  {
+    id: 'conn-brave',
+    provider: 'brave',
+    label: null,
+    baseUrl: null,
+    status: 'active',
+    createdAt: '2026-10-19T09:00:00.000Z',
+  },
+  {
+    id: 'conn-jina',
+    provider: 'jina',
+    label: null,
+    baseUrl: null,
+    status: 'active',
+    createdAt: '2026-10-19T09:05:00.000Z',
+  },
 ];
 
 export function seedConnections(): Partial<MockSeed> {

@@ -261,6 +261,11 @@ export const AI_PROVIDERS: readonly AiProvider[] = [
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'openai-compatible', label: 'OpenAI-compatible' },
   { id: 'github', label: 'GitHub' },
+  { id: 'brave', label: 'Brave Search' },
+  { id: 'exa', label: 'Exa' },
+  { id: 'firecrawl', label: 'Firecrawl' },
+  { id: 'jina', label: 'Jina' },
+  { id: 'tavily', label: 'Tavily' },
 ];
 
 // The ids that can back an AI; `github` is deliberately absent.

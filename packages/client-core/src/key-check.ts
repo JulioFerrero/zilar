@@ -1,6 +1,11 @@
 // effect-plain: the key-check flow is plain React state over an injected promise API; there is no product flow to model as an Effect.
 import { useEffect, useRef, useState } from 'react';
-import type { AiCatalog, ConnectionView } from '@zilar/api-contract';
+import {
+  WEB_CAPABILITIES,
+  WEB_SEARCH_PROVIDER_IDS,
+  type AiCatalog,
+  type ConnectionView,
+} from '@zilar/api-contract';
 import {
   abandonKeyCheck,
   checkKey,
@@ -8,6 +13,7 @@ import {
   keyPageFor,
   keyPlaceholderFor,
   providerChoices,
+  providerLabel,
   type CatalogView,
   type KeyCheckApi,
   type KeyCheckResult,
@@ -65,6 +71,45 @@ export function providerSelection(connections: readonly ConnectionView[], provid
     connectionName: '',
   };
 }
+
+export interface WebChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly hasKey: boolean;
+  readonly tag: string;
+}
+
+const WEB_SEARCH_IDS: readonly string[] = WEB_SEARCH_PROVIDER_IDS;
+
+function capabilityText(
+  capabilities: { readonly search: boolean; readonly read: boolean } | undefined,
+): string | undefined {
+  if (capabilities === undefined) return undefined;
+  if (capabilities.search && capabilities.read) return 'Search · Read';
+  if (capabilities.search) return 'Search';
+  return capabilities.read ? 'Read' : undefined;
+}
+
+/** The capabilities this key actually supplies to AIs: the oldest active key per capability wins, as on the server. */
+export function webUseText(
+  connection: ConnectionView,
+  all: readonly ConnectionView[],
+): string | undefined {
+  if (connection.provider === 'deepseek') return 'Model, search, read';
+  if (!WEB_SEARCH_IDS.includes(connection.provider)) return undefined;
+  const active = all
+    .filter((row) => row.status === 'active' && WEB_SEARCH_IDS.includes(row.provider))
+    .slice()
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const serves = (need: 'search' | 'read'): boolean =>
+    active.find((row) => WEB_CAPABILITIES[row.provider]?.[need] === true)?.id === connection.id;
+  const search = serves('search');
+  const read = serves('read');
+  if (search && read) return 'Search · Read';
+  if (search) return 'Search';
+  return read ? 'Read' : 'Backup';
+}
+
 export interface KeyCheckPort extends KeyCheckApi {
   listConnections(): Promise<readonly ConnectionView[]>;
   getAiCatalog(): Promise<AiCatalog>;
@@ -92,6 +137,7 @@ export function useKeyCheck(
   { onProviderChange, onVerified }: UseKeyCheckOptions = {},
 ) {
   const [connections, setConnections] = useState<readonly ConnectionView[]>([]);
+  const [activeProviders, setActiveProviders] = useState<ReadonlySet<string>>(() => new Set());
   const [catalog, setCatalog] = useState<AiCatalog | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [baseUrl, setBaseUrlValue] = useState('');
@@ -124,8 +170,9 @@ export function useKeyCheck(
       ]);
       if (!active) return;
       if (listed.status === 'fulfilled') {
-        const rows = listed.value.filter((c) => c.status === 'active' && isLlmProvider(c.provider));
-        setConnections(rows);
+        const activeRows = listed.value.filter((c) => c.status === 'active');
+        setActiveProviders(new Set(activeRows.map((c) => c.provider)));
+        setConnections(activeRows.filter((c) => isLlmProvider(c.provider)));
       }
       if (catalogResult.status === 'fulfilled') setCatalog(catalogResult.value);
     })();
@@ -138,7 +185,16 @@ export function useKeyCheck(
   }, [port]);
 
   const catalogView = catalogViewOf(catalog);
-  const choices = providerChoices(catalogView, connections);
+  const choices = providerChoices(catalogView, connections).map((choice) => {
+    const tag = capabilityText(WEB_CAPABILITIES[choice.id]);
+    return tag === undefined ? choice : { ...choice, tag };
+  });
+  const webChoices: readonly WebChoice[] = WEB_SEARCH_PROVIDER_IDS.map((id) => ({
+    id,
+    label: providerLabel(id),
+    hasKey: activeProviders.has(id),
+    tag: capabilityText(WEB_CAPABILITIES[id]) ?? 'Search',
+  }));
   const isCompatible = providerId === 'openai-compatible';
   const providerReady =
     providerId !== null &&
@@ -233,8 +289,10 @@ export function useKeyCheck(
   return {
     catalog,
     choices,
+    webChoices,
     providerId,
-    providerText: choices.find((choice) => choice.id === providerId)?.label ?? '',
+    providerText:
+      [...choices, ...webChoices].find((choice) => choice.id === providerId)?.label ?? '',
     providerReady,
     providerError,
     chooseProvider,

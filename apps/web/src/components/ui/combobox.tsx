@@ -9,6 +9,8 @@ export interface ComboboxOption {
   readonly label: string;
   readonly dot?: 'online';
   readonly icon?: LucideIcon;
+  readonly group?: string;
+  readonly tag?: string;
 }
 
 export interface ComboboxFooterItem {
@@ -43,6 +45,27 @@ const ITEM =
 const FOOTER_ITEM =
   'flex h-[34px] shrink-0 items-center gap-2.5 rounded-[8px] px-2.5 text-left text-sm text-muted-foreground outline-none hover:bg-surface-raised';
 
+const GROUP_LABEL = 'px-2.5 pt-2 pb-1 text-[12px] font-medium text-subtle-foreground';
+
+interface ComboboxGroupData {
+  readonly value: string;
+  readonly items: readonly ComboboxOption[];
+}
+
+function groupOptions(options: readonly ComboboxOption[]): ComboboxGroupData[] {
+  const groups = new Map<string, ComboboxOption[]>();
+  for (const option of options) {
+    const key = option.group ?? '';
+    const items = groups.get(key);
+    if (items === undefined) {
+      groups.set(key, [option]);
+    } else {
+      items.push(option);
+    }
+  }
+  return [...groups].map(([value, items]) => ({ value, items }));
+}
+
 export function Combobox({
   options,
   value,
@@ -55,14 +78,40 @@ export function Combobox({
   className,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
+  const grouped = options.some((option) => option.group !== undefined);
   const collection = useMemo(
     () =>
-      BaseCombobox.createItems(options, {
+      BaseCombobox.createItems<ComboboxOption, string>(grouped ? groupOptions(options) : options, {
         getValue: (option) => option.value,
         getLabel: (option) => option.label,
       }),
-    [options],
+    [grouped, options],
   );
+
+  const renderItem = (option: ComboboxOption) => {
+    const Icon = option.icon;
+    return (
+      <BaseCombobox.Item key={option.value} value={option.value} className={ITEM}>
+        {Icon === undefined ? null : <Icon className="size-4 shrink-0" aria-hidden="true" />}
+        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+        {option.tag === undefined ? null : (
+          <span className="shrink-0 font-mono text-[12px] text-subtle-foreground">
+            {option.tag}
+          </span>
+        )}
+        {option.dot === 'online' ? (
+          <span
+            role="img"
+            aria-label="Key added"
+            className="size-2 shrink-0 rounded-full bg-online ring-2 ring-surface"
+          />
+        ) : null}
+        <BaseCombobox.ItemIndicator className="shrink-0 text-foreground">
+          <Check className="size-4" aria-hidden="true" />
+        </BaseCombobox.ItemIndicator>
+      </BaseCombobox.Item>
+    );
+  };
 
   return (
     <BaseCombobox.Root
@@ -110,25 +159,19 @@ export function Combobox({
               No matches
             </BaseCombobox.Empty>
             <BaseCombobox.List className="min-h-0 flex-1 overflow-y-auto">
-              {(option: ComboboxOption) => {
-                const Icon = option.icon;
+              {(item: ComboboxOption | ComboboxGroupData) => {
+                if (!('items' in item)) return renderItem(item);
                 return (
-                  <BaseCombobox.Item key={option.value} value={option.value} className={ITEM}>
-                    {Icon === undefined ? null : (
-                      <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <BaseCombobox.Group key={item.value} items={item.items}>
+                    {item.value === '' ? null : (
+                      <BaseCombobox.GroupLabel className={GROUP_LABEL}>
+                        {item.value}
+                      </BaseCombobox.GroupLabel>
                     )}
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                    {option.dot === 'online' ? (
-                      <span
-                        role="img"
-                        aria-label="Key added"
-                        className="size-2 shrink-0 rounded-full bg-online ring-2 ring-surface"
-                      />
-                    ) : null}
-                    <BaseCombobox.ItemIndicator className="shrink-0 text-foreground">
-                      <Check className="size-4" aria-hidden="true" />
-                    </BaseCombobox.ItemIndicator>
-                  </BaseCombobox.Item>
+                    <BaseCombobox.Collection>
+                      {(option: ComboboxOption) => renderItem(option)}
+                    </BaseCombobox.Collection>
+                  </BaseCombobox.Group>
                 );
               }}
             </BaseCombobox.List>
