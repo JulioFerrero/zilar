@@ -46,7 +46,7 @@ function TabIcon({ name }: { name: string }) {
 /**
  * One tab of the floating bar, split out so the face never swaps a gradient
  * style on a live view: the active and idle faces are different elements,
- * each keyed by its own look (gradient-swap.test.ts).
+ * each keyed by its own look.
  */
 function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | undefined }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });

@@ -94,8 +94,7 @@ const TABS: { id: AttachTab; label: string; Icon: LucideIcon }[] = [
 /**
  * The sheet's bottom tab bar: Gallery | File, lucide icons, and the active
  * pill look of the main floating tab bar (`segment`). The face is keyed by its
- * look, so Android rebuilds it instead of swapping the gradient on a live view
- * (`gradient-swap.test.ts`).
+ * look, so Android rebuilds it instead of swapping the gradient on a live view.
  */
 function AttachTabBar({
   active,

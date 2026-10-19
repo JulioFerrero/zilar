@@ -11,7 +11,7 @@ import { createCloudHands, socketLines } from './cloud-hands';
 /**
  * A minimal stand-in for the desk-agent's unix socket, so the app-side client
  * is tested without Docker. The real protocol lives in
- * `packages/desk/src/agent/wire.ts`.
+ * `packages/desk/src/agent/server.ts`.
  */
 
 let directory: string;

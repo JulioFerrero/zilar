@@ -422,7 +422,7 @@ function LinkBlock({ block }: { block: LinkBlockData }) {
 }
 
 // Every `BlockIcon` name mapped to its lucide component, the phone twin
-// of web's `blockIcons.ts`. The protocol pins the names, so every name has one;
+// of web's `BlockCard.tsx`. The protocol pins the names, so every name has one;
 // where they differ from lucide's, the closest glyph is picked (`chart` →
 // `ChartColumn`, `sliders` → `SlidersHorizontal`, `warning` → `TriangleAlert`).
 const BLOCK_ICONS: Record<BlockIcon, LucideIcon> = {

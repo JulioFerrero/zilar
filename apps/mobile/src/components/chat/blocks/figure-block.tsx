@@ -9,7 +9,8 @@ import { Text } from '@/components/ui/text';
 export const TABULAR: TextStyle = { fontVariant: ['tabular-nums'] };
 
 // The change colours from the boards: up is `#4ade80` with ▲, down `#f87171`
-// with ▼; flat keeps the muted meta colour. Shared with `number-block.tsx`.
+// with ▼; flat keeps the muted meta colour. Shared with `NumberBlock` in
+// `block-card.tsx`.
 const CHANGE_COLOR: Record<BlockTone, string> = {
   positive: '#4ade80',
   negative: '#f87171',

@@ -7,7 +7,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 Julio's words: "dont stop working, try to reduce the lines and make a better codebase for other ais and humans". No feature was removed.
 
 **Morning summary (written 06:55 UTC; the tables below have the details):**
-- **Lines:** source went from 274,479 to 235,978. Real cuts are about −37,100; the rest is 1,365 test-helper lines moved into the test class.
+- **Lines:** source went from 274,479 to 235,624 (07:16). Real cuts are about −37,500; the rest is 1,365 test-helper lines moved into the test class.
 - **Since 03:00, for readers (people and AIs):**
   - every helper and type written twice has one home (server, web, phone, packages);
   - every pass-through re-export is gone, so each import names the module that defines it (server and both apps);
@@ -40,6 +40,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 05:31 | 237,141 (real cuts since 19:35 about −35,970) |
 | 10-19 06:23 | 236,347 (real cuts since 19:35 about −36,770); T-2181's −206 lands after this count |
 | 10-19 06:45 | 235,978 (real cuts since 19:35 about −37,140) |
+| 10-19 07:16 | 235,624 (real cuts since 19:35 about −37,490) |
 
 **Merged tonight:**
 
@@ -111,6 +112,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2184, T-2185 | web and phone: 16 single-use files folded into their only importer (forward picker, scroll memory, people search, swipe-to-reply, gallery grid…) | −68, −61 |
 | T-2188 | blocks copied between two files of one app, wave 2: 1 of 13 pairs merged; the rest are destructured returns or prop lists (this scan is exhausted) | −18 |
 | T-2186 | phone: 6 settings screens load through the shared `useFocusList` instead of hand-rolled status, refs and focus effects (AIs tab, Connections, Integrations, Routines, Machines, Stickers) | −154 |
+| T-2187 | web and phone in-file repeats, wave 3 (media sheet, voice message, choice blocks, AI panel, channel people…) | −100 |
+| T-2189 | phone: one settings screen shell; `AisScreenShell` and `RefreshScroll` gone, 4 screens stop drawing their frame by hand | −82 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -130,8 +133,11 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (06:50):**
-- **T-2187:** web and phone in-file repeats, wave 3 (22 files).
-- **T-2189:** phone: one settings screen shell. `AisScreenShell` (a wrapper that only flips `scroll`) and `RefreshScroll` go; Blocked, Contacts, Requests and Machines stop drawing their frame by hand.
+
+- **T-2190:** 14 code comments that name a file which no longer exists point at its current home.
+- **Docs (lead, 07:25):**
+  - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
+  - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
 
 **Checked and left alone tonight:**
 - **B8**, one guarded fetch: the two pinned HTTPS fetches overlap by about 60 lines, but their error types and timeouts differ. That is a security path for little gain.
@@ -140,7 +146,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `50efd48ab` (06:43): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `a8e76b995` (07:14): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

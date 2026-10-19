@@ -75,7 +75,7 @@ function toolCall(name: string, argsJson: string): Response {
 }
 
 // A minimal live session, the same shape the other gateway unit tests build:
-// `request-action.ts` reads only `aiId` and `aiJid` off it.
+// `tool-exec.ts` reads only `aiId` and `aiJid` off it.
 function sessionFor(): AiSession {
   return {
     aiId: 'ai-1',

@@ -89,7 +89,7 @@ async function startAgent(reply: (request: unknown) => string | null): Promise<F
 }
 
 // A real agent always answers with `running` as a list of desk refs and a
-// `queued` count (packages/desk/src/agent/wire.ts). The fixtures send that shape
+// `queued` count (packages/desk/src/agent/lifecycle.ts). The fixtures send that shape
 // by default so they exercise the same decode a live agent hits.
 function statusReply(status: Record<string, unknown>): string {
   return JSON.stringify({ id: 1, ok: true, status: { running: [], queued: 0, ...status } });

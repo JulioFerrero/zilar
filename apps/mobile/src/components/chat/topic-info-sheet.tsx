@@ -60,7 +60,7 @@ type TopicMuteLeaveProps = {
   onAskLeave: () => void;
 };
 
-// The bottom group of the In this topic sheet: the Mute row with its 46×28 switch and the red Leave topic row. Only people in a non-General topic see it; the confirm lives in `leave-topic-sheet.tsx`.
+// The bottom group of the In this topic sheet: the Mute row with its 46×28 switch and the red Leave topic row. Only people in a non-General topic see it; the confirm lives in `topic-info-host.tsx`.
 function TopicMuteLeave({ chat, myUserId, disabled, onAskLeave }: TopicMuteLeaveProps) {
   const setChatPref = useChatStore((state) => state.setChatPref);
   // A group mute sits on the General row and covers every topic; the switch below writes only this topic's own row.

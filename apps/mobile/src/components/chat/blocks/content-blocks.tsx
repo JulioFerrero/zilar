@@ -51,7 +51,7 @@ const TILE: ViewStyle = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.95)',
 };
 
-// The dark Download key, the same `KEY` as `place-block.tsx:11-16`.
+// The dark Download key, the same style as `DIRECTIONS_KEY` below.
 const KEY: ViewStyle = {
   experimental_backgroundImage: 'linear-gradient(180deg, #1c1c1c, #121212)',
   borderWidth: 1,
@@ -207,7 +207,7 @@ const DIRECTIONS_KEY: ViewStyle = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.6)',
 };
 
-/** The Directions key: it opens the place's link like `link-block.tsx`. */
+/** The Directions key: it opens the place's link like `LinkBlock` does. */
 function DirectionsKey({ url }: { url: string }) {
   return (
     <Pressable

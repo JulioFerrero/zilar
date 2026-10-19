@@ -16,7 +16,7 @@ import { MAX_FONT_SCALE } from '@/components/ui/text';
 import { BORDER, well } from '../../lib/depth';
 import { safeLinkTarget } from '../../lib/links';
 
-// The bubble's text, code and inline-code looks, shared with `link-text.tsx` so the plain path matches the full renderer.
+// The bubble's text, code and inline-code looks, shared with `plain-bubble-body.tsx` so the plain path matches the full renderer.
 export const BODY: TextStyle = { fontSize: 15, lineHeight: 20, fontFamily: 'Geist_400Regular' };
 export const CODE: TextStyle = { fontSize: 13, lineHeight: 18, fontFamily: 'GeistMono_400Regular' };
 const BLOCK_GAP = 6;

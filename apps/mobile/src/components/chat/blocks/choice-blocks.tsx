@@ -238,7 +238,7 @@ function AlertBlock({ block }: { block: AlertBlockData }) {
   // (submit and end) send once.
   const sent = useRef<string | null>(null);
   // A room correction replaces both the switch and the value; adjust during
-  // render rather than in an effect, as `rating-block.tsx` does.
+  // render rather than in an effect, as `RatingBlock` does.
   const [from, setFrom] = useState(block);
   if (from !== block) {
     setFrom(block);
