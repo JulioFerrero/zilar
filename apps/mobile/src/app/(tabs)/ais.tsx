@@ -222,6 +222,7 @@ function AisList() {
     );
   };
 
+  // Stop and resume answer the fresh public AI, so the row is swapped from server truth without a second GET.
   const stopOrResume = (ai: PublicAi, next: RunAction): Effect.Effect<void> =>
     apiCall(() => (next === 'stop' ? api.stopAi(ai.id) : api.resumeAi(ai.id))).pipe(
       Effect.tap((fresh) =>

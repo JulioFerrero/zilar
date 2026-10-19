@@ -1,6 +1,6 @@
 import { ApiError } from '@zilar/api-contract';
+import type { ApprovalDecision, makeApprovalsApi, PublicApproval } from '@zilar/client-core';
 import { Effect } from 'effect';
-import type { ApprovalDecision, ApprovalsApi, PublicApproval } from './approvals-api';
 
 export type ApprovalCardState =
   | { kind: 'loading' }
@@ -10,7 +10,7 @@ export type ApprovalCardState =
 
 // A 404 means the viewer may not decide this request (or it does not exist): no buttons, no error. Any other first-load failure shows the unavailable sentence.
 const loadCardStateEffect = (
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
 ): Effect.Effect<ApprovalCardState> =>
   Effect.tryPromise({ try: () => api.getApproval(approvalId), catch: (error) => error }).pipe(
@@ -25,7 +25,7 @@ const loadCardStateEffect = (
   );
 
 export function loadApprovalCardState(
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
 ): Promise<ApprovalCardState> {
   return Effect.runPromise(loadCardStateEffect(api, approvalId));
@@ -39,7 +39,7 @@ export type DecisionOutcome =
 
 // The reload after a 409 never fails: a row that cannot be read is `null`.
 const reloadApprovalEffect = (
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
 ): Effect.Effect<PublicApproval | null> =>
   Effect.tryPromise({ try: () => api.getApproval(approvalId), catch: () => null }).pipe(
@@ -47,7 +47,7 @@ const reloadApprovalEffect = (
   );
 
 const applyDecisionEffect = (
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
   decision: ApprovalDecision,
 ): Effect.Effect<DecisionOutcome> =>
@@ -70,7 +70,7 @@ const applyDecisionEffect = (
   );
 
 export function applyDecision(
-  api: ApprovalsApi,
+  api: ReturnType<typeof makeApprovalsApi>,
   approvalId: string,
   decision: ApprovalDecision,
 ): Promise<DecisionOutcome> {

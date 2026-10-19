@@ -6,8 +6,7 @@ import { ApiError } from '@zilar/api-contract';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import type { StickersApi, TelegramImportResult } from '@/lib/stickers-api';
 

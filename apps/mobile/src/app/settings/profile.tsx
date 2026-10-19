@@ -4,12 +4,11 @@ import { View } from 'react-native';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
+import { Text, TextField } from '@/components/ui/text';
 
 import { AvatarControl } from '@/components/settings/avatar-control';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { LOAD_ERROR, useProfileSettings } from '@/components/settings/use-profile-settings';
-import { TextField } from '@/components/ui/text-field';
 import {
   handleAvailabilityText,
   type HandleAvailability,

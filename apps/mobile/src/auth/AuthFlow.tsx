@@ -5,8 +5,7 @@ import { View, TextInput } from 'react-native';
 import { parseInviteCode } from '@zilar/chat-core';
 
 import { Button } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';

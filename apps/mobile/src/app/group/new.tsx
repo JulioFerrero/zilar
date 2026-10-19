@@ -18,13 +18,12 @@ import { useApi } from '@/lib/use-mockable-api';
 import { NewGroupMembers } from '@/components/group/new-group-members';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { Text } from '@/components/ui/text';
+import { Text, TextField } from '@/components/ui/text';
 import type { Contact } from '@/lib/contacts-api';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { toggleSelected } from '@/lib/selection';
 import { useChatStore } from '@/store/chat-store-provider';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { TextField } from '@/components/ui/text-field';
 
 function NewGroupName({
   members,

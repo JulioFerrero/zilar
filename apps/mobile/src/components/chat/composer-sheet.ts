@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Keyboard } from 'react-native';
 
 import { step } from '@/components/chat/composer-media';
-import type { EmojiSheetTab } from '@/components/chat/emoji-sheet';
 import { probeGifsAvailability } from '@/components/chat/gif-panel';
 import { loadStickerPacks, persistRecent } from '@/components/chat/sticker-panel';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
@@ -23,6 +22,8 @@ import type { StickersApi } from '@/lib/stickers-api';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import type { SendStickerChoice } from '@/store/types';
+
+export type EmojiSheetTab = 'emoji' | 'stickers' | 'gifs';
 
 export function useComposerSheet({
   text,

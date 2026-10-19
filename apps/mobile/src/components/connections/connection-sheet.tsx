@@ -6,8 +6,7 @@ import { View } from 'react-native';
 import { providerLabel } from '@zilar/chat-core';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import type { Connection } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 

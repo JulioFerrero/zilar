@@ -6,8 +6,7 @@ import { View } from 'react-native';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { rawCall } from '@/components/chat/group-action';
 import { Button } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { goBackOrHome } from '@/lib/navigation';
 import { useChatStore } from '@/store/chat-store-provider';
 

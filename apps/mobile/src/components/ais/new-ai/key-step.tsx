@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import { IconButton } from '@/components/ui/icon-button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
 import type { KeyCheck } from '@/components/connections/use-key-check';

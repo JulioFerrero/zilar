@@ -15,7 +15,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
 import { TopicAddContent, type AddTab } from '@/components/chat/topic-add-sheet';
 import { TopicPeopleLine, type TopicLinePerson } from '@/components/chat/topic-people-line';
-import { TopicsSection } from '@/components/group-info/topics-section';
+import { TopicsSection } from '@/components/group-info/root-page';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import type { Contact, GroupDetail } from '@/lib/chat-api';

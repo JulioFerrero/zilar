@@ -1,8 +1,7 @@
 import { View } from 'react-native';
 
 import { SelectSheet, type SelectSheetOption } from '@/components/ui/select-sheet';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 
 import type { KeyCheck } from '@/components/connections/use-key-check';
 

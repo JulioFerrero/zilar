@@ -12,7 +12,8 @@ import {
 } from '@zilar/api-contract';
 
 // Public groups and channels only, never users or private groups; the server
-// reads are rate limited and an unknown handle and a private group answer the same 404.
+// reads are rate limited (30 per 10 minutes), and an unknown handle and a private
+// group answer the same 404.
 export type {
   DirectoryEntry,
   DirectoryKind,

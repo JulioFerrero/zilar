@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AttachSheet } from '@/components/chat/attach-sheet';
 import { useComposerMedia } from '@/components/chat/composer-media';
 import { PickedStrip } from '@/components/chat/composer-picked-strip';
-import { useComposerSheet } from '@/components/chat/composer-sheet';
+import { useComposerSheet, type EmojiSheetTab } from '@/components/chat/composer-sheet';
 import {
   backspaceMention,
   caretAfterChange,
@@ -35,7 +35,6 @@ import {
   resetMentionStateForChatKey,
 } from '@/components/chat/composer-mentions';
 import { EmojiTab } from '@/components/chat/emoji-tab';
-import type { EmojiSheetTab } from '@/components/chat/emoji-sheet';
 import { GifPanel } from '@/components/chat/gif-panel';
 import { tap } from '@/components/chat/haptics';
 import { StickerGrid } from '@/components/chat/sticker-panel';

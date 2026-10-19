@@ -36,8 +36,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { StepTrack } from '@/components/ui/step-track';
 import { Switch } from '@/components/ui/switch';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 
 const noop = (): void => undefined;

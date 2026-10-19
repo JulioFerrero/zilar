@@ -4,8 +4,7 @@ import {
   pausedReasonText,
   truncateOutput,
 } from '@zilar/chat-core';
-
-import type { Routine, ToolListItem } from './tools-api';
+import type { Routine, ToolListItem } from '@zilar/client-core';
 
 export { describeRoutineSchedule, MAX_OUTPUT_PREVIEW_CHARS, pausedReasonText, truncateOutput };
 

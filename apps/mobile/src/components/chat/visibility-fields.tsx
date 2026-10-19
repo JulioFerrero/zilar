@@ -3,8 +3,7 @@ import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { interruptFiber } from '@zilar/client-core';
 
 export type CreateVisibility = 'private' | 'public';

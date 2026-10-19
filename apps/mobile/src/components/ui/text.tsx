@@ -1,8 +1,9 @@
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 import { Slot } from '@rn-primitives/slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
-import { Platform, Text as RNText, type Role } from 'react-native';
+import { Platform, Text as RNText, TextInput, type Role, View } from 'react-native';
 
 const textVariants = cva(
   cn(
@@ -99,4 +100,39 @@ function Text({
   );
 }
 
-export { Text, TextClassContext };
+type TextFieldProps = React.ComponentProps<typeof TextInput> & {
+  label?: string;
+};
+
+function TextField({
+  label,
+  className,
+  placeholderTextColor,
+  multiline,
+  style,
+  ...props
+}: TextFieldProps) {
+  const input = (
+    <TextInput
+      multiline={multiline}
+      placeholderTextColor={placeholderTextColor ?? MUTED_FOREGROUND}
+      style={multiline ? [{ textAlignVertical: 'top' }, style] : style}
+      className={cn(
+        'rounded-[10px] border border-border-strong bg-well px-3 py-2 text-[15px] text-foreground',
+        className,
+      )}
+      {...props}
+    />
+  );
+  if (label === undefined) {
+    return input;
+  }
+  return (
+    <View className="gap-1">
+      <Text className="text-[14px] font-medium text-foreground">{label}</Text>
+      {input}
+    </View>
+  );
+}
+
+export { Text, TextClassContext, TextField };

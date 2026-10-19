@@ -6,7 +6,7 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 
-// The two Markdown wiring decisions, kept pure and unit-tested; both delegate to the shared `shouldRenderMarkdown` rule, so phone and web cannot disagree about what counts as an AI reply.
+// The Markdown wiring decision, kept pure and unit-tested; it delegates to the shared `shouldRenderMarkdown` rule, so phone and web cannot disagree about what counts as an AI reply.
 
 // The chat-list preview: an incoming AI reply is flattened to one plain line; a human message or your own in an AI chat shows its light Markdown markers stripped.
 export function plainPreviewBody(

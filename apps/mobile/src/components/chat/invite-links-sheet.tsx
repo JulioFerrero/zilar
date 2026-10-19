@@ -5,8 +5,7 @@ import { Pressable, View } from 'react-native';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { useAction } from '@/lib/effect/use-action';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 

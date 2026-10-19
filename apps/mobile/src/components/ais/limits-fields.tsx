@@ -1,7 +1,6 @@
 import { View } from 'react-native';
 
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 
 function AmountField({
   label,

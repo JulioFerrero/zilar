@@ -14,8 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { favoriteTileSize } from './stickers';
 import { SegmentedControl } from '@/components/ui/segmented-control';

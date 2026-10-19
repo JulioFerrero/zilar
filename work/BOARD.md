@@ -2155,3 +2155,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2154](T-2154-merge-sibling-splits.md) | merge back small sibling splits (chat-core AI, dialog) | 2026-10-19 |
 | [T-2155](T-2155-server-merge-splits.md) | server: merge turn and health sibling splits | 2026-10-19 |
 | [T-2153](T-2153-phone-api-aliases.md) | phone: screens use the shared API, 7 alias modules gone | 2026-10-19 |
+| [T-2156](T-2156-phone-finish-up.md) | phone: merge text field, last alias modules gone | 2026-10-19 |

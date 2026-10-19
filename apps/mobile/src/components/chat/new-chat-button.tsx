@@ -39,8 +39,7 @@ import { ContactRow } from '@/components/contacts/contact-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import type { Contact } from '@/lib/contacts-api';
 
 // Case-insensitive prefix match on any word of the name, or on the handle.

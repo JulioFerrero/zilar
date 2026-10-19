@@ -19,6 +19,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 01:17 | 240,678 (−33,801 since 19:35, including the 849 reclassified) |
 | 10-19 01:54 | 240,018 (−34,461 since 19:35, including the 849 reclassified) |
 | 10-19 02:33 | 238,938, of which T-2152 moved 516 test-helper lines into the test class; real cuts since 19:35 are about −34,180 |
+| 10-19 03:00 | 238,751 (real cuts since 19:35 about −34,370; 1,365 lines reclassified to tests in total) |
 
 **Merged tonight:**
 
@@ -66,6 +67,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2150 | phone: 7 more single-use files folded | −67 |
 | T-2148, T-2149 | 56 exported names nothing used, deleted (server, web, packages, phone) | −139, −215 |
 | T-2152 | 11 product functions only tests called, deleted with their tests; 3 test helpers named as tests (516 lines reclassified, not counted as a cut) | −140 |
+| T-2151 | docs: `SERVER_CONFIG`, `FEATURES`, the Effect guide and brief, and the parity roadmap point at files that exist | — |
+| T-2153 | phone: 7 API modules that only renamed the shared client deleted; screens use `useApi(make<Area>Api)` and the contract's type names | −166 |
+| T-2154, T-2155 | small sibling splits merged back (chat-core AI files into `ai.ts`, web dialog stepper, server turn and health pieces): 21 files fewer | −20, −2 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -83,11 +87,12 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (02:35):**
-- **T-2151:** docs, pointing `SERVER_CONFIG`, `FEATURES`, the Effect guide and brief, and the parity roadmap at files that exist today. The lead fixed `AGENTS.md`, the API recipe and `LEAD_HANDOFF`.
-- **T-2153:** phone, nine API modules that only rename the shared client are deleted. Screens use `useApi(make<Area>Api)` and the contract's own type names, one name per thing.
+**Running (03:00):**
+- **T-2156:** phone finish-up. The text field merges into the text module; the last alias and shim modules go (tools, approvals, topics-section, emoji-sheet); two lost "why" comments come back.
 
-**Live:** `3509d5601` (02:22): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `85129ae55` (03:02): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+
+**For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 
 **Checked and left alone:**
 - **Comments** (12.6k lines, 5% of source): what is left is mostly the "why" the rules keep (privacy, injection, lock order). A second pass would cut useful lines.

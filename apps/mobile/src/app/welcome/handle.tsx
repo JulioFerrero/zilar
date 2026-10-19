@@ -8,8 +8,7 @@ import { RequireUser } from '@/auth/RequireAuth';
 import { safeTarget } from '@/auth/guard';
 import { useAuthStore } from '@/auth/session';
 import { Button } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { useAction } from '@/lib/effect/use-action';
 
 import { useProfileApi } from '@/components/settings/use-profile-api';

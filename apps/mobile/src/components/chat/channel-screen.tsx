@@ -21,7 +21,7 @@ import { AllowedPage, useGroupRules } from '@/components/group-info/allowed-page
 import { GroupContentSheets, useGroupContent } from '@/components/group-info/group-info-pages';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
-import { Text } from '@/components/ui/text';
+import { Text, TextField } from '@/components/ui/text';
 import type { GroupRole } from '@/lib/chat-api';
 import {
   channelDescription,
@@ -39,7 +39,6 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
-import { TextField } from '@/components/ui/text-field';
 
 /** A store call that rejected; `code` is what the server said (empty when none). */
 class ChannelCallFailed extends Data.TaggedError('ChannelCallFailed')<{

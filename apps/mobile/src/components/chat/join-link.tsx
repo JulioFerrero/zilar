@@ -3,8 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
-import { Text } from '../../components/ui/text';
-import { TextField } from '../ui/text-field';
+import { Text, TextField } from '../../components/ui/text';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
 import type { GroupChatTarget, JoinPreview } from '../../lib/invite-links-api';
 

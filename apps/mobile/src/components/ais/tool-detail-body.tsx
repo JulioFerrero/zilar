@@ -2,8 +2,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Text, TextField } from '@/components/ui/text';
 import { hostsLine, truncateOutput } from '@/lib/routines-format';
 import type {
   ToolDetail,

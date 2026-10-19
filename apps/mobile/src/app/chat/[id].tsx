@@ -29,7 +29,7 @@ import { chatGrid } from '@zilar/ui-tokens';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Effect } from 'effect';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { Text } from '@/components/ui/text';
+import { Text, TextField } from '@/components/ui/text';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useEffect, useRef, useState } from 'react';
 import { MediaSheet } from '@/components/chat/media-sheet';
@@ -41,7 +41,6 @@ import type { TopicPreviewMessage } from '@/lib/topics-api';
 import { ChatPickerList } from '@/components/chat/chat-picker-list';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
-import { TextField } from '@/components/ui/text-field';
 
 function forwardSendLabel(count: number): string {
   return count > 1 ? `Send to ${count} chats` : 'Send';
