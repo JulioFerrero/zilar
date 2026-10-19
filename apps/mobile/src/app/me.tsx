@@ -101,6 +101,9 @@ function OwnProfile() {
       ),
     );
 
+  const catchAvatarError = (error: unknown): Effect.Effect<void> =>
+    Effect.sync(() => setPhotoError(friendlyAvatarError(error)));
+
   const [photoState, runPhoto] = useAction((job: PhotoJob): Effect.Effect<void> => {
     switch (job.kind) {
       case 'pick':
@@ -139,11 +142,7 @@ function OwnProfile() {
               setStaged(null);
             }),
           ),
-          Effect.catch((error: unknown) =>
-            Effect.sync(() => {
-              setPhotoError(friendlyAvatarError(error));
-            }),
-          ),
+          Effect.catch(catchAvatarError),
           Effect.asVoid,
         );
       }
@@ -157,11 +156,7 @@ function OwnProfile() {
               setProfile({ ...job.profile, avatarUrl: undefined });
             }),
           ),
-          Effect.catch((error: unknown) =>
-            Effect.sync(() => {
-              setPhotoError(friendlyAvatarError(error));
-            }),
-          ),
+          Effect.catch(catchAvatarError),
           Effect.asVoid,
         );
     }

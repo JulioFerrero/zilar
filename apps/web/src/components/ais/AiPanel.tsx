@@ -133,13 +133,12 @@ function AiPictureSection({ ai, onChanged }: { ai: PublicAi; onChanged: (ai: Pub
 
 export { UsageBlock };
 
-function AiDelegationSection({
-  ai,
-  setAi,
-}: {
+type AiSectionProps = {
   ai: PublicAi;
   setAi: Dispatch<SetStateAction<PublicAi | null>>;
-}) {
+};
+
+function AiDelegationSection({ ai, setAi }: AiSectionProps) {
   const [delegationError, setDelegationError] = useState('');
 
   const [delegationState, saveDelegation] = useAction<UpdateAiInput, void, never>((input) => {
@@ -193,13 +192,7 @@ function AiDelegationSection({
   );
 }
 
-function AiMachineSection({
-  ai,
-  setAi,
-}: {
-  ai: PublicAi;
-  setAi: Dispatch<SetStateAction<PublicAi | null>>;
-}) {
+function AiMachineSection({ ai, setAi }: AiSectionProps) {
   const [machineList] = useQuery(() => fromApi(() => listMachines()), []);
   const machines = AsyncResult.isSuccess(machineList) ? machineList.value : null;
 
@@ -280,13 +273,7 @@ const COMPUTER_ICONS: Record<ComputerMode, LucideIcon> = {
   auto: Sparkles,
 };
 
-function AiComputerSection({
-  ai,
-  setAi,
-}: {
-  ai: PublicAi;
-  setAi: Dispatch<SetStateAction<PublicAi | null>>;
-}) {
+function AiComputerSection({ ai, setAi }: AiSectionProps) {
   // A pending or failed read reads as false, so the cloud option stays disabled
   // until the server confirms it.
   const [optionsResult] = useQuery(() => fromApi(() => getComputerOptions()), []);

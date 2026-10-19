@@ -42,6 +42,14 @@ import { API_URL } from '@/lib/auth';
 import { packCountLabel } from '@/components/stickers/tile-size';
 import { cn } from '@/lib/utils';
 
+function ActionError({ text }: { text: string }) {
+  return text === '' ? null : (
+    <Text accessibilityRole="alert" className="text-[14px] text-danger">
+      {text}
+    </Text>
+  );
+}
+
 function FavoritesTab({
   favorites,
   tile,
@@ -60,11 +68,7 @@ function FavoritesTab({
   return (
     <View className="gap-2">
       <Text className="text-[16px] font-semibold text-foreground">Favorites</Text>
-      {actionError !== '' ? (
-        <Text accessibilityRole="alert" className="text-[14px] text-danger">
-          {actionError}
-        </Text>
-      ) : null}
+      <ActionError text={actionError} />
       {favorites.length === 0 ? (
         <StateMessage kind="empty" title="No favorites yet. Starred stickers show up here." />
       ) : (
@@ -439,11 +443,7 @@ function DiscoverTab({
         autoCapitalize="none"
         autoCorrect={false}
       />
-      {actionError !== '' ? (
-        <Text accessibilityRole="alert" className="text-[14px] text-danger">
-          {actionError}
-        </Text>
-      ) : null}
+      <ActionError text={actionError} />
       {discoverBusy ? (
         <StateMessage kind="loading" title="Searching…" />
       ) : discover === undefined || discoverError !== '' ? (
@@ -543,11 +543,7 @@ function PacksTab({
 
   return (
     <View className="gap-2">
-      {actionError !== '' ? (
-        <Text accessibilityRole="alert" className="text-[14px] text-danger">
-          {actionError}
-        </Text>
-      ) : null}
+      <ActionError text={actionError} />
 
       {own.length === 0 ? (
         <StateMessage

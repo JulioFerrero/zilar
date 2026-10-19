@@ -109,6 +109,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2182 | phone: one picture editor hook (pick, save, remove) for profile and group settings (big-cut plan B6) | −115 |
 | T-2183 | server: 7 single-use files folded into their only importer; the last 2 pass-through exports gone | −34 |
 | T-2184, T-2185 | web and phone: 16 single-use files folded into their only importer (forward picker, scroll memory, people search, swipe-to-reply, gallery grid…) | −68, −61 |
+| T-2188 | blocks copied between two files of one app, wave 2: 1 of 13 pairs merged; the rest are destructured returns or prop lists (this scan is exhausted) | −18 |
+| T-2186 | phone: 6 settings screens load through the shared `useFocusList` instead of hand-rolled status, refs and focus effects (AIs tab, Connections, Integrations, Routines, Machines, Stickers) | −154 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -117,7 +119,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 - **Superseded:** T-2104, whose rebase conflicted on 26 files; it was redone on current main as T-2118.
 - **Safety nets run tonight:**
-  - every package typechecks on main (16/16);
+  - every package typechecks on main (16/16; re-run at 07:15 after the later merges);
+  - no package.json, config, script or core doc points at a file that no longer exists (07:15);
   - no file references any of the 307 files deleted tonight;
   - live had 0 server errors after each server push.
 
@@ -127,9 +130,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
 **Running (06:50):**
-- **T-2186:** phone screens that hand-roll load-on-focus use the existing `useFocusList` hook (8 screens).
 - **T-2187:** web and phone in-file repeats, wave 3 (22 files).
-- **T-2188:** blocks copied between two files of one app or package, wave 2 (13 pairs).
+- **T-2189:** phone: one settings screen shell. `AisScreenShell` (a wrapper that only flips `scroll`) and `RefreshScroll` go; Blocked, Contacts, Requests and Machines stop drawing their frame by hand.
 
 **Checked and left alone tonight:**
 - **B8**, one guarded fetch: the two pinned HTTPS fetches overlap by about 60 lines, but their error types and timeouts differ. That is a security path for little gain.

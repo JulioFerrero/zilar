@@ -25,17 +25,21 @@ const ON = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.7)',
 };
 
+function useBlockSelection(initial: number | undefined) {
+  const [selected, setSelected] = useState(initial);
+  const [seenSelected, setSeenSelected] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  if (initial !== seenSelected) {
+    setSeenSelected(initial);
+    setSelected(initial);
+  }
+  return { selected, setSelected, busy, setBusy };
+}
+
 export function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
-  const [selected, setSelected] = useState<number | undefined>(block.selected);
-  const [seenSelected, setSeenSelected] = useState(block.selected);
-  const [busy, setBusy] = useState(false);
-
-  if (block.selected !== seenSelected) {
-    setSeenSelected(block.selected);
-    setSelected(block.selected);
-  }
+  const { selected, setSelected, busy, setBusy } = useBlockSelection(block.selected);
 
   const choose = (index: number): void => {
     if (respond === null || busy || selected === index) {
@@ -95,14 +99,7 @@ export function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
 export function RatingBlock({ block }: { block: RatingBlockData }) {
   const respond = useBlockRespond();
   const reply = useBlockReply();
-  const [selected, setSelected] = useState<number | undefined>(block.selected);
-  const [seenSelected, setSeenSelected] = useState(block.selected);
-  const [busy, setBusy] = useState(false);
-
-  if (block.selected !== seenSelected) {
-    setSeenSelected(block.selected);
-    setSelected(block.selected);
-  }
+  const { selected, setSelected, busy, setBusy } = useBlockSelection(block.selected);
 
   const rate = (rating: number): void => {
     if (respond === null || busy || selected === rating) {

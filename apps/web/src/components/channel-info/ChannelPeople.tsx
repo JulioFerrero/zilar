@@ -1,5 +1,5 @@
 import { Crown, MoreVertical, ShieldCheck, ShieldOff } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { GroupMember } from '@/lib/api';
 import type { ApiFailure } from '@zilar/client-core';
 import { FieldError } from '../ais/AiPageShell';
@@ -93,33 +93,26 @@ export function ChannelSubscribersPage({
         onChange={(event) => setQuery(event.target.value)}
       />
 
-      <SectionLabel>Admins</SectionLabel>
-      <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
-        {admins.map((member) => (
-          <SubscriberRow
-            key={member.userId}
-            member={member}
-            me={me}
-            isOwner={isOwner}
-            busy={roleBusy}
-            flipRole={flipRole}
-          />
-        ))}
-      </div>
-
-      <SectionLabel>Subscribers</SectionLabel>
-      <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
-        {subscribers.map((member) => (
-          <SubscriberRow
-            key={member.userId}
-            member={member}
-            me={me}
-            isOwner={isOwner}
-            busy={roleBusy}
-            flipRole={flipRole}
-          />
-        ))}
-      </div>
+      {[
+        { label: 'Admins', members: admins },
+        { label: 'Subscribers', members: subscribers },
+      ].map((group) => (
+        <Fragment key={group.label}>
+          <SectionLabel>{group.label}</SectionLabel>
+          <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
+            {group.members.map((member) => (
+              <SubscriberRow
+                key={member.userId}
+                member={member}
+                me={me}
+                isOwner={isOwner}
+                busy={roleBusy}
+                flipRole={flipRole}
+              />
+            ))}
+          </div>
+        </Fragment>
+      ))}
 
       {roleError !== '' && <FieldError>{roleError}</FieldError>}
     </section>

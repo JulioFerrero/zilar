@@ -33,12 +33,7 @@ const SEGMENT_ON: ViewStyle = {
     'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.7)',
 };
 
-/**
- * 15 · PICK ONE: the question and the segmented control. A tap sends
- * the 0-based index, then the regular @AI reply with the chosen option. The
- * server's merged `selected` leads; a local tap shows at once.
- */
-function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
+function useChoiceSelection(block: { selected?: number | undefined }) {
   const respond = useBlockRespond();
   const [selected, setSelected] = useState<number | undefined>(block.selected);
   // A room correction's `selected` wins; adjust during render rather than in an
@@ -48,7 +43,16 @@ function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
     setSelectedFrom(block);
     setSelected(block.selected);
   }
-  const disabled = respond === null || respond.pending;
+  return { respond, selected, setSelected, disabled: respond === null || respond.pending };
+}
+
+/**
+ * 15 · PICK ONE: the question and the segmented control. A tap sends
+ * the 0-based index, then the regular @AI reply with the chosen option. The
+ * server's merged `selected` leads; a local tap shows at once.
+ */
+function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
+  const { respond, selected, setSelected, disabled } = useChoiceSelection(block);
 
   const press = (index: number, option: string): void => {
     if (respond === null || respond.pending || selected === index) {
@@ -114,16 +118,7 @@ function ChoiceBlock({ block }: { block: ChoiceBlockData }) {
  * copies `value.rating` straight into `selected` (`apply.ts`, `applyRating`).
  */
 function RatingBlock({ block }: { block: RatingBlockData }) {
-  const respond = useBlockRespond();
-  const [selected, setSelected] = useState<number | undefined>(block.selected);
-  // A room correction's `selected` wins; adjust during render rather than in an
-  // effect, as `use-chat-screen.ts:131` does.
-  const [selectedFrom, setSelectedFrom] = useState(block);
-  if (selectedFrom !== block) {
-    setSelectedFrom(block);
-    setSelected(block.selected);
-  }
-  const disabled = respond === null || respond.pending;
+  const { respond, selected, setSelected, disabled } = useChoiceSelection(block);
 
   const press = (rating: number): void => {
     if (respond === null || respond.pending || selected === rating) {

@@ -1,5 +1,5 @@
 import { Effect, Schedule } from 'effect';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { stopTimer, type VoiceRecorderController } from './composerShared';
 
 export function useRecordingLifecycle({
@@ -24,27 +24,7 @@ export function useRecordingLifecycle({
     onMicPointerMove,
   } = voice;
 
-  useEffect(
-    () => () => {
-      if (pressRef.current?.holdTimer !== undefined) {
-        stopTimer(pressRef.current.holdTimer);
-      }
-      pressRef.current = null;
-      const recorder = recorderRef.current;
-      recorderRef.current = null;
-      recordingRef.current = false;
-      recorder?.cancel();
-    },
-    [pressRef, recorderRef, recordingRef],
-  );
-
-  // Switching chats while recording stops the microphone tracks (the browser's
-  // recording indicator must go off) and discards the recording. A leftover
-  // error belongs to the previous chat, so it is cleared too.
-  useEffect(() => {
-    if (!recordingRef.current && pressRef.current?.holdTimer === undefined) {
-      return;
-    }
+  const releaseRecorder = useCallback((): void => {
     if (pressRef.current?.holdTimer !== undefined) {
       stopTimer(pressRef.current.holdTimer);
     }
@@ -53,12 +33,25 @@ export function useRecordingLifecycle({
     recorderRef.current = null;
     recordingRef.current = false;
     recorder?.cancel();
+  }, [pressRef, recorderRef, recordingRef]);
+
+  useEffect(() => releaseRecorder, [releaseRecorder]);
+
+  // Switching chats while recording stops the microphone tracks (the browser's
+  // recording indicator must go off) and discards the recording. A leftover
+  // error belongs to the previous chat, so it is cleared too.
+  useEffect(() => {
+    if (!recordingRef.current && pressRef.current?.holdTimer === undefined) {
+      return;
+    }
+    releaseRecorder();
     setRecording(false);
     setLocked(false);
     setCancelArmed(false);
     setVoiceError(undefined);
   }, [
     chatId,
+    releaseRecorder,
     pressRef,
     recorderRef,
     recordingRef,

@@ -100,8 +100,7 @@ function AddRow({
   );
 }
 
-export type TopicAddContentProps = {
-  topicName: string;
+type TopicAddBaseProps = {
   groupTitle: string;
   detail: GroupDetail | undefined;
   myUserId: string;
@@ -109,11 +108,15 @@ export type TopicAddContentProps = {
   isManager: boolean;
   contacts: readonly Contact[];
   ownedAis: readonly { id: string; name: string }[];
+  addMember: (userId: string) => Promise<void>;
+  addAi: (aiId: string) => Promise<void>;
+};
+
+export type TopicAddContentProps = TopicAddBaseProps & {
+  topicName: string;
   memberIds: readonly string[] | undefined;
   topicAiIds: readonly string[];
   isGeneral: boolean;
-  addMember: (userId: string) => Promise<void>;
-  addAi: (aiId: string) => Promise<void>;
   /** The tab shown first; the dev catalog uses it to capture both. */
   initialTab?: AddTab;
 };
@@ -308,16 +311,8 @@ export function TopicAddContent({
   );
 }
 
-type TopicAddSheetProps = {
+type TopicAddSheetProps = TopicAddBaseProps & {
   chat: ChatSummary | null;
-  groupTitle: string;
-  detail: GroupDetail | undefined;
-  myUserId: string;
-  isManager: boolean;
-  contacts: readonly Contact[];
-  ownedAis: readonly { id: string; name: string }[];
-  addMember: (userId: string) => Promise<void>;
-  addAi: (aiId: string) => Promise<void>;
   onClose: () => void;
 };
 

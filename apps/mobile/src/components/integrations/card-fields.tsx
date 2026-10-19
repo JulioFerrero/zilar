@@ -83,17 +83,18 @@ export function SecretField({
   );
 }
 
+type ActionButtonProps = {
+  busy: boolean;
+  label: string;
+  onPress: () => void;
+};
+
 export function SaveButton({
   busy,
   busyLabel,
   label,
   onPress,
-}: {
-  busy: boolean;
-  busyLabel: string;
-  label: string;
-  onPress: () => void;
-}) {
+}: ActionButtonProps & { busyLabel: string }) {
   return (
     <Button
       accessibilityLabel={label}
@@ -107,15 +108,7 @@ export function SaveButton({
   );
 }
 
-export function RemoveButton({
-  busy,
-  label,
-  onPress,
-}: {
-  busy: boolean;
-  label: string;
-  onPress: () => void;
-}) {
+export function RemoveButton({ busy, label, onPress }: ActionButtonProps) {
   return (
     <Button
       accessibilityLabel={label}

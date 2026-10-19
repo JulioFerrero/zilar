@@ -150,6 +150,20 @@ export async function writeLastCheck(at: Date = new Date()): Promise<void> {
   }
 }
 
+function parseStoredObject(raw: string | null): Record<string, unknown> | null {
+  if (raw === null) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readSnoozed(): Promise<SnoozedUpdate | null> {
   let raw: string | null;
   try {
@@ -158,22 +172,15 @@ export async function readSnoozed(): Promise<SnoozedUpdate | null> {
   } catch {
     return null;
   }
-  if (raw === null) {
+  const parsed = parseStoredObject(raw);
+  if (parsed === null) {
     return null;
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) {
-      return null;
-    }
-    const { version, until } = parsed as Record<string, unknown>;
-    if (typeof version !== 'string' || typeof until !== 'string') {
-      return null;
-    }
-    return { version, until };
-  } catch {
+  const { version, until } = parsed;
+  if (typeof version !== 'string' || typeof until !== 'string') {
     return null;
   }
+  return { version, until };
 }
 
 /** Best effort, so a storage failure never blocks "later". */
@@ -194,19 +201,8 @@ export async function readDownloaded(): Promise<string | null> {
   } catch {
     return null;
   }
-  if (raw === null) {
-    return null;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) {
-      return null;
-    }
-    const version = (parsed as Record<string, unknown>).version;
-    return typeof version === 'string' ? version : null;
-  } catch {
-    return null;
-  }
+  const version = parseStoredObject(raw)?.version;
+  return typeof version === 'string' ? version : null;
 }
 
 export async function writeDownloaded(version: string): Promise<void> {

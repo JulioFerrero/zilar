@@ -111,32 +111,20 @@ export function VoiceMessage({
   // Claiming only records UI state: the shared player is never paused as a side effect of switching.
   useEffect(() => {
     const stopState = subscribeVoiceState(message.id, (update) => {
+      const shared = {
+        positionMs: 0,
+        durationMs: voice.duration_ms,
+        speed: update.rate,
+        play: () => {},
+        pause: () => {},
+        seekTo: resolved,
+        cycleSpeed: () => {},
+        release: () => {},
+      };
       if (update.playing) {
-        playback?.claim({
-          messageId: message.id,
-          playing: true,
-          positionMs: 0,
-          durationMs: voice.duration_ms,
-          speed: update.rate,
-          play: () => {},
-          pause: () => {},
-          seekTo: resolved,
-          cycleSpeed: () => {},
-          release: () => {},
-        });
+        playback?.claim({ messageId: message.id, playing: true, ...shared });
       } else {
-        playback?.resign({
-          messageId: message.id,
-          playing: false,
-          positionMs: 0,
-          durationMs: voice.duration_ms,
-          speed: update.rate,
-          play: () => {},
-          pause: () => {},
-          seekTo: resolved,
-          cycleSpeed: () => {},
-          release: () => {},
-        });
+        playback?.resign({ messageId: message.id, playing: false, ...shared });
       }
       setPlaying(update.playing);
       setSpeed(update.rate);

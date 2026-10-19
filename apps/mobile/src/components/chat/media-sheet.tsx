@@ -30,13 +30,7 @@ const MEDIA_LOAD_ERROR_TEXT = 'Could not load media. Try again.';
 
 type MediaSheetStatus = 'loading' | 'error' | 'ready';
 
-interface MediaSheetContentProps {
-  tab: MediaTab;
-  status: MediaSheetStatus;
-  items: MediaItem[];
-  next: string | null;
-  loadingMore: boolean;
-  error: string;
+interface MediaSheetContentProps extends SheetState {
   onSelectTab: (tab: MediaTab) => void;
   onShowInChat: (item: MediaItem) => void;
   onOpenLink: (url: string) => void;
@@ -121,14 +115,15 @@ interface SheetState {
   error: string;
 }
 
-const INITIAL_SHEET_STATE: SheetState = {
-  tab: 'media',
+const EMPTY_SHEET_STATE: Omit<SheetState, 'tab'> = {
   status: 'loading',
   items: [],
   next: null,
   loadingMore: false,
   error: '',
 };
+
+const INITIAL_SHEET_STATE: SheetState = { tab: 'media', ...EMPTY_SHEET_STATE };
 
 // The chat media sheet: Media/Files/Links/Voice tabs, one page loaded on open and per tab change, cursor paging, and a jump to a message (then close). The screen mounts it only while open.
 export function MediaSheet({
@@ -181,14 +176,7 @@ export function MediaSheet({
     if (newTab === state.tab) {
       return;
     }
-    setState({
-      tab: newTab,
-      status: 'loading',
-      items: [],
-      next: null,
-      loadingMore: false,
-      error: '',
-    });
+    setState({ ...EMPTY_SHEET_STATE, tab: newTab });
   };
 
   const retry = () => {
@@ -372,18 +360,18 @@ function MediaRowList({
   );
 }
 
+interface MediaItemRowProps {
+  item: MediaItem;
+  onShowInChat: (item: MediaItem) => void;
+}
+
 // The shared chrome of the per-tab rows: the left body keeps each row's texts, and the trailing button is the same for every tab.
 function MediaRow({
   item,
   label,
   onShowInChat,
   children,
-}: {
-  item: MediaItem;
-  label: string;
-  onShowInChat: (item: MediaItem) => void;
-  children: ReactNode;
-}) {
+}: MediaItemRowProps & { label: string; children: ReactNode }) {
   return (
     <View className="flex-row items-center gap-2 border-t border-divider py-2">
       {children}
@@ -392,13 +380,7 @@ function MediaRow({
   );
 }
 
-function FileRow({
-  item,
-  onShowInChat,
-}: {
-  item: MediaItem;
-  onShowInChat: (item: MediaItem) => void;
-}) {
+function FileRow({ item, onShowInChat }: MediaItemRowProps) {
   const name = item.name ?? 'File';
   return (
     <MediaRow item={item} label={name} onShowInChat={onShowInChat}>
@@ -421,11 +403,7 @@ function LinkRow({
   item,
   onShowInChat,
   onOpenLink,
-}: {
-  item: MediaItem;
-  onShowInChat: (item: MediaItem) => void;
-  onOpenLink: (url: string) => void;
-}) {
+}: MediaItemRowProps & { onOpenLink: (url: string) => void }) {
   const url = item.linkUrl ?? item.url ?? '';
   const host = item.linkHost ?? url;
   return (
@@ -447,13 +425,7 @@ function LinkRow({
   );
 }
 
-function VoiceRow({
-  item,
-  onShowInChat,
-}: {
-  item: MediaItem;
-  onShowInChat: (item: MediaItem) => void;
-}) {
+function VoiceRow({ item, onShowInChat }: MediaItemRowProps) {
   const duration = item.durationMs === undefined ? undefined : formatDuration(item.durationMs);
   return (
     <MediaRow item={item} label="voice message" onShowInChat={onShowInChat}>
