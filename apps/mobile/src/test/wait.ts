@@ -80,14 +80,6 @@ export async function waitFor(
   throw lastError;
 }
 
-// `waitFor` with every pause inside React's `act`, for component tests.
-export function waitForAct(
-  check: () => unknown,
-  options: { timeout?: number; interval?: number } = {},
-): Promise<void> {
-  return waitFor(check, { ...options, act: true });
-}
-
 // A real `Response` with a JSON content type. A 204 gets a null body, as the
 // platform requires. `init` is a status number or a `ResponseInit`.
 export function jsonResponse(body: unknown, init: number | ResponseInit = 200): Response {

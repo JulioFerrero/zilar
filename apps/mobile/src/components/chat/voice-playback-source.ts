@@ -31,16 +31,6 @@ export function resolvePlaySourceEffect(
   });
 }
 
-export function resolvePlaySource(
-  input: { voice: VoiceMeta; localUri?: string | undefined; trustedHosts: ReadonlySet<string> },
-  seen: { current: number },
-  request: number,
-  onSource: (source: { uri: string; headers?: Record<string, string> }) => void,
-  onMissing: () => void,
-): Promise<void> {
-  return Effect.runPromise(resolvePlaySourceEffect(input, seen, request, onSource, onMissing));
-}
-
 export const resolved = (): Promise<void> => Effect.runPromise(Effect.void);
 
 export const isPromiseLike = (value: unknown): value is PromiseLike<void> =>

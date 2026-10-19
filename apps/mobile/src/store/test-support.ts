@@ -47,23 +47,3 @@ export function fakeApi<O extends object = object>(
 ): Omit<ReturnType<typeof baseApi>, keyof O> & O {
   return { ...baseApi(), ...overrides };
 }
-
-/** `fakeApi` whose group `groupId` has me (as `myRole`) and Ana as members. */
-export function fakeApiWithMembers(
-  entries: ChatEntry[],
-  myRole: 'owner' | 'admin' | 'member' = 'admin',
-) {
-  return fakeApi({
-    getChats: vi.fn(async () => entries),
-    getGroup: vi.fn(async (groupId: string) => ({
-      id: groupId,
-      title: 'Dev team',
-      createdBy: 'u-me',
-      members: [
-        { userId: 'u-me', name: 'Me', role: myRole, roles: [] },
-        { userId: 'u-ana', name: 'Ana', role: 'member' as const, roles: [] },
-      ],
-      ais: [],
-    })),
-  });
-}

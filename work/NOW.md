@@ -41,6 +41,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 06:23 | 236,347 (real cuts since 19:35 about −36,770); T-2181's −206 lands after this count |
 | 10-19 06:45 | 235,978 (real cuts since 19:35 about −37,140) |
 | 10-19 07:16 | 235,624 (real cuts since 19:35 about −37,490) |
+| 10-19 07:27 | 235,604 source, 65,098 test (T-2192 cut 669 test lines) |
 
 **Merged tonight:**
 
@@ -116,6 +117,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2189 | phone: one settings screen shell; `AisScreenShell` and `RefreshScroll` gone, 4 screens stop drawing their frame by hand | −82 |
 | T-2190 | 14 comments that named a deleted file now name the current one (comment lines only) | −2 |
 | T-2191 | phone: Me loads through `useFocusList`; Devices uses the shell's pull-to-refresh | −20 |
+| T-2192 | Julio's test rule: 12 chat-core tests of display-only helpers deleted (test lines, not source) | −669 test |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -136,7 +138,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 **Running (06:50):**
 
-- **T-2192 (07:30):** Julio's 10-10 test rule. 12 chat-core tests of display-only helpers go (669 test lines; tests are not in the source count). Tests for keys, money, permissions, URL and media safety and the message pipeline stay.
+- **T-2193 (07:35):** delete about 35 web and phone store test cases that repeat a client-core store test. One wiring case per file stays. Test lines only.
+- **T-2194 (07:40):** delete 5 functions nothing calls, left by tonight's merges.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
@@ -148,7 +151,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
   - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `a8e76b995` (07:14): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `0744de8e9` (07:25): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

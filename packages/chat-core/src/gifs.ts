@@ -25,10 +25,6 @@ export function setGifsAvailability(value: boolean): void {
   availability.value = value;
 }
 
-export function resetGifsAvailability(): void {
-  availability.value = undefined;
-}
-
 /**
  * The URL must be trusted, so a hostile sender's URL never auto-loads even past the store sanitizer.
  * A browser also accepts a relative `/api/` path, which is same-origin by construction.
