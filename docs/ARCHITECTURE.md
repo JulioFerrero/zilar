@@ -36,6 +36,24 @@ ejabberd      XMPP server: messages, presence, rooms (deploy/)
 
 Messages do not go through HTTP. They travel over XMPP (`packages/xmpp-core`) and land in the shared store (`packages/client-core/src/store/`, built around the message ledger). Each app wraps that store with its own provider: web in `apps/web/src/store/`, phone in `apps/mobile/src/store/`.
 
+## Shared pieces to reuse
+
+Before writing logic in an app, check whether it already lives here.
+
+| Need | Where |
+| --- | --- |
+| Call an endpoint from an app | `packages/client-core/src/<area>-api.ts`. Today: chats, AIs, stickers, topics, groups, chat extras (pins, memory, media, search), tools (with routines and approvals) |
+| The New AI flow (steps, fields, create) | `packages/client-core/src/new-ai-flow.ts` |
+| Check an API key before saving it | `packages/client-core/src/key-check.ts` |
+| Shared store rules: pins, chat prefs, group writes | `packages/client-core/src/store/` (`pins.ts`, `prefs.ts`, `group-actions.ts`) |
+| Error text for AI failures | `describeAiFailure` in `packages/chat-core/src/ai-errors.ts` |
+| A rate limit on a server route | `limiter('name', now)` in `apps/server/src/rate-limit.ts`. Every budget is one line in its `RATE_LIMITS` table |
+| A server module's deps | `extends Pick<ServerCore, 'db' \| 'auth' \| …>` from `apps/server/src/app/deps.ts` |
+| Mounting a server API group | `mountGroups` in `apps/server/src/effect/http-core.ts` |
+| Test helpers | a `test-support` file or folder, so the code map counts them as tests |
+
+Plans for the next shared steps: `docs/audit/store-phase3-plan.md` (store wiring) and `docs/audit/agent-turns-plan.md` (one AI turn path for DMs and groups).
+
 ## Adding a feature end to end
 
 1. **Contract and server.** Follow `docs/API_CONTRACT_RECIPE.md` steps 1–7.
