@@ -1,21 +1,11 @@
-import {
-  defaultExporter,
-  defaultImageLoader,
-  exportAvatarFile,
-  ImageUnreadable,
-  previewUrlFor,
-  revokePreviewUrl,
-  type Exporter,
-  type ImageLoader,
-  type Phase,
-  type PickedCrop,
-} from './avatar/avatarImageCodec';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
 import {
+  AVATAR_EXPORT_SIDE,
   INITIAL_CROP_STATE,
+  exportDrawArgs,
   type CropState,
   AVATAR_CROP_VIEW_SIDE,
   AVATAR_MAX_ZOOM,
@@ -24,7 +14,7 @@ import {
 } from '@/lib/avatar-crop';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { avatarIdentity } from '@zilar/chat-core';
-import { Effect } from 'effect';
+import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 
@@ -386,3 +376,124 @@ export function AvatarUploader({
     </section>
   );
 }
+
+type Phase =
+  | { name: 'idle' }
+  | {
+      name: 'crop';
+      fileName: string;
+      objectUrl: string;
+      natural: { width: number; height: number };
+    }
+  | { name: 'error'; message: string };
+
+type ImageSize = { width: number; height: number };
+type ImageLoader = (objectUrl: string) => Promise<ImageSize>;
+type Exporter = (
+  image: HTMLImageElement,
+  source: ImageSize,
+  state: CropState,
+  mime: 'image/webp' | 'image/png',
+) => Promise<Blob | null>;
+
+class ImageUnreadable extends Data.TaggedError('ImageUnreadable') {}
+
+const loadImageSize = (objectUrl: string): Effect.Effect<ImageSize, ImageUnreadable> =>
+  Effect.callback<ImageSize, ImageUnreadable>((resume) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = (): void =>
+      resume(Effect.succeed({ width: image.naturalWidth, height: image.naturalHeight }));
+    image.onerror = (): void => resume(Effect.fail(new ImageUnreadable()));
+    image.src = objectUrl;
+    return Effect.sync(() => {
+      image.onload = null;
+      image.onerror = null;
+    });
+  });
+
+const encodeAvatar = (
+  image: HTMLImageElement,
+  source: ImageSize,
+  state: CropState,
+  mime: 'image/webp' | 'image/png',
+): Effect.Effect<Blob | null> =>
+  Effect.callback<Blob | null>((resume) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_EXPORT_SIDE;
+    canvas.height = AVATAR_EXPORT_SIDE;
+    const context = canvas.getContext('2d');
+    if (context === null) {
+      resume(Effect.succeed(null));
+      return;
+    }
+    const args = exportDrawArgs(source, state);
+    context.drawImage(
+      image,
+      args.sx,
+      args.sy,
+      args.sSide,
+      args.sSide,
+      0,
+      0,
+      args.dSide,
+      args.dSide,
+    );
+    canvas.toBlob(
+      (blob) => resume(Effect.succeed(blob)),
+      mime,
+      mime === 'image/webp' ? 0.92 : undefined,
+    );
+  });
+
+// The injectable props keep their Promise types (the tests pass Promise fakes),
+// so the browser defaults run their Effects at this edge.
+const defaultImageLoader: ImageLoader = (objectUrl) => Effect.runPromise(loadImageSize(objectUrl));
+const defaultExporter: Exporter = (image, source, state, mime) =>
+  Effect.runPromise(encodeAvatar(image, source, state, mime));
+
+// jsdom (and some test environments) has no `URL.createObjectURL`: fall back
+// to a synthetic url the injected `imageLoader` fake ignores. The `<img>` still
+// gets a `src`, so production behaviour is unchanged.
+let previewCounter = 0;
+
+const syntheticPreviewUrl = (): string => {
+  previewCounter += 1;
+  return `avatar-preview-${previewCounter}`;
+};
+
+const previewUrlFor = (file: File): Effect.Effect<string> =>
+  typeof URL.createObjectURL === 'function'
+    ? Effect.try(() => URL.createObjectURL(file)).pipe(Effect.orElseSucceed(syntheticPreviewUrl))
+    : Effect.sync(syntheticPreviewUrl);
+
+const revokePreviewUrl = (url: string): Effect.Effect<void> =>
+  url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function'
+    ? Effect.ignore(Effect.try(() => URL.revokeObjectURL(url)))
+    : Effect.void;
+
+interface PickedCrop {
+  image: HTMLImageElement;
+  natural: ImageSize;
+  objectUrl: string;
+  crop: CropState;
+}
+
+const exportAvatarFile = (
+  exporter: Exporter,
+  picked: PickedCrop,
+): Effect.Effect<File | null, unknown> =>
+  Effect.gen(function* () {
+    const webp = yield* Effect.tryPromise({
+      try: () => exporter(picked.image, picked.natural, picked.crop, 'image/webp'),
+      catch: (cause) => cause,
+    });
+    if (webp !== null) {
+      return new File([webp], 'avatar', { type: 'image/webp' });
+    }
+    const png = yield* Effect.tryPromise({
+      try: () => exporter(picked.image, picked.natural, picked.crop, 'image/png'),
+      catch: (cause) => cause,
+    });
+    return png === null ? null : new File([png], 'avatar', { type: 'image/png' });
+  });

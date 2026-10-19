@@ -1,14 +1,8 @@
-import { ChatPicker } from './folder/ChatPicker';
 import { ConfirmDialog } from './ConfirmDialog';
-import {
-  FolderDeleteFailed,
-  SECTION_LABEL,
-  TYPE_SWITCHES,
-  saveErrorMessage,
-  type FolderWrite,
-} from './folder/folderEditorModel';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
+import { SearchField } from './ui/search-field';
 import { Switch } from './ui/switch';
 import { folderIconComponent } from '@/components/folderIcon';
 import { createChatFolder, deleteChatFolder, patchChatFolder, type ApiChatFolder } from '@/lib/api';
@@ -16,6 +10,7 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import {
+  FOLDER_CHATS_MAX,
   FOLDER_NAME_MAX,
   type ChatFolder,
   type FolderChatType,
@@ -23,8 +18,9 @@ import {
   FOLDER_ICONS,
 } from '@zilar/chat-core';
 import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { Effect } from 'effect';
-import { useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
+import { Data, Effect } from 'effect';
+import { X } from 'lucide-react';
+import { useMemo, useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
 
 function FolderHideSection({
   excludeMuted,
@@ -333,5 +329,123 @@ export function FolderEditorDialog({
         )}
       </Dialog>
     </>
+  );
+}
+
+const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
+  { type: 'dm', label: 'Personal chats' },
+  { type: 'group', label: 'Groups' },
+  { type: 'channel', label: 'Channels' },
+  { type: 'ai', label: 'AIs' },
+];
+
+const SECTION_LABEL = 'text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase';
+
+class FolderDeleteFailed extends Data.TaggedError('FolderDeleteFailed') {}
+
+type FolderWrite = 'save' | 'delete';
+
+function saveErrorMessage(error: ApiFailure): string {
+  if (error.code === 'folder_limit') {
+    return error.message;
+  }
+  if (error.code === 'rate_limited') {
+    return 'Too many changes. Wait a moment.';
+  }
+  return 'Could not save the folder. Try again.';
+}
+
+function ChatPicker({
+  id,
+  label,
+  picked,
+  chats,
+  search,
+  onSearch,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  picked: string[];
+  chats: { id: string; title: string; topic?: unknown; archived?: boolean }[];
+  search: string;
+  onSearch: (value: string) => void;
+  onToggle: (id: string) => void;
+}) {
+  const full = picked.length >= FOLDER_CHATS_MAX;
+  // Topics are rows of their group and archived chats are hidden everywhere, so
+  // neither can be picked into a folder. Chats picked before and no longer
+  // pickable still show as removable rows below.
+  const query = search.trim().toLowerCase();
+  const pickable = chats.filter(
+    (chat) =>
+      chat.topic === undefined && !chat.archived && chat.title.toLowerCase().includes(query),
+  );
+  const stale = useMemo(
+    () =>
+      picked
+        .map((chatId) => chats.find((chat) => chat.id === chatId))
+        .filter(
+          (chat): chat is { id: string; title: string; topic?: unknown; archived?: boolean } =>
+            chat !== undefined && (chat.topic !== undefined || chat.archived === true),
+        ),
+    [picked, chats],
+  );
+  const searchId = `folder-chat-search-${id}`;
+  return (
+    <div>
+      <p className="text-[14px] font-medium">{label}</p>
+      <label htmlFor={searchId} className="sr-only">
+        {`Search ${label.toLowerCase()}`}
+      </label>
+      <SearchField
+        id={searchId}
+        value={search}
+        onChange={(event) => onSearch(event.target.value)}
+        placeholder={`Search ${label.toLowerCase()}`}
+        className="mt-2"
+      />
+      <ul className="mt-1 flex max-h-40 flex-col gap-0.5 overflow-y-auto">
+        {pickable.map((chat) => {
+          const checked = picked.includes(chat.id);
+          return (
+            <li key={`${id}-${chat.id}`}>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[15px] hover:bg-list-hover">
+                <Checkbox
+                  checked={checked}
+                  disabled={!checked && full}
+                  onCheckedChange={() => onToggle(chat.id)}
+                />
+                <span className="truncate">{chat.title}</span>
+              </label>
+            </li>
+          );
+        })}
+        {stale.map((chat) => (
+          <li
+            key={`${id}-stale-${chat.id}`}
+            className="flex items-center gap-2 rounded-lg px-2 py-1 text-[15px] text-muted-foreground"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {chat.title} <span className="text-[13px]">(archived)</span>
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 rounded-full"
+              aria-label={`Remove ${chat.title}`}
+              title={`Remove ${chat.title}`}
+              onClick={() => onToggle(chat.id)}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        {picked.length} of {FOLDER_CHATS_MAX} selected
+      </p>
+    </div>
   );
 }

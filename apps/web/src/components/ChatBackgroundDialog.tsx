@@ -20,7 +20,6 @@ import {
   type BackgroundListItem,
   type GroupBackground,
 } from '@/lib/api';
-import { prepareBackgroundImage } from '@/lib/background-image';
 import { DEFAULT_BACKGROUND_DIM, chatBackgroundStyle } from '@/lib/chatBackground';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -414,5 +413,121 @@ export function ChatBackgroundDialog({
         </button>
       </div>
     </Dialog>
+  );
+}
+
+/** The smallest side the server accepts (backgrounds run 64-2048 px). */
+const BACKGROUND_MIN_SIDE = 64;
+/** The largest side the server accepts; the client scales down to fit. */
+const BACKGROUND_MAX_SIDE = 2048;
+/** The server's upload cap. */
+const BACKGROUND_MAX_BYTES = 1024 * 1024;
+/** WebP qualities tried in order until the result fits. */
+const BACKGROUND_QUALITIES = [0.85, 0.7, 0.5];
+
+interface BackgroundSize {
+  width: number;
+  height: number;
+}
+
+interface LoadedBackground {
+  image: CanvasImageSource;
+  width: number;
+  height: number;
+}
+
+/** Scales a size down so its largest side is at most max, keeping the ratio; never up,
+ * never fractional or zero. */
+function fitWithin(width: number, height: number, max = BACKGROUND_MAX_SIDE): BackgroundSize {
+  const largest = Math.max(width, height);
+  if (largest <= max) {
+    return { width, height };
+  }
+  const scale = max / largest;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+// The object URL lives only while the image decodes; it is revoked on every exit.
+const loadFromFile = (file: File): Effect.Effect<LoadedBackground, Error> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => URL.createObjectURL(file)),
+    (objectUrl) =>
+      Effect.callback<LoadedBackground, Error>((resume) => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.onload = (): void =>
+          resume(Effect.succeed({ image, width: image.naturalWidth, height: image.naturalHeight }));
+        image.onerror = (): void => resume(Effect.fail(new Error('decode')));
+        image.src = objectUrl;
+      }),
+    (objectUrl) =>
+      Effect.sync(() => {
+        URL.revokeObjectURL(objectUrl);
+      }),
+  );
+
+const encodeWithCanvas = (
+  image: CanvasImageSource,
+  size: BackgroundSize,
+  quality: number,
+): Effect.Effect<Blob | null> =>
+  Effect.gen(function* () {
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const context = canvas.getContext('2d');
+    if (context === null) {
+      return null;
+    }
+    context.drawImage(image, 0, 0, size.width, size.height);
+    return yield* Effect.callback<Blob | null>((resume) => {
+      canvas.toBlob((blob) => resume(Effect.succeed(blob)), 'image/webp', quality);
+    });
+  });
+
+/** Throws 'too_small' or 'too_large' so the caller can show a plain sentence; a rejection
+ * from an injected load or encode passes through unchanged. */
+function prepareBackgroundImage(
+  file: File,
+  deps: {
+    load?: (file: File) => Promise<LoadedBackground>;
+    encode?: (
+      image: CanvasImageSource,
+      size: BackgroundSize,
+      quality: number,
+    ) => Promise<Blob | null>;
+  } = {},
+): Promise<Blob> {
+  const { load, encode } = deps;
+  const loadStep: Effect.Effect<LoadedBackground, unknown> =
+    load === undefined
+      ? loadFromFile(file)
+      : Effect.tryPromise({ try: () => load(file), catch: (cause) => cause });
+  const encodeStep = (
+    image: CanvasImageSource,
+    size: BackgroundSize,
+    quality: number,
+  ): Effect.Effect<Blob | null, unknown> =>
+    encode === undefined
+      ? encodeWithCanvas(image, size, quality)
+      : Effect.tryPromise({ try: () => encode(image, size, quality), catch: (cause) => cause });
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const loaded = yield* loadStep;
+      if (loaded.width < BACKGROUND_MIN_SIDE || loaded.height < BACKGROUND_MIN_SIDE) {
+        return yield* Effect.fail(new Error('too_small'));
+      }
+      const size = fitWithin(loaded.width, loaded.height);
+      for (const quality of BACKGROUND_QUALITIES) {
+        const blob = yield* encodeStep(loaded.image, size, quality);
+        if (blob !== null && blob.size <= BACKGROUND_MAX_BYTES) {
+          return blob;
+        }
+      }
+      return yield* Effect.fail(new Error('too_large'));
+    }),
   );
 }
