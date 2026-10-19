@@ -3,7 +3,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { LenientNullableString } from './lenient-nullable-string';
+import { LenientNullableString } from './lenient';
 import { Session } from './middleware';
 
 // The ids are the stable machine-readable names; the UI layer chooses the display labels.

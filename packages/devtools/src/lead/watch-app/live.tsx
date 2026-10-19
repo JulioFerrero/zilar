@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { useApp, useInput, useStdin, useStdout } from 'ink';
 import { useEffect, useState, type ReactNode } from 'react';
-import { iconsEnabled, layoutColumns, visibleSlice } from '../watch-format.js';
+import { iconsEnabled, layoutColumns, visibleSlice } from '../watch.js';
 import { formatClock, parseWatchView, REFRESH_INTERVAL_MS } from '../watch.js';
 import type { WatchView } from '../watch.js';
 import { HEADER_ROWS, rowHeights, rowsOf } from './segments.js';

@@ -1,8 +1,7 @@
 import { ArrowUpRight, Eye, Lock } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import { Button } from './button';
-import { Dialog } from './dialog';
-import { DialogStepper } from './dialog-stepper';
+import { Dialog, DialogStepper } from './dialog';
 
 function OpenDialog({
   title,

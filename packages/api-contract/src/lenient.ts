@@ -1,4 +1,4 @@
-import { Schema, SchemaGetter } from 'effect';
+import { Effect, Schema, SchemaGetter } from 'effect';
 
 // Any value outside `literals` decodes to `fallback` instead of failing the response, so a newer server never breaks an older app.
 export function lenientLiterals<const L extends ReadonlyArray<string>>(
@@ -34,6 +34,25 @@ export const LenientOptionalString = Schema.optional(
   Schema.Unknown.pipe(
     Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
       decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+      encode: SchemaGetter.transform((value) => value),
+    }),
+  ),
+);
+
+// A missing, `undefined` or non-string value decodes to `null` instead of failing the row, so a server never breaks a whole list.
+export const LenientNullableString = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(null)),
+  Schema.decodeTo(Schema.NullOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+// Like `LenientNullableString`, but an absent key stays absent, so an older payload is told apart from an explicit `null`.
+export const LenientOptionalNullableString = Schema.optional(
+  Schema.Unknown.pipe(
+    Schema.decodeTo(Schema.NullOr(Schema.String), {
+      decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
       encode: SchemaGetter.transform((value) => value),
     }),
   ),

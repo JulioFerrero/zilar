@@ -3,7 +3,7 @@
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { lenientArray } from './lenient';
-import { LenientNullableString } from './lenient-nullable-string';
+import { LenientNullableString } from './lenient';
 import { SchemaErrors, Session } from './middleware';
 import { RawQueryValue } from './raw-query';
 

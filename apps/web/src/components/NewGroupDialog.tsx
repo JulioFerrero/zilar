@@ -2,8 +2,7 @@ import { EntityAvatar } from './EntityAvatar';
 import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { Dialog } from './ui/dialog';
-import { DialogStepper } from './ui/dialog-stepper';
+import { Dialog, DialogStepper } from './ui/dialog';
 import { SearchField } from './ui/search-field';
 import { SegmentedControl } from './ui/segmented-control';
 import {

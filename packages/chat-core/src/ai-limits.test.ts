@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_MONTHLY_USD, validateLimits } from './ai-limits';
+import { MAX_MONTHLY_USD, validateLimits } from './ai';
 
 describe('validateLimits', () => {
   it('treats both empty fields as no limit', () => {

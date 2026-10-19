@@ -1,7 +1,7 @@
 // effect-plain: the key-check flow is plain async over an injected connections API; a failure is a value, not a thrown Effect.
 // A key is write-only: it travels in the create/replace call and is never stored, returned or logged here.
 
-import { providerLabel } from './ai-providers';
+import { providerLabel } from './ai';
 import { keyCheckMessage } from './new-ai';
 
 export interface KeyCheckInput {

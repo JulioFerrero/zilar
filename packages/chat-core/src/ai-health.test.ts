@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiHealth, formatUsd, spendFraction } from './ai-health';
+import { aiHealth, formatUsd, spendFraction } from './ai';
 
 const active = { status: 'active', limits: { perDayUsd: null } };
 

@@ -10,7 +10,7 @@ import {
   layoutColumns,
   visibleSlice,
   type VisibleSlice,
-} from '../watch-format.js';
+} from '../watch.js';
 import type { WatchView } from '../watch.js';
 import { EmptyCard, Footer, Header, TaskCard } from './chrome.js';
 import { HEADER_ROWS, rowHeights, rowsOf } from './segments.js';

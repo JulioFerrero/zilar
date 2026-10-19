@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { avatarIdentity } from './avatar-identity';
+import { avatarIdentity } from './avatar';
 
 describe('avatarIdentity', () => {
   it('seeds a person by the normalized name and keeps the picture', () => {

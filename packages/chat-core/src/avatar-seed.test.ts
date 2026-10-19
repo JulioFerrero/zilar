@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { nameSeed } from './avatar-seed';
+import { nameSeed } from './avatar';
 
 describe('nameSeed', () => {
   it('folds case and whitespace so the same name gives the same seed', () => {

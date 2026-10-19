@@ -3,7 +3,7 @@
 
 import { Text, useAnimation } from 'ink';
 import type { ReactNode } from 'react';
-import { cardHeight, SPINNER_FRAMES, truncate } from '../watch-format.js';
+import { cardHeight, SPINNER_FRAMES, truncate } from '../watch.js';
 import type { WatchEntry } from '../watch.js';
 
 export interface Seg {

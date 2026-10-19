@@ -4,7 +4,7 @@ import { AttachmentSchema } from './attachment';
 import { BlocksDataSchema } from './blocks';
 import { decodeOrThrow, isValid } from './common';
 import { HandoffSchema } from './handoff';
-import { HandoffLineSchema } from './handoff-line';
+import { HandoffLineSchema } from './handoff';
 import { PollSchema, PollVoteSchema } from './poll';
 import { CostSchema, PreviewSchema, ProgressSchema } from './progress';
 import { QuestionSchema } from './question';

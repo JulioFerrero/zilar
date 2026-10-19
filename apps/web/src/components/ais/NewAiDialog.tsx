@@ -1,8 +1,7 @@
 // effect-plain: the New AI wizard is plain React state over the shared hook; the orb PNG export is a browser promise edge.
 import { Popover } from '@base-ui/react/popover';
 import { Button } from '../ui/button';
-import { Dialog } from '../ui/dialog';
-import { DialogStepper } from '../ui/dialog-stepper';
+import { Dialog, DialogStepper } from '../ui/dialog';
 import { KeyStep } from './new-ai/KeyStep';
 import { ProviderStep } from './new-ai/ProviderStep';
 import { Combobox } from '@/components/ui/combobox';

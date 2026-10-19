@@ -11,7 +11,7 @@ import {
   trackerStep,
   truncate,
   type ModelBadge,
-} from '../watch-format.js';
+} from '../watch.js';
 import { formatContext, formatDuration, sparkline } from '../watch.js';
 import type { ChangedFile, SessionSpeed, WatchEntry } from '../watch.js';
 import {

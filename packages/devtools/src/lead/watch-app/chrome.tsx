@@ -2,7 +2,7 @@
 
 import { Text } from 'ink';
 import type { ReactNode } from 'react';
-import { iconText, modelBadge, phaseColorName, truncate } from '../watch-format.js';
+import { iconText, modelBadge, phaseColorName, truncate } from '../watch.js';
 import type { WatchEntry, WatchView } from '../watch.js';
 import { badgeSegs, FilesLine, LiveStepLine, speedSegs, StepTracker } from './lines.js';
 import {

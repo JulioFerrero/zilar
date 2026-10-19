@@ -2,7 +2,7 @@
 
 import type { BallParams } from '@zilar/ball-avatar';
 
-import { LLM_PROVIDERS, providerLabel } from './ai-providers';
+import { LLM_PROVIDERS, providerLabel } from './ai';
 
 const COMPATIBLE_ID = 'openai-compatible';
 
