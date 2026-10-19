@@ -36,6 +36,7 @@ export {
 } from './foreground-hooks';
 export * from './chat-extras-api';
 export * from './settings-api';
+export * from './devices';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
   makeTopicsApi,

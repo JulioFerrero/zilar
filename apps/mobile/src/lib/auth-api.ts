@@ -1,5 +1,5 @@
 import { Exit, Schema } from 'effect';
-import { ApiError, runApi, type AuthMe, type AuthSessions } from '@zilar/api-contract';
+import { ApiError, runApi, type AuthMe } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
 import { createApiClient } from './effect/api-client';
@@ -108,26 +108,6 @@ export async function updateBio(
     }),
   );
   return toMe({ ...patched, jid: null });
-}
-
-/**
- * Newest `updatedAt` first, with `current` on this one; the rows carry no token and no IP address.
- */
-export async function listSessions(
-  apiUrl: string,
-  token: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<AuthSessions> {
-  return runApi(clientFor(apiUrl, token, fetchImpl).auth.listSessions());
-}
-
-export async function revokeSession(
-  apiUrl: string,
-  token: string,
-  id: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<void> {
-  await runApi(clientFor(apiUrl, token, fetchImpl).auth.revokeSession({ params: { id } }));
 }
 
 // Anything but a bare `{ valid: boolean }` — including a non-object body — means "not valid".

@@ -1,10 +1,10 @@
-import { ApiError } from '@zilar/api-contract';
-import type { AuthSession, AuthSessions } from '@zilar/api-contract';
+// effect-plain: a settings screen; its async is confirm-dialog UI state around the shared Devices hook.
+import type { AuthSession } from '@zilar/api-contract';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
-import { Effect } from 'effect';
-import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
+import { makeDevicesApi, useDevices } from '@zilar/client-core';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { MonitorSmartphone } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,67 +14,8 @@ import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { API_URL } from '@/lib/auth';
-import { listSessions, revokeSession } from '@/lib/auth-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { interruptFiber } from '@zilar/client-core';
-import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, apiMockActive, mockParamAllowed, mockToken } from '@/mock/gate';
-
-type PageStatus = 'loading' | 'ready' | 'error';
-
-const LOAD_ERROR = 'Could not load your devices. Try again.';
-const SIGN_OUT_ERROR = 'Could not sign out. Try again.';
-
-interface DevicesApi {
-  list(): Promise<AuthSessions>;
-  revoke(id: string): Promise<void>;
-}
-
-function createRealDevicesApi(): DevicesApi {
-  return {
-    list: async () => listSessions(API_URL, await bearerToken()),
-    revoke: async (id) => {
-      await revokeSession(API_URL, await bearerToken(), id);
-    },
-  };
-}
-
-async function bearerToken(): Promise<string> {
-  const token = await getSessionToken();
-  if (token === undefined) {
-    throw new ApiError(401, 'unauthorized', 'No session');
-  }
-  return token;
-}
-
-/** Built on the shared mock backend behind a literal build-time condition: Metro folds it to `false` in a release build, so the mock module stays out of the bundle. */
-function createMockDevicesApi(): DevicesApi {
-  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return {
-      list: async () => listSessions(API_URL, await mockToken(), mockFetch),
-      revoke: async (id) => {
-        await revokeSession(API_URL, await mockToken(), id, mockFetch);
-      },
-    };
-  }
-  throw new Error('The mock API is not part of this build');
-}
-
-interface DevicesApiHandle {
-  api: DevicesApi;
-  mock: boolean;
-}
-
-function useDevicesApi(): DevicesApiHandle {
-  const params = useGlobalSearchParams();
-  const envMock = ENV_MOCK;
-  const mock = apiMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(() => (mock ? createMockDevicesApi() : createRealDevicesApi()), [mock]);
-  return { api, mock };
-}
+import { useApi } from '@/lib/use-mockable-api';
 
 type Confirm = { kind: 'one'; session: AuthSession } | { kind: 'all' } | null;
 
@@ -91,90 +32,49 @@ export default function DevicesScreen() {
 
 function DevicesList() {
   const router = useRouter();
-  const { api, mock } = useDevicesApi();
-
-  const [sessions, setSessions] = useState<AuthSession[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [error, setError] = useState('');
+  const { api, mock } = useApi(makeDevicesApi);
+  const {
+    status,
+    sessions,
+    current,
+    others,
+    error,
+    setError,
+    refresh,
+    signOut,
+    signOutAll,
+    busyIds,
+    bulkBusy,
+  } = useDevices(api);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const [signingOut, setSigningOut] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // The load callback keeps its identity between focuses, so it reads the status from a ref: a refresh with devices on screen keeps them, and only an empty screen gets the spinner.
-  const statusRef = useRef<PageStatus>('loading');
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
-  const load = useCallback(() => {
-    const keepContent = statusRef.current === 'ready';
-    setStatus((current) => (current === 'ready' ? current : 'loading'));
-    setError('');
-    const fiber = Effect.runFork(
-      Effect.tryPromise({ try: () => api.list(), catch: (cause) => cause }).pipe(
-        Effect.tap((body) =>
-          Effect.sync(() => {
-            setSessions([...body.sessions]);
-            setStatus('ready');
-            setRefreshing(false);
-          }),
-        ),
-        Effect.catch(() =>
-          Effect.sync(() => {
-            setRefreshing(false);
-            if (keepContent) {
-              return;
-            }
-            setError(LOAD_ERROR);
-            setStatus('error');
-          }),
-        ),
-      ),
-    );
-    return () => {
-      interruptFiber(fiber);
-    };
-  }, [api]);
-
-  useFocusEffect(load);
-
-  const current = sessions.find((session) => session.current);
-  const others = sessions.filter((session) => !session.current);
-
-  // Drop the row on success; a failure keeps it and shows the fixed sentence. The confirm closes either way.
+  // The confirm closes either way; the hook keeps a row whose sign-out failed.
   const signOutOne = async (session: AuthSession): Promise<void> => {
-    setSigningOut(true);
-    setError('');
     try {
-      await api.revoke(session.id);
-      setSessions((rows) => rows.filter((row) => row.id !== session.id));
-    } catch {
-      setError(SIGN_OUT_ERROR);
+      await signOut(session.id);
     } finally {
-      setSigningOut(false);
       setConfirm(null);
     }
   };
 
-  const signOutAll = async (ids: string[]): Promise<void> => {
-    setSigningOut(true);
-    setError('');
+  const signOutOthers = async (): Promise<void> => {
     try {
-      const results = await Promise.allSettled(ids.map((id) => api.revoke(id)));
-      if (results.some((result) => result.status === 'rejected')) {
-        setError(SIGN_OUT_ERROR);
-      }
-      const body = await api.list();
-      setSessions([...body.sessions]);
-    } catch {
-      setError(SIGN_OUT_ERROR);
+      await signOutAll();
     } finally {
-      setSigningOut(false);
       setConfirm(null);
     }
   };
 
   const confirmingAll = confirm?.kind === 'all';
+  const signingOut =
+    confirm?.kind === 'one' ? busyIds.has(confirm.session.id) : confirmingAll ? bulkBusy : false;
 
   return (
     <SettingsScreenShell
@@ -188,7 +88,7 @@ function DevicesList() {
           tintColor={MUTED_FOREGROUND}
           onRefresh={() => {
             setRefreshing(true);
-            load();
+            void refresh().finally(() => setRefreshing(false));
           }}
         />
       }
@@ -209,7 +109,7 @@ function DevicesList() {
             onCancel={() => setConfirm(null)}
             onConfirm={() => {
               if (confirm?.kind === 'all') {
-                void signOutAll(others.map((session) => session.id));
+                void signOutOthers();
               } else if (confirm?.kind === 'one') {
                 void signOutOne(confirm.session);
               }
@@ -233,7 +133,7 @@ function DevicesList() {
           action={{
             label: 'Retry',
             accessibilityLabel: 'Retry loading devices',
-            onPress: () => load(),
+            onPress: () => void refresh(),
           }}
         />
       ) : null}

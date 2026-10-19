@@ -1,66 +1,43 @@
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
-import { useState } from 'react';
 import { describeUserAgent, formatListTime, formatShortDate } from '@zilar/chat-core';
-import { fromApi } from '@zilar/client-core';
-import { isWaiting, shownFailure, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import { makeDevicesApi, useDevices } from '@zilar/client-core';
+import { useState } from 'react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
-import type { AuthSession, AuthSessions } from '@zilar/api-contract';
+import type { AuthSession } from '@zilar/api-contract';
 import { callApi } from '@/lib/effect/api-client';
 
 // The list never carries a session token or an IP address.
 
-function listSessions(): Promise<AuthSessions> {
-  return callApi((client) => client.auth.listSessions());
-}
-
-/** Signs out one other device; the server answers 204. */
-function revokeSession(id: string): Promise<void> {
-  return callApi((client) => client.auth.revokeSession({ params: { id } }));
-}
-
-const SIGN_OUT_ERROR = 'Could not sign out. Try again.';
-const LOAD_ERROR = 'Could not load your devices. Try again.';
+const api = makeDevicesApi(callApi);
 
 export function DevicesPage({ onBack }: { onBack: () => void }) {
-  const [devices, refresh] = useQuery(() => fromApi(() => listSessions()), []);
-  const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const {
+    status,
+    sessions,
+    current,
+    others,
+    error,
+    setError,
+    signOut,
+    signOutAll,
+    busyIds,
+    bulkBusy,
+  } = useDevices(api);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [confirmingAll, setConfirmingAll] = useState(false);
-  const [actionError, setActionError] = useState<string | undefined>(undefined);
 
   // Sign out all others loops over the delete route, one session each. allSettled never
   // rejects, so one failed revoke cannot stop the reload or leave the confirm open.
-  const [bulkState, signOutOthers] = useAction((ids: string[]) =>
-    fromApi(() => Promise.allSettled(ids.map((id) => revokeSession(id)))).pipe(
-      Effect.tap((results) =>
-        Effect.sync(() => {
-          const failed = results.some((result) => result.status === 'rejected');
-          setActionError(failed ? SIGN_OUT_ERROR : undefined);
-          setConfirmingAll(false);
-          refresh();
-        }),
-      ),
-    ),
-  );
-
-  const loaded = AsyncResult.isNotInitial(devices);
-  const sessions = AsyncResult.isSuccess(devices) ? devices.value.sessions : [];
-  const current = sessions.find((session) => session.current);
-  const otherSessions = sessions.filter((session) => !session.current);
-  const visibleOthers = otherSessions.filter((session) => !removedIds.has(session.id));
-  const loadFailure = shownFailure(devices);
-  const error = loadFailure !== undefined ? LOAD_ERROR : actionError;
-
-  const markRemoved = (id: string): void => {
-    setRemovedIds((ids) => new Set(ids).add(id));
+  const signOutOthers = (): void => {
+    void signOutAll().finally(() => setConfirmingAll(false));
   };
+
+  const loaded = status !== 'loading';
+
   const askRemove = (id: string): void => {
-    setActionError(undefined);
+    setError('');
     setConfirmId(id);
   };
 
@@ -72,13 +49,13 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
     >
       <div className={SETTINGS_COLUMN}>
         {!loaded && <StateMessage kind="loading" title="Loading devices…" />}
-        {loaded && visibleOthers.length > 0 && (
+        {loaded && others.length > 0 && (
           <Card>
             <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
               <p className="min-w-0 flex-1 basis-40 text-[14px]">
                 {confirmingAll
                   ? 'Sign out every other device?'
-                  : `Signed in on ${visibleOthers.length} other ${visibleOthers.length === 1 ? 'device' : 'devices'}.`}
+                  : `Signed in on ${others.length} other ${others.length === 1 ? 'device' : 'devices'}.`}
               </p>
               {confirmingAll ? (
                 <div className="flex shrink-0 items-center gap-1">
@@ -86,10 +63,10 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
                     type="button"
                     variant="destructive"
                     size="sm"
-                    disabled={isWaiting(bulkState)}
-                    onClick={() => signOutOthers(visibleOthers.map((session) => session.id))}
+                    disabled={bulkBusy}
+                    onClick={signOutOthers}
                   >
-                    {isWaiting(bulkState) ? 'Signing out…' : 'Sign out all'}
+                    {bulkBusy ? 'Signing out…' : 'Sign out all'}
                   </Button>
                   <Button
                     type="button"
@@ -106,7 +83,7 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setActionError(undefined);
+                    setError('');
                     setConfirmingAll(true);
                   }}
                 >
@@ -116,29 +93,28 @@ export function DevicesPage({ onBack }: { onBack: () => void }) {
             </div>
           </Card>
         )}
-        {loaded && sessions.length === 0 && error === undefined && (
+        {loaded && sessions.length === 0 && error === '' && (
           <StateMessage kind="empty" title="No devices are signed in." />
         )}
         {loaded && sessions.length > 0 && (
           <Card>
             <ul className="divide-y divide-divider">
               {current !== undefined && <CurrentDeviceRow session={current} />}
-              {otherSessions.map((session) => (
+              {others.map((session) => (
                 <OtherDeviceRow
                   key={session.id}
                   session={session}
-                  removed={removedIds.has(session.id)}
+                  busy={busyIds.has(session.id)}
                   confirming={confirmId === session.id}
                   onAsk={() => askRemove(session.id)}
                   onCancel={() => setConfirmId(null)}
-                  onRemoved={markRemoved}
-                  onError={setActionError}
+                  onSignOut={() => void signOut(session.id)}
                 />
               ))}
             </ul>
           </Card>
         )}
-        {error !== undefined && (
+        {error !== '' && (
           <p role="alert" className="text-[14px] text-danger">
             {error}
           </p>
@@ -173,41 +149,22 @@ function CurrentDeviceRow({ session }: { session: AuthSession }) {
   );
 }
 
-/** One other device with its own Sign out, so two rows can go at once; a removed row stays
- * mounted, like BlockedPage's. */
+/** One other device with its own Sign out, so two rows can go at once. */
 function OtherDeviceRow({
   session,
-  removed,
+  busy,
   confirming,
   onAsk,
   onCancel,
-  onRemoved,
-  onError,
+  onSignOut,
 }: {
   session: AuthSession;
-  removed: boolean;
+  busy: boolean;
   confirming: boolean;
   onAsk: () => void;
   onCancel: () => void;
-  onRemoved: (id: string) => void;
-  onError: (message: string | undefined) => void;
+  onSignOut: () => void;
 }) {
-  const [state, revoke] = useAction((id: string) =>
-    fromApi(() => revokeSession(id)).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          onRemoved(session.id);
-          onError(undefined);
-        }),
-      ),
-      Effect.tapError(() => Effect.sync(() => onError(SIGN_OUT_ERROR))),
-    ),
-  );
-  if (removed) {
-    return null;
-  }
-  const busy = isWaiting(state);
-
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
       <DeviceSummary session={session} />
@@ -219,7 +176,7 @@ function OtherDeviceRow({
               variant="destructive"
               size="sm"
               disabled={busy}
-              onClick={() => revoke(session.id)}
+              onClick={onSignOut}
             >
               {busy ? 'Signing out…' : 'Sign out'}
             </Button>
