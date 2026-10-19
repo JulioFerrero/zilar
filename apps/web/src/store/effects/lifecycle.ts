@@ -1,11 +1,13 @@
 import { Effect } from 'effect';
 import {
+  buildCacheSnapshot,
   reset,
   startStore as coreStartStore,
   stopStore as coreStopStore,
   retryBoot as coreRetryBoot,
   type BootInput,
   type JoinGroupsHooks,
+  type MessageCacheWriter,
 } from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatPref, Contact, Me } from '@/lib/api';
@@ -15,11 +17,11 @@ import { resetHandleGateDismissal } from '@/lib/handleGate';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import { clearChatListCache, readChatListCache } from '../chatListCache';
 import {
+  MAX_CACHED_CHATS,
   clearMessageCache,
-  MESSAGE_CACHE_WRITE_DELAY_MS,
+  createWebMessageCache,
   readCachedPins,
   readMessageCache,
-  writeMessageCache,
 } from '../messageCache';
 import { mergeWithPainted } from './chatRows';
 import { LAST_READ_PREFIX } from './constants';
@@ -50,11 +52,16 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     const { storage } = yield* Ports;
     ctx.get().stop();
     reset(ctx);
-    // A pending throttled save must not recreate the key after the clear.
-    cancelScheduledMessageSave(ctx);
+    // A pending write must not recreate the key after the clear; the writer's fence orders it.
+    const messageCache = messageCacheWriters.get(ctx);
+    if (messageCache === undefined) {
+      clearMessageCache(storage);
+    } else {
+      messageCacheWriters.delete(ctx);
+      yield* Effect.tryPromise(() => messageCache.clear()).pipe(Effect.ignore);
+    }
     clearChatListCache(storage);
     clearEmojiRecents(storage);
-    clearMessageCache(storage);
     resetIsServerOwnerCache();
     // A new sign-in is a new session for the handle gate: clear every dismissal.
     resetHandleGateDismissal();
@@ -113,41 +120,40 @@ export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =
     goToLogin();
   });
 
-// One pending throttled write per store; a sign-out drops it so it cannot recreate the key.
-const messageSaveTimers = new WeakMap<StoreCtx, ReturnType<typeof setTimeout>>();
+// One debounced writer per store; a sign-out clears it so it cannot recreate the key.
+const messageCacheWriters = new WeakMap<StoreCtx, MessageCacheWriter>();
 
-function cancelScheduledMessageSave(ctx: StoreCtx): void {
-  const timer = messageSaveTimers.get(ctx);
-  if (timer !== undefined) {
-    clearTimeout(timer);
-    messageSaveTimers.delete(ctx);
-  }
+function messageCacheFor(ctx: StoreCtx): MessageCacheWriter {
+  const writer = messageCacheWriters.get(ctx) ?? createWebMessageCache(ctx.ports.storage);
+  messageCacheWriters.set(ctx, writer);
+  return writer;
 }
 
-export function saveMessages(ctx: StoreCtx): void {
-  cancelScheduledMessageSave(ctx);
+function saveCache(ctx: StoreCtx, immediately: boolean): void {
   const state = ctx.get();
-  writeMessageCache(
-    ctx.ports.storage,
-    state.currentUserId,
-    state.chats,
-    state.messagesByChat,
-    state.pinsByChat,
-  );
-}
-
-export function scheduleMessageSave(ctx: StoreCtx): void {
-  const state = ctx.get();
-  if (state.currentUserId === '' || typeof window === 'undefined') {
+  const snapshot = buildCacheSnapshot({
+    userId: state.currentUserId,
+    chats: state.chats,
+    messagesByChat: state.messagesByChat,
+    activeChatId: null,
+    maxChats: MAX_CACHED_CHATS,
+    pinsFor: (chatId) => state.pinsByChat[chatId] ?? [],
+  });
+  if (snapshot === undefined) {
     return;
   }
-  cancelScheduledMessageSave(ctx);
-  const timer = setTimeout(() => {
-    messageSaveTimers.delete(ctx);
-    saveMessages(ctx);
-  }, MESSAGE_CACHE_WRITE_DELAY_MS);
-  messageSaveTimers.set(ctx, timer);
+  const writer = messageCacheFor(ctx);
+  writer.schedule(snapshot);
+  if (immediately) {
+    writer.flush();
+  }
 }
+
+export const flushMessageCache = (ctx: StoreCtx): void => saveCache(ctx, true);
+
+export const scheduleMessageCache = (ctx: StoreCtx): void => {
+  if (typeof window !== 'undefined') saveCache(ctx, false);
+};
 
 export function prepareStart(ctx: StoreCtx): void {
   const { storage } = ctx.ports;
@@ -182,7 +188,7 @@ export function prepareStart(ctx: StoreCtx): void {
   if (typeof window !== 'undefined') {
     const onPageHide = (): void => {
       saveChatList(ctx);
-      saveMessages(ctx);
+      flushMessageCache(ctx);
     };
     window.addEventListener('pagehide', onPageHide);
     ctx.rt.onStoreClose(Effect.sync(() => window.removeEventListener('pagehide', onPageHide)));

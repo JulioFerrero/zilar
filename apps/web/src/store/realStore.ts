@@ -4,7 +4,7 @@ import { makeGroupActions } from './effects/groupActions';
 import { createStoreLocals } from './effects/locals';
 import { portsLayer, readPorts, type RealStoreDeps } from './effects/ports';
 import { makeLifetime } from './effects/runtime';
-import { scheduleMessageSave } from './effects/lifecycle';
+import { scheduleMessageCache } from './effects/lifecycle';
 import { makeStoreContext } from './effects/storeContext';
 import { createAtomStore, type SetState, type StoreApi } from '@zilar/client-core';
 import { canPinFor } from '@zilar/client-core/store';
@@ -38,7 +38,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     };
 
     const { ctx } = makeStoreContext({ locals, ports, rt, set: setWithMessageCache, get });
-    onMessagesChanged = () => scheduleMessageSave(ctx);
+    onMessagesChanged = () => scheduleMessageCache(ctx);
 
     return {
       currentUserId: '',

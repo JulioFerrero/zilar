@@ -197,6 +197,29 @@ export function selectCachedChats(
   return active === undefined ? first : [...first, active];
 }
 
+/** Only display data is kept: message rows, pins, the owner id and a version. No token and no media bytes, only the URLs the rows carry. */
+export function buildCacheSnapshot(input: {
+  userId: string | undefined;
+  chats: readonly ChatSummary[];
+  messagesByChat: Record<string, UiMessage[]>;
+  activeChatId?: string | null;
+  maxChats: number;
+  pinsFor?: (chatId: string) => readonly Pin[];
+}): MessageCacheSnapshot | undefined {
+  if (input.userId === undefined || input.userId === '') {
+    return undefined;
+  }
+  const messages: Record<string, UiMessage[]> = {};
+  const pins: Record<string, Pin[]> = {};
+  for (const chat of selectCachedChats(input.chats, input.activeChatId, input.maxChats)) {
+    const list = input.messagesByChat[chat.id];
+    if (list !== undefined) messages[chat.id] = list;
+    const pinned = input.pinsFor?.(chat.id) ?? [];
+    if (pinned.length > 0) pins[chat.id] = [...pinned];
+  }
+  return { userId: input.userId, messages, pins };
+}
+
 function keptChats(snapshot: MessageCacheSnapshot, prefixes: readonly string[]): KeptChat[] {
   const kept: KeptChat[] = [];
   for (const [chatId, list] of Object.entries(snapshot.messages)) {
@@ -275,5 +298,77 @@ export function decodeMessageCache(raw: string, userId: string): MessageCacheSna
     userId: decoded.success.userId,
     messages,
     pins: decodePins(decoded.success.pins),
+  };
+}
+
+/** The storage seam: web wraps `localStorage`, phone a file; tests inject an in-memory fake. */
+export interface MessageCacheWriterPort {
+  read(): Promise<string | null>;
+  write(contents: string): Promise<void>;
+  remove(): Promise<void>;
+}
+
+export interface MessageCacheWriter {
+  hydrate(userId: string): Promise<MessageCacheSnapshot | null>;
+  schedule(snapshot: MessageCacheSnapshot): void;
+  flush(): void;
+  /** Waits for any in-flight write, then removes the cache; no scheduled or late write recreates it until the next `hydrate`. */
+  clear(): Promise<void>;
+}
+
+export function createMessageCacheWriter(
+  port: MessageCacheWriterPort,
+  options: { delayMs: number; encode: (snapshot: MessageCacheSnapshot) => string },
+): MessageCacheWriter {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: MessageCacheSnapshot | undefined;
+  // Every write and the removal run in order on this chain, so `clear()` waits for an in-flight write before it removes the cache.
+  let ops: Promise<void> = Promise.resolve();
+  // Set by `clear()`: no scheduled or late write may recreate the cache until the next `hydrate`.
+  let cleared = false;
+
+  const cancelTimer = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const enqueue = (task: () => Promise<void>): Promise<void> => {
+    // Run even after an earlier failure: a failed write costs only the next cold start, and a rejection here must never go unhandled.
+    ops = ops.then(task, task).catch(() => undefined);
+    return ops;
+  };
+  const flush = (): void => {
+    cancelTimer();
+    const snapshot = pending;
+    pending = undefined;
+    if (snapshot === undefined || cleared) return;
+    const contents = options.encode(snapshot);
+    void enqueue(() => port.write(contents));
+  };
+  const schedule = (snapshot: MessageCacheSnapshot): void => {
+    if (cleared) return;
+    pending = snapshot;
+    cancelTimer();
+    timer = setTimeout(() => {
+      timer = undefined;
+      flush();
+    }, options.delayMs);
+  };
+
+  return {
+    async hydrate(userId) {
+      // Wait out any pending write or removal, then reopen for writes, so the read never races a sign-out's removal.
+      await ops;
+      cleared = false;
+      const raw = await port.read();
+      return raw === null ? null : decodeMessageCache(raw, userId);
+    },
+    schedule,
+    flush,
+    async clear() {
+      cancelTimer();
+      pending = undefined;
+      cleared = true;
+      await enqueue(() => port.remove());
+    },
   };
 }

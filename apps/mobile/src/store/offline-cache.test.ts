@@ -3,12 +3,17 @@
 // user's file is ignored, and sign-out removes the file. The file is an
 // injected in-memory port, so the real `expo-file-system` is never loaded.
 import type { UiMessage } from '@zilar/chat-core';
+import { createMessageCacheWriter } from '@zilar/client-core/store';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
-import { createOfflineCache, encodeOfflineCache, type OfflineCachePort } from './offline-cache';
+import {
+  OFFLINE_CACHE_WRITE_DELAY_MS,
+  encodeOfflineCache,
+  type OfflineCachePort,
+} from './offline-cache';
 import { fakeApi, fakeAppState } from './test-support';
 import { waitFor } from '@/test/wait';
 
@@ -177,7 +182,10 @@ describe('mobile offline chat cache (T-1313)', () => {
         contents = null;
       }),
     };
-    const cache = createOfflineCache(port);
+    const cache = createMessageCacheWriter(port, {
+      delayMs: OFFLINE_CACHE_WRITE_DELAY_MS,
+      encode: encodeOfflineCache,
+    });
 
     cache.schedule({
       userId: ME,

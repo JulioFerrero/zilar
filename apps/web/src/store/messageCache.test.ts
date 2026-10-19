@@ -1,10 +1,12 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { describe, expect, it } from 'vitest';
+import { buildCacheSnapshot } from '@zilar/client-core/store';
 import {
+  MAX_CACHED_CHATS,
   MESSAGE_CACHE_KEY,
   clearMessageCache,
+  createWebMessageCache,
   readMessageCache,
-  writeMessageCache,
 } from './messageCache';
 import type { StorageLike } from './realStore';
 
@@ -38,13 +40,36 @@ function chat(id: string): ChatSummary {
   return { id } as ChatSummary;
 }
 
+async function writeCache(
+  storage: StorageLike,
+  userId: string,
+  chats: readonly ChatSummary[],
+  messagesByChat: Record<string, UiMessage[]>,
+): Promise<void> {
+  const snapshot = buildCacheSnapshot({
+    userId,
+    chats,
+    messagesByChat,
+    activeChatId: null,
+    maxChats: MAX_CACHED_CHATS,
+  });
+  if (snapshot === undefined) {
+    return;
+  }
+  const cache = createWebMessageCache(storage);
+  cache.schedule(snapshot);
+  cache.flush();
+  // The shared writer queues the port write on a promise chain.
+  await Promise.resolve();
+}
+
 describe('message cache (T-1903)', () => {
-  it('round-trips one user and gives another user nothing', () => {
+  it('round-trips one user and gives another user nothing', async () => {
     const storage = memoryStorage();
     const ana = 'ana@zilar.test';
     const bob = 'bob@zilar.test';
 
-    writeMessageCache(storage, 'u-1', [chat(ana), chat(bob)], {
+    await writeCache(storage, 'u-1', [chat(ana), chat(bob)], {
       [ana]: [message(ana, 'm1'), message(ana, 'm2')],
       [bob]: [message(bob, 'm3')],
     });
@@ -60,7 +85,7 @@ describe('message cache (T-1903)', () => {
     expect(storage.getItem(MESSAGE_CACHE_KEY)).toBeNull();
 
     // Sign-out drops the key too.
-    writeMessageCache(storage, 'u-1', [chat(ana)], { [ana]: [message(ana, 'm1')] });
+    await writeCache(storage, 'u-1', [chat(ana)], { [ana]: [message(ana, 'm1')] });
     clearMessageCache(storage);
     expect(storage.getItem(MESSAGE_CACHE_KEY)).toBeNull();
   });

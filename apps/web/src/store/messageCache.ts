@@ -1,16 +1,18 @@
 import type { Pin as PinRow } from '@zilar/api-contract';
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 import {
+  createMessageCacheWriter,
   decodeMessageCache,
   encodeMessageCache,
-  selectCachedChats,
   type MessageCacheSnapshot,
+  type MessageCacheWriter,
+  type MessageCacheWriterPort,
 } from '@zilar/client-core/store';
 import type { StorageLike } from './realStore';
 
 // effect-plain: the shared codec owns the parsing; this file wraps browser storage and its caps.
 export const MESSAGE_CACHE_KEY = 'zilar:messages';
-const MAX_CACHED_CHATS = 30;
+export const MAX_CACHED_CHATS = 30;
 // The browser gives us about 5 MB; keep the payload well below that.
 const MAX_CACHE_BYTES = 1_500_000;
 // A URL with these prefixes only works on this device, so it is never stored.
@@ -51,36 +53,46 @@ export function readCachedPins(
   );
 }
 
-// Saves the 30 newest chats in list order, with their pins; the codec caps the payload at
-// 1.5 MB, dropping the oldest chats first, then the oldest rows.
-export function writeMessageCache(
-  storage: StorageLike | null,
-  userId: string,
-  chats: readonly ChatSummary[],
-  messagesByChat: Record<string, UiMessage[]>,
-  pinsByChat: Record<string, readonly PinRow[]> = {},
-): void {
-  if (storage === null || userId === '') return;
+function safely(storage: StorageLike | null, task: (target: StorageLike) => void): void {
+  if (storage === null) return;
   try {
-    const messages: Record<string, UiMessage[]> = {};
-    for (const chat of selectCachedChats(chats, null, MAX_CACHED_CHATS)) {
-      const list = messagesByChat[chat.id];
-      if (list !== undefined) messages[chat.id] = list;
-    }
-    const options = { localUrlPrefixes: LOCAL_URL_PREFIXES, maxBytes: MAX_CACHE_BYTES };
-    storage.setItem(
-      MESSAGE_CACHE_KEY,
-      encodeMessageCache({ userId, messages, pins: pinsByChat }, options),
-    );
+    task(storage);
   } catch {
     // Storage failures must never break messaging.
   }
 }
 
+function messageCachePort(storage: StorageLike | null): MessageCacheWriterPort {
+  return {
+    async read() {
+      try {
+        return storage?.getItem(MESSAGE_CACHE_KEY) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    async write(contents) {
+      safely(storage, (target) => target.setItem(MESSAGE_CACHE_KEY, contents));
+    },
+    async remove() {
+      safely(storage, (target) => target.removeItem(MESSAGE_CACHE_KEY));
+    },
+  };
+}
+
+// Saves the 30 newest chats in list order, with their pins; the codec caps the payload at
+// 1.5 MB, dropping the oldest chats first, then the oldest rows.
+export function createWebMessageCache(storage: StorageLike | null): MessageCacheWriter {
+  return createMessageCacheWriter(messageCachePort(storage), {
+    delayMs: MESSAGE_CACHE_WRITE_DELAY_MS,
+    encode: (snapshot) =>
+      encodeMessageCache(snapshot, {
+        localUrlPrefixes: LOCAL_URL_PREFIXES,
+        maxBytes: MAX_CACHE_BYTES,
+      }),
+  });
+}
+
 export function clearMessageCache(storage: StorageLike | null): void {
-  try {
-    storage?.removeItem(MESSAGE_CACHE_KEY);
-  } catch {
-    // Storage failures must never break messaging.
-  }
+  safely(storage, (target) => target.removeItem(MESSAGE_CACHE_KEY));
 }
