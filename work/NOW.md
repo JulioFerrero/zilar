@@ -114,6 +114,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2186 | phone: 6 settings screens load through the shared `useFocusList` instead of hand-rolled status, refs and focus effects (AIs tab, Connections, Integrations, Routines, Machines, Stickers) | −154 |
 | T-2187 | web and phone in-file repeats, wave 3 (media sheet, voice message, choice blocks, AI panel, channel people…) | −100 |
 | T-2189 | phone: one settings screen shell; `AisScreenShell` and `RefreshScroll` gone, 4 screens stop drawing their frame by hand | −82 |
+| T-2190 | 14 comments that named a deleted file now name the current one (comment lines only) | −2 |
+| T-2191 | phone: Me loads through `useFocusList`; Devices uses the shell's pull-to-refresh | −20 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -134,7 +136,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 **Running (06:50):**
 
-- **T-2190:** 14 code comments that name a file which no longer exists point at its current home.
+- **T-2192 (07:30):** Julio's 10-10 test rule. 12 chat-core tests of display-only helpers go (669 test lines; tests are not in the source count). Tests for keys, money, permissions, URL and media safety and the message pipeline stay.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.

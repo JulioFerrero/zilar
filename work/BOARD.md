@@ -2190,3 +2190,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2189](T-2189-phone-one-shell.md) | phone: one settings screen shell | 2026-10-19 |
 | [T-2190](T-2190-stale-file-refs.md) | comments name files that exist | 2026-10-19 |
 | [T-2191](T-2191-phone-me-devices.md) | phone: Me and Devices use the shared load and refresh | 2026-10-19 |
+| [T-2192](T-2192-trim-cosmetic-tests.md) | chat-core: drop 12 tests of display-only helpers | 2026-10-19 |
