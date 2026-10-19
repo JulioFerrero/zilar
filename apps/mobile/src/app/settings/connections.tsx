@@ -2,8 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Deferred, Effect } from 'effect';
 import { KeyRound, Plus, MoreHorizontal } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { providerLabel } from '@zilar/chat-core';
@@ -14,7 +13,7 @@ import { ProviderStep } from '@/components/ais/new-ai/provider-step';
 import { ConnectionSheet } from '@/components/connections/connection-sheet';
 import { useKeyCheck } from '@/components/connections/use-key-check';
 import { useApi } from '@/lib/use-mockable-api';
-import { usePullToRefresh } from '@/components/settings/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -25,7 +24,6 @@ import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { MUTED_FOREGROUND, ICON } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
 import { IconButton } from '@/components/ui/icon-button';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { cn } from '@/lib/utils';
 
 interface ConnectionsErrorInfo {
@@ -124,31 +122,6 @@ function ConnectionRow({
       </View>
       <MoreHorizontal size={18} color={MUTED_FOREGROUND} />
     </Pressable>
-  );
-}
-
-function ConnectionsHeader({
-  onBack,
-  onAdd,
-  showAdd,
-}: {
-  onBack: () => void;
-  onAdd: () => void;
-  showAdd: boolean;
-}) {
-  return (
-    <ScreenHeader
-      variant="sub"
-      title="Connections"
-      onBack={onBack}
-      right={
-        showAdd ? (
-          <IconButton label="Add key" onPress={onAdd}>
-            <Plus size={22} color={ICON} />
-          </IconButton>
-        ) : undefined
-      }
-    />
   );
 }
 
@@ -367,8 +340,6 @@ function ConnectionsList() {
     setRemoveError('');
   };
 
-  const { refreshing, pullToRefresh } = usePullToRefresh(reload);
-
   const openAdd = (): void => {
     setAddSession((session) => session + 1);
     setAddOpen(true);
@@ -397,147 +368,138 @@ function ConnectionsList() {
     confirmingConnection === null ? 'key' : `${providerLabel(confirmingConnection.provider)} key`;
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <ConnectionsHeader
-        onBack={() => router.back()}
-        onAdd={openAdd}
-        showAdd={status === 'ready'}
-      />
-
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={pullToRefresh}
+    <SettingsScreenShell
+      title="Connections"
+      onBack={() => router.back()}
+      right={
+        status === 'ready' ? (
+          <IconButton label="Add key" onPress={openAdd}>
+            <Plus size={22} color={ICON} />
+          </IconButton>
+        ) : undefined
+      }
+      onRefresh={reload}
+      contentClassName="gap-4 py-4"
+      contentPaddingBottom={32}
+      after={
+        <>
+          <ConnectionSheet
+            key={sheetSession}
+            connection={sheetConnection}
+            working={sheetConnection !== null && isWorking(sheetConnection)}
+            tested={sheetConnection !== null && testResults[sheetConnection.id] === true}
+            testing={sheetConnection !== null && testingId === sheetConnection.id}
+            replacing={replacing}
+            replaceError={replaceError}
+            onClose={() => {
+              clearReplaceError();
+              setSheetId(null);
+            }}
+            onDismissed={() => {
+              if (pendingDeleteId !== null) {
+                askRemove(pendingDeleteId);
+                setPendingDeleteId(null);
+              }
+            }}
+            onTest={() => {
+              if (sheetConnection !== null) {
+                runTest(sheetConnection.id);
+              }
+            }}
+            onReplaceStart={clearReplaceError}
+            onReplace={(key) => {
+              if (sheetConnection !== null) {
+                replaceKey(sheetConnection.id, key);
+              }
+            }}
+            onDelete={() => {
+              if (sheetConnection === null) {
+                return;
+              }
+              setPendingDeleteId(sheetConnection.id);
+              setSheetId(null);
+            }}
           />
-        }
-      >
-        <View className="gap-4 py-4">
-          {status === 'ready' && errorInfo.message !== '' ? (
-            <Text role="alert" className="px-4 text-[13px] text-danger">
-              {errorInfo.message}
-            </Text>
-          ) : null}
 
-          {status === 'loading' ? (
-            <StateMessage kind="loading" title="Loading connections…" />
-          ) : null}
+          <ConfirmDialog
+            visible={confirmingId !== null}
+            title={`Delete ${confirmingLabel}?`}
+            message="This removes the provider key from your account."
+            error={removeError}
+            confirmLabel="Delete"
+            busyLabel="Deleting…"
+            busy={busy}
+            onCancel={cancelRemove}
+            onConfirm={() => {
+              if (confirmingId !== null) {
+                removeConnection(confirmingId);
+              }
+            }}
+            confirmAccessibilityLabel={`Delete ${confirmingLabel}`}
+          />
 
-          {status === 'error' ? (
-            <StateMessage
-              kind="error"
-              title={errorInfo.message}
-              action={{
-                label: 'Retry',
-                accessibilityLabel: 'Retry loading connections',
-                onPress: reload,
-              }}
+          <AddKeySheet
+            key={addSession}
+            visible={addOpen}
+            onClose={() => setAddOpen(false)}
+            onSaved={() => {
+              setAddOpen(false);
+              reload();
+            }}
+          />
+
+          <Toast toast={toast} onDismiss={() => setToast(null)} />
+        </>
+      }
+    >
+      {status === 'ready' && errorInfo.message !== '' ? (
+        <Text role="alert" className="px-4 text-[13px] text-danger">
+          {errorInfo.message}
+        </Text>
+      ) : null}
+
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading connections…" /> : null}
+
+      {status === 'error' ? (
+        <StateMessage
+          kind="error"
+          title={errorInfo.message}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading connections',
+            onPress: reload,
+          }}
+        />
+      ) : null}
+
+      {status === 'ready' && connections.length === 0 ? (
+        <StateMessage
+          kind="empty"
+          icon={KeyRound}
+          title="No keys yet"
+          action={{
+            label: 'Add key',
+            accessibilityLabel: 'Add key',
+            onPress: openAdd,
+          }}
+        />
+      ) : null}
+
+      {status === 'ready' && connections.length > 0 ? (
+        <View className="mx-4 overflow-hidden rounded-2xl border border-divider bg-surface">
+          {connections.map((connection, index) => (
+            <ConnectionRow
+              key={connection.id}
+              connection={connection}
+              working={isWorking(connection)}
+              reason={reasonOf(connection)}
+              last={index === connections.length - 1}
+              onPress={() => openSheet(connection.id)}
             />
-          ) : null}
-
-          {status === 'ready' && connections.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              icon={KeyRound}
-              title="No keys yet"
-              action={{
-                label: 'Add key',
-                accessibilityLabel: 'Add key',
-                onPress: openAdd,
-              }}
-            />
-          ) : null}
-
-          {status === 'ready' && connections.length > 0 ? (
-            <View className="mx-4 overflow-hidden rounded-2xl border border-divider bg-surface">
-              {connections.map((connection, index) => (
-                <ConnectionRow
-                  key={connection.id}
-                  connection={connection}
-                  working={isWorking(connection)}
-                  reason={reasonOf(connection)}
-                  last={index === connections.length - 1}
-                  onPress={() => openSheet(connection.id)}
-                />
-              ))}
-            </View>
-          ) : null}
+          ))}
         </View>
-      </ScrollView>
-
-      <ConnectionSheet
-        key={sheetSession}
-        connection={sheetConnection}
-        working={sheetConnection !== null && isWorking(sheetConnection)}
-        tested={sheetConnection !== null && testResults[sheetConnection.id] === true}
-        testing={sheetConnection !== null && testingId === sheetConnection.id}
-        replacing={replacing}
-        replaceError={replaceError}
-        onClose={() => {
-          clearReplaceError();
-          setSheetId(null);
-        }}
-        onDismissed={() => {
-          if (pendingDeleteId !== null) {
-            askRemove(pendingDeleteId);
-            setPendingDeleteId(null);
-          }
-        }}
-        onTest={() => {
-          if (sheetConnection !== null) {
-            runTest(sheetConnection.id);
-          }
-        }}
-        onReplaceStart={clearReplaceError}
-        onReplace={(key) => {
-          if (sheetConnection !== null) {
-            replaceKey(sheetConnection.id, key);
-          }
-        }}
-        onDelete={() => {
-          if (sheetConnection === null) {
-            return;
-          }
-          setPendingDeleteId(sheetConnection.id);
-          setSheetId(null);
-        }}
-      />
-
-      <ConfirmDialog
-        visible={confirmingId !== null}
-        title={`Delete ${confirmingLabel}?`}
-        message="This removes the provider key from your account."
-        error={removeError}
-        confirmLabel="Delete"
-        busyLabel="Deleting…"
-        busy={busy}
-        onCancel={cancelRemove}
-        onConfirm={() => {
-          if (confirmingId !== null) {
-            removeConnection(confirmingId);
-          }
-        }}
-        confirmAccessibilityLabel={`Delete ${confirmingLabel}`}
-      />
-
-      <AddKeySheet
-        key={addSession}
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSaved={() => {
-          setAddOpen(false);
-          reload();
-        }}
-      />
-
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
-    </SafeAreaView>
+      ) : null}
+    </SettingsScreenShell>
   );
 }
 

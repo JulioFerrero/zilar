@@ -2163,3 +2163,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2160](T-2160-intra-dedupe-server-2.md) | server: one copy of in-file repeats, wave 2 | 2026-10-19 |
 | [T-2162](T-2162-web-clone-pairs.md) | web: shared typing line and visibility setting | 2026-10-19 |
 | [T-2164](T-2164-pkg-clone-pairs.md) | packages: one stanza export path, shared pause config | 2026-10-19 |
+| [T-2163](T-2163-phone-clone-pairs.md) | phone: one settings screen shell | 2026-10-19 |
