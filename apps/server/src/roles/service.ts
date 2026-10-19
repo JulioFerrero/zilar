@@ -98,14 +98,7 @@ async function syncTopicsWithRoles(
     if (topic.archivedAt !== null || !wanted.has(topic.id)) {
       continue;
     }
-    try {
-      await syncTopicRoom(
-        { db: deps.db, adminClient: deps.adminClient, domain: deps.domain, logger: deps.logger },
-        topic,
-      );
-    } catch {
-      deps.logger.warn({ groupId }, 'could not sync a topic room after a role change');
-    }
+    await syncTopicRoomQuietly(deps, groupId, topic);
   }
 }
 
@@ -119,6 +112,31 @@ function mapRoleError(error: unknown): HttpError {
     return new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
   return xmppUnavailable();
+}
+
+function listGroupRoles(db: ServerDatabase, groupId: string): Promise<readonly GroupRoleRow[]> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
+}
+
+async function syncTopicRoomQuietly(
+  deps: TopicServiceDeps,
+  groupId: string,
+  topic: TopicRow,
+): Promise<void> {
+  try {
+    await syncTopicRoom(
+      { db: deps.db, adminClient: deps.adminClient, domain: deps.domain, logger: deps.logger },
+      topic,
+    );
+  } catch {
+    deps.logger.warn({ groupId }, 'could not sync a topic room after a role change');
+  }
 }
 
 function auditEntry(
@@ -153,13 +171,7 @@ export async function createRole(
   // The unique index keeps the duplicate check race-safe; the count and the
   // insert share one transaction under a per-group lock, so two creates past the
   // cap cannot both insert.
-  const existing = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const existing = await listGroupRoles(deps.db, groupId);
   if (existing.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
@@ -217,13 +229,7 @@ export async function renameRole(
 ): Promise<GroupRoleDetail> {
   await requireGroupManager(deps.db, groupId, actorId);
   const role = await requireRoleInGroup(deps.db, groupId, roleId);
-  const siblings = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const siblings = await listGroupRoles(deps.db, groupId);
   if (siblings.some((row) => row.id !== role.id && row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
@@ -295,14 +301,7 @@ export async function deleteRole(
       if (topic.archivedAt !== null) {
         continue;
       }
-      try {
-        await syncTopicRoom(
-          { db: deps.db, adminClient: deps.adminClient, domain: deps.domain, logger: deps.logger },
-          topic,
-        );
-      } catch {
-        deps.logger.warn({ groupId }, 'could not sync a topic room after a role change');
-      }
+      await syncTopicRoomQuietly(deps, groupId, topic);
     }
   }
   if (deps.audit) {
@@ -419,13 +418,7 @@ export async function dropMemberRoles(
   groupId: string,
   userId: string,
 ): Promise<string[]> {
-  const roles = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const roles = await listGroupRoles(deps.db, groupId);
   if (roles.length === 0) {
     return [];
   }
@@ -467,13 +460,7 @@ export async function listRoles(
   actorId: string,
 ): Promise<GroupRoleDetail[]> {
   await requireGroupMembership(db, groupId, actorId);
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const rows = await listGroupRoles(db, groupId);
   const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const details: GroupRoleDetail[] = [];
   for (const row of sorted) {
@@ -487,13 +474,7 @@ export async function roleHoldersByGroup(
   db: ServerDatabase,
   groupId: string,
 ): Promise<Map<string, GroupRoleView[]>> {
-  const roles = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const roles = await listGroupRoles(db, groupId);
   const byId = new Map(roles.map((role) => [role.id, { id: role.id, name: role.name }]));
   const result = new Map<string, GroupRoleView[]>();
   if (roles.length === 0) {
@@ -541,13 +522,7 @@ export async function rolesOfTopic(
         WHERE topic_id = ${topicId}`;
     }),
   );
-  const roles = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
-    }),
-  );
+  const roles = await listGroupRoles(db, groupId);
   const wanted = new Set(accessRows.map((row) => row.roleId));
   const attached = roles.filter((role) => wanted.has(role.id));
   attached.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));

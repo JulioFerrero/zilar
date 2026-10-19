@@ -121,6 +121,8 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
   const writeLimiter = limiter('aiMemoryWrite', now);
+  const resolveChat = (userId: string, chat: string, aiId: string) =>
+    resolveMemoryChat(deps.db, deps.config, userId, chat, aiId);
 
   const groupLayer = HttpApiBuilder.group(AiMemoryApi, 'aiMemory', (handlers) =>
     handlers
@@ -129,13 +131,7 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
       .handle(
         'view',
         handler(logger, async (request, user) => {
-          const resolved = await resolveMemoryChat(
-            deps.db,
-            deps.config,
-            user.id,
-            request.query.chat,
-            request.query.ai,
-          );
+          const resolved = await resolveChat(user.id, request.query.chat, request.query.ai);
           const [facts, lines] = await Promise.all([
             listFacts(deps.db, resolved.aiId, resolved.chatKey),
             renderMemoryBlock(deps.db, resolved.aiId, resolved.chatKey),
@@ -147,13 +143,7 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
       .handle(
         'deleteFact',
         handler(logger, async (request, user) => {
-          const resolved = await resolveMemoryChat(
-            deps.db,
-            deps.config,
-            user.id,
-            request.query.chat,
-            request.query.ai,
-          );
+          const resolved = await resolveChat(user.id, request.query.chat, request.query.ai);
           if (!resolved.canChange) {
             throw toForbiddenChange();
           }
@@ -173,13 +163,7 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
       .handle(
         'clear',
         handler(logger, async (request, user) => {
-          const resolved = await resolveMemoryChat(
-            deps.db,
-            deps.config,
-            user.id,
-            request.payload.chat,
-            request.payload.ai,
-          );
+          const resolved = await resolveChat(user.id, request.payload.chat, request.payload.ai);
           if (!resolved.canChange) {
             throw toForbiddenChange();
           }

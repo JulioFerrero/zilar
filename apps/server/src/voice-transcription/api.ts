@@ -6,6 +6,8 @@ import {
   VoiceSettingsOwnerLimit,
 } from '@zilar/api-contract';
 import { SqlClient } from 'effect/sql';
+import { type AuditRecorder } from '../audit/recorder';
+import { type AuditEntry } from '../audit/schema';
 import { type ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -41,6 +43,26 @@ import {
 import { isInstanceOwner } from '../setup/instance-owner';
 import { settingsCipherFor } from '../setup/settings';
 import { HttpServerRequest } from 'effect/http';
+
+function recordVoiceAudit(
+  audit: AuditRecorder | undefined,
+  userId: string,
+  action: string,
+  detail: AuditEntry['detail'],
+): void {
+  void audit?.record({
+    actorUserId: userId,
+    aiId: null,
+    groupId: null,
+    action,
+    subjectId: null,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail,
+  });
+}
 // The transcript route answers 501 when no endpoint is configured, before the payload is
 // decoded. `requires: CurrentUser` keeps the session 401 first.
 function transcriptConfiguredLayer(
@@ -174,18 +196,7 @@ export function createVoiceTranscriptionApi(
           // Every request is audited, cache hits included: ids and the URL hash only, never
           // the text.
           const auditRequested = (): void => {
-            void deps.audit?.record({
-              actorUserId: user.id,
-              aiId: null,
-              groupId: null,
-              action: 'voice.transcript_requested',
-              subjectId: null,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: { urlHash },
-            });
+            recordVoiceAudit(deps.audit, user.id, 'voice.transcript_requested', { urlHash });
           };
           if (fastHit !== undefined) {
             auditRequested();
@@ -266,18 +277,7 @@ export function createVoiceTranscriptionApi(
           const cipher = settingsCipherFor(deps.config);
           await saveVoiceTranscriptionSettings(deps.db, cipher, candidate);
 
-          void deps.audit?.record({
-            actorUserId: user.id,
-            aiId: null,
-            groupId: null,
-            action: 'integrations.voice_transcription_set',
-            subjectId: null,
-            argsHash: null,
-            costCurrency: null,
-            costAmount: null,
-            result: 'ok',
-            detail: null,
-          });
+          recordVoiceAudit(deps.audit, user.id, 'integrations.voice_transcription_set', null);
           return { ok: true as const };
         }),
       )
@@ -288,18 +288,7 @@ export function createVoiceTranscriptionApi(
             throw new HttpError(404, 'not_found', 'Not found');
           }
           await deleteVoiceTranscriptionSettings(deps.db);
-          void deps.audit?.record({
-            actorUserId: user.id,
-            aiId: null,
-            groupId: null,
-            action: 'integrations.voice_transcription_removed',
-            subjectId: null,
-            argsHash: null,
-            costCurrency: null,
-            costAmount: null,
-            result: 'ok',
-            detail: null,
-          });
+          recordVoiceAudit(deps.audit, user.id, 'integrations.voice_transcription_removed', null);
           return { ok: true as const };
         }),
       ),

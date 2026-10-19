@@ -25,6 +25,13 @@ import type {
 } from './service';
 import { type AiToolRow, type AiToolVersionRow } from '../db/rows-agents';
 
+function versionLimitError(): ToolServiceError {
+  return new ToolServiceError(
+    'version_limit',
+    `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
+  );
+}
+
 interface AppendVersionResult {
   tool: ToolDetail;
   version: ToolVersionDetail;
@@ -207,12 +214,7 @@ function appendVersion(
       };
     }
     if (input.tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
-      return yield* Effect.fail(
-        new ToolServiceError(
-          'version_limit',
-          `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
-        ),
-      );
+      return yield* Effect.fail(versionLimitError());
     }
     const next = input.tool.currentVersion + 1;
     const version = yield* insertVersion(sql, {
@@ -274,12 +276,7 @@ export async function revertTool(
             return yield* Effect.fail(new ToolServiceError('not_found', 'Tool version not found'));
           }
           if (tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
-            return yield* Effect.fail(
-              new ToolServiceError(
-                'version_limit',
-                `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
-              ),
-            );
+            return yield* Effect.fail(versionLimitError());
           }
           const next = tool.currentVersion + 1;
           const version = yield* insertVersion(sql, {

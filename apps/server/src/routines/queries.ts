@@ -11,6 +11,21 @@ import {
 } from './schemas';
 import { type RoutineRow } from '../db/rows-agents';
 
+function toolNameRow(
+  db: ServerDatabase,
+  toolId: string | null,
+): Promise<RoutineToolNameRow | null> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [found] = yield* sql<RoutineToolNameRow>`SELECT name FROM ai_tools
+        WHERE id = ${toolId} LIMIT 1`;
+      return found ?? null;
+    }),
+  );
+}
+
 export async function getRoutine(
   db: ServerDatabase,
   id: string,
@@ -26,15 +41,7 @@ export async function getRoutine(
   if (!row || row.deletedAt !== null) {
     return null;
   }
-  const tool = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [found] = yield* sql<RoutineToolNameRow>`SELECT name FROM ai_tools
-        WHERE id = ${row.toolId} LIMIT 1`;
-      return found ?? null;
-    }),
-  );
+  const tool = await toolNameRow(db, row.toolId);
   const schedule = parseRoutineSchedule(row.schedule);
   if (!schedule.ok) {
     return null;
@@ -106,18 +113,7 @@ export async function toPublicRoutines(
     if (!schedule.ok) {
       continue;
     }
-    const tool =
-      row.toolId === null
-        ? null
-        : await runSql(
-            db,
-            Effect.gen(function* () {
-              const sql = yield* SqlClient.SqlClient;
-              const [found] = yield* sql<RoutineToolNameRow>`SELECT name FROM ai_tools
-              WHERE id = ${row.toolId} LIMIT 1`;
-              return found ?? null;
-            }),
-          );
+    const tool = row.toolId === null ? null : await toolNameRow(db, row.toolId);
     result.push(toPublicRoutine(row, tool?.name ?? '', schedule.value));
   }
   result.sort((a, b) => a.id.localeCompare(b.id));

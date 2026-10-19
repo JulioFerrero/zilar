@@ -7,6 +7,18 @@ import { HttpError } from '../errors';
 import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { toMissingGroup, toMissingRole } from './schemas';
 
+async function topicRoleIds(db: ServerDatabase, topicId: string): Promise<string[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
+        WHERE topic_id = ${topicId}`;
+    }),
+  );
+  return rows.map((row) => row.roleId);
+}
+
 // A non-member sees the same 404 as a missing group, so ids cannot be probed.
 export async function requireGroupMembership(
   db: ServerDatabase,
@@ -104,22 +116,11 @@ export async function topicRoleHolderIds(
   topicId: string,
   groupId: string,
 ): Promise<Set<string>> {
-  const accessRows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
-        WHERE topic_id = ${topicId}`;
-    }),
-  );
-  if (accessRows.length === 0) {
+  const roleIds = await topicRoleIds(db, topicId);
+  if (roleIds.length === 0) {
     return new Set();
   }
-  return holderUserIds(
-    db,
-    groupId,
-    accessRows.map((row) => row.roleId),
-  );
+  return holderUserIds(db, groupId, roleIds);
 }
 
 // Group membership is checked by the caller.
@@ -128,15 +129,8 @@ export async function holdsTopicRole(
   topicId: string,
   userId: string,
 ): Promise<boolean> {
-  const accessRows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
-        WHERE topic_id = ${topicId}`;
-    }),
-  );
-  if (accessRows.length === 0) {
+  const roleIds = await topicRoleIds(db, topicId);
+  if (roleIds.length === 0) {
     return false;
   }
   const [row] = await runSql(
@@ -145,7 +139,7 @@ export async function holdsTopicRole(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ userId: string }>`SELECT user_id FROM group_member_roles
         WHERE user_id = ${userId}
-          AND role_id IN ${sql.in(accessRows.map((access) => access.roleId))} LIMIT 1`;
+          AND role_id IN ${sql.in(roleIds)} LIMIT 1`;
     }),
   );
   return row !== undefined;

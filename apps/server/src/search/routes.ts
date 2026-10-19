@@ -43,6 +43,22 @@ export interface ArchiveQueryInput {
   beforeMicros: bigint | null;
 }
 
+function archiveFilters(
+  input: Omit<ArchiveQueryInput, 'tsquery'>,
+  next: (value: unknown) => string,
+): { before: string; cap: string; scope: string } {
+  const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
+  const cap = next(SEARCH_MAX_CANDIDATES);
+  let scope: string;
+  if (input.filter?.kind === 'room') {
+    scope = `username = ${next(input.filter.room)}`;
+  } else if (input.filter?.kind === 'dm') {
+    scope = `username = ${next(input.owners.ownLocalpart)} AND bare_peer = ${next(input.filter.peer)}`;
+  } else {
+    scope = `(username = ANY(${next(input.owners.rooms)}) OR (username = ${next(input.owners.ownLocalpart)} AND bare_peer = ANY(${next(input.owners.dmPeers)})))`;
+  }
+  return { before, cap, scope };
+}
 // One fully parameterized query: values travel as `$n` bindings and the tsquery
 // text itself is a binding, so SQL metacharacters are just text. Matching folds
 // accents/case and matches the last term as a prefix. The `(username,
@@ -67,17 +83,7 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
     ts_headline('simple', txt, to_tsquery('simple', ${tsquery}), ${headlineOptions}) AS headline,
     xml, txt AS "body"`;
   const match = `to_tsvector('simple', ${folded}) @@ to_tsquery('simple', ${tsquery})`;
-  const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
-  const cap = next(SEARCH_MAX_CANDIDATES);
-
-  let scope: string;
-  if (input.filter?.kind === 'room') {
-    scope = `username = ${next(input.filter.room)}`;
-  } else if (input.filter?.kind === 'dm') {
-    scope = `username = ${next(input.owners.ownLocalpart)} AND bare_peer = ${next(input.filter.peer)}`;
-  } else {
-    scope = `(username = ANY(${next(input.owners.rooms)}) OR (username = ${next(input.owners.ownLocalpart)} AND bare_peer = ANY(${next(input.owners.dmPeers)})))`;
-  }
+  const { before, cap, scope } = archiveFilters(input, next);
 
   return {
     text: `SELECT ${columns} FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} AND ${match} ORDER BY timestamp DESC LIMIT ${cap}`,
@@ -97,17 +103,7 @@ export function buildFuzzyCandidatesQuery(input: Omit<ArchiveQueryInput, 'tsquer
     return `$${values.length}`;
   };
   const cutoff = next(input.cutoffMicros);
-  const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
-  const cap = next(SEARCH_MAX_CANDIDATES);
-
-  let scope: string;
-  if (input.filter?.kind === 'room') {
-    scope = `username = ${next(input.filter.room)}`;
-  } else if (input.filter?.kind === 'dm') {
-    scope = `username = ${next(input.owners.ownLocalpart)} AND bare_peer = ${next(input.filter.peer)}`;
-  } else {
-    scope = `(username = ANY(${next(input.owners.rooms)}) OR (username = ${next(input.owners.ownLocalpart)} AND bare_peer = ANY(${next(input.owners.dmPeers)})))`;
-  }
+  const { before, cap, scope } = archiveFilters(input, next);
 
   return {
     text: `SELECT username AS owner, peer, bare_peer AS "barePeer", kind, nick, origin_id AS "originId", timestamp, xml, txt AS "body" FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} ORDER BY timestamp DESC LIMIT ${cap}`,

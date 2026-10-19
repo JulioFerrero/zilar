@@ -67,6 +67,15 @@ export async function runToolLoop(input: {
   let progressPosted = false;
   const multiRound = input.maxRounds > 1;
   let postedToRoom = false;
+  const reply = (text: string | null, failure: { reply: string } | null = null) => ({
+    text,
+    notices,
+    failure,
+    rounds,
+    toolCalls: executedCalls,
+    messages,
+    postedToRoom,
+  });
   const recordPosted = (exec: ExecuteToolCall | undefined): ExecuteToolCall | undefined =>
     exec === undefined
       ? undefined
@@ -89,15 +98,7 @@ export async function runToolLoop(input: {
       if (input.checkRoundGate !== undefined) {
         const gate = await input.checkRoundGate();
         if (gate !== null && gate.limited) {
-          return {
-            text: null,
-            notices,
-            failure: { reply: gate.reply },
-            rounds,
-            toolCalls: executedCalls,
-            messages,
-            postedToRoom,
-          };
+          return reply(null, { reply: gate.reply });
         }
       }
       rounds += 1;
@@ -122,41 +123,18 @@ export async function runToolLoop(input: {
           if (rounds <= 1) {
             throw new ChatCompletionError(200, 'empty reply from the model');
           }
-          return {
-            text: TRANSIENT_FAILURE_REPLY,
-            notices,
-            failure: null,
-            rounds,
-            toolCalls: executedCalls,
-            messages,
-            postedToRoom,
-          };
+          return reply(TRANSIENT_FAILURE_REPLY);
         }
-        return {
-          text: result.content + cutShortSuffix(result.finishReason),
-          notices,
-          failure: null,
-          rounds,
-          toolCalls: executedCalls,
-          messages,
-          postedToRoom,
-        };
+        return reply(result.content + cutShortSuffix(result.finishReason));
       }
       if (lastCall) {
         // No tools were offered on the last call, so anything the model
         // improvises is answered from its text alone.
-        return {
-          text:
-            result.content === null
-              ? TRANSIENT_FAILURE_REPLY
-              : result.content + cutShortSuffix(result.finishReason),
-          notices,
-          failure: null,
-          rounds,
-          toolCalls: executedCalls,
-          messages,
-          postedToRoom,
-        };
+        return reply(
+          result.content === null
+            ? TRANSIENT_FAILURE_REPLY
+            : result.content + cutShortSuffix(result.finishReason),
+        );
       }
       const step = await runLoopRound({
         aiId: input.aiId,
@@ -185,15 +163,7 @@ export async function runToolLoop(input: {
         break;
       }
     }
-    return {
-      text: null,
-      notices,
-      failure: null,
-      rounds,
-      toolCalls: executedCalls,
-      messages,
-      postedToRoom,
-    };
+    return reply(null);
   } finally {
     // One counts line per turn on every exit (text, failure, caps, throw):
     // ids and counts only, never content.

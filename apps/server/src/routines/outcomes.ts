@@ -11,6 +11,19 @@ import { describeSchedule } from '../tools/routine-adapters';
 import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { parseRoutineSchedule } from './schedule';
 import { type RoutineRow } from '../db/rows-agents';
+
+function auditBase(row: RoutineRow) {
+  return {
+    actorUserId: null,
+    aiId: row.aiId,
+    groupId: row.groupId,
+    subjectId: row.id,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+  };
+}
+
 async function auditRun(
   options: ExecuteRoutineOptions,
   row: RoutineRow,
@@ -19,14 +32,8 @@ async function auditRun(
 ): Promise<void> {
   // `detail` carries the status and duration only: never output text, source, or an error message.
   await options.audit.record({
-    actorUserId: null,
-    aiId: row.aiId,
-    groupId: row.groupId,
+    ...auditBase(row),
     action: 'routine.run',
-    subjectId: row.id,
-    argsHash: null,
-    costCurrency: null,
-    costAmount: null,
     result: status === 'error' ? 'error' : 'ok',
     detail: { status, durationMs: Math.max(0, Date.now() - startedAt) },
   });
@@ -38,14 +45,8 @@ async function auditPaused(
   reason: 'failures' | 'hosts_changed',
 ): Promise<void> {
   await options.audit.record({
-    actorUserId: null,
-    aiId: row.aiId,
-    groupId: row.groupId,
+    ...auditBase(row),
     action: 'routine.paused',
-    subjectId: row.id,
-    argsHash: null,
-    costCurrency: null,
-    costAmount: null,
     result: 'ok',
     detail: { reason },
   });

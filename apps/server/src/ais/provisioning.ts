@@ -5,6 +5,7 @@ import { isLlmProvider } from '../connections/providers';
 import { findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
+import type { ProviderConnectionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
@@ -20,14 +21,7 @@ import {
 import { aiLocalpart, compensateCreate } from './provisioning-xmpp';
 import { emitAiLifecycle, findOwnedAi, toPublicAi } from './queries';
 
-// Creates rows, the XMPP account and both roster items; the key is decrypted per
-// turn. The AI is inserted `disabled` and flipped `active` only after every step,
-// so a crash never leaves a usable-looking half AI.
-export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promise<PublicAi> {
-  const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
-  if (!connection) {
-    throw new HttpError(400, 'invalid_connection', 'That provider connection is not yours');
-  }
+function requireLlmConnection(connection: ProviderConnectionRow): void {
   if (connection.status !== 'active') {
     throw new HttpError(400, 'connection_inactive', 'That provider connection is not active');
   }
@@ -38,6 +32,16 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       'That provider connection is not an LLM provider',
     );
   }
+}
+// Creates rows, the XMPP account and both roster items; the key is decrypted per
+// turn. The AI is inserted `disabled` and flipped `active` only after every step,
+// so a crash never leaves a usable-looking half AI.
+export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promise<PublicAi> {
+  const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
+  if (!connection) {
+    throw new HttpError(400, 'invalid_connection', 'That provider connection is not yours');
+  }
+  requireLlmConnection(connection);
 
   const persona = resolvePersona(input.template, input.persona);
   const id = randomUUID();
@@ -232,16 +236,7 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
   if (!connection) {
     throw new HttpError(404, 'not_found', 'AI not found');
   }
-  if (connection.status !== 'active') {
-    throw new HttpError(400, 'connection_inactive', 'That provider connection is not active');
-  }
-  if (!isLlmProvider(connection.provider, connection.baseUrl !== null)) {
-    throw new HttpError(
-      400,
-      'connection_not_llm',
-      'That provider connection is not an LLM provider',
-    );
-  }
+  requireLlmConnection(connection);
 
   try {
     await runSql(

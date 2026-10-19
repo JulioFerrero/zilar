@@ -125,14 +125,18 @@ export async function getTopic(db: ServerDatabase, topicId: string): Promise<Top
   return row ?? null;
 }
 
-export async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
-  const rows = await runSql(
+function topicsInGroup(db: ServerDatabase, groupId: string): Promise<readonly TopicRow[]> {
+  return runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
     }),
   );
+}
+
+export async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
+  const rows = await topicsInGroup(db, groupId);
   return [...rows];
 }
 
@@ -262,13 +266,7 @@ export async function visibleTopics(
   groupId: string,
   userId: string,
 ): Promise<TopicRow[]> {
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
-    }),
-  );
+  const rows = await topicsInGroup(db, groupId);
   const active = rows.filter((row) => row.archivedAt === null);
   if (active.length === 0) {
     return [];

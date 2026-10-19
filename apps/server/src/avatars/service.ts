@@ -147,6 +147,30 @@ export interface AvatarUploadResult {
   url: string;
 }
 
+function recordAvatarAudit(
+  deps: AvatarsServiceDeps,
+  kind: AvatarKind,
+  ownerId: string,
+  userId: string,
+  action: 'avatar.updated' | 'avatar.removed',
+): Promise<void> {
+  if (deps.audit === undefined) {
+    return Promise.resolve();
+  }
+  return deps.audit.record({
+    actorUserId: userId,
+    aiId: kind === 'ai' ? ownerId : null,
+    groupId: kind === 'group' ? ownerId : null,
+    action,
+    subjectId: ownerId,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: { ownerKind: kind, ownerId },
+  });
+}
+
 // The new file lands first, the row swaps in one statement (the unique index makes
 // concurrent uploads end with exactly one row), then the old file is removed. A failure
 // never leaves the owner without a picture.
@@ -215,20 +239,7 @@ export async function uploadAvatar(
     // orphan that is never served.
     await rm(join(storageDir, oldStorageKey), { force: true }).catch(() => {});
   }
-  if (deps.audit) {
-    await deps.audit.record({
-      actorUserId: userId,
-      aiId: kind === 'ai' ? ownerId : null,
-      groupId: kind === 'group' ? ownerId : null,
-      action: 'avatar.updated',
-      subjectId: ownerId,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { ownerKind: kind, ownerId },
-    });
-  }
+  await recordAvatarAudit(deps, kind, ownerId, userId, 'avatar.updated');
   return { url: avatarUrlFor(id) };
 }
 
@@ -267,20 +278,7 @@ export async function deleteAvatar(
   }
   const storageDir = resolveStorageDir(deps.storageDir);
   await rm(join(storageDir, storageKey), { force: true }).catch(() => {});
-  if (deps.audit) {
-    await deps.audit.record({
-      actorUserId: userId,
-      aiId: kind === 'ai' ? ownerId : null,
-      groupId: kind === 'group' ? ownerId : null,
-      action: 'avatar.removed',
-      subjectId: ownerId,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { ownerKind: kind, ownerId },
-    });
-  }
+  await recordAvatarAudit(deps, kind, ownerId, userId, 'avatar.removed');
 }
 
 export async function avatarIdsByOwner(
