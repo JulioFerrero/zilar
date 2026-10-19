@@ -13,7 +13,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { seedAi, seedGroup } from '../test-support/seed';
-import { approvalNames, namesForApproval } from './api-reads';
+import { approvalNames, namesForApproval } from './api';
 import { createApproval } from './service';
 
 describe('approval names (T-1498)', () => {
