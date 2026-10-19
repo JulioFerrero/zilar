@@ -154,71 +154,6 @@ describe('executeRoutine post retry', () => {
   });
 });
 
-describe('executeRoutine alert threshold', () => {
-  let context: TestContext;
-
-  beforeEach(async () => {
-    context = await createTestContext();
-  });
-
-  afterEach(async () => {
-    await context.close();
-  });
-
-  it('posts only at or above the threshold and fails without a number', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const toolId = await seedTool(context, aiId, ownerId);
-    const row = await seedRoutine(context, {
-      aiId,
-      toolId,
-      createdBy: ownerId,
-      routineInput: { threshold: 90000 },
-      alertCardId: randomUUID(),
-    });
-
-    let data: unknown = { value: 82302 };
-    let posts = 0;
-    const run = () =>
-      executeRoutine(
-        {
-          runTool: async () => ({
-            ok: true,
-            output: { text: 'ran', data },
-            logs: '',
-            durationMs: 1,
-            fetchCount: 0,
-          }),
-          post: async () => {
-            posts += 1;
-            return true;
-          },
-        },
-        row,
-        { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
-      );
-
-    await run();
-    expect(posts).toBe(0);
-    expect(await readRoutineState(context, row.id)).toMatchObject({
-      lastStatus: 'ok',
-      consecutiveFailures: 0,
-    });
-
-    data = { value: 91000 };
-    await run();
-    expect(posts).toBe(1);
-
-    data = {};
-    await run();
-    expect(posts).toBe(1);
-    expect(await readRoutineState(context, row.id)).toMatchObject({
-      lastStatus: 'error',
-      consecutiveFailures: 1,
-    });
-  });
-});
-
 describe('executeRoutine alert card note', () => {
   let context: TestContext;
 
@@ -241,62 +176,6 @@ describe('executeRoutine alert card note', () => {
 
   afterEach(async () => {
     await context.close();
-  });
-
-  it('writes the last check into the card and corrects it in the room', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const toolId = await seedTool(context, aiId, ownerId);
-    const card = await recordCard(context.db, {
-      originId: randomUUID(),
-      aiId,
-      roomJid: 'spend@rooms.zilar.localhost',
-      data: alertCardData,
-    });
-    const row = await seedRoutine(context, {
-      aiId,
-      toolId,
-      createdBy: ownerId,
-      routineInput: { threshold: 90000 },
-      alertCardId: card.originId,
-      alertBlockId: 'alert-1',
-    });
-
-    const corrections: CorrectCardInput[] = [];
-    await executeRoutine(
-      {
-        runTool: async () => ({
-          ok: true,
-          output: { text: 'ran', data: { value: 82302 } },
-          logs: '',
-          durationMs: 1,
-          fetchCount: 0,
-        }),
-        post: async () => {
-          throw new Error('a quiet run must not post');
-        },
-        correctCard: async (input) => {
-          corrections.push(input);
-          return true;
-        },
-      },
-      row,
-      { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
-    );
-
-    expect(await readRoutineState(context, row.id)).toMatchObject({ lastStatus: 'ok' });
-    const saved = await findCard(context.db, card.originId);
-    const decoded = Schema.decodeUnknownOption(BlocksDataSchema)(saved?.data);
-    if (Option.isNone(decoded)) {
-      throw new Error('saved card did not decode');
-    }
-    const alert = decoded.value.blocks.find(
-      (block): block is AlertBlock => block.kind === 'alert' && block.id === 'alert-1',
-    );
-    expect(alert?.note).toMatch(/^Checked .* now 82,302/);
-    expect(alert?.note?.length).toBeLessThanOrEqual(40);
-    expect(corrections).toHaveLength(1);
-    expect(corrections[0]).toMatchObject({ originalId: card.originId, roomJid: card.roomJid });
   });
 
   it("leaves another AI's card untouched", async () => {

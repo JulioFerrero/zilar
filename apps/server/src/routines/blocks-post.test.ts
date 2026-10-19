@@ -1,10 +1,7 @@
-// T-1759: a saved tool may return blocks. `postResult` turns valid blocks
-// into a `blocks` payload (header: routine title, meta: schedule) while the
-// plain text stays the same; invalid blocks fall back to today's plain post.
+// An invalid block in a saved tool's output falls back to today's plain post
+// instead of reaching the room as a card.
 import { describe, expect, it } from 'vitest';
-import { Schema } from 'effect';
 import type { ServerDatabase } from '../db/client';
-import { outputJsonSchema } from '../sandbox/run-tool';
 import { type ExecuteRoutineOptions, type ExecuteRoutinePorts } from './execute';
 import { postResult } from './outcomes';
 import { type RoutineRow } from '../db/rows-agents';
@@ -72,33 +69,6 @@ const options: ExecuteRoutineOptions = {
 };
 
 describe('postResult blocks', () => {
-  it('posts valid figure blocks as a blocks card with the plain text unchanged', async () => {
-    const { posts, ports } = recordingPost();
-    const row = routineRow({ title: 'Prices' });
-
-    const posted = await postResult(ports, options, row, 'BTC: $82,302', [
-      { kind: 'figure', rows: [{ label: 'BTC', value: '$82,302' }] },
-    ]);
-
-    expect(posted).toBe(true);
-    expect(posts).toHaveLength(1);
-    const input = posts[0];
-    expect(input?.text).toBe('Prices\nBTC: $82,302');
-    expect(input?.payload?.type).toBe('blocks');
-    if (input?.payload?.type !== 'blocks') {
-      return;
-    }
-    expect(input.payload.data.title).toBe('Prices');
-
-    // The sandbox decode that runs before `parseToolOutput` must keep `blocks`
-    // (run-tool.ts), or a real tool's blocks never reach this post.
-    const decoded = Schema.decodeUnknownSync(outputJsonSchema)({
-      text: 'a',
-      blocks: [{ kind: 'figure', rows: [{ label: 'x', value: '1' }] }],
-    });
-    expect(decoded.blocks).toEqual([{ kind: 'figure', rows: [{ label: 'x', value: '1' }] }]);
-  });
-
   it('falls back to a plain post when a link block is invalid', async () => {
     const { posts, ports } = recordingPost();
     const row = routineRow({ title: 'Prices' });

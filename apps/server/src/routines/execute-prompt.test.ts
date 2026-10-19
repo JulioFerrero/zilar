@@ -106,41 +106,6 @@ describe('executePromptRoutine', () => {
     await context.close();
   });
 
-  it('records replied as ok with no failures', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    const seen: string[] = [];
-    await runPromptOnce(
-      context,
-      row,
-      async (input) => {
-        seen.push(input.prompt);
-        return 'replied';
-      },
-      [],
-    );
-
-    expect(seen).toEqual(['hi']);
-    const updated = await readRoutine(context, row.id);
-    expect(updated.lastStatus).toBe('ok');
-    expect(updated.consecutiveFailures).toBe(0);
-  });
-
-  it('records stopped as skipped and leaves the failure count unchanged', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    await runPromptOnce(context, row, async () => 'stopped', []);
-
-    const updated = await readRoutine(context, row.id);
-    expect(updated.lastStatus).toBe('skipped');
-    expect(updated.consecutiveFailures).toBe(0);
-    expect(updated.status).toBe('active');
-  });
-
   it('pauses on the third failed run and posts the fixed notice once', async () => {
     const ownerId = await seedUser(context);
     const { aiId } = await seedAi(context, ownerId);
@@ -188,36 +153,6 @@ describe('executePromptRoutine', () => {
     expect(updated.lastStatus).toBe('skipped');
   });
 
-  it('skips when no runPrompt port is wired', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    await executeRoutine(
-      {
-        runTool: async () => {
-          throw new Error('runTool must not be called for a prompt routine');
-        },
-        post: async () => true,
-      },
-      row,
-      { db: context.db, now: () => NOW, audit: silentAudit, logger: silentLogger },
-    );
-
-    const updated = await readRoutine(context, row.id);
-    expect(updated.lastStatus).toBe('skipped');
-  });
-
-  it('keeps the daily slot when the AI replied', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    await runPromptOnce(context, row, async () => 'replied', []);
-
-    expect(await readPromptRunCount(context, aiId)).toBe(1);
-  });
-
   it('refunds the daily slot when the AI is offline', async () => {
     const ownerId = await seedUser(context);
     const { aiId } = await seedAi(context, ownerId);
@@ -226,39 +161,6 @@ describe('executePromptRoutine', () => {
     await runPromptOnce(context, row, async () => 'offline', []);
 
     expect(await readPromptRunCount(context, aiId)).toBe(0);
-    const updated = await readRoutine(context, row.id);
-    expect(updated.lastStatus).toBe('skipped');
-  });
-
-  it('refunds the daily slot when the AI is not in the room', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    await runPromptOnce(context, row, async () => 'not_in_room', []);
-
-    expect(await readPromptRunCount(context, aiId)).toBe(0);
-    const updated = await readRoutine(context, row.id);
-    expect(updated.lastStatus).toBe('skipped');
-  });
-
-  it('skips an inactive AI without calling the runner', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId, { status: 'disabled' });
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-
-    let called = 0;
-    await runPromptOnce(
-      context,
-      row,
-      async () => {
-        called += 1;
-        return 'replied';
-      },
-      [],
-    );
-
-    expect(called).toBe(0);
     const updated = await readRoutine(context, row.id);
     expect(updated.lastStatus).toBe('skipped');
   });

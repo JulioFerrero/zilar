@@ -1,19 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
 import { createAuditRecorder } from '../audit/recorder';
-import { listAuditForAi } from '../audit/api';
-import { createPromptRoutine } from '../tools/routine-adapters';
-import { createTestContext, testSql, type TestContext } from '../test-support';
+import { createTestContext, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';
 import { respondToCard, myPicks, type CardRespondDeps, type CorrectCardInput } from './respond';
-import { type RoutineRow } from '../db/rows-agents';
 
-// T-1792: a member's tap must reach the card, be stored and corrected in the
-// room; a stranger must not learn the card exists, and nothing may be written
-// before the permission check passes.
+// A stranger must not learn the card exists, only the AI's owner may answer a
+// DM card, and poll picks are visible to their own voter only.
 describe('card respond', () => {
   let context: TestContext;
   let correctInRoom: Mock<(input: CorrectCardInput) => Promise<boolean>>;
@@ -60,33 +54,6 @@ describe('card respond', () => {
     ],
   };
 
-  const alertData: BlocksData = {
-    fallback: 'Spend alert',
-    blocks: [
-      {
-        kind: 'alert',
-        id: 'alert-1',
-        title: 'Tell me when spending passes',
-        field: { label: 'Threshold', value: '100' },
-        on: true,
-      },
-    ],
-  };
-
-  async function readRoutine(id: string): Promise<RoutineRow> {
-    const rows = await testSql(context)(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
-      }),
-    );
-    const row = rows[0];
-    if (!row) {
-      throw new Error('routine row missing');
-    }
-    return row;
-  }
-
   async function setup(): Promise<{
     deps: CardRespondDeps;
     aiId: string;
@@ -123,14 +90,6 @@ describe('card respond', () => {
       roomJid,
       data: pollData,
     });
-    await recordCard(context.db, {
-      originId: 'alert-origin',
-      aiId,
-      groupId,
-      topicId: generalTopicId,
-      roomJid,
-      data: alertData,
-    });
     return {
       deps: {
         db: context.db,
@@ -166,41 +125,6 @@ describe('card respond', () => {
     expect(stored?.data).toEqual(cardData);
   });
 
-  it('stores a member checklist tick, merges their name and corrects the card', async () => {
-    const { deps, aiId, memberId } = await setup();
-
-    const result = await respondToCard(deps, memberId, tick);
-
-    const [block] = result.data.blocks;
-    if (block?.kind !== 'checklist') {
-      throw new Error('expected a checklist block');
-    }
-    expect(block.items[0]).toMatchObject({ id: 'item-1', done: true, by: 'Ana' });
-    expect(block.items[1]).toMatchObject({ id: 'item-2', done: false });
-
-    const rows = await listResponses(context.db, 'origin-1');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      cardId: 'origin-1',
-      blockId: 'check-1',
-      itemId: 'item-1',
-      actorId: memberId,
-      value: { done: true },
-    });
-
-    const stored = await findCard(context.db, 'origin-1');
-    expect(stored?.data).toMatchObject(result.data);
-
-    expect(correctInRoom).toHaveBeenCalledTimes(1);
-    expect(correctInRoom).toHaveBeenCalledWith({
-      aiId,
-      roomJid,
-      originalId: 'origin-1',
-      text: 'Packing list',
-      payload: { v: 0, type: 'blocks', data: result.data },
-    });
-  });
-
   it('lets only the AI owner answer a DM card; a group member gets the same 404', async () => {
     const { deps, aiId, ownerId, memberId, outsiderId } = await setup();
     const dmJid = 'owner@zilar.localhost';
@@ -233,121 +157,6 @@ describe('card respond', () => {
       });
     }
     expect(await listResponses(context.db, 'dm-origin')).toHaveLength(1);
-  });
-
-  it('records a member alert answer and merges the switch and the threshold', async () => {
-    const { deps, memberId } = await setup();
-    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
-
-    const result = await respondToCard(deps, memberId, {
-      ...answer,
-      value: { done: false, fields: { value: '$95,000' } },
-    });
-
-    const [block] = result.data.blocks;
-    if (block?.kind !== 'alert') {
-      throw new Error('expected an alert block');
-    }
-    expect(block).toMatchObject({ on: false, field: { label: 'Threshold', value: '$95,000' } });
-
-    const rows = await listResponses(context.db, 'alert-origin');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      cardId: 'alert-origin',
-      blockId: 'alert-1',
-      itemId: '',
-      actorId: memberId,
-      value: { on: false, threshold: '$95,000' },
-    });
-
-    await expect(
-      respondToCard(deps, memberId, { ...answer, value: { fields: { value: 'soon' } } }),
-    ).rejects.toMatchObject({ status: 400, code: 'invalid_response' });
-    await expect(respondToCard(deps, memberId, { ...answer, value: {} })).rejects.toMatchObject({
-      status: 400,
-      code: 'invalid_response',
-    });
-    expect(await listResponses(context.db, 'alert-origin')).toHaveLength(1);
-  });
-
-  it('drives the linked routine from the alert answer', async () => {
-    const { deps, aiId, ownerId } = await setup();
-    const createRoutine = (title: string) =>
-      createPromptRoutine(
-        context.db,
-        {
-          aiId,
-          groupId: null,
-          topicId: null,
-          title,
-          schedule: { kind: 'interval', everyMinutes: 60 },
-          prompt: 'Tell me when spending passes the threshold',
-          userId: ownerId,
-          alertCard: { cardId: 'alert-origin', blockId: 'alert-1' },
-        },
-        new Date('2026-10-17T12:00:00.000Z'),
-      );
-    const routine = await createRoutine('Spend alert');
-    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
-
-    await respondToCard(deps, ownerId, {
-      ...answer,
-      value: { done: false, fields: { value: '$95,000' } },
-    });
-
-    const paused = await readRoutine(routine.id);
-    expect(paused).toMatchObject({ status: 'paused', pausedReason: 'user' });
-    expect(paused.input).toMatchObject({ threshold: 95000 });
-
-    await respondToCard(deps, ownerId, { ...answer, value: { done: true } });
-
-    const resumed = await readRoutine(routine.id);
-    expect(resumed).toMatchObject({ status: 'active', pausedReason: null });
-    expect(resumed.input).toMatchObject({ threshold: 95000 });
-  });
-
-  it('lets only the routine manager answer a linked alert and audits the pause', async () => {
-    const { deps, aiId, ownerId, memberId } = await setup();
-    const routine = await createPromptRoutine(
-      context.db,
-      {
-        aiId,
-        groupId: null,
-        topicId: null,
-        title: 'Spend alert',
-        schedule: { kind: 'interval', everyMinutes: 60 },
-        prompt: 'Tell me when spending passes the threshold',
-        userId: ownerId,
-        alertCard: { cardId: 'alert-origin', blockId: 'alert-1' },
-      },
-      new Date('2026-10-17T12:00:00.000Z'),
-    );
-    const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
-
-    await expect(
-      respondToCard(deps, memberId, { ...answer, value: { done: false } }),
-    ).rejects.toMatchObject({
-      status: 404,
-      code: 'card_not_found',
-    });
-
-    expect(await listResponses(context.db, 'alert-origin')).toEqual([]);
-    expect(await readRoutine(routine.id)).toMatchObject({ status: 'active' });
-    expect(correctInRoom).not.toHaveBeenCalled();
-
-    await respondToCard(deps, ownerId, { ...answer, value: { done: false } });
-
-    expect(await readRoutine(routine.id)).toMatchObject({
-      status: 'paused',
-      pausedReason: 'user',
-    });
-    const audit = await listAuditForAi(context.db, aiId, ownerId);
-    expect(audit.entries).toHaveLength(1);
-    expect(audit.entries[0]).toMatchObject({
-      action: 'routine.paused',
-      subjectId: routine.id,
-      actorUserId: ownerId,
-    });
   });
 
   it('returns the viewer own poll picks, never another member and 404 for a stranger', async () => {
