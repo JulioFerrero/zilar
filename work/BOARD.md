@@ -2144,3 +2144,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2143](T-2143-package-folds.md) | packages: fold desk tools, stanza decoder, block choices | 2026-10-19 |
 | [T-2147](T-2147-web-folds-3.md) | web: fold machines, integrations, avatar crop helpers | 2026-10-19 |
 | [T-2146](T-2146-server-folds-3.md) | server: fold policy, api reads, sniff, role queries | 2026-10-19 |
+| [T-2145](T-2145-phone-folds-2.md) | phone: fold 17 single-use files into their importer | 2026-10-19 |

@@ -1,3 +1,4 @@
+// effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs.
 import {
   RotateCcw,
   Shuffle,
@@ -8,10 +9,18 @@ import {
   Sparkles,
   Pencil,
 } from 'lucide-react-native';
-import { forwardRef, useId, useImperativeHandle, useRef, type Ref } from 'react';
+import { forwardRef, useId, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { View, Pressable } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { ApiError } from '@zilar/api-contract';
+import {
+  makeAisApi,
+  useNewAiFlowState,
+  type NewAiFlowPort,
+  type NewAiStep,
+  type OrbParams,
+} from '@zilar/client-core';
 import { ORB_HUES, ORB_RIMS, type AiTemplateId, AI_TEMPLATE_OPTIONS } from '@zilar/chat-core';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -23,15 +32,17 @@ import { ICON } from '@/lib/colors';
 import type { PublicAi } from '@/lib/ais-api';
 import { LimitsFields } from '@/components/ais/limits-fields';
 import type { ComputerMode } from '@/components/ais/computer-picker';
+import { describeAisError } from '@/components/ais/errors';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { SelectSheet } from '@/components/ui/select-sheet';
 import { TextField } from '@/components/ui/text-field';
 import { iconKey } from '@/lib/depth';
+import { makeMachinesApi } from '@/lib/machines-api';
+import { useApi } from '@/lib/use-mockable-api';
 
 import { KeyStep } from './key-step';
-import { captureOrbPng, ORB_EXPORT_SIZE } from './orb-upload';
+import { captureOrbPng, saveOrbAvatar, ORB_EXPORT_SIZE } from './orb-upload';
 import { ProviderStep } from './provider-step';
-import { useNewAiFlow, type NewAiFlow, type OrbParams } from './use-new-ai-flow';
 
 const TEMPLATE_OPTIONS: SegmentedOption[] = AI_TEMPLATE_OPTIONS.filter(
   (option) => option.id !== 'custom',
@@ -465,3 +476,74 @@ function OrbView({ flow }: { flow: NewAiFlow }) {
     </View>
   );
 }
+
+function useNewAiFlow({
+  onCreated,
+}: {
+  onCreated: (ai: PublicAi, partialFailure: boolean) => void;
+}) {
+  const { api } = useApi(makeAisApi);
+  const { api: machinesApi } = useApi(makeMachinesApi);
+  const { api: connectionsApi } = useApi(makeAisApi);
+  const port = useMemo<NewAiFlowPort>(
+    () => ({
+      ...connectionsApi,
+      ...api,
+      setAiMachine: machinesApi.setAiMachine,
+      listMachines: machinesApi.listMachines,
+    }),
+    [api, machinesApi, connectionsApi],
+  );
+  const flow = useNewAiFlowState(port);
+  const [orbOpen, setOrbOpen] = useState(false);
+  const [error, setError] = useState('');
+  const keys = { ...flow.keys, providerChoices: flow.keys.choices };
+
+  const create = (captureOrb: (() => Promise<string | null>) | null): void => {
+    setError('');
+    void flow
+      .create((ai) => saveOrbAvatar(ai.id, captureOrb))
+      .then((outcome) => {
+        if (outcome === null) return;
+        if (outcome.status === 'invalid') {
+          setError(
+            outcome.reason === 'limits'
+              ? 'Check the spending limits.'
+              : 'Choose a provider key first.',
+          );
+          return;
+        }
+        onCreated(outcome.ai, outcome.partial);
+      })
+      .catch((cause: unknown) => {
+        const fixed = 'Could not create the AI.';
+        setError(cause instanceof ApiError ? describeAisError(cause, fixed).message : fixed);
+      });
+  };
+
+  return {
+    ...flow,
+    keys,
+    goToStep: (value: string) => flow.goToStep(value as NewAiStep),
+    primaryDisabled: keys.checkingKey || flow.creating || !flow.canAdvance,
+    busy: keys.checkingKey || flow.creating,
+    advance: (): void => {
+      setError('');
+      flow.advance();
+    },
+    create,
+    error,
+    abandon: keys.abandon,
+    orbOpen,
+    openOrb: () => setOrbOpen(true),
+    closeOrb: () => setOrbOpen(false),
+    computer: flow.computerMode,
+    setComputer: (value: ComputerMode) => {
+      flow.setComputerMode(value);
+      setError('');
+    },
+    shuffleOrb: flow.shuffle,
+  };
+}
+
+type NewAiFlow = ReturnType<typeof useNewAiFlow>;

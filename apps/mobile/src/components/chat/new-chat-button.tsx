@@ -9,20 +9,26 @@ import {
   Plus,
   Users,
 } from 'lucide-react-native';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
-import { createErrorText } from '@/components/chat/visibility-fields';
+import {
+  buildChannelCreateInput,
+  createErrorText,
+  useHandleCheck,
+  VisibilityFields,
+  type CreateVisibility,
+} from '@/components/chat/visibility-fields';
 import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
-import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
 import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
+import { makeDirectoryApi } from '@/lib/directory-api';
 import { runMobile } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { apiCall } from '@/lib/effect/api-client';
 import { makeInvitesApi } from '@/lib/invites-api';
-import { realApiTransport } from '@/lib/use-mockable-api';
+import { realApiTransport, useApi } from '@/lib/use-mockable-api';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -31,6 +37,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import type { Contact } from '@/lib/contacts-api';
 
 // Case-insensitive prefix match on any word of the name, or on the handle.
@@ -346,5 +353,140 @@ export function NewChatButton() {
         onClose={() => setAction(undefined)}
       />
     </>
+  );
+}
+
+// The new-channel sheet: a title plus an optional description (≤ 300, the channel's short blurb). The screen creates the channel and navigates to it; failures read inline, never raw. Create sits in the sticky footer.
+function NewChannelSheet({
+  visible,
+  busy,
+  error,
+  onCreate,
+  onClose,
+}: {
+  visible: boolean;
+  busy: boolean;
+  error: string;
+  onCreate: (input: {
+    title: string;
+    description?: string;
+    visibility?: 'public';
+    handle?: string;
+  }) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  // Private (default, invite-only) or Public (its own `@handle`, checked live, created in the same step).
+  const [visibility, setVisibility] = useState<CreateVisibility>('private');
+  const [handle, setHandle] = useState('');
+  const [localError, setLocalError] = useState('');
+  const { api: directoryApi } = useApi(makeDirectoryApi);
+  // Memoized like the group sheet's: the effect deps see only visibility/handle, never a fresh closure identity.
+  const checkHandle = useCallback(
+    (value: string) => directoryApi.checkGroupHandle(value),
+    [directoryApi],
+  );
+  const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
+
+  // The sheet is always mounted, so reset the previous draft and inline error on `visible`, not on the close key; the adjusted-state render pattern keeps it out of an effect.
+  if (
+    !visible &&
+    (title !== '' ||
+      description !== '' ||
+      visibility !== 'private' ||
+      handle !== '' ||
+      localError !== '')
+  ) {
+    setTitle('');
+    setDescription('');
+    setVisibility('private');
+    setHandle('');
+    setLocalError('');
+  }
+
+  const trimmed = title.trim();
+  const tooLong = description.length > 300;
+  const canCreate = trimmed !== '' && !tooLong && !busy;
+
+  const create = () => {
+    if (busy) {
+      return;
+    }
+    const guarded = buildChannelCreateInput(title, description, visibility, handle, check);
+    if ('error' in guarded) {
+      setLocalError(guarded.error);
+      return;
+    }
+    setLocalError('');
+    onCreate(guarded.input);
+  };
+
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      dismissible={!busy}
+      closeLabel="Close new channel"
+      title="New channel"
+      footer={
+        <Button accessibilityLabel="Create channel" disabled={!canCreate} onPress={create}>
+          <Text>{busy ? 'Creating…' : 'Create'}</Text>
+        </Button>
+      }
+    >
+      <Text className="mt-1 text-[14px] text-muted-foreground">
+        Only you and the admins you add will post. Everyone else subscribes.
+      </Text>
+      <TextField
+        value={title}
+        onChangeText={setTitle}
+        autoCapitalize="sentences"
+        placeholder="Channel name"
+        accessibilityLabel="Channel name"
+        maxLength={100}
+        className="mt-3"
+      />
+      <TextField
+        value={description}
+        onChangeText={setDescription}
+        autoCapitalize="sentences"
+        placeholder="Description (optional)"
+        accessibilityLabel="Channel description"
+        multiline
+        className="mt-2"
+      />
+      {tooLong ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          The description must be at most 300 characters.
+        </Text>
+      ) : null}
+      <VisibilityFields
+        kind="channel"
+        visibility={visibility}
+        onVisibility={(next) => {
+          setVisibility(next);
+          reset();
+          setLocalError('');
+        }}
+        handle={handle}
+        onHandle={(next) => {
+          setHandle(next);
+          reset();
+        }}
+        check={check}
+        checking={checking}
+      />
+      {localError !== '' ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {localError}
+        </Text>
+      ) : null}
+      {error !== '' ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {error}
+        </Text>
+      ) : null}
+    </BottomSheet>
   );
 }

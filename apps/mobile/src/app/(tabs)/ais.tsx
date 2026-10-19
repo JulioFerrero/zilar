@@ -1,16 +1,21 @@
 import { ApiError } from '@zilar/api-contract';
-import type { ChatSummary } from '@zilar/chat-core';
+import {
+  aiHealth,
+  formatLimit,
+  formatUsd,
+  spendFraction,
+  type AiHealthState,
+  type ChatSummary,
+} from '@zilar/chat-core';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
-import { AiRow } from '@/components/ais/ai-row';
 import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
 import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
-import { type RunAction, runAction } from '@/components/ais/run-state';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { makeAisApi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
@@ -23,7 +28,9 @@ import { ACCENT_FOREGROUND } from '@/lib/depth';
 import type { PublicAi } from '@/lib/ais-api';
 import { useChatStoreApi } from '@/store/chat-store-provider';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { cn } from '@/lib/utils';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 
 function AiActionsSheet({
@@ -398,5 +405,138 @@ function AisList() {
         onConfirm={confirmDelete}
       />
     </>
+  );
+}
+
+/**
+ * `disabled` AIs (provisioning in flight) offer neither: the row already says "Setting up" and the buttons would race the server.
+ */
+type RunAction = 'stop' | 'resume';
+
+function runAction(ai: Pick<PublicAi, 'status'>): RunAction | null {
+  if (ai.status === 'active') {
+    return 'stop';
+  }
+  if (ai.status === 'stopped') {
+    return 'resume';
+  }
+  return null;
+}
+
+const HEALTH: Record<AiHealthState, { label: string; colour: string }> = {
+  working: { label: 'Working', colour: 'bg-online' },
+  failing: { label: 'Failing', colour: 'bg-danger' },
+  paused: { label: 'Paused by its limit', colour: 'bg-[#f59e0b]' },
+  stopped: { label: 'Stopped', colour: 'bg-subtle-foreground' },
+};
+
+const FIX_LABELS: Record<string, string> = {
+  replace_key: 'Replace key',
+  change_model: 'Change model',
+};
+
+function AiRow({ ai, last, onPress }: { ai: PublicAi; last: boolean; onPress: () => void }) {
+  const router = useRouter();
+  const health = aiHealth(ai);
+  const dot = HEALTH[health.state];
+  const usage = ai.usage ?? null;
+  const dailyLimit = ai.limits.perDayUsd;
+  const fraction = spendFraction(ai);
+  const full = usage !== null && dailyLimit !== null && usage.todayUsd >= dailyLimit;
+  const fixLabel = health.fix === undefined ? undefined : FIX_LABELS[health.fix];
+
+  const openFix = (): void => {
+    if (health.fix === 'change_model') {
+      router.push({ pathname: '/ais/[id]', params: { id: ai.id } });
+      return;
+    }
+    router.push('/settings/connections');
+  };
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={ai.name}
+      onPress={onPress}
+      className={cn(
+        'flex-row items-center gap-3 px-3.5 py-3 active:bg-list-hover',
+        !last && 'border-b border-divider',
+      )}
+    >
+      <View className="relative shrink-0">
+        <EntityAvatar
+          person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
+          size={40}
+          ai
+        />
+        <View
+          accessibilityRole="image"
+          accessibilityLabel={dot.label}
+          className={cn(
+            'absolute right-0 bottom-0 size-3 rounded-full border-2 border-surface',
+            dot.colour,
+          )}
+        />
+      </View>
+      <View className="min-w-0 flex-1 flex-col gap-[3px]">
+        <View className="flex-row items-center gap-1.5">
+          <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">
+            {ai.name}
+          </Text>
+          <AiBadge />
+        </View>
+        <Text numberOfLines={2} className="text-[14px] text-muted-foreground">
+          {health.state === 'stopped' ? (
+            `Stopped · ${ai.model}`
+          ) : health.state === 'failing' ? (
+            <>
+              <Text className="text-danger">{health.reason}</Text>
+              {fixLabel === undefined ? (
+                ` · ${ai.model}`
+              ) : (
+                <>
+                  {' · '}
+                  <Text
+                    accessibilityRole="link"
+                    accessibilityLabel={fixLabel}
+                    onPress={openFix}
+                    className="text-accent underline"
+                  >
+                    {fixLabel}
+                  </Text>
+                </>
+              )}
+            </>
+          ) : health.state === 'paused' ? (
+            <>
+              <Text className="text-[#f59e0b]">Daily limit reached</Text>
+              {` · ${ai.model}`}
+            </>
+          ) : (
+            ai.model
+          )}
+        </Text>
+      </View>
+      <View className="w-24 shrink-0 flex-col items-end gap-[5px]">
+        {usage === null ? (
+          <Text className="font-mono text-[12px] text-muted-foreground">—</Text>
+        ) : dailyLimit === null ? (
+          <Text className="font-mono text-[12px] text-foreground">{formatUsd(usage.todayUsd)}</Text>
+        ) : (
+          <>
+            <Text className="font-mono text-[12px] text-foreground">
+              {formatUsd(usage.todayUsd)}
+              <Text className="text-subtle-foreground">{` / ${formatLimit(dailyLimit)}`}</Text>
+            </Text>
+            <View className="h-1 w-[72px] overflow-hidden rounded-[2px] bg-well">
+              <View
+                className={cn('h-full', full ? 'bg-[#f59e0b]' : 'bg-foreground')}
+                style={{ width: `${(fraction ?? 0) * 100}%` }}
+              />
+            </View>
+          </>
+        )}
+      </View>
+    </Pressable>
   );
 }

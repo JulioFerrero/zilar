@@ -15,6 +15,7 @@ import {
 } from '@zilar/client-core';
 
 import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { MessageSearchList } from '@/components/chat/message-search-list';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -31,7 +32,6 @@ import { makeSearchApi } from '@/lib/search-api';
 import { realApiTransport } from '@/lib/use-mockable-api';
 import type { ChatSummary } from '@/lib/types';
 import { mockToken } from '@/mock/gate';
-import { PersonRow } from '../contacts/person-row';
 import { resolveContactChat } from '../contacts/add-contact';
 
 function usePeopleSearch(options: {
@@ -353,5 +353,48 @@ export function ChatPeopleResults({
         />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function PersonRow({
+  entry,
+  hint,
+  onOpen,
+}: {
+  entry: HandleProfile;
+  hint?: string | undefined;
+  onOpen?: (() => void) | undefined;
+}) {
+  const content = (
+    <>
+      <EntityAvatar person={entry} size={40} />
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="text-[14px] font-semibold text-foreground">
+          {entry.name}
+        </Text>
+        <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+          @{entry.handle}
+        </Text>
+      </View>
+      {hint === undefined ? null : (
+        <Text numberOfLines={1} className="shrink-0 text-[12px] text-muted-foreground">
+          {hint}
+        </Text>
+      )}
+    </>
+  );
+
+  if (onOpen === undefined) {
+    return <View className="flex-row items-center gap-3 px-[10px] py-2">{content}</View>;
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${entry.name}`}
+      onPress={onOpen}
+      className="flex-row items-center gap-3 rounded-[12px] px-[10px] py-2 active:bg-surface-raised"
+    >
+      {content}
+    </Pressable>
   );
 }
