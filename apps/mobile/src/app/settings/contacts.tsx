@@ -3,8 +3,7 @@ import { AsyncResult } from 'effect/reactivity';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MoreVertical, User, UserMinus } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Share, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { RefreshControl, Share, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { resolveDmChatId } from '@/components/chat/dm-chat-id';
@@ -17,18 +16,17 @@ import {
 } from '@/components/contacts/contact-presence';
 import { ContactRow } from '@/components/contacts/contact-row';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { RefreshScroll } from '@/components/settings/refresh-scroll';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useFocusList } from '@/components/settings/use-focus-list';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { domainOfJid, type ContactsApi } from '@/lib/contacts-api';
 import { fromApi, interruptFiber } from '@zilar/client-core';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -170,69 +168,70 @@ function ContactsList() {
   const shareUrl = handle === null ? null : `${WEB_HOST}/@${encodeURIComponent(handle)}`;
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <ScreenHeader
-        variant="sub"
-        title="Contacts"
-        subtitle="The people you can chat with."
-        onBack={() => router.back()}
-      />
-      <RefreshScroll refreshing={refreshing} onRefresh={refresh}>
-        <View className="p-4">
-          {shareUrl !== null ? (
-            <Button
-              variant="outline"
-              className="mb-4"
-              accessibilityLabel="Share my profile"
-              onPress={() => share(shareUrl)}
-            >
-              <Text>Share my profile</Text>
-            </Button>
-          ) : null}
-
-          {status === 'loading' ? <StateMessage kind="loading" title="Loading contacts…" /> : null}
-
-          {status === 'error' ? (
-            <StateMessage
-              kind="error"
-              title={error}
-              action={{
-                label: 'Retry',
-                accessibilityLabel: 'Retry loading contacts',
-                onPress: () => refresh(),
-              }}
-            />
-          ) : null}
-
-          {status === 'ready' && people.length === 0 ? (
-            <StateMessage kind="empty" title="No contacts yet." />
-          ) : null}
-
-          {status === 'ready' && people.length > 0 ? (
-            <ContactList
-              people={people}
-              chats={chats}
-              onOpenChat={openChat}
-              onViewProfile={(profileHandle) =>
-                router.push({ pathname: '/u/[handle]', params: { handle: profileHandle } })
-              }
-              onRemove={removeContact}
-            />
-          ) : null}
-
-          {actionError !== '' && status === 'ready' ? (
-            <Text accessibilityRole="alert" className="mt-3 text-[14px] text-danger">
-              {actionError}
-            </Text>
-          ) : null}
-        </View>
-      </RefreshScroll>
-      {mock ? (
-        <View className="items-center border-t border-divider px-4 py-1">
-          <Text className="text-[12px] text-muted-foreground">Mock data</Text>
-        </View>
+    <SettingsScreenShell
+      title="Contacts"
+      subtitle="The people you can chat with."
+      onBack={() => router.back()}
+      contentClassName="p-4"
+      contentPaddingBottom={32}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} tintColor={MUTED_FOREGROUND} onRefresh={refresh} />
+      }
+      after={
+        mock ? (
+          <View className="items-center border-t border-divider px-4 py-1">
+            <Text className="text-[12px] text-muted-foreground">Mock data</Text>
+          </View>
+        ) : null
+      }
+    >
+      {shareUrl !== null ? (
+        <Button
+          variant="outline"
+          className="mb-4"
+          accessibilityLabel="Share my profile"
+          onPress={() => share(shareUrl)}
+        >
+          <Text>Share my profile</Text>
+        </Button>
       ) : null}
-    </SafeAreaView>
+
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading contacts…" /> : null}
+
+      {status === 'error' ? (
+        <StateMessage
+          kind="error"
+          title={error}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading contacts',
+            onPress: () => refresh(),
+          }}
+        />
+      ) : null}
+
+      {status === 'ready' && people.length === 0 ? (
+        <StateMessage kind="empty" title="No contacts yet." />
+      ) : null}
+
+      {status === 'ready' && people.length > 0 ? (
+        <ContactList
+          people={people}
+          chats={chats}
+          onOpenChat={openChat}
+          onViewProfile={(profileHandle) =>
+            router.push({ pathname: '/u/[handle]', params: { handle: profileHandle } })
+          }
+          onRemove={removeContact}
+        />
+      ) : null}
+
+      {actionError !== '' && status === 'ready' ? (
+        <Text accessibilityRole="alert" className="mt-3 text-[14px] text-danger">
+          {actionError}
+        </Text>
+      ) : null}
+    </SettingsScreenShell>
   );
 }
 

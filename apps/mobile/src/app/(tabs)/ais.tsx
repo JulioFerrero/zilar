@@ -19,7 +19,7 @@ import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
 import { useFocusList } from '@/components/settings/use-focus-list';
 import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
-import { AisScreenShell } from '@/components/ais/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { makeAisApi, type PublicAi } from '@zilar/client-core';
 import { useApi } from '@/lib/use-mockable-api';
 import { Button } from '@/components/ui/button';
@@ -282,7 +282,7 @@ function AisList() {
 
   return (
     <>
-      <AisScreenShell
+      <SettingsScreenShell
         title="My AIs"
         scroll
         tabName="ais"
@@ -332,7 +332,7 @@ function AisList() {
             ))}
           </View>
         )}
-      </AisScreenShell>
+      </SettingsScreenShell>
 
       <NewAiSheet
         key={newAiSession}

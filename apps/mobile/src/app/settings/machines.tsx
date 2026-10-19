@@ -5,8 +5,7 @@ import { Server, Plus, Check, Copy } from 'lucide-react-native';
 import { makeAisApi } from '@zilar/client-core';
 import { groupFingerprint } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,14 +13,13 @@ import { useApi } from '@/lib/use-mockable-api';
 import { ApprovedMachines } from '@/components/machines/approved-machines';
 import { groupAisByMachine } from '@/components/machines/machine-row';
 import { useMachinesList } from '@/components/machines/use-machines-list';
-import { usePullToRefresh } from '@/components/settings/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { MUTED_FOREGROUND, ICON, ACCENT_FOREGROUND } from '@/lib/colors';
+import { ICON, ACCENT_FOREGROUND } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
 import { IconButton } from '@/components/ui/icon-button';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -287,31 +285,6 @@ function RevokedMachines({
   );
 }
 
-function MachinesHeader({
-  onBack,
-  onAdd,
-  showAdd,
-}: {
-  onBack: () => void;
-  onAdd: () => void;
-  showAdd: boolean;
-}) {
-  return (
-    <ScreenHeader
-      variant="sub"
-      title="Machines"
-      onBack={onBack}
-      right={
-        showAdd ? (
-          <IconButton label="Add machine" onPress={onAdd}>
-            <Plus size={22} color={ICON} />
-          </IconButton>
-        ) : undefined
-      }
-    />
-  );
-}
-
 export default function MachinesScreen() {
   return (
     <RequireAuth>
@@ -361,125 +334,124 @@ function MachinesList() {
   const [aiResult] = useQuery(() => Effect.promise(() => aisApi.listAis()), [aisApi]);
   const ais = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
   const aisByMachine = useMemo(() => groupAisByMachine(ais), [ais]);
-  const { refreshing, pullToRefresh } = usePullToRefresh(reload);
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <MachinesHeader onBack={() => router.back()} onAdd={openAdd} showAdd={status === 'ready'} />
-
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={pullToRefresh}
+    <SettingsScreenShell
+      title="Machines"
+      onBack={() => router.back()}
+      right={
+        status === 'ready' ? (
+          <IconButton label="Add machine" onPress={openAdd}>
+            <Plus size={22} color={ICON} />
+          </IconButton>
+        ) : undefined
+      }
+      onRefresh={reload}
+      keyboardAvoidance={false}
+      contentClassName="gap-4 p-4"
+      contentPaddingBottom={32}
+      after={
+        <>
+          <AddMachineSheet
+            visible={adding}
+            pairing={pairing}
+            loading={pairingLoading}
+            error={pairingError}
+            onRetry={retryAdd}
+            onClose={closeAdd}
           />
-        }
-      >
-        <View className="gap-4 p-4">
-          {status === 'ready' && errorInfo.message !== '' ? (
-            <Text role="alert" className="text-[13px] text-danger">
-              {errorInfo.message}
-            </Text>
-          ) : null}
 
-          {status === 'loading' ? <StateMessage kind="loading" title="Loading machines…" /> : null}
+          <ConfirmDialog
+            visible={confirming !== null}
+            title={confirming?.kind === 'revoke' ? 'Revoke this machine?' : 'Delete this machine?'}
+            message={
+              confirming?.kind === 'revoke'
+                ? 'The machine loses access at once. AIs running there move back to the platform.'
+                : 'This removes the machine for good. This cannot be undone.'
+            }
+            error={confirmError}
+            confirmLabel={confirming?.kind === 'revoke' ? 'Revoke' : 'Delete'}
+            busyLabel="Working…"
+            busy={busyId !== null}
+            onCancel={cancelConfirm}
+            onConfirm={confirmAction}
+            confirmAccessibilityLabel={
+              confirming?.kind === 'revoke' ? 'Confirm revoke' : 'Confirm delete'
+            }
+          />
+        </>
+      }
+    >
+      {status === 'ready' && errorInfo.message !== '' ? (
+        <Text role="alert" className="text-[13px] text-danger">
+          {errorInfo.message}
+        </Text>
+      ) : null}
 
-          {status === 'error' ? (
-            <StateMessage
-              kind="error"
-              title={errorInfo.message}
-              action={{
-                label: 'Retry',
-                accessibilityLabel: 'Retry loading machines',
-                onPress: reload,
-              }}
-            />
-          ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading machines…" /> : null}
 
-          {status === 'ready' && machines.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              icon={Server}
-              title="No machines yet. Add one to let your AIs work on your own computers."
-              action={{
-                label: 'Add machine',
-                accessibilityLabel: 'Add a machine',
-                onPress: openAdd,
-              }}
-            />
-          ) : null}
+      {status === 'error' ? (
+        <StateMessage
+          kind="error"
+          title={errorInfo.message}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading machines',
+            onPress: reload,
+          }}
+        />
+      ) : null}
 
-          {status === 'ready' && pending.length > 0 ? (
-            <PendingMachines
-              machines={pending}
-              busyId={busyId}
-              actionErrors={actionErrors}
-              onApprove={approve}
-              onDeny={deny}
-            />
-          ) : null}
+      {status === 'ready' && machines.length === 0 ? (
+        <StateMessage
+          kind="empty"
+          icon={Server}
+          title="No machines yet. Add one to let your AIs work on your own computers."
+          action={{
+            label: 'Add machine',
+            accessibilityLabel: 'Add a machine',
+            onPress: openAdd,
+          }}
+        />
+      ) : null}
 
-          {status === 'ready' && (approved.length > 0 || revoked.length > 0) ? (
-            <ApprovedMachines
-              machines={approved}
-              aisByMachine={aisByMachine}
-              busyId={busyId}
-              actionErrors={actionErrors}
-              renamingId={renamingId}
-              renameDraft={renameDraft}
-              onChangeRenameDraft={setRenameDraft}
-              onCancelRename={cancelRename}
-              onSaveRename={saveRename}
-              onRename={openRename}
-              onRevoke={askRevoke}
-              revokedCount={revoked.length}
-              showRevoked={showRevoked}
-              onToggleRevoked={toggleRevoked}
-            />
-          ) : null}
+      {status === 'ready' && pending.length > 0 ? (
+        <PendingMachines
+          machines={pending}
+          busyId={busyId}
+          actionErrors={actionErrors}
+          onApprove={approve}
+          onDeny={deny}
+        />
+      ) : null}
 
-          {status === 'ready' && showRevoked && revoked.length > 0 ? (
-            <RevokedMachines
-              machines={revoked}
-              busyId={busyId}
-              actionErrors={actionErrors}
-              onDelete={askDelete}
-            />
-          ) : null}
-        </View>
-      </ScrollView>
+      {status === 'ready' && (approved.length > 0 || revoked.length > 0) ? (
+        <ApprovedMachines
+          machines={approved}
+          aisByMachine={aisByMachine}
+          busyId={busyId}
+          actionErrors={actionErrors}
+          renamingId={renamingId}
+          renameDraft={renameDraft}
+          onChangeRenameDraft={setRenameDraft}
+          onCancelRename={cancelRename}
+          onSaveRename={saveRename}
+          onRename={openRename}
+          onRevoke={askRevoke}
+          revokedCount={revoked.length}
+          showRevoked={showRevoked}
+          onToggleRevoked={toggleRevoked}
+        />
+      ) : null}
 
-      <AddMachineSheet
-        visible={adding}
-        pairing={pairing}
-        loading={pairingLoading}
-        error={pairingError}
-        onRetry={retryAdd}
-        onClose={closeAdd}
-      />
-
-      <ConfirmDialog
-        visible={confirming !== null}
-        title={confirming?.kind === 'revoke' ? 'Revoke this machine?' : 'Delete this machine?'}
-        message={
-          confirming?.kind === 'revoke'
-            ? 'The machine loses access at once. AIs running there move back to the platform.'
-            : 'This removes the machine for good. This cannot be undone.'
-        }
-        error={confirmError}
-        confirmLabel={confirming?.kind === 'revoke' ? 'Revoke' : 'Delete'}
-        busyLabel="Working…"
-        busy={busyId !== null}
-        onCancel={cancelConfirm}
-        onConfirm={confirmAction}
-        confirmAccessibilityLabel={
-          confirming?.kind === 'revoke' ? 'Confirm revoke' : 'Confirm delete'
-        }
-      />
-    </SafeAreaView>
+      {status === 'ready' && showRevoked && revoked.length > 0 ? (
+        <RevokedMachines
+          machines={revoked}
+          busyId={busyId}
+          actionErrors={actionErrors}
+          onDelete={askDelete}
+        />
+      ) : null}
+    </SettingsScreenShell>
   );
 }

@@ -5,7 +5,7 @@ import { ShieldCheck, Check, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { AisScreenShell } from '@/components/ais/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { fromApi, makeAisApi, makeApprovalsApi } from '@zilar/client-core';
 import { RevokeConfirmDialog, AlwaysAllowedRow } from '@/components/approvals/always-allowed-row';
 import { StateMessage } from '@/components/ui/state-message';
@@ -543,10 +543,11 @@ function ApprovalsBody() {
   const ruleSections = useMemo(() => groupRulesForScreen(ownedRules), [ownedRules]);
 
   return (
-    <AisScreenShell
+    <SettingsScreenShell
       title="Approvals"
       subtitle="Requests from your AIs that are waiting for you."
       onBack={() => router.back()}
+      scroll={false}
     >
       {notice !== '' ? (
         <Text role="status" className="mb-3 text-[14px] text-muted-foreground">
@@ -604,6 +605,6 @@ function ApprovalsBody() {
         onCancel={() => setConfirmRule(null)}
         onConfirm={confirmRevoke}
       />
-    </AisScreenShell>
+    </SettingsScreenShell>
   );
 }

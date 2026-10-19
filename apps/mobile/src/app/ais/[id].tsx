@@ -26,7 +26,7 @@ import {
   buildPatch,
   computerChoices,
 } from '@zilar/chat-core';
-import { AisScreenShell } from '@/components/ais/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import {
   makeAisApi,
   makeAuditApi,
@@ -528,7 +528,7 @@ function EditAi() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-      <AisScreenShell
+      <SettingsScreenShell
         title={loaded === null ? 'Edit AI' : `Edit ${loaded.name}`}
         onBack={() => router.back()}
         scroll
@@ -650,7 +650,7 @@ function EditAi() {
             ) : null}
           </View>
         )}
-      </AisScreenShell>
+      </SettingsScreenShell>
     </KeyboardAvoidingView>
   );
 }

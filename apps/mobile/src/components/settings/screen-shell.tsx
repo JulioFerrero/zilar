@@ -80,6 +80,8 @@ type SettingsScreenShellProps = {
   refreshControl?: ReactElement<RefreshControlProps> | undefined;
   /** A body that does not scroll, for screens whose child is already a list. */
   scroll?: boolean | undefined;
+  /** Dismiss the keyboard on drag and adjust insets for it; off keeps a plain scroll view. */
+  keyboardAvoidance?: boolean | undefined;
   contentClassName?: string | undefined;
   contentPaddingBottom?: number | undefined;
   footer?: ReactNode;
@@ -97,6 +99,7 @@ export function SettingsScreenShell({
   onRefresh,
   refreshControl,
   scroll = true,
+  keyboardAvoidance = true,
   contentClassName = 'p-4',
   contentPaddingBottom,
   footer,
@@ -137,8 +140,8 @@ export function SettingsScreenShell({
               contentPaddingBottom ?? tabScreenBottomPadding(onBack !== undefined, insets.bottom),
           }}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode={keyboardAvoidance ? 'interactive' : 'none'}
+          automaticallyAdjustKeyboardInsets={keyboardAvoidance}
           refreshControl={refreshControlElement}
         >
           <View className={contentClassName}>{children}</View>

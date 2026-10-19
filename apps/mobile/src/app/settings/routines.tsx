@@ -6,7 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { RefreshControl, ScrollView, View, Pressable } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { AisScreenShell } from '@/components/ais/screen-shell';
+import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useFocusList } from '@/components/settings/use-focus-list';
 import { useApi } from '@/lib/use-mockable-api';
 import { SectionLabel } from '@/components/ui/card';
@@ -221,7 +221,7 @@ function RoutinesBody() {
   );
 
   return (
-    <AisScreenShell title="Routines" onBack={() => router.back()}>
+    <SettingsScreenShell title="Routines" onBack={() => router.back()} scroll={false}>
       {status === 'loading' ? <StateMessage kind="loading" title="Loading routines…" /> : null}
 
       {status === 'error' ? (
@@ -293,7 +293,7 @@ function RoutinesBody() {
         confirmAccessibilityLabel="Confirm delete routine"
         accessibilityLabel="Delete routine"
       />
-    </AisScreenShell>
+    </SettingsScreenShell>
   );
 }
 
