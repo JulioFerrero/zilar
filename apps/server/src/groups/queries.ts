@@ -18,11 +18,7 @@ import {
   type GroupRole,
 } from './schemas';
 
-export async function getGroupDetail(
-  db: ServerDatabase,
-  groupId: string,
-  listenerAvailable = false,
-): Promise<GroupDetail | null> {
+async function loadGroupRow(db: ServerDatabase, groupId: string): Promise<GroupRow | undefined> {
   const [group] = await runSql(
     db,
     Effect.gen(function* () {
@@ -30,6 +26,15 @@ export async function getGroupDetail(
       return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
     }),
   );
+  return group;
+}
+
+export async function getGroupDetail(
+  db: ServerDatabase,
+  groupId: string,
+  listenerAvailable = false,
+): Promise<GroupDetail | null> {
+  const group = await loadGroupRow(db, groupId);
   if (!group) {
     return null;
   }
@@ -144,16 +149,7 @@ export async function listMembersForViewer(
   if (!viewer) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  const [group] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
-    }),
-  );
-  if (!group) {
-    throw new HttpError(404, 'not_found', 'Group not found');
-  }
+  const group = await requireGroup(db, groupId);
   const isAdmin = isGroupManagerRole(viewer.role);
   const all = await listGroupMembers(db, groupId);
   if (group.kind === 'channel' && !isAdmin) {
@@ -322,13 +318,7 @@ async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupA
 }
 
 export async function requireGroup(db: ServerDatabase, groupId: string) {
-  const [group] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
-    }),
-  );
+  const group = await loadGroupRow(db, groupId);
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }

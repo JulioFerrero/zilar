@@ -310,15 +310,15 @@ interface ChatThreshold {
   after: string;
 }
 
-// Per chat, rows after its threshold (read mark or 30-day floor), newest first, capped at 101, in one query.
-// The caller passes only chats it may see; the caller's archive scope is applied inside.
-function buildUnreadQuery(
-  allowed: SearchOwner,
-  chats: ChatThreshold[],
-): { text: string; values: unknown[] } | null {
-  if (chats.length === 0) {
-    return null;
-  }
+interface ScopeParams {
+  values: unknown[];
+  next: (value: unknown) => string;
+  keyList: string;
+  ownerList: string;
+  peerList: string;
+}
+
+function buildScopeParams(allowed: SearchOwner, chats: ChatThreshold[]): ScopeParams {
   const values: unknown[] = [];
   const next = (value: unknown): string => {
     values.push(value);
@@ -327,7 +327,6 @@ function buildUnreadQuery(
   const keys: string[] = [];
   const owners: string[] = [];
   const peers: string[] = [];
-  const marks: string[] = [];
   for (const chat of chats) {
     keys.push(chat.jid.toLowerCase());
     if (chat.scope.kind === 'room') {
@@ -337,12 +336,28 @@ function buildUnreadQuery(
       owners.push(allowed.ownLocalpart);
       peers.push(chat.scope.peer);
     }
-    marks.push(chat.after);
   }
-  const keyList = next(keys);
-  const ownerList = next(owners);
-  const peerList = next(peers);
-  const markList = next(marks);
+  return { values, next, keyList: next(keys), ownerList: next(owners), peerList: next(peers) };
+}
+
+const ARCHIVE_LATERAL = `LEFT JOIN LATERAL (
+        SELECT bare_peer AS "barePeer", kind, nick, origin_id AS "originId",
+          timestamp, txt AS text, xml
+        FROM archive
+        WHERE username = scope.owner
+          AND (scope.peer = '' OR bare_peer = scope.peer)`;
+
+// Per chat, rows after its threshold (read mark or 30-day floor), newest first, capped at 101, in one query.
+// The caller passes only chats it may see; the caller's archive scope is applied inside.
+function buildUnreadQuery(
+  allowed: SearchOwner,
+  chats: ChatThreshold[],
+): { text: string; values: unknown[] } | null {
+  if (chats.length === 0) {
+    return null;
+  }
+  const { values, next, keyList, ownerList, peerList } = buildScopeParams(allowed, chats);
+  const markList = next(chats.map((chat) => chat.after));
   const cap = next(String(UNREAD_CAP + 1));
   return {
     text: `SELECT scope.chat_jid AS "chatJid", page."barePeer", page.kind,
@@ -350,12 +365,7 @@ function buildUnreadQuery(
       FROM (SELECT unnest(${keyList}::text[]) AS chat_jid,
         unnest(${ownerList}::text[]) AS owner, unnest(${peerList}::text[]) AS peer,
         unnest(${markList}::bigint[]) AS mark) AS scope
-      LEFT JOIN LATERAL (
-        SELECT bare_peer AS "barePeer", kind, nick, origin_id AS "originId",
-          timestamp, txt AS text, xml
-        FROM archive
-        WHERE username = scope.owner
-          AND (scope.peer = '' OR bare_peer = scope.peer)
+      ${ARCHIVE_LATERAL}
           AND timestamp > scope.mark
         ORDER BY timestamp DESC LIMIT ${cap}
       ) AS page ON true
@@ -373,39 +383,14 @@ function buildNewestQuery(
   if (missing.length === 0) {
     return null;
   }
-  const values: unknown[] = [];
-  const next = (value: unknown): string => {
-    values.push(value);
-    return `$${values.length}`;
-  };
-  const keys: string[] = [];
-  const owners: string[] = [];
-  const peers: string[] = [];
-  for (const chat of missing) {
-    keys.push(chat.jid.toLowerCase());
-    if (chat.scope.kind === 'room') {
-      owners.push(chat.scope.room);
-      peers.push('');
-    } else {
-      owners.push(allowed.ownLocalpart);
-      peers.push(chat.scope.peer);
-    }
-  }
-  const keyList = next(keys);
-  const ownerList = next(owners);
-  const peerList = next(peers);
+  const { values, next, keyList, ownerList, peerList } = buildScopeParams(allowed, missing);
   const cap = next(String(NEWEST_SCAN_ROWS));
   return {
     text: `SELECT scope.chat_jid AS "chatJid", newest."barePeer", newest.kind,
       newest.nick, newest."originId", newest.timestamp, newest.text, newest.xml
       FROM (SELECT unnest(${keyList}::text[]) AS chat_jid,
         unnest(${ownerList}::text[]) AS owner, unnest(${peerList}::text[]) AS peer) AS scope
-      LEFT JOIN LATERAL (
-        SELECT bare_peer AS "barePeer", kind, nick, origin_id AS "originId",
-          timestamp, txt AS text, xml
-        FROM archive
-        WHERE username = scope.owner
-          AND (scope.peer = '' OR bare_peer = scope.peer)
+      ${ARCHIVE_LATERAL}
         ORDER BY timestamp DESC LIMIT ${cap}
       ) AS newest ON true
       WHERE newest."originId" IS NOT NULL

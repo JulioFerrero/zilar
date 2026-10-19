@@ -132,6 +132,41 @@ export async function createRoutine(
   return toPublicRoutine(inserted, tool.name, schedule);
 }
 
+async function findRoutineRow(db: ServerDatabase, id: string): Promise<RoutineRow | null> {
+  const [found] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
+    }),
+  );
+  return found ?? null;
+}
+
+async function recordRoutineAudit(
+  audit: AuditRecorder | undefined,
+  actorId: string,
+  routine: RoutineRow,
+  action: string,
+  detail: Record<string, unknown> | null,
+): Promise<void> {
+  if (audit === undefined) {
+    return;
+  }
+  await audit.record({
+    actorUserId: actorId,
+    aiId: routine.aiId,
+    groupId: routine.groupId,
+    action,
+    subjectId: routine.id,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail,
+  });
+}
+
 // Pauses an active routine; an already paused one returns `paused: false` and writes nothing.
 export async function pauseRoutine(
   db: ServerDatabase,
@@ -152,33 +187,13 @@ export async function pauseRoutine(
     }),
   );
   if (!updated) {
-    const row = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const [found] = yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
-        return found ?? null;
-      }),
-    );
+    const row = await findRoutineRow(db, id);
     if (!row || row.deletedAt !== null) {
       throw new RoutineServiceError('not_found', 'Routine not found');
     }
     return { routine: row, paused: false };
   }
-  if (audit !== undefined) {
-    await audit.record({
-      actorUserId: actorId,
-      aiId: updated.aiId,
-      groupId: updated.groupId,
-      action: 'routine.paused',
-      subjectId: updated.id,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { reason: 'user' },
-    });
-  }
+  await recordRoutineAudit(audit, actorId, updated, 'routine.paused', { reason: 'user' });
   return { routine: updated, paused: true };
 }
 
@@ -190,14 +205,7 @@ export async function resumeRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<ResumeRoutineResult> {
-  const row = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [found] = yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
-      return found ?? null;
-    }),
-  );
+  const row = await findRoutineRow(db, id);
   if (!row || row.deletedAt !== null) {
     throw new RoutineServiceError('not_found', 'Routine not found');
   }
@@ -230,20 +238,7 @@ export async function resumeRoutine(
   if (!updated) {
     throw new RoutineServiceError('not_found', 'Routine not found');
   }
-  if (audit !== undefined) {
-    await audit.record({
-      actorUserId: actorId,
-      aiId: updated.aiId,
-      groupId: updated.groupId,
-      action: 'routine.resumed',
-      subjectId: updated.id,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: null,
-    });
-  }
+  await recordRoutineAudit(audit, actorId, updated, 'routine.resumed', null);
   return { routine: updated, resumed: true };
 }
 
@@ -269,20 +264,7 @@ export async function deleteRoutine(
   if (!updated) {
     return { deleted: false };
   }
-  if (audit !== undefined) {
-    await audit.record({
-      actorUserId: actorId,
-      aiId: updated.aiId,
-      groupId: updated.groupId,
-      action: 'routine.deleted',
-      subjectId: updated.id,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: null,
-    });
-  }
+  await recordRoutineAudit(audit, actorId, updated, 'routine.deleted', null);
   return { deleted: true };
 }
 

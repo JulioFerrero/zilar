@@ -2160,3 +2160,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2159](T-2159-intra-dedupe-clients.md) | one copy of blocks repeated in a file (clients) | 2026-10-19 |
 | [T-2158](T-2158-intra-dedupe-server.md) | server: one copy of blocks repeated in a file | 2026-10-19 |
 | [T-2161](T-2161-intra-dedupe-clients-2.md) | one copy of in-file repeats, wave 2 (clients) | 2026-10-19 |
+| [T-2160](T-2160-intra-dedupe-server-2.md) | server: one copy of in-file repeats, wave 2 | 2026-10-19 |

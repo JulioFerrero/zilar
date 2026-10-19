@@ -236,22 +236,16 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
                 nowDate,
               ),
             );
-            if (deps.audit !== undefined) {
-              yield* Effect.promise(() =>
-                (deps.audit as AuditRecorder).record({
-                  actorUserId: user.id,
-                  aiId: access.tool.aiId,
-                  groupId: access.tool.groupId,
-                  action: 'tool.reverted',
-                  subjectId: tool.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: { name: tool.name, version: version.version },
-                }),
-              );
-            }
+            yield* Effect.promise(() =>
+              recordToolAudit(deps.audit, {
+                actorUserId: user.id,
+                aiId: access.tool.aiId,
+                groupId: access.tool.groupId,
+                action: 'tool.reverted',
+                subjectId: tool.id,
+                detail: { name: tool.name, version: version.version },
+              }),
+            );
             return toRevertWire(tool, version);
           }),
         ),
@@ -271,18 +265,14 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             const { deleted } = yield* Effect.promise(() =>
               deleteTool(deps.db, toolId, new Date(now())),
             );
-            if (deleted && deps.audit !== undefined) {
+            if (deleted) {
               yield* Effect.promise(() =>
-                (deps.audit as AuditRecorder).record({
+                recordToolAudit(deps.audit, {
                   actorUserId: user.id,
                   aiId: access.tool.aiId,
                   groupId: access.tool.groupId,
                   action: 'tool.deleted',
                   subjectId: toolId,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
                   detail: { name: access.tool.name, version: access.tool.currentVersion },
                 }),
               );
@@ -332,22 +322,16 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
                 new Date(now()),
               ),
             );
-            if (deps.audit !== undefined) {
-              yield* Effect.promise(() =>
-                (deps.audit as AuditRecorder).record({
-                  actorUserId: user.id,
-                  aiId: access.tool.aiId,
-                  groupId: access.tool.groupId,
-                  action: 'tool.run',
-                  subjectId: toolId,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: { name: access.tool.name, version: run.version, status: run.status },
-                }),
-              );
-            }
+            yield* Effect.promise(() =>
+              recordToolAudit(deps.audit, {
+                actorUserId: user.id,
+                aiId: access.tool.aiId,
+                groupId: access.tool.groupId,
+                action: 'tool.run',
+                subjectId: toolId,
+                detail: { name: access.tool.name, version: run.version, status: run.status },
+              }),
+            );
             return toRunWire(result);
           }),
         ),
@@ -391,6 +375,36 @@ export function toDetailWire(tool: ToolDetail) {
   };
 }
 
+interface ToolAuditEntry {
+  actorUserId: string;
+  aiId: string | null;
+  groupId: string | null;
+  action: string;
+  subjectId: string;
+  detail: Record<string, unknown>;
+}
+
+async function recordToolAudit(
+  audit: AuditRecorder | undefined,
+  entry: ToolAuditEntry,
+): Promise<void> {
+  if (audit === undefined) {
+    return;
+  }
+  await audit.record({
+    actorUserId: entry.actorUserId,
+    aiId: entry.aiId,
+    groupId: entry.groupId,
+    action: entry.action,
+    subjectId: entry.subjectId,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: entry.detail,
+  });
+}
+
 export function toVersionListWire(version: PublicToolVersion) {
   return {
     id: version.id,
@@ -425,26 +439,9 @@ export function toRunListWire(run: AiToolRunRow) {
   };
 }
 
-export function toRevertWire(
-  tool: { id: string; name: string },
-  version: {
-    id: string;
-    toolId: string;
-    version: number;
-    message: string;
-    hosts: string[];
-    createdBy: string;
-    createdAt: Date;
-  },
-) {
+export function toRevertWire(tool: { id: string; name: string }, version: PublicToolVersion) {
   return {
-    id: version.id,
-    toolId: version.toolId,
-    version: version.version,
-    message: version.message,
-    hosts: [...version.hosts],
-    createdBy: version.createdBy,
-    createdAt: version.createdAt.toISOString(),
+    ...toVersionListWire(version),
     toolName: tool.name,
   };
 }

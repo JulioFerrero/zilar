@@ -136,6 +136,15 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     }
   }
 
+  async function requireOwnedMachine(id: string, userId: string) {
+    checkWriteLimit(userId);
+    const existing = await findOwnedMachine(deps.db, id, userId);
+    if (!existing) {
+      throw new HttpError(404, 'not_found', 'Machine not found');
+    }
+    return existing;
+  }
+
   const groupLayer = HttpApiBuilder.group(MachinesApi, 'machines', (handlers) =>
     handlers
       .handle(
@@ -157,12 +166,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'approve',
         handler(logger, async (request, user) => {
-          checkWriteLimit(user.id);
           const id = request.params.id;
-          const existing = await findOwnedMachine(deps.db, id, user.id);
-          if (!existing) {
-            throw new HttpError(404, 'not_found', 'Machine not found');
-          }
+          const existing = await requireOwnedMachine(id, user.id);
           if (existing.status !== 'pending') {
             throw new HttpError(409, 'invalid_transition', 'Only pending machines can be approved');
           }
@@ -179,12 +184,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'deny',
         handler(logger, async (request, user) => {
-          checkWriteLimit(user.id);
           const id = request.params.id;
-          const existing = await findOwnedMachine(deps.db, id, user.id);
-          if (!existing) {
-            throw new HttpError(404, 'not_found', 'Machine not found');
-          }
+          const existing = await requireOwnedMachine(id, user.id);
           if (existing.status !== 'pending') {
             throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
           }
@@ -199,12 +200,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'revoke',
         handler(logger, async (request, user) => {
-          checkWriteLimit(user.id);
           const id = request.params.id;
-          const existing = await findOwnedMachine(deps.db, id, user.id);
-          if (!existing) {
-            throw new HttpError(404, 'not_found', 'Machine not found');
-          }
+          const existing = await requireOwnedMachine(id, user.id);
           if (existing.status === 'revoked') {
             throw new HttpError(409, 'invalid_transition', 'Machine is already revoked');
           }
@@ -251,12 +248,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       .handle(
         'remove',
         handler(logger, async (request, user) => {
-          checkWriteLimit(user.id);
           const id = request.params.id;
-          const existing = await findOwnedMachine(deps.db, id, user.id);
-          if (!existing) {
-            throw new HttpError(404, 'not_found', 'Machine not found');
-          }
+          const existing = await requireOwnedMachine(id, user.id);
           if (existing.status === 'approved') {
             throw new HttpError(409, 'revoke_first', 'Revoke the machine before deleting it');
           }

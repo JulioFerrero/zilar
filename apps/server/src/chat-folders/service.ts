@@ -111,23 +111,31 @@ function ensureSeeded(
   });
 }
 
-export async function listChatFolders(
+function folderTransaction<A>(
   db: ServerDatabase,
   userId: string,
-  now: Date = new Date(),
-): Promise<ChatFolderView[]> {
-  const rows = await runSql(
+  run: (sql: SqlClient.SqlClient) => Effect.Effect<A, HttpError | SqlError.SqlError>,
+): Promise<A> {
+  return runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(
         Effect.gen(function* () {
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'chat-folders:' + userId}))`;
-          return yield* ensureSeeded(sql, userId, now);
+          return yield* run(sql);
         }),
       );
     }),
   );
+}
+
+export async function listChatFolders(
+  db: ServerDatabase,
+  userId: string,
+  now: Date = new Date(),
+): Promise<ChatFolderView[]> {
+  const rows = await folderTransaction(db, userId, (sql) => ensureSeeded(sql, userId, now));
   return rows.map(toChatFolderView);
 }
 
@@ -147,47 +155,40 @@ export async function createChatFolder(
   db: ServerDatabase,
   input: CreateChatFolderInput,
 ): Promise<ChatFolderView> {
-  const created = await runSql(
-    db,
+  const created = await folderTransaction(db, input.userId, (sql) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'chat-folders:' + input.userId}))`;
-          const current = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${input.userId}`;
-          if (current.length >= FOLDERS_MAX) {
-            return yield* Effect.fail(
-              new HttpError(409, 'folder_limit', 'You can have up to 20 folders.'),
-            );
-          }
-          const position = current.reduce((max, row) => Math.max(max, row.position), -1) + 1;
-          const [row] = yield* sql<ChatFolderRow>`INSERT INTO chat_folders
-              (id, user_id, name, icon, position, include_types, include_chats,
-                exclude_chats, exclude_muted, exclude_read, created_at, updated_at)
-            VALUES (
-              ${randomUUID()},
-              ${input.userId},
-              ${input.name},
-              ${input.icon},
-              ${position},
-              ${textArray(sql, input.includeTypes)},
-              ${textArray(sql, input.includeChats)},
-              ${textArray(sql, input.excludeChats)},
-              ${input.excludeMuted},
-              ${input.excludeRead},
-              ${input.now.toISOString()},
-              ${input.now.toISOString()}
-            )
-            RETURNING *`;
-          if (!row) {
-            return yield* Effect.fail(
-              new HttpError(500, 'internal_error', 'Could not create the folder'),
-            );
-          }
-          return row;
-        }),
-      );
+      const current = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${input.userId}`;
+      if (current.length >= FOLDERS_MAX) {
+        return yield* Effect.fail(
+          new HttpError(409, 'folder_limit', 'You can have up to 20 folders.'),
+        );
+      }
+      const position = current.reduce((max, row) => Math.max(max, row.position), -1) + 1;
+      const [row] = yield* sql<ChatFolderRow>`INSERT INTO chat_folders
+          (id, user_id, name, icon, position, include_types, include_chats,
+            exclude_chats, exclude_muted, exclude_read, created_at, updated_at)
+        VALUES (
+          ${randomUUID()},
+          ${input.userId},
+          ${input.name},
+          ${input.icon},
+          ${position},
+          ${textArray(sql, input.includeTypes)},
+          ${textArray(sql, input.includeChats)},
+          ${textArray(sql, input.excludeChats)},
+          ${input.excludeMuted},
+          ${input.excludeRead},
+          ${input.now.toISOString()},
+          ${input.now.toISOString()}
+        )
+        RETURNING *`;
+      if (!row) {
+        return yield* Effect.fail(
+          new HttpError(500, 'internal_error', 'Could not create the folder'),
+        );
+      }
+      return row;
     }),
   );
   return toChatFolderView(created);
@@ -214,50 +215,41 @@ export async function updateChatFolder(
   db: ServerDatabase,
   input: UpdateChatFolderInput,
 ): Promise<ChatFolderView> {
-  const updated = await runSql(
-    db,
+  const updated = await folderTransaction(db, input.userId, (sql) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'chat-folders:' + input.userId}))`;
-          const [existing] = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${input.userId} AND id = ${input.id} LIMIT 1`;
-          if (!existing) {
-            return yield* Effect.fail(new HttpError(404, 'not_found', 'Folder not found'));
-          }
-          const set = sql.join(
-            ', ',
-            false,
-          )([
-            ...(input.name !== undefined ? [sql`name = ${input.name}`] : []),
-            ...(input.icon !== undefined ? [sql`icon = ${input.icon}`] : []),
-            ...(input.includeTypes !== undefined
-              ? [sql`include_types = ${textArray(sql, input.includeTypes)}`]
-              : []),
-            ...(input.includeChats !== undefined
-              ? [sql`include_chats = ${textArray(sql, input.includeChats)}`]
-              : []),
-            ...(input.excludeChats !== undefined
-              ? [sql`exclude_chats = ${textArray(sql, input.excludeChats)}`]
-              : []),
-            ...(input.excludeMuted !== undefined
-              ? [sql`exclude_muted = ${input.excludeMuted}`]
-              : []),
-            ...(input.excludeRead !== undefined ? [sql`exclude_read = ${input.excludeRead}`] : []),
-            sql`updated_at = ${input.now.toISOString()}`,
-          ]);
-          const [row] = yield* sql<ChatFolderRow>`UPDATE chat_folders SET ${set}
-            WHERE user_id = ${input.userId} AND id = ${input.id}
-            RETURNING *`;
-          if (!row) {
-            return yield* Effect.fail(
-              new HttpError(500, 'internal_error', 'Could not update the folder'),
-            );
-          }
-          return row;
-        }),
-      );
+      const [existing] = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${input.userId} AND id = ${input.id} LIMIT 1`;
+      if (!existing) {
+        return yield* Effect.fail(new HttpError(404, 'not_found', 'Folder not found'));
+      }
+      const set = sql.join(
+        ', ',
+        false,
+      )([
+        ...(input.name !== undefined ? [sql`name = ${input.name}`] : []),
+        ...(input.icon !== undefined ? [sql`icon = ${input.icon}`] : []),
+        ...(input.includeTypes !== undefined
+          ? [sql`include_types = ${textArray(sql, input.includeTypes)}`]
+          : []),
+        ...(input.includeChats !== undefined
+          ? [sql`include_chats = ${textArray(sql, input.includeChats)}`]
+          : []),
+        ...(input.excludeChats !== undefined
+          ? [sql`exclude_chats = ${textArray(sql, input.excludeChats)}`]
+          : []),
+        ...(input.excludeMuted !== undefined ? [sql`exclude_muted = ${input.excludeMuted}`] : []),
+        ...(input.excludeRead !== undefined ? [sql`exclude_read = ${input.excludeRead}`] : []),
+        sql`updated_at = ${input.now.toISOString()}`,
+      ]);
+      const [row] = yield* sql<ChatFolderRow>`UPDATE chat_folders SET ${set}
+        WHERE user_id = ${input.userId} AND id = ${input.id}
+        RETURNING *`;
+      if (!row) {
+        return yield* Effect.fail(
+          new HttpError(500, 'internal_error', 'Could not update the folder'),
+        );
+      }
+      return row;
     }),
   );
   return toChatFolderView(updated);
@@ -268,38 +260,27 @@ export async function reorderChatFolders(
   db: ServerDatabase,
   options: { userId: string; ids: string[]; now: Date },
 ): Promise<ChatFolderView[]> {
-  const rows = await runSql(
-    db,
+  const rows = await folderTransaction(db, options.userId, (sql) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'chat-folders:' + options.userId}))`;
-          const current = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${options.userId}`;
-          const currentIds = new Set(current.map((row) => row.id));
-          if (
-            options.ids.length !== current.length ||
-            new Set(options.ids).size !== options.ids.length ||
-            options.ids.some((id) => !currentIds.has(id))
-          ) {
-            return yield* Effect.fail(
-              new HttpError(
-                400,
-                'invalid_request',
-                'Folder order must list every folder exactly once',
-              ),
-            );
-          }
-          for (const [position, id] of options.ids.entries()) {
-            yield* sql`UPDATE chat_folders SET position = ${position},
-                updated_at = ${options.now.toISOString()}
-              WHERE user_id = ${options.userId} AND id = ${id}`;
-          }
-          return yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${options.userId}`;
-        }),
-      );
+      const current = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${options.userId}`;
+      const currentIds = new Set(current.map((row) => row.id));
+      if (
+        options.ids.length !== current.length ||
+        new Set(options.ids).size !== options.ids.length ||
+        options.ids.some((id) => !currentIds.has(id))
+      ) {
+        return yield* Effect.fail(
+          new HttpError(400, 'invalid_request', 'Folder order must list every folder exactly once'),
+        );
+      }
+      for (const [position, id] of options.ids.entries()) {
+        yield* sql`UPDATE chat_folders SET position = ${position},
+            updated_at = ${options.now.toISOString()}
+          WHERE user_id = ${options.userId} AND id = ${id}`;
+      }
+      return yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${options.userId}`;
     }),
   );
   return sortByPosition([...rows]).map(toChatFolderView);
@@ -309,33 +290,26 @@ export async function deleteChatFolder(
   db: ServerDatabase,
   options: { userId: string; id: string },
 ): Promise<ChatFolderView[]> {
-  const rows = await runSql(
-    db,
+  const rows = await folderTransaction(db, options.userId, (sql) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'chat-folders:' + options.userId}))`;
-          const [existing] = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${options.userId} AND id = ${options.id} LIMIT 1`;
-          if (!existing) {
-            return yield* Effect.fail(new HttpError(404, 'not_found', 'Folder not found'));
-          }
-          yield* sql`DELETE FROM chat_folders
-            WHERE user_id = ${options.userId} AND id = ${options.id}`;
-          const rest = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${options.userId}`;
-          const ordered = sortByPosition([...rest]);
-          for (const [position, row] of ordered.entries()) {
-            if (row.position !== position) {
-              yield* sql`UPDATE chat_folders SET position = ${position}
-                WHERE user_id = ${options.userId} AND id = ${row.id}`;
-            }
-          }
-          return yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
-            WHERE user_id = ${options.userId}`;
-        }),
-      );
+      const [existing] = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${options.userId} AND id = ${options.id} LIMIT 1`;
+      if (!existing) {
+        return yield* Effect.fail(new HttpError(404, 'not_found', 'Folder not found'));
+      }
+      yield* sql`DELETE FROM chat_folders
+        WHERE user_id = ${options.userId} AND id = ${options.id}`;
+      const rest = yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${options.userId}`;
+      const ordered = sortByPosition([...rest]);
+      for (const [position, row] of ordered.entries()) {
+        if (row.position !== position) {
+          yield* sql`UPDATE chat_folders SET position = ${position}
+            WHERE user_id = ${options.userId} AND id = ${row.id}`;
+        }
+      }
+      return yield* sql<ChatFolderRow>`SELECT * FROM chat_folders
+        WHERE user_id = ${options.userId}`;
     }),
   );
   return sortByPosition([...rows]).map(toChatFolderView);
