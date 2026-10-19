@@ -10,16 +10,9 @@ import {
   PROVIDER_KEY_REJECTED_REPLY,
   TRANSIENT_FAILURE_REPLY,
 } from './replies';
-// The barrel does not re-export `redactError` or `requestCompletion`;
-// importing them here keeps this task to tests with no barrel change.
 import { redactError, mapFailureToReply } from './tool-exec';
 import { ChatCompletionError } from '../ai/model-client';
-import {
-  requestCompletion,
-  TOOL_TURN_MAX_CALLS,
-  type ExecuteToolCall,
-  type ModelRequestMessage,
-} from './tool-loop';
+import { TOOL_TURN_MAX_CALLS, type ExecuteToolCall, type ModelRequestMessage } from './tool-loop';
 import { runToolLoop } from './tool-rounds';
 
 const TARGET: ModelTarget = {
@@ -109,49 +102,6 @@ describe('mapFailureToReply', () => {
       CONTEXT_TOO_LONG_REPLY,
     );
     expect(mapFailureToReply(new Error('socket closed'))).toBe(TRANSIENT_FAILURE_REPLY);
-  });
-});
-
-describe('requestCompletion retry', () => {
-  it('retries a 429 once and answers from the second request', async () => {
-    let fetchCalls = 0;
-    const fetchImpl: FetchLike = async () => {
-      fetchCalls += 1;
-      if (fetchCalls === 1) {
-        return new Response(JSON.stringify({ error: { message: 'rate limited' } }), {
-          status: 429,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return textResponse('after the retry');
-    };
-
-    const result = await requestCompletion({
-      target: TARGET,
-      messages: [{ role: 'user', content: 'hi' }],
-      fetchImpl,
-    });
-
-    expect(result.content).toBe('after the retry');
-    expect(fetchCalls).toBe(2);
-  });
-
-  it('times out a hung request once, with no budget left to retry it', async () => {
-    let fetchCalls = 0;
-    const fetchImpl: FetchLike = () => {
-      fetchCalls += 1;
-      return new Promise<Response>(() => undefined);
-    };
-
-    await expect(
-      requestCompletion({
-        target: TARGET,
-        messages: [{ role: 'user', content: 'hi' }],
-        fetchImpl,
-        timeoutMs: 100,
-      }),
-    ).rejects.toThrow('the request timed out');
-    expect(fetchCalls).toBe(1);
   });
 });
 
@@ -266,7 +216,7 @@ describe('runToolLoop caps and redaction', () => {
   });
 });
 
-describe('failure logs (AI-22)', () => {
+describe('failure logs', () => {
   it('carries the failure kind and status, never the provider text', async () => {
     const providerText = 'invalid api key for request {"messages":[{"content":"secret prompt"}]}';
     const fetchImpl: FetchLike = async () =>

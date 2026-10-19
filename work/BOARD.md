@@ -2217,3 +2217,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2217](T-2217-open-chat-core.md) | store phase 3 T3b: one openChat core for web and phone | 2026-10-19 |
 | [T-2218](T-2218-stop-cancels-web-tool.md) | Stop cancels an in-flight DeepSeek web tool call | 2026-10-19 |
 | [T-2214](T-2214-no-reexports.md) | import rule: no pass-through re-exports or aliases | 2026-10-19 |
+| [T-2221](T-2221-agent-tests-cut-e.md) | server tests wave E: AI turn tests cut | 2026-10-19 |

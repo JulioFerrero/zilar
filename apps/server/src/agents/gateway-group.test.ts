@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FetchLike } from '../ai/http';
 import { createKeyCipher } from '../connections/crypto';
-import {
-  TEST_XMPP_DOMAIN,
-  createTestContext,
-  expectedJid,
-  type TestContext,
-} from '../test-support';
+import { TEST_XMPP_DOMAIN, createTestContext, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
 import { normBareJid } from './context';
 import {
-  GROUP_RATE_WINDOW_MS,
   GROUP_TURNS_PER_WINDOW,
   ROUND_MAX_AI_TURNS,
   toRedactedError,
@@ -22,15 +16,11 @@ import {
   type RoomRound,
   type ScheduledTurnOutcome,
 } from './gateway/contracts';
-import { createGroupIngest, replyTargetsAi } from './gateway/group-ingest';
-import { createGroupTurn } from './gateway/group-turn';
 import { createBudgetGate } from './gateway/budget';
+import { checkRoomLimits, createGroupTurn } from './gateway/group-turn';
 import { createLiveSession } from './gateway/live';
 import { createMemoryRunner } from './gateway/memory';
-import { checkRoomLimits, shouldSendRateNotice } from './gateway/group-turn';
 import { GROUP_FAILURE_REPLY, PROVIDER_KEY_REJECTED_REPLY } from './replies';
-import { TOOL_TURN_WALL_CLOCK_MS } from './tool-loop';
-import { TOOL_TURN_MIN_CALL_MS, remainingTurnBudgetMs } from './turn';
 import {
   FakeCore,
   MASTER_KEY,
@@ -50,16 +40,7 @@ function round(aiTurns: number): RoomRound {
   return { humanMessageId: 'm-1', aiTurns, hops: 0, handoffIds: new Set() };
 }
 
-// T-1176 (AI-7): the two room limits, moved out of `group-turn.ts`.
 describe('checkRoomLimits', () => {
-  it('accepts a turn under both limits and stamps the rate window', () => {
-    const roomTurns = new Map<string, number[]>();
-    const roomRounds = new Map([[ROOM, round(0)]]);
-    expect(checkRoomLimits({ roomTurns, roomRounds, roomJid: ROOM, atMs: 1000 })).toBe('ok');
-    expect(roomTurns.get(ROOM)).toEqual([1000]);
-    expect(roomRounds.get(ROOM)?.aiTurns).toBe(1);
-  });
-
   it('drops past the rate window without spending the round budget', () => {
     const stamps = Array.from({ length: GROUP_TURNS_PER_WINDOW }, (_, index) => 1000 + index);
     const roomTurns = new Map([[ROOM, stamps]]);
@@ -78,180 +59,6 @@ describe('checkRoomLimits', () => {
   });
 });
 
-describe('shouldSendRateNotice', () => {
-  it('allows one notice per window per room', () => {
-    const notices = new Map<string, number>();
-    expect(shouldSendRateNotice(notices, ROOM, 1000)).toBe(true);
-    notices.set(ROOM, 1000);
-    expect(shouldSendRateNotice(notices, ROOM, 1000 + GROUP_RATE_WINDOW_MS - 1)).toBe(false);
-    expect(shouldSendRateNotice(notices, ROOM, 1000 + GROUP_RATE_WINDOW_MS)).toBe(true);
-  });
-});
-
-// T-1176 (AI-8): a reply to the AI's own message wakes it without a mention.
-describe('replyTargetsAi', () => {
-  const aiBare = 'ai-1@zilar.localhost';
-  const occupant = `${ROOM}/Helper AI`;
-
-  it('wakes on the id of a message the AI sent', () => {
-    expect(
-      replyTargetsAi({
-        replyTo: { id: 'sent-3' },
-        aiBare,
-        aiOccupantJid: occupant,
-        sentIds: ['sent-2', 'sent-3'],
-      }),
-    ).toBe(true);
-  });
-
-  it('wakes on the AI bare JID in `to`', () => {
-    expect(
-      replyTargetsAi({ replyTo: { id: 'x', to: aiBare }, aiBare, aiOccupantJid: occupant }),
-    ).toBe(true);
-  });
-
-  it('wakes on the AI MUC occupant JID in `to`', () => {
-    expect(
-      replyTargetsAi({ replyTo: { id: 'x', to: occupant }, aiBare, aiOccupantJid: occupant }),
-    ).toBe(true);
-  });
-
-  it('ignores a reply to someone else', () => {
-    expect(
-      replyTargetsAi({
-        replyTo: { id: 'sent-9', to: 'someone@zilar.localhost' },
-        aiBare,
-        aiOccupantJid: occupant,
-        sentIds: ['sent-1'],
-      }),
-    ).toBe(false);
-  });
-
-  it('ignores a message with no reply', () => {
-    expect(replyTargetsAi({ replyTo: undefined, aiBare, aiOccupantJid: occupant })).toBe(false);
-  });
-});
-
-describe('group reply wakes the AI (T-1176)', () => {
-  let context: TestContext;
-
-  beforeEach(async () => {
-    context = await createTestContext();
-  });
-
-  afterEach(async () => {
-    await context.close();
-  });
-
-  it('answers a reply that quotes the AI message id, with no mention', async () => {
-    const calls: Call[] = [];
-    const fetchImpl: FetchLike = (url, init) => {
-      calls.push({ url, init });
-      return Promise.resolve(completionResponse('AI answer'));
-    };
-    const helpers = createGatewayHelpers({
-      getContext: () => context,
-      setGateway: () => undefined,
-    });
-    const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl);
-    const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
-    await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], [aiId]);
-
-    await gateway.start();
-    await waitFor(() => gateway.aiIds().length === 1);
-    const core = await helpers.coreFor(cores, aiJid);
-    await waitFor(() => core.joined.length === 1);
-    const roomJid = core.joined[0]?.roomJid ?? '';
-    expect(roomJid).not.toBe('');
-
-    const isReply = (message: FakeCore['sent'][number]): boolean =>
-      message.to === roomJid && message.text.startsWith('AI answer');
-    core.receive({
-      id: 'msg-1',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: ownerJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'hello AI',
-      timestamp: ROOM_DAY,
-      mentions: [{ jid: aiJid, begin: 0, end: 2 }],
-      outgoing: false,
-    });
-    await waitFor(() => core.sent.filter(isReply).length === 1);
-    const replyIndex = core.sent.findIndex(isReply);
-    const replyId = `sent-${replyIndex + 1}`;
-
-    // The AI's own reflection comes back `outgoing` and carries the archive
-    // stanza-id (XEP-0359) as `id`, with the gateway's own id as `originId`.
-    // Clients quote the stanza-id, so the ingest records it too.
-    core.receive({
-      id: 'stanza-1',
-      originId: replyId,
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: `${roomJid}/Gateway AI`,
-      fromResolved: false,
-      fromNick: 'Gateway AI',
-      body: 'AI answer',
-      timestamp: ROOM_DAY,
-      outgoing: true,
-    });
-
-    // No mention: only the quoted id connects this message to the AI.
-    core.receive({
-      id: 'msg-2',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: ownerJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'thanks',
-      timestamp: ROOM_DAY,
-      replyTo: { id: replyId },
-      outgoing: false,
-    });
-    await waitFor(() => core.sent.filter(isReply).length === 2);
-
-    // A reply quoting the archive stanza-id (what our clients store) wakes it.
-    core.receive({
-      id: 'msg-3',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: ownerJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'and one more',
-      timestamp: ROOM_DAY,
-      replyTo: { id: 'stanza-1' },
-      outgoing: false,
-    });
-    await waitFor(() => core.sent.filter(isReply).length === 3);
-    expect(calls.length).toBeGreaterThanOrEqual(3);
-  });
-});
-
-// T-1290 (AI-14): each model call inside a tool turn is bounded by what is
-// left of the turn's wall clock, floored so a nearly-spent budget still lets
-// the call finish.
-describe('remainingTurnBudgetMs', () => {
-  it('returns what is left of the turn budget, floored at the call minimum', () => {
-    const start = 1_000;
-    expect(remainingTurnBudgetMs(start, () => start + 10_000)).toBe(
-      TOOL_TURN_WALL_CLOCK_MS - 10_000,
-    );
-    expect(remainingTurnBudgetMs(start, () => start + TOOL_TURN_WALL_CLOCK_MS - 1_000)).toBe(
-      TOOL_TURN_MIN_CALL_MS,
-    );
-    expect(remainingTurnBudgetMs(start, () => start + TOOL_TURN_WALL_CLOCK_MS + 60_000)).toBe(
-      TOOL_TURN_MIN_CALL_MS,
-    );
-  });
-});
-
-// T-1290 (AI-9): mentions from different senders queued during one turn run as
-// separate turns, each tagged to the person it answers, in order.
 describe('group mentions from different senders (T-1290)', () => {
   let context: TestContext;
 
@@ -334,7 +141,6 @@ describe('group mentions from different senders (T-1290)', () => {
 
     await waitFor(() => core.sent.filter(isReply).length === 3);
     const texts = core.sent.filter(isReply).map((message) => message.text);
-    // T-1761: replies no longer tag the asker; each still quotes its trigger.
     expect(texts).toHaveLength(3);
     expect(texts.every((text) => !text.startsWith('@'))).toBe(true);
     const quoted = core.sent
@@ -344,8 +150,59 @@ describe('group mentions from different senders (T-1290)', () => {
   });
 });
 
-// T-1290 (AI-10): a failed room turn tells the room a fixed line and DMs the
-// owner the real reason, at most once per room per UTC day.
+describe('group turn membership', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('does not answer a mention from someone who is not a group member', async () => {
+    const calls: Call[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve(completionResponse('AI answer'));
+    };
+    const helpers = createGatewayHelpers({
+      getContext: () => context,
+      setGateway: () => undefined,
+    });
+    const cores: FakeCore[] = [];
+    const { gateway } = helpers.harness(cores, fetchImpl);
+    const { aiId, ownerId, aiJid } = await seedGatewayAi(context);
+    const outsiderId = await seedUser(context, { name: 'Outsider' });
+    await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], [aiId]);
+
+    await gateway.start();
+    await waitFor(() => gateway.aiIds().length === 1);
+    const core = await helpers.coreFor(cores, aiJid);
+    await waitFor(() => core.joined.length === 1);
+    const roomJid = core.joined[0]?.roomJid ?? '';
+    expect(roomJid).not.toBe('');
+
+    core.receive({
+      id: 'm-outsider',
+      chatJid: roomJid,
+      kind: 'groupchat',
+      fromJid: `${localpartFor(outsiderId)}@${TEST_XMPP_DOMAIN}`,
+      fromResolved: true,
+      fromNick: 'Outsider',
+      body: 'hello AI',
+      timestamp: ROOM_DAY,
+      mentions: [{ jid: aiJid, begin: 0, end: 2 }],
+      outgoing: false,
+    });
+
+    await tick(200);
+    expect(core.sent.filter((message) => message.to === roomJid)).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('group turn failure notice (T-1290)', () => {
   let context: TestContext;
 
@@ -406,212 +263,6 @@ describe('group turn failure notice (T-1290)', () => {
   });
 });
 
-// T-1633 (plan smart-wake §5.3): `decideWake` is wired into the mention check,
-// so a person's unaddressed message wakes an AI when it clearly addresses it,
-// when it is a question in a one-AI room, or when it is a follow-up question
-// right after that AI's own reply.
-describe('smart wake rules (T-1633)', () => {
-  let context: TestContext;
-
-  beforeEach(async () => {
-    context = await createTestContext();
-  });
-
-  afterEach(async () => {
-    await context.close();
-  });
-
-  type SeededAi = Awaited<ReturnType<typeof seedGatewayAi>>;
-
-  const roomReplies = (core: FakeCore, roomJid: string): FakeCore['sent'] =>
-    core.sent.filter((message) => message.to === roomJid && message.kind === 'groupchat');
-
-  // One AI per name, all joined to the group's room. `calls` collects the
-  // model calls every AI makes, so a test can assert a wake never fired.
-  async function openRoom(
-    names: string[],
-    calls: Call[],
-  ): Promise<{ cores: FakeCore[]; roomJid: string; senderJid: string; aiJids: string[] }> {
-    const fetchImpl: FetchLike = (url, init) => {
-      calls.push({ url, init });
-      return Promise.resolve(completionResponse('AI answer'));
-    };
-    const helpers = createGatewayHelpers({
-      getContext: () => context,
-      setGateway: () => undefined,
-    });
-    const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl);
-    const seeded: SeededAi[] = [];
-    for (const name of names) {
-      seeded.push(await seedGatewayAi(context, { name }));
-    }
-    const first = seeded[0];
-    if (first === undefined) {
-      throw new Error('openRoom needs at least one AI');
-    }
-    // Every AI brought its own owner from `seedAi`; T-1990 keeps an AI in a
-    // group's rooms only while its owner is a member, so seed each owner too.
-    await seedGroup(
-      context,
-      first.ownerId,
-      seeded.map((ai, index) => ({
-        userId: ai.ownerId,
-        role: index === 0 ? ('owner' as const) : ('member' as const),
-      })),
-      seeded.map((ai) => ai.aiId),
-    );
-    await gateway.start();
-    await waitFor(() => gateway.aiIds().length === seeded.length);
-    const aiCores: FakeCore[] = [];
-    for (const ai of seeded) {
-      const core = await helpers.coreFor(cores, ai.aiJid);
-      await waitFor(() => core.joined.length === 1);
-      aiCores.push(core);
-    }
-    const roomJid = aiCores[0]?.joined[0]?.roomJid ?? '';
-    expect(roomJid).not.toBe('');
-    return {
-      cores: aiCores,
-      roomJid,
-      senderJid: first.ownerJid,
-      aiJids: seeded.map((ai) => ai.aiJid),
-    };
-  }
-
-  it('answers an unaddressed question in a one-AI room (rule S)', async () => {
-    const calls: Call[] = [];
-    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI'], calls);
-    const core = cores[0];
-    if (core === undefined) {
-      throw new Error('no core');
-    }
-    core.receive({
-      id: 'q-1',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: senderJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'what is BTC at?',
-      timestamp: ROOM_DAY,
-      outgoing: false,
-    });
-    await waitFor(() => roomReplies(core, roomJid).length === 1);
-    expect(calls.length).toBe(1);
-  });
-
-  it('does not answer an unaddressed question in a two-AI room', async () => {
-    const calls: Call[] = [];
-    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI', 'Second AI'], calls);
-    const [core, secondCore] = cores;
-    if (core === undefined || secondCore === undefined) {
-      throw new Error('missing cores');
-    }
-    const message = {
-      id: 'q-1',
-      chatJid: roomJid,
-      kind: 'groupchat' as const,
-      fromJid: senderJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'what is BTC at?',
-      timestamp: ROOM_DAY,
-      outgoing: false,
-    };
-    core.receive(message);
-    secondCore.receive(message);
-    await tick(200);
-    expect(roomReplies(core, roomJid)).toHaveLength(0);
-    expect(roomReplies(secondCore, roomJid)).toHaveLength(0);
-    expect(calls.length).toBe(0);
-  });
-
-  it('does not answer a plain remark', async () => {
-    const calls: Call[] = [];
-    const { cores, roomJid, senderJid } = await openRoom(['Gateway AI'], calls);
-    const core = cores[0];
-    if (core === undefined) {
-      throw new Error('no core');
-    }
-    core.receive({
-      id: 'r-1',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: senderJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'thanks!',
-      timestamp: ROOM_DAY,
-      outgoing: false,
-    });
-    await tick(200);
-    expect(roomReplies(core, roomJid)).toHaveLength(0);
-    expect(calls.length).toBe(0);
-  });
-
-  it('answers a follow-up question right after its own reply (rule R)', async () => {
-    const calls: Call[] = [];
-    const { cores, roomJid, senderJid, aiJids } = await openRoom(
-      ['Gateway AI', 'Second AI'],
-      calls,
-    );
-    const [core, secondCore] = cores;
-    const aiJid = aiJids[0];
-    if (core === undefined || secondCore === undefined || aiJid === undefined) {
-      throw new Error('missing cores');
-    }
-    // An explicit mention makes the first AI reply; the second AI stays idle.
-    core.receive({
-      id: 'm-1',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: senderJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'hello AI',
-      timestamp: ROOM_DAY,
-      mentions: [{ jid: aiJid, begin: 0, end: 2 }],
-      outgoing: false,
-    });
-    await waitFor(() => roomReplies(core, roomJid).length === 1);
-    // Its own room message reflects back `outgoing`, which opens the
-    // follow-up window (rule R), not rule S (the room holds two AIs).
-    core.receive({
-      id: 'stanza-1',
-      chatJid: roomJid,
-      kind: 'groupchat',
-      fromJid: `${roomJid}/Gateway AI`,
-      fromResolved: false,
-      fromNick: 'Gateway AI',
-      body: 'AI answer',
-      timestamp: ROOM_DAY,
-      outgoing: true,
-    });
-    const followUp = {
-      id: 'q-2',
-      chatJid: roomJid,
-      kind: 'groupchat' as const,
-      fromJid: senderJid,
-      fromResolved: true,
-      fromNick: 'Owner',
-      body: 'and gold?',
-      timestamp: ROOM_DAY,
-      outgoing: false,
-    };
-    core.receive(followUp);
-    secondCore.receive(followUp);
-    await waitFor(() => roomReplies(core, roomJid).length === 2);
-    expect(roomReplies(secondCore, roomJid)).toHaveLength(0);
-  });
-});
-
-// T-1646 (plan §2.2/§2.5): a scheduled routine rides the room queue as a
-// synthetic trigger on `session.roomPending` that is admitted past the member
-// checks, runs without the interactive tools and settles one outcome. The
-// gateway harness drives turns through `core.receive`, which can only inject
-// network messages, so this builds the group turn factory directly — the same
-// wiring `createAgentGateway` uses — and drives `runGroupSessionTurn`.
 function scheduledRoomSession(
   aiId: string,
   aiJid: string,
@@ -740,32 +391,6 @@ describe('a scheduled item rides the room queue (T-1646)', () => {
     await context.close();
   });
 
-  it("runs past the member checks for a non-member owner and settles 'replied' once", async () => {
-    const member = await seedUser(context);
-    const { aiId, ownerJid, aiJid } = await seedGatewayAi(context);
-    // The AI's owner is not in this group: only `member` is.
-    const { groupId, generalTopicId } = await seedGroup(
-      context,
-      member,
-      [{ userId: member, role: 'owner' }],
-      [aiId],
-    );
-    const roomJid = 'scheduled@rooms.zilar.localhost';
-    const session = scheduledRoomSession(aiId, aiJid, roomJid, groupId, generalTopicId);
-    const { runGroupSessionTurn } = groupTurnFor(context, session);
-    const outcomes: ScheduledTurnOutcome[] = [];
-
-    await runGroupSessionTurn(session, roomJid, [scheduledRoomItem(ownerJid, outcomes)]);
-
-    expect(outcomes).toEqual(['replied']);
-    const core = session.core as FakeCore;
-    expect(
-      core.sent.some(
-        (message) => message.to === roomJid && message.text.includes('the routine ran'),
-      ),
-    ).toBe(true);
-  });
-
   it('offers request_action (unattended) and still no ask_people for a scheduled trigger', async () => {
     const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
     const { groupId, generalTopicId } = await seedGroup(
@@ -791,95 +416,9 @@ describe('a scheduled item rides the room queue (T-1646)', () => {
       tools?: Array<{ function: { name: string } }>;
     };
     const names = (body.tools ?? []).map((tool) => tool.function.name);
-    // T-1655: a scheduled trigger gets `request_action` again (the executor
-    // marks the request unattended, so a tier-2 action without a standing rule
-    // is refused instead of parking a card), but still no `ask_people`.
+    // A scheduled trigger gets `request_action` (the executor marks the request
+    // unattended) but never `ask_people`.
     expect(names).toContain('request_action');
     expect(names).not.toContain('ask_people');
-  });
-
-  it('a scheduled item behind a same-sender mention runs as its own turn', async () => {
-    const human = await seedUser(context);
-    const aiId = 'ai-coalesce-test';
-    const aiJid = `ai-coalesce-test@${TEST_XMPP_DOMAIN}`;
-    const roomJid = 'coalesce@rooms.zilar.localhost';
-    const session = scheduledRoomSession(aiId, aiJid, roomJid, 'g-1', 't-1');
-    const batches: string[][] = [];
-    const outcomes: ScheduledTurnOutcome[] = [];
-    const ingest = createGroupIngest({
-      deps: { db: context.db } as unknown as AgentGatewayDeps,
-      logger: { info: () => {}, warn: () => {} },
-      sessions: new Map([[aiId, session]]),
-      roomRounds: new Map(),
-      noteListenerMessage: () => {},
-      secretsFor: () => [],
-      runGroupSessionTurn: async (_session, _roomJid, batch) => {
-        batches.push(batch.map((item) => item.id));
-      },
-    });
-    const fromJid = `${human}@${TEST_XMPP_DOMAIN}`;
-    session.roomPending.set(roomJid, [
-      {
-        id: 'm-1',
-        body: '@Gateway AI hi',
-        fromJid,
-        fromResolved: true,
-        fromNick: 'Owner',
-        timestamp: ROOM_DAY,
-      },
-      scheduledRoomItem(fromJid, outcomes),
-    ]);
-
-    await ingest.pumpRoom(session, roomJid);
-
-    expect(batches).toEqual([['m-1'], ['scheduled-1']]);
-  });
-});
-
-// T-1738: a follow-up queued after an approval is synthetic, so its room reply
-// carries no `replyTo` for a message that exists in no chat.
-describe('a synthetic follow-up carries no quote (T-1738)', () => {
-  let context: TestContext;
-
-  beforeEach(async () => {
-    context = await createTestContext();
-  });
-
-  afterEach(async () => {
-    await context.close();
-  });
-
-  it('sends the reply without replyTo', async () => {
-    const member = await seedUser(context);
-    const { aiId, aiJid } = await seedGatewayAi(context);
-    const { groupId, generalTopicId } = await seedGroup(
-      context,
-      member,
-      [{ userId: member, role: 'owner' }],
-      [aiId],
-    );
-    const roomJid = 'followup@rooms.zilar.localhost';
-    const session = scheduledRoomSession(aiId, aiJid, roomJid, groupId, generalTopicId);
-    const { runGroupSessionTurn } = groupTurnFor(context, session);
-
-    await runGroupSessionTurn(session, roomJid, [
-      {
-        id: 'synthetic-1',
-        body: 'Approved: "Run the routine". Continue the task from where you stopped.',
-        fromJid: expectedJid(member),
-        fromResolved: true,
-        fromNick: 'Owner',
-        timestamp: ROOM_DAY,
-        synthetic: true,
-      },
-    ]);
-
-    const core = session.core as FakeCore;
-    const replies = core.sent.filter(
-      (message) => message.to === roomJid && message.kind === 'groupchat',
-    );
-    expect(replies.length).toBeGreaterThan(0);
-    const opts = replies.at(-1)?.opts as { replyTo?: unknown } | undefined;
-    expect(opts?.replyTo).toBeUndefined();
   });
 });

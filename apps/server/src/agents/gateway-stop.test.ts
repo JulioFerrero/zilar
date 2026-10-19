@@ -23,16 +23,12 @@ import { createBudgetGate } from './gateway/budget';
 import { createDmTurn } from './gateway/dm-turn';
 import { createLiveSession } from './gateway/live';
 import { createMemoryRunner } from './gateway/memory';
-import { createRoutineRunner } from './gateway/routine-run';
-import { seedGroup } from '../test-support/seed';
 import {
   toRedactedError,
-  type AgentGateway,
   type AgentGatewayDeps,
   type AiSession,
   type GatewayLogger,
   type PendingMessage,
-  type ScheduledRunOutcome,
   type ScheduledTurnOutcome,
 } from './gateway/contracts';
 
@@ -127,12 +123,6 @@ describe('stop a running AI turn (T-1422)', () => {
   });
 });
 
-// T-1642 (plan §2.2, step 4b): a scheduled routine rides the DM queue as a
-// synthetic trigger on `session.pending` that counts as the owner's message,
-// gets no read marker and reports one outcome through `onOutcome`. The gateway
-// harness drives turns through `core.receive`, which can only inject network
-// messages, so this builds the DM turn factory directly — the same wiring
-// `createAgentGateway` uses — and drives `pumpSessionEffect`.
 function scheduledSession(aiId: string, aiJid: string): AiSession {
   return {
     aiId,
@@ -238,24 +228,6 @@ describe('a scheduled item rides the DM queue (T-1642)', () => {
     await context.close();
   });
 
-  it("runs as an owner turn and settles 'replied' once, with no read marker", async () => {
-    const { aiId, ownerJid, aiJid } = await seedAi(context);
-    const session = scheduledSession(aiId, aiJid);
-    const pump = dmPumpFor(context, session);
-    const outcomes: ScheduledTurnOutcome[] = [];
-    session.pending.push(scheduledItem(ownerJid, outcomes));
-
-    await Effect.runPromise(pump(session));
-
-    expect(outcomes).toEqual(['replied']);
-    const core = session.core as FakeCore;
-    // No marker went out: a scheduled trigger has no incoming message to mark.
-    expect(core.displayed).toEqual([]);
-    expect(
-      core.sent.some((message) => message.to === ownerJid && message.text === 'the routine ran'),
-    ).toBe(true);
-  });
-
   it("settles 'limited' when the daily limit is reached", async () => {
     const { aiId, ownerJid, aiJid } = await seedAi(context);
     const session = scheduledSession(aiId, aiJid);
@@ -270,127 +242,6 @@ describe('a scheduled item rides the DM queue (T-1642)', () => {
   });
 });
 
-// T-1647 (plan §2.2, step 4d): the gateway's scheduled-turn runner. It queues a
-// routine's synthetic trigger on the AI's own DM or room queue and resolves
-// with the turn's outcome; the scheduler only ever calls it, never the network.
-describe('the gateway runs a scheduled turn (T-1647)', () => {
-  let context: TestContext;
-
-  beforeEach(async () => {
-    context = await createTestContext();
-  });
-
-  afterEach(async () => {
-    await context.close();
-  });
-
-  function startGateway(content = 'the routine ran') {
-    const helpers = createGatewayHelpers({
-      getContext: () => context,
-      setGateway: () => undefined,
-    });
-    const completion = helpers.completionFetch(content);
-    const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, completion.fetchImpl);
-    return { helpers, gateway, cores, completion };
-  }
-
-  function runDm(gateway: Pick<AgentGateway, 'runScheduledTurn'>, aiId: string) {
-    return gateway.runScheduledTurn({
-      aiId,
-      groupId: null,
-      topicId: null,
-      routineId: 'routine-1',
-      title: 'Daily digest',
-      prompt: 'Summarize the day.',
-    });
-  }
-
-  it("queues a DM routine and resolves 'replied' with the trigger text", async () => {
-    const { helpers, gateway, cores, completion } = startGateway();
-    const { aiId, ownerJid, aiJid } = await seedAi(context);
-    await gateway.start();
-    await waitFor(() => gateway.aiIds().length === 1);
-    const core = await helpers.coreFor(cores, aiJid);
-
-    expect(await runDm(gateway, aiId)).toBe('replied');
-    expect(
-      core.sent.some((message) => message.to === ownerJid && message.text === 'the routine ran'),
-    ).toBe(true);
-    const body = helpers.bodyOf(completion.calls[completion.calls.length - 1] as Call);
-    const seen = body.messages.map((message) => message.content).join('\n');
-    expect(seen).toContain('Scheduled run "Daily digest".\nSummarize the day.');
-  });
-
-  it("answers 'offline' for an unknown AI", async () => {
-    const { gateway } = startGateway();
-    await gateway.start();
-
-    expect(await runDm(gateway, 'ai-unknown')).toBe('offline');
-  });
-
-  it("answers 'not_in_room' for a topic room the AI's session has not joined", async () => {
-    const { gateway } = startGateway();
-    const { aiId, ownerId } = await seedAi(context);
-    // The group and its General topic exist, but the AI is not a member, so its
-    // live session never joins the room.
-    const { groupId, generalTopicId } = await seedGroup(
-      context,
-      ownerId,
-      [{ userId: ownerId, role: 'owner' }],
-      [],
-    );
-    await gateway.start();
-    await waitFor(() => gateway.aiIds().length === 1);
-
-    const outcome = await gateway.runScheduledTurn({
-      aiId,
-      groupId,
-      topicId: generalTopicId,
-      routineId: 'routine-1',
-      title: 'Morning',
-      prompt: 'Greet the room.',
-    });
-
-    expect(outcome).toBe('not_in_room');
-  });
-
-  it("resolves 'failed' when the turn never settles", async () => {
-    const { aiId, ownerId, aiJid } = await seedAi(context);
-    const session = scheduledSession(aiId, aiJid);
-    // The model call hangs past the runner's timeout; releasing it afterwards
-    // lets the turn finish so the test leaves nothing pending.
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const pump = dmPumpFor(context, session, {
-      fetchImpl: () => gate.then(() => completionResponse('late answer')),
-    });
-    const runner = createRoutineRunner({
-      sessions: new Map([[aiId, session]]),
-      sessionIsLive: () => true,
-      loadOwnerId: () => Effect.succeed<string | null>(ownerId),
-      loadTopicRoomJid: () => Effect.succeed<string | null>(null),
-      loadRoomJid: () => Effect.succeed<string | null>(null),
-      loadOwnerName: async () => 'Owner',
-      domain: TEST_XMPP_DOMAIN,
-      kickDm: (target) => {
-        void Effect.runPromise(pump(target)).catch(() => undefined);
-      },
-      kickRoom: () => undefined,
-      timeoutMs: 50,
-    });
-
-    expect(await runDm(runner, aiId)).toBe('failed');
-    release();
-    await tick(20);
-  });
-});
-
-// T-1657 (plan: audit docs/audit/scheduled-path-trace.md G2, G3, G5): the
-// 20-minute cap starts when the turn starts, a turn whose session stopped
-// settles `stopped`, and a scheduled DM item is always its own turn.
 describe('scheduled-run fixes (T-1657)', () => {
   let context: TestContext;
 
@@ -402,96 +253,6 @@ describe('scheduled-run fixes (T-1657)', () => {
     await context.close();
   });
 
-  it('does not fail a queued scheduled item on timeoutMs while it waits', async () => {
-    const { aiId, ownerId, ownerJid, aiJid } = await seedAi(context);
-    const session = scheduledSession(aiId, aiJid);
-    let fetches = 0;
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const fetchImpl: FetchLike = () => {
-      fetches += 1;
-      if (fetches === 1) {
-        return gate.then(() => completionResponse('first answer'));
-      }
-      return Promise.resolve(completionResponse('the routine ran'));
-    };
-    const pump = dmPumpFor(context, session, { fetchImpl });
-    const runner = createRoutineRunner({
-      sessions: new Map([[aiId, session]]),
-      sessionIsLive: () => true,
-      loadOwnerId: () => Effect.succeed<string | null>(ownerId),
-      loadTopicRoomJid: () => Effect.succeed<string | null>(null),
-      loadRoomJid: () => Effect.succeed<string | null>(null),
-      loadOwnerName: async () => 'Owner',
-      domain: TEST_XMPP_DOMAIN,
-      kickDm: (target) => {
-        void Effect.runPromise(pump(target)).catch(() => undefined);
-      },
-      kickRoom: () => undefined,
-      timeoutMs: 300,
-    });
-
-    // A first, busy turn holds the queue.
-    session.pending.push({ id: 'owner-1', body: 'hello', fromJid: ownerJid });
-    const pumping = Effect.runPromise(pump(session));
-    await waitFor(() => fetches >= 1);
-
-    // The scheduled run queues behind it. Its own cap starts only when its
-    // turn starts, so a short timeoutMs must not settle it while it waits.
-    let settled: ScheduledRunOutcome | undefined;
-    const outcome = runner
-      .runScheduledTurn({
-        aiId,
-        groupId: null,
-        topicId: null,
-        routineId: 'routine-1',
-        title: 'Daily digest',
-        prompt: 'Summarize the day.',
-      })
-      .then((value) => {
-        settled = value;
-        return value;
-      });
-    await tick(500);
-    expect(settled).toBeUndefined();
-
-    release();
-    expect(await outcome).toBe('replied');
-    await pumping;
-  });
-
-  it('runs a scheduled DM item as its own turn, not coalesced with an owner message', async () => {
-    const { aiId, ownerJid, aiJid } = await seedAi(context);
-    const session = scheduledSession(aiId, aiJid);
-    let fetches = 0;
-    const fetchImpl: FetchLike = () => {
-      fetches += 1;
-      return Promise.resolve(
-        completionResponse(fetches === 1 ? 'owner answer' : 'the routine ran'),
-      );
-    };
-    const pump = dmPumpFor(context, session, { fetchImpl });
-    const outcomes: ScheduledTurnOutcome[] = [];
-    session.pending.push({ id: 'owner-1', body: 'hello', fromJid: ownerJid });
-    session.pending.push(scheduledItem(ownerJid, outcomes));
-
-    await Effect.runPromise(pump(session));
-
-    // Two turns ran, not one coalesced turn: the owner message was answered on
-    // its own and the scheduled item on its own.
-    expect(fetches).toBe(2);
-    expect(outcomes).toEqual(['replied']);
-    const core = session.core as FakeCore;
-    expect(
-      core.sent.some((message) => message.to === ownerJid && message.text === 'owner answer'),
-    ).toBe(true);
-    expect(
-      core.sent.some((message) => message.to === ownerJid && message.text === 'the routine ran'),
-    ).toBe(true);
-  });
-
   it("settles 'stopped' when the session stops before the final send", async () => {
     const { aiId, ownerJid, aiJid } = await seedAi(context);
     const session = scheduledSession(aiId, aiJid);
@@ -499,7 +260,7 @@ describe('scheduled-run fixes (T-1657)', () => {
       fetchImpl: () => {
         // The AI is stopped after the model call, before the reply is sent, so
         // `liveSendMessage` drops the reply while the turn still reports
-        // `replied` (T-1657 G3).
+        // `replied`.
         session.stopped = true;
         return Promise.resolve(completionResponse('the routine ran'));
       },

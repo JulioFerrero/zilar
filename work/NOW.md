@@ -142,6 +142,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2214 | the import rule everywhere: no pass-through re-exports outside index files and no rename aliases without a clash (126 files; held, deploys with the next push) | −36 |
 | T-2218 | Stop cancels an in-flight DeepSeek web tool: the abort signal goes through the action gateway (`ActionContext.signal`) | +18 |
 | T-2217 | store phase 3 T3b: one `openChatCore` (prune, read mark, unread-mark clear, marker swap, `openHistory`) for web and phone | −15 |
 | T-2216 | AI turns T8: `completionInputOf` + `runTyped`; the DM catch uses `finishTurnFailure`. **The AI turn plan is done.** | −21 |
@@ -183,7 +184,6 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
     - One `web-tools/sources.ts`.
     - `loadWebSource` picks the AI's DeepSeek key, or else the owner's first web search key.
     - The web and phone screens (W2b/W2c) launch after it merges.
-  - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
   - **Julio, 10:23: brainstorm after the pending tasks.** MCPs and skills for AIs:
     - easy to connect (Atlassian and other sets);
