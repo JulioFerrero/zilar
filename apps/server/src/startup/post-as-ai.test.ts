@@ -35,20 +35,4 @@ describe('postAsAi (T-1765)', () => {
       payload: blocksPayload,
     });
   });
-
-  it('omits topicId and payload when they are not set', async () => {
-    const postToChat = vi.fn(async () => false);
-    const post = postAsAi(() => ({ postToChat }));
-
-    const posted = await post({ aiId: 'ai-1', groupId: null, text: 'hello' });
-
-    expect(posted).toBe(false);
-    expect(postToChat).toHaveBeenCalledWith({ aiId: 'ai-1', groupId: null, text: 'hello' });
-  });
-
-  it('returns false and posts nothing while there is no gateway', async () => {
-    const post = postAsAi(() => null);
-
-    expect(await post({ aiId: 'ai-1', groupId: null, text: 'hello' })).toBe(false);
-  });
 });

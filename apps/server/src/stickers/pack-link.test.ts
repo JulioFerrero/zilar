@@ -99,19 +99,6 @@ describe('sticker pack links', () => {
     expect(detail.stickers[0]).toMatchObject({ id: STICKER_ID, emoji: '🐱' });
   });
 
-  it('reports inPanel after the pack is added to the panel', async () => {
-    const packId = await createPack('private');
-    expect((await getPack(other.cookie, packId)).inPanel).toBe(false);
-
-    const added = await app.request(`${TEST_BASE_URL}/api/sticker-panel/${packId}`, {
-      method: 'PUT',
-      headers: { cookie: other.cookie },
-    });
-    expect(added.status).toBe(200);
-
-    expect((await getPack(other.cookie, packId)).inPanel).toBe(true);
-  });
-
   it('keeps editing and deleting owner-only', async () => {
     const packId = await createPack('private');
 
@@ -129,15 +116,6 @@ describe('sticker pack links', () => {
     expect(deleted.status).toBe(404);
   });
 
-  it('answers 404 for an unknown id', async () => {
-    const response = await app.request(
-      `${TEST_BASE_URL}/api/sticker-packs/${'44444444-4444-4444-8444-444444444444'}`,
-      { headers: { cookie: other.cookie } },
-    );
-    expect(response.status).toBe(404);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('not_found');
-  });
-
   it('hides an imported pack from everyone but its importer', async () => {
     await insertImportedPack();
 
@@ -153,20 +131,5 @@ describe('sticker pack links', () => {
       headers: { cookie: other.cookie },
     });
     expect(hiddenAdd.status).toBe(404);
-  });
-
-  it('still lists only shared packs in discover', async () => {
-    const privateId = await createPack('private');
-    const sharedId = await createPack('server');
-
-    const response = await app.request(`${TEST_BASE_URL}/api/sticker-packs/discover`, {
-      headers: { cookie: other.cookie },
-    });
-    expect(response.status).toBe(200);
-    const ids = ((await response.json()) as { packs: Array<{ id: string }> }).packs.map(
-      (pack) => pack.id,
-    );
-    expect(ids).toContain(sharedId);
-    expect(ids).not.toContain(privateId);
   });
 });

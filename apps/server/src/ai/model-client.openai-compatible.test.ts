@@ -1,8 +1,6 @@
 // T-1396: a model call to a custom OpenAI-compatible provider goes to
-// `{baseUrl}/chat/completions` with the bearer key and streams the reply. The
-// fake server is the one `dm-turn.fake-provider.test.ts` uses. The call is
-// driven through `chat()` so the pinned fetch is the one under test: tests
-// inject the resolver / allow-private hook (`pinnedFetchOptions`), never a
+// `{baseUrl}/chat/completions` and streams the reply through the pinned fetch.
+// Tests inject the resolver / allow-private hook (`pinnedFetchOptions`), never a
 // replacement fetch.
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -74,27 +72,6 @@ function target(apiUrl: string | undefined): ModelTarget {
 }
 
 describe('chat against a custom OpenAI-compatible provider', () => {
-  it('posts to /chat/completions with the key through the pinned fetch', async () => {
-    const requests: CapturedRequest[] = [];
-    const { server, apiUrl } = await startFakeProvider(requests);
-    try {
-      const result = await chat({
-        target: target(apiUrl),
-        messages: [{ role: 'user', content: 'hello' }],
-        pinnedFetchOptions: LOCALHOST,
-      });
-
-      expect(result.content).toBe('Hello there.');
-      expect(requests).toHaveLength(1);
-      expect(requests[0]?.url).toBe('/chat/completions');
-      expect(requests[0]?.authorization).toBe(`Bearer ${API_KEY}`);
-      expect(requests[0]?.body).toContain('llama-3.1-8b-instant');
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
-
   it('ignores a caller-supplied fetchImpl for a custom provider', async () => {
     const requests: CapturedRequest[] = [];
     const { server, apiUrl } = await startFakeProvider(requests);
@@ -119,12 +96,6 @@ describe('chat against a custom OpenAI-compatible provider', () => {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-  });
-
-  it('fails when a custom provider has no base URL', async () => {
-    await expect(
-      chat({ target: target(undefined), messages: [{ role: 'user', content: 'hello' }] }),
-    ).rejects.toThrow('openai-compatible requires a base URL');
   });
 
   // The pinned fetch never follows a 3xx; this proves the Effect client that

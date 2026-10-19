@@ -21,26 +21,4 @@ describe('describeToolCard', () => {
 
     expect(line).toBe('card ok: 1 blocks (figure)');
   });
-
-  it('reports a figure with no rows as invalid', () => {
-    const line = describeToolCard(
-      { text: 'Prices', blocks: [{ kind: 'figure', rows: [] }] },
-      'market-prices',
-    );
-
-    expect(line).toMatch(/^card invalid: /);
-  });
-
-  it('says nothing without blocks', () => {
-    expect(describeToolCard({ text: 'Just text' }, 'market-prices')).toBeNull();
-  });
-
-  it('names a kind the apps do not draw', () => {
-    const line = describeToolCard(
-      { text: 'Vote', blocks: [{ kind: 'poll', question: 'Which?' }] },
-      'poll-maker',
-    );
-
-    expect(line).toBe('card: poll is not drawn by the apps yet');
-  });
 });

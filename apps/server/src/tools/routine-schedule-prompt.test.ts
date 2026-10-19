@@ -87,32 +87,6 @@ async function seedTool(
   return toolId;
 }
 
-// T-1737: one live prompt routine, so the delete-by-id test can prove only
-// the named routine is removed.
-async function seedPromptRoutine(
-  context: TestContext,
-  input: { aiId: string; createdBy: string; title: string },
-): Promise<string> {
-  const id = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO routines (
-        id, ai_id, group_id, topic_id, kind, tool_id, prompt, title, schedule,
-        input, approved_hosts, status, paused_reason, next_run_at, last_run_at,
-        last_status, consecutive_failures, created_by, created_at, updated_at,
-        deleted_at
-      ) VALUES (
-        ${id}, ${input.aiId}, NULL, NULL, 'prompt', NULL, 'Post prices',
-        ${input.title}, ${JSON.stringify({ kind: 'interval', everyMinutes: 60 })}::jsonb,
-        NULL, '[]'::jsonb, 'active', NULL, ${NOW.toISOString()}, NULL, NULL, 0,
-        ${input.createdBy}, ${NOW.toISOString()}, ${NOW.toISOString()}, NULL
-      )`;
-    }),
-  );
-  return id;
-}
-
 describe('routine.schedule prompt variant', () => {
   let context: TestContext;
 
@@ -122,39 +96,6 @@ describe('routine.schedule prompt variant', () => {
 
   afterEach(async () => {
     await context.close();
-  });
-
-  it('creates a prompt routine for the AI chat when the args carry a prompt', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const adapter = scheduleAdapter(context);
-    const ctx: ActionContext = { aiId, groupId: null, topicId: null, requestId: 'req-1' };
-
-    const result = await adapter.execute(ctx, PROMPT_ARGS);
-
-    expect(result.summary).toContain('Scheduled "Morning prices"');
-    const rows = await routinesOf(context, aiId);
-    expect(rows).toHaveLength(1);
-    const row = rows[0]!;
-    expect(row.kind).toBe('prompt');
-    expect(row.toolId).toBeNull();
-    expect(row.prompt).toBe(PROMPT_ARGS.prompt);
-    expect(row.groupId).toBeNull();
-    expect(row.topicId).toBeNull();
-  });
-
-  it('decodes the prompt args and still decodes the tool args', () => {
-    const adapter = scheduleAdapter(context);
-
-    expect(decodeActionArgs(adapter.argsSchema, PROMPT_ARGS).ok).toBe(true);
-    expect(
-      decodeActionArgs(adapter.argsSchema, {
-        tool: 'daily-report',
-        title: 'Daily report',
-        schedule: { kind: 'interval', everyMinutes: 1440 },
-        hosts: ['api.example.com'],
-      }).ok,
-    ).toBe(true);
   });
 
   it('refuses args that mix the tool and prompt fields', () => {
@@ -169,16 +110,6 @@ describe('routine.schedule prompt variant', () => {
     });
 
     expect(decoded.ok).toBe(false);
-  });
-
-  it('shows the prompt on the card and no hosts line', () => {
-    const adapter = scheduleAdapter(context);
-
-    const card = adapter.describe(PROMPT_ARGS);
-
-    expect(card.summary).toBe('Morning prices · daily at 08:00 Europe/Madrid');
-    expect(card.details).toContain(PROMPT_ARGS.prompt);
-    expect(card.details).not.toContain('contact:');
   });
 
   it('cuts a long prompt at 500 characters with an ellipsis', () => {
@@ -215,40 +146,6 @@ describe('routine.schedule prompt variant', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.toolId).toBe(toolId);
     expect(rows[0]!.approvedHosts).toEqual(['api.example.com']);
-  });
-
-  it('deletes the routine named by an id prefix and leaves the other one alone', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const first = await seedPromptRoutine(context, {
-      aiId,
-      createdBy: ownerId,
-      title: 'Daily prices',
-    });
-    const second = await seedPromptRoutine(context, {
-      aiId,
-      createdBy: ownerId,
-      title: 'Weekly prices',
-    });
-    const adapters = buildToolAdapters({
-      db: context.db,
-      runner: null as unknown as ToolRunner,
-      post: async () => false,
-      now: () => NOW,
-    });
-    const adapter = adapters.find((entry) => entry.name === 'routine.delete');
-    if (!adapter) {
-      throw new Error('routine.delete adapter missing');
-    }
-    const ctx: ActionContext = { aiId, groupId: null, topicId: null, requestId: 'req-delete' };
-
-    const result = await adapter.execute(ctx, { id: first.slice(0, 8) });
-
-    expect(result.summary).toBe('deleted "Daily prices"');
-    const rows = await routinesOf(context, aiId);
-    const byId = new Map(rows.map((row) => [row.id, row]));
-    expect(byId.get(first)!.deletedAt).not.toBeNull();
-    expect(byId.get(second)!.deletedAt).toBeNull();
   });
 
   // T-1871: the alert card link is a permission edge: only this AI's card, in

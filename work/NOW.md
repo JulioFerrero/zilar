@@ -48,6 +48,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 07:16 | 235,624 (real cuts since 19:35 about −37,490) |
 | 10-19 07:27 | 235,604 source, 65,098 test (T-2192 cut 669 test lines) |
 | 10-19 07:47 | 235,404 source, 64,003 test |
+| 10-19 08:36 | 234,229 source, 61,273 test (the `lead batch` removal, store T2/T3a, AI T3, server test waves A and B) |
 
 **Merged tonight:**
 
@@ -136,6 +137,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2204 | store phase 3 T2: one core context (core locals, ledger wiring, `nickFor`, typed `bridgeLocals`) for web and phone | −52 |
 | T-2200 | AI turns T3: group turns run through the one tool loop; the second plain path is gone (live-checked) | −30 |
 | T-2203 | server tests wave B: search, media, link preview, markup and hands, from 93 to 33 cases (all SSRF, sanitising, caps and permission cases kept) | −1,087 test |
+| T-2206 | store phase 3 T3a: the phone keeps history load in the core's `historyState`; two whole-state adapters gone | −92 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -163,8 +165,10 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2206:** store phase 3 T3a. The phone keeps history load in the core's `historyState`, and its two state adapters go.
   - **T-2207:** AI turns T5/T6. DM and group turn inputs share one wiring helper (stop rule: at least −30).
+  - **T-2208:** store phase 3 T6. One message-cache writer and snapshot builder in client-core (stop rule: at least −30).
+  - **T-2205:** in a fix round to restore 2 crucial model-client cases (no duplicate after streaming, the rejected-key reply).
+  - **Store T4 and T5 (refresh, sign-out reset), next.** T5 is security-sensitive and saves only about 30 lines, so it goes last.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
