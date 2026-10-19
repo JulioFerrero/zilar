@@ -2229,3 +2229,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2229](T-2229-audit-messages-composer.md) | rewrite map: composer (4.5k to 2.7k) | 2026-10-19 |
 | [T-2232](T-2232-audit-messages-screen-search.md) | rewrite map: chat screen, search, pins (7.2k to 4.1k) | 2026-10-19 |
 | [T-2234](T-2234-audit-store-apps.md) | rewrite map: app store layers (5.6k to 2.0k) | 2026-10-19 |
+| [T-2230](T-2230-audit-messages-list-bubble.md) | rewrite map: message list and bubble (7.5k to 3.9k) | 2026-10-19 |
