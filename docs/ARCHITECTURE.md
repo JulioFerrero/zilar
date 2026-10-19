@@ -47,7 +47,12 @@ Before writing logic in an app, check whether it already lives here.
 | Check an API key before saving it | `packages/client-core/src/key-check.ts` |
 | Shared store rules: pins, chat prefs, group writes, the session check | `packages/client-core/src/store/` (`pins.ts`, `prefs.ts`, `group-actions.ts`, `session-check.ts`) |
 | The store's state and action types | `ChatStoreCommonState` and `ChatStoreActions` in `packages/client-core/src/store/actions.ts`; each app adds only its own members |
-| Error text for AI failures | `describeAiFailure` in `packages/chat-core/src/ai-errors.ts` |
+| Error text for AI failures | `describeAiFailure` in `packages/chat-core/src/ai.ts` |
+| A pure helper both apps need (formatting, block answers, picker rules, routine texts) | `packages/chat-core/src`, exported from its `index.ts`; React hooks and API types go in `packages/client-core/src` |
+| A read a web screen shows | `useQuery` from `apps/web/src/lib/effect/use-query.ts` (built on `makeUseQuery` in client-core) |
+| A phone settings screen: frame, header, pull-to-refresh | `SettingsScreenShell` in `apps/mobile/src/components/settings/screen-shell.tsx` |
+| A phone list that loads on focus, keeps its rows on a failed reload and backs pull-to-refresh | `useFocusList` in `apps/mobile/src/components/settings/use-focus-list.ts` |
+| Pick, save and remove a picture on the phone (profile, group) | `usePictureEditor` with `AvatarControl` in `apps/mobile/src/components/settings/avatar-control.tsx` |
 | A rate limit on a server route | `limiter('name', now)` in `apps/server/src/rate-limit.ts`. Every budget is one line in its `RATE_LIMITS` table |
 | A server module's deps | `extends Pick<ServerCore, 'db' \| 'auth' \| …>` from `apps/server/src/app/deps.ts` |
 | Mounting a server API group | `mountGroups` in `apps/server/src/effect/http-core.ts` |
@@ -66,7 +71,7 @@ Plans for the next shared steps: `docs/audit/store-phase3-plan.md` (store wiring
 
 - **Fewer lines is the goal.** Share code between web and phone through the packages, and never copy it.
 - **File size.** About 400 lines per file is a soft limit. Never split a file only to meet it; only a file over 800 lines must be split. `pnpm gate` warns over 400 and fails over 800.
-- **No barrels in apps.** Import from the module that defines the name. Only a package's `src/index.ts` re-exports. One exception: `apps/web/src/lib/api.ts` gathers the web API wrappers (`lib/api/*.ts`) with `export *`, because one import path for about 110 screens costs fewer lines than per-module imports.
+- **No barrels in apps.** Import from the module that defines the name, under its own name: no pass-through re-export lines and no rename aliases. Only a package's `src/index.ts` re-exports. One exception: `apps/web/src/lib/api.ts` gathers the web API wrappers (`lib/api/*.ts`) with `export *`, because one import path for about 110 screens costs fewer lines than per-module imports.
 - **Comments** say only the why the code cannot say (`docs/COMMENTS.md`). Task IDs and history belong in git, not in comments.
 - **Tests** cover only auth and keys, permissions and money, and the message pipeline. UI is checked by hand: on the phone with `pnpm phone:smoke`, on web in mock mode.
 - **Validation.** Data is validated with Effect `Schema` at every boundary. The repo uses no zod.
