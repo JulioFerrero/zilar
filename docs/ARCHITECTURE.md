@@ -32,7 +32,7 @@ ejabberd      XMPP server: messages, presence, rooms (deploy/)
 3. **Shared client.** `packages/client-core/src/<area>-api.ts` exports `make<Area>Api(call)`. That one function holds every call and its normalisation. `topics-api.ts`, `chats-api.ts`, `ais-api.ts` and `stickers-api.ts` are the models to copy.
 4. **Apps.** Each app only chooses the transport:
    - **web:** `make<Area>Api(callApi)`, where `callApi` is in `apps/web/src/lib/effect/api-client.ts`;
-   - **phone:** `make<Area>Api((call) => runApi(call(client)))`, with `client = createApiClient(...)` from `apps/mobile/src/lib/effect/api-client.ts`.
+   - **phone:** a screen calls `useApi(make<Area>Api)` (`apps/mobile/src/lib/use-mockable-api.ts`), which picks the real or mock transport and keeps one API object across renders; store code passes `apiCall(transport)` (`apps/mobile/src/lib/effect/api-client.ts`).
 
 Messages do not go through HTTP. They travel over XMPP (`packages/xmpp-core`) and land in the shared store (`packages/client-core/src/store/`, built around the message ledger). Each app wraps that store with its own provider: web in `apps/web/src/store/`, phone in `apps/mobile/src/store/`.
 
@@ -42,10 +42,11 @@ Before writing logic in an app, check whether it already lives here.
 
 | Need | Where |
 | --- | --- |
-| Call an endpoint from an app | `packages/client-core/src/<area>-api.ts`. Today: chats, AIs, stickers, topics, groups, chat extras (pins, memory, media, search), tools (with routines and approvals) |
+| Call an endpoint from an app | `packages/client-core/src/<area>-api.ts`. Today: chats, AIs, stickers, topics, groups, chat extras (pins, memory, media, search), tools (with routines and approvals), directory (explore, public join, visibility, handles), contacts (requests, blocks), settings (integrations, voice, audit, machines, message blocks) |
 | The New AI flow (steps, fields, create) | `packages/client-core/src/new-ai-flow.ts` |
 | Check an API key before saving it | `packages/client-core/src/key-check.ts` |
-| Shared store rules: pins, chat prefs, group writes | `packages/client-core/src/store/` (`pins.ts`, `prefs.ts`, `group-actions.ts`) |
+| Shared store rules: pins, chat prefs, group writes, the session check | `packages/client-core/src/store/` (`pins.ts`, `prefs.ts`, `group-actions.ts`, `session-check.ts`) |
+| The store's state and action types | `ChatStoreCommonState` and `ChatStoreActions` in `packages/client-core/src/store/actions.ts`; each app adds only its own members |
 | Error text for AI failures | `describeAiFailure` in `packages/chat-core/src/ai-errors.ts` |
 | A rate limit on a server route | `limiter('name', now)` in `apps/server/src/rate-limit.ts`. Every budget is one line in its `RATE_LIMITS` table |
 | A server module's deps | `extends Pick<ServerCore, 'db' \| 'auth' \| …>` from `apps/server/src/app/deps.ts` |
