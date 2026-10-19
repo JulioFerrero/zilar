@@ -21,6 +21,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-19 02:33 | 238,938, of which T-2152 moved 516 test-helper lines into the test class; real cuts since 19:35 are about −34,180 |
 | 10-19 03:00 | 238,751 (real cuts since 19:35 about −34,370; 1,365 lines reclassified to tests in total) |
 | 10-19 03:17 | 238,620 (real cuts since 19:35 about −34,500) |
+| 10-19 04:30 | 237,952 (real cuts since 19:35 about −35,160) |
 
 **Merged tonight:**
 
@@ -75,6 +76,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2157 | one name per type: 21 rename aliases removed (`PinRow` → `PinnedMessageRow` and so on) | −57 |
 | T-2158, T-2159 | blocks repeated inside one file → one helper (server: tool row mapper, AI stop/resume, eight more; clients: bubble body, `ChatView`, `AiFormFields` and four more) | −138, −69 |
 | T-2160, T-2161 | in-file repeats, wave 2 (6 server files; 9 phone files, 3 web pages, devtools autopilot) | −79, −118 |
+| T-2162, T-2163, T-2164 | blocks copied between files: web typing line + visibility setting; one phone settings screen shell; xmpp-core export path + devtools pause config | −11, −64, −47 |
+| T-2165, T-2166, T-2168 | twin view models in client-core, one copy for web and phone: GIF search, Devices, AI memory | −49, −22, −71 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -92,13 +95,14 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (04:00):**
-- **T-2162, T-2163, T-2164:** blocks copied between two files of the same app or package (web, phone, packages and server), from a fresh clone scan.
-- **T-2165:** one GIF search hook in client-core for both GIF panels.
-- **T-2166:** one Devices view model in client-core; the phone drops its hand-built real/mock API.
-- **Next:** B2, the channel panel as a variant of the group panel (after T-2162, same files), then more twin view models.
+**Running (04:30):**
+- **T-2167:** one activity (audit list) hook. Reviewed and approved at −37; resolving a client-core `index.ts` rebase conflict.
+- **T-2169, T-2170, T-2172:** functions written twice with identical bodies get one home (server; web+phone into chat-core; web and packages). From a new whole-function scan: 60 groups, about 505 lines of extra copies.
+- **Checked and left alone:**
+  - B2 (channel panel as a group-panel variant): the panels differ in pages, so it is a design job for daytime.
+  - The Integrations, Routines and Contacts twins: their save/refresh rules differ by app, so sharing them would change behaviour.
 
-**Live:** `2044ba9fe` (03:48): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `e6429f7af` (04:32): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 

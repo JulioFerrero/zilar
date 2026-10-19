@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
-import { Effect } from 'effect';
 
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 import type { PublicAuditEntry } from '@zilar/api-contract';
@@ -10,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { interruptFiber, type AuditApi } from '@zilar/client-core';
+import { useAuditActivity, type AuditApi, type AuditScope } from '@zilar/client-core';
 
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';
 
@@ -26,48 +24,6 @@ export type AiActivityState = {
   message: string;
   loadingMore: boolean;
 };
-
-/** Exactly one of `aiId` / `groupId` is set: the audit endpoint takes one scope. */
-export type AuditScope = { aiId: string } | { groupId: string };
-
-function listScopeActivity(
-  api: AuditApi,
-  scope: AuditScope,
-  before?: string,
-): Promise<{ entries: PublicAuditEntry[]; next: string | null }> {
-  return 'aiId' in scope
-    ? api.listAiAudit(scope.aiId, before)
-    : api.listGroupAudit(scope.groupId, before);
-}
-
-export const loadActivityEffect = (api: AuditApi, scope: AuditScope) =>
-  Effect.tryPromise({ try: () => listScopeActivity(api, scope), catch: (cause) => cause }).pipe(
-    Effect.map((page) => ({ entries: page.entries, next: page.next })),
-  );
-
-/** The server cursor is inclusive on retries, so rows are de-duplicated by id. */
-export const appendActivityEffect = (
-  api: AuditApi,
-  scope: AuditScope,
-  before: string,
-  current: PublicAuditEntry[],
-) =>
-  Effect.tryPromise({
-    try: () => listScopeActivity(api, scope, before),
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.map((page) => {
-      const seen = new Set(current.map((entry) => entry.id));
-      const entries = [...current];
-      for (const entry of page.entries) {
-        if (!seen.has(entry.id)) {
-          entries.push(entry);
-          seen.add(entry.id);
-        }
-      }
-      return { entries, next: page.next };
-    }),
-  );
 
 function ActivityRow({ entry, now }: { entry: PublicAuditEntry; now: Date }) {
   const at = new Date(entry.at);
@@ -174,99 +130,26 @@ function scopeOf(aiId: string | undefined, groupId: string | undefined): AuditSc
 export function AiActivity(props: AiActivityProps) {
   const { api, showHeader = true } = props;
   const { aiId, groupId } = props;
-  const [state, setState] = useState<AiActivityState>({
-    status: 'loading',
-    entries: [],
-    next: null,
-    message: '',
-    loadingMore: false,
-  });
-  const [reloadTick, setReloadTick] = useState(0);
-  // Guarded synchronously so a double tap landing before React re-renders the disabled button cannot fire two page loads.
-  const loadingMoreRef = useRef(false);
-
-  useEffect(() => {
-    // Unmount, a new scope or a reload interrupts the load, so a late answer never lands.
-    const load = loadActivityEffect(api, scopeOf(aiId, groupId)).pipe(
-      Effect.matchEffect({
-        onFailure: () =>
-          Effect.sync(() =>
-            setState({
-              status: 'error',
-              entries: [],
-              next: null,
-              message: ACTIVITY_LOAD_FAILED_MESSAGE,
-              loadingMore: false,
-            }),
-          ),
-        onSuccess: (page) =>
-          Effect.sync(() =>
-            setState({
-              status: 'ready',
-              entries: page.entries,
-              next: page.next,
-              message: '',
-              loadingMore: false,
-            }),
-          ),
-      }),
-    );
-    const fiber = Effect.runFork(load);
-    return () => {
-      interruptFiber(fiber);
-    };
-  }, [api, aiId, groupId, reloadTick]);
-
-  const loadMore = (): void => {
-    if (state.next === null || state.loadingMore || loadingMoreRef.current) {
-      return;
-    }
-    const cursor = state.next;
-    const base = state.entries;
-    loadingMoreRef.current = true;
-    setState((current) => ({ ...current, loadingMore: true }));
-    Effect.runFork(
-      appendActivityEffect(api, scopeOf(aiId, groupId), cursor, base).pipe(
-        Effect.matchEffect({
-          onFailure: () =>
-            Effect.sync(() =>
-              setState((current) => ({
-                ...current,
-                message: ACTIVITY_MORE_FAILED_MESSAGE,
-                loadingMore: false,
-              })),
-            ),
-          onSuccess: (merged) =>
-            Effect.sync(() =>
-              setState((current) => ({
-                ...current,
-                entries: merged.entries,
-                next: merged.next,
-                message: '',
-                loadingMore: false,
-              })),
-            ),
-        }),
-        Effect.ensuring(
-          Effect.sync(() => {
-            loadingMoreRef.current = false;
-          }),
-        ),
-      ),
-    );
-  };
-
-  const refresh = (): void => {
-    setState({ status: 'loading', entries: [], next: null, message: '', loadingMore: false });
-    setReloadTick((tick) => tick + 1);
-  };
+  const { status, entries, next, loadingMore, failure, refresh, loadMore } = useAuditActivity(
+    api,
+    scopeOf(aiId, groupId),
+    { clearOnRefresh: true },
+  );
+  const message =
+    failure === undefined
+      ? ''
+      : failure.kind === 'load'
+        ? ACTIVITY_LOAD_FAILED_MESSAGE
+        : ACTIVITY_MORE_FAILED_MESSAGE;
 
   return (
     <View accessibilityLabel="Activity" className="gap-1">
-      {showHeader ? (
-        <AiActivityHeader ready={state.status === 'ready'} onRefresh={refresh} />
-      ) : null}
-      <AiActivityContent state={state} onRetry={refresh} onLoadMore={loadMore} />
+      {showHeader ? <AiActivityHeader ready={status === 'ready'} onRefresh={refresh} /> : null}
+      <AiActivityContent
+        state={{ status, entries, next, message, loadingMore }}
+        onRetry={refresh}
+        onLoadMore={loadMore}
+      />
     </View>
   );
 }

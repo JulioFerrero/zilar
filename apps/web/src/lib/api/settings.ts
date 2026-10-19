@@ -27,7 +27,7 @@ export const {
   saveVoiceTranscriptionSettings,
 } = makeIntegrationsApi(callApi);
 
-export const { listAudit } = makeAuditApi(callApi);
+export const auditApi = makeAuditApi(callApi);
 
 // A fresh server's first visitor finishes setup (Resend key + admin email) and becomes the
 // first admin. The invite code stays in memory (never storage, URL or logs).

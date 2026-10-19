@@ -1,19 +1,14 @@
 import { useState } from 'react';
-import { Effect } from 'effect';
 import { RefreshCw } from 'lucide-react';
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
-import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
-import { fromApi, type ApiFailure, useDelayed } from '@zilar/client-core';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import { auditApi, type AuditScope, type PublicAuditEntry } from '@/lib/api';
+import { toApiFailure, useAuditActivity, useDelayed, type ApiFailure } from '@zilar/client-core';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 
 export { describeAuditEntry, formatRelativeAudit };
-
-const PAGE_LIMIT = 20;
 
 const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   month: 'long',
@@ -22,100 +17,37 @@ const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   minute: '2-digit',
 });
 
-type LoadStatus = 'loading' | 'ready' | 'error';
-
-interface LoadState {
-  status: LoadStatus;
-  entries: PublicAuditEntry[];
-  next: string | null;
-  message: string;
-}
-
 // A failure without a server status did not come from api.ts: it shows the
 // component's fixed sentence, never the thrown text (AGENTS.md).
 function auditFailureText(failure: ApiFailure, fallback: string): string {
   return failure.status === 0 ? fallback : failure.message;
 }
 
-function serialiseScope(scope: AuditScope): string {
-  return 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
-}
-
 export function ActivitySection({ scope }: { scope: AuditScope }) {
-  const [state, setState] = useState<LoadState>({
-    status: 'loading',
-    entries: [],
-    next: null,
-    message: '',
-  });
-  const scopeKey = serialiseScope(scope);
-  const [, reload] = useQuery(
-    () =>
-      fromApi(() => listAudit({ ...scope, limit: PAGE_LIMIT })).pipe(
-        Effect.tap((page) =>
-          Effect.sync(() =>
-            setState({ status: 'ready', entries: page.entries, next: page.next, message: '' }),
-          ),
-        ),
-        Effect.tapError((failure) =>
-          Effect.sync(() =>
-            setState({
-              status: 'error',
-              entries: [],
-              next: null,
-              message: auditFailureText(failure, 'Could not load activity.'),
-            }),
-          ),
-        ),
-      ),
-    [scopeKey],
+  const { status, entries, next, loadingMore, failure, refresh, loadMore } = useAuditActivity(
+    auditApi,
+    scope,
+    { clearOnRefresh: false },
   );
-
-  // One load-more at a time: a second click while a page loads is dropped.
-  const [moreState, loadMore] = useAction<void, void, never>(() => {
-    const next = state.next;
-    if (next === null) {
-      return Effect.void;
-    }
-    return fromApi(() => listAudit({ ...scope, limit: PAGE_LIMIT, before: next })).pipe(
-      Effect.tap((more) =>
-        Effect.sync(() =>
-          setState((current) => {
-            const seen = new Set(current.entries.map((entry) => entry.id));
-            const merged = [...current.entries];
-            for (const entry of more.entries) {
-              if (!seen.has(entry.id)) {
-                merged.push(entry);
-                seen.add(entry.id);
-              }
-            }
-            return { ...current, entries: merged, next: more.next, message: '' };
-          }),
-        ),
-      ),
-      Effect.catchTag('ApiFailure', (failure) =>
-        Effect.sync(() =>
-          setState((current) => ({
-            ...current,
-            message: auditFailureText(failure, 'Could not load more activity.'),
-          })),
-        ),
-      ),
-    );
-  });
-  const loadingMore = isWaiting(moreState);
+  const message =
+    failure === undefined
+      ? ''
+      : auditFailureText(
+          toApiFailure(failure.error),
+          failure.kind === 'load' ? 'Could not load activity.' : 'Could not load more activity.',
+        );
 
   return (
     <section aria-label="Activity" className="flex flex-col gap-2 border-t border-divider pt-4">
       <div className="flex items-center justify-between">
         <h3 className="text-[14px] font-medium">Activity</h3>
-        {state.status === 'ready' && (
+        {status === 'ready' && (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             aria-label="Refresh activity"
-            onClick={reload}
+            onClick={refresh}
             className="rounded-full text-muted-foreground"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
@@ -123,36 +55,41 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
         )}
       </div>
 
-      {state.status === 'loading' && <ActivitySkeleton />}
+      {status === 'loading' && <ActivitySkeleton />}
 
-      {state.status === 'error' && state.entries.length === 0 && (
+      {status === 'error' && entries.length === 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError>{state.message}</FieldError>
-          <Button type="button" size="lg" className="self-start rounded-full px-5" onClick={reload}>
+          <FieldError>{message}</FieldError>
+          <Button
+            type="button"
+            size="lg"
+            className="self-start rounded-full px-5"
+            onClick={refresh}
+          >
             Retry
           </Button>
         </div>
       )}
 
-      {state.status === 'ready' && state.entries.length === 0 && (
+      {status === 'ready' && entries.length === 0 && (
         <p className="text-[13px] text-muted-foreground">No activity yet.</p>
       )}
 
-      {state.entries.length > 0 && <ActivityList entries={state.entries} />}
+      {entries.length > 0 && <ActivityList entries={entries} />}
 
-      {state.status === 'ready' && state.next !== null && (
+      {status === 'ready' && next !== null && (
         <Button
           type="button"
           size="lg"
           className="self-start rounded-full px-5"
           disabled={loadingMore}
-          onClick={() => loadMore()}
+          onClick={loadMore}
         >
           {loadingMore ? 'Loading…' : 'Load more'}
         </Button>
       )}
 
-      {state.entries.length > 0 && state.message !== '' && <FieldError>{state.message}</FieldError>}
+      {entries.length > 0 && message !== '' && <FieldError>{message}</FieldError>}
     </section>
   );
 }

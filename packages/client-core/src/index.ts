@@ -38,6 +38,7 @@ export * from './ai-memory';
 export * from './chat-extras-api';
 export * from './settings-api';
 export * from './devices';
+export { useAuditActivity, type ActivityFailure, type ActivityStatus } from './audit-activity';
 export { usePeoplePrefixSearch, type PeopleSearchState } from './people-search';
 export {
   probeGifsAvailability,
