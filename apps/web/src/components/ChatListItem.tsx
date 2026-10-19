@@ -62,6 +62,15 @@ export function chatRowPreview(
   return { prefix, body, KindIcon: kind === undefined ? undefined : PREVIEW_ICONS[kind] };
 }
 
+export function TypingLine({ writing, text }: { writing: boolean; text: string | undefined }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+      <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
+      <span className="truncate">{writing ? 'writing…' : text}</span>
+    </span>
+  );
+}
+
 export const ChatListItem = memo(function ChatListItem({
   chat,
   selected,
@@ -149,16 +158,8 @@ export const ChatListItem = memo(function ChatListItem({
             </span>
           </div>
           <div className="relative mt-0.5 flex items-center gap-1.5">
-            {writing ? (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                <span className="truncate">writing…</span>
-              </span>
-            ) : typingText !== undefined ? (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                <span className="truncate">{typingText}</span>
-              </span>
+            {writing || typingText !== undefined ? (
+              <TypingLine writing={writing} text={typingText} />
             ) : showDraft ? (
               <span className="truncate text-[13px] leading-5 text-muted-foreground">
                 <span className="text-danger">Draft:</span> {draftLine}

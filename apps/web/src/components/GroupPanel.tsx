@@ -80,6 +80,18 @@ function GroupPictureSection({
   );
 }
 
+export function GroupVisibilitySetting({ chat, info }: { chat: ChatSummary; info: GroupDetail }) {
+  return (
+    <VisibilitySection
+      chatId={chat.id}
+      groupId={info.id}
+      visibility={info.visibility ?? 'private'}
+      handle={info.handle ?? null}
+      title={info.title}
+    />
+  );
+}
+
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center justify-between px-0.5">
@@ -426,15 +438,7 @@ export function GroupPanel({
                     />
                   )}
 
-                  {isOwner && (
-                    <VisibilitySection
-                      chatId={chat.id}
-                      groupId={info.id}
-                      visibility={info.visibility ?? 'private'}
-                      handle={info.handle ?? null}
-                      title={info.title}
-                    />
-                  )}
+                  {isOwner && <GroupVisibilitySetting chat={chat} info={info} />}
                 </>
               )}
             </>

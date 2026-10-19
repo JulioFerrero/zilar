@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { AiBadge } from '../AiBadge';
-import { chatRowPreview } from '../ChatListItem';
+import { chatRowPreview, TypingLine } from '../ChatListItem';
 import { EntityAvatar } from '../EntityAvatar';
 import { MessageTicks } from '../MessageTicks';
 import { AiActivityMarks } from '../topic/AiActivityMarks';
@@ -279,16 +279,8 @@ function TopicRow({
             </span>
           </span>
           <span className="mt-0.5 flex items-center gap-1.5">
-            {writing ? (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                <span className="truncate">writing…</span>
-              </span>
-            ) : typingText !== undefined ? (
-              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                <span className="truncate">{typingText}</span>
-              </span>
+            {writing || typingText !== undefined ? (
+              <TypingLine writing={writing} text={typingText} />
             ) : (
               <PreviewLine KindIcon={KindIcon} prefix={prefix} body={body} />
             )}

@@ -28,7 +28,7 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { EntityAvatar } from './EntityAvatar';
 import { InviteLinksSection } from './InviteLinksSection';
 import { GroupAiRowView } from './panels/GroupAiRowView';
-import { VisibilitySection } from './VisibilitySection';
+import { GroupVisibilitySetting } from './GroupPanel';
 import { ChannelInfoRoot } from './channel-info/ChannelInfoRoot';
 import { CHANNEL_INFO_TITLES, type ChannelInfoPageId } from './channel-info/ChannelInfoRoot';
 import { ChannelAdminsPage, ChannelSubscribersPage } from './channel-info/ChannelPeople';
@@ -310,15 +310,7 @@ export function ChannelPanel({
                 <AlwaysAllowedList scope={{ groupId: info.id }} />
               )}
 
-              {page === 'settings' && isOwner && (
-                <VisibilitySection
-                  chatId={chat.id}
-                  groupId={info.id}
-                  visibility={info.visibility ?? 'private'}
-                  handle={info.handle ?? null}
-                  title={info.title}
-                />
-              )}
+              {page === 'settings' && isOwner && <GroupVisibilitySetting chat={chat} info={info} />}
             </>
           )}
         </GroupInfoPage>

@@ -74,6 +74,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2156 | phone: text field merged into the text module; the last alias and shim modules gone; two lost "why" comments back | −80 |
 | T-2157 | one name per type: 21 rename aliases removed (`PinRow` → `PinnedMessageRow` and so on) | −57 |
 | T-2158, T-2159 | blocks repeated inside one file → one helper (server: tool row mapper, AI stop/resume, eight more; clients: bubble body, `ChatView`, `AiFormFields` and four more) | −138, −69 |
+| T-2160, T-2161 | in-file repeats, wave 2 (6 server files; 9 phone files, 3 web pages, devtools autopilot) | −79, −118 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -91,10 +92,13 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Folds lost a few "why" comments.** Fix rounds put them back: the metadata-stripping rule, the pinned-fetch SNI rule, the device-save rule and the one-query unread rule. The lead now diffs comment lines on every fold before merging.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running (03:31):**
-- **T-2160, T-2161:** second wave of in-file repeats: 17 server files, plus 19 web, phone and package files.
+**Running (04:00):**
+- **T-2162, T-2163, T-2164:** blocks copied between two files of the same app or package (web, phone, packages and server), from a fresh clone scan.
+- **T-2165:** one GIF search hook in client-core for both GIF panels.
+- **T-2166:** one Devices view model in client-core; the phone drops its hand-built real/mock API.
+- **Next:** B2, the channel panel as a variant of the group panel (after T-2162, same files), then more twin view models.
 
-**Live:** `9766414d5` (03:30): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
+**Live:** `2044ba9fe` (03:48): 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 
 **For Julio (your call, not changed):** Spotlight was using about 300% CPU tonight (`mds_stores` plus `mds`), and the load average was 16–25. It is probably indexing the `zilar-T-*` worktrees and phone builds as they change. On the emulator that showed as Android "isn't responding" dialogs on cold start, which a clean restart did not repeat. Adding `~/personal-projects/zilar-*` to Spotlight's Privacy list would stop it.
 
