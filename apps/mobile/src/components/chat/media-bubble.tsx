@@ -7,7 +7,6 @@ import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { AttachmentViewer, isLoadableMediaUrl } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
-import { MEDIA_WIDTH, mediaFrame } from '@/components/chat/media-frame';
 import { UploadFailed, UploadOverlay, useAttachmentViewer } from '@/components/chat/media-shared';
 import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
@@ -369,4 +368,18 @@ function MediaImage({
       {uploading ? <UploadOverlay progress={progress} /> : null}
     </Pressable>
   );
+}
+
+const MEDIA_WIDTH = 240;
+const MAX_IMAGE_HEIGHT = 320;
+const MIN_MEDIA_WIDTH = 140;
+
+// The pixel box of a single photo bubble: as wide as the photo at its ratio, at most 240 x 320, never narrower than 140 (then cropped).
+function mediaFrame(ratio: number | undefined): { width: number; height: number } {
+  if (ratio === undefined || !Number.isFinite(ratio) || ratio <= 0) {
+    return { width: MEDIA_WIDTH, height: MAX_IMAGE_HEIGHT };
+  }
+  const height = Math.min(MAX_IMAGE_HEIGHT, MEDIA_WIDTH / ratio);
+  const width = Math.min(MEDIA_WIDTH, Math.max(MIN_MEDIA_WIDTH, height * ratio));
+  return { width: Math.round(width), height: Math.round(height) };
 }

@@ -379,7 +379,7 @@ function StatusBlock({ block, showHeading }: { block: StatusBlockData; showHeadi
 
 /**
  * 19 · LINK CARD: one https link inside an inner `#101010` tile, opened with
- * `Linking.openURL` (as `link-preview-card.tsx` does). The site is the payload's
+ * `Linking.openURL` (as `plain-bubble-body.tsx` does). The site is the payload's
  * `site` or the link's own host; the key is the shared icon-key recipe.
  */
 function LinkBlock({ block }: { block: LinkBlockData }) {
