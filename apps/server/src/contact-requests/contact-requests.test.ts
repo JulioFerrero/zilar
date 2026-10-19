@@ -12,7 +12,7 @@ import {
   declineContactRequest,
   MAX_PENDING_OUTGOING,
   type ContactRequestsDeps,
-} from './service';
+} from './api';
 import { relationFor, relationsFor } from './reads';
 import { searchUsers } from './api';
 

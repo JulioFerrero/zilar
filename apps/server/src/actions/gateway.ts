@@ -1,16 +1,39 @@
 import type { ServerCore } from '../app/deps';
-
+import { randomUUID } from 'node:crypto';
+import { ARGS_HASH_PATTERN } from '@zilar/protocol';
+import { findActiveRule } from '../approvals/rules';
+import { createApprovalEffect } from '../approvals/service';
+import { argsHash } from './canonical';
 import { type ActionAnnouncer } from './announce';
-import { runRequest } from './decisions';
-import { type PolicyDenialReason } from './policy';
-import { runOnApprovalDecided, cancelPending } from './queries';
-import { type ActionContextLogger, type ActionRegistry } from './registry';
+import { policy, type PolicyDenialReason } from './policy';
+import {
+  isAiInTopic,
+  readAiStatus,
+  runOnApprovalDecided,
+  cancelPending,
+  writeAllowAudit,
+} from './queries';
+import {
+  decodeActionArgs,
+  type ActionContext,
+  type ActionContextLogger,
+  type ActionAdapter,
+  type ActionRegistry,
+  type ActionResult,
+} from './registry';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { type ApprovalRow, type PendingActionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { startSweepLoop } from '../effect/sweep-loop';
-import { errorName } from './support';
+import {
+  errorName,
+  safeAnnounce,
+  safeStringify,
+  sanitiseModelText,
+  truncateSummary,
+  truncateText,
+} from './support';
 // 10 minutes: older `running` rows are considered stuck and flipped to `failed` without re-executing.
 const STUCK_RUNNING_MS = 10 * 60 * 1000;
 
@@ -167,5 +190,349 @@ function listActions(
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-export { APPROVAL_TTL_MS, MAX_STORED_ARGS_BYTES } from './decisions';
 export { RESULT_SUMMARY_MAX } from './support';
+async function runRequest(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  now: () => Date,
+): Promise<RequestOutcome> {
+  const at = now();
+  const adapter = deps.adapters[params.action] ?? null;
+
+  // Cheap adapter lookup first, and the gateway's denial order holds even on a hot path.
+  if (adapter === null) {
+    return { status: 'denied', reason: 'unknown_action' };
+  }
+
+  // Missing AI and every non-`active` status share `ai_not_active`, so existence is never disclosed.
+  const aiRow = await readAiStatus(deps.db, params.aiId);
+
+  let aiInGroup: boolean | null = null;
+  if (params.groupId !== undefined && aiRow !== null) {
+    aiInGroup = await isAiInTopic(deps.db, params.aiId, params.groupId, params.topicId);
+  }
+
+  const verdict = policy({
+    adapter,
+    rawArgs: params.args,
+    aiStatus: aiRow?.status ?? null,
+    aiInGroup,
+  });
+
+  if (verdict.kind === 'deny') {
+    return { status: 'denied', reason: verdict.reason };
+  }
+
+  if (verdict.kind === 'allow') {
+    const executed = await executeAction(deps, params, adapter as ActionAdapter<unknown>, null);
+    if (executed === null) {
+      return { status: 'denied', reason: 'invalid_args' };
+    }
+    await writeAllowAudit(deps, params, executed.run.outcome);
+    return executed.run.response;
+  }
+
+  // A tier-2 request matching an active standing rule skips the card; eligibility is re-checked here, not only when the rule was created.
+  // The rule is (AI, chat, action)-exact, so any mismatch leaves the request on the normal approval path.
+  if (adapter.allowAlways === true && adapter.estimateCost === undefined) {
+    const rule = await findActiveRule(deps.db, {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      topicId: params.topicId ?? null,
+      action: params.action,
+    });
+    if (rule !== null) {
+      return runAutoApprovedAction(deps, params, adapter as ActionAdapter<unknown>, rule.id);
+    }
+  }
+
+  // A scheduled run has no approver, so a tier-2 request without a standing rule is denied `needs_approval` instead of parking a card nobody will see.
+  if (params.unattended === true) {
+    return { status: 'denied', reason: 'needs_approval' };
+  }
+
+  return runApprovalPath(deps, params, adapter, at);
+}
+
+interface AdapterRun {
+  outcome: 'ok' | 'error';
+  response: RequestOutcome;
+}
+
+// Only the error class name is logged; the adapter's error text is never stored, returned or logged.
+async function runAdapter(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  ctx: ActionContext,
+  parsedArgs: unknown,
+  ruleId: string | null,
+): Promise<AdapterRun> {
+  let result: ActionResult;
+  try {
+    result = await adapter.execute(ctx, parsedArgs);
+  } catch (error) {
+    deps.logger.warn(
+      {
+        err: errorName(error),
+        action: params.action,
+        aiId: params.aiId,
+        ...(ruleId === null ? {} : { ruleId }),
+      },
+      ruleId === null ? 'action adapter threw' : 'action adapter threw under auto-approval',
+    );
+    return { outcome: 'error', response: { status: 'failed' } };
+  }
+  const summary = truncateSummary(result.summary);
+  const modelText = sanitiseModelText(result.modelText);
+  // `modelText` and `posted` go to the model only: never stored, audited or announced.
+  return {
+    outcome: 'ok',
+    response:
+      summary === null
+        ? { status: 'failed' }
+        : {
+            status: 'executed',
+            summary,
+            ...(modelText === undefined ? {} : { modelText }),
+            ...(result.posted === true ? { posted: true } : {}),
+          },
+  };
+}
+
+async function executeAction(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  ruleId: string | null,
+): Promise<{ parsedArgs: unknown; run: AdapterRun } | null> {
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  // Defence in depth: the policy already decoded once; a mutation between calls still fails here.
+  if (!parsed.ok) {
+    return null;
+  }
+  const ctx: ActionContext = {
+    aiId: params.aiId,
+    groupId: params.groupId ?? null,
+    topicId: params.topicId ?? null,
+    requestId: ruleId === null ? 'allow-' + randomUUID() : 'rule-' + ruleId,
+    logger: deps.logger,
+  };
+  return {
+    parsedArgs: parsed.value,
+    run: await runAdapter(deps, params, adapter, ctx, parsed.value, ruleId),
+  };
+}
+
+// A tier-2 request matching an active standing rule runs immediately; the adapter must still be always-eligible.
+// The audit carries the rule id as `subject`.
+async function runAutoApprovedAction(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  ruleId: string,
+): Promise<RequestOutcome> {
+  const executed = await executeAction(deps, params, adapter, ruleId);
+  if (executed === null) {
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+  const { run } = executed;
+
+  // Hash over parsed args; the audit carries it so a reader can join without seeing the args.
+  const hash = argsHash(executed.parsedArgs);
+  if (!ARGS_HASH_PATTERN.test(hash)) {
+    // Defence in depth: never run something we could not audit.
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+
+  // Two entries: `action.auto_approved` (subject = rule id) plus `action.executed`/`action.failed` (subject = null).
+  await deps.audit.record({
+    actorUserId: null,
+    aiId: params.aiId,
+    groupId: params.groupId ?? null,
+    action: 'action.auto_approved',
+    subjectId: ruleId,
+    argsHash: hash,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: null,
+  });
+  await writeAllowAudit(deps, params, run.outcome);
+
+  // The "Ran automatically" prefix tells the owner the card was skipped.
+  await safeAnnounce(deps, {
+    outcome: {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
+      status: run.outcome === 'ok' ? 'executed' : 'failed',
+      summary:
+        run.response.status === 'executed'
+          ? `Ran automatically (always allowed in this chat): ${run.response.summary}`
+          : null,
+    },
+  });
+
+  return run.response;
+}
+// 30 minutes: short-lived tier-2 card; the approvals service enforces the 24-hour ceiling.
+const APPROVAL_TTL_MS = 30 * 60 * 1000;
+
+// 20 KB cap on the serialised stored args; rejecting early keeps the row from growing silently.
+const MAX_STORED_ARGS_BYTES = 20 * 1024;
+
+async function runApprovalPath(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  at: Date,
+): Promise<RequestOutcome> {
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  if (!parsed.ok) {
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+  // Adapters may bind server-side state into the args before the hash is computed; a throw becomes the gateway's generic `failed`.
+  let parsedArgs: unknown = parsed.value;
+  if (adapter.prepareArgs !== undefined) {
+    const prepareCtx: ActionContext = {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      topicId: params.topicId ?? null,
+      requestId: 'prepare-' + randomUUID(),
+    };
+    try {
+      parsedArgs = await adapter.prepareArgs(prepareCtx, parsed.value);
+    } catch (error) {
+      deps.logger.warn(
+        { err: errorName(error), action: params.action, aiId: params.aiId },
+        'action adapter prepareArgs threw',
+      );
+      return { status: 'failed' };
+    }
+  }
+  const serialised = safeStringify(parsedArgs);
+  if (serialised === null || Buffer.byteLength(serialised, 'utf8') > MAX_STORED_ARGS_BYTES) {
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+
+  const hash = argsHash(parsedArgs);
+  if (!ARGS_HASH_PATTERN.test(hash)) {
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+  const described = adapter.describe(parsedArgs);
+  let worstCase: { currency: 'EUR' | 'USD'; amount: number } | undefined;
+  if (adapter.estimateCost !== undefined) {
+    try {
+      worstCase = adapter.estimateCost(parsedArgs);
+    } catch {
+      return { status: 'denied', reason: 'invalid_args' };
+    }
+  }
+
+  const expiresAt = new Date(at.getTime() + APPROVAL_TTL_MS);
+  const summary = truncateText(described.summary, 500);
+
+  // The approval row and `pending_actions` commit together; `args_hash` and the stored args must match on re-hash.
+  let approvalId: string;
+  let reused = false;
+  try {
+    const result = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            // An identical request still pending reuses its open card; read inside the transaction against committed state.
+            const [existing] = yield* sql<{ id: string }>`SELECT id FROM approvals
+              WHERE ai_id = ${params.aiId}
+                AND action = ${params.action}
+                AND status = 'pending'
+                AND expires_at > ${at}
+                AND summary = ${summary}
+                AND topic_id IS NOT DISTINCT FROM ${params.topicId ?? null}
+                AND group_id IS NOT DISTINCT FROM ${params.groupId ?? null}
+              ORDER BY created_at ASC
+              LIMIT 1`;
+            if (existing) {
+              return { id: existing.id, reused: true };
+            }
+            const approval = yield* createApprovalEffect(
+              {
+                aiId: params.aiId,
+                ...(params.groupId === undefined ? {} : { groupId: params.groupId }),
+                ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
+                action: params.action,
+                summary,
+                ...(described.details === undefined
+                  ? {}
+                  : { details: truncateText(described.details, 20000) }),
+                argsHash: hash,
+                ...(worstCase === undefined ? {} : { worstCase }),
+                requestedBy: params.requestedBy,
+                expiresAt,
+              },
+              at,
+            );
+            const newPendingId = randomUUID();
+            yield* sql`INSERT INTO pending_actions
+                (id, approval_id, ai_id, group_id, topic_id, action, args,
+                  args_hash, requested_by, status)
+              VALUES (
+                ${newPendingId},
+                ${approval.id},
+                ${params.aiId},
+                ${params.groupId ?? null},
+                ${params.topicId ?? null},
+                ${params.action},
+                ${JSON.stringify(parsedArgs)}::jsonb,
+                ${hash},
+                ${params.requestedBy},
+                'waiting'
+              )`;
+            return { id: approval.id, reused: false };
+          }),
+        );
+      }),
+    );
+    approvalId = result.id;
+    reused = result.reused;
+  } catch {
+    // The approval service's typed error becomes a stable `denied` reason; anything else is logged and treated as `ai_not_active`, never `internal_error`.
+    deps.logger.warn(
+      { action: params.action, aiId: params.aiId },
+      'failed to create approval+pending-action pair',
+    );
+    return { status: 'denied', reason: 'ai_not_active' };
+  }
+
+  if (reused) {
+    return { status: 'pending_approval', approvalId };
+  }
+
+  // Audited after commit; the approval id is the subject so the reader can join back to the row.
+  await deps.audit.record({
+    actorUserId: null,
+    aiId: params.aiId,
+    groupId: params.groupId ?? null,
+    action: 'action.requested',
+    subjectId: approvalId,
+    argsHash: hash,
+    costCurrency: worstCase?.currency ?? null,
+    costAmount: worstCase?.amount ?? null,
+    result: 'ok',
+    detail: null,
+  });
+
+  // Best-effort: a throw never changes the returned outcome.
+  await safeAnnounce(deps, {
+    approvalRequested: {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
+      approvalId,
+    },
+  });
+
+  return { status: 'pending_approval', approvalId };
+}

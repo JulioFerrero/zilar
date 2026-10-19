@@ -4,7 +4,7 @@ import { SqlClient } from 'effect/sql';
 import type { BlocksData } from '@zilar/protocol';
 import type { RoutineRow } from '../db/rows';
 import { createAuditRecorder } from '../audit/recorder';
-import { listAuditForAi } from '../audit/list';
+import { listAuditForAi } from '../audit/api';
 import { AlertLinkTaken, linkAlertCard } from '../routines/alert-link';
 import { createPromptRoutine } from '../tools/routine-adapters';
 import { createTestContext, testSql, type TestContext } from '../test-support';

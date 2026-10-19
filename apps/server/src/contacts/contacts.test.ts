@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, expectedJid, testSql, type TestContext } from '../test-support';
 import { seedUser } from '../test-support/seed';
-import { acceptContactRequest } from '../contact-requests/service';
+import { acceptContactRequest } from '../contact-requests/api';
 import { localpartFor } from '../xmpp/provisioning';
 import * as sqlModule from '../effect/sql';
 import { addContactPair, listContacts, removeContact, type RemoveContactDeps } from './service';

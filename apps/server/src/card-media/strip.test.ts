@@ -3,7 +3,7 @@
 // (often GPS) never survives the strip.
 
 import { describe, expect, it } from 'vitest';
-import { stripImageMetadata } from './strip';
+import { stripImageMetadata } from './fetch';
 
 function segment(marker: number, payload: readonly number[]): Uint8Array {
   const length = payload.length + 2;

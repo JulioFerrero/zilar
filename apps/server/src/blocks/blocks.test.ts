@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, expectedJid, testSql, type TestContext } from '../test-support';
 import { seedUser } from '../test-support/seed';
-import { acceptContactRequest } from '../contact-requests/service';
+import { acceptContactRequest } from '../contact-requests/api';
 import { addContactPair, listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { allowedArchives } from '../search/service';
