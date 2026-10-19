@@ -13,6 +13,7 @@ import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '../ui/state-message';
 import { ToolDetailPanel } from './ToolDetailPanel';
+import { failureText } from './toolDetailOps';
 
 type ListStatus = 'loading' | 'ready' | 'error';
 
@@ -24,13 +25,6 @@ function lastRunText(tool: ToolListItem): string {
   const at = new Date(tool.updatedAt);
   const status = tool.lastRunStatus === null ? 'never run' : `last run ${tool.lastRunStatus}`;
   return `${status} · ${at.toLocaleDateString()}`;
-}
-
-function failureText(failure: ApiFailure | undefined, fallback: string): string {
-  if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
-    return fallback;
-  }
-  return failure.message;
 }
 
 export function ToolsSection({

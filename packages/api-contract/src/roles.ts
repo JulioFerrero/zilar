@@ -10,7 +10,7 @@ export const ROLE_MEMBERS_MAX = 50;
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
 
-function hasControlCharacters(value: string): boolean {
+export function hasControlCharacters(value: string): boolean {
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {

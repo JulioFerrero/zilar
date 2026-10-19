@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractCounts, extractVerdict } from './autopilot/task-info.js';
 import { type OpenCodeClient } from './client.js';
-import type { FindingCounts } from './decide.js';
+import { oneLine, type FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
 import { fallbackModel, FREE_MUSE } from './fallback.js';
 import { modelLabel } from './models.js';
@@ -187,11 +187,6 @@ export function applyDoctorRecordPatch(
     reportedForHead: patch.reportedForHead ?? record?.reportedForHead,
     stalledReportedForHead: patch.stalledReportedForHead ?? record?.stalledReportedForHead,
   };
-}
-
-function oneLine(text: string, max: number): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }
 
 // The doctor's brain as a pure function: it never touches the network, filesystem

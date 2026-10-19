@@ -1,5 +1,6 @@
 import { xml, type XmppElement } from '@xmpp/client';
 import { ALBUM_NAMESPACE } from '../namespaces';
+import { parseNonNegativeInt } from './parse-fields';
 
 export interface MessageAlbum {
   id: string;
@@ -33,17 +34,10 @@ export function parseAlbum(stanza: XmppElement): MessageAlbum | undefined {
   if (element === undefined) return undefined;
   const id = element.attrs['id'];
   if (id === undefined || id === '' || id.length > ALBUM_ID_MAX) return undefined;
-  const index = parseAlbumNumber(element.attrs['index']);
-  const count = parseAlbumNumber(element.attrs['count']);
+  const index = parseNonNegativeInt(element.attrs['index']);
+  const count = parseNonNegativeInt(element.attrs['count']);
   if (index === undefined || count === undefined) return undefined;
   if (count < 2 || count > ALBUM_MAX) return undefined;
   if (index >= count) return undefined;
   return { id, index, count };
-}
-
-// A non-negative integer attribute; anything else (`x`, `1.5`, `-1`, ``) drops the marker.
-function parseAlbumNumber(value: string | undefined): number | undefined {
-  if (value === undefined || !/^\d+$/.test(value)) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

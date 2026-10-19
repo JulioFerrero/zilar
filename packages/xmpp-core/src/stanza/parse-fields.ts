@@ -65,8 +65,8 @@ function replyFallbackRange(stanza: XmppElement): { start: number; end: number }
   const fallback = stanza.getChild('fallback', FALLBACK_NAMESPACE);
   if (fallback === undefined || fallback.attrs['for'] !== REPLY_NAMESPACE) return undefined;
   const range = fallback.getChild('body');
-  const start = parseOffset(range?.attrs['start']);
-  const end = parseOffset(range?.attrs['end']);
+  const start = parseNonNegativeInt(range?.attrs['start']);
+  const end = parseNonNegativeInt(range?.attrs['end']);
   if (start === undefined || end === undefined || start >= end) return undefined;
   return { start, end };
 }
@@ -98,7 +98,8 @@ function mentionJidFromUri(uri: string | undefined): string | undefined {
   return /^[^@\s/]+@[^@\s/]+$/.test(bare) ? bare : undefined;
 }
 
-function parseOffset(value: string | undefined): number | undefined {
+// A non-negative integer attribute; anything else (`x`, `1.5`, `-1`, ``) drops the marker.
+export function parseNonNegativeInt(value: string | undefined): number | undefined {
   if (value === undefined || !/^\d+$/.test(value)) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
@@ -123,8 +124,8 @@ export function parseMentions(
 
     const mention: Mention = { jid };
     if (body !== undefined) {
-      const begin = parseOffset(reference.attrs['begin']);
-      const end = parseOffset(reference.attrs['end']);
+      const begin = parseNonNegativeInt(reference.attrs['begin']);
+      const end = parseNonNegativeInt(reference.attrs['end']);
       if (begin !== undefined && end !== undefined && begin < end && end <= length) {
         mention.begin = utf16Offset(body, begin);
         mention.end = utf16Offset(body, end);

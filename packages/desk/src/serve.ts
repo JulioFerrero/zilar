@@ -10,7 +10,7 @@ import {
   type Request,
   type Response,
 } from './protocol';
-import { tools } from './tools';
+import { asRecord, tools } from './tools';
 import type { ToolOutcome } from './tool';
 
 export const DEFAULT_TIMEOUT_MS = 600_000;
@@ -41,12 +41,6 @@ export function optionsFromEnv(env: NodeJS.ProcessEnv): ServeOptions {
     maxOutputBytes: positiveIntFromEnv(env.DESK_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES),
     defaultTimeoutMs: positiveIntFromEnv(env.DESK_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function timeoutFor(rawArgs: unknown, fallback: number): number {

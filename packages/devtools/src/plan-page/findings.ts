@@ -139,7 +139,7 @@ function parseBold(lines: string[], prefix: string): Entry[] {
   return out;
 }
 
-function splitRow(line: string): string[] {
+export function splitRow(line: string): string[] {
   const body = line.replace(/^\|/, '').replace(/\|$/, '');
   return body.split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, '|').trim());
 }

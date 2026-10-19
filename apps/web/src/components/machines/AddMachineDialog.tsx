@@ -186,7 +186,7 @@ const countDown = Effect.fnUntraced(function* (
   }
 });
 
-function failureText(failure: ApiFailure | undefined, fallback: string): string {
+export function failureText(failure: ApiFailure | undefined, fallback: string): string {
   if (failure === undefined || failure.code === 'unknown_error') {
     return fallback;
   }

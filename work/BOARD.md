@@ -2168,3 +2168,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2165](T-2165-gif-search-hook.md) | one GIF search hook for web and phone | 2026-10-19 |
 | [T-2168](T-2168-ai-memory-hook.md) | one AI memory hook for web and phone | 2026-10-19 |
 | [T-2167](T-2167-activity-hook.md) | T-2167: one activity hook for web and phone | 2026-10-19 |
+| [T-2172](T-2172-webpkg-fn-copies.md) | web and packages: one copy of each twice-written function | 2026-10-19 |

@@ -11,25 +11,13 @@ import {
   TopicsPreviewRateLimit,
 } from './middleware';
 import { mutableStruct } from './mutable-struct';
+import { hasControlCharacters } from './roles';
 
 export const TOPIC_NAME_MAX = 80;
 export const TOPIC_LINK_URL_MAX = 300;
 export const TOPIC_LINK_LABEL_MAX = 40;
 export const TOPIC_MEMBERS_MAX = 50;
 export const TOPIC_ROLES_MAX = 20;
-
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
-
-function hasControlCharacters(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
-      return true;
-    }
-  }
-  return false;
-}
 
 export const TOPIC_VISIBILITIES = ['public', 'private'] as const;
 export const TOPIC_KINDS = ['chat', 'task', 'bug', 'ui', 'routine'] as const;

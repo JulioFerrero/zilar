@@ -15,6 +15,7 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
+import { failureText } from './toolDetailOps';
 
 type RoutineWork = 'pause' | 'resume' | 'delete';
 
@@ -43,13 +44,6 @@ function lastStatusText(routine: Routine): string {
   }
   const at = routine.lastRunAt === null ? '' : ` · ${new Date(routine.lastRunAt).toLocaleString()}`;
   return `last ${routine.lastStatus}${at}`;
-}
-
-function failureText(failure: ApiFailure | undefined, fallback: string): string {
-  if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
-    return fallback;
-  }
-  return failure.message;
 }
 
 /**

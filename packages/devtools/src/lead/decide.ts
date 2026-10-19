@@ -90,7 +90,7 @@ function packetTag(counts: FindingCounts | undefined, rounds: number): string {
   return `[NEEDS LEAD${done}: must-fix ${counts.mustFix}, should-fix ${counts.shouldFix}${followUp}]`;
 }
 
-function oneLine(text: string, max: number): string {
+export function oneLine(text: string, max: number): string {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }

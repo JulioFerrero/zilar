@@ -1,16 +1,14 @@
 import { hardwareLine, PendingMachineCard } from '../components/machines/PendingMachineCard';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { EntityAvatar } from '@/components/EntityAvatar';
-import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
+import { AddMachineDialog, failureText } from '@/components/machines/AddMachineDialog';
 import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
-import { machineErrorMessage } from '@/components/machines/errors';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { StateMessage } from '@/components/ui/state-message';
 import {
-  ApiError,
   listAis,
   listMachines,
   deleteMachine,
@@ -595,16 +593,6 @@ function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionCont
   if (!isWaiting(state)) {
     controls.reset();
   }
-}
-
-function failureText(failure: ApiFailure | undefined, fallback: string): string {
-  if (failure === undefined || failure.code === 'unknown_error') {
-    return fallback;
-  }
-  return machineErrorMessage(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
-  );
 }
 
 function useMachineAction<I, A>(

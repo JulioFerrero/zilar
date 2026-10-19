@@ -46,6 +46,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router';
+import { storageStep } from '@/lib/handleGate';
 
 const COLLAPSED_KEY = 'zilar:collapsedGroups';
 const ARCHIVED_KEY = 'zilar:archivedOpen';
@@ -54,13 +55,6 @@ const ARCHIVED_KEY = 'zilar:archivedOpen';
 const decodeStoredList = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Array(Schema.Unknown)),
 );
-
-/** A blocked or missing storage gives fallback, so the list keeps working without it. */
-function storageStep<A>(fallback: A, step: (storage: Storage) => A): A {
-  return Effect.runSync(
-    Effect.try(() => step(window.localStorage)).pipe(Effect.orElseSucceed(() => fallback)),
-  );
-}
 
 function readSet(key: string): Set<string> {
   const raw = storageStep<string | null>(null, (storage) => storage.getItem(key));

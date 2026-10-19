@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot } from '../effect-map/generate.js';
-import { collectFindings, type AuditSource, type Finding } from './findings.js';
+import { collectFindings, splitRow, type AuditSource, type Finding } from './findings.js';
 
 // Parses the Telegram parity matrix (section 2 of docs/audit/telegram-parity-audit.md)
 // into one row per feature. Only tables whose header names the four parity columns are
@@ -19,11 +19,6 @@ interface ParityRow {
 
 const HEADING = /^###\s+(.*)$/;
 const HEADER = /^\|\s*(Telegram feature|Feature)\s*\|/;
-
-function splitRow(line: string): string[] {
-  const body = line.replace(/^\|/, '').replace(/\|$/, '');
-  return body.split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, '|').trim());
-}
 
 export function parseParity(source: string): ParityRow[] {
   const rows: ParityRow[] = [];

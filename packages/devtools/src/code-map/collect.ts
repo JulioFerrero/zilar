@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot } from '../effect-map/generate.js';
+import { countLines } from '../gate/size.js';
 
 export type FileClass = 'source' | 'test' | 'mock' | 'generated';
 export type Band = 'green' | 'amber' | 'orange' | 'red';
@@ -95,12 +96,6 @@ export function bandOf(lines: number): Band {
   if (lines <= 600) return 'amber';
   if (lines <= 1000) return 'orange';
   return 'red';
-}
-
-export function countLines(source: string): number {
-  if (source === '') return 0;
-  const body = source.endsWith('\n') ? source.slice(0, -1) : source;
-  return body.split('\n').length;
 }
 
 function packageOf(path: string): string {

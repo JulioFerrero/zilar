@@ -8,7 +8,7 @@ function dismissalKey(userId: string): string {
 }
 
 /** A storage that throws (or a missing window) gives fallback. */
-function storageStep<A>(fallback: A, step: (storage: Storage) => A): A {
+export function storageStep<A>(fallback: A, step: (storage: Storage) => A): A {
   return Effect.runSync(
     Effect.try(() => step(window.localStorage)).pipe(Effect.orElseSucceed(() => fallback)),
   );
