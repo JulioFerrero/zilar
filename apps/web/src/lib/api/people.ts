@@ -1,41 +1,22 @@
 // effect-plain: the promise edge over the Effect client.
 import {
-  HANDLE_CHECK_MAX,
-  HANDLE_CHECK_MIN,
   type BlockedPerson,
   type ContactRequestPerson,
   type ContactRequestRow,
   type ContactRequestStatus,
   type ContactRequestView,
-  type HandleCheck,
-  type HandleCheckReason,
   type HandleProfile,
 } from '@zilar/api-contract';
+import { makeHandlesApi } from '@zilar/client-core';
 import { callApi } from '@/lib/effect/api-client';
 
 // Handles are stored with the typed casing but compared case-insensitively; there is no
 // prefix search.
 
-export type { HandleCheck, HandleCheckReason };
+export type { HandleCheck, HandleCheckReason } from '@zilar/client-core';
 
-// An out-of-range handle (1..64) gets the server's success body (invalid); the derived client
-// encodes the query before sending, so the same answer is given here.
-export function checkHandleKind(handle: string, kind?: 'group'): Promise<HandleCheck> {
-  if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
-    return Promise.resolve({ available: false, reason: 'invalid' });
-  }
-  return callApi((client) =>
-    client.handles.check({ query: kind === undefined ? { handle } : { handle, kind } }),
-  );
-}
-
-export function checkHandle(handle: string): Promise<HandleCheck> {
-  return checkHandleKind(handle);
-}
-
-export function claimHandle(handle: string): Promise<{ handle: string }> {
-  return callApi((client) => client.handles.claim({ payload: { handle } }));
-}
+const handles = makeHandlesApi(callApi);
+export const { checkHandleKind, checkHandle, claimHandle } = handles;
 
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';

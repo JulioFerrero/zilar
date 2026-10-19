@@ -2132,3 +2132,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2133](T-2133-dedupe-server.md) | server: one copy of five duplicated blocks | 2026-10-19 |
 | [T-2132](T-2132-dedupe-web-packages.md) | web: one copy of four duplicated blocks | 2026-10-19 |
 | [T-2130](T-2130-store-p3-types.md) | share: one store type surface and one session check | 2026-10-19 |
+| [T-2125](T-2125-api-directory.md) | share: one directory, visibility and handles API | 2026-10-19 |
