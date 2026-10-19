@@ -3,6 +3,7 @@
 // `<!DOCTYPE` or `<!ENTITY` is rejected before parsing, so no external entity
 // can be fetched.
 import { elementBlocks, firstElement, nextOpenTag, openTagAttrs, stripTags } from '../markup/scan';
+import { decodeNamedEntity } from './search';
 
 export interface FeedItem {
   title: string;
@@ -103,34 +104,22 @@ function plainText(value: string): string {
   const inner = cdata !== null && cdata[1] !== undefined ? cdata[1] : value;
   return stripTags(inner, ' ')
     .replace(/&(#\d+|#x[0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);/g, (full, body: string) => {
-      switch (body) {
-        case 'amp':
-          return '&';
-        case 'lt':
-          return '<';
-        case 'gt':
-          return '>';
-        case 'quot':
-          return '"';
-        case 'apos':
-          return "'";
-        case 'nbsp':
-          return ' ';
-        default: {
-          const code =
-            body.startsWith('#x') || body.startsWith('#X')
-              ? Number.parseInt(body.slice(2), 16)
-              : Number.parseInt(body.slice(1), 10);
-          if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
-            try {
-              return String.fromCodePoint(code);
-            } catch {
-              return full;
-            }
-          }
+      const named = decodeNamedEntity(body);
+      if (named !== undefined) {
+        return named;
+      }
+      const code =
+        body.startsWith('#x') || body.startsWith('#X')
+          ? Number.parseInt(body.slice(2), 16)
+          : Number.parseInt(body.slice(1), 10);
+      if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) {
+        try {
+          return String.fromCodePoint(code);
+        } catch {
           return full;
         }
       }
+      return full;
     })
     .replace(/\s+/g, ' ')
     .trim();

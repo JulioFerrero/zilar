@@ -101,14 +101,19 @@ export interface ApprovalRuleRow {
   revokedBy: string | null;
 }
 
-export interface AiToolRow {
+// The fields a tool row and its public projection share.
+export interface ToolIdentity {
   id: string;
   aiId: string;
   groupId: string | null;
+  // The topic the tool belongs to. Null for personal-chat tools.
   topicId: string | null;
   name: string;
   description: string;
   currentVersion: number;
+}
+
+export interface AiToolRow extends ToolIdentity {
   approvedHosts: string[];
   createdBy: string;
   createdAt: Date;

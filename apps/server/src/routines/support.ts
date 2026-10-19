@@ -1,14 +1,14 @@
 // The routine mutations (create, pause, resume, delete) and their result types.
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { enforceRoutineLimit, toPublicRoutine } from './queries';
-import { nextRunAfter, parseRoutineSchedule } from './schedule';
+import { nextRunAfter, parseRoutineSchedule, type RoutineSchedule } from './schedule';
 import {
   MAX_ROUTINE_INPUT_BYTES,
   RoutineServiceError,
@@ -30,17 +30,7 @@ export async function createRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<PublicRoutine> {
-  if ((input.groupId === null) !== (input.topicId === null)) {
-    throw new RoutineServiceError(
-      'invalid_request',
-      'groupId and topicId must both be set or both be null',
-    );
-  }
-  const title = parseRoutineTitle(input.title);
-  const schedule = parseRoutineSchedule(input.schedule);
-  if (!schedule.ok) {
-    throw new RoutineServiceError('invalid_request', schedule.message);
-  }
+  const { title, schedule } = parseRoutineBasics(input);
   if (input.input !== undefined && input.input !== null) {
     const serialised = safeStringify(input.input);
     if (serialised === null || Buffer.byteLength(serialised, 'utf8') > MAX_ROUTINE_INPUT_BYTES) {
@@ -97,26 +87,24 @@ export async function createRoutine(
     );
   }
   await enforceRoutineLimit(db, input.aiId, input.topicId);
-  const nextRunAt = nextRunAfter(schedule.value, now);
-  let inserted: RoutineRow | null;
-  try {
-    inserted = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        // jsonb is written as a cast string, or NULL when there is no input.
-        const routineInput =
-          input.input === undefined || input.input === null
-            ? sql`NULL`
-            : sql`${JSON.stringify(input.input)}::jsonb`;
-        const [row] = yield* sql<RoutineRow>`INSERT INTO routines (
+  const nextRunAt = nextRunAfter(schedule, now);
+  const inserted = await insertRoutineRow(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // jsonb is written as a cast string, or NULL when there is no input.
+      const routineInput =
+        input.input === undefined || input.input === null
+          ? sql`NULL`
+          : sql`${JSON.stringify(input.input)}::jsonb`;
+      return yield* sql<RoutineRow>`INSERT INTO routines (
             id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
             alert_card_id, alert_block_id, approved_hosts, status, paused_reason,
             next_run_at, last_run_at, last_status, consecutive_failures,
             created_by, created_at, updated_at, deleted_at
           ) VALUES (
             ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
-            ${tool.id}, ${title}, ${JSON.stringify(schedule.value)}::jsonb,
+            ${tool.id}, ${title}, ${JSON.stringify(schedule)}::jsonb,
             ${routineInput}, ${input.alertCard?.cardId ?? null},
             ${input.alertCard?.blockId ?? null},
             ${JSON.stringify(approved)}::jsonb, 'active', NULL,
@@ -124,22 +112,9 @@ export async function createRoutine(
             ${now.toISOString()}, ${now.toISOString()}, NULL
           )
           RETURNING *`;
-        return row ?? null;
-      }),
-    );
-  } catch (error) {
-    // The partial unique index refused a second live routine; nothing was inserted and no audit written.
-    if (isUniqueViolation(error)) {
-      throw new RoutineServiceError(
-        'alert_card_taken',
-        'That alert card already drives another routine',
-      );
-    }
-    throw error;
-  }
-  if (!inserted) {
-    throw new Error('Failed to create routine');
-  }
+    }),
+    'Failed to create routine',
+  );
   if (audit !== undefined) {
     await audit.record({
       actorUserId: input.userId,
@@ -154,7 +129,7 @@ export async function createRoutine(
       detail: { toolId: tool.id, ...(input.alertCard === undefined ? {} : { alertCard: true }) },
     });
   }
-  return toPublicRoutine(inserted, tool.name, schedule.value);
+  return toPublicRoutine(inserted, tool.name, schedule);
 }
 
 // Pauses an active routine; an already paused one returns `paused: false` and writes nothing.
@@ -309,6 +284,48 @@ export async function deleteRoutine(
     });
   }
   return { deleted: true };
+}
+
+// Both routine kinds validate the chat pair, title and schedule the same way.
+export function parseRoutineBasics(input: {
+  groupId: string | null;
+  topicId: string | null;
+  title: string;
+  schedule: unknown;
+}): { title: string; schedule: RoutineSchedule } {
+  if ((input.groupId === null) !== (input.topicId === null)) {
+    throw new RoutineServiceError(
+      'invalid_request',
+      'groupId and topicId must both be set or both be null',
+    );
+  }
+  const title = parseRoutineTitle(input.title);
+  const schedule = parseRoutineSchedule(input.schedule);
+  if (!schedule.ok) {
+    throw new RoutineServiceError('invalid_request', schedule.message);
+  }
+  return { title, schedule: schedule.value };
+}
+
+// Inserts one routine row; a refused alert-card index writes nothing and answers the same error for both kinds.
+export async function insertRoutineRow(
+  db: ServerDatabase,
+  insert: Effect.Effect<ReadonlyArray<RoutineRow>, SqlError.SqlError, SqlClient.SqlClient>,
+  failureMessage: string,
+): Promise<RoutineRow> {
+  let rows: ReadonlyArray<RoutineRow>;
+  try {
+    rows = await runSql(db, insert);
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    throw new RoutineServiceError(
+      'alert_card_taken',
+      'That alert card already drives another routine',
+    );
+  }
+  const [inserted] = rows;
+  if (inserted === undefined) throw new Error(failureMessage);
+  return inserted;
 }
 
 function safeStringify(value: unknown): string | null {

@@ -2,6 +2,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
+import type { MediaItemRow } from '../db/rows';
 import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { bareJid } from '../jid';
@@ -11,28 +12,8 @@ import { extractLinks, extractMediaItems } from './extract';
 import { randomUUID } from 'node:crypto';
 
 // The columns mirror the `media_items` migration SQL; a `bigint` read would come back as
-// a string (none is read here).
-interface MediaItemRow {
-  id: string;
-  archiveOwner: string;
-  chatJid: string;
-  messageId: string;
-  atMicros: number;
-  senderJid: string;
-  kind: MediaKind;
-  url: string | null;
-  name: string | null;
-  mime: string | null;
-  size: number | null;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-  waveform: number[] | null;
-  linkUrl: string | null;
-  linkHost: string | null;
-  ref: string;
-  deleted: boolean;
-}
+// a string (none is read here). The insert leaves `created_at` to the database default.
+type MediaItemInsertRow = Omit<MediaItemRow, 'createdAt'>;
 
 interface RowBase {
   archiveOwner: string;
@@ -44,7 +25,7 @@ interface RowBase {
 
 // `ref` is the row's identity inside its message: the URL, or empty only for a voice
 // note without one, which is still unique by `kind`.
-function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemRow {
+function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemInsertRow {
   return {
     id: randomUUID(),
     archiveOwner: base.archiveOwner,
@@ -75,7 +56,7 @@ const INSERT_CHUNK_ROWS = 500;
 
 function insertChunk(
   sql: SqlClient.SqlClient,
-  rows: MediaItemRow[],
+  rows: MediaItemInsertRow[],
 ): Effect.Effect<number, SqlError.SqlError> {
   const tuples = rows.map(
     (row) => sql`(${row.id}, ${row.archiveOwner}, ${row.chatJid}, ${row.messageId},
@@ -95,7 +76,7 @@ function insertChunk(
 
 function insertItems(
   sql: SqlClient.SqlClient,
-  rows: MediaItemRow[],
+  rows: MediaItemInsertRow[],
 ): Effect.Effect<number, SqlError.SqlError> {
   if (rows.length === 0) {
     return Effect.succeed(0);

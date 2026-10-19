@@ -4,15 +4,20 @@ import { Option, Schema, Effect } from 'effect';
 import { BlocksDataSchema } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
 import { findCard } from '../message-blocks/cards';
-import { nextRunAfter, parseRoutineSchedule, type RoutineSchedule } from '../routines/schedule';
+import { nextRunAfter, type RoutineSchedule } from '../routines/schedule';
 import {
   MAX_ROUTINE_PROMPT_CHARS,
   RoutineServiceError,
-  parseRoutineTitle,
   type CreatePromptRoutineInput,
   type PublicRoutine,
 } from '../routines/schemas';
-import { createRoutine, deleteRoutine, pauseRoutine } from '../routines/support';
+import {
+  createRoutine,
+  deleteRoutine,
+  insertRoutineRow,
+  parseRoutineBasics,
+  pauseRoutine,
+} from '../routines/support';
 import {
   activeRoutineWithTitleExists,
   findRoutineTarget,
@@ -32,8 +37,6 @@ import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
-import { isUniqueViolation } from '../effect/error-utils';
-import { runSql } from '../effect/sql';
 import { enforceRoutineLimit, toPublicRoutine } from '../routines/queries';
 
 // Creates a `kind = 'prompt'` routine: no tool and no hosts.
@@ -44,17 +47,7 @@ export async function createPromptRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<PublicRoutine> {
-  if ((input.groupId === null) !== (input.topicId === null)) {
-    throw new RoutineServiceError(
-      'invalid_request',
-      'groupId and topicId must both be set or both be null',
-    );
-  }
-  const title = parseRoutineTitle(input.title);
-  const schedule = parseRoutineSchedule(input.schedule);
-  if (!schedule.ok) {
-    throw new RoutineServiceError('invalid_request', schedule.message);
-  }
+  const { title, schedule } = parseRoutineBasics(input);
   const prompt = input.prompt.trim();
   if (prompt.length < 1) {
     throw new RoutineServiceError('invalid_request', 'prompt must not be empty');
@@ -66,14 +59,12 @@ export async function createPromptRoutine(
     );
   }
   await enforceRoutineLimit(db, input.aiId, input.topicId);
-  const nextRunAt = nextRunAfter(schedule.value, now);
-  let inserted: RoutineRow | null;
-  try {
-    inserted = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const [row] = yield* sql<RoutineRow>`INSERT INTO routines (
+  const nextRunAt = nextRunAfter(schedule, now);
+  const inserted = await insertRoutineRow(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`INSERT INTO routines (
             id, ai_id, group_id, topic_id, kind, tool_id, prompt, title, schedule,
             input, alert_card_id, alert_block_id, approved_hosts, status,
             paused_reason, next_run_at, last_run_at, last_status,
@@ -81,28 +72,15 @@ export async function createPromptRoutine(
           ) VALUES (
             ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
             'prompt', NULL, ${prompt}, ${title},
-            ${JSON.stringify(schedule.value)}::jsonb, NULL,
+            ${JSON.stringify(schedule)}::jsonb, NULL,
             ${input.alertCard?.cardId ?? null}, ${input.alertCard?.blockId ?? null},
             '[]'::jsonb, 'active', NULL, ${nextRunAt.toISOString()}, NULL, NULL, 0,
             ${input.userId}, ${now.toISOString()}, ${now.toISOString()}, NULL
           )
           RETURNING *`;
-        return row ?? null;
-      }),
-    );
-  } catch (error) {
-    // The partial unique index on the alert card block refused a second live routine; no audit is written.
-    if (isUniqueViolation(error)) {
-      throw new RoutineServiceError(
-        'alert_card_taken',
-        'That alert card already drives another routine',
-      );
-    }
-    throw error;
-  }
-  if (!inserted) {
-    throw new Error('Failed to create prompt routine');
-  }
+    }),
+    'Failed to create prompt routine',
+  );
   if (audit !== undefined) {
     await audit.record({
       actorUserId: input.userId,
@@ -117,7 +95,7 @@ export async function createPromptRoutine(
       detail: { kind: 'prompt', ...(input.alertCard === undefined ? {} : { alertCard: true }) },
     });
   }
-  return toPublicRoutine(inserted, '', schedule.value);
+  return toPublicRoutine(inserted, '', schedule);
 }
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 

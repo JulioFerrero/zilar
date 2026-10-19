@@ -10,6 +10,7 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
   archiveDrainedPrivateTopics,
   emitDroppedGroupTopicAis,
+  groupLimitError,
   removeGroupAi,
   syncGroupTopicRooms,
 } from './ais';
@@ -64,11 +65,7 @@ export async function addGroupMembers(
       }),
     );
     if (existingIds.size + aiRows.length + toAdd.length > MAX_GROUP_MEMBERS) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        `A group has at most ${MAX_GROUP_MEMBERS} members`,
-      );
+      throw groupLimitError();
     }
     let added: string[] = toAdd;
     try {
@@ -92,13 +89,7 @@ export async function addGroupMembers(
                 currentIds.size + Number(aiCount?.total ?? 0) + added.length >
                 MAX_GROUP_MEMBERS
               ) {
-                return yield* Effect.fail(
-                  new HttpError(
-                    400,
-                    'invalid_request',
-                    `A group has at most ${MAX_GROUP_MEMBERS} members`,
-                  ),
-                );
+                return yield* Effect.fail(groupLimitError());
               }
               for (const userId of added) {
                 yield* Effect.tryPromise({

@@ -153,24 +153,32 @@ function linkTarget(attrs: string): string | null {
   return unwrapDuckDuckGo(href);
 }
 
+// The named HTML entities both parsers meet; a numeric entity is left to the caller.
+export function decodeNamedEntity(body: string): string | undefined {
+  switch (body) {
+    case 'amp':
+      return '&';
+    case 'lt':
+      return '<';
+    case 'gt':
+      return '>';
+    case 'quot':
+      return '"';
+    case 'apos':
+      return "'";
+    case 'nbsp':
+      return ' ';
+    default:
+      return undefined;
+  }
+}
+
 function decodeForSearch(value: string): string {
   return stripTags(
-    value.replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_full, body: string) => {
-      switch (body) {
-        case 'amp':
-          return '&';
-        case 'lt':
-          return '<';
-        case 'gt':
-          return '>';
-        case 'quot':
-          return '"';
-        case 'apos':
-          return "'";
-        default:
-          return ' ';
-      }
-    }),
+    value.replace(
+      /&(amp|lt|gt|quot|apos|nbsp);/g,
+      (_full, body: string) => decodeNamedEntity(body) ?? ' ',
+    ),
     ' ',
   );
 }

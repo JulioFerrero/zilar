@@ -205,6 +205,11 @@ export async function archiveDrainedPrivateTopics(
   }
 }
 
+// People and AIs share one cap; every path that can exceed it answers this same 400.
+export function groupLimitError(): HttpError {
+  return new HttpError(400, 'invalid_request', `A group has at most ${MAX_GROUP_MEMBERS} members`);
+}
+
 // A foreign AI answers the same 404 as a missing one, so AI ids cannot be
 // probed; people and AIs share MAX_GROUP_MEMBERS. In a channel an
 // admin-owned AI joins with voice (`admin`), anything else as `member`.
@@ -259,7 +264,7 @@ export async function addGroupAi(
     }),
   );
   if (memberRows.length + aiRows.length + 1 > MAX_GROUP_MEMBERS) {
-    throw new HttpError(400, 'invalid_request', `A group has at most ${MAX_GROUP_MEMBERS} members`);
+    throw groupLimitError();
   }
 
   try {
@@ -289,13 +294,7 @@ export async function addGroupAi(
               Number(memberCount?.total ?? 0) + Number(aiCount?.total ?? 0) + 1 >
               MAX_GROUP_MEMBERS
             ) {
-              return yield* Effect.fail(
-                new HttpError(
-                  400,
-                  'invalid_request',
-                  `A group has at most ${MAX_GROUP_MEMBERS} members`,
-                ),
-              );
+              return yield* Effect.fail(groupLimitError());
             }
             yield* Effect.tryPromise({
               try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member'),

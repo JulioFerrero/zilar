@@ -1,4 +1,5 @@
 import type { ServerDatabase } from '../db/client';
+import type { AiToolRunRow, ToolIdentity } from '../db/rows';
 import type { ToolRunner } from './types';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
@@ -76,15 +77,7 @@ export interface SaveToolVersionInput {
 }
 
 // No source; `hosts` and `lastRunStatus` come from the current version and newest run, `approvedHosts` from the human.
-export interface PublicTool {
-  id: string;
-  aiId: string;
-  groupId: string | null;
-  // The topic the tool belongs to. Null for personal-chat tools.
-  topicId: string | null;
-  name: string;
-  description: string;
-  currentVersion: number;
+export interface PublicTool extends ToolIdentity {
   hosts: string[];
   // Hosts a human approved via `tool.approve_hosts` (default empty).
   approvedHosts: string[];
@@ -110,18 +103,7 @@ export interface ToolVersionDetail extends PublicToolVersion {
   source: string;
 }
 
-export interface PublicToolRun {
-  id: string;
-  toolId: string;
-  version: number;
-  trigger: 'manual' | 'routine' | 'ai';
-  status: 'ok' | 'error';
-  errorKind: string | null;
-  durationMs: number;
-  fetchCount: number;
-  outputText: string | null;
-  createdAt: Date;
-}
+export type PublicToolRun = AiToolRunRow;
 
 export interface SaveToolVersionResult {
   tool: ToolDetail;
