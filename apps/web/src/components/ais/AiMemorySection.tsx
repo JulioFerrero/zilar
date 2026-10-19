@@ -1,22 +1,9 @@
-import { useState } from 'react';
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
 import { Brain, Trash2 } from 'lucide-react';
-import { clearAiMemory, forgetAiMemoryFact, getAiMemory, type AiMemory } from '@/lib/api';
-import { fromApi, type ApiFailure } from '@zilar/client-core';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import { aiMemoryApi } from '@/lib/api';
+import { LINE_PREFIX, MEMORY_LOAD_FAILED_MESSAGE, useAiMemory } from '@zilar/client-core';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-
-// The cover lines carry a leading block reference (`#16` or `#0-15`) that is
-// only meaningful to the server; the section strips it before showing a line.
-const LINE_PREFIX = /^#\d+(?:-\d+)? /;
-
-type LoadStatus = 'loading' | 'ready' | 'error';
-
-const isNotFound = (failure: ApiFailure): boolean => failure.status === 404;
 
 export function AiMemorySection({
   chat,
@@ -29,71 +16,8 @@ export function AiMemorySection({
   aiName: string;
   initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(initiallyOpen);
-  const [forgetError, setForgetError] = useState('');
-  const [forgettingId, setForgettingId] = useState<string | null>(null);
-  const [clearError, setClearError] = useState('');
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const [forgottenIds, setForgottenIds] = useState<ReadonlySet<string>>(() => new Set());
-
-  // The memory is read only while the section is open: `Effect.never` holds the
-  // read back until opening it builds the real one.
-  const [loaded, reload] = useQuery(
-    (): Effect.Effect<AiMemory, ApiFailure> =>
-      open ? fromApi(() => getAiMemory(chat, aiId)) : Effect.never,
-    [open, chat, aiId],
-  );
-  const loadedMemory = AsyncResult.isSuccess(loaded) && !isWaiting(loaded) ? loaded.value : null;
-  const loadFailure = isWaiting(loaded) ? undefined : failureOf(loaded);
-  const status: LoadStatus =
-    loadedMemory !== null ? 'ready' : loadFailure !== undefined ? 'error' : 'loading';
-  const memory =
-    loadedMemory === null
-      ? null
-      : {
-          ...loadedMemory,
-          facts: loadedMemory.facts.filter((fact) => !forgottenIds.has(fact.id)),
-        };
-
-  const resetLocal = (): void => {
-    setForgottenIds(new Set());
-    setForgetError('');
-    setClearError('');
-  };
-
-  const startLoad = (): void => {
-    resetLocal();
-    reload();
-  };
-
-  // A 404 means the fact is already gone, so the outcome the owner asked for
-  // holds: the row drops without a false error.
-  const [, forget] = useAction((factId: string) =>
-    Effect.sync(() => {
-      setForgetError('');
-      setForgettingId(factId);
-    }).pipe(
-      Effect.andThen(
-        fromApi(() => forgetAiMemoryFact(chat, aiId, factId)).pipe(
-          Effect.catchIf(isNotFound, () => Effect.void),
-          Effect.tap(() => Effect.sync(() => setForgottenIds((ids) => new Set(ids).add(factId)))),
-          Effect.tapError(() => Effect.sync(() => setForgetError('Could not forget that fact'))),
-        ),
-      ),
-      Effect.ensuring(Effect.sync(() => setForgettingId(null))),
-    ),
-  );
-
-  const [, clear] = useAction<void, void, ApiFailure>(() =>
-    Effect.sync(() => {
-      setConfirmingClear(false);
-      setClearError('');
-    }).pipe(
-      Effect.andThen(fromApi(() => clearAiMemory(chat, aiId))),
-      Effect.tap(() => Effect.sync(() => startLoad())),
-      Effect.tapError(() => Effect.sync(() => setClearError('Could not clear the memory'))),
-    ),
-  );
+  const { state, actions } = useAiMemory(aiMemoryApi, chat, aiId, initiallyOpen);
+  const { open, status, memory, forgetError, forgettingId, clearError, confirmingClear } = state;
 
   return (
     <section aria-label="Memory" className="flex flex-col gap-2 border-t border-divider pt-4">
@@ -105,7 +29,7 @@ export function AiMemorySection({
             variant="ghost"
             size="sm"
             className="rounded-full text-muted-foreground"
-            onClick={() => setOpen(false)}
+            onClick={actions.onHide}
           >
             Hide memory
           </Button>
@@ -122,10 +46,7 @@ export function AiMemorySection({
             variant="ghost"
             size="lg"
             className="rounded-full px-4"
-            onClick={() => {
-              setOpen(true);
-              resetLocal();
-            }}
+            onClick={actions.onShow}
           >
             <Brain className="size-4" aria-hidden="true" />
             Show memory
@@ -140,10 +61,10 @@ export function AiMemorySection({
       {open && status === 'error' && (
         <StateMessage
           kind="error"
-          title="Could not load the memory"
+          title={MEMORY_LOAD_FAILED_MESSAGE}
           action={{
             label: 'Retry',
-            onClick: startLoad,
+            onClick: actions.onRetry,
           }}
         />
       )}
@@ -172,7 +93,7 @@ export function AiMemorySection({
                         aria-label="Forget this fact"
                         className="rounded-full text-muted-foreground"
                         disabled={forgettingId === fact.id}
-                        onClick={() => forget(fact.id)}
+                        onClick={() => actions.onForget(fact.id)}
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
                       </Button>
@@ -215,10 +136,7 @@ export function AiMemorySection({
                 variant="outline"
                 size="lg"
                 className="rounded-full border-danger/40 px-4 text-danger hover:bg-danger/10"
-                onClick={() => {
-                  setClearError('');
-                  setConfirmingClear(true);
-                }}
+                onClick={actions.onAskClear}
               >
                 Clear memory
               </Button>
@@ -232,8 +150,8 @@ export function AiMemorySection({
           title="Clear memory?"
           body={`${aiName} forgets the pinned facts and the summaries of this chat. The messages stay, and it still reads the recent ones.`}
           confirmLabel="Clear"
-          onConfirm={() => clear()}
-          onCancel={() => setConfirmingClear(false)}
+          onConfirm={actions.onConfirmClear}
+          onCancel={actions.onCancelClear}
         />
       )}
     </section>

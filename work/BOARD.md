@@ -2166,3 +2166,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-2163](T-2163-phone-clone-pairs.md) | phone: one settings screen shell | 2026-10-19 |
 | [T-2166](T-2166-devices-hook.md) | one Devices view model for web and phone | 2026-10-19 |
 | [T-2165](T-2165-gif-search-hook.md) | one GIF search hook for web and phone | 2026-10-19 |
+| [T-2168](T-2168-ai-memory-hook.md) | one AI memory hook for web and phone | 2026-10-19 |

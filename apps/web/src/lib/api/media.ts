@@ -21,15 +21,13 @@ export type {
 
 const api = makeChatExtrasApi(callApiAbortable);
 
-export const {
-  clearAiMemory,
-  forgetAiMemoryFact,
-  getAiMemory,
-  listChatMedia,
-  listPins,
-  pinMessage,
-  searchMessages,
-} = api;
+export const { listChatMedia, listPins, pinMessage, searchMessages } = api;
+
+export const aiMemoryApi = {
+  clearAiMemory: api.clearAiMemory,
+  forgetAiMemoryFact: api.forgetAiMemoryFact,
+  getAiMemory: api.getAiMemory,
+};
 
 export const unpinMessage = (id: string): Promise<void> =>
   api.unpinMessage(id).then(() => undefined);

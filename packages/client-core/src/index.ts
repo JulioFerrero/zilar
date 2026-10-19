@@ -34,6 +34,7 @@ export {
   useContactRequestsPoll,
   type OnForeground,
 } from './foreground-hooks';
+export * from './ai-memory';
 export * from './chat-extras-api';
 export * from './settings-api';
 export * from './devices';
