@@ -130,6 +130,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2196 | phone: profile and avatar calls fail with the shared `ApiError`; `ProfileApiError` and its own body parsing are gone | −65 |
 | T-2197 | store test twins, wave 2 (web echo-edit file, web message cache, phone send effects) | −256 test |
 | T-2198 | 4 client tests outside the crucial areas (people-search text, media retry state, a media row parser) | −180 test |
+| T-2199 | 7 types declared twice with the same fields become one-line aliases | −31 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -150,7 +151,17 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 
 **Running (06:50):**
 
-- **T-2199 (08:00):** types declared twice with the same fields become one (voice files, stored server images, group AI input, profile fields, composer mentions).
+- **Julio's answers (10-19, 08:05):**
+  - AI turn plan: go, and the lead runs the live checks in "ai test › General".
+  - Store phase 3: go, with emulator, web mock and a read-only live look in Helium.
+  - Remove `lead batch`.
+  - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
+- **Running (08:15):**
+  - **T-2200:** AI turns T3, one loop for group turns.
+  - **T-2201:** remove `lead batch`.
+  - **T-2202:** server tests wave A (routines, questions, blocks, message blocks).
+  - **T-2203:** server tests wave B (search, media, card media, link preview, markup, hands).
+  - **T-2204:** store phase 3 T2, the core context.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
