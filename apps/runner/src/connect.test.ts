@@ -6,8 +6,8 @@ import {
   generateRunnerKeypair,
   TunnelServer,
 } from '@zilar/runner-tunnel';
-import { waitFor } from '../../../packages/runner-tunnel/src/test-harness.ts';
-import { mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
+import { waitFor } from '../../../packages/runner-tunnel/src/test-support.ts';
+import { mapFailure, runRunner, validateHubUrl } from './connect.ts';
 import { buildIdentity } from './identity.ts';
 
 function buildTestIdentity(machineId: string): ReturnType<typeof buildIdentity> {
@@ -93,23 +93,6 @@ describe('runRunner', () => {
     await expect(
       runRunner({ identity, hubUrl: 'http://example.com:3189/tunnel' }),
     ).rejects.toMatchObject({ code: 'invalid_hub' });
-  });
-});
-
-describe('hubUrlFromServer', () => {
-  it('maps http:// to ws:// on the given hub port', () => {
-    expect(hubUrlFromServer('http://zilar.example.com', 3189)).toBe(
-      'ws://zilar.example.com:3189/tunnel',
-    );
-  });
-
-  it('maps https:// to wss:// on the given hub port', () => {
-    expect(hubUrlFromServer('https://zilar.example.com', 3189)).toBe(
-      'wss://zilar.example.com:3189/tunnel',
-    );
-    expect(hubUrlFromServer('https://zilar.example.com:3000', 3189)).toBe(
-      'wss://zilar.example.com:3189/tunnel',
-    );
   });
 });
 

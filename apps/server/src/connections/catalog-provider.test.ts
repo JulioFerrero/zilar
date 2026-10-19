@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { mapCatalog, resetCatalogCache } from '../ai/catalog';
+import { getAiCatalog, resetCatalogCache } from '../ai/catalog';
 import { createKeyCipher, type KeyCipher } from './crypto';
 import { createPinnedFetch } from './pinned-fetch';
 import { createProviderProbe } from './probe';
@@ -52,7 +52,10 @@ describe('a catalog provider connection', () => {
     context = await createTestContext();
     cipher = createKeyCipher(MASTER_KEY);
     // Warm the server-only base URL map the create route reads (T-1429).
-    mapCatalog(sample);
+    resetCatalogCache();
+    await getAiCatalog({
+      fetchImpl: async () => new Response(JSON.stringify(sample), { status: 200 }),
+    });
     // Any catalog load a test triggers stays offline: the fixture over the wire.
     vi.stubGlobal('fetch', () =>
       Promise.resolve(new Response(JSON.stringify(sample), { status: 200 })),

@@ -25,13 +25,6 @@ const FALLBACK_MODEL_IDS: Record<NativeProviderId, readonly string[]> = {
   openrouter: ['openai/gpt-4o', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-pro'],
 };
 
-/**
- * Public providers only; cache prices stay out of this response.
- */
-export function mapCatalog(raw: unknown): AiCatalogProvider[] {
-  return mapCatalogDocument(raw).providers;
-}
-
 // Offline the compatible base URLs are unknown, so only the natives are listed.
 export function fallbackProviders(): AiCatalogProvider[] {
   return PROVIDERS.map((id) => ({

@@ -59,34 +59,6 @@ export async function recordRoutineMessage(
   );
 }
 
-// Forgets the routine's message.
-export async function clearRoutineMessage(db: ServerDatabase, routineId: string): Promise<void> {
-  await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE routines
-        SET last_message_id = NULL, last_message_at = NULL
-        WHERE id = ${routineId}`;
-    }),
-  );
-}
-
-// Forgets the routine holding this message id, so a gone message is never edited later.
-export async function clearRoutineMessageByTarget(
-  db: ServerDatabase,
-  messageId: string,
-): Promise<void> {
-  await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE routines
-        SET last_message_id = NULL, last_message_at = NULL
-        WHERE last_message_id = ${messageId}`;
-    }),
-  );
-}
 // How long a routine's stored message stays editable. Older than this the
 // wrapper posts a new message instead of a XEP-0308 correction.
 export const ROUTINE_MESSAGE_MAX_AGE_MS = 24 * 60 * 60 * 1000;

@@ -20,7 +20,8 @@ import {
   TOPIC_REFRESH_INTERVAL_MS,
   type PollingCtx,
 } from './polling';
-import { testCorePorts, type DraftHubEvent } from './ports';
+import type { DraftHubEvent } from './ports';
+import { testCorePorts } from './test-support';
 import { FINISHED_TURNS_MAX } from './rows';
 
 describe('draft turn bookkeeping', () => {

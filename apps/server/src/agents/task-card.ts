@@ -68,24 +68,6 @@ export function addTaskCardStep(card: TaskCard, label: string): TaskCard {
   return { ...card, stage: label, steps };
 }
 
-/** Closes the card as failed: the in-progress step is marked `failed` (and
- * renamed when a label is given). */
-export function failTaskCard(card: TaskCard, label?: string): TaskCard {
-  const steps: ProgressStep[] = card.steps.map((step) => ({ ...step }));
-  const last = steps[steps.length - 1];
-  if (last === undefined) {
-    if (label !== undefined) {
-      steps.push({ id: stepId(1), label, state: 'failed' });
-    }
-  } else {
-    last.state = 'failed';
-    if (label !== undefined) {
-      last.label = label;
-    }
-  }
-  return { ...card, steps, state: 'failed' };
-}
-
 /** Closes the card: sets `state` and `summary`, and resolves the in-progress
  * step (`done` on a clean finish, `failed` otherwise). */
 export function finishTaskCard(

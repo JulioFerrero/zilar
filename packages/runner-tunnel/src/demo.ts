@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { InMemoryKeyRegistry, generateRunnerKeypair } from './keys.ts';
 import { RunnerClient } from './runner.ts';
 import { TunnelServer } from './server.ts';
-import { httpThrough, patternBytes, sha256Hex, startFakeDesk } from './test-harness.ts';
+import { httpThrough, patternBytes, sha256Hex, startFakeDesk } from './test-support.ts';
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);

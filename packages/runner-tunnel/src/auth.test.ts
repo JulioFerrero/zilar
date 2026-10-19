@@ -20,7 +20,7 @@ import {
   waitFor,
   wsCloseCode,
   type TunnelPair,
-} from './test-harness.ts';
+} from './test-support.ts';
 
 let pair: TunnelPair | null = null;
 

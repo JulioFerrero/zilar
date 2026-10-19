@@ -10,7 +10,6 @@ import {
   createQuestion,
   expireQuestion,
   findOpenQuestionByMessage,
-  listOpenQuestions,
   MAX_OPEN_QUESTIONS_PER_AI,
   rekeyQuestionMessage,
   setQuestionMessageId,
@@ -60,9 +59,6 @@ describe('questions service', () => {
 
     const messageId = randomUUID();
     expect(await setQuestionMessageId(context.db, row.id, messageId)).toBe(true);
-    expect(
-      (await listOpenQuestions(context.db, { topicId: 'topic-1' })).map((item) => item.id),
-    ).toEqual([row.id]);
     const found = await findOpenQuestionByMessage(
       context.db,
       messageId,

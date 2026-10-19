@@ -9,7 +9,7 @@ import { addContactPair, listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { allowedArchives } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
-import { removeBlockRosterItems } from './roster';
+import { removePairRosterItems } from './roster';
 import { blockUser, type BlocksDeps } from './service';
 
 describe('block really blocks (T-1158)', () => {
@@ -190,7 +190,7 @@ describe('block really blocks (T-1158)', () => {
     const brokenDb = {} as ServerDatabase;
     const domain = context.config.xmpp.domain;
 
-    await removeBlockRosterItems({
+    await removePairRosterItems({
       db: brokenDb,
       adminClient: context.adminClient,
       domain,

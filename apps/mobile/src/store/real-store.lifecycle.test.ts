@@ -3,12 +3,12 @@
 // start idempotency) and then the one new behaviour, the connect retry (R7,
 // Q3), before the move onto the core.
 import { CONNECT_RETRY_DELAYS_MS } from '@zilar/client-core/store';
+import { chatEntriesFromList } from '@zilar/client-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chatListModel } from '../lib/chat-list';
-import { parseChatsList } from '../lib/chat-api-schemas';
 import { readChatListCache } from './effects/lifecycle';
 import type { Pin, PinsApi } from '../lib/pins-api';
 
@@ -104,9 +104,9 @@ describe('mobile store lifecycle (T-0918)', () => {
 
   it('a new AI DM with a newer creation time leads the chat list (T-1474)', async () => {
     const AI = 'ai-heron@zilar.test';
-    // Decode the raw wire payload through the phone's own schema, the path that
-    // only mobile has (web decodes with the contract).
-    const entries = parseChatsList({
+    // Decode the raw wire payload through the shared schema, as the phone's
+    // chats API does (web decodes with the contract).
+    const entries = chatEntriesFromList({
       chats: [
         // Two rows with neither a message nor a creation time (as in mock):
         // their sort time is `-Infinity`, and the old `right - left` comparator

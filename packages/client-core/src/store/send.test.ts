@@ -6,7 +6,7 @@ import type { CoreActionError, CoreState } from './ctx';
 import { handleMessage } from './incoming';
 import { createMessageLedger } from './ledger';
 import { makeLifetime } from './lifetime';
-import { testCorePorts } from './ports';
+import { testCorePorts } from './test-support';
 import {
   SEND_TIMEOUT_MS,
   ackText,

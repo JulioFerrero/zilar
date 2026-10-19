@@ -26,13 +26,6 @@ export interface RunResult {
   message: string;
 }
 
-export function hubUrlFromServer(serverUrl: string, hubPort: number): string {
-  const parsed = new URL(serverUrl);
-  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
-  parsed.port = String(hubPort);
-  return `${parsed.protocol}//${parsed.host}/tunnel`;
-}
-
 function checkHubUrl(url: string): Result.Result<URL, ConnectError> {
   return Result.try({
     try: () => new URL(url),

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   addTaskCardStep,
-  failTaskCard,
   finishTaskCard,
   nameTaskCard,
   startTaskCard,
@@ -107,20 +106,7 @@ describe('addTaskCardStep', () => {
   });
 });
 
-describe('failTaskCard and finishTaskCard', () => {
-  it('marks the in-progress step failed', () => {
-    const card = failTaskCard(cardWithSteps(['Running the tool']));
-
-    expect(card.state).toBe('failed');
-    expect(card.steps[0]).toMatchObject({ label: 'Running the tool', state: 'failed' });
-  });
-
-  it('renames the failing step when a label is given', () => {
-    const card = failTaskCard(cardWithSteps(['Running the tool']), 'Running the tool (failed)');
-
-    expect(card.steps[0]).toMatchObject({ label: 'Running the tool (failed)', state: 'failed' });
-  });
-
+describe('finishTaskCard', () => {
   it('resolves the in-progress step done on a clean finish', () => {
     const card = finishTaskCard(
       cardWithSteps(['Running the tool']),

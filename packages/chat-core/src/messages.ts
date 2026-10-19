@@ -193,10 +193,6 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
   return '';
 }
 
-export function previewText(lastMessage: UiMessage | undefined, options: PreviewOptions): string {
-  return previewPrefix(lastMessage, options) + previewBody(lastMessage);
-}
-
 // `previewPrefix` already includes its trailing space, so joining prefix and body yields the exact preview text.
 export function previewParts(
   lastMessage: UiMessage | undefined,

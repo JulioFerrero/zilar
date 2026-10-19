@@ -3,7 +3,7 @@ import { type DeskProvisionFrame } from './desk-frames.ts';
 import { DeskRunner } from './desk-runner.ts';
 import type { StreamMux } from './mux.ts';
 import type { ControlMessage } from './protocol.ts';
-import { waitFor } from './test-harness.ts';
+import { waitFor } from './test-support.ts';
 
 function fakeMux(sent: ControlMessage[]): StreamMux {
   return {

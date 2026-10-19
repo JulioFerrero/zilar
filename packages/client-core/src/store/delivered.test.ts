@@ -7,8 +7,8 @@ import {
   MARK_DELIVERED_DEBOUNCE_MS,
 } from './delivered';
 import { handleMessage } from './incoming';
-import { testCorePorts, type CoreApi } from './ports';
-import { ANA, ME, NOW, testCtx } from './test-support';
+import type { CoreApi } from './ports';
+import { ANA, ME, NOW, testCorePorts, testCtx } from './test-support';
 
 afterEach(() => {
   vi.useRealTimers();

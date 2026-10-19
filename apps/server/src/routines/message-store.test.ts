@@ -1,6 +1,6 @@
 // T-1713: the routine message store, on the real test database. Seed a prompt
-// routine the way execute-prompt.test.ts does, then record, load and clear the
-// id of its single live message.
+// routine the way execute-prompt.test.ts does, then record and load the id of
+// its single live message.
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
@@ -8,12 +8,7 @@ import { SqlClient } from 'effect/sql';
 import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
-import {
-  clearRoutineMessage,
-  clearRoutineMessageByTarget,
-  loadRoutineMessage,
-  recordRoutineMessage,
-} from '../agents/gateway/routine-send';
+import { loadRoutineMessage, recordRoutineMessage } from '../agents/gateway/routine-send';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 
@@ -68,34 +63,6 @@ describe('routine message store', () => {
     expect(await loadRoutineMessage(context.db, row.id)).toEqual({
       messageId: 'message-1',
       at: AT,
-    });
-  });
-
-  it('clears the stored message', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const row = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-    await recordRoutineMessage(context.db, row.id, 'message-1', NOW);
-
-    await clearRoutineMessage(context.db, row.id);
-
-    expect(await loadRoutineMessage(context.db, row.id)).toBeNull();
-  });
-
-  it('clears by target only the routine holding that message id', async () => {
-    const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
-    const first = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-    const second = await seedPromptRoutine(context, { aiId, createdBy: ownerId });
-    await recordRoutineMessage(context.db, first.id, 'message-1', NOW);
-    await recordRoutineMessage(context.db, second.id, 'message-2', NOW);
-
-    await clearRoutineMessageByTarget(context.db, 'message-1');
-
-    expect(await loadRoutineMessage(context.db, first.id)).toBeNull();
-    expect(await loadRoutineMessage(context.db, second.id)).toEqual({
-      messageId: 'message-2',
-      at: NOW,
     });
   });
 });

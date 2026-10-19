@@ -50,7 +50,6 @@ export * from './handle-errors';
 export * from './ai-activity';
 export * from './topics';
 export * from './topic-activity';
-export * from './money';
 export * from './block-content';
 export * from './block-table';
 export * from './search';

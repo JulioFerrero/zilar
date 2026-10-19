@@ -14,7 +14,8 @@ import {
   stopStore,
   type LifecycleCtx,
 } from './lifecycle';
-import { testCorePorts, type CorePorts, type KeyValue } from './ports';
+import type { CorePorts, KeyValue } from './ports';
+import { testCorePorts } from './test-support';
 
 function memoryStorage(data: Record<string, string> = {}): KeyValue {
   return {

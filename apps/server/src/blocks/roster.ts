@@ -63,5 +63,3 @@ export async function removePairRosterItems(input: RemovePairRosterInput): Promi
     }
   }
 }
-
-export const removeBlockRosterItems = removePairRosterItems;

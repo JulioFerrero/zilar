@@ -13,7 +13,7 @@ import { HttpError } from '../errors';
 import { getGroupMembership, isTopicMember, requireVisibleTopic } from '../topics/access';
 import { applyResponses } from './apply';
 import { findCard, listResponses, replacePollVotes, saveCardData, upsertResponse } from './cards';
-import { errorName, isUniqueViolation } from '../effect/error-utils';
+import { errorName } from '../effect/error-utils';
 import { routineAccess } from '../routines/access';
 import { pauseRoutine, resumeRoutine } from '../routines/support';
 interface AlertRoutineDeps extends Pick<ServerCore, 'db' | 'logger'> {
@@ -401,40 +401,6 @@ export async function respondToCard(
   await saveCardData(deps.db, card.originId, next);
   await correctCard(deps, card, next);
   return { data: next };
-}
-
-// The card↔routine link the alert card drives; one card block links to at most one live routine (a partial unique index backs it atomically).
-// The link for this card block already belongs to another live routine.
-export class AlertLinkTaken extends Error {
-  constructor() {
-    super('That card block is already linked to a routine');
-    this.name = 'AlertLinkTaken';
-  }
-}
-
-// A second live routine on the same block is refused as `AlertLinkTaken`, not a raw driver error.
-export async function linkAlertCard(
-  db: ServerDatabase,
-  routineId: string,
-  cardId: string,
-  blockId: string,
-): Promise<void> {
-  try {
-    await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE routines
-          SET alert_card_id = ${cardId}, alert_block_id = ${blockId}
-          WHERE id = ${routineId} AND deleted_at IS NULL`;
-      }),
-    );
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      throw new AlertLinkTaken();
-    }
-    throw error;
-  }
 }
 
 // The live routine linked to one card block, or undefined.

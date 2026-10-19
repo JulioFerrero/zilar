@@ -9,14 +9,7 @@ import { createPromptRoutine } from '../tools/routine-adapters';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { findCard, listResponses, recordCard } from './cards';
-import {
-  respondToCard,
-  myPicks,
-  type CardRespondDeps,
-  type CorrectCardInput,
-  AlertLinkTaken,
-  linkAlertCard,
-} from './respond';
+import { respondToCard, myPicks, type CardRespondDeps, type CorrectCardInput } from './respond';
 
 // T-1792: a member's tap must reach the card, be stored and corrected in the
 // room; a stranger must not learn the card exists, and nothing may be written
@@ -277,7 +270,7 @@ describe('card respond', () => {
     expect(await listResponses(context.db, 'alert-origin')).toHaveLength(1);
   });
 
-  it('drives the linked routine from the alert answer and refuses a second link', async () => {
+  it('drives the linked routine from the alert answer', async () => {
     const { deps, aiId, ownerId } = await setup();
     const createRoutine = (title: string) =>
       createPromptRoutine(
@@ -290,11 +283,11 @@ describe('card respond', () => {
           schedule: { kind: 'interval', everyMinutes: 60 },
           prompt: 'Tell me when spending passes the threshold',
           userId: ownerId,
+          alertCard: { cardId: 'alert-origin', blockId: 'alert-1' },
         },
         new Date('2026-10-17T12:00:00.000Z'),
       );
     const routine = await createRoutine('Spend alert');
-    await linkAlertCard(context.db, routine.id, 'alert-origin', 'alert-1');
     const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
 
     await respondToCard(deps, ownerId, {
@@ -311,11 +304,6 @@ describe('card respond', () => {
     const resumed = await readRoutine(routine.id);
     expect(resumed).toMatchObject({ status: 'active', pausedReason: null });
     expect(resumed.input).toMatchObject({ threshold: 95000 });
-
-    const other = await createRoutine('Other alert');
-    await expect(
-      linkAlertCard(context.db, other.id, 'alert-origin', 'alert-1'),
-    ).rejects.toBeInstanceOf(AlertLinkTaken);
   });
 
   it('lets only the routine manager answer a linked alert and audits the pause', async () => {
@@ -330,10 +318,10 @@ describe('card respond', () => {
         schedule: { kind: 'interval', everyMinutes: 60 },
         prompt: 'Tell me when spending passes the threshold',
         userId: ownerId,
+        alertCard: { cardId: 'alert-origin', blockId: 'alert-1' },
       },
       new Date('2026-10-17T12:00:00.000Z'),
     );
-    await linkAlertCard(context.db, routine.id, 'alert-origin', 'alert-1');
     const answer = { messageId: 'alert-origin', blockId: 'alert-1' };
 
     await expect(

@@ -5,7 +5,43 @@ import { vi } from 'vitest';
 import type { CoreActionError, CoreCtx, CoreSet, CoreState } from './ctx';
 import { createMessageLedger } from './ledger';
 import { makeLifetime } from './lifetime';
-import { testCorePorts, type CorePorts } from './ports';
+import type { CoreApi, CorePorts } from './ports';
+
+const inertApi: CoreApi = {
+  getMe: () => {
+    throw new Error('core api.getMe is not provided');
+  },
+  getChats: () => {
+    throw new Error('core api.getChats is not provided');
+  },
+  getContacts: () => {
+    throw new Error('core api.getContacts is not provided');
+  },
+  getXmppToken: () => {
+    throw new Error('core api.getXmppToken is not provided');
+  },
+};
+
+export function testCorePorts(fakes: Partial<CorePorts> = {}): CorePorts {
+  return {
+    now: fakes.now ?? ((): Date => new Date(0)),
+    isVisible: fakes.isVisible ?? ((): boolean => true),
+    storage: fakes.storage === undefined ? null : fakes.storage,
+    api: fakes.api ?? inertApi,
+    rows: fakes.rows ?? { summariesFor: () => [] },
+    createXmpp:
+      fakes.createXmpp ??
+      (() => {
+        throw new Error('createXmpp is not provided in this test');
+      }),
+    visibility: fakes.visibility ?? { isVisible: () => true, onFocus: () => () => {} },
+    drafts: fakes.drafts ?? (() => () => {}),
+    notifications: fakes.notifications ?? { syncBadge: () => {}, dismissChat: () => {} },
+    flags: fakes.flags ?? { connectRetry: true, reconnectOnResume: false },
+    ...(fakes.checkSession === undefined ? {} : { checkSession: fakes.checkSession }),
+    ...(fakes.sessionGone === undefined ? {} : { sessionGone: fakes.sessionGone }),
+  };
+}
 
 export const ME = 'me@zilar.test';
 export const ANA = 'ana@zilar.test';

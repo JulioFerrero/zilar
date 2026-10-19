@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fallbackProviders, getAiCatalog, mapCatalog, resetCatalogCache } from './catalog';
+import { fallbackProviders, getAiCatalog, resetCatalogCache } from './catalog';
 
 // A recorded sample of `https://models.dev/api.json` (2026-10-14), trimmed to
 // the models the assertions need. It carries a deprecated model
@@ -19,100 +19,6 @@ function stubFetch(impl: () => Promise<Response>): typeof fetch {
 function failingFetch(): Promise<Response> {
   return Promise.reject(new Error('offline'));
 }
-
-describe('mapCatalog', () => {
-  it('lists the natives first, then the compatible providers by name', () => {
-    const providers = mapCatalog(sample);
-
-    // `groq` has no OpenAI-compatible `npm`, so it is skipped.
-    expect(providers.map((provider) => provider.id)).toEqual([
-      'openai',
-      'anthropic',
-      'google',
-      'xai',
-      'openrouter',
-      'together',
-    ]);
-    expect(providers.map((provider) => provider.kind)).toEqual([
-      'native',
-      'native',
-      'native',
-      'native',
-      'native',
-      'compatible',
-    ]);
-    expect(providers[0]?.name).toBe('OpenAI');
-    expect(providers[0]?.docUrl).toBe('https://platform.openai.com/docs/models');
-    // `gpt-3.5-turbo` is deprecated and `o4-mini` is not in the sample.
-    expect(providers[0]?.models.map((model) => model.id)).toEqual(['gpt-5.4', 'gpt-4o-mini']);
-    // The TTS model outputs audio, so it is not a chat model.
-    expect(providers[2]?.models.map((model) => model.id)).toEqual(['gemini-2.5-flash']);
-  });
-
-  it('keeps a compatible provider with its docs and newest-first models', () => {
-    const together = mapCatalog(sample).find((provider) => provider.id === 'together');
-
-    expect(together?.name).toBe('Together AI');
-    expect(together?.kind).toBe('compatible');
-    expect(together?.docUrl).toBe('https://docs.together.ai/docs/openai-api-compatibility');
-    expect(together?.models.map((model) => model.id)).toEqual([
-      'deepseek-ai/DeepSeek-R1',
-      'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-    ]);
-  });
-
-  it('answers an empty docUrl when models.dev has no doc', () => {
-    const xai = mapCatalog(sample).find((provider) => provider.id === 'xai');
-
-    expect(xai?.docUrl).toBe('');
-  });
-
-  it('maps every field of a model', () => {
-    const openai = mapCatalog(sample)[0];
-
-    expect(openai?.models[0]).toEqual({
-      id: 'gpt-5.4',
-      name: 'GPT-5.4',
-      contextTokens: 1050000,
-      inputPricePerMTok: 2.5,
-      outputPricePerMTok: 15,
-      toolCalls: true,
-      reasoning: true,
-      releaseDate: '2026-03-05',
-    });
-  });
-
-  it('answers null prices when the catalog has no cost for a model', () => {
-    const openrouter = mapCatalog(sample).find((provider) => provider.id === 'openrouter');
-    const bodyBuilder = openrouter?.models.find((model) => model.id === 'openrouter/bodybuilder');
-
-    expect(bodyBuilder?.inputPricePerMTok).toBeNull();
-    expect(bodyBuilder?.outputPricePerMTok).toBeNull();
-    expect(bodyBuilder?.contextTokens).toBe(128000);
-  });
-
-  it('skips a malformed model instead of dropping its provider', () => {
-    const providers = mapCatalog({
-      openai: {
-        models: {
-          'gpt-5.4': { id: 'gpt-5.4', name: 'GPT-5.4', release_date: '2026-03-05' },
-          'missing-name': { id: 'missing-name' },
-          'not-a-model': 'nope',
-          'gpt-4o-mini': { id: 'gpt-4o-mini', name: 'GPT-4o mini', release_date: '2024-07-18' },
-        },
-      },
-    });
-
-    expect(providers[0]?.id).toBe('openai');
-    expect(providers[0]?.models.map((model) => model.id)).toEqual(['gpt-5.4', 'gpt-4o-mini']);
-  });
-
-  it('reads nothing from a document it cannot parse', () => {
-    expect(mapCatalog(null)).toEqual([]);
-    expect(mapCatalog('nope')).toEqual([]);
-    expect(mapCatalog({})).toEqual([]);
-  });
-});
 
 describe('fallbackProviders', () => {
   it('covers all six providers with the static lists', () => {

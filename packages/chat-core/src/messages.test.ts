@@ -5,7 +5,6 @@ import {
   previewBody,
   previewKind,
   previewPrefix,
-  previewText,
   unreadDividerIndex,
 } from './messages';
 
@@ -163,13 +162,8 @@ describe('album grouping', () => {
   });
 });
 
-describe('previewText', () => {
+describe('previewBody and previewPrefix', () => {
   const options = { isGroup: true, currentUserId: 'me' };
-
-  it('has no prefix in a direct message', () => {
-    const last = message({ id: '1', senderId: 'ana', createdAt: at(0, 0), text: 'hey' });
-    expect(previewText(last, { isGroup: false, currentUserId: 'me' })).toBe('hey');
-  });
 
   it('prefixes the sender first name in groups', () => {
     const last = message({
@@ -179,36 +173,8 @@ describe('previewText', () => {
       createdAt: at(0, 0),
       text: 'ok!',
     });
-    expect(previewText(last, options)).toBe('Ana: ok!');
     expect(previewPrefix(last, options)).toBe('Ana: ');
     expect(previewBody(last)).toBe('ok!');
-  });
-
-  it('prefixes your own messages with You', () => {
-    const last = message({ id: '1', senderId: 'me', createdAt: at(0, 0), text: 'done' });
-    expect(previewText(last, options)).toBe('You: done');
-  });
-
-  it('uses the voice preview', () => {
-    const last = message({
-      id: '1',
-      senderId: 'ana',
-      senderName: 'Ana',
-      createdAt: at(0, 0),
-      voice: { duration_ms: 12_000, mime: 'audio/m4a', waveform: [10, 20] },
-    });
-    expect(previewText(last, options)).toBe('Ana: Voice message (0:12)');
-  });
-
-  it('uses the photo preview', () => {
-    const last = message({
-      id: '1',
-      senderId: 'ana',
-      senderName: 'Ana',
-      createdAt: at(0, 0),
-      image: { url: 'data:image/svg+xml,<svg/>', width: 10, height: 10 },
-    });
-    expect(previewText(last, options)).toBe('Ana: Photo');
   });
 
   it('uses the image attachment preview, with the caption after it', () => {
@@ -226,9 +192,6 @@ describe('previewText', () => {
       },
     });
     expect(previewBody(image)).toBe('Photo');
-
-    const withCaption = message({ ...image, text: 'the stage!' });
-    expect(previewText(withCaption, options)).toBe('Ana: Photo, the stage!');
   });
 
   it('uses the file attachment preview with its name and caption', () => {
@@ -245,14 +208,12 @@ describe('previewText', () => {
         mime: 'application/pdf',
       },
     });
-    expect(previewText(file, options)).toBe('Ana: tickets.pdf');
 
     const withCaption = message({ ...file, text: 'print these' });
     expect(previewBody(withCaption)).toBe('tickets.pdf, print these');
   });
 
   it('returns an empty string without a message', () => {
-    expect(previewText(undefined, options)).toBe('');
     expect(previewBody(undefined)).toBe('');
   });
 });

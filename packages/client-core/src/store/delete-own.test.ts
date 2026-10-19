@@ -2,8 +2,8 @@ import type { UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { clearHistory, deleteForMe, DELETE_ERROR } from './delete-own';
-import { testCorePorts, type CoreApi } from './ports';
-import { ANA, NOW, testCtx } from './test-support';
+import type { CoreApi } from './ports';
+import { ANA, NOW, testCorePorts, testCtx } from './test-support';
 
 function msg(id: string): UiMessage {
   return {

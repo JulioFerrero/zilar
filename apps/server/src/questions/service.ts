@@ -241,25 +241,6 @@ export async function answerQuestion(
   return updated.length > 0;
 }
 
-// Only posted rows (`message_id` set) are returned, capped at 100.
-export async function listOpenQuestions(
-  db: ServerDatabase,
-  params: { topicId: string },
-): Promise<AiQuestionRow[]> {
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<AiQuestionRow>`SELECT * FROM ai_questions
-        WHERE topic_id = ${params.topicId} AND status = 'open' AND expires_at > now()
-          AND message_id IS NOT NULL
-        ORDER BY created_at
-        LIMIT 100`;
-    }),
-  );
-  return [...rows];
-}
-
 export interface OpenQuestionForActivity {
   topicId: string | null;
   groupId: string | null;
