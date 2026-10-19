@@ -5,9 +5,9 @@ import { fakeApi, fakeXmpp } from '@/test/storeHarness';
 import { flushTasks as flush } from '@/test/wait';
 import { createRealChatStore, type RealStoreDeps, type StorageLike } from './realStore';
 
-// History through the real web store: the first page, older pages, opening
-// at a message and the topic-gone case (T-0912, written on the old code
-// before the move to `@zilar/client-core/store`).
+// History through the real web store: the first page, older pages and the
+// topic-gone case (T-0912, written on the old code before the move to
+// `@zilar/client-core/store`).
 
 const ANA = 'ana@zilar.test';
 const TEAM = 'team@rooms.zilar.test';
@@ -103,92 +103,6 @@ describe('older pages', () => {
     await flush();
     expect(messageIds(store)).toEqual(ids(120));
     expect(store.getState().hasMore(ANA)).toBe(false);
-  });
-});
-
-describe('loadOlder while the first page is still loading', () => {
-  /** Calls `loadOlder` until history is complete, at most `max` times. */
-  async function loadAll(store: Awaited<ReturnType<typeof setup>>['store'], max = 5) {
-    for (let round = 0; round < max && store.getState().hasMore(ANA); round += 1) {
-      store.getState().loadOlder(ANA);
-      await flush();
-    }
-  }
-
-  it('ends with each message once, in order, when the first page lands first', async () => {
-    const { store } = await setup(60);
-
-    store.getState().openChat(ANA);
-    // The boot preview left a cursor at the newest message: this pages from it.
-    store.getState().loadOlder(ANA);
-    await flush();
-
-    expect(new Set(messageIds(store)).size).toBe(messageIds(store).length);
-    await loadAll(store);
-    expect(messageIds(store)).toEqual(ids(60));
-  });
-
-  it('ends with each message once, in order, when the older page lands first', async () => {
-    const { store, xmpp } = await setup(60);
-    const base = vi.mocked(xmpp.core.loadHistory).getMockImplementation();
-    if (base === undefined) {
-      throw new Error('the fake loadHistory has no implementation');
-    }
-    let releaseFirstPage: () => void = () => {};
-    const firstPageGate = new Promise<void>((resolve) => {
-      releaseFirstPage = resolve;
-    });
-    vi.mocked(xmpp.core.loadHistory).mockImplementation(async (chatJid, kind, options) => {
-      if (options?.before === undefined) {
-        await firstPageGate;
-      }
-      return base(chatJid, kind, options);
-    });
-
-    store.getState().openChat(ANA);
-    store.getState().loadOlder(ANA);
-    await flush();
-    releaseFirstPage();
-    await flush();
-
-    expect(new Set(messageIds(store)).size).toBe(messageIds(store).length);
-    await loadAll(store);
-    expect(messageIds(store)).toEqual(ids(60));
-  });
-
-  it('two loadOlder calls at once fetch one page, not two', async () => {
-    const { store, xmpp } = await setup(60);
-    const olderPages = () =>
-      vi
-        .mocked(xmpp.core.loadHistory)
-        .mock.calls.filter(([, , options]) => options?.before !== undefined).length;
-
-    store.getState().openChat(ANA);
-    store.getState().loadOlder(ANA);
-    store.getState().loadOlder(ANA);
-    await flush();
-
-    expect(olderPages()).toBe(1);
-    expect(new Set(messageIds(store)).size).toBe(messageIds(store).length);
-  });
-});
-
-describe('open at a message (a jump from search)', () => {
-  it('opens the chat and pages back until the message is loaded', async () => {
-    const { store } = await setup(120);
-
-    const found = await store.getState().openAtMessage(ANA, 'ana-3');
-
-    expect(found.text).toBe('msg 3');
-    expect(store.getState().activeChatId).toBe(ANA);
-    expect(messageIds(store)).toEqual(ids(120));
-  });
-
-  it('rejects message_not_found once history runs out', async () => {
-    const { store } = await setup(60);
-
-    await expect(store.getState().openAtMessage(ANA, 'ghost')).rejects.toThrow('message_not_found');
-    expect(messageIds(store)).toEqual(ids(60));
   });
 });
 

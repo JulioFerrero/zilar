@@ -335,26 +335,4 @@ describe('real store ledger: the core ledger expectations (T-0906)', () => {
       '👍',
     ]);
   });
-
-  it('keeps naming the ack id in a DM when the echo came first', async () => {
-    const { store, xmpp } = await setup();
-    let acknowledge: (value: { id: string }) => void = () => {};
-    vi.mocked(xmpp.core.sendMessage).mockImplementationOnce(
-      () =>
-        new Promise<{ id: string }>((resolve) => {
-          acknowledge = resolve;
-        }),
-    );
-
-    store.getState().sendText(ANA, 'dm race');
-    await flush();
-    xmpp.emit('message', outgoing({ id: 'echo-dm', chatJid: ANA, body: 'dm race' }));
-    acknowledge({ id: 'origin-dm' });
-    await flush();
-
-    store.getState().react(ANA, 'echo-dm', '👍');
-    expect(vi.mocked(xmpp.core.sendReactions)).toHaveBeenCalledWith(ANA, 'chat', 'origin-dm', [
-      '👍',
-    ]);
-  });
 });

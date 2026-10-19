@@ -1,5 +1,4 @@
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
-import { SEND_TIMEOUT_MS } from '@zilar/client-core/store';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../lib/chat-api';
@@ -10,18 +9,6 @@ import { fakeApi } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
-const PACK = '123e4567-e89b-12d3-a456-426614174000';
-const STICKER = '223e4567-e89b-12d3-a456-426614174001';
-
-const sticker = {
-  stickerId: STICKER,
-  packId: PACK,
-  url: 'https://cdn.zilar.test/cat.webp',
-  emoji: '🐱',
-  width: 128,
-  height: 128,
-  mime: 'image/webp' as const,
-};
 
 const PHOTO: PickedFile = {
   uri: 'file:///cache/photo.jpg',
@@ -108,32 +95,6 @@ function textEcho(id: string, body: string): ChatMessage {
   };
 }
 
-function stickerEcho(id: string): ChatMessage {
-  return {
-    id,
-    chatJid: ANA,
-    kind: 'chat',
-    fromJid: 'me@zilar.test',
-    fromResolved: true,
-    timestamp: new Date('2026-09-28T12:02:00Z'),
-    outgoing: true,
-    body: '🐱',
-    payload: {
-      v: 0,
-      type: 'sticker',
-      data: {
-        pack_id: PACK,
-        sticker_id: STICKER,
-        url: 'https://cdn.zilar.test/cat.webp',
-        emoji: '🐱',
-        width: 128,
-        height: 128,
-        mime: 'image/webp',
-      },
-    },
-  };
-}
-
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -167,25 +128,6 @@ describe('mobile send pipeline on the core (T10b)', () => {
     expect(matches).toHaveLength(1);
     expect(matches[0]?.id).toBe('srv-1');
 
-    store.getState().stop();
-  });
-
-  it('marks a hung attachment upload failed within 60 s (R6)', async () => {
-    const hung: AttachmentUploader = {
-      upload: vi.fn(() => new Promise<void>(() => undefined)),
-      cancel: vi.fn(),
-    };
-    const { store } = await started({ uploader: hung });
-
-    vi.useFakeTimers();
-    store.getState().sendAttachment(ANA, PHOTO);
-    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 10);
-
-    const bubble = store.getState().messages(ANA).at(-1);
-    expect(bubble?.failed).toBe(true);
-    expect(bubble?.failureReason).toBe('timed_out');
-
-    vi.useRealTimers();
     store.getState().stop();
   });
 
@@ -263,42 +205,6 @@ describe('mobile send pipeline on the core (T10b)', () => {
 
     expect(vi.mocked(voice.upload)).not.toHaveBeenCalled();
     expect(vi.mocked(xmpp.core.sendMessage)).not.toHaveBeenCalled();
-
-    store.getState().stop();
-  });
-
-  it('links a later identical sticker echo to the right bubble after a failed send (R18)', async () => {
-    const { store, xmpp } = await started();
-    const sendMessage = vi.mocked(xmpp.core.sendMessage);
-    sendMessage.mockRejectedValueOnce(new Error('down'));
-    let sent = 0;
-    sendMessage.mockImplementation(async () => {
-      sent += 1;
-      return { id: `srv-${sent}` };
-    });
-
-    // The first sticker fails: one queued id, never echoed.
-    store.getState().sendSticker(ANA, sticker);
-    await flush();
-    const failed = store.getState().messages(ANA).at(-1);
-    expect(failed?.failed).toBe(true);
-
-    // The retry succeeds; the core does not re-enqueue the signature.
-    store.getState().retrySticker(ANA, failed?.id ?? '');
-    await flush();
-    expect(store.getState().messages(ANA).at(-1)?.status).toBe('sent');
-    xmpp.emit('message', stickerEcho('srv-1'));
-    await flush();
-
-    // A later identical sticker's echo must link to its own bubble.
-    store.getState().sendSticker(ANA, sticker);
-    await flush();
-    xmpp.emit('message', stickerEcho('srv-2'));
-    await flush();
-
-    const bubbles = store.getState().messages(ANA);
-    expect(bubbles.map((item) => item.id).sort()).toEqual(['srv-1', 'srv-2']);
-    expect(bubbles.every((item) => item.status === 'sent')).toBe(true);
 
     store.getState().stop();
   });

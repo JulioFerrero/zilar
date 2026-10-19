@@ -1,6 +1,6 @@
 // T-0915 (store core T8): the lifecycle behaviours the core takes over —
-// start idempotency, connect retries and sign-out. These run on web's facade
-// and pin the behaviour before the move, like the T6 and T6b stores did.
+// connect retries and sign-out. These run on web's facade and pin the
+// behaviour before the move, like the T6 and T6b stores did.
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
@@ -90,20 +90,6 @@ describe('store lifecycle (T-0915)', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('start() without stop() boots once', async () => {
-    const { store, api } = storeWith();
-
-    store.getState().start();
-    await flush();
-    store.getState().start();
-    await flush();
-
-    expect(api.getMe).toHaveBeenCalledTimes(1);
-    expect(api.getChats).toHaveBeenCalledTimes(1);
-
-    store.getState().stop();
   });
 
   it('sign-out clears the store and reloads the login page', async () => {

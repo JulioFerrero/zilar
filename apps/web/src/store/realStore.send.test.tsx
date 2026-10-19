@@ -5,19 +5,6 @@ import { flushTasks as flush } from '@/test/wait';
 import { createRealChatStore, type RealStoreDeps, type StorageLike } from './realStore';
 
 const ANA = 'ana@zilar.test';
-const TEAM = 'team@rooms.zilar.test';
-const PACK = '123e4567-e89b-12d3-a456-426614174000';
-const STICKER = '223e4567-e89b-12d3-a456-426614174001';
-
-const sticker = {
-  stickerId: STICKER,
-  packId: PACK,
-  url: 'https://cdn.zilar.test/cat.webp',
-  emoji: '🐱',
-  width: 128,
-  height: 128,
-  mime: 'image/webp' as const,
-};
 
 function memoryStorage(): StorageLike {
   const data = new Map<string, string>();
@@ -77,12 +64,6 @@ const attachmentPort = (overrides: Partial<RealStoreDeps['attachments']> = {}) =
   ...overrides,
 });
 
-const voicePort = (overrides: Partial<RealStoreDeps['voice']> = {}) => ({
-  convert: async () => ({ audio: new Blob([new Uint8Array([1])]), durationMs: 4321 }),
-  upload: async () => 'https://upload.zilar.test/get/1/voice.m4a',
-  ...overrides,
-});
-
 describe('web send pipeline (T10 guards)', () => {
   it('sends text and links the echo without duplicating it', async () => {
     const { store, xmpp } = await setup();
@@ -112,40 +93,6 @@ describe('web send pipeline (T10 guards)', () => {
     expect(matches).toHaveLength(1);
   });
 
-  it('sends a sticker payload', async () => {
-    const { store, xmpp } = await setup();
-
-    store.getState().sendSticker(ANA, sticker);
-    await flush();
-
-    expect(xmpp.core.sendMessage).toHaveBeenCalledWith(ANA, 'chat', '🐱', {
-      payload: {
-        v: 0,
-        type: 'sticker',
-        data: expect.objectContaining({ sticker_id: STICKER, pack_id: PACK, emoji: '🐱' }),
-      },
-    });
-    expect(store.getState().messages(ANA)?.at(-1)?.status).toBe('sent');
-  });
-
-  it('uploads an attachment and swaps in the served url', async () => {
-    const { store, xmpp } = await setup({ attachments: attachmentPort() });
-    const file = new File(['abc'], 'report.pdf', { type: 'application/pdf' });
-
-    store.getState().sendAttachment(ANA, file, { caption: 'the report' });
-    await flush();
-
-    expect(store.getState().messages(ANA)?.at(-1)?.attachment?.url).toBe(
-      'https://upload.zilar.test/get/1',
-    );
-    expect(xmpp.core.sendMessage).toHaveBeenCalledWith(
-      ANA,
-      'chat',
-      'the report',
-      expect.objectContaining({ payload: expect.objectContaining({ type: 'attachment' }) }),
-    );
-  });
-
   it('returns silently on a size-0 file, before any request (R19)', async () => {
     const { store, xmpp } = await setup({ attachments: attachmentPort() });
 
@@ -159,58 +106,6 @@ describe('web send pipeline (T10 guards)', () => {
         .messages(ANA)
         ?.some((item) => item.attachment !== undefined),
     ).toBe(false);
-  });
-
-  it('converts and uploads a voice message', async () => {
-    const { store } = await setup({ voice: voicePort() });
-
-    store.getState().sendVoice(ANA, {
-      blob: new Blob([new Uint8Array([1, 2])], { type: 'audio/webm' }),
-      durationMs: 9999,
-      waveform: [1, 2, 3],
-    });
-    await flush();
-
-    const sent = store.getState().messages(ANA)?.at(-1);
-    expect(sent?.voice?.duration_ms).toBe(4321);
-    expect(sent?.voice?.url).toBe('https://upload.zilar.test/get/1/voice.m4a');
-    expect(sent?.status).toBe('sent');
-  });
-
-  it('forwards a sent message into another chat', async () => {
-    const { store, xmpp } = await setup();
-    store.getState().sendText(ANA, 'forward me');
-    await flush();
-    xmpp.emit('acked', { stanzaId: 'srv-1' });
-    const source = store
-      .getState()
-      .messages(ANA)
-      ?.find((item) => item.text === 'forward me');
-    expect(source).toBeDefined();
-
-    store.getState().forwardMessages([TEAM], source === undefined ? [] : [source]);
-    await flush();
-
-    const copy = store.getState().messages(TEAM)?.at(-1);
-    expect(copy?.text).toBe('forward me');
-    expect(copy?.forward?.sender_name).toBe('You');
-  });
-
-  it('marks a failed attachment send failed with its reason', async () => {
-    const { store } = await setup({
-      attachments: attachmentPort({
-        upload: async () => Promise.reject(rejection('upload_refused')),
-      }),
-    });
-
-    store
-      .getState()
-      .sendAttachment(ANA, new File(['abc'], 'report.pdf', { type: 'application/pdf' }));
-    await flush();
-
-    const bubble = store.getState().messages(ANA)?.at(-1);
-    expect(bubble?.status).toBe('failed');
-    expect(bubble?.failureReason).toBe('upload_refused');
   });
 
   it('retries a failed attachment', async () => {
@@ -260,20 +155,5 @@ describe('web send pipeline (T10 guards)', () => {
         .messages(ANA)
         ?.some((item) => item.id === failed?.id),
     ).toBe(false);
-  });
-});
-
-describe('web send pipeline (R20)', () => {
-  it('clears a stale error banner on the next send', async () => {
-    const { store } = await setup();
-
-    store.getState().sendSticker(ANA, { ...sticker, url: '/evil/track.png' });
-    expect(store.getState().actionError).toEqual({
-      chatId: ANA,
-      message: 'That sticker could not be sent.',
-    });
-
-    store.getState().sendSticker(ANA, sticker);
-    expect(store.getState().actionError).toBeUndefined();
   });
 });

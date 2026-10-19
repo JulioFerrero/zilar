@@ -8,9 +8,9 @@ import { fakeApi, fakeAppState } from './test-support';
 import { flushTasks as flush, waitFor } from '@/test/wait';
 
 // History through the real mobile store: the first page, older pages until
-// complete, opening at a message (a jump from search), the topic-gone case, and
-// `loadOlder` while the first page is still loading (T-0917, written on the old
-// code before the move to `@zilar/client-core/store`).
+// complete, the topic-gone case, and `loadOlder` while the first page is still
+// loading (T-0917, written on the old code before the move to
+// `@zilar/client-core/store`).
 
 const ANA = 'ana@zilar.test';
 const NOW = new Date('2026-09-28T12:00:00Z');
@@ -125,26 +125,6 @@ describe('older pages', () => {
     await waitFor(() => messageIds(store).length === 120);
     expect(messageIds(store)).toEqual(ids(120));
     expect(store.getState().hasMore(ANA)).toBe(false);
-  });
-});
-
-describe('open at a message (a jump from search)', () => {
-  it('opens the chat and pages back until the message is loaded', async () => {
-    const { store } = await historySetup(120);
-
-    const found = await store.getState().openAtMessage(ANA, 'ana-3');
-
-    expect(found.text).toBe('msg 3');
-    expect(store.getState().activeChatId).toBe(ANA);
-    expect(store.getState().jumpTarget).toEqual({ chatId: ANA, messageId: 'ana-3' });
-    expect(messageIds(store)).toEqual(ids(120));
-  });
-
-  it('rejects message_not_found once history runs out', async () => {
-    const { store } = await historySetup(60);
-
-    await expect(store.getState().openAtMessage(ANA, 'ghost')).rejects.toThrow('message_not_found');
-    expect(store.getState().jumpTarget).toBeUndefined();
   });
 });
 

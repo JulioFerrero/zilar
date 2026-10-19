@@ -287,21 +287,6 @@ describe('mobile store lifecycle (T-0918)', () => {
     store.getState().stop();
   });
 
-  it('start() twice without stop() boots once', async () => {
-    const { store, api, createXmpp } = storeWith();
-
-    store.getState().start();
-    await waitFor(() => store.getState().chatsLoad === 'loaded');
-    store.getState().start();
-    await flush();
-
-    expect(api.getMe).toHaveBeenCalledTimes(1);
-    expect(api.getChats).toHaveBeenCalledTimes(1);
-    expect(createXmpp).toHaveBeenCalledTimes(1);
-
-    store.getState().stop();
-  });
-
   it('stop() (sign-out) clears the user scoped state', async () => {
     const { store } = storeWith();
 

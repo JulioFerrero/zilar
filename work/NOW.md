@@ -118,6 +118,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2190 | 14 comments that named a deleted file now name the current one (comment lines only) | −2 |
 | T-2191 | phone: Me loads through `useFocusList`; Devices uses the shell's pull-to-refresh | −20 |
 | T-2192 | Julio's test rule: 12 chat-core tests of display-only helpers deleted (test lines, not source) | −669 test |
+| T-2194 | 5 functions nothing called (pin snapshot text, voice source wrapper, gifs reset, 2 test helpers) | −76 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -139,7 +140,8 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 **Running (06:50):**
 
 - **T-2193 (07:35):** delete about 35 web and phone store test cases that repeat a client-core store test. One wiring case per file stays. Test lines only.
-- **T-2194 (07:40):** delete 5 functions nothing calls, left by tonight's merges.
+- **T-2195 (07:45):** the phone sets an AI's home machine through the shared contract call; its hand-written request and `lib/machines-api.ts` go.
+- **T-2196 (07:50):** phone profile and avatar calls fail with the shared `ApiError`; `ProfileApiError` and its own body parsing go.
 - **Docs (lead, 07:25):**
   - `docs/ARCHITECTURE.md` lists tonight's shared pieces (chat-core helpers, `useQuery`, `SettingsScreenShell`, `useFocusList`, `usePictureEditor`) and states the no-alias import rule;
   - two stale paths were fixed there and in `docs/EFFECT_GUIDE.md`.
