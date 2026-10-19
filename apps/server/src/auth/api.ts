@@ -1,4 +1,5 @@
 // Name decode runs by hand inside PATCH so the route keeps its exact order and failure texts; the framework decode would change them.
+import type { ServerCore } from '../app/deps';
 import { Effect, Exit, Layer, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
@@ -8,26 +9,22 @@ import {
   AuthMeRateLimit,
   UpdateMePayload,
 } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import { createAuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+
 import { refreshRosterNicknames } from '../contacts/service';
-import type { ServerDatabase } from '../db/client';
+
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { firstIssueMessage } from '../effect/schema-issues';
 import { limiter } from '../rate-limit';
 import {
+  mountGroups,
   handler,
-  mountApi,
   requestIdOf,
-  schemaErrorLayer,
-  sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
-import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 import { upsertProfileBio, bioForUser } from './profile-bio';
 import { isValidTimeZone, upsertProfileTimeZone, timeZoneFor } from './profile-time-zone';
@@ -115,12 +112,10 @@ async function sessionUserById(
   }
   return sessionUser;
 }
-export interface AuthApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
+export interface AuthApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   now?: () => number;
   // Absent, the export route resolves a pool from `XMPP_ARCHIVE_DATABASE_URL`.
   archive?: ArchivePool;
@@ -334,17 +329,13 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(AuthApi).pipe(
-    Layer.provide(Layer.merge(groupLayer, publicGroupLayer)),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(
+  return mountGroups(AuthApi, Layer.merge(groupLayer, publicGroupLayer), {
+    auth: deps.auth,
+    logger,
+    extra: [
       rateLimitLayer(AuthInviteRateLimit, inviteLimiter, 'Too many invites, try again later'),
-    ),
-    Layer.provide(
       rateLimitLayer(AuthMeRateLimit, meLimiter, 'Too many profile changes, try again later'),
-    ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(AuthApi, apiLayer);
+    ],
+    schemaErrors: true,
+  });
 }

@@ -2,30 +2,29 @@
 // its members (the same check `/api/files` uses), a DM card only by the AI's owner. An
 // unknown id, an invisible room and a missing file all answer the same 404.
 
+import type { ServerCore } from '../app/deps';
 import { readFile } from 'node:fs/promises';
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
+
 import { isDmBlocked } from '../blocks/service';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
+
 import type { ServerDatabase } from '../db/client';
 import type { CardMediaRow } from '../db/rows-agents';
 import { runSql } from '../effect/sql';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { limiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter } from '../search/service';
 import { cardMediaPath, getCardMedia } from './service';
 
 // 600 per 10 min per user, charged before the lookup so ids cannot be probed for free.
-export interface CardMediaApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface CardMediaApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   storageDir: string;
   now?: () => number;
 }
@@ -128,10 +127,8 @@ export function createCardMediaApi(deps: CardMediaApiDependencies): EffectApiMou
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(CardMediaApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-  );
-
-  return mountApi(CardMediaApi, apiLayer);
+  return mountGroups(CardMediaApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+  });
 }

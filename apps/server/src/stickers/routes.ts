@@ -1,13 +1,9 @@
+import type { ServerCore } from '../app/deps';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import type { StickerConverter } from './convert';
 
-export interface StickersRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface StickersRoutesDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config'> {
   storageDir: string;
   audit?: AuditRecorder;
   now?: () => number;

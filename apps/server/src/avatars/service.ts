@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -95,8 +96,7 @@ export function avatarUrlFor(avatarId: string): string {
   return `/api/avatars/${encodeURIComponent(avatarId)}`;
 }
 
-export interface AvatarsServiceDeps {
-  db: ServerDatabase;
+export interface AvatarsServiceDeps extends Pick<ServerCore, 'db'> {
   storageDir: string;
   audit?: AuditRecorder;
 }

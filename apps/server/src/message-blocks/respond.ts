@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { type BlocksRespondPayload, type BlocksRespondValue } from '@zilar/api-contract';
@@ -16,9 +17,7 @@ import { errorName } from '../effect/error-utils';
 import { routineAccess } from '../routines/access';
 import { findAlertRoutine, setRoutineThreshold } from '../routines/alert-link';
 import { pauseRoutine, resumeRoutine } from '../routines/support';
-interface AlertRoutineDeps {
-  db: ServerDatabase;
-  logger: Logger;
+interface AlertRoutineDeps extends Pick<ServerCore, 'db' | 'logger'> {
   audit?: AuditRecorder;
 }
 
@@ -118,9 +117,7 @@ export interface CorrectCardInput {
   payload: Payload;
 }
 
-export interface CardRespondDeps {
-  db: ServerDatabase;
-  logger: Logger;
+export interface CardRespondDeps extends Pick<ServerCore, 'db' | 'logger'> {
   correctInRoom?: (input: CorrectCardInput) => Promise<boolean>;
   audit?: AuditRecorder;
 }

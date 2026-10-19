@@ -1,9 +1,10 @@
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import { normalizeHandle } from '@zilar/protocol';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 
 export const MAX_PENDING_OUTGOING = 20;
@@ -29,8 +30,7 @@ export interface ContactRequestView {
   other: { userId: string; name: string; handle: string | null; image: string | null };
 }
 
-export interface ContactRequestsDeps {
-  db: ServerDatabase;
+export interface ContactRequestsDeps extends Pick<ServerCore, 'db'> {
   audit?: AuditRecorder;
   adminClient?: EjabberdAdminClient;
   domain?: string;

@@ -1,4 +1,5 @@
-import { Effect, Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   MachinesGroup,
@@ -9,15 +10,14 @@ import {
 } from '@zilar/api-contract';
 import { type Logger } from 'pino';
 import { type AuditRecorder } from '../audit/recorder';
-import { type Auth } from '../auth/auth';
+
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import { type ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 import {
+  mountGroups,
   handler,
-  mountApi,
   requestIdOf,
-  sessionLayer,
   socketAddressOf,
   withErrorEnvelope,
   type EffectApiMount,
@@ -71,9 +71,7 @@ const INVALID_JSON = Symbol('invalid-json');
 
 // Every owner write shares one per-user budget.
 
-export interface MachinesApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+export interface MachinesApiDependencies extends Pick<ServerCore, 'auth' | 'db'> {
   logger: MachinesLogger;
   audit?: AuditRecorder;
   /** Shared with the tunnel hub so revokes close live connections. */
@@ -352,18 +350,14 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(MachinesApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
+  return mountGroups(MachinesApi, groupLayer, {
+    auth: deps.auth,
+    logger,
     // Spent right after the session, before any query.
-    Layer.provide(
-      rateLimitLayer(
-        MachinesPairingCodeRateLimit,
-        createCodeLimiter,
-        'Too many pairing codes, try again later',
-      ),
+    extra: rateLimitLayer(
+      MachinesPairingCodeRateLimit,
+      createCodeLimiter,
+      'Too many pairing codes, try again later',
     ),
-  );
-
-  return mountApi(MachinesApi, apiLayer);
+  });
 }

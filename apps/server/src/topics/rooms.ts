@@ -1,5 +1,5 @@
-import type { ServerDatabase } from '../db/client';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+import type { ServerCore } from '../app/deps';
+
 import type { InviteLogger } from '../groups/service';
 import { errorClassName } from '../effect/error-utils';
 import { HttpError, xmppUnavailable } from '../errors';
@@ -93,16 +93,12 @@ function mapRoomError(error: unknown): HttpError {
   }
   return xmppUnavailable();
 }
-export interface TopicRoomDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface TopicRoomDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;
 }
 
-export interface PushUserSyncDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface PushUserSyncDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;
 }

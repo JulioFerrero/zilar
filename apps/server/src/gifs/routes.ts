@@ -1,8 +1,7 @@
+import type { ServerCore } from '../app/deps';
 import { request as httpsRequest } from 'node:https';
 import { Effect } from 'effect';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
+
 import type { GifProvider } from './provider';
 
 // Media previews fan out per search, so the proxy gets its own high budget. The token
@@ -12,10 +11,7 @@ export const GIF_PROXY_MAX_BYTES = 8 * 1024 * 1024;
 export const GIF_PROXY_TIMEOUT_MS = 10_000;
 export const GIF_MEDIA_TYPES = ['image/gif', 'image/webp', 'video/mp4', 'video/webm'] as const;
 
-export interface GifsRoutesDependencies {
-  auth: Auth;
-  config: ServerConfig;
-  logger: Logger;
+export interface GifsRoutesDependencies extends Pick<ServerCore, 'auth' | 'config' | 'logger'> {
   provider?: GifProvider | undefined;
   mediaFetcher?: MediaFetch | undefined;
   now?: () => number;

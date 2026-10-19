@@ -1,8 +1,8 @@
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ApprovalRule, PublicApproval } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
+
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
@@ -17,12 +17,9 @@ export interface ApprovalsRouteLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
 }
 
-export interface ApprovalsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+export interface ApprovalsApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   audit?: AuditRecorder;
   now?: () => number;
-  logger: Logger;
   /** Fired after a successful decision; the response returns first and a
    *  throwing hook never changes it. */
   onDecided?: (approvalId: string) => Promise<void> | void;

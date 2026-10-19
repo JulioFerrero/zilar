@@ -1,6 +1,7 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import {
   TopicsCreateRateLimit,
   TopicsGroup,
@@ -10,18 +11,10 @@ import {
 } from '@zilar/api-contract';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { Auth } from '../auth/auth';
+
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { limiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
@@ -190,12 +183,10 @@ async function listGeneralAis(db: ServerDatabase, groupId: string): Promise<Topi
 
 const TopicsApi = HttpApi.make('topics').add(TopicsGroup);
 
-export interface TopicsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
+export interface TopicsApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   audit?: AuditRecorder;
   /** the MUC archive read for the topic preview; absent → 501. */
   archive?: ArchivePool;
@@ -466,24 +457,18 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(TopicsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    // Topic creation hits ejabberd, so it is capped per user; the budget runs
-    // before the payload is decoded.
-    Layer.provide(
+  return mountGroups(TopicsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: [
+      // Topic creation hits ejabberd, so it is capped per user; the budget runs
+      // before the payload is decoded.
       rateLimitLayer(TopicsCreateRateLimit, createLimiter, 'Too many topics, try again later'),
-    ),
-    // Joining a topic syncs the room on ejabberd, so it is capped per user too.
-    Layer.provide(
+      // Joining a topic syncs the room on ejabberd, so it is capped per user too.
       rateLimitLayer(TopicsJoinRateLimit, joinLimiter, 'Too many joins, try again later'),
-    ),
-    // reading a topic's archive for a non-member is capped per user.
-    Layer.provide(
+      // reading a topic's archive for a non-member is capped per user.
       rateLimitLayer(TopicsPreviewRateLimit, previewLimiter, 'Too many previews, try again later'),
-    ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(TopicsApi, apiLayer);
+    ],
+    schemaErrors: true,
+  });
 }

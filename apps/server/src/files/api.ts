@@ -1,17 +1,17 @@
 // Step order is security-relevant: 501 `files_unavailable`, then the 429 limiter, then the
 // 400 query decode, then the 404 resolutions. The upstream body streams through, never
 // read into memory.
-import { Effect, Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
+
 import { isDmBlocked } from '../blocks/service';
-import type { ServerConfig } from '../config/load';
+
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
@@ -23,11 +23,10 @@ import { defaultInternalFetch, type InternalFetch } from './internal-fetch';
 
 export const FILES_FETCH_TIMEOUT_MS = 30 * 1000;
 
-export interface FilesRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface FilesRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   archive?: ArchivePool;
   now?: () => number;
   rateLimitMax?: number;
@@ -279,10 +278,8 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(FilesApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-  );
-
-  return mountApi(FilesApi, apiLayer);
+  return mountGroups(FilesApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+  });
 }

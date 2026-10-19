@@ -1,5 +1,5 @@
-import { type AuditRecorder } from '../audit/recorder';
-import { type ServerDatabase } from '../db/client';
+import type { ServerCore } from '../app/deps';
+
 import { type ActionAnnouncer } from './announce';
 import { runRequest } from './decisions';
 import { type PolicyDenialReason } from './policy';
@@ -114,10 +114,8 @@ export interface ActionGatewayLogger extends ActionContextLogger {
 }
 
 // A recorder failure is swallowed: the audit log is best-effort and must not change what the policy answers.
-export interface ActionGatewayDependencies {
-  db: ServerDatabase;
+export interface ActionGatewayDependencies extends Pick<ServerCore, 'db' | 'audit'> {
   adapters: ActionRegistry;
-  audit: AuditRecorder;
   logger: ActionGatewayLogger;
   // Optional port that announces tier-2 requests and outcomes; every call is best-effort.
   announce?: ActionAnnouncer;

@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Schema } from 'effect';
 import {
   STICKER_PACK_TITLE_MAX,
@@ -6,7 +7,7 @@ import {
   STICKERS_MAX_PER_PACK,
 } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerDatabase } from '../db/client';
+
 import type { StickerPackRow, StickerRow } from '../db/rows';
 import { HttpError, xmppUnavailable } from '../errors';
 import type { StickerConverter } from './convert';
@@ -46,8 +47,7 @@ export interface StickerPackView {
   updatedAt: string;
 }
 
-export interface StickersServiceDeps {
-  db: ServerDatabase;
+export interface StickersServiceDeps extends Pick<ServerCore, 'db'> {
   storageDir: string;
   fileBasePath?: string;
   audit?: AuditRecorder;

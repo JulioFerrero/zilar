@@ -2,6 +2,7 @@
 // successful and handle lookups answer 404. Callers already hold a session; the routes
 // own the rate limit.
 
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
@@ -14,8 +15,7 @@ import { removePairRosterItems, type RosterLogger } from './roster';
 // The list endpoint caps server-side so the response stays bounded.
 export const MAX_BLOCK_LIST_ROWS = 500;
 
-export interface BlocksDeps {
-  db: ServerDatabase;
+export interface BlocksDeps extends Pick<ServerCore, 'db'> {
   audit?: AuditRecorder;
   now?: () => Date;
   adminClient?: EjabberdAdminClient | undefined;

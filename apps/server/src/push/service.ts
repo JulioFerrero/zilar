@@ -1,6 +1,6 @@
+import type { ServerCore } from '../app/deps';
 import { Data } from 'effect';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+
 import type { ArchivePool } from '../search/service';
 import type { PushCipher } from './crypto';
 import type { FcmSender } from './fcm';
@@ -11,9 +11,7 @@ export interface PushLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
-export interface PushServiceDeps {
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface PushServiceDeps extends Pick<ServerCore, 'db' | 'config'> {
   /** Read-only pool on the MAM archive; without it who and where cannot be
    * resolved, so notifications are dropped instead of guessed. */
   archive: ArchivePool;

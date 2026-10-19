@@ -1,17 +1,15 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AuditGroup, AuditSchemaErrors, type AuditPage } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
   schemaErrorLayerFor,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { listAuditForAi, listAuditForGroup, type ListAuditPage } from './list';
@@ -39,11 +37,7 @@ function toWirePage(page: ListAuditPage): AuditPage {
 
 const AuditApi = HttpApi.make('audit').add(AuditGroup);
 
-export interface AuditApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  logger: Logger;
-}
+export type AuditApiDependencies = Pick<ServerCore, 'auth' | 'db' | 'logger'>;
 
 export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -89,12 +83,10 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(AuditApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
+  return mountGroups(AuditApi, groupLayer, {
+    auth: deps.auth,
+    logger,
     // Every query decode failure answers the fixed text `Invalid audit query`.
-    Layer.provide(schemaErrorLayerFor(AuditSchemaErrors, logger, 'Invalid audit query')),
-  );
-
-  return mountApi(AuditApi, apiLayer);
+    schemaErrors: schemaErrorLayerFor(AuditSchemaErrors, logger, 'Invalid audit query'),
+  });
 }

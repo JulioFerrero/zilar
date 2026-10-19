@@ -1,18 +1,12 @@
-import { Effect, Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RevertToolPayload, RunToolPayload, ToolsGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import type { AuditRecorder } from '../audit/recorder';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { findGroupMembership } from '../groups/access';
@@ -56,10 +50,7 @@ const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 // `revert` and `run` declare payloads for the client but decode by hand, keeping the 400/404/429/501 order.
 const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
 
-export interface ToolsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  logger: Logger;
+export interface ToolsApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   audit?: AuditRecorder;
   // Absent = no runner; run answers 501.
   toolRunner?: ToolRunner;
@@ -368,11 +359,9 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ToolsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(ToolsApi, apiLayer);
+  return mountGroups(ToolsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

@@ -1,4 +1,5 @@
-import { Layer, Effect } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   ContactRequestByHandleRateLimit,
@@ -8,19 +9,16 @@ import {
   ContactRequestsSchemaErrors,
   UserSearchRateLimit,
 } from '@zilar/api-contract';
-import { type Logger } from 'pino';
+
 import { type AuditRecorder } from '../audit/recorder';
-import { type ServerConfig } from '../config/load';
-import { type EjabberdAdminClient } from '../xmpp/admin/types';
-import { type Auth } from '../auth/auth';
+
 import { type ServerDatabase } from '../db/client';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
+  mountGroups,
   handler,
-  mountApi,
   schemaErrorLayerFor,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import {
@@ -112,13 +110,11 @@ const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
 const ContactRequestsApi = HttpApi.make('contactRequests').add(ContactRequestsGroup);
 
-export interface ContactRequestsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
+export interface ContactRequestsApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   audit?: AuditRecorder;
-  logger: Logger;
   now?: () => number;
   createLimiter?: RateLimiter;
   readLimiter?: RateLimiter;
@@ -216,25 +212,19 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
 
   // The create budget runs before the payload is decoded, so an invalid body
   // still spends it. The read budget covers list, accept, decline and cancel.
-  const apiLayer = HttpApiBuilder.layer(ContactRequestsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(
-      schemaErrorLayerFor(
-        ContactRequestsSchemaErrors,
-        logger,
-        'handle must be a string of 1 to 64 characters, with no other keys',
-      ),
+  return mountGroups(ContactRequestsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: schemaErrorLayerFor(
+      ContactRequestsSchemaErrors,
+      logger,
+      'handle must be a string of 1 to 64 characters, with no other keys',
     ),
-    Layer.provide(
+    afterSchema: [
       rateLimitLayer(ContactRequestCreateRateLimit, createLimiter, RATE_LIMITED_MESSAGE),
-    ),
-    Layer.provide(rateLimitLayer(ContactRequestReadRateLimit, readLimiter, RATE_LIMITED_MESSAGE)),
-    Layer.provide(
+      rateLimitLayer(ContactRequestReadRateLimit, readLimiter, RATE_LIMITED_MESSAGE),
       rateLimitLayer(ContactRequestByHandleRateLimit, byHandleLimiter, RATE_LIMITED_MESSAGE),
-    ),
-    Layer.provide(rateLimitLayer(UserSearchRateLimit, userSearchLimiter, RATE_LIMITED_MESSAGE)),
-  );
-
-  return mountApi(ContactRequestsApi, apiLayer);
+      rateLimitLayer(UserSearchRateLimit, userSearchLimiter, RATE_LIMITED_MESSAGE),
+    ],
+  });
 }

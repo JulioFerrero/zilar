@@ -1,6 +1,6 @@
+import type { ServerCore } from '../app/deps';
 import type { AuditRecorder } from '../audit/recorder';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import type { GroupRoleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { InviteLogger } from '../groups/service';
@@ -19,9 +19,7 @@ export interface GroupRoleDetail extends GroupRoleView {
   members: Array<{ userId: string; name: string }>;
 }
 
-export interface RolesServiceDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface RolesServiceDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;
   audit?: AuditRecorder;

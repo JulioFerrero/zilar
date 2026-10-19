@@ -1,6 +1,7 @@
-import { Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import {
   GroupsCreateRateLimit,
   GroupsGroup,
@@ -8,18 +9,9 @@ import {
   GroupsRoleRateLimit,
 } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { limiter, type RateLimiter } from '../rate-limit';
 import {
@@ -48,12 +40,10 @@ import { deleteGroup } from './delete-group';
 // payload is decoded.
 const GroupsApi = HttpApi.make('groups').add(GroupsGroup);
 
-export interface GroupsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
+export interface GroupsApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   audit?: AuditRecorder;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
@@ -305,24 +295,18 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(GroupsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(
+  return mountGroups(GroupsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: [
       rateLimitLayer(GroupsRoleRateLimit, roleLimiter, 'Too many role changes, try again later'),
-    ),
-    Layer.provide(
       rateLimitLayer(GroupsJoinRateLimit, joinLimiter, 'Too many join attempts, try again later'),
-    ),
-    Layer.provide(
       rateLimitLayer(
         GroupsCreateRateLimit,
         groupCreateLimiter,
         'Too many group creations, try again later',
       ),
-    ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(GroupsApi, apiLayer);
+    ],
+    schemaErrors: true,
+  });
 }

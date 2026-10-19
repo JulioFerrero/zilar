@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Effect, Option, Schema } from 'effect';
 import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
 import { PushGroup, PushSettingsPayload } from '@zilar/api-contract';
@@ -26,11 +27,11 @@ import { STRICT_DECODE, TEST_WAKE_CHAT_ID, createRequirePush } from './api-util'
 import { createSubscribeHandler } from './api-subscribe';
 import { createTestHandler } from './api-test';
 import type { PushApiDependencies } from './api';
-import type { Logger } from 'pino';
+
 import { markDeliveredAndNotify } from '../chats/delivered-notice';
-import type { ServerConfig } from '../config/load';
+
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import type { ArchivePool } from '../search/service';
 
 // The push preview proves the message reached the device, so the handler
@@ -38,12 +39,9 @@ import type { ArchivePool } from '../search/service';
 // PUT /chats/:jid/delivered stores: the DM author's bare JID or the room JID.
 
 /** The push deps one forked mark needs; a subset of `PushApiDependencies`. */
-interface PreviewDeliveredDeps {
-  db: ServerDatabase;
-  config: ServerConfig;
+interface PreviewDeliveredDeps extends Pick<ServerCore, 'db' | 'config' | 'logger'> {
   archive?: ArchivePool;
   adminClient?: EjabberdAdminClient;
-  logger: Logger;
 }
 
 /** Stores the caller's delivered mark off the HTTP path with

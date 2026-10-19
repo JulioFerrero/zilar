@@ -5,25 +5,19 @@
 // payload schema, so nothing is buffered before the handler: upload reads
 // multipart or the raw stream, and the file GET answers a raw response.
 
-import { Layer } from 'effect';
-import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import type { ServerCore } from '../app/deps';
+
+import { HttpApi } from 'effect/http-api';
 import { StickersGroup, StickersSchemaErrors, StickersUploadRateLimit } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import {
-  mountApi,
-  schemaErrorLayerFor,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, schemaErrorLayerFor, type EffectApiMount } from '../effect/http-core';
 import { limiter, type RateLimiter } from '../rate-limit';
 import type { StickersRoutesDependencies } from './routes';
 import { createStickersGroupLayer } from './api-handlers';
 import { renderSchemaError } from './api-decode';
 
-export interface StickersApiDependencies extends StickersRoutesDependencies {
-  logger: Logger;
-}
+export type StickersApiDependencies = StickersRoutesDependencies & Pick<ServerCore, 'logger'>;
 
 const StickersApi = HttpApi.make('stickers').add(StickersGroup);
 
@@ -40,21 +34,17 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
 
   const groupLayer = createStickersGroupLayer(StickersApi, deps);
 
-  const apiLayer = HttpApiBuilder.layer(StickersApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayerFor(StickersSchemaErrors, logger, renderSchemaError)),
+  return mountGroups(StickersApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: schemaErrorLayerFor(StickersSchemaErrors, logger, renderSchemaError),
     // The upload budget runs first after the session, so it is endpoint
     // middleware; the Telegram import budget runs after the 501 token check and
     // the input parse, so it stays in its handler.
-    Layer.provide(
-      rateLimitLayer(
-        StickersUploadRateLimit,
-        uploadLimiter,
-        'Too many sticker uploads, try again later',
-      ),
+    afterSchema: rateLimitLayer(
+      StickersUploadRateLimit,
+      uploadLimiter,
+      'Too many sticker uploads, try again later',
     ),
-  );
-
-  return mountApi(StickersApi, apiLayer);
+  });
 }

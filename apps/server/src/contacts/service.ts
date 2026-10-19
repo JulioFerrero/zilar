@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
@@ -65,8 +66,7 @@ export async function addContactPair(
   );
 }
 
-export interface RemoveContactDeps {
-  db: ServerDatabase;
+export interface RemoveContactDeps extends Pick<ServerCore, 'db'> {
   audit?: AuditRecorder;
   adminClient?: EjabberdAdminClient | undefined;
   domain?: string | undefined;

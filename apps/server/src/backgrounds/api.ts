@@ -1,18 +1,13 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BackgroundsGroup, BackgroundsUploadRateLimit } from '@zilar/api-contract';
-import { type Logger } from 'pino';
+
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { limiter, type RateLimiter } from '../rate-limit';
 import {
   BACKGROUND_MAX_BYTES,
@@ -22,19 +17,14 @@ import {
   uploadBackground,
   type BackgroundsServiceDeps,
 } from './service';
-import { type Auth } from '../auth/auth';
-import { type ServerDatabase } from '../db/client';
-interface BackgroundsRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+
+interface BackgroundsRoutesDependencies extends Pick<ServerCore, 'auth' | 'db'> {
   storageDir: string;
   now?: () => number;
   uploadLimiter?: { allow: (key: string) => boolean };
 }
 
-export interface BackgroundsApiDependencies extends BackgroundsRoutesDependencies {
-  logger: Logger;
-}
+export type BackgroundsApiDependencies = BackgroundsRoutesDependencies & Pick<ServerCore, 'logger'>;
 
 function decodePathId(raw: string): string {
   try {
@@ -136,19 +126,15 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(BackgroundsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+  return mountGroups(BackgroundsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
     // The upload budget runs before the body is read.
-    Layer.provide(
-      rateLimitLayer(
-        BackgroundsUploadRateLimit,
-        uploadLimiter,
-        'Too many background uploads, try again later',
-      ),
+    afterSchema: rateLimitLayer(
+      BackgroundsUploadRateLimit,
+      uploadLimiter,
+      'Too many background uploads, try again later',
     ),
-  );
-
-  return mountApi(BackgroundsApi, apiLayer);
+  });
 }

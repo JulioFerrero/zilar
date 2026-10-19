@@ -14,6 +14,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | 10-18 21:35 | 249,272 |
 | 10-18 23:11 | 244,647 (−29,832 since 19:35) |
 | 10-18 23:53 | 243,759 (−30,720 since 19:35) |
+| 10-19 00:11 | 242,382, of which 849 lines are T-2127's test-only helpers moved under `test-support` (a reclassification, not a cut); real cuts since 19:35 are about −31,250 |
 
 **Merged tonight:**
 
@@ -38,6 +39,11 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2121 | one shared API for tools, routines and approvals | −260 |
 | T-2122 | web split pieces merged back | −150 |
 | T-2124 | plan: one AI turn path for DM and group (docs) | — |
+| T-2120 | one New AI flow for web and phone (checked end to end on both) | −91 |
+| T-2123 | phone split pieces merged back (composer, dock, channel) | −129 |
+| T-2126 | plan: store phase 3 (docs) | — |
+| T-2127 | dead exports and stale comment paths (plus 849 test-helper lines reclassified) | −220 |
+| T-2128 | AI turns step 1: one failure and stop tail | −127 |
 
 - **Two phone fixes came with the store work:**
   - owners and admins can now pin in channels on the phone (T-2117);
@@ -54,14 +60,18 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 - **Live:** at `5f86c4229` (23:28), 0 server errors; later merges go out with the next push.
 - **For the next readers (AIs and humans):** `docs/ARCHITECTURE.md` is a new one-page map: where code lives, how a request flows from the contract to both apps, and the house rules. `docs/API_CONTRACT_RECIPE.md` now points at the shared `make<Area>Api(call)` modules.
 
-**Running or queued (23:53):**
-- T-2120: the New AI flow shared by web and phone.
-- T-2123: phone split pieces merged back.
+**Running or queued (00:15):**
 - T-2125: one shared directory and handles API.
-- T-2126: store phase 3 plan (docs).
-- T-2127: dead exports, stale comment paths, test-only helpers.
-- T-2128: AI turns step 1, the failure tail.
-- **AI turn plan:** only the test-guarded first steps run tonight. Steps T3 and T5–T8 change the loop and the turn input, and they wait for Julio's live check in "ai test › General".
+- T-2129: one server deps type and mount helper.
+- T-2130: store phase 3, shared store types plus one session check.
+- T-2131: one shared API for integrations, voice settings, audit, machines and blocks.
+- T-2132: web and packages duplicate blocks.
+- T-2133: server duplicate blocks.
+
+**Waiting for Julio (daytime, needs live checks):**
+- **AI turn plan** (`docs/audit/agent-turns-plan.md`): T2–T8, about −550. Step 1 is live.
+- **Store phase 3** (`docs/audit/store-phase3-plan.md`): T2–T6, about −270. These touch the message path, sign-out and cold start.
+- **Phone auth API:** the shared sign-in calls (auth is crucial; it needs a live sign-in check).
 
 **Plan after the canvas reviews (2026-10-15).** Every approved canvas's boards are in `docs/design/mockups/<name>/`. Julio's rules: up to 8 workers, at most 3 mobile; estimates are in worker minutes (about 35–60 min from launch to merge).
 

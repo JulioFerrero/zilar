@@ -2,20 +2,14 @@
 // and corrects it in the room as the AI. It never wakes the AI, so it never
 // touches the turn queue.
 
-import { Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BlocksRespondRateLimit, MessageBlocksGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import type { AuditRecorder } from '../audit/recorder';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { respondToCard, myPicks, type CorrectCardInput } from './respond';
@@ -42,10 +36,7 @@ export function cardCorrectorOf(gateway: unknown): CardCorrector | null {
 
 const MessageBlocksApi = HttpApi.make('message-blocks').add(MessageBlocksGroup);
 
-export interface MessageBlocksApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  logger: Logger;
+export interface MessageBlocksApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   /** The live gateway, read lazily: the app is built before the gateway. */
   getGateway?: () => CardCorrector | null;
   now?: () => number;
@@ -81,20 +72,16 @@ export function createMessageBlocksApi(deps: MessageBlocksApiDependencies): Effe
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(MessageBlocksApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
+  return mountGroups(MessageBlocksApi, groupLayer, {
+    auth: deps.auth,
+    logger,
     // Every answer writes a row and corrects the card, so it is capped per user
     // before the payload is decoded.
-    Layer.provide(
-      rateLimitLayer(
-        BlocksRespondRateLimit,
-        respondLimiter,
-        'Too many card answers, try again later',
-      ),
+    extra: rateLimitLayer(
+      BlocksRespondRateLimit,
+      respondLimiter,
+      'Too many card answers, try again later',
     ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(MessageBlocksApi, apiLayer);
+    schemaErrors: true,
+  });
 }

@@ -1,10 +1,9 @@
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+import type { ServerCore } from '../app/deps';
+
 import { HttpError } from '../errors';
 import { bareJid, ownBareJid } from '../jid';
 import { Effect } from 'effect';
-import type { Logger } from 'pino';
+
 import {
   allowedArchives,
   resolveChatFilter,
@@ -145,11 +144,10 @@ export const SEARCH_DEFAULT_LIMIT = 20;
 export const SEARCH_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 export const SEARCH_MAX_CANDIDATES = 5000;
 
-export interface SearchRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface SearchRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   /** Absent when XMPP_ARCHIVE_DATABASE_URL is unset → every search 501s. */
   archive?: ArchivePool;
   now?: () => number;

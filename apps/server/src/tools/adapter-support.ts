@@ -1,4 +1,5 @@
 // Shared state, lookups and helpers for the tool and routine adapters.
+import type { ServerCore } from '../app/deps';
 import { Effect, type Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
@@ -17,8 +18,7 @@ import {
 } from './tool-arg-schemas';
 import type { ToolRunner } from './types';
 
-export interface BuildToolAdaptersDeps {
-  db: ServerDatabase;
+export interface BuildToolAdaptersDeps extends Pick<ServerCore, 'db'> {
   runner: ToolRunner;
   // Posts as the AI; `false` = not posted.
   post: (input: {

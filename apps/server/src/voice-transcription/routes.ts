@@ -4,14 +4,15 @@
 // cap and 20 s timeout, and the result is cached by URL hash. Errors are fixed codes,
 // never the provider's or network's body; audit entries carry ids and the hash only.
 
+import type { ServerCore } from '../app/deps';
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Effect } from 'effect';
-import type { Logger } from 'pino';
+
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerConfig } from '../config/load';
 import { classifyIp } from '@zilar/desk/egress/ip-guard';
-import type { Auth } from '../auth/auth';
+
 import type { ServerDatabase } from '../db/client';
 import type { RateLimiter } from '../rate-limit';
 import { settingsCipherFor } from '../setup/settings';
@@ -20,11 +21,10 @@ import { getVoiceTranscriptionSettings, type VoiceTranscriptionSettings } from '
 
 export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES } from './pipeline';
 
-export interface VoiceTranscriptionRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface VoiceTranscriptionRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   audit?: AuditRecorder;
   transcriptLimiter?: RateLimiter | undefined;
   settingsLimiter?: RateLimiter | undefined;

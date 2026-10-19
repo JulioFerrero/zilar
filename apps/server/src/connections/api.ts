@@ -5,7 +5,8 @@
 // The create body is decoded inside its handler so `requireCipher` (503) still
 // runs before the decode (400), as before.
 
-import { Effect, Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { HttpServerRequest } from 'effect/http';
 import {
@@ -17,10 +18,9 @@ import {
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { catalogBaseUrl, getAiCatalog } from '../ai/catalog';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { resolvePublic, validateBaseUrl } from './base-url';
 import type { KeyCipher } from './crypto';
@@ -40,9 +40,7 @@ import {
 
 // Create resolves a host name the user chose, so both writes share one budget.
 
-export interface ConnectionsRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+export interface ConnectionsRoutesDependencies extends Pick<ServerCore, 'auth' | 'db'> {
   logger: ConnectionsLogger;
   /** Absent when the master key is not configured: every route answers 503. */
   cipher?: KeyCipher;
@@ -308,10 +306,8 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ConnectionsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, defectLogger)),
-  );
-
-  return mountApi(ConnectionsApi, apiLayer);
+  return mountGroups(ConnectionsApi, groupLayer, {
+    auth: deps.auth,
+    logger: defectLogger,
+  });
 }

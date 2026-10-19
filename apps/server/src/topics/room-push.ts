@@ -1,9 +1,10 @@
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+
 import type { RoomAffiliation } from '../xmpp/admin/schemas';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { InviteLogger } from '../groups/service';
@@ -170,9 +171,7 @@ async function visibleRoomLocalparts(db: ServerDatabase, userId: string): Promis
   return [...rooms];
 }
 
-export interface RoomOptionsReconcileDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface RoomOptionsReconcileDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   logger: InviteLogger;
 }
 

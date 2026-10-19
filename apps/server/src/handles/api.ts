@@ -1,21 +1,20 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { HandlesCheckRateLimit, HandlesGroup, HandlesSchemaErrors } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import type { AuditRecorder } from '../audit/recorder';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
   schemaErrorLayerFor,
-  sessionLayer,
   type SchemaErrorRender,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -43,14 +42,11 @@ const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
 const HandlesApi = HttpApi.make('handles').add(HandlesGroup);
 
-export interface HandlesApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+export interface HandlesApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   audit?: AuditRecorder;
   now?: () => number;
   checkLimiter?: RateLimiter;
   claimLimiter?: RateLimiter;
-  logger: Logger;
 }
 
 export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
@@ -109,13 +105,11 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(HandlesApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayerFor(HandlesSchemaErrors, logger, renderSchemaError)),
+  return mountGroups(HandlesApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: schemaErrorLayerFor(HandlesSchemaErrors, logger, renderSchemaError),
     // The check budget runs before the query decode: an invalid query still spends budget.
-    Layer.provide(rateLimitLayer(HandlesCheckRateLimit, checkLimiter, RATE_LIMITED_MESSAGE)),
-  );
-
-  return mountApi(HandlesApi, apiLayer);
+    afterSchema: rateLimitLayer(HandlesCheckRateLimit, checkLimiter, RATE_LIMITED_MESSAGE),
+  });
 }

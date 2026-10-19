@@ -4,15 +4,12 @@
 // route's limiter, and the DELETE limiter inside its handler. The subscribe
 // body reuses the schemas in `./subscriptions`.
 
-import { Layer } from 'effect';
-import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import type { ServerCore } from '../app/deps';
+
+import { HttpApi } from 'effect/http-api';
 import { PushGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
-import { mountApi, schemaErrorLayer, sessionLayer, type EffectApiMount } from '../effect/http-core';
+
+import { mountGroups, type EffectApiMount } from '../effect/http-core';
 import { limiter, type RateLimiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import type { PushConfig } from './config';
@@ -20,14 +17,12 @@ import { createPushGroupLayer } from './api-handlers';
 import type { WebPushDelivery } from './sender';
 import type { FcmSender } from './fcm';
 
-export interface PushRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface PushRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   /** Push env (kept separate from the server config so push stays optional). */
   push: PushConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
   archive?: ArchivePool;
   /** Injected in tests so the rate-limit windows can advance without waiting. */
   now?: () => number;
@@ -62,11 +57,9 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
     preview: previewLimiter,
   });
 
-  const apiLayer = HttpApiBuilder.layer(PushApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(PushApi, apiLayer);
+  return mountGroups(PushApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

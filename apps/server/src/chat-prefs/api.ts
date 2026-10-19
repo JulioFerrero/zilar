@@ -1,19 +1,16 @@
-import { Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import { ChatPrefsGroup } from '@zilar/api-contract';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 import { limiter } from '../rate-limit';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
-  schemaErrorLayer,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import {
@@ -50,12 +47,11 @@ function tooManyChanges(): HttpError {
 
 const ChatPrefsApi = HttpApi.make('chatPrefs').add(ChatPrefsGroup);
 
-export interface ChatPrefsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface ChatPrefsApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   now?: () => number;
-  logger: Logger;
 }
 
 export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMount {
@@ -129,11 +125,9 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ChatPrefsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(ChatPrefsApi, apiLayer);
+  return mountGroups(ChatPrefsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

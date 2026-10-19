@@ -1,19 +1,16 @@
-import { Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import { ChatFoldersGroup } from '@zilar/api-contract';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
 import { limiter } from '../rate-limit';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
-  schemaErrorLayer,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import {
@@ -26,12 +23,11 @@ import {
 
 const ChatFoldersApi = HttpApi.make('chatFolders').add(ChatFoldersGroup);
 
-export interface ChatFoldersApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface ChatFoldersApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   now?: () => number;
-  logger: Logger;
 }
 
 export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectApiMount {
@@ -138,11 +134,9 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ChatFoldersApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(ChatFoldersApi, apiLayer);
+  return mountGroups(ChatFoldersApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

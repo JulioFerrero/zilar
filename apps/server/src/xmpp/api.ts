@@ -1,15 +1,14 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { XmppGroup, XmppTokenRateLimit } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
+
 import { syncRoster } from '../contacts/service';
-import type { ServerDatabase } from '../db/client';
+
 import { xmppUnavailable } from '../errors';
 import { limiter } from '../rate-limit';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import type { EjabberdAdminClient } from './admin/types';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
 import { issueXmppToken } from './token';
@@ -18,13 +17,12 @@ export const TOKEN_TTL_SECONDS = 300;
 // Every page load, tab and reconnect mints one token. 30 per 10 min locked a real
 // user out; 120 still stops a runaway loop (one token every 5 s on average).
 
-export interface XmppApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface XmppApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'adminClient' | 'logger'
+> {
   xmppConfig: XmppConfig;
   now?: () => number;
-  logger: Logger;
 }
 
 // The token budget runs before provisioning, as before.
@@ -78,11 +76,9 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(XmppApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(rateLimitLayer(XmppTokenRateLimit, tokenLimiter, RATE_LIMIT_MESSAGE)),
-  );
-
-  return mountApi(XmppApi, apiLayer);
+  return mountGroups(XmppApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: rateLimitLayer(XmppTokenRateLimit, tokenLimiter, RATE_LIMIT_MESSAGE),
+  });
 }

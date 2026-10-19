@@ -1,6 +1,6 @@
+import type { ServerCore } from '../app/deps';
 import type { AuditRecorder } from '../audit/recorder';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import type { InviteLogger } from '../groups/service';
 import type { TopicKind, TopicRow, TopicStatus, TopicVisibility } from './access';
 
@@ -32,9 +32,7 @@ export interface PatchTopicBody {
   done?: boolean | undefined;
 }
 
-export interface TopicServiceDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface TopicServiceDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;
   audit?: AuditRecorder;

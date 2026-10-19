@@ -8,7 +8,13 @@
 import { CurrentUser, SchemaErrors, Session, type SessionUser } from '@zilar/api-contract';
 import { Effect, Layer, type Context } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApi, HttpApiMiddleware, type HttpApiError, type HttpApiGroup } from 'effect/http-api';
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiMiddleware,
+  type HttpApiError,
+  type HttpApiGroup,
+} from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
@@ -230,6 +236,72 @@ export function reflectRoutes<Id extends string, Groups extends HttpApiGroup.Con
     },
   });
   return routes;
+}
+
+export interface MountGroupOptions {
+  readonly auth: Auth;
+  readonly logger: Logger;
+  /** `true` adds the shared schema-error layer; a layer adds a custom one. */
+  readonly schemaErrors?: boolean | Layer.Layer<never, never, never>;
+  /** Layers provided after the session and before the schema-error layer. */
+  readonly extra?: MountLayers;
+  /** Layers provided after the schema-error layer. */
+  readonly afterSchema?: MountLayers;
+}
+
+type MountLayers =
+  Layer.Layer<never, never, never> | ReadonlyArray<Layer.Layer<never, never, never>>;
+
+type MountInput = Layer.Layer<never, never, unknown>;
+
+type MountedLayer = Layer.Layer<
+  never,
+  never,
+  HttpRouter.HttpRouter | Layer.Success<typeof HttpServer.layerServices>
+>;
+
+function asLayers(
+  layers: MountLayers | undefined,
+): ReadonlyArray<Layer.Layer<never, never, never>> {
+  if (layers === undefined) {
+    return [];
+  }
+  return Array.isArray(layers) ? layers : [layers as Layer.Layer<never, never, never>];
+}
+
+function provideLayers(
+  layer: MountInput,
+  layers: ReadonlyArray<Layer.Layer<never, never, never>>,
+): MountInput {
+  return layers.reduce((current, next) => current.pipe(Layer.provide(next)), layer);
+}
+
+/**
+ * The group, the session and the error layers every API module mounts, in the
+ * order they used to be written by hand.
+ */
+export function mountGroups<Id extends string, Groups extends HttpApiGroup.Constraint, GroupIn>(
+  api: HttpApi.HttpApi<Id, Groups>,
+  groupLayer: Layer.Layer<HttpApiGroup.ToService<Id, Groups>, never, GroupIn>,
+  options: MountGroupOptions,
+): EffectApiMount {
+  const apiLayer = HttpApiBuilder.layer(api).pipe(
+    Layer.provide(groupLayer),
+    Layer.provide(sessionLayer(options.auth, options.logger)),
+  );
+  const schemaLayer =
+    options.schemaErrors === true
+      ? schemaErrorLayer(options.logger)
+      : options.schemaErrors === false
+        ? undefined
+        : options.schemaErrors;
+  const withExtras = provideLayers(apiLayer, asLayers(options.extra));
+  const withSchema =
+    schemaLayer === undefined ? withExtras : withExtras.pipe(Layer.provide(schemaLayer));
+  const withAfter = provideLayers(withSchema, asLayers(options.afterSchema));
+  // `Layer.provide` cannot reduce the api's remaining requirements while its
+  // type is still generic; every caller passes fully built layers.
+  return mountApi(api, withAfter as MountedLayer);
 }
 
 /**

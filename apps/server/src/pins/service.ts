@@ -1,9 +1,10 @@
+import type { ServerCore } from '../app/deps';
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import type { CreatePinPayload, Pin, PinKind } from '@zilar/api-contract';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerDatabase } from '../db/client';
+
 import type { PinnedMessageRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
@@ -28,8 +29,7 @@ export type PinView = Pin;
 // at the HTTP boundary.
 export type CreatePinBody = CreatePinPayload;
 
-export interface PinsServiceDeps {
-  db: ServerDatabase;
+export interface PinsServiceDeps extends Pick<ServerCore, 'db'> {
   domain: string;
   mucDomain: string;
   audit?: AuditRecorder;

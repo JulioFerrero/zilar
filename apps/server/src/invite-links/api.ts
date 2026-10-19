@@ -1,35 +1,25 @@
-import { Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Option, Schema } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import { InviteLinksGroup, InviteLinksPreviewRateLimit } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+
 import { createInviteLink, listInviteLinks, revokeInviteLink } from './queries';
 import { toInvalidLink } from './tokens';
 import { joinByInviteLink, previewInviteLink } from './join';
-import type { Auth } from '../auth/auth';
-import type { ServerDatabase } from '../db/client';
+
 import { HttpError } from '../errors';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  socketAddressOf,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, socketAddressOf, type EffectApiMount } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { clientIpFrom } from '../http/client-ip';
 import { limiter, type RateLimiter } from '../rate-limit';
 
-export interface InviteLinksApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
+export interface InviteLinksApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   audit?: AuditRecorder;
   now?: () => number;
   getClientIp?: (request: HttpServerRequest.HttpServerRequest) => string;
@@ -143,19 +133,15 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(InviteLinksApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
+  return mountGroups(InviteLinksApi, groupLayer, {
+    auth: deps.auth,
+    logger,
     // The preview limiter runs before the token is decoded.
-    Layer.provide(
-      rateLimitLayer(
-        InviteLinksPreviewRateLimit,
-        previewLimiter,
-        'Too many join attempts, try again later',
-      ),
+    extra: rateLimitLayer(
+      InviteLinksPreviewRateLimit,
+      previewLimiter,
+      'Too many join attempts, try again later',
     ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(InviteLinksApi, apiLayer);
+    schemaErrors: true,
+  });
 }

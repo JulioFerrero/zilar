@@ -1,31 +1,28 @@
 // The endpoint declares no payload schema, so nothing is buffered before the handler: it
 // reads the body stream chunk by chunk and stops past the cap, and answers raw bytes.
+import type { ServerCore } from '../app/deps';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Effect, Layer } from 'effect';
+import { Effect } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import type { Logger } from 'pino';
+
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
 import { NotAudioError, createFfmpegEngine, type VoiceEngine } from './engine';
-import type { Auth } from '../auth/auth';
 
 /** Hard cap on the uploaded recording, enforced while reading the body. */
 const VOICE_MAX_BYTES = 10 * 1024 * 1024;
 /** Recordings shorter than a blink or longer than five minutes are rejected. */
 const VOICE_MAX_DURATION_MS = 5 * 60 * 1000;
 
-interface VoiceRoutesDependencies {
-  auth: Auth;
+interface VoiceRoutesDependencies extends Pick<ServerCore, 'auth'> {
   engine?: VoiceEngine;
   maxBytes?: number;
 }
-export interface VoiceApiDependencies extends VoiceRoutesDependencies {
-  logger: Logger;
-}
+export type VoiceApiDependencies = VoiceRoutesDependencies & Pick<ServerCore, 'logger'>;
 
 const VoiceGroup = HttpApiGroup.make('voice')
   .add(HttpApiEndpoint.post('convert', '/voice'))
@@ -116,10 +113,8 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(VoiceApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-  );
-
-  return mountApi(VoiceApi, apiLayer);
+  return mountGroups(VoiceApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+  });
 }

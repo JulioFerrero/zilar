@@ -1,18 +1,16 @@
-import { Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { ChatsGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
+
 import type { TurnWatcher } from '../agents/gateway/stop-types';
-import type { Auth } from '../auth/auth';
-import type { ServerConfig } from '../config/load';
+
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import type { ArchivePool } from '../search/service';
 import {
+  mountGroups,
   handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
   type EffectApiMount,
   httpErrorResponse,
   requestIdOf,
@@ -105,11 +103,10 @@ async function markDeliveredFor(
 }
 export type { ChatListEntry, ChatUnreadFields } from './list-handler';
 
-export interface ChatsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface ChatsApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   // Undefined = the list keeps its shape (no unread, no previews).
   archive: ArchivePool | undefined;
   // Optional: with no client the delivered notice is skipped.
@@ -157,11 +154,9 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ChatsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(ChatsApi, apiLayer);
+  return mountGroups(ChatsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

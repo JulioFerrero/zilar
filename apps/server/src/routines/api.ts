@@ -1,20 +1,14 @@
-import { Effect, Layer } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RoutinesGroup } from '@zilar/api-contract';
-import { type Logger } from 'pino';
+
 import { type AuditRecorder } from '../audit/recorder';
 import { deleteRoutine, pauseRoutine, resumeRoutine } from './support';
 import { getRoutine, listRoutinesForAi, listRoutinesForTopic } from './queries';
 import { type PublicRoutine } from './schemas';
-import { type Auth } from '../auth/auth';
-import { type ServerDatabase } from '../db/client';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { findGroupMembership } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
@@ -83,10 +77,7 @@ function toDetailWire(
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
 
-export interface RoutinesApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  logger: Logger;
+export interface RoutinesApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   audit?: AuditRecorder;
   now?: () => Date;
   // The MUC domain room JIDs are built from; optional so tests can omit it.
@@ -222,13 +213,11 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
     });
   }
 
-  const apiLayer = HttpApiBuilder.layer(RoutinesApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(RoutinesApi, apiLayer);
+  return mountGroups(RoutinesApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }
 
 // Running routines sort ahead of paused and needs-approval ones.

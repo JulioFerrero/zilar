@@ -18,12 +18,10 @@ import { createTelegramClient } from '../stickers/telegram/client';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
-  schemaErrorLayer,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
@@ -248,13 +246,13 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(IntegrationsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(telegramRateLimitLayer(telegramLimiter, deps.db, logger)),
-    Layer.provide(emailRateLimitLayer(emailLimiter, deps.db, deps.config, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(IntegrationsApi, apiLayer);
+  return mountGroups(IntegrationsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: [
+      telegramRateLimitLayer(telegramLimiter, deps.db, logger),
+      emailRateLimitLayer(emailLimiter, deps.db, deps.config, logger),
+    ],
+    schemaErrors: true,
+  });
 }

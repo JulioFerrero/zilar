@@ -1,21 +1,19 @@
 // The list and sign-out of one other device; reads the `session` table directly so a session older than 24 h still lists.
 // The client never sees a token or an IP address: the list answers ids, timestamps, the user agent and `current`.
 
+import type { ServerCore } from '../app/deps';
 import type { AuthSession, AuthSessions } from '@zilar/api-contract';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/recorder';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { localpartFor } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 
-export interface SessionsDeps {
-  db: ServerDatabase;
-  auth: Auth;
-}
+export type SessionsDeps = Pick<ServerCore, 'db' | 'auth'>;
 
 export type KickAdminClient = Pick<EjabberdAdminClient, 'kickUser'>;
 

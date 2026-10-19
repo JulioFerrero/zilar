@@ -1,10 +1,11 @@
-import { Effect, Layer, Option, Schema } from 'effect';
+import type { ServerCore } from '../app/deps';
+import { Effect, Option, Schema } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { type Logger } from 'pino';
+
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { mountGroups, Session, handler, type EffectApiMount } from '../effect/http-core';
 import { limiter } from '../rate-limit';
 import {
   AVATAR_MAX_BYTES,
@@ -16,23 +17,17 @@ import {
   type AvatarKind,
   type AvatarsServiceDeps,
 } from './service';
-import { type Auth } from '../auth/auth';
-import { type ServerConfig } from '../config/load';
+
 import { type AuditRecorder } from '../audit/recorder';
-import { type ServerDatabase } from '../db/client';
-interface AvatarsRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+
+interface AvatarsRoutesDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config'> {
   storageDir: string;
   audit?: AuditRecorder;
   now?: () => number;
   uploadLimiter?: { allow: (key: string) => boolean };
 }
 
-export interface AvatarsApiDependencies extends AvatarsRoutesDependencies {
-  logger: Logger;
-}
+export type AvatarsApiDependencies = AvatarsRoutesDependencies & Pick<ServerCore, 'logger'>;
 
 const AvatarUploadView = Schema.Struct({ url: Schema.String });
 const AvatarRemoveView = Schema.Struct({ ok: Schema.Literal(true) });
@@ -171,10 +166,8 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(AvatarsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-  );
-
-  return mountApi(AvatarsApi, apiLayer);
+  return mountGroups(AvatarsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+  });
 }

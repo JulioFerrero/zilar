@@ -1,13 +1,14 @@
+import type { ServerCore } from '../app/deps';
 import { Effect, Layer, Result, Schema, SchemaGetter, SchemaIssue } from 'effect';
 import { type HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient, SqlError } from 'effect/sql';
-import { type Logger } from 'pino';
+
 import { type AuditRecorder } from '../audit/recorder';
-import { type ServerConfig } from '../config/load';
+
 import { type Auth, INVITE_HEADER } from '../auth/auth';
 import { createResendMailer, type CurrentMailer, type Mailer } from '../auth/mailer';
-import { type ServerDatabase } from '../db/client';
+
 import { runSql } from '../effect/sql';
 import {
   mountApi,
@@ -156,12 +157,11 @@ async function sendSetupTestCode(input: {
   await input.mailer.sendOtp(input.email, otp, 'sign-in');
 }
 
-export interface SetupApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+export interface SetupApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   mailer: CurrentMailer;
-  logger: Logger;
   audit?: AuditRecorder;
   limiter?: RateLimiter | undefined;
   getClientIp?: ((request: HttpServerRequest.HttpServerRequest) => string) | undefined;

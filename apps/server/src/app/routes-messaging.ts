@@ -1,7 +1,8 @@
+import type { ServerCore } from './deps';
 import {
+  mountGroups,
   type EffectApiMount,
   handler,
-  mountApi,
   sessionLayer,
   schemaErrorLayer,
   type EffectApiRoute,
@@ -49,8 +50,7 @@ import { type Logger, pino } from 'pino';
 import { createAuditRecorder, type AuditRecorder } from '../audit/recorder';
 import { type ServerConfig } from '../config/load';
 import { type EjabberdAdminClient } from '../xmpp/admin/types';
-import { type Auth } from '../auth/auth';
-import { type ServerDatabase } from '../db/client';
+
 import { limiter, type RateLimiter } from '../rate-limit';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { listContacts, removeContact, type RemoveContactDeps } from '../contacts/service';
@@ -77,8 +77,7 @@ const DRAFT_SSE_HEARTBEAT_MS = 25_000;
 // which re-runs the session check.
 const DRAFT_STREAM_MAX_MS = 10 * 60_000;
 
-interface DraftsApiDependencies {
-  auth: Auth;
+interface DraftsApiDependencies extends Pick<ServerCore, 'auth'> {
   hub?: DraftHub;
   logger?: Logger;
 }
@@ -155,12 +154,10 @@ function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(DraftsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-  );
-
-  return mountApi(DraftsApi, apiLayer);
+  return mountGroups(DraftsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+  });
 }
 
 let silentLogger: Logger | undefined;
@@ -172,12 +169,10 @@ function defaultLogger(): Logger {
 
 const RolesApi = HttpApi.make('roles').add(RolesGroup);
 
-interface RolesApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
-  logger: Logger;
+interface RolesApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient' | 'logger'
+> {
   audit?: AuditRecorder;
 }
 
@@ -243,18 +238,14 @@ function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(RolesApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(RolesApi, apiLayer);
+  return mountGroups(RolesApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }
 
-interface BlocksRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+interface BlocksRoutesDependencies extends Pick<ServerCore, 'auth' | 'db'> {
   audit?: AuditRecorder;
   config?: ServerConfig;
   adminClient?: EjabberdAdminClient;
@@ -263,9 +254,7 @@ interface BlocksRoutesDependencies {
   readLimiter?: RateLimiter;
 }
 
-interface BlocksApiDependencies extends BlocksRoutesDependencies {
-  logger: Logger;
-}
+type BlocksApiDependencies = BlocksRoutesDependencies & Pick<ServerCore, 'logger'>;
 
 // The write budget runs before the service.
 const RATE_LIMIT_MESSAGE = 'Too many attempts, try again later';
@@ -309,25 +298,21 @@ function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(BlocksApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(rateLimitLayer(BlocksWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE)),
-    Layer.provide(rateLimitLayer(BlocksReadRateLimit, readLimiter, RATE_LIMIT_MESSAGE)),
-  );
-
-  return mountApi(BlocksApi, apiLayer);
+  return mountGroups(BlocksApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+    afterSchema: [
+      rateLimitLayer(BlocksWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE),
+      rateLimitLayer(BlocksReadRateLimit, readLimiter, RATE_LIMIT_MESSAGE),
+    ],
+  });
 }
 
 const PinsApi = HttpApi.make('pins').add(PinsGroup);
 
-interface PinsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
+interface PinsApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config' | 'logger'> {
   audit?: AuditRecorder;
-  logger: Logger;
   now?: () => number;
   writeLimiter?: RateLimiter;
 }
@@ -392,12 +377,9 @@ function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
   return { handler: effectHandler, routes: PINS_API_ROUTES };
 }
 
-interface DirectoryApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
+interface DirectoryApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'logger'> {
   now?: () => number;
   limiter?: RateLimiter;
-  logger: Logger;
 }
 
 function toEntry(row: {
@@ -451,27 +433,23 @@ function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(DirectoryApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
+  return mountGroups(DirectoryApi, groupLayer, {
+    auth: deps.auth,
+    logger,
     // The read budget runs before the query is decoded: an invalid query still spends
     // budget.
-    Layer.provide(
-      rateLimitLayer(DirectoryRateLimit, directoryLimiter, 'Too many attempts, try again later'),
+    extra: rateLimitLayer(
+      DirectoryRateLimit,
+      directoryLimiter,
+      'Too many attempts, try again later',
     ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(DirectoryApi, apiLayer);
+    schemaErrors: true,
+  });
 }
 
 // The same write budget as the blocks API: removing a contact deletes the pair and
 // touches ejabberd.
-interface ContactsApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+interface ContactsApiDependencies extends Pick<ServerCore, 'auth' | 'db' | 'config' | 'logger'> {
   audit?: AuditRecorder;
   adminClient?: EjabberdAdminClient;
   now?: () => number;
@@ -513,13 +491,11 @@ function createContactsApi(deps: ContactsApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(ContactsApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(rateLimitLayer(ContactsWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE)),
-  );
-
-  return mountApi(ContactsApi, apiLayer);
+  return mountGroups(ContactsApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: rateLimitLayer(ContactsWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE),
+  });
 }
 
 export function messagingRoutes({

@@ -20,12 +20,16 @@ import type { SetupApiDependencies } from '../setup/api';
 import type { ToolRunner } from '../tools/types';
 import type { VoiceEngine } from '../voice/engine';
 
-export interface AppDependencies {
+export interface ServerCore {
   db: ServerDatabase;
   logger: Logger;
-  config: ServerConfig;
   auth: Auth;
+  config: ServerConfig;
   adminClient: EjabberdAdminClient;
+  audit: AuditRecorder;
+}
+
+export interface AppDependencies extends Omit<ServerCore, 'audit'> {
   mailer?: CurrentMailer;
   setup?:
     | Partial<
@@ -92,7 +96,7 @@ export interface AppDependencies {
   gifNow?: () => number;
 }
 
-export type BaseDeps = Pick<AppDependencies, 'db' | 'config' | 'logger' | 'auth'>;
+export type BaseDeps = Pick<ServerCore, 'db' | 'config' | 'logger' | 'auth'>;
 
 export interface RouteWiring {
   readonly deps: AppDependencies;

@@ -1,13 +1,14 @@
 // Integration settings helpers: rate-limit constants, dependencies, the per-request bot
 // token resolver and shared helpers. Every route needs a session, and a non-owner gets the
 // same 404 as an unknown route, so existence never leaks.
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
+
 import type { AuditRecorder } from '../audit/recorder';
 import type { ServerConfig } from '../config/load';
 import type { TelegramClient } from '../stickers/telegram/set';
-import type { Auth } from '../auth/auth';
+
 import type { CurrentMailer, Mailer } from '../auth/mailer';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
@@ -74,11 +75,10 @@ async function deleteStoredTelegramToken(db: ServerDatabase): Promise<void> {
     }),
   );
 }
-export interface IntegrationsRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface IntegrationsRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   mailer: CurrentMailer;
   audit?: AuditRecorder;
   createTelegram?: (token: string) => TelegramClient;
@@ -95,9 +95,8 @@ export function notFound(): HttpError {
 
 export type IntegrationSource = 'env' | 'stored' | null;
 
-export interface BotTokenResolverDeps {
+export interface BotTokenResolverDeps extends Pick<ServerCore, 'db'> {
   config: Pick<ServerConfig, 'TELEGRAM_BOT_TOKEN'>;
-  db: ServerDatabase;
   cipher: { decrypt: (envelope: string) => string };
   logger?: { warn: (fields: Record<string, unknown>, message: string) => void } | undefined;
 }

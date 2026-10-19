@@ -1,24 +1,17 @@
 // Step order is security-relevant: 501 `media_unavailable`, then the 429 limiter, then
 // the 400 query decode, then the 404 chat resolution.
+import type { ServerCore } from '../app/deps';
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpServerResponse, type HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { LinkPreviewGroup, MediaGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
+
 import { isDmBlocked } from '../blocks/service';
-import type { ServerConfig } from '../config/load';
-import type { ServerDatabase } from '../db/client';
+
 import type { MediaItemRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import {
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { mountGroups, handler, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { queryRecord, STRICT_QUERY } from '../http/query-record';
 import { limiter, type RateLimiter } from '../rate-limit';
@@ -121,11 +114,10 @@ const TYPE_KINDS: Record<MediaType, readonly MediaKind[]> = {
   voice: ['voice'],
 };
 
-export interface MediaRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
+export interface MediaRoutesDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'logger'
+> {
   archive?: ArchivePool;
   now?: () => number;
 }
@@ -319,11 +311,9 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
-    Layer.provide(Layer.merge(groupLayer, linkPreviewGroupLayer)),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(MediaApi, apiLayer);
+  return mountGroups(MediaApi, Layer.merge(groupLayer, linkPreviewGroupLayer), {
+    auth: deps.auth,
+    logger,
+    schemaErrors: true,
+  });
 }

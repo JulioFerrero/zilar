@@ -9,10 +9,8 @@ import { SqlClient } from 'effect/sql';
 import { type ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
+  mountGroups,
   handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
   type EffectApiMount,
   CurrentUser,
   httpErrorResponse,
@@ -307,18 +305,16 @@ export function createVoiceTranscriptionApi(
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(VoiceTranscriptionApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(transcriptConfiguredLayer(storedSettings)),
-    Layer.provide(
+  return mountGroups(VoiceTranscriptionApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: [
+      transcriptConfiguredLayer(storedSettings),
       voiceSettingsOwnerLimitLayer(
         (userId) => isInstanceOwner(deps.db, userId, logger),
         settingsLimiter,
       ),
-    ),
-    Layer.provide(schemaErrorLayer(logger)),
-  );
-
-  return mountApi(VoiceTranscriptionApi, apiLayer);
+    ],
+    schemaErrors: true,
+  });
 }

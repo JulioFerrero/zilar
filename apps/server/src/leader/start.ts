@@ -1,4 +1,5 @@
-import { type Logger } from 'pino';
+import type { ServerCore } from '../app/deps';
+
 import { redactSecrets } from '../ai/http';
 import {
   type ActionGateway,
@@ -8,8 +9,7 @@ import {
 import { type AgentGateway } from '../agents/gateway';
 import { initTopicFollow } from '../agents/gateway/topic-follow';
 import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agents/log/retention';
-import { type AuditRecorder } from '../audit/recorder';
-import { type ServerConfig } from '../config/load';
+
 import { type ServerDatabase } from '../db/client';
 import { startRunnerHub, type RunnerHub } from '../machines/hub';
 import { type DbMachineRegistry } from '../machines/registry';
@@ -25,7 +25,7 @@ import { type ArchivePool } from '../search/service';
 import { type BuildToolAdaptersDeps } from '../tools/adapters';
 import { type ToolRunner } from '../tools/types';
 import { reconcileRoomSubscriptionOptions, syncTopicRoom } from '../topics/rooms';
-import { type EjabberdAdminClient } from '../xmpp/admin/types';
+
 import { type Payload } from '@zilar/protocol';
 import { type ExecuteRoutinePorts } from '../routines/execute';
 import {
@@ -46,9 +46,7 @@ interface RoomReconcileLogger extends InviteLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
 }
 
-interface RoomReconcileDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+interface RoomReconcileDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: RoomReconcileLogger;
   signal?: AbortSignal;
@@ -193,8 +191,7 @@ function serializeError(error: unknown): Record<string, unknown> {
   return { message: String(error) };
 }
 
-interface BuildRoutineSchedulerDeps {
-  db: ServerDatabase;
+interface BuildRoutineSchedulerDeps extends Pick<ServerCore, 'db' | 'audit'> {
   routinesEnabled: boolean;
   // Absent = no runner, so the scheduler stays off.
   toolRunner?: ToolRunner;
@@ -210,7 +207,6 @@ interface BuildRoutineSchedulerDeps {
   runPrompt?: PromptRunner;
   // Corrects a linked alert card in the room (`correctInRoom`).
   correctCard?: ExecuteRoutinePorts['correctCard'];
-  audit: AuditRecorder;
   logger: RoutineLogger;
 }
 
@@ -239,17 +235,15 @@ function buildRoutineScheduler(deps: BuildRoutineSchedulerDeps): RoutineSchedule
   return handle;
 }
 
-export interface LeaderWorkDeps {
-  db: ServerDatabase;
-  config: ServerConfig;
-  logger: Logger;
-  adminClient: EjabberdAdminClient;
+export interface LeaderWorkDeps extends Pick<
+  ServerCore,
+  'db' | 'config' | 'logger' | 'adminClient' | 'audit'
+> {
   archivePool: ArchivePool | undefined;
   push: PushConfig;
   machineRegistry: DbMachineRegistry;
   gateway: Pick<AgentGateway, 'start' | 'stop'>;
   actionGateway: ActionGateway;
-  audit: AuditRecorder;
   toolRunner: ToolRunner | undefined;
   post: BuildToolAdaptersDeps['post'];
   runPrompt: PromptRunner;

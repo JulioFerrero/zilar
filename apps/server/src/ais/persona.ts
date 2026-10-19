@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AiComputerMode } from '@zilar/api-contract';
@@ -5,7 +6,7 @@ import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
+
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
 export interface AiLogger {
@@ -42,9 +43,7 @@ export interface PublicAi {
   createdAt: Date;
 }
 
-export interface AiServiceDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface AiServiceDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   cipher: KeyCipher;
   logger: AiLogger;
   domain: string;

@@ -1,8 +1,8 @@
 // effect-plain: token primitives are plain crypto; no Effect in this module.
+import type { ServerCore } from '../app/deps';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { AuditRecorder } from '../audit/recorder';
-import type { EjabberdAdminClient } from '../xmpp/admin/types';
-import type { ServerDatabase } from '../db/client';
+
 import type { GroupInviteLinkRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { InviteLogger } from '../groups/service';
@@ -95,9 +95,7 @@ export function toInviteLinkView(row: GroupInviteLinkRow): InviteLinkView {
   };
 }
 
-export interface InviteLinkServiceDeps {
-  db: ServerDatabase;
-  adminClient: EjabberdAdminClient;
+export interface InviteLinkServiceDeps extends Pick<ServerCore, 'db' | 'adminClient'> {
   domain: string;
   logger: InviteLogger;
   audit?: AuditRecorder;

@@ -1,12 +1,13 @@
 // Clear-history and delete-for-me for DMs, scoped to the caller's own archive rows (username = caller localpart, bare_peer = peer).
 // Only direct chats: a group or room answers 400.
 
+import type { ServerCore } from '../app/deps';
 import { Effect } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
+
 import { createAuditRecorder, type AuditRecorder } from '../audit/recorder';
-import type { ServerConfig } from '../config/load';
+
 import { requireChatAccess } from '../chat-prefs/access';
 import type { ServerDatabase } from '../db/client';
 import { handler, httpErrorResponse, requestIdOf, type SessionUser } from '../effect/http-core';
@@ -16,8 +17,7 @@ import { limiter } from '../rate-limit';
 import type { ArchivePool } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
 
-export interface DeleteOwnDependencies {
-  db: ServerDatabase;
+export interface DeleteOwnDependencies extends Pick<ServerCore, 'db'> {
   // Undefined answers 503, like the search route.
   archive: ArchivePool | undefined;
   // Records one id-only entry per delete; a failed audit write never throws.
@@ -122,11 +122,8 @@ export async function deleteOwnArchiveRow(
 }
 
 // The two delete handlers live here so `api.ts` only names them.
-export interface DeleteOwnHandlerDependencies {
-  db: ServerDatabase;
+export interface DeleteOwnHandlerDependencies extends Pick<ServerCore, 'db' | 'config' | 'logger'> {
   archive: ArchivePool | undefined;
-  config: ServerConfig;
-  logger: Logger;
   now?: () => number;
 }
 

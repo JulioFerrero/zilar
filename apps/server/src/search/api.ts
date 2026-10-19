@@ -8,12 +8,11 @@ import { CurrentUser, SearchGroup, SearchGuards, SearchSchemaErrors } from '@zil
 import { HttpError } from '../errors';
 import { limiter, type RateLimiter } from '../rate-limit';
 import {
+  mountGroups,
   handler,
   httpErrorResponse,
-  mountApi,
   requestIdOf,
   schemaErrorLayerFor,
-  sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { runSearchEffect, type SearchRoutesDependencies } from './routes';
@@ -72,12 +71,10 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
     ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(SearchApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(guardsLayer(deps, searchLimiter)),
-    Layer.provide(schemaErrorLayerFor(SearchSchemaErrors, logger, 'Invalid search query')),
-  );
-
-  return mountApi(SearchApi, apiLayer);
+  return mountGroups(SearchApi, groupLayer, {
+    auth: deps.auth,
+    logger,
+    extra: guardsLayer(deps, searchLimiter),
+    schemaErrors: schemaErrorLayerFor(SearchSchemaErrors, logger, 'Invalid search query'),
+  });
 }

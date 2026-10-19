@@ -1,3 +1,4 @@
+import type { ServerCore } from '../app/deps';
 import { Layer, Effect } from 'effect';
 import { HttpApiBuilder, HttpApi } from 'effect/http-api';
 import {
@@ -8,23 +9,21 @@ import {
 } from '@zilar/api-contract';
 import { getAiCatalog } from '../ai/catalog';
 import { type AuditRecorder } from '../audit/recorder';
-import { type ServerConfig } from '../config/load';
-import { type EjabberdAdminClient } from '../xmpp/admin/types';
+
 import { assignMachine, resumeAi, stopAi } from './status';
 import { createAi, updateAi } from './provisioning';
 import { deleteAi } from './provisioning-xmpp';
 import { getOwnedAi, listAis } from './queries';
 import { type AiLogger, type PublicAi } from './persona';
-import { type Auth } from '../auth/auth';
+
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { type KeyCipher } from '../connections/crypto';
 import { type ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
+  mountGroups,
   handler,
-  mountApi,
   schemaErrorLayerFor,
-  sessionLayer,
   type EffectApiMount,
   httpErrorResponse,
   requestIdOf,
@@ -132,8 +131,7 @@ function configuredLayer(deps: { cipher?: KeyCipher }): Layer.Layer<AisConfigure
 
 const AisApi = HttpApi.make('ais').add(AisGroup);
 
-interface StopTurnDeps {
-  db: ServerDatabase;
+interface StopTurnDeps extends Pick<ServerCore, 'db'> {
   getGateway: () => TurnStopper | null;
 }
 
@@ -160,11 +158,10 @@ function toLogger(logger: AiLogger): Logger {
   } as unknown as Logger;
 }
 
-export interface AisApiDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  config: ServerConfig;
-  adminClient: EjabberdAdminClient;
+export interface AisApiDependencies extends Pick<
+  ServerCore,
+  'auth' | 'db' | 'config' | 'adminClient'
+> {
   logger: AiLogger;
   /** Absent when the key cipher is not configured: those routes answer 503. */
   cipher?: KeyCipher;
@@ -431,12 +428,10 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       ),
   );
 
-  const apiLayer = HttpApiBuilder.layer(AisApi).pipe(
-    Layer.provide(groupLayer),
-    Layer.provide(sessionLayer(deps.auth, effectLogger)),
-    Layer.provide(schemaErrorLayerFor(AisSchemaErrors, effectLogger, renderSchemaError)),
-    Layer.provide(configuredLayer(cipher === undefined ? {} : { cipher })),
-  );
-
-  return mountApi(AisApi, apiLayer);
+  return mountGroups(AisApi, groupLayer, {
+    auth: deps.auth,
+    logger: effectLogger,
+    schemaErrors: schemaErrorLayerFor(AisSchemaErrors, effectLogger, renderSchemaError),
+    afterSchema: configuredLayer(cipher === undefined ? {} : { cipher }),
+  });
 }

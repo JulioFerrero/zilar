@@ -7,8 +7,7 @@ import { Layer, Option, Schema, Exit } from 'effect';
 import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { GifsGroup } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { Auth } from '../auth/auth';
+
 import type { ServerConfig } from '../config/load';
 import { classifyIp } from '@zilar/desk/egress/ip-guard';
 import {
@@ -96,11 +95,7 @@ function createGifTokenIssuer(options: { secret: string; now?: () => number }): 
     },
   };
 }
-export interface GifsApiDependencies extends GifsRoutesDependencies {
-  auth: Auth;
-  config: ServerConfig;
-  logger: Logger;
-}
+export type GifsApiDependencies = GifsRoutesDependencies;
 
 // `q` is 1..100 characters, `pos?` at most 128; values arrive as strings from the query
 // string (first value wins).
