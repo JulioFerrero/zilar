@@ -221,7 +221,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
       - T-2231 chat list: 6,710 → 3,471;
       - T-2232 screen, search, pins: 7,159 → 4,071;
       - T-2234 store layers: 5,591 → 1,987 (+445 core).
-      - T-2233 (shared store) is still running.
+      - T-2233 shared store: 8,581 → 4,163, in six steps. Step 1 is T-2240, the eleven ledger files to one, at most 650.
     - **Rewrites running:**
       - T-2235: chat list server, at most 1,350 from 2,490.
       - T-2236: composer mentions shared, at least −250.

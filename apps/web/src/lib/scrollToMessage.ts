@@ -1,16 +1,46 @@
 // Message bubbles carry data-message-id, so a search hit can land on its message after the
 // store loads the page; a pulse makes the jump visible even when the list cannot scroll.
+let jumpToMessage: ((messageId: string) => boolean) | undefined;
+
+/** Lets the mounted list reach a message it has not drawn yet. */
+export function registerMessageList(jump: (messageId: string) => boolean): () => void {
+  jumpToMessage = jump;
+  return () => {
+    if (jumpToMessage === jump) {
+      jumpToMessage = undefined;
+    }
+  };
+}
+
 export function scrollToMessage(messageId: string): boolean {
   if (typeof document === 'undefined') {
     return false;
   }
-  const element = document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
-  if (element === null) {
+  const element = findMessage(messageId);
+  if (element !== null) {
+    element.scrollIntoView({ block: 'center' });
+    pulseMessage(element);
+    return true;
+  }
+  if (jumpToMessage?.(messageId) !== true) {
     return false;
   }
-  element.scrollIntoView({ block: 'center' });
-  pulseMessage(element);
+  // A virtual list draws the row a frame or two after the jump.
+  let frames = 20;
+  const look = (): void => {
+    const drawn = findMessage(messageId);
+    if (drawn !== null) {
+      pulseMessage(drawn);
+    } else if (frames-- > 0) {
+      requestAnimationFrame(look);
+    }
+  };
+  requestAnimationFrame(look);
   return true;
+}
+
+function findMessage(messageId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
 }
 
 // The Web Animations API keeps the pulse out of CSS and off the layout; a runtime without

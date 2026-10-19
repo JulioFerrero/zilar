@@ -20,8 +20,8 @@ import { fromPromise, prefsByJid } from './util';
 /** No ids: the stable empty set the reveal reader returns when a chat has none. */
 const NO_REVEALS: ReadonlySet<string> = new Set();
 
-// Jump targets the list must grow its window to include before it scrolls. The list renders
-// only its newest window, so a target is recorded here and useMessageWindow grows to it.
+// Jump targets the list must scroll to once their page has loaded. The list draws only the
+// rows on screen, so a target is recorded here and the list scrolls to it by index.
 const revealTargets = new Map<string, ReadonlySet<string>>();
 const revealListeners = new Set<() => void>();
 
@@ -62,8 +62,8 @@ export function subscribeMessageWindowReveals(listener: () => void): () => void 
   };
 }
 
-/** openAtMessage plus the window reveal: after the message loads, remember it so the list
- * grows to include it before the jump scrolls. */
+/** openAtMessage plus the reveal: after the message loads, remember it so the list scrolls
+ * to the row even though it is not drawn yet. */
 export const openAtMessage = (
   ctx: StoreCtx,
   chatId: string,

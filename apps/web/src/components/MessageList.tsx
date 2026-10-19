@@ -10,7 +10,7 @@ import { useBlockedJids } from '@/lib/blockedJids';
 import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
 import { dmContactFor } from '@/lib/contacts';
 import { useQuery } from '@/lib/effect/use-query';
-import { scrollToMessage } from '@/lib/scrollToMessage';
+import { registerMessageList, scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import {
   clearMessageWindowReveal,
@@ -42,6 +42,7 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from 'react';
+import { VList, type VListHandle } from 'virtua';
 /**
  * Announces only a new incoming message appended to the open chat: history
  * prepends, own sends and the first load are skipped.
@@ -173,7 +174,6 @@ export function EmptyChat({ chat }: { chat: ChatSummary }) {
   return <StateMessage kind="empty" title="No messages yet" />;
 }
 
-const WINDOW = 150;
 const NEAR_BOTTOM_PX = 80;
 
 const NO_REVEALS: ReadonlySet<string> = new Set();
@@ -188,85 +188,14 @@ function drawsMessage(item: RenderItem, id: string): boolean {
   return false;
 }
 
-interface MessageWindow {
-  windowItems: RenderItem[];
-  start: number;
-  hasHidden: boolean;
-  reveals: ReadonlySet<string>;
-  grow: () => void;
+/** The id the scroll memory stores: a message row or a date separator. */
+function anchorId(item: RenderItem): string {
+  return item.kind === 'separator' ? item.id : item.message.id;
 }
 
-/**
- * The newest `WINDOW` render items, grown to include the divider and any jump
- * target; the forced width is kept so the jump does not shift.
- */
-function useMessageWindow(
-  chatId: string,
-  items: RenderItem[],
-  anchorIndex: number | null,
-): MessageWindow {
-  const reveals = useSyncExternalStore(
-    subscribeMessageWindowReveals,
-    () => messageWindowReveals(chatId),
-    () => NO_REVEALS,
-  );
-  const [limit, setLimit] = useState(WINDOW);
-  // The width a reveal or an older page forced is kept after the reveal clears.
-  const [floor, setFloor] = useState(0);
-
-  const start = useMemo(() => {
-    let value = Math.max(0, items.length - Math.max(limit, floor));
-    const include = (index: number): void => {
-      if (index >= 0 && index < value) {
-        value = index;
-      }
-    };
-    if (anchorIndex !== null) {
-      include(anchorIndex);
-    }
-    for (const id of reveals) {
-      include(items.findIndex((item) => drawsMessage(item, id)));
-    }
-    return value;
-  }, [items, limit, floor, anchorIndex, reveals]);
-
-  // Remember a forced width during render (adjust-state-on-change), guarded so it converges.
-  const needed = items.length - start;
-  if (needed > floor) {
-    setFloor(needed);
-  }
-
-  const grow = useCallback(() => setLimit((value) => value + WINDOW), []);
-
-  // Scroll after the layout pass, when the rows are in the DOM.
-  const scrolled = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (reveals.size === 0) {
-      return;
-    }
-    let consumed = false;
-    for (const id of reveals) {
-      if (scrolled.current.has(id)) {
-        continue;
-      }
-      scrolled.current.add(id);
-      scrollToMessage(id);
-      consumed = true;
-    }
-    if (consumed) {
-      for (const id of reveals) {
-        clearMessageWindowReveal(chatId, id);
-      }
-    }
-  }, [chatId, reveals, start]);
-
-  return {
-    windowItems: start === 0 ? items : items.slice(start),
-    start,
-    hasHidden: start > 0,
-    reveals,
-    grow,
-  };
+/** A prepend always brings a new first message, even when the day separator stays. */
+function firstMessageId(items: readonly RenderItem[]): string | undefined {
+  return items.find((item) => item.kind !== 'separator')?.message.id;
 }
 
 export const MessageList = memo(function MessageList({
@@ -357,64 +286,93 @@ export const MessageList = memo(function MessageList({
   const selectedIds = selection?.ids;
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread, meId);
-  // Draw only the newest window; the unread divider is always drawn.
-  const { windowItems, start, hasHidden, reveals, grow } = useMessageWindow(
-    chatId,
-    items,
-    dividerIndex,
+  const reveals = useSyncExternalStore(
+    subscribeMessageWindowReveals,
+    () => messageWindowReveals(chatId),
+    () => NO_REVEALS,
   );
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const dividerRef = useRef<HTMLDivElement>(null);
-  const scrollMemory = useScrollMemory(chatId, scrollRef, initialUnread === 0, items.length > 0);
-  const restoredScroll = useRef(false);
-  const previousCount = useRef(visibleMessages.length);
-  const prependScrollHeight = useRef<number | undefined>(undefined);
-  const [atBottom, setAtBottom] = useState(true);
+  const listRef = useRef<VListHandle>(null);
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+  // No scroll has been chosen yet, so an early scroll event must not overwrite the memory.
+  const scrollReady = useRef(false);
+  const previous = useRef<{ length: number; first: string | undefined } | null>(null);
+  const scrollMemory = useScrollMemory(chatId, listRef, items, scrollReady);
+  const [atBottom, setAtBottom] = useState(initialUnread === 0);
   const atBottomRef = useRef(atBottom);
   const [pending, setPending] = useState(0);
   const loadingOlderRef = useRef(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [prependFrom, setPrependFrom] = useState<string | undefined>(undefined);
+  // Virtua shifts only when the first message actually changed, not for a message appended mid-load.
+  const shift = loadingOlder && firstMessageId(items) !== prependFrom;
   const stopLoadingOlder = (): void => {
     loadingOlderRef.current = false;
     setLoadingOlder(false);
   };
+  // The ref stays synchronous for scroll logic; the state update is deferred so an effect
+  // never sets state synchronously.
+  const markAtBottom = (value: boolean): void => {
+    atBottomRef.current = value;
+    queueMicrotask(() => setAtBottom(value));
+  };
 
-  // A pending jump target (search, pin, quote) wins over the bottom snap.
+  // A pending jump target (search, pin, quote) wins over the initial position.
   const pendingJump = useRef(reveals.size > 0);
-  useInitialScroll(scrollRef, dividerRef, pendingJump, restoredScroll);
 
-  // Compensate for a prepended page before paint so the view does not jump.
+  // The first target is re-applied until row sizes go quiet; virtua opens on estimates.
+  const settle = useRef<ScrollTarget | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const startSettle = (target: ScrollTarget): void => {
+    settle.current = target;
+    target.apply();
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => (settle.current = null), 400);
+  };
+  const cancelSettle = (): void => {
+    settle.current = null;
+    clearTimeout(settleTimer.current);
+  };
+  useEffect(() => () => cancelSettle(), []);
+
   useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (element === null) {
+    const handle = listRef.current;
+    if (handle === null || visibleMessages.length === 0) {
       return;
     }
-    if (!pendingJump.current && !restoredScroll.current && scrollMemory.restore()) {
-      restoredScroll.current = true;
-      atBottomRef.current = false;
-      setAtBottom(false);
-      return;
-    }
-    const added = visibleMessages.length - previousCount.current;
-    previousCount.current = visibleMessages.length;
-    const previousHeight = prependScrollHeight.current;
-    if (previousHeight !== undefined) {
-      prependScrollHeight.current = undefined;
-      element.scrollTop += element.scrollHeight - previousHeight;
-      if (added > 0 && loadingOlderRef.current) {
-        stopLoadingOlder();
+    const first = firstMessageId(items);
+    const before = previous.current;
+    previous.current = { length: visibleMessages.length, first };
+    if (before === null) {
+      scrollReady.current = true;
+      if (pendingJump.current || reveals.size > 0) {
+        markAtBottom(false);
+        return;
       }
+      const target =
+        scrollMemory.restore() ??
+        (dividerIndex === null
+          ? { bottom: true, apply: () => handle.scrollTo(handle.scrollSize) }
+          : { bottom: false, apply: () => handle.scrollToIndex(dividerIndex, { align: 'start' }) });
+      markAtBottom(target.bottom);
+      startSettle(target);
       return;
     }
-    // A restored view sits above the bottom: never snap it back (StrictMode
-    // re-runs this effect).
-    if (atBottom && !restoredScroll.current) {
-      element.scrollTop = element.scrollHeight;
-    } else if (added > 0) {
-      setPending((value) => value + added);
+    const prepended =
+      visibleMessages.length > before.length &&
+      before.first !== undefined &&
+      before.first !== first;
+    const added = prepended ? 0 : Math.max(0, visibleMessages.length - before.length);
+    if (prepended) {
+      if (loadingOlderRef.current) queueMicrotask(stopLoadingOlder);
+      return;
     }
-  }, [windowItems.length, visibleMessages.length, atBottom, scrollMemory]);
+    if (added === 0) return;
+    if (atBottomRef.current) handle.scrollTo(handle.scrollSize);
+    else queueMicrotask(() => setPending((value) => value + added));
+  }, [visibleMessages, items, dividerIndex, reveals, scrollMemory]);
 
   const hasMore = useChatSelector((s) => s.hasMore(chatId));
   useEffect(() => {
@@ -436,82 +394,62 @@ export const MessageList = memo(function MessageList({
     };
   }, [loadingOlder]);
 
-  // A growing draft pins the bottom only when the reader is already there.
-  useEffect(() => {
-    if (draftText.length === 0) {
-      return;
-    }
-    const element = scrollRef.current;
-    if (element === null) {
-      return;
-    }
-    if (atBottom) {
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [draftText, atBottom]);
+  // Virtua re-measures a row when its content changes, so pinning here keeps a growing
+  // draft and the AI reveal at the bottom without observing the DOM.
+  const handleResize = (): void => {
+    const handle = listRef.current;
+    if (handle === null) return;
+    const target = settle.current;
+    if (target !== null) startSettle(target);
+    else if (atBottomRef.current) handle.scrollTo(handle.scrollSize);
+  };
 
-  // The reveal grows frame by frame, so a resize observer keeps the view pinned.
-  const hasContent = items.length > 0;
-  useEffect(() => {
-    const element = scrollRef.current;
-    const content = contentRef.current;
-    if (!hasContent || element === null || content === null) {
-      return;
-    }
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(() => {
-      if (atBottomRef.current) {
-        element.scrollTop = element.scrollHeight;
-      }
-    });
-    observer.observe(content, { box: 'border-box' });
-    return () => observer.disconnect();
-  }, [hasContent]);
+  // The list can jump to a row it has not drawn yet; reachable before the reveal effect runs.
+  useLayoutEffect(
+    () =>
+      registerMessageList((messageId) => {
+        cancelSettle();
+        const handle = listRef.current;
+        const index = itemsRef.current.findIndex((item) => drawsMessage(item, messageId));
+        if (handle === null || index < 0) return false;
+        handle.scrollToIndex(index, { align: 'center' });
+        return true;
+      }),
+    [],
+  );
 
-  const handleScroll = (): void => {
-    const element = scrollRef.current;
-    if (element === null) {
+  useEffect(() => {
+    if (reveals.size === 0) return;
+    for (const id of reveals) {
+      if (scrollToMessage(id)) clearMessageWindowReveal(chatId, id);
+    }
+  }, [chatId, reveals, items]);
+
+  const handleScroll = (offset: number): void => {
+    const handle = listRef.current;
+    if (handle === null) return;
+    const target = settle.current;
+    if (target !== null) {
+      markAtBottom(target.bottom);
       return;
     }
-    const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-    const nearBottom = distance < NEAR_BOTTOM_PX;
-    atBottomRef.current = nearBottom;
-    setAtBottom(nearBottom);
-    if (nearBottom) {
-      restoredScroll.current = false;
-      setPending(0);
-    }
-    const store = storeApi.getState();
-    if (element.scrollTop >= NEAR_BOTTOM_PX || prependScrollHeight.current !== undefined) {
+    const nearBottom = handle.scrollSize - offset - handle.viewportSize < NEAR_BOTTOM_PX;
+    markAtBottom(nearBottom);
+    if (nearBottom) setPending(0);
+    scrollMemory.save();
+    if (!scrollReady.current || offset >= NEAR_BOTTOM_PX || !hasMore || loadingOlderRef.current)
       return;
-    }
-    // Page the archive only once the window shows every older loaded item.
-    if (hasHidden) {
-      prependScrollHeight.current = element.scrollHeight;
-      grow();
-      return;
-    }
-    if (store.hasMore(chat.id)) {
-      if (loadingOlderRef.current) {
-        return;
-      }
-      loadingOlderRef.current = true;
-      setLoadingOlder(true);
-      prependScrollHeight.current = element.scrollHeight;
-      store.loadOlder(chat.id);
-    }
+    loadingOlderRef.current = true;
+    setPrependFrom(firstMessageId(items));
+    setLoadingOlder(true);
+    storeApi.getState().loadOlder(chat.id);
   };
 
   const scrollToBottom = (): void => {
-    const element = scrollRef.current;
-    if (element !== null) {
-      element.scrollTop = element.scrollHeight;
-    }
-    restoredScroll.current = false;
-    atBottomRef.current = true;
-    setAtBottom(true);
+    cancelSettle();
+    const handle = listRef.current;
+    if (handle !== null) handle.scrollTo(handle.scrollSize);
+    markAtBottom(true);
     setPending(0);
   };
 
@@ -555,31 +493,29 @@ export const MessageList = memo(function MessageList({
   return (
     <div className="relative min-h-0 flex-1">
       <MessageAnnouncer messages={visibleMessages} meId={meId} />
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
+      <VList
+        ref={listRef}
+        data={items}
+        shift={shift}
         data-testid="message-list"
-        className="chat-background scrollbar-thin h-full overflow-y-auto"
+        className={`chat-background scrollbar-thin pt-4 wide:pt-6 ${
+          chat.topic !== undefined
+            ? 'pb-[calc(var(--composer-h,0px)+3.5rem)]'
+            : 'pb-[calc(var(--composer-h,0px)+1rem)] wide:pb-[calc(var(--composer-h,0px)+1.5rem)]'
+        }`}
         style={backgroundStyle}
+        onScroll={handleScroll}
+        onResize={handleResize}
       >
-        <div
-          ref={contentRef}
-          className={`mx-auto flex w-full max-w-[860px] flex-col px-3 pt-4 wide:px-8 wide:pt-6 ${
-            chat.topic !== undefined
-              ? 'pb-[calc(var(--composer-h,0px)+3.5rem)]'
-              : 'pb-[calc(var(--composer-h,0px)+1rem)] wide:pb-[calc(var(--composer-h,0px)+1.5rem)]'
-          }`}
-        >
-          {loadingOlder && (
-            <StateMessage kind="loading" title="Loading older messages" size="inline" />
-          )}
-          {windowItems.map((item, index) => (
+        {(item, index) => (
+          <div
+            key={messageRowKey(item, draftMessage?.id, draft?.turnId, finishedDraftMessages)}
+            className="mx-auto w-full max-w-[860px] px-3 wide:px-8"
+          >
             <MessageListRow
-              key={messageRowKey(item, draftMessage?.id, draft?.turnId, finishedDraftMessages)}
               item={item}
-              index={start + index}
+              index={index}
               dividerIndex={dividerIndex}
-              dividerRef={dividerRef}
               draftMessageId={draftMessage?.id}
               draftTurnId={draft?.turnId}
               finishedDraftMessages={finishedDraftMessages}
@@ -594,9 +530,14 @@ export const MessageList = memo(function MessageList({
               onStartSelect={selection === undefined ? undefined : handleStartSelect}
               selecting={selecting}
             />
-          ))}
+          </div>
+        )}
+      </VList>
+      {loadingOlder && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+          <StateMessage kind="loading" title="Loading older messages" size="inline" />
         </div>
-      </div>
+      )}
       {!atBottom && (
         <IconButton
           aria-label={
@@ -617,124 +558,66 @@ export const MessageList = memo(function MessageList({
 
 interface ScrollAnchor {
   messageId: string;
-  /** Pixels from the viewport top to the anchor message's top. */
+  /** Pixels from the viewport top to the anchor row's top. */
   offset: number;
+  /** The reader was at the bottom, so reopening should land there. */
+  bottom: boolean;
 }
 
 /** Module-level so it survives a chat remount; cleared on a full reload. */
 const anchors = new Map<string, ScrollAnchor>();
 
-function anchorAt(container: HTMLElement): ScrollAnchor | undefined {
-  const top = container.getBoundingClientRect().top;
-  for (const row of container.querySelectorAll<HTMLElement>('[data-message-id]')) {
-    const rect = row.getBoundingClientRect();
-    if (rect.bottom <= top + 1) {
-      continue;
-    }
-    const messageId = row.dataset.messageId;
-    return messageId === undefined ? undefined : { messageId, offset: rect.top - top };
-  }
-  return undefined;
-}
-
-function scrollToAnchor(container: HTMLElement, anchor: ScrollAnchor): boolean {
-  const element = container.querySelector<HTMLElement>(
-    `[data-message-id="${CSS.escape(anchor.messageId)}"]`,
-  );
-  if (element === null) {
-    return false;
-  }
-  const containerTop = container.getBoundingClientRect().top;
-  container.scrollTop += element.getBoundingClientRect().top - containerTop - anchor.offset;
-  return true;
+interface ScrollTarget {
+  bottom: boolean;
+  apply: () => void;
 }
 
 interface ScrollMemory {
-  restore: () => boolean;
+  save: () => void;
+  restore: () => ScrollTarget | undefined;
 }
 
 function useScrollMemory(
   chatId: string,
-  scrollRef: RefObject<HTMLDivElement | null>,
-  enabled: boolean,
-  ready: boolean,
+  listRef: RefObject<VListHandle | null>,
+  items: readonly RenderItem[],
+  ready: RefObject<boolean>,
 ): ScrollMemory {
-  const attempted = useRef(false);
-
-  const save = useCallback((): void => {
-    const container = scrollRef.current;
-    if (container === null || !container.isConnected) {
-      return;
-    }
-    const anchor = anchorAt(container);
-    if (anchor !== undefined) {
-      anchors.set(chatId, anchor);
-    }
-  }, [chatId, scrollRef]);
-
-  // A rAF throttle keeps the DOM query off the scroll hot path.
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (container === null) {
-      return;
-    }
-    let frame = 0;
-    const onScroll = (): void => {
-      if (frame !== 0) {
-        return;
-      }
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        save();
-      });
-    };
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', onScroll);
-      if (frame !== 0) {
-        window.cancelAnimationFrame(frame);
-      }
-      save();
-    };
-  }, [save, ready, scrollRef]);
-
-  const restore = useCallback((): boolean => {
-    const container = scrollRef.current;
-    if (container === null || attempted.current) {
-      return false;
-    }
-    attempted.current = true;
-    if (!enabled) {
-      return false;
-    }
+  const remember = useLatestCallback((): void => {
+    const handle = listRef.current;
+    if (handle === null || !ready.current || items.length === 0) return;
+    const index = Math.min(
+      Math.max(handle.findItemIndex(handle.scrollOffset), 0),
+      items.length - 1,
+    );
+    const item = items[index];
+    if (item === undefined) return;
+    anchors.set(chatId, {
+      messageId: anchorId(item),
+      offset: handle.getItemOffset(index) - handle.scrollOffset,
+      bottom: handle.scrollSize - handle.scrollOffset - handle.viewportSize < NEAR_BOTTOM_PX,
+    });
+  });
+  const save = useCallback((): void => remember(), [remember]);
+  // The last scroll already saved it; this catches a switch while the view is still.
+  useEffect(() => () => save(), [save]);
+  const restore = useCallback((): ScrollTarget | undefined => {
+    const handle = listRef.current;
     const anchor = anchors.get(chatId);
-    if (anchor === undefined) {
-      return false;
+    if (handle === null || anchor === undefined) return undefined;
+    if (anchor.bottom)
+      return { bottom: true, apply: () => listRef.current?.scrollTo(listRef.current.scrollSize) };
+    const index = items.findIndex((item) => anchorId(item) === anchor.messageId);
+    if (index < 0) {
+      anchors.delete(chatId);
+      return undefined;
     }
-    if (scrollToAnchor(container, anchor)) {
-      return true;
-    }
-    anchors.delete(chatId);
-    return false;
-  }, [chatId, enabled, scrollRef]);
+    return {
+      bottom: false,
+      apply: () =>
+        listRef.current?.scrollToIndex(index, { align: 'start', offset: -anchor.offset }),
+    };
+  }, [chatId, items, listRef]);
 
-  return useMemo(() => ({ restore }), [restore]);
-}
-
-function useInitialScroll(
-  scrollRef: RefObject<HTMLDivElement | null>,
-  dividerRef: RefObject<HTMLDivElement | null>,
-  skip: RefObject<boolean>,
-  restored: RefObject<boolean>,
-): void {
-  useEffect(() => {
-    const element = scrollRef.current;
-    const divider = dividerRef.current;
-    if (element === null || skip.current || restored.current) {
-      return;
-    }
-    if (divider !== null) {
-      divider.scrollIntoView({ block: 'center' });
-    }
-  }, [dividerRef, restored, scrollRef, skip]);
+  return useMemo(() => ({ save, restore }), [save, restore]);
 }

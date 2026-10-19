@@ -9,7 +9,7 @@ import {
 } from '@zilar/chat-core';
 import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
 import { ArrowRight } from 'lucide-react';
-import { Fragment, useState, type RefObject, type Ref } from 'react';
+import { Fragment, useState } from 'react';
 import { EntityAvatar } from './EntityAvatar';
 import { MessageBubble } from './MessageBubble';
 import { AlbumMembersProvider } from '@zilar/client-core';
@@ -88,9 +88,9 @@ function DateSeparator({ date }: { date: Date }) {
   );
 }
 
-function UnreadDivider({ ref }: { ref?: Ref<HTMLDivElement> }) {
+function UnreadDivider() {
   return (
-    <div ref={ref} className="my-3 w-full">
+    <div className="my-3 w-full">
       <div className="well-surface w-full rounded-[10px] px-3 py-1.5 text-center text-[12px] font-medium text-muted-foreground">
         Unread messages
       </div>
@@ -102,7 +102,6 @@ export interface MessageListRowProps {
   item: RenderItem;
   index: number;
   dividerIndex: number | null;
-  dividerRef: RefObject<HTMLDivElement | null>;
   draftMessageId: string | undefined;
   draftTurnId: string | undefined;
   finishedDraftMessages: Record<string, string | undefined>;
@@ -140,7 +139,6 @@ export function MessageListRow({
   item,
   index,
   dividerIndex,
-  dividerRef,
   draftMessageId,
   draftTurnId,
   finishedDraftMessages,
@@ -189,7 +187,7 @@ export function MessageListRow({
     );
   return (
     <Fragment>
-      {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
+      {dividerIndex === index && <UnreadDivider />}
       <AlbumMembersProvider messages={albumMembers}>
         {item.kind === 'separator' ? (
           <DateSeparator date={item.date} />
