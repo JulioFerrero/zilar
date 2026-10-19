@@ -1,3 +1,4 @@
+import { isLive } from './block-progress';
 import { canDeleteMessage } from './edits';
 import { formatDuration } from './format';
 import { splitLinks } from './links';
@@ -190,6 +191,13 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
     return lastMessage.text;
   }
   if (lastMessage.card !== undefined) {
+    if (lastMessage.card.type === 'progress') {
+      const { data } = lastMessage.card;
+      if (!isLive(data.state) && data.summary !== undefined) {
+        return data.summary;
+      }
+      return data.title ?? data.stage;
+    }
     return 'Attachment';
   }
   return '';

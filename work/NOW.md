@@ -141,6 +141,7 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
 | T-2205 | server tests wave C: 16 files from 94 to 24 cases (kept: permissions, caps, SSRF, isolation, delivery, the rejected-key reply, no duplicate after streaming) | −1,175 test |
 | T-2207 | AI turns T5/T6: DM and group turn inputs share `prepareTurn` (routine send, progress card, desk, abort, usage, typing, gate) | −29 |
 | T-2209 | web search W1: a DeepSeek AI's `web.search` and `web.fetch` use DeepSeek's Search and Fetch APIs with its own key; $0.00075 per billed request goes into its usage | +214 (feature) |
+| T-2210 | store phase 3 T4: one chat-list merge (`mergeFreshChats`) and row adoption (`adoptNewRows`) in client-core; the phone's import aliases and re-exports are gone | −22 |
 | T-2212 | a closed AI card's body is its summary ("Stopped after 12s"), so previews stop showing the last step after a stop | 0 |
 | T-2211 | AI turns T7: DM and group loop turns share `runLoopTurn` (loop call, gate-then-stop, last call, finish); only the fail and reply callbacks differ | −42 |
 | T-2208 | store phase 3 T6: one debounced message-cache writer and snapshot builder in client-core; sign-out clears through the writer's fence (web cache checks identical to main) | −31 |
@@ -171,7 +172,9 @@ Julio's words: "dont stop working, try to reduce the lines and make a better cod
   - Cut the server tests outside the crucial areas to a few each (agent tests wait until the AI turn plan is done, since they guard it).
 - **Running (08:15):**
   - **T-2205:** server tests wave C (topic activity and preview, AI catalog and model client, tools, sticker links, drafts…).
-  - **T-2210:** store phase 3 T4. The chat-list refresh's merge step and new-row adoption move into client-core; the phone's import aliases and jump-constant re-exports go (stop rule: at least −20).
+  - **T-2215:** a task card's chat-list preview shows its summary, title or stage instead of "Attachment" after a reload (chat-core, so web and phone both get it).
+  - **T-2214:** the ARCHITECTURE import rule applied everywhere. The ~51 pass-through re-exports outside package index files and the import aliases that hide no clash go.
+  - **T-2213:** server tests wave D. Agent side-modules (topic follow, tool params, post blocks, questions, routine send, logs, task card, approvals, ask people) cut to the crucial cases (at least −1,260).
   - **Store T5 (sign-out reset), next.** It is security-sensitive and saves only about 30 lines, so it goes last.
   - **Web search W2 canvas, waiting for Julio:** https://claude.ai/artifact/9wDLt9GpmXNZZ2s2JWNu85. A "Web search" provider group in Add key (Brave, Exa, Firecrawl, Jina, Tavily), and Connections split into Models and Web search.
 - **Docs (lead, 07:25):**
@@ -195,7 +198,14 @@ Lead live checks as Julio in "ai test › General" (09:19–09:24):
 - **Reload:** the chat list and topics loaded normally (read-only).
 - **Usage:** today's cost went from $0.0057 to $0.0088 after the first search turn (tokens plus search).
 
-**Bug found:** after a stop, the topic's chat-list preview keeps the last step's text ("Deepseek: Reading the page"). The closing card body is the step text instead of the summary (`agents/gateway/live.ts:177`); T-2212 fixes it.
+**Bug found:** after a stop, the topic's chat-list preview kept the last step's text ("Deepseek: Reading the page"), because the closing card body was the step text instead of the summary (`agents/gateway/live.ts:177`). Fixed by T-2212.
+
+**`0296d4002`** (09:33, T-2211 loop runner and T-2212): routes the same, 0 errors. Live checks:
+- a search turn answered with a link ("Node.js LTS v24.22.0");
+- a stopped multi-page fetch turn left the preview reading "Deepseek: Stopped after 10s";
+- a DM hello was answered.
+
+**`6f015f5c4`** (09:38, store T4): routes the same, 0 errors. A read-only look at Julio's real chats after a reload: the list, Financial and JULITO open normally with history and media. After the reload the card preview reads "Attachment" (history cards carry no body); T-2215 fixes it.
 
 Live line: 0 server errors, all contract routes the same. A phone smoke on main after the dead-code merges passed, and the AIs-here sheet (folded in T-2145) opens with Dev-1 working and QA-1 waiting.
 

@@ -213,6 +213,26 @@ describe('previewBody and previewPrefix', () => {
     expect(previewBody(withCaption)).toBe('tickets.pdf, print these');
   });
 
+  it('uses the summary of a closed task card', () => {
+    const card = message({
+      id: '1',
+      senderId: 'ana',
+      senderName: 'Ana',
+      createdAt: at(0, 0),
+      card: {
+        v: 0,
+        type: 'progress',
+        data: {
+          ai: 'dev-1@ai.example.com',
+          stage: 'Working',
+          summary: 'Stopped after 10s',
+          state: 'stopped',
+        },
+      },
+    });
+    expect(previewBody(card)).toBe('Stopped after 10s');
+  });
+
   it('returns an empty string without a message', () => {
     expect(previewBody(undefined)).toBe('');
   });
